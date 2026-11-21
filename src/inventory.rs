@@ -431,7 +431,7 @@ impl Inventory {
     /// becomes the held stack. Identical components do not swap.
     pub fn equip_in_mode(&mut self, slot: usize, creative: bool) -> bool {
         let Some(held) = self.get(slot) else { return false };
-        let Some((piece, _)) = held.item.as_armor() else { return false };
+        let Some(piece) = held.item.equip_piece() else { return false };
         let worn = self.armor[piece as usize];
         if !self.can_unequip(piece, creative)
             || worn.is_some_and(|mut worn| {
@@ -455,10 +455,27 @@ impl Inventory {
     /// Clicks an armor slot: only the matching piece goes in, and a bound
     /// piece stays on.
     pub fn click_armor(&mut self, piece: ArmorPiece, right: bool, creative: bool) {
-        let fits = self.cursor.is_none_or(|c| c.item.as_armor().is_some_and(|(p, _)| p == piece));
-        if fits && self.can_unequip(piece, creative) {
-            click_slot(&mut self.armor[piece as usize], &mut self.cursor, right);
+        let fits = self.cursor.is_none_or(|c| c.item.wear_slot() == Some(piece));
+        if !fits || !self.can_unequip(piece, creative) {
+            return;
         }
+        // An armor slot holds one item (`ArmorSlot.getMaxStackSize`), which
+        // matters for stackable mob heads: a worn head never stacks, and
+        // from a larger stack one goes on an empty slot and nothing swaps.
+        if let Some(c) = &mut self.cursor {
+            let slot = &mut self.armor[piece as usize];
+            if slot.is_some_and(|s| c.stacks_with(&s)) {
+                return;
+            }
+            if c.count > 1 {
+                if slot.is_none() {
+                    *slot = Some(Stack { count: 1, ..*c });
+                    c.count -= 1;
+                }
+                return;
+            }
+        }
+        click_slot(&mut self.armor[piece as usize], &mut self.cursor, right);
     }
 
     /// Clicks the off-hand slot: any stack goes in, as in Java.
@@ -752,6 +769,27 @@ pub fn click_slot(slot: &mut Option<Stack>, cursor: &mut Option<Stack>, right: b
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_stack_of_heads_puts_one_on_the_head() {
+        // `ArmorSlot.getMaxStackSize` is 1: a stack of heads leaves one worn.
+        let head = crate::world::skulls::item(crate::world::skulls::Kind::Zombie);
+        let mut inv = Inventory { cursor: Some(Stack::new(head, 5)), ..Inventory::default() };
+        inv.click_armor(ArmorPiece::Helmet, false, false);
+        assert_eq!(inv.armor[ArmorPiece::Helmet as usize], Some(Stack::new(head, 1)));
+        assert_eq!(inv.cursor, Some(Stack::new(head, 4)));
+        // Worn, it doesn't swap with or top up from a larger stack.
+        inv.click_armor(ArmorPiece::Helmet, false, false);
+        assert_eq!(inv.armor[ArmorPiece::Helmet as usize], Some(Stack::new(head, 1)));
+        assert_eq!(inv.cursor, Some(Stack::new(head, 4)));
+        // Nor with a single matching head, by either button.
+        for right in [false, true] {
+            inv.cursor = Some(Stack::new(head, 1));
+            inv.click_armor(ArmorPiece::Helmet, right, false);
+            assert_eq!(inv.armor[ArmorPiece::Helmet as usize], Some(Stack::new(head, 1)));
+            assert_eq!(inv.cursor, Some(Stack::new(head, 1)));
+        }
+    }
 
     #[test]
     fn v0_4_bone_block_items_load_as_the_axis_bone_block() {

@@ -3,7 +3,8 @@
 use super::block::Block;
 use super::chunk::{CHUNK_SIZE, CHUNK_SIZE_I, ChunkData, index};
 use super::noise::{Perlin, hash3};
-use glam::IVec3;
+use glam::{IVec2, IVec3};
+use std::sync::{Arc, Mutex};
 
 pub const SPAWN: IVec3 = IVec3::new(100, 49, 0);
 const OUTER_START: f64 = 1024.0;
@@ -42,9 +43,54 @@ pub struct EndGen {
     detail: Perlin,
     seed: u64,
     pillars: [Pillar; 10],
+    /// The generation the world was made with: generation 5 adds End
+    /// biomes, chorus plants, and End cities and ships (v0.16 Track A).
+    generation: super::terrain::Generation,
+    /// v0.16 Track A: End cities and ships (generation 5).
+    pub cities: super::end_city::Cities,
+    /// Chorus plants grown per 16-block chunk, cached (generation 5).
+    chorus: Mutex<rustc_hash::FxHashMap<IVec2, Plants>>,
 }
+
+/// The blocks of the chorus plants grown in one 16-block chunk.
+type Plants = Arc<Vec<(IVec3, Block)>>;
+
+/// v0.16 Track A: Java's End biomes (`TheEndBiomeSource`), generation 5.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum EndBiome {
+    TheEnd,
+    Highlands,
+    Midlands,
+    SmallIslands,
+    Barrens,
+}
+
+impl EndBiome {
+    pub fn name(self) -> &'static str {
+        match self {
+            EndBiome::TheEnd => "the_end",
+            EndBiome::Highlands => "end_highlands",
+            EndBiome::Midlands => "end_midlands",
+            EndBiome::SmallIslands => "small_end_islands",
+            EndBiome::Barrens => "end_barrens",
+        }
+    }
+}
+
+/// `TheEndBiomeSource.getNoiseBiome`'s thresholds on the height value.
+pub const HIGHLANDS_ABOVE: f64 = 0.25;
+pub const MIDLANDS_FROM: f64 = -0.0625;
+pub const SMALL_ISLANDS_BELOW: f64 = -0.21875;
+/// Chunks within this squared distance (in chunks) of the centre are `the_end`.
+pub const CENTRE_CHUNKS_SQUARED: i64 = 4096;
+const CHORUS_CACHE: usize = 256;
+
 impl EndGen {
     pub fn new(seed: u64) -> Self {
+        Self::with_generation(seed, super::terrain::Generation::V4)
+    }
+
+    pub fn with_generation(seed: u64, generation: super::terrain::Generation) -> Self {
         let mut ranks: [usize; 10] = std::array::from_fn(|i| i);
         ranks.sort_unstable_by_key(|&i| hash3(i as i32, 0, 0, seed ^ 0x454E44));
         let pillars = std::array::from_fn(|i| {
@@ -58,7 +104,19 @@ impl EndGen {
                 guarded: rank == 1 || rank == 2,
             }
         });
-        Self { shape: Perlin::new(seed ^ 0x454E4401), detail: Perlin::new(seed ^ 0x454E4402), seed, pillars }
+        Self {
+            shape: Perlin::new(seed ^ 0x454E4401),
+            detail: Perlin::new(seed ^ 0x454E4402),
+            seed,
+            pillars,
+            generation,
+            cities: super::end_city::Cities::new(seed),
+            chorus: Mutex::new(rustc_hash::FxHashMap::default()),
+        }
+    }
+
+    fn v5(&self) -> bool {
+        self.generation >= super::terrain::Generation::V5
     }
 
     pub fn pillars(&self) -> &[Pillar; 10] {
@@ -141,6 +199,21 @@ impl EndGen {
         } else if radius < OUTER_START {
             return None;
         } else {
+            self.outer_mass(x, z, rough)
+        };
+        if mass <= 0.0 {
+            return None;
+        }
+        let noise = self.shape.noise2(x as f32 / 80.0, z as f32 / 80.0);
+        let top = (56.0 + mass.min(1.0) * 10.0 + noise * 5.0).floor() as i32;
+        let depth = (mass.sqrt() * 30.0 + rough * 3.0).max(2.0) as i32;
+        Some((top, top - depth))
+    }
+
+    /// The outer islands' mass at `(x, z)`: above 0 is land. Islands sit
+    /// on a 128-block grid, four cells in five holding one.
+    fn outer_mass(&self, x: i32, z: i32, rough: f32) -> f32 {
+        {
             let cell_x = x.div_euclid(128);
             let cell_z = z.div_euclid(128);
             let mut mass: f32 = -1.0;
@@ -162,18 +235,132 @@ impl EndGen {
                 }
             }
             mass
-        };
-        if mass <= 0.0 {
+        }
+    }
+
+    /// v0.16 Track A: the End biome at block `(x, z)` (generation 5).
+    /// Like `TheEndBiomeSource`, biomes are per 16-block chunk: chunks within
+    /// 64 of the centre are `the_end`, others are chosen from a height value
+    /// sampled at the chunk's middle. Java's value is `EndIslandFunction`'s
+    /// `(doffs - 8) / 128`; VoxelCraft's islands are original (FE-01), so
+    /// the same thresholds read `doffs` as 100 times the island mass
+    /// (clamped to Java's -100..80 like `doffs`).
+    pub fn biome(&self, x: i32, z: i32) -> EndBiome {
+        let (cx, cz) = (x >> 4, z >> 4);
+        if i64::from(cx) * i64::from(cx) + i64::from(cz) * i64::from(cz) <= CENTRE_CHUNKS_SQUARED {
+            return EndBiome::TheEnd;
+        }
+        let (bx, bz) = ((cx * 2 + 1) * 8, (cz * 2 + 1) * 8);
+        let rough = self.detail.noise2(bx as f32 / 32.0, bz as f32 / 32.0);
+        let doffs = (f64::from(self.outer_mass(bx, bz, rough)) * 100.0).clamp(-100.0, 80.0);
+        let value = (doffs - 8.0) / 128.0;
+        if value > HIGHLANDS_ABOVE {
+            EndBiome::Highlands
+        } else if value >= MIDLANDS_FROM {
+            EndBiome::Midlands
+        } else if value < SMALL_ISLANDS_BELOW {
+            EndBiome::SmallIslands
+        } else {
+            EndBiome::Barrens
+        }
+    }
+
+    /// The chorus plants Java's `chorus_plant` placed feature grows in the
+    /// 16-block chunk `chunk` (generation 5): `count` uniform 0..=4,
+    /// `in_square`, `heightmap MOTION_BLOCKING`, End highlands only; each
+    /// plant (`ChorusPlantFeature`) needs air with End stone below and grows
+    /// with `ChorusFlowerBlock.generatePlant(.., 8)`. The draws come from a
+    /// seeded `JavaRandom` per chunk, not Java's decoration seed (the
+    /// terrain is original, so Java's positions can't carry over).
+    pub fn chorus_plants(&self, chunk: IVec2) -> Arc<Vec<(IVec3, Block)>> {
+        if let Some(found) = self.chorus.lock().unwrap().get(&chunk) {
+            return Arc::clone(found);
+        }
+        let mut out: Vec<(IVec3, Block)> = Vec::new();
+        if self.biome(chunk.x * 16, chunk.y * 16) == EndBiome::Highlands {
+            let salt = hash3(chunk.x, 0x0C40, chunk.y, self.seed ^ 0x0C40_5E50);
+            let mut rng = crate::enchant::JavaRandom::new(salt as i64);
+            let count = rng.next_bounded(5);
+            for _ in 0..count {
+                let x = chunk.x * 16 + rng.next_bounded(16);
+                let z = chunk.y * 16 + rng.next_bounded(16);
+                let Some((top, _)) = self.column(x, z) else { continue };
+                let origin = IVec3::new(x, top + 1, z);
+                if out.iter().any(|(p, _)| *p == origin) {
+                    continue;
+                }
+                let placed = out.clone();
+                let empty = |p: IVec3| {
+                    self.column(p.x, p.z).is_none_or(|(top, bottom)| p.y > top || p.y < bottom)
+                        && !placed.iter().any(|(q, _)| *q == p)
+                };
+                let mut int = |n: u32| rng.next_bounded(n as i32) as u32;
+                out.extend(super::end_blocks::generate_plant(origin, super::end_blocks::MAX_SPREAD, &empty, &mut int));
+            }
+        }
+        let found = Arc::new(out);
+        let mut cache = self.chorus.lock().unwrap();
+        if cache.len() >= CHORUS_CACHE
+            && let Some(key) = cache.keys().next().copied()
+        {
+            cache.remove(&key);
+        }
+        Arc::clone(cache.entry(chunk).or_insert(found))
+    }
+
+    /// The End cities whose blocks may reach the blocks `min..=max` (x, z).
+    pub fn cities_near(&self, min: IVec2, max: IVec2) -> Vec<Arc<super::end_city::City>> {
+        if !self.v5() {
+            return Vec::new();
+        }
+        self.cities.around(self, min, max)
+    }
+
+    /// Chests generation 5's End cities put in the chunk at `cpos`.
+    pub fn structure_features(&self, cpos: IVec3) -> Vec<(IVec3, super::fortress::Feature)> {
+        let base = cpos * CHUNK_SIZE_I;
+        let min = IVec2::new(base.x, base.z);
+        let max = min + IVec2::splat(CHUNK_SIZE_I - 1);
+        self.cities_near(min, max).iter().flat_map(|c| c.features_in(cpos).collect::<Vec<_>>()).collect()
+    }
+
+    /// `/locate structure end_city`.
+    pub fn nearest_city(&self, origin: IVec2, max_blocks: i32) -> Option<IVec3> {
+        if !self.v5() {
             return None;
         }
-        let noise = self.shape.noise2(x as f32 / 80.0, z as f32 / 80.0);
-        let top = (56.0 + mass.min(1.0) * 10.0 + noise * 5.0).floor() as i32;
-        let depth = (mass.sqrt() * 30.0 + rough * 3.0).max(2.0) as i32;
-        Some((top, top - depth))
+        self.cities.nearest(self, origin, max_blocks)
+    }
+
+    /// Generation 5's additions to the chunk at `base`: chorus plants, then
+    /// End cities over them.
+    fn paint_v5(&self, blocks: &mut [Block], base: IVec3) {
+        let top = base + IVec3::splat(CHUNK_SIZE_I - 1);
+        let reach = super::end_blocks::MAX_SPREAD;
+        let lo = IVec2::new(base.x - reach, base.z - reach).div_euclid(IVec2::splat(16));
+        let hi = IVec2::new(top.x + reach, top.z + reach).div_euclid(IVec2::splat(16));
+        for cz in lo.y..=hi.y {
+            for cx in lo.x..=hi.x {
+                for &(p, b) in self.chorus_plants(IVec2::new(cx, cz)).iter() {
+                    if p.cmpge(base).all() && p.cmple(top).all() {
+                        let l = p - base;
+                        blocks[index(l.x as usize, l.y as usize, l.z as usize)] = b;
+                    }
+                }
+            }
+        }
+        for city in self.cities_near(IVec2::new(base.x, base.z), IVec2::new(top.x, top.z)) {
+            city.paint(blocks, base);
+        }
     }
     pub fn generate(&self, cpos: IVec3) -> ChunkData {
         let base = cpos * CHUNK_SIZE_I;
         if base.y < 0 || base.y > 104 {
+            if self.v5() && base.y >= 0 {
+                let mut blocks = ChunkData::new_dense(Block::AIR);
+                self.paint_v5(&mut blocks[..], base);
+                return ChunkData::from_dense(blocks);
+            }
             return ChunkData::Uniform(Block::AIR);
         }
         let mut blocks = ChunkData::new_dense(Block::AIR);
@@ -212,9 +399,22 @@ impl EndGen {
                 }
             }
         }
+        if self.v5() {
+            self.paint_v5(&mut blocks[..], base);
+        }
         ChunkData::from_dense(blocks)
     }
 }
+impl super::end_city::Terrain for EndGen {
+    fn city_biome(&self, x: i32, z: i32) -> bool {
+        matches!(self.biome(x, z), EndBiome::Highlands | EndBiome::Midlands)
+    }
+
+    fn first_free(&self, x: i32, z: i32) -> i32 {
+        self.column(x, z).map_or(0, |(top, _)| top + 1)
+    }
+}
+
 /// An End gateway at `origin` (Java's `EndGatewayFeature`): the gateway in
 /// a gap one block high, capped above and below by bedrock pluses with a
 /// bedrock tip at each end.

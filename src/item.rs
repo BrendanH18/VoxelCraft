@@ -353,6 +353,14 @@ pub enum Sprite {
     /// v0.15 Track B: a pattern item's sheet showing pattern item `i` of
     /// `content::banner_patterns::PATTERN_ITEMS`.
     BannerPattern(u8),
+    /// v0.16 Track B: folded grey-violet wings (`content::elytra`).
+    Elytra,
+    /// v0.16 Track B: a paper rocket with a fuse (`content::fireworks`).
+    FireworkRocket,
+    /// v0.16 Track B: a pale star ball, tinted by its colours.
+    FireworkStar,
+    /// v0.16 Track C: the Wither's Nether star.
+    NetherStar,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -520,6 +528,8 @@ static NETHER_MOB_ITEMS: [ItemInfo; 2] = [
     },
 ];
 const _: () = assert!(NETHER_MOB_ITEM as usize + NETHER_MOB_ITEMS.len() <= 900);
+/// The boat wood index of poplar (`Item::boat`): after bamboo's 9.
+pub const POPLAR_BOAT_WOOD: u8 = 10;
 /// v0.6 Overworld items (cave, ocean and jungle drops), ids 900..=959.
 const OVERWORLD_ITEM: u16 = 900;
 const fn bucket_of(name: &'static str, colour: [u8; 3]) -> ItemInfo {
@@ -849,9 +859,34 @@ impl Item {
     pub const GOLDEN_HORSE_ARMOR: Item = Item(985);
     pub const DIAMOND_HORSE_ARMOR: Item = Item(986);
     pub const GOLDEN_CARROT: Item = Item(987);
-    /// Wood index follows Wood::ALL; index 9 is bamboo.
+    /// Wood index follows Wood::ALL; index 9 is bamboo and 10 poplar
+    /// (v0.16 Track D, items 1705 and 1706).
     pub const fn boat(wood: u8, chest: bool) -> Item {
+        if wood == POPLAR_BOAT_WOOD {
+            return if chest { Self::POPLAR_CHEST_BOAT } else { Self::POPLAR_BOAT };
+        }
         Item(960 + wood as u16 + if chest { 10 } else { 0 })
+    }
+    pub const POPLAR_BOAT: Item = Item(1705);
+    pub const POPLAR_CHEST_BOAT: Item = Item(1706);
+
+    /// The boat wood index and chest of a boat or raft item.
+    pub const fn boat_of(self) -> Option<(u8, bool)> {
+        match self.0 {
+            960..=979 => Some((((self.0 - 960) % 10) as u8, self.0 >= 970)),
+            1705 => Some((POPLAR_BOAT_WOOD, false)),
+            1706 => Some((POPLAR_BOAT_WOOD, true)),
+            _ => None,
+        }
+    }
+
+    /// The planks a boat of `wood` is made of.
+    pub const fn boat_planks(wood: u8) -> Block {
+        match wood {
+            9 => crate::world::overworld_blocks::BAMBOO_PLANKS,
+            POPLAR_BOAT_WOOD => crate::world::wood::poplar::PLANKS,
+            w => crate::world::block::Wood::ALL[w as usize].planks(),
+        }
     }
     pub const MINECART: Item = Item(761);
     pub const CHEST_MINECART: Item = Item(762);
@@ -1044,6 +1079,11 @@ impl Item {
         if block.0 == Block::HONEY_BLOCK.0 {
             return Self::HONEY_BLOCK;
         }
+        // v0.16 Track C: the wither skeleton skull keeps item 641, which it
+        // had before it could be placed.
+        if block.0 == crate::world::skulls::WITHER_SKELETON_SKULL.0 {
+            return Self::WITHER_SKULL;
+        }
         if crate::world::scaffolding::is_scaffolding(block) {
             return Self::SCAFFOLDING;
         }
@@ -1080,6 +1120,9 @@ impl Item {
     pub fn block(self) -> Option<Block> {
         if self == Self::HONEY_BLOCK {
             return Some(Block::HONEY_BLOCK);
+        }
+        if self == Self::WITHER_SKULL {
+            return Some(crate::world::skulls::WITHER_SKELETON_SKULL);
         }
         if self == Self::SCAFFOLDING {
             return Some(crate::world::scaffolding::SCAFFOLDING);
@@ -1127,11 +1170,33 @@ impl Item {
         (1255..=1265).contains(&self.0)
             || self == crate::world::trial::TRIAL_CHAMBERS_MAP
             || crate::world::explorer_maps::is_explorer(self)
+            || self == crate::world::camp_maps::CAMP_MAP
     }
 
     pub fn info(self) -> ItemInfo {
+        // v0.16 Track A: chorus fruit, popped chorus fruit and the shulker shell.
+        if let Some(info) = crate::content::chorus::item_info(self) {
+            return info;
+        }
         if let Some(info) = crate::content::harness::item_info(self) {
             return info;
+        }
+        // v0.16 Track B: elytra, firework rockets and firework stars.
+        if let Some(info) =
+            crate::content::elytra::item_info(self).or_else(|| crate::content::fireworks::item_info(self))
+        {
+            return info;
+        }
+        // v0.16 Track C: the Nether star.
+        if self == crate::entity::wither::NETHER_STAR {
+            return item("nether star", Sprite::NetherStar);
+        }
+        // v0.16 Track D: the poplar boats.
+        match self {
+            Self::POPLAR_BOAT => return single("poplar boat", Sprite::Boat([196, 188, 166], false)),
+            Self::POPLAR_CHEST_BOAT => return single("poplar chest boat", Sprite::Boat([196, 188, 166], true)),
+            crate::entity::sulfur_cube::BUCKET => return bucket_of("bucket of sulfur cube", [222, 200, 80]),
+            _ => {}
         }
         // v0.15 Track D: spectral arrows, coloured eggs and trim templates.
         if self == Self::SPECTRAL_ARROW {
@@ -1162,6 +1227,9 @@ impl Item {
             return info;
         }
         // v0.15 Track F: the woodland mansion and four more explorer maps.
+        if let Some(info) = crate::world::camp_maps::item_info(self) {
+            return info;
+        }
         if let Some(info) = crate::world::explorer_maps::item_info(self) {
             return info;
         }
@@ -1349,6 +1417,9 @@ impl Item {
             // Java registers signs and hanging signs with `stacksTo(16)`.
             let max_stack = if crate::world::wood::signs::sign(b).is_some() {
                 16
+            } else if crate::world::shulker_box::owns(b.0) {
+                // `Items.SHULKER_BOX` and `DYED_SHULKER_BOX`: `stacksTo(1)`.
+                1
             } else {
                 crate::world::colour_blocks::max_stack(b).unwrap_or(64)
             };
@@ -1474,6 +1545,9 @@ impl Item {
         if matches!(self, Self::BRUSH | Self::WOLF_ARMOR) {
             return Some(64);
         }
+        if self == crate::content::elytra::ELYTRA {
+            return Some(crate::content::elytra::DURABILITY);
+        }
         if self == Self::CARROT_ON_A_STICK {
             return Some(25);
         }
@@ -1534,17 +1608,24 @@ impl Item {
         if unit < self.food_effect_chance() { self.food_effects() } else { &[] }
     }
 
-    /// Java's `FoodProperties.canAlwaysEat`: edible even when full. The
-    /// reference also lists chorus fruit, which is not yet registered.
+    /// Java's `FoodProperties.canAlwaysEat`: edible even when full.
     pub fn always_edible(self) -> bool {
-        matches!(self, Item::GOLDEN_APPLE | Item::ENCHANTED_GOLDEN_APPLE | Item::HONEY_BOTTLE | Item::SUSPICIOUS_STEW)
+        matches!(
+            self,
+            Item::GOLDEN_APPLE
+                | Item::ENCHANTED_GOLDEN_APPLE
+                | Item::HONEY_BOTTLE
+                | Item::SUSPICIOUS_STEW
+                | crate::content::chorus::CHORUS_FRUIT
+        )
     }
 
     /// Java's `Rarity.UNCOMMON` (yellow names), for the items whose
     /// registrations are pinned so far: the chainmail pieces and the
     /// Bottle o' Enchanting.
     pub fn is_uncommon(self) -> bool {
-        self == Item::EXPERIENCE_BOTTLE
+        crate::world::skulls::kind_of_item(self).is_some_and(|k| k.rarity() == 1)
+            || self == Item::EXPERIENCE_BOTTLE
             || crate::equipment::is_uncommon(self)
             || crate::content::banner_patterns::rarity(self) == Some(crate::content::banner_patterns::Rarity::Uncommon)
             || crate::content::trim::template_pattern(self)
@@ -1558,7 +1639,11 @@ impl Item {
 
     /// Java's `Rarity.RARE` for items registered with it (aqua names).
     pub fn is_rare(self) -> bool {
-        self == Item::ENCHANTED_GOLDEN_APPLE
+        // v0.16 Track C: `Items.WITHER_SKELETON_SKULL`, `NETHER_STAR` and `BEACON`.
+        self == Item::WITHER_SKULL
+            || self == crate::entity::wither::NETHER_STAR
+            || self == Item::from_block(crate::world::beacon::BEACON)
+            || self == Item::ENCHANTED_GOLDEN_APPLE
             || crate::world::jukebox::is_rare(self)
             || crate::weapons::is_rare(self)
             || crate::content::banner_patterns::rarity(self) == Some(crate::content::banner_patterns::Rarity::Rare)
@@ -1566,10 +1651,41 @@ impl Item {
                 .is_some_and(|p| crate::content::trim::rarity(p) == crate::content::trim::Rarity::Rare)
     }
 
+    /// The equipment slot this goes in (`Equippable.slot`): armor's own, and
+    /// the chest for v0.16 Track B's elytra.
+    pub fn equip_piece(self) -> Option<ArmorPiece> {
+        if self == crate::content::elytra::ELYTRA {
+            return Some(ArmorPiece::Chestplate);
+        }
+        self.as_armor().map(|(piece, _)| piece)
+    }
+
     /// Java's `DataComponents.ENCHANTMENT_GLINT_OVERRIDE`: drawn with the
     /// enchantment glint though it carries no enchantment.
     pub fn has_glint(self) -> bool {
         matches!(self, Item::ENCHANTED_GOLDEN_APPLE | Item::EXPERIENCE_BOTTLE | Item::WRITTEN_BOOK)
+            || self == crate::entity::wither::NETHER_STAR
+    }
+
+    /// The equipment slot this goes on (`Equippable.slot`): armor its
+    /// piece, a mob head the head (`equippableUnswappable(HEAD)`).
+    /// Unlike [`Item::equip_piece`], heads can't be swapped on by using
+    /// them, only placed in the slot.
+    pub fn wear_slot(self) -> Option<ArmorPiece> {
+        self.equip_piece().or_else(|| crate::world::skulls::kind_of_item(self).map(|_| ArmorPiece::Helmet))
+    }
+
+    /// Java's `Rarity.EPIC` (light purple names): v0.16 Track B's elytra and
+    /// Track C's dragon head.
+    pub fn is_epic(self) -> bool {
+        self == crate::content::elytra::ELYTRA
+            || crate::world::skulls::kind_of_item(self).is_some_and(|k| k.rarity() == 3)
+    }
+
+    /// `DataComponents.DAMAGE_RESISTANT` with `#is_explosion`: dropped, the
+    /// Nether star survives blasts.
+    pub fn explosion_proof(self) -> bool {
+        self == crate::entity::wither::NETHER_STAR
     }
 
     pub fn remainder(self) -> Option<Item> {
@@ -1606,6 +1722,12 @@ impl Item {
         }
         if let Some(layer) = crate::world::explorer_maps::icon_layer(self) {
             return Some(layer);
+        }
+        if let Some(layer) = crate::content::chorus::icon_layer(self) {
+            return Some(layer);
+        }
+        if self == crate::world::camp_maps::CAMP_MAP {
+            return Some(crate::world::camp_maps::TEX);
         }
         if self.is_map() {
             return Some(2944 + self.0 - 1255);
@@ -1715,6 +1837,16 @@ impl Item {
             .chain(track_d_items())
             // v0.15 Track F: five explorer maps, which draw their own layers.
             .chain(crate::world::explorer_maps::items())
+            // v0.16 Track B: elytra, firework rocket and firework star.
+            .chain(track_b16_items())
+            // v0.16 Track C: the Nether star (its icon follows Track D's).
+            .chain([crate::entity::wither::NETHER_STAR])
+            // v0.16 Track A: chorus fruit, popped chorus fruit and the shulker shell.
+            .chain(crate::content::chorus::items())
+            // v0.16 Track D: poplar boats and the sulfur cube bucket.
+            .chain(gen5_items())
+            // v0.16 Track D: the abandoned camp map, which draws its own layers.
+            .chain([crate::world::camp_maps::CAMP_MAP])
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1790,6 +1922,18 @@ fn sprite_index(item: Item) -> Option<u16> {
         ),
         // v0.15 Track D: its items follow Track B's.
         i if let Some(k) = track_d_items().position(|t| t.0 == i) => Some(track_d_icon_base() + k as u16),
+        // v0.16 Track B: its items follow v0.15 Track D's.
+        i if let Some(k) = track_b16_items().position(|t| t.0 == i) => {
+            Some(track_d_icon_base() + TRACK_D_ICONS as u16 + k as u16)
+        }
+        // v0.16 Track C: the Nether star follows Track B's items.
+        i if i == crate::entity::wither::NETHER_STAR.0 => {
+            Some(track_d_icon_base() + TRACK_D_ICONS as u16 + TRACK_B16_ICONS as u16)
+        }
+        // v0.16 Track D: its items follow the Nether star.
+        i if let Some(k) = gen5_items().position(|t| t.0 == i) => {
+            Some(track_d_icon_base() + TRACK_D_ICONS as u16 + TRACK_B16_ICONS as u16 + 1 + k as u16)
+        }
         // v0.17 build-5000 ITEM-08: the bundles follow the experience bottle.
         i if (crate::content::bundle::ITEM_FIRST..crate::content::bundle::ITEM_END).contains(&i) => Some(
             late_icon_base()
@@ -1932,7 +2076,21 @@ pub const fn icon_count() -> u32 {
         + 3 // v0.15 Track B: spyglass, book and quill, written book.
         + (crate::content::banner_patterns::ITEM_END - crate::content::banner_patterns::ITEM_FIRST) as u32
         + TRACK_D_ICONS
+        + TRACK_B16_ICONS
+        + 1 // v0.16 Track C: the Nether star.
+        + GEN5_ICONS
 }
+
+/// v0.16 Track B's items, in icon order (after v0.15 Track D's).
+fn track_b16_items() -> impl Iterator<Item = Item> {
+    [
+        crate::content::elytra::ELYTRA,
+        crate::content::fireworks::FIREWORK_ROCKET,
+        crate::content::fireworks::FIREWORK_STAR,
+    ]
+    .into_iter()
+}
+const TRACK_B16_ICONS: u32 = 3;
 
 /// v0.15 Track D's first icon, after Track B's.
 const fn track_d_icon_base() -> u16 {
@@ -1956,6 +2114,12 @@ fn track_d_items() -> impl Iterator<Item = Item> {
         .chain(crate::content::trim::all())
 }
 const TRACK_D_ICONS: u32 = 3 + (crate::content::trim::ITEM_END - crate::content::trim::ITEM_FIRST) as u32;
+
+/// v0.16 Track D's items (ids 1705..=1729), in icon order.
+fn gen5_items() -> impl Iterator<Item = Item> {
+    [Item::POPLAR_BOAT, Item::POPLAR_CHEST_BOAT, crate::entity::sulfur_cube::BUCKET].into_iter()
+}
+const GEN5_ICONS: u32 = 3;
 
 /// The fermented spider eye's icon: icons appended in v0.14 follow it.
 const fn late_icon_base() -> u16 {
@@ -2146,7 +2310,8 @@ pub fn effect_icon_layer(effect: crate::simulation::effects::Effect) -> u16 {
 /// The sprite drawn on item icon `index` (see `tex::item_layer`).
 pub fn sprite_for_layer(index: u16) -> Option<Sprite> {
     Item::all_items()
-        .filter(|i| !i.is_map() && *i != Item::SUSPICIOUS_STEW)
+        // v0.16 Track A's chorus items draw block texture layers.
+        .filter(|i| !i.is_map() && *i != Item::SUSPICIOUS_STEW && !crate::content::chorus::is_item(*i))
         .nth(index as usize)
         .map(|i| i.info().sprite)
 }
@@ -2335,15 +2500,18 @@ mod tests {
 
     #[test]
     fn icon_layers_fit_the_texture_array() {
-        for i in Item::all_items().filter(|i| !i.is_map()) {
+        // Maps and v0.16 Track A's items draw their own texture layers.
+        for i in Item::all_items().filter(|i| !i.is_map() && !crate::content::chorus::is_item(*i)) {
             let index = tex::item_index(i.icon_layer().unwrap()).unwrap();
             assert!((index as u32) < icon_count());
 
             assert_eq!(sprite_for_layer(index), Some(i.info().sprite));
         }
         // Every atlas slot is covered; visually identical items can share one.
-        let layers: std::collections::HashSet<_> =
-            Item::all_items().filter(|i| !i.is_map()).map(|i| i.icon_layer().unwrap()).collect();
+        let layers: std::collections::HashSet<_> = Item::all_items()
+            .filter(|i| !i.is_map() && !crate::content::chorus::is_item(*i))
+            .map(|i| i.icon_layer().unwrap())
+            .collect();
         assert_eq!(layers.len() as u32, icon_count());
         assert_eq!(Item::SUSPICIOUS_STEW.icon_layer(), Item::MUSHROOM_STEW.icon_layer());
         // Icons stay addressable by the UI's and models' 16-bit layers.

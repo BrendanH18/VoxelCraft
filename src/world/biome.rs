@@ -118,6 +118,10 @@ biomes! {
     DripstoneCaves "dripstone_caves" 0.8 0,
     // Generation 2 only (`world::deep_dark`); biomes are never saved.
     DeepDark "deep_dark" 0.8 0,
+    // Generation 5 only (v0.16 Track D). Java's dappled forest grass and
+    // leaves are orange; the nearest foliage group here is the dry one.
+    DappledForest "dappled_forest" 0.6 2,
+    SulfurCaves "sulfur_caves" 0.8 0,
 }
 
 impl Biome {
@@ -189,7 +193,10 @@ impl Biome {
 
     pub fn is_forest(self) -> bool {
         use Biome::*;
-        matches!(self, Forest | FlowerForest | BirchForest | OldGrowthBirchForest | DarkForest | PaleGarden)
+        matches!(
+            self,
+            Forest | FlowerForest | BirchForest | OldGrowthBirchForest | DarkForest | PaleGarden | DappledForest
+        )
     }
 
     /// Java's `#is_mountain` plus the windswept hills (emerald ore, goats).
@@ -215,7 +222,7 @@ impl Biome {
     }
 
     pub fn is_cave(self) -> bool {
-        matches!(self, Biome::LushCaves | Biome::DripstoneCaves | Biome::DeepDark)
+        matches!(self, Biome::LushCaves | Biome::DripstoneCaves | Biome::DeepDark | Biome::SulfurCaves)
     }
 
     /// Snow instead of rain, and ice on still water (Java: temperature
@@ -522,6 +529,41 @@ pub fn pick(c: &Climate) -> Biome {
             _ => middle(t, h, w),
         },
     }
+}
+
+/// [`pick`] for a generation 5 world (`v5`): Java 26.3's
+/// `MIDDLE_BIOMES_VARIANT[1][0]` is the dappled forest where generations 1
+/// to 4 fell back to plains. Every plains column of temperature band 1,
+/// humidity band 0 and non-negative weirdness comes from that variant slot,
+/// so the swap is exact.
+pub fn pick_in(c: &Climate, v5: bool) -> Biome {
+    let b = pick(c);
+    if v5
+        && b == Plains
+        && band(c.temperature, &TEMPERATURES) == 1
+        && band(c.humidity, &HUMIDITIES) == 0
+        && c.weirdness >= 0.0
+    {
+        DappledForest
+    } else {
+        b
+    }
+}
+
+/// [`cave`] for a generation 5 world: Java 26.3 adds sulfur caves under
+/// coast and inland continentalness (-0.19..0.55), erosion 0.45 and up and
+/// weirdness -1.1..-0.85. Lush caves keep precedence where both fit.
+pub fn cave_in(c: &Climate, depth: i32, v5: bool) -> Option<Biome> {
+    if v5
+        && depth >= 20
+        && c.humidity < 0.7
+        && (-0.19..0.55).contains(&c.continentalness)
+        && c.erosion >= 0.45
+        && (-1.1..-0.85).contains(&c.weirdness)
+    {
+        return Some(SulfurCaves);
+    }
+    cave(c, depth)
 }
 
 /// The cave biome at some depth under a column with this climate, if any

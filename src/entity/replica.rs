@@ -35,6 +35,7 @@ impl Entities {
             "bobbers": self.bobbers.iter().filter(|b| near(b.pos)).take(MAX)
                 .map(|b| json!({"at": pair(b.pos, b.previous_pos), "owner": b.owner.0, "biting": b.biting})).collect::<Vec<_>>(),
             "eyes": self.eyes.iter().filter(|e| near(e.pos)).take(MAX).map(|e| pair(e.pos, e.previous_pos)).collect::<Vec<_>>(),
+            "shulker_bullets": self.shulker_bullets.iter().filter(|b| near(b.pos)).take(MAX).map(|b| pair(b.pos, b.previous_pos)).collect::<Vec<_>>(),
             "fireballs": self.fireballs.iter().filter(|f| near(f.pos)).take(MAX)
                 .map(|f| json!({"at": pair(f.pos, f.previous_pos), "large": f.is_large()})).collect::<Vec<_>>(),
             "puffs": self.puffs.iter().filter(|p| near(p.pos)).take(MAX)
@@ -45,6 +46,11 @@ impl Entities {
                 .map(|t| json!({"at": pair(t.pos, t.previous_pos), "fuse": t.fuse})).collect::<Vec<_>>(),
             "lightning": self.lightning.iter().filter(|b| near(b.pos)).take(MAX).map(|b| json!([b.pos.to_array(),b.seed,b.life])).collect::<Vec<_>>(),
             "fight": self.fight.as_ref().map(|f| f.replica_json()),
+            // v0.16 Track B: firework rockets in flight.
+            "fireworks": self.fireworks_near(center, radius),
+            // v0.16 Track C: the Wither's skulls.
+            "wither_skulls": self.wither_skulls.iter().filter(|k| near(k.pos)).take(MAX)
+                .map(|k| json!({"at": pair(k.pos, k.previous_pos), "dangerous": k.dangerous})).collect::<Vec<_>>(),
         })
     }
 
@@ -66,6 +72,7 @@ impl Entities {
             })
             .collect();
         self.pearls = list("pearls").into_iter().filter_map(unpair).map(|(p, q)| Pearl::replica(p, q)).collect();
+        self.replace_fireworks(&v["fireworks"]);
         self.clouds = list("potion_clouds").into_iter().filter_map(super::lingering::Cloud::load).collect();
         self.potions = list("potions")
             .into_iter()
@@ -117,6 +124,18 @@ impl Entities {
             })
             .collect();
         self.eyes = list("eyes").into_iter().filter_map(unpair).map(|(p, q)| EnderEye::replica(p, q)).collect();
+        self.wither_skulls = list("wither_skulls")
+            .into_iter()
+            .filter_map(|e| {
+                let (p, q) = unpair(&e["at"])?;
+                Some(super::wither::Skull::replica(p, q, e["dangerous"] == true))
+            })
+            .collect();
+        self.shulker_bullets = list("shulker_bullets")
+            .into_iter()
+            .filter_map(unpair)
+            .map(|(p, q)| super::shulker::Bullet::replica(p, q))
+            .collect();
         self.fireballs = list("fireballs")
             .into_iter()
             .filter_map(|e| {

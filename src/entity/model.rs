@@ -708,8 +708,11 @@ mod mounts;
 mod new_mobs;
 mod passive;
 mod phantom;
+mod shulker;
 mod sniffer;
 mod warden;
+mod wither;
+pub use wither::{build_beacon_beams, build_wither_skulls};
 
 /// Animated parts for a mob, in model space (pixels).
 fn pose(m: &Mob, time: f32) -> Parts {
@@ -725,7 +728,9 @@ fn pose(m: &Mob, time: f32) -> Parts {
         MobKind::Llama => mounts::llama(m),
         MobKind::Camel | MobKind::CamelHusk => mounts::camel(m),
         MobKind::HappyGhast => new_mobs::happy_ghast(m, time),
+        MobKind::Wither => wither::pose(m, time),
         MobKind::Nautilus | MobKind::ZombieNautilus => new_mobs::nautilus(m, time),
+        MobKind::SulfurCube => new_mobs::sulfur_cube(m),
         MobKind::Cod
         | MobKind::Salmon
         | MobKind::TropicalFish
@@ -766,6 +771,7 @@ fn pose(m: &Mob, time: f32) -> Parts {
         MobKind::Allay => allay::pose(m, time),
         MobKind::Breeze => breeze::pose(m, time),
         MobKind::Endermite => hostiles::endermite(time),
+        MobKind::Shulker => shulker::pose(m, time),
         MobKind::Tadpole => passive::tadpole(m, time),
         MobKind::Cow => parts![
             part(COW_BODY, [0.0; 3], Quat::IDENTITY),
@@ -1099,6 +1105,8 @@ pub fn build(
                 m.size as f32
             } else if m.kind == MobKind::WitherSkeleton {
                 1.2
+            } else if m.kind == MobKind::Wither {
+                super::wither::model_scale(m)
             } else if m.kind == MobKind::Phantom {
                 1. + m.phantom.as_ref().map_or(0., |p| f32::from(p.size) * 0.15)
             } else if m.kind == MobKind::ElderGuardian {
@@ -1125,12 +1133,21 @@ pub fn build(
         } else {
             origin
         };
-        let tint = if m.fuse > 0.0 {
+        let sulfur_fuse = m.sulfur_cube.as_ref().filter(|s| s.primed()).map(|s| s.fuse);
+        let tint = if let Some(fuse) = sulfur_fuse {
+            // `TntRenderer`'s white flash every 5 ticks of the fuse.
+            ([255.0; 3], if (fuse / 5) % 2 == 0 { 0.8 } else { 0.0 })
+        } else if m.fuse > 0.0 {
             ([255.0; 3], ((m.fuse * (8.0 + 16.0 * fuse)).sin() * 0.5 + 0.5) * 0.7)
         } else if m.kind == MobKind::CaveSpider {
             ([40.0, 80.0, 95.0], 0.65)
         } else if m.kind == MobKind::Ghast && m.charged {
             ([210.0, 48.0, 36.0], 0.55)
+        } else if let Some(invul) = m.wither.as_ref().map(|s| s.invul).filter(|&t| t > 0) {
+            // `WitherBossRenderer`'s invulnerable skin: blue-white, blinking
+            // over the last 80 ticks.
+            let lit = invul > 80 || invul / 5 % 2 != 1;
+            ([200.0, 220.0, 255.0], if lit { 0.55 } else { 0.0 })
         } else if m.burning {
             (FIRE, 0.3)
         } else {
@@ -1138,7 +1155,9 @@ pub fn build(
         };
         labels::attachments(m, camera, forward, rel, out);
         aquatic::beam(m, camera, out);
-        if m.kind == MobKind::Creeper && m.lightning_charged {
+        // v0.16 Track C: the Wither's armor at half health shimmers like a
+        // charged creeper's.
+        if m.kind == MobKind::Creeper && m.lightning_charged || super::wither::powered(m) {
             charged_aura(m, rel, time, out);
         }
         passive::tongue(m, camera, out, (light, torch));
@@ -1166,6 +1185,7 @@ pub fn build(
                 passive::colour(m, &mut cuboid);
                 copper_golem::colour(m, &mut cuboid);
                 new_mobs::colour(m, &mut cuboid);
+                shulker::colour(m, &mut cuboid);
                 if m.kind == MobKind::GlowSquid && c.color == [49, 71, 80] {
                     cuboid.color = [44, 161, 151];
                 }
@@ -1220,6 +1240,9 @@ pub fn build(
         }
         if let Some(stack) = held_stack(m) {
             draw_held(out, &posed[4], stack.item, origin, body, scale, (light, torch));
+        }
+        if m.kind == MobKind::SulfurCube {
+            new_mobs::sulfur_block(m, origin, body, scale, (light, torch), out);
         }
         if m.burning {
             flames(out, m, rel, time);
@@ -1419,6 +1442,25 @@ pub fn build_pearls(pearls: &[super::pearl::Pearl], camera: DVec3, alpha: f64, o
     }
 }
 
+/// v0.16 Track B: firework rockets in flight (`FireworkEntityRenderer`
+/// draws the item; this is an original stand-in): a red-banded paper tube
+/// with a grey cap, nose along the flight. Held rockets aren't drawn.
+pub fn build_fireworks(rockets: &[super::firework::Rocket], camera: DVec3, alpha: f64, out: &mut EntityMesh) {
+    const ROCKET: &[Cuboid] = &[
+        cube([-1.0, -3.0, -1.0], [1.0, 3.0, 1.0], [226, 220, 204], 10),
+        cube([-1.1, -0.6, -1.1], [1.1, 0.6, 1.1], [190, 50, 42], 6),
+        cube([-0.9, 3.0, -0.9], [0.9, 4.0, 0.9], [120, 120, 128], 6),
+        cube([-0.3, -4.2, -0.3], [0.3, -3.0, 0.3], [70, 58, 44], 0),
+    ];
+    for r in rockets.iter().filter(|r| r.attached.is_none()) {
+        let rel = (r.previous_pos.lerp(r.pos, alpha) - camera).as_vec3();
+        let turn = Quat::from_rotation_arc(Vec3::Y, r.heading());
+        for (i, c) in ROCKET.iter().enumerate() {
+            push_cuboid(out, c, &|v: Vec3| rel + turn * v / 16.0, turn, ([230, 0, 0, 0], 0), (FIRE, 0.0), i as f32);
+        }
+    }
+}
+
 /// Thrown splash potions: a small tumbling flask tinted like its liquid.
 pub fn build_potions(potions: &[super::potion::ThrownPotion], camera: DVec3, alpha: f64, out: &mut EntityMesh) {
     for p in potions {
@@ -1453,6 +1495,8 @@ pub fn build_eyes(eyes: &[super::eye::EnderEye], camera: DVec3, time: f32, alpha
 }
 
 /// Blaze fireballs: a glowing orange cube around a yellow core, tumbling.
+pub use shulker::build_shulker_bullets;
+
 pub fn build_fireballs(
     fireballs: &[super::fireball::Fireball],
     camera: DVec3,
@@ -1592,6 +1636,8 @@ pub(super) fn build_minecarts(carts: &[super::minecart::Minecart], camera: DVec3
                 [226, 174, 174],
                 [228, 218, 214],
                 [196, 176, 82],
+                // v0.16 Track D: poplar.
+                [196, 188, 166],
             ];
             let color = colors[wood as usize];
             let boxes = [
@@ -2039,12 +2085,20 @@ mod tests {
             });
             // Swimming bodies and animated tentacles need not rest on a floor.
             let floats = matches!(kind, MobKind::Blaze | MobKind::Bat) || kind.is_aquatic();
-            assert!(lo.y.abs() < 1e-4 || floats && lo.y.abs() < 0.25, "{kind:?} feet at {}", lo.y);
+            // The Wither's tail ends about 0.65 above the floor, as in Java's
+            // `WitherBossModel` drawn at twice its pixels.
+            let hovers = kind == MobKind::Wither && (0.0..1.0).contains(&lo.y);
+            assert!(lo.y.abs() < 1e-4 || floats && lo.y.abs() < 0.25 || hovers, "{kind:?} feet at {}", lo.y);
             // The mooshroom cap layer extends above its cow collision box.
             let h = kind.shape().height as f32 + if kind == MobKind::Mooshroom { 0.4 } else { 0.0 };
             assert!((hi.y - h).abs() < 0.15, "{kind:?} top {} vs box {h}", hi.y);
             assert!(
-                hi.x > if kind.is_aquatic() || matches!(kind, MobKind::Bat | MobKind::Allay) { 10.05 } else { 10.25 },
+                // A sulfur cube is a plain cube with no head to lead.
+                hi.x > if kind.is_aquatic() || matches!(kind, MobKind::Bat | MobKind::Allay | MobKind::SulfurCube) {
+                    10.05
+                } else {
+                    10.25
+                },
                 "{kind:?} should extend forward along +X"
             );
             // Behind the camera: culled.

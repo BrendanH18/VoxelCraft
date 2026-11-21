@@ -342,7 +342,7 @@ count, the potions' item IDs and the encodings the orderings must fit.
 | 14336–14591 | v0.15 | Copper golem statue states (2026-11-05 reservation) |
 | 14592–15487 | v0.15 | Creaking, sniffer, ocean ruin and spare states (2026-11-05 reservation) |
 | 15488–15999 | v0.16 | Trial chamber, weapon and spare states (2026-11-06 reservation) |
-| 16000–16383 | — | Unassigned reserve |
+| 16000–16383 | v0.16 | Cinnabar and sulfur ([v0.16 tracks](#v016-the-end-and-the-wither-track-reservations), 2026-11-20) |
 | 16384–32767 | v0.12 and later | Added by the 32,768 raise (2026-10-25); see the v0.12 tracks below |
 
 ### v0.12 track reservations
@@ -1020,6 +1020,147 @@ unsaved `fortress::Feature` members (`StructureLoot`, `VillageResident`,
 recorded in the existing saved `births` list), and `jigsaw::Base::LootIn`.
 `entity::cat_spawner` is now `pub(crate)` so the village catalogue can name
 Java's cat variants.
+
+### v0.16 The End and the Wither track reservations
+
+Reserved on 2026-11-20 for the [v0.16 tracks](roadmap.md#v016-scope-the-end-and-the-wither)
+(the release this table's first rows call v0.18, renumbered on 2026-11-13).
+`examples/id_map.rs` at `53194210` showed states 12260–14335, 16000–16383,
+19584–20479 and 30536–32767 unregistered (30536–30719 stay with the v0.15 crops track), non-block items free from 1658,
+and texture layers 529–1099 unreferenced. A census of `render::textures::pixel`
+at the same commit confirmed that every layer in 529–1099 draws the
+missing-texture pattern, so no model, icon or HUD element paints it.
+Poplar is a wood family and takes the unused rest of the v0.12 wood
+track's states; cinnabar and sulfur take the unassigned reserve. Each
+track allocates only inside its own rows, records what it used here, and
+leaves unused IDs unregistered. Texture layers are never saved and may be
+repacked at integration.
+
+| Block states | Item IDs | Texture layers | Track |
+| --- | --- | --- | --- |
+| 12288–12415 | 1660–1674 | 529–608 | A. Outer End: End cities and ships, chorus, purpur, End rods, shulkers |
+| 12416–12543 | 1675–1689 | 609–668 | B. Flight and storage: shulker boxes, elytra, fireworks |
+| 12544–12799 | 1690–1704 | 669–748 | C. Wither and beacons: heads and skulls, the Wither, wither roses, Nether stars, beacons |
+| 16000–16383, 19584–20479 | 1705–1729 | 749–948 | D. Generation 5 Overworld: poplar, shrubs, golden dandelions, shelf mushrooms, cinnabar and sulfur, the sulfur cube, nether gold ore, abandoned camps |
+| 30720–30847 | 1730–1739 | 949–988 | E. Classic structures: infested blocks, dungeons, mineshafts, strongholds, fortresses (wave 2) |
+| 30848–30975 | 1740–1749 | 989–1028 | F. Ocean structures: shipwrecks, monuments, the conduit (wave 2) |
+| 30976–31103 | 1750–1759 | 1029–1048 | G. Dragon respawn and the exit audits (wave 2) |
+| 31104–31231 | 1760–1769 | 1049–1099 | Integrator spare |
+
+Block items are `BLOCK_ITEM_BASE + state` and need no item ID; the item
+rows are for items without a block. Append-only orderings (`MobKind` and
+its LAN index, `Effect`, sounds, item icons, thrown kinds, particle kinds,
+entity and dimension property keys, `slab_stair_states::FAMILIES`,
+`waterlog::RUNS`, `utilities::POTTED`) are appended by each track on its
+own branch. No released build saves the new members, so the integrator
+makes them contiguous in landing order (A, B, C, D, then E, F, G) and
+records the result here. Saved names follow Java's registry names.
+
+**Track B allocation** (flight and storage, 2026-11-20, implemented,
+unverified; [record](verification/2026-11-20-v0.16-flight-storage.md)):
+
+| Kind | Used | Meaning |
+| --- | --- | --- |
+| Block states | 12416–12517 | The 17 shulker boxes (`world::shulker_box`): `12416 + colour * 6 + facing`, colour 0 the plain box then `DyeColor` order, facing up, down, north, south, west, east (up first: the item's state); 12518–12543 stay unregistered |
+| Items | 1675, 1676, 1677 | Elytra (`content::elytra`), firework rocket and firework star (`content::fireworks`); 1678–1689 stay unregistered |
+| Texture layers | 609–659, 660 | Three per box colour (side, lid top, bottom), then the elytra's wing texture; 661–668 stay unused |
+
+Appended orderings: item icons after v0.15 Track D's (elytra, firework
+rocket, firework star); `Sound::Flight` with the twelve
+`content::fireworks::Cue`s after `Sound::Raid`; `MobSound::Flight` after
+`MobSound::Raid`; particle kinds `FireworkSpark` and `FireworkFlash` after
+`Note`; the unsaved `EntityEvent::RocketBoost`, `FireworkBurst` and
+`PlayerFirework`. Stack payloads gain the `container`, `fireworks` and
+`firework_explosion` kinds (Java's component names), and the
+charged-crossbow `entity_data` value `u32::MAX - 2`
+(`session::ranged::FIREWORK_BOLT`) marks a loaded rocket whose `fireworks`
+ride in the payload. Box contents are ordinary chest-table entries. No
+`MobKind`, `Effect`, thrown kind, `slab_stair_states`/`waterlog`/`POTTED`
+member or entity or dimension property key is added; rockets aren't saved.
+
+**Track C (Wither and beacons) used:** block states 12544–12726
+(`world::skulls`: 12544–12683 the seven heads unpowered,
+`12544 + kind * 20 + local` with `SkullBlock.Types` order and `local` 0–15
+a floor head's rotation, 16–19 a wall head's facing in `Facing::ALL`
+order; 12684–12723 powered piglin then dragon heads, the only kinds whose
+`powered` does anything; `world::wither_rose`: 12724 the wither rose,
+12725 the potted wither rose; `world::beacon`: 12726 the beacon);
+12727–12799 stay unregistered. Item 1690, the Nether star; 1691–1704 stay
+free. The wither skeleton skull keeps its pre-v0.16 item 641 as the block
+item of its floor state (`Item::from_block`/`Item::block`), so saved
+skulls stay skulls. Texture layers 669–710 (heads 669–705, the rose and
+its pot 706–707, the beacon's shell, core and beam 708–710); 711–748 stay
+unused. Appended orderings: `MobKind::Wither` (after `Parched`, LAN index 85),
+`audio::voices::Voice::Wither`, `Sound::Wither` and `Sound::Beacon`,
+`MobSound::Wither`, the mob-head `gadgets::Instrument`s (`Zombie` to
+`Piglin`, 16–21, outside `Instrument::ALL`), `Sprite::NetherStar` and its
+item icon (after Track B's icons once merged), the `beacons` dimension property key, the
+`wither_skulls` entity replica key, and the beacon screen's LAN slot
+numbers 560–569. Its new `EntityEvent`s (`WitherBlast`, `WitherBreak`,
+`WitherRose`, `ChargedBlast`), `Container::Beacon`, the beacon `SlotRef`s,
+the controller's `Tab::Beacon` and `screen::Request::Close` are not saved.
+See the [record](verification/2026-11-20-v0.16-wither-beacons.md).
+
+**Track A (outer End), allocated 2026-11-20.** Block states 12288–12389 of
+12288–12415 (`world::end_blocks`): 12288 purpur block, 12289–12291 purpur
+pillar (axis y, x, z), 12292–12371 purpur stairs (an appended
+`slab_stair_states` family, `PURPUR_FAMILY`, laid out like every v0.12
+family), 12372–12376 purpur slab, 12377–12382 End rod (`facing` in Java's
+`Direction` order), 12383 chorus plant (one state: the six connections are
+read from the neighbours), 12384–12389 chorus flower (age 0–5);
+12390–12415 stay unregistered. Items 1660–1662 of 1660–1674 (chorus fruit,
+popped chorus fruit, shulker shell; `content::chorus`); 1663–1674 stay
+unregistered. Texture layers 529–540 of 529–608 (nine block layers and three
+item icons); 541–608 stay unused. Appended orderings: `MobKind::Shulker`
+(LAN index 86 after the merge, behind Track C's `Wither` at 85; saved as `shulker`), `audio::voices::Voice::Shulker`,
+`entity::MobSound::Shulker`, `particles::Kind::EndRod`,
+`slab_stair_states::PURPUR_FAMILY` (after `RESIN_FAMILY`) and
+`temples::LootTable::EndCity` (`chests/end_city_treasure`). No effects,
+thrown kinds, property keys, `waterlog::RUNS` or `utilities::POTTED`
+entries were added.
+
+**Track D (generation 5 Overworld), 2026-11-20.** Used: states 16000–16107
+(`world::gen5_blocks`: the eight cinnabar and sulfur blocks, potent sulfur
+16008–16012, sulfur spikes 16016–16035, the six slabs 16040–16069 and walls
+16070–16093, nether gold ore 16096, red shrub 16097, golden dandelion 16098
+and its pot 16099, shelf mushrooms 16100–16107), 19584–19983
+(`world::wood::poplar`: logs, wood and stripped blocks, planks, leaves,
+sapling and pot, `forms` wood index 12's fence, gate and door, right-hinge
+doors, slab, stairs, `wood::switches` family 8, `wood::Kind::Poplar`'s
+signs and shelf) and 20000–20479 (the six cinnabar and sulfur stairs
+families, 80 each, kept in the wood range and named by `gen5_blocks`);
+items 1705 (poplar boat) and 1706 (poplar chest boat); texture layers
+749–795. Unused and unregistered: 16013–16015, 16036–16039, 16094–16095,
+16108–16383, 19638–19647, 19984–19999, items 1707–1729 and layers 796–948.
+Appended orderings: seven `slab_stair_states::FAMILIES` after resin
+(`TRACK_D_FIRST`: poplar, cinnabar, polished cinnabar, cinnabar bricks,
+sulfur, polished sulfur, sulfur bricks), six `wall_states` family bytes
+after resin's, two item icons after v0.15 Track D's, `wood::Kind::Poplar`,
+`Wood::Poplar`, boat wood 10 (minecart codes 40 and 41) and the
+`DappledForest` and `SulfurCaves` biomes (never saved). No `MobKind`,
+`Effect`, sound, particle or `utilities::POTTED` entries in that first
+slice. The second slice (same day) used items 1707 (`sulfur_cube_bucket`)
+and 1708 (`abandoned_camp_map`) and texture layers 796 (the camp map icon)
+and 797 (its decoration), and appended `MobKind::SulfurCube` (after
+`Parched`, saved as `sulfur_cube`), `audio::voices::Voice::SulfurCube`,
+`sulfur_cube::Cue` as `Sound::SulfurCube` and `MobSound::SulfurCube` (after
+the raid cues), the bucket's item icon after the poplar chest boat's,
+`temples::Kind::AbandonedCamp` (after `Mansion`; never saved) and the
+`abandoned_camp` jigsaw library (generated, not a file). Still unused and
+unregistered: states 16013–16015, 16036–16039, 16094–16095, 16108–16383,
+19638–19647 and 19984–19999, items 1709–1729 and layers 798–948. Record:
+[v0.16 generation 5 Overworld](verification/2026-11-20-v0.16-generation-5-overworld.md).
+
+**Integrated order (2026-11-20).** Wave 1 landed B, C, A, D, and the
+appended orderings follow that order: `MobKind` Wither (LAN 85), Shulker
+(86), SulfurCube (87), with `Voice` and `MobSound` alike; `Sound` Flight,
+Wither, Beacon, then SulfurCube; particle kinds FireworkSpark,
+FireworkFlash, EndRod; item icons after v0.15 Track D's: elytra, firework
+rocket, firework star (B), the Nether star (C), then poplar boat, poplar
+chest boat and the sulfur cube bucket (D) (Track A's three items and the
+camp map draw from block texture layers); `slab_stair_states` purpur
+(`PURPUR_FAMILY`) then Track D's seven (`TRACK_D_FIRST`). Wave 2 (Tracks
+E, F and G) was not started this push and keeps its reserved rows.
 
 ## Assessment branch ID reservations
 

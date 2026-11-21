@@ -316,6 +316,21 @@ impl Actor<'_> {
             }
         }
         if let Some(consumed) = step.completed {
+            // v0.16 Track A: chorus fruit teleports (`CHORUS_FRUIT_TELEPORT`, `PLAYERS`).
+            if consumed.item == voxelcraft::content::chorus::CHORUS_FRUIT
+                && let Some(from) = self.session.chorus_teleport(self.world, self.entities)
+            {
+                let to = self.session.player.pos;
+                for at in [from, to] {
+                    self.audio.play_in(
+                        crate::audio::SoundSource::Players,
+                        Sound::Teleport,
+                        Some(at + DVec3::Y),
+                        1.0,
+                        (0.9, 1.1),
+                    );
+                }
+            }
             self.requests.push(Request::MagicDamage(consumed.magic_damage));
         }
     }
@@ -328,10 +343,17 @@ impl Actor<'_> {
             return false;
         }
         let s = &mut *self.session;
+        let elytra = s.inventory.get(slot).is_some_and(|s| s.item == voxelcraft::content::elytra::ELYTRA);
         if !voxelcraft::survival_items::equip_armor(&s.player, &mut s.inventory, slot, s.mode, self.world) {
             return false;
         }
         let eye = self.session.player.eye();
+        if elytra {
+            // v0.16 Track B: `ARMOR_EQUIP_ELYTRA`.
+            let sound = Sound::Flight(voxelcraft::content::fireworks::Cue::EquipElytra);
+            self.audio.play_in(SoundSource::Players, sound, Some(eye), 1.0, (1.0, 1.0));
+            return true;
+        }
         self.audio.play_in(SoundSource::Players, Sound::Place(Material::Wood), Some(eye), 0.6, (1.4, 1.6));
         true
     }

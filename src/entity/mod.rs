@@ -38,6 +38,7 @@ pub mod endermite;
 pub mod equipment;
 pub mod eye;
 pub mod fireball;
+pub mod firework;
 pub mod frog;
 pub mod golem;
 pub mod happy_ghast;
@@ -73,11 +74,13 @@ mod projectile;
 pub mod raid;
 mod replica;
 pub mod sculk_events;
+pub mod shulker;
 mod slime;
 pub mod sniffer;
 mod spawn_lists;
 mod spawn_rules;
 mod spawning;
+pub mod sulfur_cube;
 pub mod thrown;
 mod tipped_arrow;
 pub mod tnt;
@@ -91,6 +94,7 @@ pub mod wandering_trader;
 pub mod warden;
 pub mod weapon_hits;
 pub mod wind;
+pub mod wither;
 pub mod wolf_armor;
 pub mod zombie;
 mod zombie_villager;
@@ -178,6 +182,15 @@ pub enum MobSound {
     Illager(illager::Cue),
     /// v0.15 Track E: the raid horn, a bell resonating, villagers cheering.
     Raid(raid::Cue),
+    /// v0.16 Track B: shulker boxes, rockets and elytra.
+    Flight(crate::content::fireworks::Cue),
+    /// v0.16 Track C: the Wither's spawn, shots and block breaking.
+    Wither(wither::Cue),
+    /// v0.16 Track A: a shulker's lid, shot and teleport, and its bullets.
+    Shulker(shulker::Cue),
+    /// v0.16 Track D: sulfur cube squishes, swallowed and ejected blocks,
+    /// hits, pushes and buckets.
+    SulfurCube(sulfur_cube::Cue),
 }
 
 /// Something an entity did that the game needs to react to.
@@ -479,6 +492,52 @@ pub enum EntityEvent {
         stack: crate::inventory::Stack,
         pos: DVec3,
     },
+    /// v0.16 Track B: a rocket held by gliding `player` pushes it this tick
+    /// (`FireworkRocketEntity.tick`).
+    RocketBoost {
+        player: PlayerId,
+    },
+    /// v0.16 Track B: a rocket burst (entity event 17): its particles and
+    /// sounds, from its `fireworks` (`None`: no stars).
+    FireworkBurst {
+        pos: DVec3,
+        vel: DVec3,
+        fireworks: Option<crate::inventory::components::StackPayload>,
+    },
+    /// v0.16 Track B: a burst hurt `player` (`fireworks` damage, an
+    /// explosion type never scaled by difficulty) from a rocket at `from`.
+    PlayerFirework {
+        player: PlayerId,
+        damage: f32,
+        from: DVec3,
+    },
+    /// v0.16 Track C: the Wither's charge-up blast or a skull's, as a mob
+    /// explosion (`mobGriefing`); a `dangerous` skull's caps block
+    /// resistance at 0.8 (`WitherSkull.getBlockExplosionResistance`).
+    WitherBlast {
+        center: DVec3,
+        power: f32,
+        dangerous: bool,
+    },
+    /// v0.16 Track C: a hurt Wither breaks every breakable block in the box
+    /// (`destroyBlocksTick`, under `mobGriefing`), with drops.
+    WitherBreak {
+        min: IVec3,
+        max: IVec3,
+        pos: DVec3,
+    },
+    /// v0.16 Track C: a charged creeper is about to explode at `center`;
+    /// the first mob its blast kills that has a head drops it
+    /// (`Creeper.killedEntity`, `loot_table/charged_creeper/*`). Handled
+    /// internally.
+    ChargedBlast {
+        center: DVec3,
+    },
+    /// v0.16 Track C: something the Wither killed died here: a wither rose
+    /// grows if the cell is air and can hold one (`mobGriefing`), else one drops.
+    WitherRose {
+        pos: DVec3,
+    },
 }
 
 /// Java 26.3 `ServerExplosion.hurtEntities` for an entity standing `dist`
@@ -590,6 +649,11 @@ pub trait MobWorld: BlockSource {
     fn nether_biome_at(&self, p: IVec3) -> Option<crate::world::nether_biome::NetherBiome> {
         self.nether_biome(p.x, p.z)
     }
+    /// `getBestOwnOrNeighbourSignal` at `p`: what primes an explosive
+    /// sulfur cube standing there.
+    fn redstone_signal(&self, _p: IVec3) -> u8 {
+        0
+    }
     /// Java moon brightness; clients set this from their saved day count.
     /// Inside a Nether fortress piece, where fortress mobs spawn.
     fn in_fortress(&self, _p: IVec3) -> bool {
@@ -605,6 +669,16 @@ pub trait MobWorld: BlockSource {
         false
     }
     fn structures_near(&self, _p: IVec3, _r: i32) -> Vec<std::sync::Arc<crate::world::temples::Built>> {
+        Vec::new()
+    }
+    /// v0.16 Track A: the shulker cells (`Sentry` markers) of End cities
+    /// within `r` blocks of `p`.
+    fn end_city_sentries(&self, _p: IVec3, _r: i32) -> Vec<IVec3> {
+        Vec::new()
+    }
+    /// The End ships' elytra item frames (cell and facing out of the wall)
+    /// within `r` blocks of `p`.
+    fn end_city_elytra_frames(&self, _p: IVec3, _r: i32) -> Vec<(IVec3, IVec3)> {
         Vec::new()
     }
     /// `findNearestMapStructure(DOLPHIN_LOCATED, p, 50, false)`: the nearest
@@ -628,6 +702,9 @@ pub trait MobWorld: BlockSource {
 }
 
 impl MobWorld for World {
+    fn redstone_signal(&self, p: IVec3) -> u8 {
+        self.redstone_power(p)
+    }
     fn bee_night(&self, daylight: f32) -> bool {
         self.beehives.night.unwrap_or(daylight < 0.35)
     }
@@ -710,6 +787,24 @@ impl MobWorld for World {
     fn structures_near(&self, p: IVec3, r: i32) -> Vec<std::sync::Arc<crate::world::temples::Built>> {
         self.generator.temples.near(&self.generator, p, r)
     }
+    fn end_city_sentries(&self, p: IVec3, r: i32) -> Vec<IVec3> {
+        let Some(end) = self.generator.end() else { return Vec::new() };
+        let (lo, hi) = (glam::IVec2::new(p.x - r, p.z - r), glam::IVec2::new(p.x + r, p.z + r));
+        end.cities_near(lo, hi)
+            .iter()
+            .flat_map(|c| c.sentries.iter().copied().filter(|s| (*s - p).abs().max_element() <= r).collect::<Vec<_>>())
+            .collect()
+    }
+    fn end_city_elytra_frames(&self, p: IVec3, r: i32) -> Vec<(IVec3, IVec3)> {
+        let Some(end) = self.generator.end() else { return Vec::new() };
+        let (lo, hi) = (glam::IVec2::new(p.x - r, p.z - r), glam::IVec2::new(p.x + r, p.z + r));
+        end.cities_near(lo, hi)
+            .iter()
+            .filter_map(|c| c.elytra_frame)
+            .filter(|f| (f.cell - p).abs().max_element() <= r)
+            .map(|f| (f.cell, f.facing.offset()))
+            .collect()
+    }
     fn dolphin_treasure(&self, p: IVec3) -> Option<IVec3> {
         use crate::world::temples::Kind;
         self.generator.temples.locate_rings(&self.generator, &[Kind::OceanRuin, Kind::Shipwreck], p, 50)
@@ -783,6 +878,11 @@ pub struct Target {
     /// Ticks of Darkness left (0 without it): wardens and shriekers only
     /// renew it once under 200.
     pub darkness_ticks: u32,
+    /// v0.16 Track B: gliding on elytra (`isFallFlying`): a held rocket pushes.
+    pub fall_flying: bool,
+    /// v0.16 Track C: the mob head worn in the helmet slot, which halves
+    /// how far its own kind sees this player (`MobVisibility`).
+    pub head: Option<crate::world::skulls::Kind>,
 }
 
 impl Target {
@@ -804,6 +904,19 @@ impl Target {
     /// TargetingConditions.test has a two-block minimum acquisition range.
     pub fn detection_range(&self, range: f64) -> f64 {
         (range * self.visibility_percent()).max(2.)
+    }
+
+    /// v0.16 Track C: [`Target::visibility_percent`] as `mob` sees it: a
+    /// head of its own kind in the helmet slot halves it (`Items.*_HEAD`'s
+    /// `loweredMobVisibility`).
+    pub fn visibility_percent_for(&self, mob: MobKind) -> f64 {
+        let disguise = self.head.is_some_and(|k| k.disguises_from(mob));
+        (self.visibility_percent() * if disguise { 0.5 } else { 1.0 }).clamp(0.0, 10.0)
+    }
+
+    /// [`Target::detection_range`] for `mob`, heads included.
+    pub fn detection_range_for(&self, range: f64, mob: MobKind) -> f64 {
+        (range * self.visibility_percent_for(mob)).max(2.)
     }
 
     /// A living player; set [`Target::alive`] for one waiting to respawn.
@@ -831,7 +944,9 @@ impl Target {
             sneaking: false,
             time_since_rest: 0,
             darkness_ticks: 0,
+            head: None,
             blocking: false,
+            fall_flying: false,
         }
     }
 
@@ -953,6 +1068,18 @@ pub struct Entities {
     pub bobbers: Vec<bobber::Bobber>,
     pub eyes: Vec<eye::EnderEye>,
     pub fireballs: Vec<fireball::Fireball>,
+    /// v0.16 Track B: firework rockets (not saved; each lives under four seconds).
+    pub fireworks: Vec<firework::Rocket>,
+    /// Bursts whose twinkle is still to sound, and the ticks until it does.
+    firework_twinkles: Vec<(DVec3, u32)>,
+    /// v0.16 Track C: the Wither's flying skulls.
+    pub wither_skulls: Vec<wither::Skull>,
+    /// v0.16 Track C: charged creeper blasts about to go off (never saved).
+    pub(crate) charged_blasts: Vec<DVec3>,
+    /// v0.16 Track A: shulker bullets (not saved; see `shulker`).
+    pub shulker_bullets: Vec<shulker::Bullet>,
+    /// Seconds until End city sentries are checked again.
+    end_city_timer: f32,
     /// Ominous item spawners over trial chamber fights (see [`trial`]).
     pub item_spawners: Vec<trial::ItemSpawner>,
     pub puffs: Vec<Puff>,
@@ -1087,6 +1214,12 @@ impl Entities {
             bobbers: Vec::new(),
             eyes: Vec::new(),
             fireballs: Vec::new(),
+            fireworks: Vec::new(),
+            firework_twinkles: Vec::new(),
+            wither_skulls: Vec::new(),
+            charged_blasts: Vec::new(),
+            shulker_bullets: Vec::new(),
+            end_city_timer: 0.0,
             item_spawners: Vec::new(),
             puffs: Vec::new(),
             lightning: Vec::new(),
@@ -1258,7 +1391,10 @@ impl Entities {
         if kind.is_zombie() || kind.is_bow_skeleton() {
             mob.equipment.enchant_spawned(&mut self.rng, special);
         }
-        if kind.is_cube() {
+        if kind == MobKind::SulfurCube {
+            // `SulfurCube.setSpawnSize`: an adult is size 2.
+            mob.set_sulfur_size(sulfur_cube::ADULT_SIZE);
+        } else if kind.is_cube() {
             // `AbstractCubeMob.setSpawnSize`: sizes 1, 2 and 4 from nextInt(3),
             // and the smaller two grow one step with chance 0.5 x the local
             // difficulty's special multiplier.
@@ -1357,6 +1493,13 @@ impl Entities {
         if let Some(fight) = &mut self.fight {
             fight.explode(center, power);
         }
+        // v0.16 Track C: a charged creeper's blast knocks one head off.
+        let charged = self
+            .charged_blasts
+            .iter()
+            .position(|c| c.distance_squared(center) < 1e-6)
+            .map(|i| self.charged_blasts.swap_remove(i))
+            .is_some();
         let mut killed = Vec::new();
         for m in &mut self.mobs {
             if !m.alive() || m.pos.distance(center) > f64::from(power) * 2.0 {
@@ -1372,11 +1515,31 @@ impl Entities {
             if credit_player {
                 m.player_hit();
             }
+            // v0.16 Track D: a blast lights an explosive sulfur cube on a
+            // short fuse (`primeTime(true)`); its archetype's explosion
+            // knockback resistance scales the push.
+            let push = match m.sulfur_physics() {
+                Some(p) => {
+                    if p.explosion.is_some() && m.prime_sulfur_cube(true, self.tnt_explodes, &mut self.rng) {
+                        self.pending_sounds.push(EntityEvent::Sound { sound: MobSound::Fuse, pos: m.pos });
+                    }
+                    push * (1.0 - p.explosion_knockback_resistance)
+                }
+                None => push,
+            };
             if m.blast(damage, push, &mut self.rng) {
                 killed.push((m.kind, m.pos, m.burning));
             }
         }
         self.particles.push(crate::particles::Request::Explosion { pos: center, large: power >= 2.0 });
+        let mut headless = charged && self.mob_loot;
+        for &(kind, pos, _) in &killed {
+            if headless && let Some(head) = crate::world::skulls::Kind::of_mob(kind) {
+                let stack = crate::inventory::Stack::new(crate::world::skulls::item(head), 1);
+                self.items.push(ItemEntity::new(stack, pos, DVec3::ZERO, item::PICKUP_DELAY, &mut self.rng));
+                headless = false;
+            }
+        }
         for (kind, pos, burning) in killed {
             if credit_player {
                 self.drop_loot_with_fire(kind, pos, 0, burning, true);
@@ -1404,6 +1567,12 @@ impl Entities {
         };
         if items {
             self.items.retain_mut(|item| match hit(item.pos, item.aabb(), item::ItemEntity::EYE) {
+                // v0.16 Track C: the Nether star's `damage_resistant`
+                // spares it the damage, not the push.
+                Some((_, push)) if item.stack.item.explosion_proof() => {
+                    item.vel += push;
+                    true
+                }
                 Some((damage, push)) => {
                     item.vel += push;
                     item.hurt(damage)
@@ -1495,11 +1664,18 @@ impl Entities {
         if captain && let Some(bottle) = raid::captain_loot(kind, &mut self.rng) {
             self.scatter(bottle, pos);
         }
+        // v0.16 Track C: `WitherBoss.dropCustomDeathLoot`, kill or not.
+        if kind == MobKind::Wither {
+            self.wither_star(pos);
+        }
         // `LivingEntity.dropAllDeathLoot`: equipment drops before the experience.
         self.equipment_drops(kind, pos, looting, player_kill);
         self.mob_equipment_drops(kind, pos, looting, player_kill);
         if player_kill {
-            let xp = if kind.is_cube() {
+            let xp = if kind == MobKind::SulfurCube {
+                // `SulfurCube.getBaseExperienceReward`: babies give none.
+                if baby { 0 } else { 1 + self.rng.next_int(2) }
+            } else if kind.is_cube() {
                 size as u32
             } else if let Some(xp) = nether::xp(kind, baby) {
                 xp
@@ -1559,6 +1735,14 @@ impl Entities {
                 n += (f32::from(looting) * (1.0 + self.rng.next_f32())).round() as u32;
             }
             drops.push((crate::world::trial::BREEZE_ROD, n.min(64) as u8));
+        }
+        // v0.16 Track A: `entities/shulker`: a shell with chance 0.5, or
+        // 0.5625 + 0.0625 per Looting level above I.
+        if kind == MobKind::Shulker {
+            let chance = if looting == 0 { 0.5 } else { 0.5625 + 0.0625 * f32::from(looting - 1) };
+            if self.rng.next_f32() < chance {
+                drops.push((crate::content::chorus::SHULKER_SHELL, 1));
+            }
         }
         // `entities/nautilus`: `random_chance_with_enchanted_bonus`, 0.05
         // unenchanted, 0.06 + 0.01 per Looting level above I.
@@ -1887,6 +2071,9 @@ impl Entities {
         for f in &mut self.fireballs {
             f.previous_pos = f.pos;
         }
+        for k in &mut self.wither_skulls {
+            k.previous_pos = k.pos;
+        }
         for item in &mut self.items {
             item.previous_pos = item.pos;
         }
@@ -1916,12 +2103,15 @@ impl Entities {
         model::build_tridents(&self.tridents, camera, alpha, &mut self.mesh);
         model::build_fangs(&self.fangs, camera, &mut self.mesh);
         model::build_pearls(&self.pearls, camera, alpha, &mut self.mesh);
+        model::build_fireworks(&self.fireworks, camera, alpha, &mut self.mesh);
         model::build_potions(&self.potions, camera, alpha, &mut self.mesh);
         model::build_clouds(&self.clouds, camera, &mut self.mesh);
         model::build_thrown(&self.thrown, camera, alpha, &mut self.mesh);
         model::build_bobbers(&self.bobbers, camera, alpha, &mut self.mesh);
         model::build_eyes(&self.eyes, camera, time, alpha, &mut self.mesh);
         model::build_fireballs(&self.fireballs, camera, time, alpha, &mut self.mesh);
+        model::build_wither_skulls(&self.wither_skulls, camera, time, alpha, &mut self.mesh);
+        model::build_shulker_bullets(&self.shulker_bullets, camera, time, alpha, &mut self.mesh);
         model::build_lightning(&self.lightning, camera, &mut self.mesh);
         model::build_puffs(&self.puffs, camera, alpha, &mut self.mesh);
         model::build_orbs(&self.orbs, camera, max_dist, time, alpha, &mut self.mesh);
@@ -2293,6 +2483,7 @@ impl Entities {
             owner,
             smash: 0.0,
             armor_effectiveness: 0.0,
+            pitch: 0.0,
         };
         self.player_melee(index, hit)
     }
@@ -2315,6 +2506,7 @@ impl Entities {
             owner,
             smash,
             armor_effectiveness,
+            pitch,
         } = hit;
         let target = self.mobs.get(index).filter(|m| m.alive())?;
         if target.allay.as_ref().is_some_and(|s| s.player == Some(owner)) {
@@ -2348,6 +2540,20 @@ impl Entities {
         }
         self.animals_owner_attack(index, owner);
         let old_health = self.mobs[index].health;
+        // v0.16 Track D: a sulfur cube with a block takes the hit only as
+        // its archetype's angled knockback (`SulfurCube.hurtServer` and
+        // `knockback`, from `dealDefaultKnockback`).
+        if self.mobs[index].sulfur_has_block() {
+            let (sy, cy) = (-yaw).to_radians().sin_cos();
+            let (sp, cp) = pitch.to_radians().sin_cos();
+            let look = DVec3::new(f64::from(sy * cp), f64::from(-sp), f64::from(cy * cp));
+            let eye = origin + DVec3::Y * crate::player::EYE_HEIGHT;
+            let m = &mut self.mobs[index];
+            m.player_hit_by(owner);
+            m.sulfur_knockback(eye, look, origin, damage, origin.x - pos.x, origin.z - pos.z);
+            self.sulfur_sound(sulfur_cube::Cue::Hit, pos);
+            return None;
+        }
         let hit = crate::knockback::Hit::melee(origin, pos, yaw, extra);
         self.mobs[index].armor_effectiveness = armor_effectiveness;
         let killed = self.hurt_by_player(index, damage, &hit.pushes, owner);
@@ -2498,6 +2704,9 @@ pub struct PlayerMelee {
     pub smash: f32,
     /// The weapon's armor-effectiveness change (Breach), applied to this hit.
     pub armor_effectiveness: f32,
+    /// The attacker's Java pitch in degrees (positive looks down): a sulfur
+    /// cube with a block takes its knockback along the attacker's aim.
+    pub pitch: f32,
 }
 
 /// Whether `kind` may spawn standing on `ground` at this daylight level.
@@ -4238,6 +4447,15 @@ mod tests {
         for kind in [MobKind::PiglinBrute, MobKind::Hoglin, MobKind::Zoglin, MobKind::Zombie] {
             assert_eq!(e.count(kind), 0, "{kind:?}");
         }
+    }
+
+    #[test]
+    fn peaceful_keeps_shulkers_and_discards_the_wither() {
+        // Java 26.3 registers the Wither `notInPeaceful()` and the shulker
+        // and the sulfur cube without it, so End city shulkers stay.
+        assert!(!MobKind::Shulker.despawns_in_peaceful());
+        assert!(!MobKind::SulfurCube.despawns_in_peaceful());
+        assert!(MobKind::Wither.despawns_in_peaceful());
     }
 
     #[test]

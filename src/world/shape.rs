@@ -253,6 +253,10 @@ impl Above {
     /// What `block` needs from above, read through `at` (offsets from its
     /// cell); [`Above::NONE`] without any lookups unless it is a wall.
     pub fn read(block: Block, at: impl Fn(glam::IVec3) -> Block) -> Above {
+        // v0.16 Track A: a chorus plant joins what is above it.
+        if block == super::end_blocks::CHORUS_PLANT {
+            return Above { block: at(glam::IVec3::Y), sides: [Block::AIR; 4] };
+        }
         if !matches!(block.shaped(), Some(Shaped::Wall)) {
             return Above::NONE;
         }
@@ -385,6 +389,9 @@ pub fn shape(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block) ->
 
 /// [`shape`] with what is above the cell (walls read it).
 pub fn shape_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block, above: Above) -> Boxes {
+    if let Some(boxes) = super::end_blocks::boxes(block, &neighbour, below, above.block) {
+        return boxes;
+    }
     if super::sniffer_egg::owns(block.0) {
         return super::sniffer_egg::boxes();
     }
@@ -393,6 +400,18 @@ pub fn shape_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Bloc
     }
     if super::dried_ghast::owns(block.0) {
         return super::dried_ghast::boxes();
+    }
+    // Shulker boxes draw as block-entity models (`render::block_model`),
+    // not in the chunk meshes; icons and dropped items fall back to a cube.
+    if super::shulker_box::owns(block.0) {
+        return Boxes::new();
+    }
+    // v0.16 Track C: heads draw as block-entity models, not in chunk meshes.
+    if super::skulls::owns(block.0) {
+        return Boxes::new();
+    }
+    if block == super::beacon::BEACON {
+        return super::beacon::boxes();
     }
     if super::cave_blocks::is_custom(block) {
         return super::cave_blocks::boxes(block);
@@ -499,6 +518,7 @@ pub fn shape_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Bloc
         Some(Shaped::Custom) if block == super::frog_blocks::FROGSPAWN => return super::frog_blocks::spawn_boxes(),
         Some(Shaped::Custom) if super::scaffolding::is_scaffolding(block) => return super::scaffolding::outline(block),
         Some(Shaped::Custom) if super::wood::owns(block.0) => return super::wood::mesh_boxes(block).unwrap_or(out),
+        Some(Shaped::Custom) if let Some(boxes) = super::gen5_blocks::shelf_boxes(block) => return boxes,
         Some(Shaped::Custom) if let Some(boxes) = super::colour_blocks::boxes(block) => return boxes,
         Some(Shaped::Custom) if super::mount_states::is_lantern(block.0) => lantern_boxes(block, &mut out),
         Some(Shaped::Custom) if let Some(s) = super::copper_golem_statue::decode(block) => {
@@ -554,6 +574,9 @@ pub fn outline(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block) 
 
 /// [`outline`] with what is above the cell (walls read it).
 pub fn outline_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block, above: Above) -> Boxes {
+    if let Some(boxes) = super::end_blocks::outline(block, &neighbour, below, above.block) {
+        return boxes;
+    }
     if super::sniffer_egg::owns(block.0) {
         return super::sniffer_egg::boxes();
     }
@@ -562,6 +585,16 @@ pub fn outline_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Bl
     }
     if super::dried_ghast::owns(block.0) {
         return super::dried_ghast::boxes();
+    }
+    // A shut shulker box's shape (`getShape` grows with the lid; see the record).
+    if super::shulker_box::owns(block.0) {
+        return Boxes::from_box(Box16::FULL);
+    }
+    if let Some(s) = super::skulls::decode(block) {
+        return super::skulls::outline(s);
+    }
+    if block == super::beacon::BEACON {
+        return super::beacon::collision();
     }
     if super::cave_blocks::is_custom(block) {
         return super::cave_blocks::outline(block);
@@ -807,6 +840,9 @@ pub fn collision_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: 
         let (lo, hi, h) = if age == 0 { (5, 11, 3) } else { (3, 13, 5) };
         return Boxes::from_box(b([lo, 0, lo], [hi, h, hi]));
     }
+    if let Some(boxes) = super::end_blocks::outline(block, &neighbour, below, above.block) {
+        return boxes;
+    }
     if super::sniffer_egg::owns(block.0) {
         return super::sniffer_egg::boxes();
     }
@@ -815,6 +851,15 @@ pub fn collision_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: 
     }
     if super::dried_ghast::owns(block.0) {
         return super::dried_ghast::boxes();
+    }
+    if super::shulker_box::owns(block.0) {
+        return Boxes::from_box(Box16::FULL);
+    }
+    if let Some(s) = super::skulls::decode(block) {
+        return super::skulls::collision(s);
+    }
+    if block == super::beacon::BEACON {
+        return super::beacon::collision();
     }
     if super::cave_blocks::is_custom(block) {
         return super::cave_blocks::collision(block);
@@ -863,6 +908,7 @@ pub fn collision_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: 
         }
         Some(Shaped::Custom) if super::copper::owns(block.0) => super::copper::collision(block, &mut out),
         Some(Shaped::Custom) if super::wood::owns(block.0) => return super::wood::collision(block).unwrap_or(out),
+        Some(Shaped::Custom) if let Some(boxes) = super::gen5_blocks::shelf_boxes(block) => return boxes,
         Some(Shaped::Custom) if let Some(boxes) = super::colour_blocks::collision(block) => return boxes,
         Some(Shaped::Custom) => {
             super::overworld_blocks::collision(block).unwrap_or(&[]).iter().for_each(|&b| out.push(b))
@@ -900,6 +946,10 @@ pub fn collision_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: 
 /// icon, and fences reach out east and west.
 pub fn item_shape(block: Block) -> Boxes {
     let block = block.canonical();
+    // v0.16 Track C: a head item is drawn as a cube carrying the head's faces.
+    if super::skulls::owns(block.0) {
+        return super::skulls::item_boxes();
+    }
     if block == Block::STONE {
         static MODEL: std::sync::LazyLock<Vec<Box16>> = std::sync::LazyLock::new(|| {
             crate::assets::model_boxes("voxelcraft:stone_model").expect("invalid original stone model")
@@ -909,6 +959,9 @@ pub fn item_shape(block: Block) -> Boxes {
             out.push(b);
         }
         return out;
+    }
+    if let Some(boxes) = super::end_blocks::item_boxes(block) {
+        return boxes;
     }
     let block = if block.stairs_base().is_some() { block.with_facing(Facing::East) } else { block };
     shape(block, |f| if f.along_x() { block } else { Block::AIR }, Block::AIR)

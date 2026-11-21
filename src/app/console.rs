@@ -303,6 +303,16 @@ impl Game {
                         IVec2::new(self.session.player.pos.x.floor() as i32, self.session.player.pos.z.floor() as i32),
                         6400,
                     ),
+                    // v0.16 Track A: generation 5's End cities.
+                    "end_city" => self.world.generator.end().and_then(|e| {
+                        e.nearest_city(
+                            IVec2::new(
+                                self.session.player.pos.x.floor() as i32,
+                                self.session.player.pos.z.floor() as i32,
+                            ),
+                            6400,
+                        )
+                    }),
                     "mineshaft" | "abandoned_mineshaft" => {
                         self.world.generator.mineshafts.nearest(self.session.player.pos.floor().as_ivec3())
                     }

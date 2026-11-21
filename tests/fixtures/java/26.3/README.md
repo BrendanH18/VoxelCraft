@@ -1101,3 +1101,144 @@ constants, biome tag and room kinds against this file both ways, and
 `world::explorer_maps` the maps' names, sources, decorations and trade.
 The woodland mansion chest table itself is in `src/world/loot_tables.json`
 (added to `tools/extract_java_structure_loot.py`'s list).
+
+## Flight and storage (v0.16 Track B)
+
+`flight.json` holds the facts behind shulker boxes, elytra and fireworks:
+`FireworkRocketEntity`'s launch drift and speed, lifetime terms, free-flight
+acceleration, gliding boost and burst damage (read from its bytecode);
+`FireworkRocketItem`'s craftable durations, placement offset and dispenser
+shot; `CrossbowItem`'s powers and a rocket's durability use;
+`Fireworks.MAX_EXPLOSIONS` and the explosion shapes in id order; every
+dye's `fireworkColor` (`DyeColor`'s static initializer); the elytra's
+durability, rarity, slot and repair item (`Items`), and `LivingEntity`'s
+glide drag, wear interval and every constant of `updateFallFlyingMovement`
+and `handleFallFlyingCollisions`; `ShulkerBoxBlockEntity`'s size and lid
+constants, `Blocks.shulkerBoxProperties`' strength and push reaction; the
+seventeen boxes' loot tables; the firework and shulker box recipes; and the
+tags that name them. It then runs an independent model of the glide
+(`updateFallFlyingMovement` with `Entity.calculateViewVector` and the
+`Mth` sine table, in Java's float and double arithmetic) for forty ticks
+over five pitch, yaw and velocity cases, and of the rocket boost.
+
+```sh
+python3 tools/extract_java_flight_fixtures.py /path/to/server.jar target/java-flight.json
+diff tests/fixtures/java/26.3/flight.json target/java-flight.json
+scripts/remote-check.sh -- 'cargo test --release --test java_flight --test java_recipes'
+```
+
+`tests/java_flight.rs` compares the rocket, crossbow and dispenser numbers,
+the shapes and colours, the elytra's item rules, the glide and boost tick by
+tick (within 1e-9), the shulker boxes' constants, names, stack size, loot
+and tag order, and the recipes (the box recipe waits for v0.16 Track A's
+shulker shell and is checked once it is registered).
+
+## The Wither, heads and beacons (v0.16 Track C)
+
+`wither_beacon.json` holds the facts behind the Wither, its skulls, mob
+heads, the wither rose and beacons, read from the server jar with `javap`:
+the `wither` and `wither_skull` entity types' size, category and fire
+immunity; `WitherBoss`'s attributes, constants and the numbers its methods
+push (the charge's heal and blast, the spawn level event, the idle heal,
+the head ranges, offsets and targeting box, the dangerous skull chance, the
+ranged attack goal, the armor and charge health divisors, its experience);
+`WitherSkull`'s damages, Wither amplifier and seconds, blast power,
+inertias, kill heal and blast resistance cap; the wither rose's contact
+ticks; every head's item (rarity, `loweredMobVisibility`, head equipping),
+floor and wall block strength and note block instrument; the Nether
+star's rarity, glint and `damage_resistant`; `BeaconBlockEntity`'s power
+tiers, constants, update cadence and `applyEffects` numbers and
+`BeaconMenu`'s payment slot; the loot tables of the Wither, wither
+skeleton, charged creeper, heads, beacon and rose; the `beacon` and
+`creeper_banner_pattern` recipes; and the tags `beacon_base_blocks`,
+`beacon_payment_items`, `wither_summon_base_blocks`, `wither_immune`,
+`supports_wither_rose`, `supports_vegetation`, `noteblock_top_instruments`,
+`skulls`, `undead`, `wither_friends` and `wither_immune_to`. Regenerate and compare with:
+
+```sh
+python3 tools/extract_java_wither_beacon_fixtures.py /path/to/server.jar --output target/java-wither-beacon.json
+diff tests/fixtures/java/26.3/wither_beacon.json target/java-wither-beacon.json
+scripts/remote-check.sh -- 'cargo test --release --test java_wither_beacon'
+```
+
+`tests/java_wither_beacon.rs` checks the game's numbers, items, blocks,
+loot and tags against it ([record](../../../../docs/verification/2026-11-20-v0.16-wither-beacons.md)).
+
+## The outer End (v0.16 Track A)
+
+`end_cities.json` holds v0.16 Track A's facts, written by
+`tools/extract_java_end_fixtures.py` from the pinned server (SHA-1
+checked): for each of the 20 `structure/end_city/*.nbt` templates only its
+size, whether every cell is stored, its data markers (name and position)
+and the block names it uses (no layout is copied: fidelity exception
+FE-02); the `end_city` structure, the `end_cities` structure set and the
+`has_structure/end_city` biome tag; the five End biomes' feature lists, the
+`chorus_plant` placed feature and the `supports_chorus_*` block tags; the
+loot tables `chests/end_city_treasure`, `entities/shulker` and the track's
+blocks; the purpur, End rod and popped chorus fruit recipes; and, read with
+`javap`, the static constants of `Shulker`, `ShulkerBullet`,
+`ChorusFlowerBlock`, `EndCityPieces`, `EndCityStructure` and
+`TeleportRandomlyConsumeEffect`, the shulker's 30 health
+(`createAttributes`) and 20 covered armor, and the bullet's 4 damage and
+200 ticks of Levitation (`onHitEntity`). Regenerate and compare with:
+
+```sh
+python3 tools/extract_java_end_fixtures.py /path/to/server.jar --output target/java-end.json
+diff tests/fixtures/java/26.3/end_cities.json target/java-end.json
+scripts/remote-check.sh -- 'cargo test --release --lib -- end_city end_blocks shulker'
+```
+
+`world::end_city` checks its template table and placement against the file
+both ways, and `entity::shulker` its constants and loot. The
+`chests/end_city_treasure` table the chests roll is in
+`src/world/loot_tables.json` (added to `tools/extract_java_structure_loot.py`'s
+list).
+
+## Generation 5 Overworld (v0.16 Track D)
+
+`gen5_overworld.json` holds the generation 5 facts v0.16 Track D follows:
+the six poplar tree features (trunk and foliage placer parameters, leaf
+provider, decorators with the leaf-litter decorators' tries and radii),
+`fallen_poplar_tree`, the `trees_dappled_forest` selector and its count,
+`patch_red_shrub`, the `dappled_forest` and `sulfur_caves` biomes
+(temperature, downfall, colours, feature lists, spawn settings), the
+`sulfur_cave_bands` thresholds and `sulfur_cave_gradient` noise, the
+sulfur spike, spike cluster and pool placements, and `ore_gold_nether` and
+`ore_gold_deltas`. Regenerate and compare with:
+
+```sh
+python3 tools/extract_java_gen5_fixtures.py /path/to/server.jar --output target/java-gen5.json
+diff tests/fixtures/java/26.3/gen5_overworld.json target/java-gen5.json
+scripts/remote-check.sh -- 'cargo test --release --lib -- poplar sulfur'
+```
+
+`world::poplar_trees` and `world::terrain::sulfur_caves` check their
+constants against this file. The two new biomes' friendly spawn lists were
+added to `spawn_categories.json` from the same biome files
+(`biome/{dappled_forest,sulfur_caves}.json`), in that file's format.
+
+## Sulfur cube (v0.16 Track D)
+
+`sulfur_cube.json` holds the sulfur cube's facts: `EntityTypes.SULFUR_CUBE`
+(category, size, eye height, spawn dimensions scale), the static constants
+of `SulfurCube` and `AbstractCubeMob`, the attribute
+`createSulfurCubeAttributes` adds (tempt range), the twelve
+`sulfur_cube_archetype` entries with their item tags expanded to item
+names, the `sulfur_cube_swallowable` and `sulfur_cube_food` tags, the
+expanded `sulfur_cube_with_block_immune_to` damage-type tag, the
+`sulfur_cube_hot` damage type, the empty `entities/sulfur_cube` loot table,
+the sulfur caves' monster entry and the bucket item's class
+(`MobBucketItem`). Regenerate and compare with:
+
+```sh
+python3 tools/extract_java_sulfur_cube_fixtures.py /path/to/server.jar --output target/java-sulfur-cube.json
+diff tests/fixtures/java/26.3/sulfur_cube.json target/java-sulfur-cube.json
+cargo test --release --lib sulfur_cube
+```
+
+`entity::sulfur_cube` holds the archetype item lists generated from this
+file (with their English names from `registry_names.json` for resolution)
+and its tests check every list, modifier, constant and tag against it.
+The abandoned camps' three loot tables were added to
+`src/world/loot_tables.json` from `loot_table/chests/abandoned_camp_*_chest.json`
+and `loot_table/barrels/abandoned_camp_barrel.json` unchanged.

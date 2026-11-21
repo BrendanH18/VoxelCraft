@@ -365,6 +365,7 @@ pub fn is_loved(item: Item) -> bool {
             "light weighted pressure plate",
             "nether gold ore",
             "golden horse armor",
+            "golden dandelion",
         ]
         .into_iter()
         .filter_map(Item::from_name)
@@ -396,6 +397,8 @@ fn is_food(item: Item) -> bool {
 /// idle piglins nearby.
 pub fn guarded_by_piglins(block: Block) -> bool {
     matches!(block.base(), Block::CHEST | Block::BARREL)
+        // v0.16 Track B: `#guarded_by_piglins` lists every shulker box.
+        || crate::world::shulker_box::owns(block.0)
         || matches!(
             block,
             Block::GOLD_BLOCK
@@ -403,6 +406,7 @@ pub fn guarded_by_piglins(block: Block) -> bool {
                 | Block::GOLD_ORE
                 | Block::DEEPSLATE_GOLD_ORE
                 | Block::RAW_GOLD_BLOCK
+                | crate::world::gen5_blocks::NETHER_GOLD_ORE
         )
 }
 
@@ -1021,6 +1025,8 @@ impl Entities {
                     || m.kind == MobKind::Bat
                     // `Lifetime` keeps counting across a restart.
                     || m.kind == MobKind::Endermite
+                    // Java saves every sulfur cube with its chunk.
+                    || m.kind == MobKind::SulfurCube
                     // Raid membership, spells, a vex's life and owner.
                     || m.illager.is_some()
                     // A heart's protector keeps its binding across a restart.
@@ -1386,7 +1392,12 @@ fn sense<W: MobWorld + ?Sized>(
             .filter(|t| {
                 t.targetable
                     && (brute || !t.gold_armor)
-                    && t.pos.distance_squared(pos) <= t.detection_range(ANGER_RANGE).powi(2)
+                    && t.pos.distance_squared(pos)
+                        <= t.detection_range_for(
+                            ANGER_RANGE,
+                            if brute { MobKind::PiglinBrute } else { MobKind::Piglin },
+                        )
+                        .powi(2)
                     && super::mob::line_of_sight(world, eye, t.pos + DVec3::Y * 1.5)
             })
             .min_by(|a, b| a.pos.distance_squared(pos).total_cmp(&b.pos.distance_squared(pos)));
@@ -1599,6 +1610,11 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
         "home": n.and_then(|n| n.home).map(|h| h.to_array()),
         "celebrate": n.filter(|n| n.celebrate_left > 0.0).map(|n| json!([n.celebrate_left, n.celebrate_at.to_array(), n.dancing])),
     });
+    // Java writes `AgeLocked` with the age; older saves have neither.
+    if m.age_locked {
+        v["age_locked"] = true.into();
+    }
+
     // Optional additions preserve legacy records byte-for-byte when absent.
     // v0.15 Track D: a chicken's, cow's or pig's variant by registry name.
     if super::animals::has_farm_variant(m.kind) && m.farm_variant() != Default::default() {
@@ -1659,6 +1675,14 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
     if let Some(s) = &m.endermite {
         s.save_into(&mut v);
     }
+    if let Some(s) = &m.shulker {
+        v["shulker"] = s.save();
+    }
+    if let Some(s) = &m.sulfur_cube {
+        s.save_into(&mut v);
+        // `AbstractCubeMob` saves `Size` (one less than the size).
+        v["sulfur_cube"]["size"] = (m.size - 1).into();
+    }
     if let Some(s) = &m.illager {
         v["illager"] = s.save();
     }
@@ -1667,6 +1691,10 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
     }
     if let Some(s) = &m.happy_ghast {
         v["happy_ghast"] = s.save();
+    }
+    // v0.16 Track C: `WitherBoss.addAdditionalSaveData` (`Invul`).
+    if let Some(s) = &m.wither {
+        v["wither"] = s.save();
     }
     if let Some(s) = &m.nautilus {
         v["nautilus"] = s.save();
@@ -1739,6 +1767,7 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     // Before health, which the leader's max health bounds.
     m.attrs = super::zombie::Attrs::load(&v["attributes"]);
     m.baby = v["baby"].as_bool().unwrap_or(false);
+    m.age_locked = v["age_locked"] == true;
     // Snifflets take twice as long as other babies to grow up.
     let youngest = if kind == MobKind::Sniffer { -48000 } else { -24000 };
     m.age = v["age"].as_i64().unwrap_or(if m.baby && kind.is_breedable() { -24000 } else { 0 }).clamp(youngest, 6000)
@@ -1788,6 +1817,18 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     if let Some(s) = &mut m.endermite {
         s.load(v);
     }
+    if let Some(s) = &mut m.shulker {
+        **s = super::shulker::State::load(&v["shulker"]);
+    }
+    if let Some(s) = &mut m.sulfur_cube {
+        s.load(v);
+        let size = v["sulfur_cube"]["size"].as_u64().map_or(super::sulfur_cube::ADULT_SIZE, |n| n.min(1) as u8 + 1);
+        let (baby, age) = (m.baby, m.age);
+        m.set_sulfur_size(size);
+        if size == super::sulfur_cube::BABY_SIZE && baby {
+            m.age = age.min(-1);
+        }
+    }
     // v0.15 Track E: a raid witch keeps its raider state.
     if kind == MobKind::Witch && v["illager"].is_object() {
         m.illager = Some(Box::default());
@@ -1799,6 +1840,9 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     m.can_pick_up_loot = v["can_pick_up_loot"] == true || kind == MobKind::Pillager;
     if let Some(s) = &mut m.happy_ghast {
         **s = super::happy_ghast::State::load(&v["happy_ghast"]);
+    }
+    if let Some(s) = &mut m.wither {
+        **s = super::wither::State::load(&v["wither"]);
     }
     if let Some(s) = &mut m.nautilus {
         **s = super::nautilus::State::load(&v["nautilus"]);
@@ -2114,6 +2158,7 @@ mod tests {
         e.update(0.05, &world, &ctx);
         assert!(guarded_by_piglins(Block::CHEST) && guarded_by_piglins(Block::GOLD_BLOCK));
         assert!(!guarded_by_piglins(Block::STONE));
+        assert!(guarded_by_piglins(crate::world::gen5_blocks::NETHER_GOLD_ORE));
         e.piglins_notice(PlayerId::HOST, gold.pos, true, &world);
         assert_eq!(e.mobs[a].nether.as_ref().unwrap().foe, Some(Foe::Player(PlayerId::HOST)));
         assert_eq!(e.mobs[b].nether.as_ref().unwrap().foe, None, "too far away to notice");

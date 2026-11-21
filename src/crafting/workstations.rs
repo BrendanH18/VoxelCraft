@@ -1,7 +1,7 @@
 //! v0.15 Track B recipes (Java 26.3 `data/minecraft/recipe`): `spyglass`,
 //! `writable_book` and the pattern items (`<x>_banner_pattern`: paper and
-//! the charge's ingredient). `creeper_banner_pattern` needs a creeper head,
-//! which isn't registered (`registry_gaps.json`), so it has no recipe yet.
+//! the charge's ingredient). `creeper_banner_pattern` joined them with the
+//! creeper head in v0.16 Track C.
 //! The special grid recipes (banner duplication, shield decoration, book
 //! cloning, map extending) are in [`super::Grid::result_in`].
 
@@ -26,6 +26,7 @@ pub(super) fn add(r: &mut Vec<Recipe>) {
         Some(match java {
             "flower_banner_pattern" => b(crate::world::overworld_blocks::OXEYE_DAISY),
             "skull_banner_pattern" => Item::WITHER_SKULL,
+            "creeper_banner_pattern" => crate::world::skulls::item(crate::world::skulls::Kind::Creeper),
             "mojang_banner_pattern" => Item::ENCHANTED_GOLDEN_APPLE,
             "field_masoned_banner_pattern" => b(Block::BRICKS),
             "bordure_indented_banner_pattern" => b(crate::world::overworld_blocks::VINE),

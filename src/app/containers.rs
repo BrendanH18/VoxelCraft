@@ -37,6 +37,11 @@ impl Game {
     }
 
     pub(super) fn chest_sound(&mut self, pos: IVec3, pitch: f32) {
+        // v0.16 Track B: shulker boxes sound as their lids move
+        // (`World::set_shulker_viewers`).
+        if self.world.get_block(pos).is_some_and(|b| crate::world::shulker_box::owns(b.0)) {
+            return;
+        }
         let at = pos.as_dvec3() + DVec3::splat(0.5);
         self.audio.play(Sound::Place(Material::Wood), Some(at), 0.7, (pitch, pitch + 0.08));
     }

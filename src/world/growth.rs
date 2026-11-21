@@ -43,6 +43,7 @@ enum RandomRule {
     Copper,
     Statue,
     DriedGhast,
+    ChorusFlower,
     Mushroom,
     NetherFlora,
     Flora,
@@ -77,6 +78,10 @@ fn growth_rule(b: Block) -> RandomRule {
         b if super::copper::ages(b) => RandomRule::Copper,
         b if super::copper_golem_statue::ages(b) => RandomRule::Statue,
         b if super::dried_ghast::owns(b.0) => RandomRule::DriedGhast,
+        // `ChorusFlowerBlock.isRandomlyTicking`: below the dead age.
+        b if super::end_blocks::flower_age(b).is_some_and(|a| a < super::end_blocks::DEAD_AGE) => {
+            RandomRule::ChorusFlower
+        }
         b if b.is_mushroom() => RandomRule::Mushroom,
         b if (1600..=1687).contains(&b.0) => RandomRule::NetherFlora,
         b if (super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&b.canonical().0)
@@ -190,6 +195,11 @@ impl World {
             self.drops.push((p, stack));
             return;
         }
+        // v0.16 Track B: the box with its contents (`copy_components`).
+        if let Some(stack) = self.shulker_box_drop(p, block) {
+            self.drops.push((p, stack));
+            return;
+        }
         if super::creaking::heart(block).is_some() {
             let silk = tool.has(crate::enchant::Enchantment::SilkTouch);
             let item = if silk { super::creaking::HEART } else { super::creaking::RESIN_CLUMP };
@@ -225,12 +235,24 @@ impl World {
             return;
         }
         let fortune = tool.level(Enchantment::Fortune) as u64;
+        // `blocks/nether_gold_ore`: two to six nuggets, times Java's ore
+        // bonus with Fortune.
+        if block == super::gen5_blocks::NETHER_GOLD_ORE {
+            let times = 1 + (self.roll() % (fortune + 2)).saturating_sub(1);
+            let n = ((2 + self.roll() % 5) * times).min(64);
+            self.drops.push((p, Stack::new(Item::GOLD_NUGGET, n as u8)));
+            return;
+        }
         let mut out = Vec::new();
-        // Java's slab loot table: two for `type=double`; candles, one per candle.
-        let count =
-            double_slab_count(block) * super::colour_blocks::drop_count(block) * super::biome_plants::drop_count(block);
+        // Java's slab loot table: two for `type=double`; candles, one per
+        // candle; a grown shelf mushroom, two.
+        let count = double_slab_count(block)
+            * super::colour_blocks::drop_count(block)
+            * super::biome_plants::drop_count(block)
+            * super::gen5_blocks::drop_count(block);
         out.extend(block.drop().map(|item| Stack::new(item, count)));
         out.extend(super::utilities::extra_drops(block));
+        self.chorus_plant_drops(block, &mut out);
         self.crop_drops(block, fortune, &mut out);
         if (super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&block.0)
             || super::overworld_blocks::snow_layers(block).is_some()
@@ -478,6 +500,7 @@ impl World {
             RandomRule::Copper => self.tick_copper(p, b),
             RandomRule::Statue => self.tick_copper_golem_statue(p, b),
             RandomRule::DriedGhast => self.dried_ghast_random_tick(p, b),
+            RandomRule::ChorusFlower => self.chorus_flower_random_tick(p),
             RandomRule::Mushroom => self.tick_mushroom(p, b),
             RandomRule::NetherFlora => self.tick_nether_flora(p, b),
             RandomRule::Flora => {
@@ -718,6 +741,15 @@ impl World {
         }
         if let Some(used) = self.plant_bone_meal(p, b) {
             return used;
+        }
+        // v0.16 Track D: `ShelfMushroomBlock.performBonemeal` grows a young
+        // shelf mushroom (age 0) to age 1, every time.
+        if let Some((facing, age)) = super::gen5_blocks::shelf_of(b) {
+            if age == 0 {
+                self.edit(p, super::gen5_blocks::shelf_mushroom(facing, 1), true);
+                return true;
+            }
+            return false;
         }
         match b {
             b if b.as_crop().is_some_and(|(crop, age)| age < crop.max_age()) => {

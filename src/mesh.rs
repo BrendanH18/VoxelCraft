@@ -519,6 +519,7 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                 || crate::world::copper::see_through(b)
                 || crate::world::overworld_blocks::bud_facing(b).is_some()
                 || crate::world::utilities::see_through(b)
+                || b == crate::world::beacon::BEACON
                 || crate::world::cave_blocks::see_through(b)
                 || matches!(b.shaped(), Some(crate::world::block::Shaped::Frame { .. }));
             let pass = if see_through { CUTOUT } else { OPAQUE };
@@ -552,7 +553,9 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
             }
             for (j, bx) in boxes.as_slice().iter().enumerate() {
                 // Candle wax and wicks have layers of their own.
-                let layer = crate::world::colour_blocks::box_layer(b, j).map_or(layer, u32::from);
+                let layer = crate::world::colour_blocks::box_layer(b, j)
+                    .or_else(|| crate::world::beacon::box_layer(b, j))
+                    .map_or(layer, u32::from);
                 let depth = if positive { bx.max[d] } else { bx.min[d] };
                 let r = [bx.min[u], bx.max[u], bx.min[v], bx.max[v]];
                 // Flat boxes have no area on their edge faces; skipping them

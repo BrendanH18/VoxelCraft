@@ -67,6 +67,8 @@ pub fn material(block: Block) -> Material {
     }
     match block.base() {
         Block::HONEY_BLOCK => Material::Honey,
+        // `SoundType.WOOD` for End rods and chorus (purpur is `STONE`).
+        b if crate::world::end_blocks::is_end_rod(b) || crate::world::end_blocks::is_chorus(b) => Material::Wood,
         b if crate::world::creaking::heart(b).is_some() => Material::Wood,
         // `SoundType.WOOD` for the jukebox; reinforced deepslate falls through to stone.
         b if crate::world::jukebox::is_jukebox(b) => Material::Wood,
@@ -232,6 +234,14 @@ pub enum Sound {
     Illager(crate::entity::illager::Cue),
     /// v0.15 Track E: the raid horn, bell resonance and villagers' cheers.
     Raid(crate::entity::raid::Cue),
+    /// v0.16 Track B: shulker boxes, fireworks and elytra.
+    Flight(voxelcraft::content::fireworks::Cue),
+    /// v0.16 Track C: the Wither's spawn, shots and block breaking.
+    Wither(crate::entity::wither::Cue),
+    /// v0.16 Track C: a beacon's activation, hum, power choice and shutdown.
+    Beacon(crate::world::beacon::Cue),
+    /// v0.16 Track D: the sulfur cube's squishes, blocks and pushes.
+    SulfurCube(crate::entity::sulfur_cube::Cue),
 }
 
 const M: usize = Material::ALL.len();
@@ -246,7 +256,11 @@ impl Sound {
     const WEAPON_END: usize = Self::SCULK_END + crate::weapons::Cue::ALL.len();
     const BREEZE_END: usize = Self::WEAPON_END + crate::entity::breeze::Cue::ALL.len();
     const ILLAGER_END: usize = Self::BREEZE_END + crate::entity::illager::Cue::ALL.len();
-    pub const COUNT: usize = Self::ILLAGER_END + crate::entity::raid::Cue::ALL.len();
+    const RAID_END: usize = Self::ILLAGER_END + crate::entity::raid::Cue::ALL.len();
+    const FLIGHT_END: usize = Self::RAID_END + voxelcraft::content::fireworks::Cue::ALL.len();
+    const WITHER_END: usize = Self::FLIGHT_END + crate::entity::wither::Cue::ALL.len();
+    const BEACON_END: usize = Self::WITHER_END + crate::world::beacon::Cue::ALL.len();
+    pub const COUNT: usize = Self::BEACON_END + crate::entity::sulfur_cube::Cue::ALL.len();
 
     /// Dense index in `0..COUNT`.
     pub fn key(self) -> usize {
@@ -262,6 +276,10 @@ impl Sound {
                 Self::BREEZE_END + crate::entity::illager::Cue::ALL.iter().position(|&c| c == cue).unwrap_or(0)
             }
             Sound::Raid(cue) => Self::ILLAGER_END + cue as usize,
+            Sound::Flight(cue) => Self::RAID_END + cue as usize,
+            Sound::Wither(cue) => Self::FLIGHT_END + cue as usize,
+            Sound::Beacon(cue) => Self::WITHER_END + cue as usize,
+            Sound::SulfurCube(cue) => Self::BEACON_END + cue as usize,
             Sound::Note(i) => 3 * M + 27 + Voice::ALL.len() * CALLS + i as usize,
             Sound::Thunder => Self::BASE_COUNT - 1,
             Sound::Bell => Self::BASE_COUNT - 4,
@@ -383,6 +401,10 @@ impl Sound {
             .chain(crate::entity::breeze::Cue::ALL.map(Sound::Breeze))
             .chain(crate::entity::illager::Cue::ALL.map(Sound::Illager))
             .chain(crate::entity::raid::Cue::ALL.map(Sound::Raid))
+            .chain(voxelcraft::content::fireworks::Cue::ALL.map(Sound::Flight))
+            .chain(crate::entity::wither::Cue::ALL.map(Sound::Wither))
+            .chain(crate::world::beacon::Cue::ALL.map(Sound::Beacon))
+            .chain(crate::entity::sulfur_cube::Cue::ALL.map(Sound::SulfurCube))
     }
 
     /// Stable sound name used when exporting or identifying samples.
@@ -397,6 +419,10 @@ impl Sound {
             Sound::Breeze(c) => format!("trial_{c:?}").to_lowercase(),
             Sound::Illager(c) => c.key().replace('.', "_"),
             Sound::Raid(c) => c.key().replace('.', "_"),
+            Sound::Flight(c) => c.key().replace('.', "_"),
+            Sound::Wither(c) => format!("wither_{c:?}").to_lowercase(),
+            Sound::Beacon(c) => format!("beacon_{c:?}").to_lowercase(),
+            Sound::SulfurCube(c) => c.key().replace('.', "_"),
             Sound::Thunder => "lightning_thunder".into(),
             Sound::HoneySlide => "honey_block_slide".into(),
             Sound::HoneyDrink => "honey_drink".into(),
@@ -519,6 +545,13 @@ impl Sound {
             // and the villagers' cheers as `NEUTRAL`.
             Sound::Raid(crate::entity::raid::Cue::BellResonate) => SoundSource::Blocks,
             Sound::Raid(_) => SoundSource::Neutral,
+            // Shulker boxes `BLOCKS`, rockets `AMBIENT`, elytra `PLAYERS`.
+            Sound::Flight(c) => super::flight::source(c),
+            // The Wither is a `Monster`; beacons play as `BLOCKS`.
+            Sound::Wither(_) => SoundSource::Hostile,
+            Sound::Beacon(_) => SoundSource::Blocks,
+            // `SulfurCube.getSoundSource` is NEUTRAL, as are its buckets.
+            Sound::SulfurCube(_) => SoundSource::Neutral,
             Sound::Mob(voice, _) => voice.source(),
         }
     }
@@ -533,6 +566,9 @@ impl Sound {
             Sound::Allay(..) | Sound::CopperGolem(..) | Sound::Note(_) | Sound::Breeze(_) => 1,
             Sound::Illager(_) => 2,
             Sound::Raid(_) => 1,
+            Sound::Flight(_) => 2,
+            Sound::Wither(_) | Sound::Beacon(_) => 1,
+            Sound::SulfurCube(_) => 2,
             Sound::Warden(_) | Sound::Sculk(_) => 2,
             Sound::Sniffer(_) | Sound::Weapon(_) => 2,
             Sound::Step(_) => 4,
@@ -581,6 +617,10 @@ impl Sound {
             Sound::Breeze(c) => super::breeze::render(c, &mut rng),
             Sound::Illager(c) => super::illager::render(c, &mut rng),
             Sound::Raid(c) => super::raid::render(c, &mut rng),
+            Sound::Flight(c) => super::flight::render(c, &mut rng),
+            Sound::Wither(c) => super::wither::render(c, &mut rng),
+            Sound::Beacon(c) => super::wither::render_beacon(c, &mut rng),
+            Sound::SulfurCube(c) => super::sulfur_cube::render(c, &mut rng),
             Sound::Thunder => thunder(&mut rng),
             Sound::HoneySlide => honey_sound(&mut rng, 0.35),
             Sound::HoneyDrink => honey_sound(&mut rng, 0.22),
@@ -1465,6 +1505,9 @@ fn note_sound(instrument: Instrument, rng: &mut Rng) -> Vec<f32> {
             Bit => phase.sin().signum() + 0.15 * (phase * 0.5).sin().signum(),
             Banjo => phase.sin() + 0.7 * (phase * 2.0).sin() * (-t * 12.0).exp() + 0.2 * (phase * 4.0).sin(),
             Pling => phase.sin() + 0.4 * (phase * 2.0).sin() + 0.3 * (phase * 4.0).sin(),
+            // v0.16 Track C's mob-head instruments play their mob's own
+            // sound (`Game::play_notes`), never a note voice.
+            Zombie | Skeleton | Creeper | Dragon | WitherSkeleton | Piglin => phase.sin(),
         };
         let decay = match instrument {
             Hat => 40.0,

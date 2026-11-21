@@ -43,6 +43,8 @@ pub(super) struct Motion {
     pub(super) sprint_trigger_time: u8,
     /// Last tick's keys: Java reads them before `input.tick()`.
     pub(super) was_shift: bool,
+    /// v0.16 Track B: last tick's jump key, for `LocalPlayer`'s fresh-jump glide.
+    pub(super) was_jump: bool,
     pub(super) had_forward: bool,
     /// The movement scale a cobweb or berry bush set for the next move.
     pub(super) stuck: DVec3,
@@ -86,6 +88,8 @@ pub fn jump_factor(b: Option<Block>) -> f32 {
 pub fn bounciness(b: Option<Block>) -> f64 {
     match b {
         Some(b) if b.is_bed() => 0.75_f32 as f64,
+        // v0.16 Track D: `Blocks.SHELF_MUSHROOM.bounceRestitution(0.75F)`.
+        Some(b) if crate::world::gen5_blocks::shelf_of(b).is_some() => 0.75_f32 as f64,
         Some(crate::world::stone_blocks::SLIME_BLOCK) => 1.0,
         _ => 0.0,
     }
@@ -137,6 +141,8 @@ impl Player {
     pub fn tick<W: BlockSource + ?Sized>(&mut self, input: MoveInput, world: &W) {
         self.honey_sliding = false;
         self.honey_landed = false;
+        self.kinetic_damage = 0.0;
+        self.glider_used = false;
         if world.block(self.pos.floor().as_ivec3()).is_none() {
             return;
         }
@@ -163,6 +169,9 @@ impl Player {
         }
         self.vel = dm * TICK_RATE;
         self.climbing = self.on_climbable(world);
+        // `LivingEntity.tick`: `fallFlyTicks` counts the glide; the wings ease.
+        self.fall_fly_ticks = if self.fall_flying { self.fall_fly_ticks + 1 } else { 0 };
+        self.tick_elytra_animation();
         // `Player.tick` ends with `updatePlayerPose`.
         self.pose = resolve_pose(self, world, self.sneaking);
         self.animation.update(
@@ -174,7 +183,8 @@ impl Player {
         );
         self.tick_fov();
         // `LivingEntity.updateSwimAmount`.
-        self.swim_amount = if self.pose.visually_swimming() {
+        // `isVisuallySwimming` is false while gliding in the low pose.
+        self.swim_amount = if self.pose.visually_swimming() && !self.fall_flying {
             (self.swim_amount + 0.09).min(1.0)
         } else {
             (self.swim_amount - 0.09).max(0.0)
@@ -296,6 +306,20 @@ impl Player {
         if self.in_water && shift && !self.flying {
             dm.y -= 0.04_f32 as f64;
         }
+        // v0.16 Track B: `LocalPlayer.aiStep`: a fresh jump press in the air
+        // opens the elytra (`tryToStartFallFlying`), not on a ladder or in
+        // a liquid.
+        let fresh_jump = input.jump && !self.motion.was_jump;
+        self.motion.was_jump = input.jump;
+        if fresh_jump
+            && !self.fall_flying
+            && self.can_glide()
+            && !self.motion.fluid.in_water()
+            && !self.motion.fluid.in_lava()
+            && !self.on_climbable(world)
+        {
+            self.fall_flying = true;
+        }
         if self.flying {
             let ya = input.jump as i32 - shift as i32;
             if ya != 0 {
@@ -324,6 +348,19 @@ impl Player {
             self.jump_controls(world, dm);
         } else {
             self.motion.no_jump_delay = 0;
+        }
+        // `LivingEntity.updateFallFlying`: a glide ends where gliding can't
+        // go on, the fall is capped while it isn't steep, and every twentieth
+        // tick uses the glider.
+        if self.fall_flying {
+            if dm.y > -0.5 && self.motion.fall_distance > 1.0 {
+                self.motion.fall_distance = 1.0;
+            }
+            if self.can_glide() {
+                self.glider_used = crate::content::elytra::wears_this_tick(self.fall_fly_ticks);
+            } else {
+                self.fall_flying = false;
+            }
         }
         self.travel(world, DVec3::new(xxa as f64, 0.0, zza as f64), jumping, dm);
         self.apply_effects_from_blocks(world, dm);
@@ -392,11 +429,34 @@ impl Player {
         let fluid = self.motion.fluid;
         if (fluid.in_water() || fluid.in_lava()) && !self.flying {
             self.travel_in_fluid(world, input, dm);
+        } else if self.fall_flying {
+            self.travel_fall_flying(world, input, jumping, dm);
         } else {
             self.travel_in_air(world, input, jumping, dm);
         }
         if self.flying {
             dm.y = original_y * 0.6;
+        }
+    }
+
+    /// v0.16 Track B: `LivingEntity.travelFallFlying`. On a ladder the glide
+    /// ends; otherwise `updateFallFlyingMovement` sets the motion, the move
+    /// collides, and a wall that stopped it hurts (`handleFallFlyingCollisions`).
+    fn travel_fall_flying<W: BlockSource + ?Sized>(&mut self, world: &W, input: DVec3, jumping: bool, dm: &mut DVec3) {
+        if self.on_climbable(world) {
+            self.travel_in_air(world, input, jumping, dm);
+            self.fall_flying = false;
+            return;
+        }
+        let last_speed = (dm.x * dm.x + dm.z * dm.z).sqrt();
+        let (_, java_pitch) = self.java_rotation();
+        *dm = crate::content::elytra::glide(*dm, self.look_angle(), java_pitch, self.effective_gravity(*dm));
+        self.move_entity(world, *dm, dm);
+        let new_speed = (dm.x * dm.x + dm.z * dm.z).sqrt();
+        if self.motion.horizontal_collision
+            && let Some(damage) = crate::content::elytra::wall_damage(last_speed, new_speed)
+        {
+            self.kinetic_damage += damage;
         }
     }
 
@@ -667,7 +727,8 @@ impl Player {
             let effect = world.block(self.on_pos(world, 0.2));
             self.restitute(effect, x_collision, z_collision, vertical, below, movement, dm);
         }
-        let factor = if self.flying { 1.0 } else { self.block_speed_factor(world) } as f64;
+        // `Player.getBlockSpeedFactor`: none while flying or gliding.
+        let factor = if self.flying || self.fall_flying { 1.0 } else { self.block_speed_factor(world) } as f64;
         dm.x *= factor;
         dm.z *= factor;
     }

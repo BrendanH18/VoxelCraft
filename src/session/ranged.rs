@@ -102,7 +102,22 @@ pub struct Shot {
     pub tool_broken: Option<Item>,
 }
 
+/// v0.16 Track B: the charged-crossbow `entity_data` of a loaded firework
+/// rocket (its `fireworks` ride in the stack's payload).
+pub const FIREWORK_BOLT: u32 = u32::MAX - 2;
+/// `CrossbowItem.getDurabilityUse`: a rocket wears a crossbow three uses.
+pub const FIREWORK_DURABILITY_USE: u16 = 3;
+
 impl PlayerSession {
+    /// `Player.getProjectile` for a crossbow: a rocket or arrow held in the
+    /// off-hand (`ARROW_OR_FIREWORK`), else arrows as a bow finds them.
+    fn crossbow_ammo(&self) -> Option<(Option<usize>, crate::inventory::Stack)> {
+        if let Some(s) = self.inventory.offhand.filter(|s| s.item == crate::content::fireworks::FIREWORK_ROCKET) {
+            return Some((None, s));
+        }
+        self.arrow_ammo()
+    }
+
     /// Java prefers projectiles held in the offhand, then inventory order.
     fn arrow_ammo(&self) -> Option<(Option<usize>, crate::inventory::Stack)> {
         let is_arrow =
@@ -130,7 +145,8 @@ impl PlayerSession {
     /// targeted block takes the use first.
     pub fn can_draw(&self, slot: usize, world: &World) -> bool {
         let held = self.inventory.get(slot).map(|s| s.item);
-        let has_arrow = self.mode.is_creative() || self.arrow_ammo().is_some();
+        let ammo = if held == Some(Item::CROSSBOW) { self.crossbow_ammo() } else { self.arrow_ammo() };
+        let has_arrow = self.mode.is_creative() || ammo.is_some();
         let bow = matches!(held, Some(Item::BOW | Item::CROSSBOW)) && has_arrow;
         self.mode.can_interact()
             && !self.vitals.is_dead()
@@ -250,6 +266,22 @@ impl PlayerSession {
     /// A loaded crossbow holds its bolt: the held item becomes the charged
     /// crossbow (keeping wear and enchantments) and an arrow is used up.
     fn load_crossbow(&mut self, slot: usize) -> Option<Shot> {
+        // v0.16 Track B: a rocket in the off-hand loads first.
+        if let Some((_, rocket)) =
+            self.crossbow_ammo().filter(|(_, s)| s.item == crate::content::fireworks::FIREWORK_ROCKET)
+        {
+            if self.mode.is_survival() {
+                let mut s = rocket;
+                s.count -= 1;
+                self.inventory.offhand = (s.count > 0).then_some(s);
+            }
+            if let Some(stack) = &mut self.inventory.slots[slot] {
+                stack.item = Item::CHARGED_CROSSBOW;
+                stack.entity_data = FIREWORK_BOLT;
+                stack.payload = rocket.payload;
+            }
+            return Some(self.shot(Ranged::CrossbowLoaded { from: self.player.eye() }, None));
+        }
         let ammo = self.arrow_ammo().map(|(_, s)| s);
         let potion = ammo.and_then(|s| s.arrow_potion());
         if self.mode.is_survival() {
@@ -276,6 +308,29 @@ impl PlayerSession {
         let survival = self.mode.is_survival();
         let (eye, forward) = (self.player.eye(), self.player.forward().as_dvec3());
         let held = self.inventory.get(slot).map_or(Enchants::NONE, |s| s.active_enchants());
+        // v0.16 Track B: a loaded rocket flies at 1.6 (`FIREWORK_POWER`),
+        // one per Multishot direction, each wearing the crossbow three uses;
+        // rockets don't pierce.
+        if let Some(loaded) = self.inventory.get(slot).filter(|s| s.entity_data == FIREWORK_BOLT) {
+            let rocket = crate::inventory::Stack {
+                payload: loaded.payload,
+                ..crate::inventory::Stack::new(crate::content::fireworks::FIREWORK_ROCKET, 1)
+            };
+            if let Some(stack) = &mut self.inventory.slots[slot] {
+                stack.item = Item::CROSSBOW;
+                stack.entity_data = 0;
+                stack.payload = None;
+            }
+            let mut broken = None;
+            for (dir, _) in crossbow_volley(held, forward) {
+                entities.shoot_firework(&rocket, eye, dir, self.id);
+                if survival && self.inventory.wear(slot, FIREWORK_DURABILITY_USE) {
+                    broken = Some(Item::CROSSBOW);
+                    break;
+                }
+            }
+            return self.shot(Ranged::CrossbowFired { from: eye }, broken);
+        }
         let spectral = self.inventory.get(slot).is_some_and(|s| s.entity_data == crate::entity::SPECTRAL_BOLT);
         let tipped = self.inventory.get(slot).is_some_and(|s| s.entity_data != 0) && !spectral;
         let potion = self.inventory.get(slot).and_then(|s| s.arrow_potion());

@@ -20,6 +20,9 @@ mod bundle;
 mod copper;
 mod creaking;
 mod crops;
+mod end;
+pub mod flight;
+mod gen5;
 mod harness;
 mod music;
 mod sculk;
@@ -103,6 +106,14 @@ impl Grid {
         // and the bundle's own colour is no recipe (`TransmuteRecipe`).
         if let Some(result) = crate::content::bundle::transmute(&occupied) {
             return result;
+        }
+        // v0.16 Track B: shulker box dyeing keeps the contents, and the
+        // firework star, fade and rocket recipes build their components.
+        if let Some(result) = crate::content::shulker_box::transmute(&occupied) {
+            return result;
+        }
+        if let Some(result) = crate::content::fireworks::grid_special(&occupied) {
+            return Some(result);
         }
         // v0.15 Track B: banner duplication, shield decoration and book cloning.
         if let Some(result) = crate::content::banner_patterns::grid_special(&occupied)
@@ -290,6 +301,7 @@ const WOOD_SLAB: Ingredient = &[
     b(crate::world::forms::wood_id(8, 4)),
     b(crate::world::forms::wood_id(9, 4)),
     b(crate::world::forms::wood_id(10, 4)),
+    b(crate::world::wood::poplar::SLAB),
 ];
 const FURNACE: Ingredient = &[b(Block::FURNACE)];
 const STONE_SLAB: Ingredient = &[b(Block::STONE_SLAB)];
@@ -349,7 +361,9 @@ const NETHERITE_INGOT: Ingredient = &[Item::NETHERITE_INGOT];
 const NETHERITE_BLOCK: Ingredient = &[b(Block::NETHERITE_BLOCK)];
 const FUEL_LUMP: Ingredient = &[Item::COAL, Item::CHARCOAL];
 /// Java's `#mushrooms`.
-const MUSHROOMS: Ingredient = &[b(Block::BROWN_MUSHROOM), b(Block::RED_MUSHROOM)];
+/// Java's `#mushrooms` (the shelf mushroom since 26.x).
+const MUSHROOMS: Ingredient =
+    &[b(Block::BROWN_MUSHROOM), b(Block::RED_MUSHROOM), b(crate::world::gen5_blocks::SHELF_MUSHROOM)];
 const BOWL: Ingredient = &[Item::BOWL];
 const SNOWBALL: Ingredient = &[Item::SNOWBALL];
 const PUMPKIN: Ingredient = &[b(Block::PUMPKIN)];
@@ -708,11 +722,26 @@ pub fn recipes() -> &'static [Recipe] {
         bundle::add(&mut r);
         workstations::add(&mut r);
         track_d::add(&mut r);
+        flight::add(&mut r);
+        // v0.16 Track A: purpur and End rods.
+        end::add(&mut r);
+        gen5::add(&mut r);
         // v0.15 Track C: `recipe/dried_ghast.json`, eight ghast tears around soul sand.
         r.push(shaped(
             &["###", "#X#", "###"],
             &[('#', &[Item::GHAST_TEAR]), ('X', const { &[b(Block::SOUL_SAND)] })],
             Item::from_block(crate::world::dried_ghast::DRIED_GHAST),
+            1,
+        ));
+        // v0.16 Track C: `recipe/beacon.json`, glass over a Nether star on obsidian.
+        r.push(shaped(
+            &["GGG", "GSG", "OOO"],
+            &[
+                ('G', const { &[b(Block::GLASS)] }),
+                ('S', &[crate::entity::wither::NETHER_STAR]),
+                ('O', const { &[b(Block::OBSIDIAN)] }),
+            ],
+            Item::from_block(crate::world::beacon::BEACON),
             1,
         ));
         r
@@ -1216,8 +1245,10 @@ fn add_overworld_recipes(r: &mut Vec<Recipe>) {
         1,
     ));
     // Dyes from cocoa, ink and the new flowers.
-    let dyes: [(Item, DyeColor, u8); 21] = [
+    let dyes: [(Item, DyeColor, u8); 22] = [
         (Item::COCOA_BEANS, DyeColor::Brown, 1),
+        // v0.16 Track C: `black_dye_from_wither_rose`.
+        (one(crate::world::wither_rose::WITHER_ROSE), DyeColor::Black, 1),
         (Item::INK_SAC, DyeColor::Black, 1),
         (one(ob::CORNFLOWER), DyeColor::Blue, 1),
         (one(ob::LILY_OF_THE_VALLEY), DyeColor::White, 1),
@@ -1611,9 +1642,8 @@ fn add_shield_recipes(r: &mut Vec<Recipe>) {
 
 /// Java 1.21: five matching planks, no shovel; chest variants are shapeless.
 fn add_mount_recipes(r: &mut Vec<Recipe>) {
-    use crate::world::block::Wood;
-    for i in 0..10u8 {
-        let plank = if i == 9 { crate::world::overworld_blocks::BAMBOO_PLANKS } else { Wood::ALL[i as usize].planks() };
+    for i in 0..=crate::item::POPLAR_BOAT_WOOD {
+        let plank = Item::boat_planks(i);
         r.push(shaped(&["# #", "###"], &[('#', ingredient(b(plank)))], Item::boat(i, false), 1));
         r.push(shapeless(&[ingredient(Item::boat(i, false)), ingredient(b(Block::CHEST))], Item::boat(i, true), 1));
     }

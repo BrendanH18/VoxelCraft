@@ -51,6 +51,7 @@ impl Entities {
         self.spawn_phantoms(dt, world, ctx);
         self.sense_phantoms();
         self.populate_structures(dt as f32, world, ctx, difficulty);
+        self.populate_end_cities(dt as f32, world, ctx);
         self.trader_tick(dt as f32, world, ctx);
         self.tick_decor(world);
         self.village_upkeep(dt as f32, world);
@@ -58,10 +59,12 @@ impl Entities {
         self.cat_spawner_tick(dt, world, ctx);
         self.assign_hunts(ctx);
         self.endermite_upkeep(dt, world);
+        self.sulfur_cube_upkeep(dt, world, ctx, &mut events);
         self.illager_upkeep(dt, world, ctx, &mut events);
         self.raid_tick(dt, world, ctx, &mut events);
         self.happy_ghast_upkeep(dt, world, ctx);
         self.nautilus_upkeep(dt, world, ctx, &mut events);
+        self.shulker_upkeep(dt, world, ctx, &mut events);
         self.trader_upkeep();
         // `Entity.hasMovedHorizontallyRecently`, from last update's positions.
         let moved: Vec<(PlayerId, bool)> = ctx
@@ -93,6 +96,8 @@ impl Entities {
         self.sense_goals(world);
         self.sense_schools();
         self.sense_dolphins(world, &moved);
+        // v0.16 Track C: the Wither's server AI before the mobs move.
+        self.wither_tick(dt, world, ctx, &mut events);
         let mut i = 0;
         while i < self.mobs.len() {
             let m = &self.mobs[i];
@@ -111,6 +116,8 @@ impl Entities {
                     | MobKind::TraderLlama
             ) || m.kind.never_distance_despawns()
                 || m.kind == MobKind::Warden
+                // v0.16 Track C: `WitherBoss.checkDespawn` only leaves in Peaceful.
+                || m.kind == MobKind::Wither
                 || m.ocelot.as_ref().is_some_and(|s| s.trusting || s.ticks <= 2400)
                 || m.persistent
                 || m.creaking.as_ref().is_some_and(|s| s.home.is_some())
@@ -205,12 +212,23 @@ impl Entities {
                     }
                 }
                 if dead.dying.is_some_and(|t| t >= mob::DEATH_TIME) && dead.kind.is_cube() && dead.size > 1 {
-                    let count = 2 + (self.rng.next_f32() * 3.0) as usize;
+                    // `SulfurCube.getSplitCount`: two babies (none once primed).
+                    let count = if dead.kind == MobKind::SulfurCube {
+                        if dead.sulfur_cube.as_ref().is_some_and(|s| s.primed()) { 0 } else { 2 }
+                    } else {
+                        2 + (self.rng.next_f32() * 3.0) as usize
+                    };
                     for n in 0..count {
                         let offset =
                             DVec3::new((n % 2) as f64 - 0.5, 0.5, (n / 2) as f64 - 0.5) * dead.size as f64 * 0.25;
                         let mut child = Mob::new(dead.kind, dead.pos + offset, self.rng.range(0.0, TAU));
-                        child.set_size(dead.size / 2);
+                        if dead.kind == MobKind::SulfurCube {
+                            // `setUpSplitCube`: `setBaby(true)`.
+                            child.set_sulfur_size(dead.size / 2);
+                            child.persistent = dead.persistent;
+                        } else {
+                            child.set_size(dead.size / 2);
+                        }
                         self.mobs.push(child);
                     }
                 }
@@ -354,6 +372,7 @@ impl Entities {
                 EntityEvent::ShootWindCharge { from, dir, inaccuracy, shooter } => {
                     self.thrown.push(thrown::Thrown::breeze_charge(from, dir, inaccuracy, shooter, &mut self.rng));
                 }
+                EntityEvent::ChargedBlast { center } => self.charged_blasts.push(center),
                 EntityEvent::Fireball { from, dir, large } => {
                     let ball =
                         if large { fireball::Fireball::large(from, dir) } else { fireball::Fireball::new(from, dir) };
@@ -373,11 +392,13 @@ impl Entities {
                 EntityEvent::Shoot { .. }
                     | EntityEvent::MobArrow { .. }
                     | EntityEvent::Fireball { .. }
+                    | EntityEvent::ChargedBlast { .. }
                     | EntityEvent::ThrowPotion { .. }
                     | EntityEvent::ThrowTrident { .. }
                     | EntityEvent::ShootWindCharge { .. }
             )
         });
+        self.update_wither_skulls(world, ctx, &mut events);
         {
             let mobs = &self.mobs;
             self.fireballs.retain_mut(|f| {
@@ -416,6 +437,8 @@ impl Entities {
         }
         self.pearl_endermites(&events, ctx);
         self.update_tridents(dt, world, ctx, &mut events);
+        // v0.16 Track B: firework rockets.
+        self.update_fireworks(world, ctx, &mut events);
         {
             let (rng, mobs, index) = (&mut self.rng, &self.mobs, &self.mob_index);
             let mut i = 0;

@@ -323,7 +323,8 @@ fn state(agent: &Agent, name: &str) -> Value {
         "cursor":stack_to_string(agent.session.inventory.cursor),"time_since_rest":agent.session.vitals.time_since_rest,"ticks_frozen":agent.session.vitals.ticks_frozen,"health":agent.session.vitals.health,"air":agent.session.vitals.air,
         "food":agent.session.vitals.hunger.food,"saturation":agent.session.vitals.hunger.saturation,"exhaustion":agent.session.vitals.hunger.exhaustion,
         "death":agent.session.vitals.death,"xp":agent.session.vitals.xp.serialize(),"effects":agent.session.vitals.effects.serialize(),"sleep":agent.session.sleeping,"vehicle":agent.session.player.vehicle,
-        "respawns":agent.session.respawns,"drawing":agent.session.drawing_slot(),"consuming":agent.session.consuming()})
+        "respawns":agent.session.respawns,"drawing":agent.session.drawing_slot(),"consuming":agent.session.consuming(),
+        "glide":agent.session.player.fall_flying,"glide_ticks":agent.session.player.fall_fly_ticks})
 }
 /// What clients need of *other* players: pose, held item, armor and health, not their inventory.
 /// Rounds to a millimetre (or a thousandth of a radian): plenty for drawing, far fewer bytes.
@@ -338,7 +339,8 @@ fn state_lite(agent: &Agent, name: &str, swing: Option<f32>, eating: f32) -> Val
         "held":stack_to_string(agent.session.inventory.get(agent.selected)),
         "armor":agent.session.inventory.armor.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>(),
         "offhand":stack_to_string(agent.session.inventory.offhand),
-        "time_since_rest":agent.session.vitals.time_since_rest,"ticks_frozen":agent.session.vitals.ticks_frozen,"health":agent.session.vitals.health,"death":agent.session.vitals.death,"sleep":agent.session.sleeping,"vehicle":agent.session.player.vehicle})
+        "time_since_rest":agent.session.vitals.time_since_rest,"ticks_frozen":agent.session.vitals.ticks_frozen,"health":agent.session.vitals.health,"death":agent.session.vitals.death,"sleep":agent.session.sleeping,"vehicle":agent.session.player.vehicle,
+        "glide":agent.session.player.fall_flying,"glide_ticks":agent.session.player.fall_fly_ticks})
 }
 fn apply(agent: &mut Agent, v: &Value) {
     if let Some(pos) = vector(&v["pos"]) {
@@ -355,6 +357,9 @@ fn apply(agent: &mut Agent, v: &Value) {
     agent.session.player.pitch = v["pitch"].as_f64().unwrap_or(0.0) as f32;
     agent.session.player.on_ground = v["ground"] == true;
     agent.session.player.flying = v["flying"] == true;
+    // v0.16 Track B: gliding on elytra.
+    agent.session.player.fall_flying = v["glide"] == true;
+    agent.session.player.fall_fly_ticks = v["glide_ticks"].as_u64().unwrap_or(0).min(u64::from(u32::MAX)) as u32;
     // Java's latched sprint, so a client's replayed inputs accelerate as the host's did.
     agent.session.player.sprinting = v["sprint"] == true;
     if let Some(m) = v["motion"].as_array().filter(|m| m.len() == 4) {
@@ -915,6 +920,7 @@ impl Game {
             Container::Stonecutter(p) => near(p, |b| b.base() == Block::STONECUTTER),
             Container::Loom(p) => near(p, |b| b.base() == Block::LOOM),
             Container::Cartography(p) => near(p, |b| b.base() == Block::CARTOGRAPHY_TABLE),
+            Container::Beacon(p) => near(p, |b| b == crate::world::beacon::BEACON),
             Container::Trading(id) => self.mobs.entities.merchant_in_reach(id, eye, session.entity_screen_range()),
             Container::Minecart(id) => self.mobs.entities.vehicle_in_reach(id, eye, session.entity_screen_range()),
         }
@@ -941,8 +947,13 @@ impl Game {
             if quick { s.quick_move(slot) } else { s.click_slot(slot, right) }
         });
         peer.body.container = container;
-        for super::screen::Request::Popup(text) in done.map(|(_, r)| r).unwrap_or_default() {
-            let _ = peer.connection.send(Packet::Chat(text));
+        for request in done.map(|(_, r)| r).unwrap_or_default() {
+            match request {
+                super::screen::Request::Popup(text) => {
+                    let _ = peer.connection.send(Packet::Chat(text));
+                }
+                super::screen::Request::Close => self.peer_close(peer),
+            }
         }
     }
     pub(super) fn drive_lan(&mut self, dt: f64) {
@@ -1121,6 +1132,12 @@ impl Game {
                         Some(b) if b.base() == Block::CARTOGRAPHY_TABLE => {
                             self.peer_open(peer, Container::Cartography(p));
                         }
+                        Some(crate::world::beacon::BEACON) => {
+                            self.peer_open(peer, Container::Beacon(p));
+                            if let Some(bot) = self.agents.players.get_mut(&name) {
+                                super::beacon::init_choice(&mut bot.agent.session, &self.world, p);
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -1296,6 +1313,12 @@ impl Game {
                     let input = s.work_input.map(|i| i.0);
                     json!({"kind":kind,"pos":p.to_array(),"work":work,"choice":s.work_choice,"input":input})
                 }
+                // v0.16 Track C: the beacon's payment, chosen powers and levels.
+                Container::Beacon(p) => {
+                    let levels = self.world.beacon(p).map_or(0, |b| b.levels);
+                    json!({"kind":"beacon","pos":p.to_array(),"work":work,"choice":bot.agent.session.work_choice,
+                        "levels":levels})
+                }
                 Container::Trading(id) => match self.mobs.entities.merchant(id) {
                     Some(m) => json!({"kind":"trading","uid":m.uid,"trade":m.trade_view()}),
                     None => json!({"kind":"inventory"}),
@@ -1423,6 +1446,8 @@ impl Game {
             snapshot["copper_golem_statues"] = json!(self.world.copper_golem_statues_near(here));
             // v0.15 Track B: banner patterns and lectern books near the player.
             snapshot["workstations"] = json!(self.world.workstations_near(here, 160.0));
+            // v0.16 Track B: shulker box lids that are open or moving.
+            snapshot["shulker_lids"] = json!(self.world.shulker_lids_near(here, 160.0));
             if let Some((open, serial)) = &peer.book_open {
                 let mut open = open.clone();
                 open["serial"] = json!(serial);
@@ -1546,6 +1571,8 @@ impl Game {
             self.lan.predictions.push_back((input, use_state));
         }
         if self.lan.ready {
+            // v0.16 Track C: beacon beams from the replicated blocks.
+            self.world.tick_beacon_replicas();
             self.tick_particles();
             // The client doesn't track portal time; nausea comes from the host.
             let nausea =
@@ -1679,6 +1706,7 @@ impl Game {
         if let Some(text) = snapshot["workstations"].as_str() {
             self.world.replace_workstations(text);
         }
+        self.world.apply_shulker_lids(&snapshot["shulker_lids"]);
         let edit = &snapshot["sign_edit"];
         if let (Some(serial), Some(p)) = (edit["serial"].as_u64(), vector(&edit["pos"]))
             && serial as u32 != self.lan.sign_serial
@@ -1769,6 +1797,10 @@ impl Game {
                 Some(id) => Container::Minecart(id),
                 None => Container::Inventory,
             },
+            (Some("beacon"), Some(p)) => {
+                self.session.work_choice = c["choice"].as_u64().and_then(|v| u16::try_from(v).ok());
+                Container::Beacon(p)
+            }
             (Some("crafting"), _) => Container::CraftingTable,
             _ => Container::Inventory,
         };
@@ -2015,6 +2047,11 @@ pub(super) fn encode_slot(slot: SlotRef) -> Option<u16> {
         SlotRef::MapResult => 558,
         SlotRef::CutRecipe(i) if i < 100 => 600 + i as u16,
         SlotRef::LoomChoice(i) if i < 100 => 700 + i as u16,
+        // v0.16 Track C: the beacon's payment slot and buttons.
+        SlotRef::BeaconPayment => 560,
+        SlotRef::BeaconPower(i) if i < 7 => 561 + u16::from(i),
+        SlotRef::BeaconDone => 568,
+        SlotRef::BeaconCancel => 569,
         SlotRef::Palette(item) => 1000 + crate::item::Item::creative_palette().position(|i| i == item)? as u16,
         _ => return None,
     })
@@ -2065,6 +2102,12 @@ fn decode_slot(slot: u16, container: Container, mode: GameMode, grid_size: usize
             556 => SlotRef::MapInput,
             557 => SlotRef::MapExtra,
             _ => SlotRef::MapResult,
+        }),
+        560..=569 if matches!(container, Container::Beacon(_)) => Some(match slot {
+            560 => SlotRef::BeaconPayment,
+            568 => SlotRef::BeaconDone,
+            569 => SlotRef::BeaconCancel,
+            i => SlotRef::BeaconPower((i - 561) as u8),
         }),
         300..=302 if matches!(container, Container::Furnace(_)) => Some(match slot {
             300 => SlotRef::FurnaceInput,

@@ -25,6 +25,9 @@ use super::hud::SlotRef;
 #[derive(Debug, PartialEq)]
 pub(super) enum Request {
     Popup(String),
+    /// v0.16 Track C: the screen asked to close (the beacon's Done and
+    /// Cancel buttons).
+    Close,
 }
 
 pub(super) struct Screen<'a> {
@@ -227,7 +230,11 @@ impl Screen<'_> {
             | SlotRef::LoomChoice(_)
             | SlotRef::MapInput
             | SlotRef::MapExtra
-            | SlotRef::MapResult => {}
+            | SlotRef::MapResult
+            | SlotRef::BeaconPayment
+            | SlotRef::BeaconPower(_)
+            | SlotRef::BeaconDone
+            | SlotRef::BeaconCancel => {}
             SlotRef::Palette(item) => {
                 if self.session.mode.is_creative() {
                     self.session.inventory.add(item, item.max_stack());
@@ -243,7 +250,7 @@ impl Screen<'_> {
     /// Where a shift-clicked inventory stack goes: into the open chest, a
     /// furnace's input (smeltables) or fuel slot, or else between the hotbar
     /// and the main grid. Returns what didn't move.
-    pub(super) fn move_from_inventory(&mut self, from: usize, stack: Stack) -> Option<Stack> {
+    pub(super) fn move_from_inventory(&mut self, from: usize, mut stack: Stack) -> Option<Stack> {
         match *self.container {
             Container::Minecart(id) => {
                 if self.entities.vehicle_slots(id).is_none() {
@@ -256,6 +263,10 @@ impl Screen<'_> {
                 return move_into(stack, &mut self.session.ender.slots, &order);
             }
             Container::Chest(p) => {
+                // v0.16 Track B: a shulker box doesn't move into a shulker box.
+                if !self.world.container_accepts(p, &stack) {
+                    return Some(stack);
+                }
                 let order: Vec<usize> = (0..self.world.container_slots(p)).collect();
                 return self.world.with_chest_slots(p, |slots| move_into(stack, slots, &order)).unwrap_or(Some(stack));
             }
@@ -318,7 +329,7 @@ impl Screen<'_> {
                     return left;
                 }
             }
-            Container::Stonecutter(_) | Container::Loom(_) | Container::Cartography(_) => {
+            Container::Stonecutter(_) | Container::Loom(_) | Container::Cartography(_) | Container::Beacon(_) => {
                 if let Some(left) = self.move_to_workstation(stack)
                     && left != Some(stack)
                 {
@@ -326,12 +337,17 @@ impl Screen<'_> {
                 }
             }
             Container::Inventory if self.session.mode.is_survival() => {
-                // Armor goes on, if that slot is free.
-                if let Some((piece, _)) = stack.item.as_armor()
+                // Armor (and a mob head) goes on, if that slot is free.
+                if let Some(piece) = stack.item.wear_slot()
                     && self.session.inventory.armor[piece as usize].is_none()
                 {
-                    self.session.inventory.armor[piece as usize] = Some(stack);
-                    return None;
+                    // One item fits (`ArmorSlot.getMaxStackSize`); the rest
+                    // of a stack of heads moves on below.
+                    self.session.inventory.armor[piece as usize] = Some(Stack { count: 1, ..stack });
+                    if stack.count <= 1 {
+                        return None;
+                    }
+                    stack.count -= 1;
                 }
             }
             Container::Inventory | Container::CraftingTable | Container::Trading(_) => {}
@@ -478,6 +494,8 @@ impl Screen<'_> {
                 }
                 if let Container::Chest(pos) = *self.container
                     && i < self.world.container_slots(pos)
+                    // v0.16 Track B: `ShulkerBoxSlot.mayPlace`.
+                    && self.session.inventory.cursor.is_none_or(|c| self.world.container_accepts(pos, &c))
                 {
                     let cursor = &mut self.session.inventory.cursor;
                     self.world
@@ -512,7 +530,11 @@ impl Screen<'_> {
                 | SlotRef::LoomChoice(_)
                 | SlotRef::MapInput
                 | SlotRef::MapExtra
-                | SlotRef::MapResult,
+                | SlotRef::MapResult
+                | SlotRef::BeaconPayment
+                | SlotRef::BeaconPower(_)
+                | SlotRef::BeaconDone
+                | SlotRef::BeaconCancel,
             ) => {}
             Some(SlotRef::Palette(item)) => {
                 // Creative palette: take a full stack, or trash the held one.

@@ -76,7 +76,7 @@ fn every_sign_state_round_trips_with_java_properties() {
         };
         assert_eq!(name, expected);
     }
-    assert_eq!(count, 12 * 112);
+    assert_eq!(count, Kind::ALL.len() * 112);
     // Fuel: 200 ticks for signs, 800 for hanging signs; crimson and warped don't burn.
     for kind in Kind::ALL {
         let standing = Sign { kind, mount: Mount::Standing { rotation: 0 }, wet: false }.block();

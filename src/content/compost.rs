@@ -69,6 +69,12 @@ const CHANCE_30: &[Item] = &[
     Item::from_block(bp::SHORT_DRY_GRASS),
     Item::from_block(bp::TALL_DRY_GRASS),
     Item::from_block(bp::CACTUS_FLOWER),
+    // v0.16 Track D.
+    Item::from_block(crate::world::wood::poplar::ORANGE_LEAVES),
+    Item::from_block(crate::world::wood::poplar::RED_LEAVES),
+    Item::from_block(crate::world::wood::poplar::YELLOW_LEAVES),
+    Item::from_block(crate::world::wood::poplar::SAPLING),
+    Item::from_block(crate::world::gen5_blocks::RED_SHRUB),
 ];
 const CHANCE_50: &[Item] = &[
     Item::MELON_SLICE,
@@ -84,6 +90,9 @@ const CHANCE_50: &[Item] = &[
     Item::from_block(nb::TWISTING_VINES),
 ];
 const CHANCE_65: &[Item] = &[
+    // v0.16 Track C: `ComposterBlock.add(0.65F, Items.WITHER_ROSE)`.
+    Item::from_block(crate::world::wither_rose::WITHER_ROSE),
+    Item::from_block(crate::world::gen5_blocks::SHELF_MUSHROOM),
     Item::from_block(crate::world::eyeblossom::OPEN),
     Item::from_block(crate::world::eyeblossom::CLOSED),
     Item::CARROT,

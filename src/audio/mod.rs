@@ -9,15 +9,18 @@
 mod breeze;
 mod dsp;
 mod export;
+mod flight;
 mod illager;
 pub mod mixer;
 mod raid;
 mod sniffer;
 pub mod sounds;
 mod source;
+mod sulfur_cube;
 mod voices;
 mod warden;
 mod weapons;
+mod wither;
 
 use std::sync::Arc;
 use std::time::Instant;

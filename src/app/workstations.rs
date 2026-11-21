@@ -27,13 +27,13 @@ pub(super) const CUT_ROWS: usize = 3;
 pub(super) const LOOM_ROWS: usize = 4;
 
 pub(super) fn is_workstation(c: Container) -> bool {
-    matches!(c, Container::Stonecutter(_) | Container::Loom(_) | Container::Cartography(_))
+    matches!(c, Container::Stonecutter(_) | Container::Loom(_) | Container::Cartography(_) | Container::Beacon(_))
 }
 
 /// The work slot a workstation input slot uses.
 pub(super) fn work_index(slot: SlotRef) -> Option<usize> {
     Some(match slot {
-        SlotRef::CutInput | SlotRef::LoomBanner | SlotRef::MapInput => 0,
+        SlotRef::CutInput | SlotRef::LoomBanner | SlotRef::MapInput | SlotRef::BeaconPayment => 0,
         SlotRef::LoomDye | SlotRef::MapExtra => 1,
         SlotRef::LoomPattern => 2,
         _ => return None,
@@ -49,6 +49,9 @@ pub(super) fn is_workstation_slot(slot: SlotRef) -> bool {
                 | SlotRef::LoomResult
                 | SlotRef::LoomChoice(_)
                 | SlotRef::MapResult
+                | SlotRef::BeaconPower(_)
+                | SlotRef::BeaconDone
+                | SlotRef::BeaconCancel
         )
 }
 
@@ -156,6 +159,7 @@ fn accepts(slot: SlotRef, stack: &Stack) -> bool {
         SlotRef::LoomPattern => bp::is_pattern_item(stack.item),
         SlotRef::MapInput => voxelcraft::world::maps::has_map_id(stack),
         SlotRef::MapExtra => takes_extra(stack.item),
+        SlotRef::BeaconPayment => voxelcraft::world::beacon::is_payment(stack.item),
         _ => false,
     }
 }
@@ -211,6 +215,9 @@ impl Screen<'_> {
     pub(super) fn workstation_click(&mut self, slot: SlotRef, right: bool) -> bool {
         if !is_workstation_slot(slot) || !is_workstation(*self.container) {
             return false;
+        }
+        if let Container::Beacon(pos) = *self.container {
+            return self.beacon_click(pos, slot, right);
         }
         match slot {
             SlotRef::CutRecipe(i) => {
@@ -298,6 +305,16 @@ impl Screen<'_> {
     /// when the stack has no input there (it moves between the hotbar and
     /// the main grid instead).
     pub(super) fn move_to_workstation(&mut self, stack: Stack) -> Option<Option<Stack>> {
+        // `BeaconMenu.quickMoveStack`: a lone payment item into the empty slot.
+        if let Container::Beacon(_) = *self.container {
+            let fits =
+                self.session.work[0].is_none() && stack.count == 1 && voxelcraft::world::beacon::is_payment(stack.item);
+            if !fits {
+                return None;
+            }
+            self.session.work[0] = Some(stack);
+            return Some(None);
+        }
         let i = input_for(*self.container, stack.item)?;
         let left = move_into(stack, std::slice::from_mut(&mut self.session.work[i]), &[0]);
         sync_work_menu(*self.container, self.session);
@@ -367,6 +384,9 @@ impl Game {
     /// The recipe or pattern button under (`mx`, `my`), for a panel at
     /// (`px`, `py`).
     pub(super) fn work_button_at(&self, px: f32, py: f32, mx: f32, my: f32) -> Option<SlotRef> {
+        if let Container::Beacon(_) = self.body.container {
+            return super::beacon::control_at(mx - px, my - py);
+        }
         let (len, _) = self.work_list();
         (0..len).find_map(|i| {
             let (x, y, w, h) = button_rect(self.body.container, i, self.work_scroll)?;
@@ -406,6 +426,10 @@ impl Game {
                 out.push((SlotRef::MapExtra, px + 14.0, py + 46.0));
                 out.push((SlotRef::MapResult, px + 144.0, py + 30.0));
             }
+            Container::Beacon(_) => {
+                let (x, y) = super::beacon::PAYMENT;
+                out.push((SlotRef::BeaconPayment, px + x, py + y));
+            }
             _ => {}
         }
     }
@@ -414,6 +438,7 @@ impl Game {
         match self.body.container {
             Container::Stonecutter(_) => "Stonecutter",
             Container::Loom(_) => "Loom",
+            Container::Beacon(_) => "Beacon",
             _ => "Cartography Table",
         }
     }
@@ -426,6 +451,7 @@ impl Game {
             SlotRef::LoomPattern => bp::item(0).icon_layer(),
             SlotRef::MapInput => Item::FILLED_MAP.icon_layer(),
             SlotRef::MapExtra => Item::PAPER.icon_layer(),
+            SlotRef::BeaconPayment => Item::IRON_INGOT.icon_layer(),
             _ => None,
         }
     }
@@ -509,6 +535,10 @@ impl Game {
                     ui.rect(px + 116.0 + 20.0 + i as f32, py + 33.0 + i as f32, 1.0, 9.0 - 2.0 * i as f32, dark);
                 }
             }
+            Container::Beacon(pos) => {
+                let levels = self.world.beacon(pos).map_or(0, |b| b.levels);
+                super::beacon::draw(ui, &self.session, levels, px, py, hovered);
+            }
             _ => {}
         }
     }
@@ -530,6 +560,7 @@ impl Game {
             Container::Stonecutter(_) => Block::STONECUTTER,
             Container::Loom(_) => Block::LOOM,
             Container::Cartography(_) => Block::CARTOGRAPHY_TABLE,
+            Container::Beacon(_) => voxelcraft::world::beacon::BEACON,
             _ => return false,
         };
         self.world.get_block(pos).is_none_or(|b| b.base() != base) || far(pos)

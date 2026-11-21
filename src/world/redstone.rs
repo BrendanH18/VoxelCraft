@@ -513,6 +513,10 @@ impl World {
         if super::gadgets::is_note(b) {
             return self.note_neighbour(p, b);
         }
+        // v0.16 Track C: piglin and dragon heads follow the signal.
+        if let Some(s) = super::skulls::decode(b) {
+            return self.skull_neighbour(p, s);
+        }
         if super::gadgets::is_hook(b) {
             if let Some((facing, _, _)) = super::gadgets::hook_state(b)
                 && self.get_block(p - facing.offset()).is_some_and(|s| !s.supports_fire())
@@ -680,6 +684,9 @@ impl World {
         }
         if super::dried_ghast::owns(b.0) {
             return self.dried_ghast_tick(p);
+        }
+        if super::end_blocks::is_chorus(b) {
+            return self.chorus_tick(p);
         }
         if super::archaeology::owns(b.0) {
             return self.archaeology_tick(p);
@@ -1191,6 +1198,9 @@ impl World {
                             || family == i64::from(super::sniffer_egg::EGG.0)
                             || family == i64::from(super::frosted_ice::FIRST.0)
                             || family == i64::from(super::dried_ghast::DRIED_GHAST.0)
+                            // v0.16 Track A: unsupported chorus breaking.
+                            || family == i64::from(super::end_blocks::CHORUS_PLANT.0)
+                            || family == i64::from(super::end_blocks::CHORUS_FLOWER.0)
                             // A lectern's page-turn pulse (`LecternBlock.tick`).
                             || family == i64::from(Block::LECTERN.0)
                             || family == i64::from(super::eyeblossom::OPEN.0)

@@ -165,8 +165,8 @@ impl ItemSet {
         let sword = tool(ToolKind::Sword);
         let mining_tool = matches!(kind, ItemKind::Tool(t, _) if t != ToolKind::Sword);
         let melee = sword || is_spear(item);
-        // `#skulls`: only the wither skeleton skull is registered.
-        let skull = item == Item::WITHER_SKULL;
+        // `#skulls`: every mob head and skull (v0.16 Track C).
+        let skull = crate::world::skulls::kind_of_item(item).is_some();
         let carved_pumpkin = item == Item::from_block(crate::world::pumpkin_blocks::CARVED);
         match self {
             ItemSet::Armor => matches!(kind, ItemKind::Armor(..)),
@@ -187,7 +187,7 @@ impl ItemSet {
             ItemSet::Trident => item == TRIDENT,
             ItemSet::Mace => item == MACE,
             ItemSet::Lunge => is_spear(item),
-            // Armor, elytra (unregistered), shield, tools, bow, crossbow,
+            // Armor, elytra, shield, tools, bow, crossbow,
             // trident, flint and steel, shears, brush, fishing rod, both
             // sticks, mace and spears.
             ItemSet::Durability => {
@@ -208,8 +208,12 @@ impl ItemSet {
                     || item == TRIDENT
                     || item == MACE
                     || is_spear(item)
+                    // v0.16 Track B.
+                    || item == crate::content::elytra::ELYTRA
             }
-            ItemSet::Equippable => matches!(kind, ItemKind::Armor(..)) || skull || carved_pumpkin,
+            ItemSet::Equippable => {
+                matches!(kind, ItemKind::Armor(..)) || skull || carved_pumpkin || item == crate::content::elytra::ELYTRA
+            }
             ItemSet::Vanishing => {
                 ItemSet::Durability.contains(item) || item == Item::COMPASS || carved_pumpkin || skull
             }
@@ -1077,6 +1081,10 @@ pub fn repairs(item: Item, material: Item) -> bool {
     }
     if item == Item::WOLF_ARMOR {
         return material == Item::ARMADILLO_SCUTE;
+    }
+    // v0.16 Track B: `Items.ELYTRA`'s `repairable(PHANTOM_MEMBRANE)`.
+    if item == crate::content::elytra::ELYTRA {
+        return material == Item::PHANTOM_MEMBRANE;
     }
     use crate::item::{ArmorMaterial, Tier};
     if item == Item::SHIELD {

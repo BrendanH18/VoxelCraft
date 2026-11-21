@@ -131,6 +131,9 @@ pub struct Env {
     pub on_hay: bool,
     /// HoneyBlock.fallOn uses the same 0.2f multiplier as hay.
     pub on_honey: bool,
+    /// v0.16 Track D: `Block.fallOn`'s `fallDistanceReduction` of the block
+    /// landed on (0.5 for a shelf mushroom): the fall counts that much less.
+    pub fall_reduction: f32,
     /// Landing on a slime block. Java 26.3's `SlimeBlock.fallOn` multiplies
     /// the damage by zero, and when sneaking suppresses the bounce it
     /// returns without calling `causeFallDamage` at all.
@@ -146,6 +149,11 @@ pub struct Env {
     pub moved: f64,
     pub sprinting: bool,
     pub jumped: bool,
+    /// v0.16 Track B: gliding on elytra, the vertical motion in blocks per
+    /// tick, and the `fly_into_wall` damage the glide took this tick.
+    pub fall_flying: bool,
+    pub fall_speed: f64,
+    pub kinetic: f32,
 }
 
 /// Damage produced by one [`Vitals::tick`]; the caller applies it through
@@ -169,6 +177,8 @@ pub struct Hurts {
     pub freeze: f32,
     /// A falling stalactite (`DamageTypes.FALLING_STALACTITE`).
     pub stalactite: f32,
+    /// v0.16 Track B: a glide into a wall (`fly_into_wall`).
+    pub kinetic: f32,
 }
 
 /// Minecraft's hunger: a food bar backed by a hidden saturation buffer that
@@ -292,6 +302,9 @@ pub struct Vitals {
     pub pearl_cooldown: f32,
     /// Seconds until another wind charge can be thrown (10 ticks).
     pub wind_charge_cooldown: f32,
+    /// v0.16 Track A: seconds before more chorus fruit can be eaten
+    /// (`useCooldown(1.0F)`).
+    pub chorus_cooldown: f32,
     /// Potion and other status effects.
     pub effects: super::effects::Effects,
     /// Seconds since the last damage (drives the hurt flash).
@@ -349,6 +362,7 @@ impl Default for Vitals {
             xp: Default::default(),
             pearl_cooldown: 0.0,
             wind_charge_cooldown: 0.0,
+            chorus_cooldown: 0.0,
             effects: Default::default(),
             since_damage: 1e3,
             death_time: 0.0,
@@ -554,6 +568,7 @@ impl Vitals {
         self.xp.tick(dt);
         self.pearl_cooldown = (self.pearl_cooldown - dt).max(0.0);
         self.wind_charge_cooldown = (self.wind_charge_cooldown - dt).max(0.0);
+        self.chorus_cooldown = (self.chorus_cooldown - dt).max(0.0);
         if self.is_dead() {
             self.time_since_rest = 0;
             // `LivingEntity.baseTick` keeps counting effects down on the death
@@ -609,6 +624,15 @@ impl Vitals {
         if (self.effects.has(Effect::SlowFalling) || self.effects.has(Effect::Levitation)) && !env.on_ground {
             self.fall_peak = self.fall_peak.map(|_| env.y);
         }
+        // v0.16 Track B: `Entity.checkFallDistanceAccumulation` while gliding:
+        // a glide that isn't diving steeply keeps at most one block of fall.
+        if env.fall_flying
+            && env.fall_speed > -0.5
+            && let Some(peak) = self.fall_peak
+            && peak - env.y > 1.0
+        {
+            self.fall_peak = Some(env.y + 1.0);
+        }
         let jump_levels = self.effects.jump_boost() as f64;
 
         // Java accumulates downward moves, even if a bounce rises in between.
@@ -661,6 +685,8 @@ impl Vitals {
                     0.0
                 } else if env.on_hay || env.on_honey {
                     hay_fall_damage(distance)
+                } else if env.fall_reduction > 0.0 {
+                    fall_damage(distance * f64::from(1.0 - env.fall_reduction))
                 } else {
                     fall_damage(distance)
                 };
@@ -727,6 +753,9 @@ impl Vitals {
         }
         if !creative {
             hurts.stalactite = env.stalactite;
+        }
+        if !creative {
+            hurts.kinetic = env.kinetic;
         }
         if fire_proof {
             (hurts.lava, hurts.fire, hurts.burn, hurts.hot_floor, hurts.campfire) = (0.0, 0.0, 0.0, 0.0, 0.0);
@@ -996,6 +1025,15 @@ mod tests {
         let hay = Env { on_hay: true, ..ground(64.0) };
         assert_eq!(fall(&mut v, 84.0, 64.0, hay).fall, 3.0, "20 blocks onto hay vs 17 on stone");
         assert_eq!(fall(&mut v, 84.0, 64.0, ground(64.0)).fall, 17.0);
+    }
+
+    /// v0.16 Track D: a shelf mushroom's `fallDistanceReduction(0.5F)`
+    /// halves the fall distance `Block.fallOn` passes on.
+    #[test]
+    fn shelf_mushrooms_halve_the_fall() {
+        let mut v = Vitals::default();
+        let shelf = Env { fall_reduction: 0.5, ..ground(64.0) };
+        assert_eq!(fall(&mut v, 84.0, 64.0, shelf).fall, 7.0, "20 blocks count as 10");
     }
 
     #[test]

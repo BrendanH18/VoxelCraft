@@ -34,6 +34,9 @@ pub struct BlockModel {
     pub tint: [u8; 4],
     /// A banner's pattern layers (v0.15 Track B), drawn over its flag.
     pub patterns: Option<voxelcraft::inventory::components::StackPayload>,
+    /// v0.16 Track B: a placed shulker box's lid, 0 shut to 1 open; the
+    /// block is then drawn as `ShulkerBoxRenderer` draws it.
+    pub lid: Option<f32>,
 }
 
 #[repr(C)]
@@ -60,6 +63,21 @@ pub fn vertices(models: &[BlockModel], camera: DVec3, ticks: f64) -> Vec<BlockVe
         let s = m.size;
         if let Some(b) = crate::world::colour_blocks::banner::decode(m.block.0) {
             banner_vertices(&mut out, m, b, min, ticks);
+            continue;
+        }
+        if let (Some(lid), Some(s)) = (m.lid, crate::world::shulker_box::decode(m.block)) {
+            crate::world::shulker_box::quads(s, lid, |q| push_quad(&mut out, m, min, q));
+            continue;
+        }
+        // v0.16 Track C: placed heads (`SkullBlockRenderer`); a powered
+        // piglin or dragon head animates with the game ticks.
+        if m.icon.is_none()
+            && m.orient.is_none()
+            && m.size == 1.0
+            && let Some(s) = crate::world::skulls::decode(m.block)
+        {
+            let anim = if s.powered { ticks as f32 } else { 0.0 };
+            quad_vertices(&mut out, m, &crate::world::skulls::quads(s, anim), min);
             continue;
         }
         let tex = m.block.info().tex;
@@ -135,6 +153,30 @@ pub fn vertices(models: &[BlockModel], camera: DVec3, ticks: f64) -> Vec<BlockVe
     out
 }
 
+/// Quads of a block-entity model, lit by its cell and shaded by how each
+/// face is turned.
+fn quad_vertices(
+    out: &mut Vec<BlockVertex>,
+    m: &BlockModel,
+    quads: &[crate::world::colour_blocks::banner::Quad],
+    min: Vec3,
+) {
+    for q in quads {
+        let n = q.normal;
+        let vertical = if n.y > 0.0 { FACE_SHADE[2] } else { FACE_SHADE[3] };
+        let shade = n.y * n.y * vertical + n.x * n.x * FACE_SHADE[0] + n.z * n.z * FACE_SHADE[4];
+        for i in [0, 1, 2, 2, 3, 0] {
+            out.push(BlockVertex {
+                pos: (min + q.corners[i] * m.size).to_array(),
+                uv: q.uv[i],
+                layer: q.layer as u32,
+                light: [m.sky_light, shade, m.block_light],
+                tint: q.tint.unwrap_or(m.tint),
+            });
+        }
+    }
+}
+
 /// A banner's pole, bar and flag (`colour_blocks::banner::quads`), lit by
 /// its cell and shaded by how each face is turned.
 fn banner_vertices(
@@ -155,19 +197,24 @@ fn banner_vertices(
         banner::phase(cell, ticks),
         layers,
     )) {
-        // FACE_SHADE blended by the normal: up, down, then x and z sides.
-        let n = q.normal;
-        let vertical = if n.y > 0.0 { FACE_SHADE[2] } else { FACE_SHADE[3] };
-        let shade = n.y * n.y * vertical + n.x * n.x * FACE_SHADE[0] + n.z * n.z * FACE_SHADE[4];
-        for i in [0, 1, 2, 2, 3, 0] {
-            out.push(BlockVertex {
-                pos: (min + q.corners[i] * m.size).to_array(),
-                uv: q.uv[i],
-                layer: q.layer as u32,
-                light: [m.sky_light, shade, m.block_light],
-                tint: q.tint.unwrap_or(m.tint),
-            });
-        }
+        push_quad(out, m, min, q);
+    }
+}
+
+/// One model quad, lit by its cell and shaded by how it is turned.
+fn push_quad(out: &mut Vec<BlockVertex>, m: &BlockModel, min: Vec3, q: crate::world::colour_blocks::banner::Quad) {
+    // FACE_SHADE blended by the normal: up, down, then x and z sides.
+    let n = q.normal;
+    let vertical = if n.y > 0.0 { FACE_SHADE[2] } else { FACE_SHADE[3] };
+    let shade = n.y * n.y * vertical + n.x * n.x * FACE_SHADE[0] + n.z * n.z * FACE_SHADE[4];
+    for i in [0, 1, 2, 2, 3, 0] {
+        out.push(BlockVertex {
+            pos: (min + q.corners[i] * m.size).to_array(),
+            uv: q.uv[i],
+            layer: q.layer as u32,
+            light: [m.sky_light, shade, m.block_light],
+            tint: q.tint.unwrap_or(m.tint),
+        });
     }
 }
 
@@ -306,6 +353,7 @@ mod tests {
     fn cubes_and_plants_get_their_triangles() {
         let at = |block| BlockModel {
             patterns: None,
+            lid: None,
             min: DVec3::new(10.0, 64.0, 5.0),
             size: 1.0,
             block,

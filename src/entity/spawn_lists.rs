@@ -177,8 +177,22 @@ const LIST_41: [MonsterSpawn; 5] = [
     e(J::Known(MobKind::Llama), 5, 4, 6),
 ];
 const LIST_42: [MonsterSpawn; 1] = [e(J::Known(MobKind::Axolotl), 10, 4, 6)];
+/// Generation 5's dappled forest (`biome/dappled_forest.json`, creature).
+const DAPPLED_FOREST: [MonsterSpawn; 6] = [
+    e(J::Known(MobKind::Sheep), 12, 4, 4),
+    e(J::Known(MobKind::Pig), 10, 4, 4),
+    e(J::Known(MobKind::Chicken), 10, 4, 4),
+    e(J::Known(MobKind::Cow), 8, 4, 4),
+    e(J::Known(MobKind::Rabbit), 4, 2, 4),
+    e(J::Known(MobKind::Fox), 4, 2, 4),
+];
+
 pub(super) fn biome_list(biome: Biome, category: MobCategory) -> &'static [MonsterSpawn] {
     match (biome, category) {
+        (Biome::DappledForest, MobCategory::Creature) => &DAPPLED_FOREST,
+        (Biome::DappledForest, MobCategory::Ambient) => &LIST_1,
+        (Biome::DappledForest, MobCategory::UndergroundWaterCreature) => &LIST_2,
+        (Biome::SulfurCaves, MobCategory::Ambient) => &LIST_1,
         (Biome::DeepFrozenOcean, MobCategory::Creature) => &LIST_0,
         (Biome::DeepFrozenOcean, MobCategory::Ambient) => &LIST_1,
         (Biome::DeepFrozenOcean, MobCategory::UndergroundWaterCreature) => &LIST_2,

@@ -136,6 +136,21 @@ pub fn use_animal_target(
         }
         return true;
     }
+    // v0.16 Track D: `SulfurCube.mobInteract`.
+    if let Some(used) = entities.use_sulfur_cube(index, held) {
+        use crate::entity::sulfur_cube::Use;
+        match used {
+            Use::Fed | Use::Swallowed | Use::Lit { charge: true } if !creative => {
+                inventory.take_one(slot);
+            }
+            Use::Lit { charge: false } | Use::Sheared if !creative => {
+                inventory.wear(slot, 1);
+            }
+            Use::Bucketed(filled) => exchange_stack(inventory, slot, filled, creative, entities, player),
+            _ => {}
+        }
+        return true;
+    }
     if let Some(used) = entities.use_happy_ghast(index, held) {
         use crate::entity::happy_ghast::Use;
         match used {

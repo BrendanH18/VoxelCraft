@@ -70,7 +70,7 @@ pub fn cave_biome(generation: Generation, climate: &Climate, height: i32, y: i32
     if generation >= Generation::V2 && under(climate, height, y) {
         return Some(Biome::DeepDark);
     }
-    super::biome::cave(climate, height - y)
+    super::biome::cave_in(climate, height - y, generation >= Generation::V5)
 }
 
 /// A height inside the deep dark under this column, for `/locate biome`,

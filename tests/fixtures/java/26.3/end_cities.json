@@ -1,0 +1,1265 @@
+{
+ "biome_features": {
+  "end_barrens": [],
+  "end_highlands": [
+   [],
+   [],
+   [],
+   [],
+   [
+    "end_gateway_return"
+   ],
+   [],
+   [],
+   [],
+   [],
+   [
+    "chorus_plant"
+   ]
+  ],
+  "end_midlands": [],
+  "small_end_islands": [
+   [
+    "end_island_decorated"
+   ]
+  ],
+  "the_end": [
+   [],
+   [],
+   [],
+   [],
+   [
+    "end_spike"
+   ],
+   [],
+   [],
+   [],
+   [],
+   [],
+   [
+    "end_platform"
+   ]
+  ]
+ },
+ "biome_tag": [
+  "end_highlands",
+  "end_midlands"
+ ],
+ "chorus_plant_feature": {
+  "feature": "chorus_plant",
+  "placement": [
+   {
+    "count": {
+     "max_inclusive": 4,
+     "min_inclusive": 0,
+     "type": "uniform"
+    },
+    "type": "count"
+   },
+   {
+    "type": "in_square"
+   },
+   {
+    "heightmap": "MOTION_BLOCKING",
+    "type": "heightmap"
+   },
+   {
+    "type": "biome"
+   }
+  ]
+ },
+ "constants": {
+  "chorus_flower": {
+   "DEAD_AGE": 5
+  },
+  "end_city_pieces": {
+   "MAX_GEN_DEPTH": 8
+  },
+  "end_city_structure": {
+   "START_OFFSET_IN_CHUNK": 7
+  },
+  "shulker": {
+   "DEFAULT_COLOR": 16,
+   "DEFAULT_PEEK": 0,
+   "MAX_LID_OPEN": 1.0,
+   "MAX_SCALE": 3.0,
+   "MAX_TELEPORT_DISTANCE": 8,
+   "NO_COLOR": 16,
+   "OTHER_SHULKER_LIMIT": 5,
+   "OTHER_SHULKER_SCAN_RADIUS": 8,
+   "PEEK_PER_TICK": 0.05,
+   "TELEPORT_STEPS": 6
+  },
+  "shulker_bullet": {
+   "SPEED": 0.15
+  },
+  "teleport_randomly": {
+   "DEFAULT_DIAMETER": 16.0
+  }
+ },
+ "loot_tables": {
+  "blocks/chorus_flower": {
+   "pools": [
+    {
+     "entries": [
+      {
+       "condition": {
+        "terms": [
+         {
+          "type": "survives_explosion"
+         },
+         {
+          "entity": "this",
+          "predicate": {},
+          "type": "entity_properties"
+         }
+        ],
+        "type": "all_of"
+       },
+       "name": "chorus_flower",
+       "type": "item"
+      }
+     ],
+     "rolls": 1
+    }
+   ],
+   "random_sequence": "blocks/chorus_flower",
+   "type": "block"
+  },
+  "blocks/chorus_plant": {
+   "pools": [
+    {
+     "entries": [
+      {
+       "modifier": [
+        {
+         "count": {
+          "max": 1,
+          "min": 0,
+          "type": "uniform"
+         },
+         "type": "set_count"
+        },
+        {
+         "type": "explosion_decay"
+        }
+       ],
+       "name": "chorus_fruit",
+       "type": "item"
+      }
+     ],
+     "rolls": 1
+    }
+   ],
+   "random_sequence": "blocks/chorus_plant",
+   "type": "block"
+  },
+  "blocks/end_rod": {
+   "pools": [
+    {
+     "condition": {
+      "type": "survives_explosion"
+     },
+     "entries": [
+      {
+       "name": "end_rod",
+       "type": "item"
+      }
+     ],
+     "rolls": 1
+    }
+   ],
+   "random_sequence": "blocks/end_rod",
+   "type": "block"
+  },
+  "blocks/purpur_block": {
+   "pools": [
+    {
+     "condition": {
+      "type": "survives_explosion"
+     },
+     "entries": [
+      {
+       "name": "purpur_block",
+       "type": "item"
+      }
+     ],
+     "rolls": 1
+    }
+   ],
+   "random_sequence": "blocks/purpur_block",
+   "type": "block"
+  },
+  "blocks/purpur_pillar": {
+   "pools": [
+    {
+     "condition": {
+      "type": "survives_explosion"
+     },
+     "entries": [
+      {
+       "name": "purpur_pillar",
+       "type": "item"
+      }
+     ],
+     "rolls": 1
+    }
+   ],
+   "random_sequence": "blocks/purpur_pillar",
+   "type": "block"
+  },
+  "blocks/purpur_slab": {
+   "pools": [
+    {
+     "entries": [
+      {
+       "modifier": [
+        {
+         "condition": {
+          "blocks": "purpur_slab",
+          "state": {
+           "type": "double"
+          },
+          "type": "match_block"
+         },
+         "count": 2,
+         "type": "set_count"
+        },
+        {
+         "type": "explosion_decay"
+        }
+       ],
+       "name": "purpur_slab",
+       "type": "item"
+      }
+     ],
+     "rolls": 1
+    }
+   ],
+   "random_sequence": "blocks/purpur_slab",
+   "type": "block"
+  },
+  "blocks/purpur_stairs": {
+   "pools": [
+    {
+     "condition": {
+      "type": "survives_explosion"
+     },
+     "entries": [
+      {
+       "name": "purpur_stairs",
+       "type": "item"
+      }
+     ],
+     "rolls": 1
+    }
+   ],
+   "random_sequence": "blocks/purpur_stairs",
+   "type": "block"
+  },
+  "chests/end_city_treasure": {
+   "pools": [
+    {
+     "entries": [
+      {
+       "modifier": {
+        "count": {
+         "max": 7,
+         "min": 2,
+         "type": "uniform"
+        },
+        "type": "set_count"
+       },
+       "name": "diamond",
+       "type": "item",
+       "weight": 5
+      },
+      {
+       "modifier": {
+        "count": {
+         "max": 8,
+         "min": 4,
+         "type": "uniform"
+        },
+        "type": "set_count"
+       },
+       "name": "iron_ingot",
+       "type": "item",
+       "weight": 10
+      },
+      {
+       "modifier": {
+        "count": {
+         "max": 7,
+         "min": 2,
+         "type": "uniform"
+        },
+        "type": "set_count"
+       },
+       "name": "gold_ingot",
+       "type": "item",
+       "weight": 15
+      },
+      {
+       "modifier": {
+        "count": {
+         "max": 6,
+         "min": 2,
+         "type": "uniform"
+        },
+        "type": "set_count"
+       },
+       "name": "emerald",
+       "type": "item",
+       "weight": 2
+      },
+      {
+       "modifier": {
+        "count": {
+         "max": 10,
+         "min": 1,
+         "type": "uniform"
+        },
+        "type": "set_count"
+       },
+       "name": "beetroot_seeds",
+       "type": "item",
+       "weight": 5
+      },
+      {
+       "name": "saddle",
+       "type": "item",
+       "weight": 3
+      },
+      {
+       "name": "copper_horse_armor",
+       "type": "item"
+      },
+      {
+       "name": "iron_horse_armor",
+       "type": "item"
+      },
+      {
+       "name": "golden_horse_armor",
+       "type": "item"
+      },
+      {
+       "name": "diamond_horse_armor",
+       "type": "item"
+      },
+      {
+       "modifier": {
+        "levels": {
+         "max": 39,
+         "min": 20,
+         "type": "uniform"
+        },
+        "options": "#minecraft:on_random_loot",
+        "type": "enchant_with_levels"
+       },
+       "name": "diamond_sword",
+       "type": "item",
+       "weight": 3
+      },
+      {
+       "modifier": {
+        "levels": {
+         "max": 39,
+         "min": 20,
+         "type": "uniform"
+        },
+        "options": "#minecraft:on_random_loot",
+        "type": "enchant_with_levels"
+       },
+       "name": "diamond_spear",
+       "type": "item",
+       "weight": 3
+      },
+      {
+       "modifier": {
+        "levels": {
+         "max": 39,
+         "min": 20,
+         "type": "uniform"
+        },
+        "options": "#minecraft:on_random_loot",
+        "type": "enchant_with_levels"
+       },
+       "name": "diamond_boots",
+       "type": "item",
+       "weight": 3
+      },
+      {
+       "modifier": {
+        "levels": {
+         "max": 39,
+         "min": 20,
+         "type": "uniform"
+        },
+        "options": "#minecraft:on_random_loot",
+        "type": "enchant_with_levels"
+       },
+       "name": "diamond_chestplate",
+       "type": "item",
+       "weight": 3
+      },
+      {
+       "modifier": {
+        "levels": {
+         "max": 39,
+         "min": 20,
+         "type": "uniform"
+        },
+        "options": "#minecraft:on_random_loot",
+        "type": "enchant_with_levels"
+       },
+       "name": "diamond_leggings",
+       "type": "item",
+       "weight": 3
+      },
+      {
+       "modifier": {
+        "levels": {
+         "max": 39,
+         "min": 20,
+         "type": "uniform"
+        },
+        "options": "#minecraft:on_random_loot",
+        "type": "enchant_with_levels"
+       },
+       "name": "diamond_helmet",
+       "type": "item",
+       "weight": 3
+      },
+      {
+       "modifier": {
+        "levels": {
+         "max": 39,
+         "min": 20,
+         "type": "uniform"
+        },
+        "options": "#minecraft:on_random_loot",
+        "type": "enchant_with_levels"
+       },
+       "name": "diamond_pickaxe",
+       "type": "item",
+       "weight": 3
+      },
+      {
+       "modifier": {
+        "levels": {
+         "max": 39,
+         "min": 20,
+         "type": "uniform"
+        },
+        "options": "#minecraft:on_random_loot",
+        "type": "enchant_with_levels"
+       },
+       "name": "diamond_shovel",
+       "type": "item",
+       "weight": 3
+      },
+      {
+       "modifier": {
+        "levels": {
+         "max": 39,
+         "min": 20,
+         "type": "uniform"
+        },
+        "options": "#minecraft:on_random_loot",
+        "type": "enchant_with_levels"
+       },
+       "name": "iron_sword",
+       "type": "item",
+       "weight": 3
+      },
+      {
+       "modifier": {
+        "levels": {
+         "max": 39,
+         "min": 20,
+         "type": "uniform"
+        },
+        "options": "#minecraft:on_random_loot",
+        "type": "enchant_with_levels"
+       },
+       "name": "iron_boots",
+       "type": "item",
+       "weight": 3
+      },
+      {
+       "modifier": {
+        "levels": {
+         "max": 39,
+         "min": 20,
+         "type": "uniform"
+        },
+        "options": "#minecraft:on_random_loot",
+        "type": "enchant_with_levels"
+       },
+       "name": "iron_chestplate",
+       "type": "item",
+       "weight": 3
+      },
+      {
+       "modifier": {
+        "levels": {
+         "max": 39,
+         "min": 20,
+         "type": "uniform"
+        },
+        "options": "#minecraft:on_random_loot",
+        "type": "enchant_with_levels"
+       },
+       "name": "iron_leggings",
+       "type": "item",
+       "weight": 3
+      },
+      {
+       "modifier": {
+        "levels": {
+         "max": 39,
+         "min": 20,
+         "type": "uniform"
+        },
+        "options": "#minecraft:on_random_loot",
+        "type": "enchant_with_levels"
+       },
+       "name": "iron_helmet",
+       "type": "item",
+       "weight": 3
+      },
+      {
+       "modifier": {
+        "levels": {
+         "max": 39,
+         "min": 20,
+         "type": "uniform"
+        },
+        "options": "#minecraft:on_random_loot",
+        "type": "enchant_with_levels"
+       },
+       "name": "iron_pickaxe",
+       "type": "item",
+       "weight": 3
+      },
+      {
+       "modifier": {
+        "levels": {
+         "max": 39,
+         "min": 20,
+         "type": "uniform"
+        },
+        "options": "#minecraft:on_random_loot",
+        "type": "enchant_with_levels"
+       },
+       "name": "iron_shovel",
+       "type": "item",
+       "weight": 3
+      }
+     ],
+     "rolls": {
+      "max": 6,
+      "min": 2,
+      "type": "uniform"
+     }
+    },
+    {
+     "entries": [
+      {
+       "type": "empty",
+       "weight": 14
+      },
+      {
+       "name": "spire_armor_trim_smithing_template",
+       "type": "item"
+      }
+     ],
+     "rolls": 1
+    }
+   ],
+   "random_sequence": "chests/end_city_treasure",
+   "type": "chest"
+  },
+  "entities/shulker": {
+   "pools": [
+    {
+     "condition": {
+      "enchanted_chance": {
+       "base": 0.5625,
+       "per_level_above_first": 0.0625,
+       "type": "linear"
+      },
+      "enchantment": "looting",
+      "type": "random_chance_with_enchanted_bonus",
+      "unenchanted_chance": 0.5
+     },
+     "entries": [
+      {
+       "name": "shulker_shell",
+       "type": "item"
+      }
+     ],
+     "rolls": 1
+    }
+   ],
+   "random_sequence": "entities/shulker",
+   "type": "entity"
+  }
+ },
+ "note": "Template sizes, markers and block names only; no layout is copied (FE-02).",
+ "recipes": {
+  "end_rod": {
+   "key": {
+    "#": "popped_chorus_fruit",
+    "/": "blaze_rod"
+   },
+   "pattern": [
+    "/",
+    "#"
+   ],
+   "result": {
+    "count": 4,
+    "id": "end_rod"
+   },
+   "type": "crafting_shaped"
+  },
+  "popped_chorus_fruit": {
+   "cookingtime": 200,
+   "experience": 0.1,
+   "ingredient": "chorus_fruit",
+   "result": {
+    "id": "popped_chorus_fruit"
+   },
+   "type": "smelting"
+  },
+  "purpur_block": {
+   "category": "building",
+   "key": {
+    "F": "popped_chorus_fruit"
+   },
+   "pattern": [
+    "FF",
+    "FF"
+   ],
+   "result": {
+    "count": 4,
+    "id": "purpur_block"
+   },
+   "type": "crafting_shaped"
+  },
+  "purpur_pillar": {
+   "category": "building",
+   "key": {
+    "#": "purpur_slab"
+   },
+   "pattern": [
+    "#",
+    "#"
+   ],
+   "result": {
+    "id": "purpur_pillar"
+   },
+   "type": "crafting_shaped"
+  },
+  "purpur_pillar_from_purpur_block_stonecutting": {
+   "ingredient": "purpur_block",
+   "result": {
+    "id": "purpur_pillar"
+   },
+   "type": "stonecutting"
+  },
+  "purpur_slab": {
+   "category": "building",
+   "key": {
+    "#": [
+     "purpur_block",
+     "purpur_pillar"
+    ]
+   },
+   "pattern": [
+    "###"
+   ],
+   "result": {
+    "count": 6,
+    "id": "purpur_slab"
+   },
+   "type": "crafting_shaped"
+  },
+  "purpur_slab_from_purpur_block_stonecutting": {
+   "ingredient": "purpur_block",
+   "result": {
+    "count": 2,
+    "id": "purpur_slab"
+   },
+   "type": "stonecutting"
+  },
+  "purpur_stairs": {
+   "category": "building",
+   "key": {
+    "#": [
+     "purpur_block",
+     "purpur_pillar"
+    ]
+   },
+   "pattern": [
+    "#  ",
+    "## ",
+    "###"
+   ],
+   "result": {
+    "count": 4,
+    "id": "purpur_stairs"
+   },
+   "type": "crafting_shaped"
+  },
+  "purpur_stairs_from_purpur_block_stonecutting": {
+   "ingredient": "purpur_block",
+   "result": {
+    "id": "purpur_stairs"
+   },
+   "type": "stonecutting"
+  }
+ },
+ "reference": "Minecraft Java Edition 26.3",
+ "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+ "shulker": {
+  "covered_armor": 20.0,
+  "max_health": 30.0
+ },
+ "shulker_bullet_hit": {
+  "damage": 4.0,
+  "levitation_ticks": 200
+ },
+ "sources": [
+  "data/minecraft/structure/end_city/*.nbt (size, DATA structure blocks, block names)",
+  "data/minecraft/worldgen/structure/end_city.json",
+  "data/minecraft/worldgen/structure_set/end_cities.json",
+  "data/minecraft/tags/worldgen/biome/has_structure/end_city.json",
+  "data/minecraft/worldgen/biome/{the_end,end_highlands,end_midlands,small_end_islands,end_barrens}.json",
+  "data/minecraft/worldgen/placed_feature/chorus_plant.json",
+  "data/minecraft/tags/block/supports_chorus_{plant,flower}.json",
+  "data/minecraft/loot_table/{chests/end_city_treasure,entities/shulker,blocks/*}.json",
+  "data/minecraft/recipe/{purpur_*,end_rod,popped_chorus_fruit}.json",
+  "net.minecraft.world.entity.monster.Shulker (constants, createAttributes, COVERED_ARMOR_MODIFIER)",
+  "net.minecraft.world.entity.projectile.ShulkerBullet (constants, onHitEntity)",
+  "net.minecraft.world.level.block.ChorusFlowerBlock, EndCityPieces, EndCityStructure, TeleportRandomlyConsumeEffect (constants)"
+ ],
+ "structure": {
+  "biomes": "#minecraft:has_structure/end_city",
+  "spawn_overrides": {},
+  "step": "surface_structures",
+  "type": "end_city"
+ },
+ "structure_set": {
+  "placement": {
+   "salt": 10387313,
+   "separation": 11,
+   "spacing": 20,
+   "spread_type": "triangular",
+   "type": "random_spread"
+  },
+  "structures": [
+   {
+    "structure": "end_city",
+    "weight": 1
+   }
+  ]
+ },
+ "supports_chorus_flower": [
+  "end_stone"
+ ],
+ "supports_chorus_plant": [
+  "end_stone"
+ ],
+ "templates": {
+  "base_floor": {
+   "blocks": [
+    "end_stone_bricks",
+    "magenta_stained_glass",
+    "purpur_block",
+    "purpur_pillar",
+    "purpur_stairs"
+   ],
+   "filled": true,
+   "markers": [
+    {
+     "name": "Sentry",
+     "pos": [
+      3,
+      2,
+      9
+     ]
+    },
+    {
+     "name": "Sentry",
+     "pos": [
+      6,
+      2,
+      9
+     ]
+    }
+   ],
+   "size": [
+    10,
+    4,
+    10
+   ]
+  },
+  "base_roof": {
+   "blocks": [
+    "end_rod",
+    "purpur_block",
+    "purpur_stairs"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    12,
+    2,
+    12
+   ]
+  },
+  "bridge_end": {
+   "blocks": [
+    "end_rod",
+    "purpur_block",
+    "purpur_pillar",
+    "purpur_slab",
+    "purpur_stairs"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    5,
+    6,
+    2
+   ]
+  },
+  "bridge_gentle_stairs": {
+   "blocks": [
+    "purpur_block",
+    "purpur_pillar",
+    "purpur_slab",
+    "purpur_stairs"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    5,
+    7,
+    8
+   ]
+  },
+  "bridge_piece": {
+   "blocks": [
+    "purpur_block",
+    "purpur_pillar",
+    "purpur_stairs"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    5,
+    6,
+    4
+   ]
+  },
+  "bridge_steep_stairs": {
+   "blocks": [
+    "purpur_block",
+    "purpur_pillar",
+    "purpur_stairs"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    5,
+    7,
+    4
+   ]
+  },
+  "fat_tower_base": {
+   "blocks": [
+    "end_rod",
+    "purpur_block",
+    "purpur_pillar",
+    "purpur_slab",
+    "purpur_stairs"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    13,
+    4,
+    13
+   ]
+  },
+  "fat_tower_middle": {
+   "blocks": [
+    "end_rod",
+    "purpur_block",
+    "purpur_pillar",
+    "purpur_slab",
+    "purpur_stairs"
+   ],
+   "filled": true,
+   "markers": [
+    {
+     "name": "Sentry",
+     "pos": [
+      2,
+      2,
+      6
+     ]
+    },
+    {
+     "name": "Sentry",
+     "pos": [
+      10,
+      2,
+      6
+     ]
+    },
+    {
+     "name": "Sentry",
+     "pos": [
+      6,
+      6,
+      2
+     ]
+    },
+    {
+     "name": "Sentry",
+     "pos": [
+      6,
+      6,
+      10
+     ]
+    }
+   ],
+   "size": [
+    13,
+    8,
+    13
+   ]
+  },
+  "fat_tower_top": {
+   "blocks": [
+    "chest",
+    "end_rod",
+    "end_stone_bricks",
+    "magenta_stained_glass",
+    "purpur_block",
+    "purpur_pillar",
+    "purpur_slab",
+    "purpur_stairs"
+   ],
+   "filled": true,
+   "markers": [
+    {
+     "name": "Chest",
+     "pos": [
+      3,
+      2,
+      11
+     ]
+    },
+    {
+     "name": "Chest",
+     "pos": [
+      5,
+      2,
+      13
+     ]
+    }
+   ],
+   "size": [
+    17,
+    6,
+    17
+   ]
+  },
+  "second_floor_1": {
+   "blocks": [
+    "end_rod",
+    "end_stone_bricks",
+    "magenta_stained_glass",
+    "purpur_block",
+    "purpur_pillar",
+    "purpur_slab",
+    "purpur_stairs"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    12,
+    8,
+    12
+   ]
+  },
+  "second_floor_2": {
+   "blocks": [
+    "end_rod",
+    "end_stone_bricks",
+    "magenta_stained_glass",
+    "purpur_block",
+    "purpur_pillar",
+    "purpur_slab",
+    "purpur_stairs"
+   ],
+   "filled": true,
+   "markers": [
+    {
+     "name": "Sentry",
+     "pos": [
+      8,
+      5,
+      6
+     ]
+    }
+   ],
+   "size": [
+    12,
+    8,
+    12
+   ]
+  },
+  "second_roof": {
+   "blocks": [
+    "end_rod",
+    "purpur_block",
+    "purpur_stairs"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    14,
+    2,
+    14
+   ]
+  },
+  "ship": {
+   "blocks": [
+    "brewing_stand",
+    "chest",
+    "dragon_wall_head",
+    "end_rod",
+    "end_stone_bricks",
+    "ladder",
+    "magenta_stained_glass",
+    "obsidian",
+    "purpur_block",
+    "purpur_pillar",
+    "purpur_slab",
+    "purpur_stairs"
+   ],
+   "filled": true,
+   "markers": [
+    {
+     "name": "Sentry",
+     "pos": [
+      6,
+      4,
+      8
+     ]
+    },
+    {
+     "name": "Chest",
+     "pos": [
+      5,
+      5,
+      7
+     ]
+    },
+    {
+     "name": "Elytra",
+     "pos": [
+      6,
+      5,
+      7
+     ]
+    },
+    {
+     "name": "Chest",
+     "pos": [
+      7,
+      5,
+      7
+     ]
+    },
+    {
+     "name": "Sentry",
+     "pos": [
+      8,
+      6,
+      27
+     ]
+    },
+    {
+     "name": "Sentry",
+     "pos": [
+      4,
+      11,
+      27
+     ]
+    }
+   ],
+   "size": [
+    13,
+    24,
+    29
+   ]
+  },
+  "third_floor_1": {
+   "blocks": [
+    "end_rod",
+    "end_stone_bricks",
+    "magenta_stained_glass",
+    "purpur_block",
+    "purpur_pillar",
+    "purpur_slab",
+    "purpur_stairs"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    14,
+    8,
+    14
+   ]
+  },
+  "third_floor_2": {
+   "blocks": [
+    "chest",
+    "end_rod",
+    "end_stone_bricks",
+    "ender_chest",
+    "magenta_stained_glass",
+    "purpur_block",
+    "purpur_pillar",
+    "purpur_stairs"
+   ],
+   "filled": true,
+   "markers": [
+    {
+     "name": "Sentry",
+     "pos": [
+      2,
+      5,
+      2
+     ]
+    },
+    {
+     "name": "Sentry",
+     "pos": [
+      11,
+      5,
+      2
+     ]
+    },
+    {
+     "name": "Chest",
+     "pos": [
+      6,
+      6,
+      2
+     ]
+    }
+   ],
+   "size": [
+    14,
+    8,
+    14
+   ]
+  },
+  "third_roof": {
+   "blocks": [
+    "end_rod",
+    "purpur_block",
+    "purpur_stairs"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    16,
+    2,
+    16
+   ]
+  },
+  "tower_base": {
+   "blocks": [
+    "ladder",
+    "purpur_block",
+    "purpur_pillar",
+    "purpur_slab",
+    "purpur_stairs"
+   ],
+   "filled": false,
+   "markers": [],
+   "size": [
+    7,
+    7,
+    7
+   ]
+  },
+  "tower_floor": {
+   "blocks": [
+    "purpur_block",
+    "purpur_pillar",
+    "purpur_slab",
+    "purpur_stairs"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    7,
+    4,
+    7
+   ]
+  },
+  "tower_piece": {
+   "blocks": [
+    "purpur_block",
+    "purpur_pillar",
+    "purpur_slab",
+    "purpur_stairs"
+   ],
+   "filled": true,
+   "markers": [],
+   "size": [
+    7,
+    4,
+    7
+   ]
+  },
+  "tower_top": {
+   "blocks": [
+    "end_rod",
+    "end_stone_bricks",
+    "magenta_stained_glass",
+    "magenta_wall_banner",
+    "purpur_block",
+    "purpur_pillar",
+    "purpur_slab",
+    "purpur_stairs"
+   ],
+   "filled": true,
+   "markers": [
+    {
+     "name": "Sentry",
+     "pos": [
+      4,
+      3,
+      4
+     ]
+    }
+   ],
+   "size": [
+    9,
+    5,
+    9
+   ]
+  }
+ }
+}

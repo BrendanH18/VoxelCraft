@@ -48,6 +48,15 @@ pub enum Instrument {
     Bit,
     Banjo,
     Pling,
+    /// v0.16 Track C (appended): the mob-head instruments
+    /// (`NoteBlockInstrument`'s `MOB_HEAD` entries, in Java's order). They
+    /// play their mob's sound at pitch 1, never a tuned note.
+    Zombie,
+    Skeleton,
+    Creeper,
+    Dragon,
+    WitherSkeleton,
+    Piglin,
 }
 
 impl Instrument {
@@ -88,6 +97,12 @@ impl Instrument {
             13 => Self::Bit,
             14 => Self::Banjo,
             15 => Self::Pling,
+            16 => Self::Zombie,
+            17 => Self::Skeleton,
+            18 => Self::Creeper,
+            19 => Self::Dragon,
+            20 => Self::WitherSkeleton,
+            21 => Self::Piglin,
             _ => Self::Harp,
         }
     }
@@ -312,7 +327,27 @@ impl World {
 
     fn play_note(&mut self, p: IVec3, pitch: u8) {
         let below = self.get_block(p - IVec3::Y).unwrap_or(Block::AIR);
-        if self.get_block(p + IVec3::Y) != Some(Block::AIR) {
+        let above = self.get_block(p + IVec3::Y).unwrap_or(Block::AIR);
+        // `NoteBlock.setInstrument`: a head above sets the instrument and,
+        // working above the block, lets it play (`worksAboveNoteBlock`).
+        let head = super::skulls::note_instrument(above);
+        if head.is_none() && above != Block::AIR {
+            return;
+        }
+        if let Some(head) = head {
+            // `triggerEvent`: a mob head plays its mob at pitch 1 with no
+            // note particle; a player head (`CUSTOM_HEAD`) without a
+            // `note_block_sound` plays nothing. Both still notify listeners.
+            if let Some(i) = head {
+                self.notes.push((p, 12, i as u8));
+            }
+            self.allay_notes.push(p);
+            self.emit_game_event(
+                p.as_dvec3() + DVec3::splat(0.5),
+                super::vibration::GameEvent::NoteBlockPlay,
+                super::vibration::EventSource::NONE,
+                None,
+            );
             return;
         }
         let instrument = instrument(below) as u8;

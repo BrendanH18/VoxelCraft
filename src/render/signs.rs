@@ -369,6 +369,7 @@ pub fn shelf_items(world: &World, camera: DVec3, out: &mut Vec<BlockModel>) {
             let size = 0.25;
             out.push(BlockModel {
                 patterns: None,
+                lid: None,
                 min: cell.as_dvec3() + anchor - DVec3::splat(size / 2.0),
                 size: size as f32,
                 block: block.unwrap_or(Block::AIR),

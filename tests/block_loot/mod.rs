@@ -224,6 +224,7 @@ fn property(b: Block, java: &str, prop: &str) -> String {
             .or(ob::cocoa_of(b).map(|(age, _)| age))
             .or(ob::berry_age(b))
             .or(ob::propagule_age(b))
+            .or(voxelcraft::world::gen5_blocks::shelf_of(b).map(|(_, age)| age as u8))
             // A standing propagule is placed at age 4 (`MangrovePropaguleBlock.getStateForPlacement`).
             .or((java == "minecraft:mangrove_propagule").then_some(4))
             .unwrap_or_else(missing)

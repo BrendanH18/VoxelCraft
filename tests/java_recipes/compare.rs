@@ -88,6 +88,10 @@ fn special_check(key: &str) -> Option<Result<(), String>> {
             Some((2, 1)) => Ok(()),
             other => Err(format!("{key}: copies {other:?}")),
         }
+    } else if let Some(special) = firework_special(key) {
+        // v0.16 Track B: `FireworkStarRecipe`, `FireworkStarFadeRecipe` and
+        // `FireworkRocketRecipe` on example grids.
+        special
     } else if key == "crafting_special_mapextending/map_extending" {
         let mut maps = voxelcraft::world::maps::MapStorage::default();
         let data = voxelcraft::world::maps::MapData::fresh(
@@ -115,6 +119,51 @@ fn special_check(key: &str) -> Option<Result<(), String>> {
         }
     } else {
         return None;
+    })
+}
+
+/// v0.16 Track B's firework recipes on example grids: a red star with a
+/// trail, the same star faded to white, and a two-gunpowder rocket of two
+/// stars. `None` for other keys.
+fn firework_special(key: &str) -> Option<Result<(), String>> {
+    use voxelcraft::color::DyeColor;
+    use voxelcraft::content::fireworks as fw;
+    let grid = |stacks: &[Stack]| {
+        let mut g = Grid::new(3);
+        for (cell, s) in g.cells.iter_mut().zip(stacks) {
+            *cell = Some(*s);
+        }
+        g
+    };
+    let one = |item: Item| Stack::new(item, 1);
+    let red = fw::firework_color(DyeColor::Red);
+    let star = fw::star(fw::Explosion {
+        shape: fw::Shape::SmallBall,
+        colors: vec![red],
+        fade_colors: vec![],
+        trail: true,
+        twinkle: false,
+    });
+    let check = |got: Option<Stack>, want: Stack| {
+        if got == Some(want) { Ok(()) } else { Err(format!("{key}: got {got:?}, want {want:?}")) }
+    };
+    Some(match key {
+        "crafting_special_firework_star/firework_star" => {
+            check(grid(&[one(Item::GUNPOWDER), one(DyeColor::Red.dye()), one(Item::DIAMOND)]).result(), star)
+        }
+        "crafting_special_firework_star_fade/firework_star_fade" => {
+            let faded = fw::star(fw::Explosion {
+                fade_colors: vec![fw::firework_color(DyeColor::White)],
+                ..fw::explosion(&star).unwrap().clone()
+            });
+            check(grid(&[star, one(DyeColor::White.dye())]).result(), faded)
+        }
+        "crafting_special_firework_rocket/firework_rocket" => {
+            let explosion = fw::explosion(&star).unwrap().clone();
+            let want = fw::rocket(fw::Fireworks { flight: 2, explosions: vec![explosion.clone(), explosion] }, 3);
+            check(grid(&[one(Item::PAPER), one(Item::GUNPOWDER), one(Item::GUNPOWDER), star, star]).result(), want)
+        }
+        _ => return None,
     })
 }
 

@@ -1,0 +1,813 @@
+{
+  "beacon": {
+    "apply_effects_numbers": [
+      10,
+      10,
+      0,
+      4,
+      1,
+      9,
+      2,
+      20,
+      0.0,
+      0.0,
+      1,
+      1,
+      4,
+      0,
+      1,
+      1
+    ],
+    "constants": {
+      "BLOCKS_CHECK_PER_TICK": 10,
+      "DATA_LEVELS": 0,
+      "DATA_PRIMARY": 1,
+      "DATA_SECONDARY": 2,
+      "LEVELS_NEEDED_FOR_SECONDARY": 4,
+      "MAX_LEVELS": 4,
+      "NUM_DATA_VALUES": 3
+    },
+    "payment_slot_max": 1,
+    "powers": [
+      [
+        "speed",
+        "haste"
+      ],
+      [
+        "resistance",
+        "jump_boost"
+      ],
+      [
+        "strength"
+      ],
+      [
+        "regeneration"
+      ]
+    ],
+    "update_interval": 80
+  },
+  "block_strength": {
+    "beacon": 3.0,
+    "creeper_head": 1.0,
+    "dragon_head": 1.0,
+    "piglin_head": 1.0,
+    "player_head": 1.0,
+    "skeleton_skull": 1.0,
+    "wither_rose": 0.0,
+    "wither_skeleton_skull": 1.0,
+    "zombie_head": 1.0
+  },
+  "entity_types": {
+    "wither": {
+      "category": "monster",
+      "fire_immune": true,
+      "height": 3.5,
+      "width": 0.9
+    },
+    "wither_skull": {
+      "category": "misc",
+      "fire_immune": false,
+      "height": 0.3125,
+      "width": 0.3125
+    }
+  },
+  "items": {
+    "beacon": {
+      "damage_resistant": false,
+      "equips_head": false,
+      "glint": false,
+      "lowered_mob_visibility": null,
+      "rarity": "rare"
+    },
+    "creeper_head": {
+      "damage_resistant": false,
+      "equips_head": true,
+      "glint": false,
+      "lowered_mob_visibility": [
+        "creeper"
+      ],
+      "rarity": "uncommon"
+    },
+    "dragon_head": {
+      "damage_resistant": false,
+      "equips_head": true,
+      "glint": false,
+      "lowered_mob_visibility": null,
+      "rarity": "epic"
+    },
+    "nether_star": {
+      "damage_resistant": true,
+      "equips_head": false,
+      "glint": true,
+      "lowered_mob_visibility": null,
+      "rarity": "rare"
+    },
+    "piglin_head": {
+      "damage_resistant": false,
+      "equips_head": true,
+      "glint": false,
+      "lowered_mob_visibility": [
+        "piglin",
+        "piglin_brute"
+      ],
+      "rarity": "uncommon"
+    },
+    "player_head": {
+      "damage_resistant": false,
+      "equips_head": true,
+      "glint": false,
+      "lowered_mob_visibility": null,
+      "rarity": "uncommon"
+    },
+    "skeleton_skull": {
+      "damage_resistant": false,
+      "equips_head": true,
+      "glint": false,
+      "lowered_mob_visibility": [
+        "skeleton"
+      ],
+      "rarity": "uncommon"
+    },
+    "wither_rose": {
+      "damage_resistant": false,
+      "equips_head": false,
+      "glint": false,
+      "lowered_mob_visibility": null,
+      "rarity": "common"
+    },
+    "wither_skeleton_skull": {
+      "damage_resistant": false,
+      "equips_head": true,
+      "glint": false,
+      "lowered_mob_visibility": null,
+      "rarity": "rare"
+    },
+    "zombie_head": {
+      "damage_resistant": false,
+      "equips_head": true,
+      "glint": false,
+      "lowered_mob_visibility": [
+        "zombie"
+      ],
+      "rarity": "uncommon"
+    }
+  },
+  "loot_tables": {
+    "blocks/beacon": {
+      "pools": [
+        {
+          "entries": [
+            {
+              "modifier": {
+                "include": [
+                  "minecraft:custom_name"
+                ],
+                "source": "block_entity",
+                "type": "minecraft:copy_components"
+              },
+              "name": "minecraft:beacon",
+              "type": "minecraft:item"
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "type": "minecraft:block"
+    },
+    "blocks/creeper_head": {
+      "pools": [
+        {
+          "entries": [
+            {
+              "modifier": {
+                "include": [
+                  "minecraft:custom_name"
+                ],
+                "source": "block_entity",
+                "type": "minecraft:copy_components"
+              },
+              "name": "minecraft:creeper_head",
+              "type": "minecraft:item"
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "type": "minecraft:block"
+    },
+    "blocks/dragon_head": {
+      "pools": [
+        {
+          "entries": [
+            {
+              "modifier": {
+                "include": [
+                  "minecraft:custom_name"
+                ],
+                "source": "block_entity",
+                "type": "minecraft:copy_components"
+              },
+              "name": "minecraft:dragon_head",
+              "type": "minecraft:item"
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "type": "minecraft:block"
+    },
+    "blocks/piglin_head": {
+      "pools": [
+        {
+          "entries": [
+            {
+              "modifier": {
+                "include": [
+                  "minecraft:custom_name"
+                ],
+                "source": "block_entity",
+                "type": "minecraft:copy_components"
+              },
+              "name": "minecraft:piglin_head",
+              "type": "minecraft:item"
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "type": "minecraft:block"
+    },
+    "blocks/player_head": {
+      "pools": [
+        {
+          "entries": [
+            {
+              "modifier": {
+                "include": [
+                  "minecraft:profile",
+                  "minecraft:note_block_sound",
+                  "minecraft:custom_name"
+                ],
+                "source": "block_entity",
+                "type": "minecraft:copy_components"
+              },
+              "name": "minecraft:player_head",
+              "type": "minecraft:item"
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "type": "minecraft:block"
+    },
+    "blocks/potted_wither_rose": {
+      "pools": [
+        {
+          "condition": {
+            "type": "minecraft:survives_explosion"
+          },
+          "entries": [
+            {
+              "name": "minecraft:flower_pot",
+              "type": "minecraft:item"
+            }
+          ],
+          "rolls": 1
+        },
+        {
+          "condition": {
+            "type": "minecraft:survives_explosion"
+          },
+          "entries": [
+            {
+              "name": "minecraft:wither_rose",
+              "type": "minecraft:item"
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "type": "minecraft:block"
+    },
+    "blocks/skeleton_skull": {
+      "pools": [
+        {
+          "entries": [
+            {
+              "modifier": {
+                "include": [
+                  "minecraft:custom_name"
+                ],
+                "source": "block_entity",
+                "type": "minecraft:copy_components"
+              },
+              "name": "minecraft:skeleton_skull",
+              "type": "minecraft:item"
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "type": "minecraft:block"
+    },
+    "blocks/wither_rose": {
+      "pools": [
+        {
+          "condition": {
+            "type": "minecraft:survives_explosion"
+          },
+          "entries": [
+            {
+              "name": "minecraft:wither_rose",
+              "type": "minecraft:item"
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "type": "minecraft:block"
+    },
+    "blocks/wither_skeleton_skull": {
+      "pools": [
+        {
+          "entries": [
+            {
+              "modifier": {
+                "include": [
+                  "minecraft:custom_name"
+                ],
+                "source": "block_entity",
+                "type": "minecraft:copy_components"
+              },
+              "name": "minecraft:wither_skeleton_skull",
+              "type": "minecraft:item"
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "type": "minecraft:block"
+    },
+    "blocks/zombie_head": {
+      "pools": [
+        {
+          "entries": [
+            {
+              "modifier": {
+                "include": [
+                  "minecraft:custom_name"
+                ],
+                "source": "block_entity",
+                "type": "minecraft:copy_components"
+              },
+              "name": "minecraft:zombie_head",
+              "type": "minecraft:item"
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "type": "minecraft:block"
+    },
+    "charged_creeper/creeper": {
+      "pools": [
+        {
+          "entries": [
+            {
+              "name": "minecraft:creeper_head",
+              "type": "minecraft:item"
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "type": "minecraft:entity"
+    },
+    "charged_creeper/piglin": {
+      "pools": [
+        {
+          "entries": [
+            {
+              "name": "minecraft:piglin_head",
+              "type": "minecraft:item"
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "type": "minecraft:entity"
+    },
+    "charged_creeper/root": {
+      "pools": [
+        {
+          "entries": [
+            {
+              "children": [
+                {
+                  "condition": {
+                    "entity": "this",
+                    "predicate": {
+                      "minecraft:entity_type": "minecraft:piglin"
+                    },
+                    "type": "minecraft:entity_properties"
+                  },
+                  "type": "minecraft:loot_table",
+                  "value": "minecraft:charged_creeper/piglin"
+                },
+                {
+                  "condition": {
+                    "entity": "this",
+                    "predicate": {
+                      "minecraft:entity_type": "minecraft:creeper"
+                    },
+                    "type": "minecraft:entity_properties"
+                  },
+                  "type": "minecraft:loot_table",
+                  "value": "minecraft:charged_creeper/creeper"
+                },
+                {
+                  "condition": {
+                    "entity": "this",
+                    "predicate": {
+                      "minecraft:entity_type": "minecraft:skeleton"
+                    },
+                    "type": "minecraft:entity_properties"
+                  },
+                  "type": "minecraft:loot_table",
+                  "value": "minecraft:charged_creeper/skeleton"
+                },
+                {
+                  "condition": {
+                    "entity": "this",
+                    "predicate": {
+                      "minecraft:entity_type": "minecraft:wither_skeleton"
+                    },
+                    "type": "minecraft:entity_properties"
+                  },
+                  "type": "minecraft:loot_table",
+                  "value": "minecraft:charged_creeper/wither_skeleton"
+                },
+                {
+                  "condition": {
+                    "entity": "this",
+                    "predicate": {
+                      "minecraft:entity_type": "minecraft:zombie"
+                    },
+                    "type": "minecraft:entity_properties"
+                  },
+                  "type": "minecraft:loot_table",
+                  "value": "minecraft:charged_creeper/zombie"
+                }
+              ],
+              "type": "minecraft:alternatives"
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "type": "minecraft:entity"
+    },
+    "charged_creeper/skeleton": {
+      "pools": [
+        {
+          "entries": [
+            {
+              "name": "minecraft:skeleton_skull",
+              "type": "minecraft:item"
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "type": "minecraft:entity"
+    },
+    "charged_creeper/wither_skeleton": {
+      "pools": [
+        {
+          "entries": [
+            {
+              "name": "minecraft:wither_skeleton_skull",
+              "type": "minecraft:item"
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "type": "minecraft:entity"
+    },
+    "charged_creeper/zombie": {
+      "pools": [
+        {
+          "entries": [
+            {
+              "name": "minecraft:zombie_head",
+              "type": "minecraft:item"
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "type": "minecraft:entity"
+    },
+    "entities/wither": {
+      "type": "minecraft:entity"
+    },
+    "entities/wither_skeleton": {
+      "pools": [
+        {
+          "entries": [
+            {
+              "modifier": [
+                {
+                  "count": {
+                    "max": 1,
+                    "min": -1,
+                    "type": "minecraft:uniform"
+                  },
+                  "type": "minecraft:set_count"
+                },
+                {
+                  "count": {
+                    "max": 1.0,
+                    "min": 0.0,
+                    "type": "minecraft:uniform"
+                  },
+                  "enchantment": "minecraft:looting",
+                  "type": "minecraft:enchanted_count_increase"
+                }
+              ],
+              "name": "minecraft:coal",
+              "type": "minecraft:item"
+            }
+          ],
+          "rolls": 1
+        },
+        {
+          "entries": [
+            {
+              "modifier": [
+                {
+                  "count": {
+                    "max": 2,
+                    "min": 0,
+                    "type": "minecraft:uniform"
+                  },
+                  "type": "minecraft:set_count"
+                },
+                {
+                  "count": {
+                    "max": 1.0,
+                    "min": 0.0,
+                    "type": "minecraft:uniform"
+                  },
+                  "enchantment": "minecraft:looting",
+                  "type": "minecraft:enchanted_count_increase"
+                }
+              ],
+              "name": "minecraft:bone",
+              "type": "minecraft:item"
+            }
+          ],
+          "rolls": 1
+        },
+        {
+          "condition": {
+            "terms": [
+              {
+                "type": "minecraft:killed_by_player"
+              },
+              {
+                "enchanted_chance": {
+                  "base": 0.035,
+                  "per_level_above_first": 0.01,
+                  "type": "minecraft:linear"
+                },
+                "enchantment": "minecraft:looting",
+                "type": "minecraft:random_chance_with_enchanted_bonus",
+                "unenchanted_chance": 0.025
+              }
+            ],
+            "type": "minecraft:all_of"
+          },
+          "entries": [
+            {
+              "name": "minecraft:wither_skeleton_skull",
+              "type": "minecraft:item"
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "type": "minecraft:entity"
+    }
+  },
+  "note_block_instruments": [
+    "harp",
+    "basedrum",
+    "snare",
+    "hat",
+    "bass",
+    "flute",
+    "bell",
+    "guitar",
+    "chime",
+    "xylophone",
+    "iron_xylophone",
+    "cow_bell",
+    "didgeridoo",
+    "bit",
+    "banjo",
+    "pling",
+    "trumpet",
+    "trumpet_exposed",
+    "trumpet_oxidized",
+    "trumpet_weathered",
+    "zombie",
+    "skeleton",
+    "creeper",
+    "dragon",
+    "wither_skeleton",
+    "piglin",
+    "custom_head"
+  ],
+  "recipes": {
+    "beacon": {
+      "key": {
+        "G": "minecraft:glass",
+        "O": "minecraft:obsidian",
+        "S": "minecraft:nether_star"
+      },
+      "pattern": [
+        "GGG",
+        "GSG",
+        "OOO"
+      ],
+      "result": {
+        "id": "minecraft:beacon"
+      },
+      "type": "minecraft:crafting_shaped"
+    },
+    "creeper_banner_pattern": {
+      "ingredients": [
+        "minecraft:paper",
+        "minecraft:creeper_head"
+      ],
+      "result": {
+        "id": "minecraft:creeper_banner_pattern"
+      },
+      "type": "minecraft:crafting_shapeless"
+    }
+  },
+  "reference": "Minecraft Java Edition 26.3",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "sources": [
+    "net.minecraft.world.entity.EntityTypes (WITHER, WITHER_SKULL)",
+    "WitherBoss (createAttributes, constructor, registerGoals, customServerAiStep, makeInvulnerable, getHeadX/Y, performRangedAttack, isPowered, static init)",
+    "WitherSkull (onHitEntity, onHit, getInertia, getBlockExplosionResistance), AbstractHurtingProjectile",
+    "WitherRoseBlock.getBeeInteractionEffect",
+    "BeaconBlockEntity (constants, BEACON_EFFECTS, tick, applyEffects), BeaconMenu.PaymentSlot",
+    "Items and Blocks static init (head, Nether star, beacon and wither rose properties)",
+    "NoteBlockInstrument",
+    "data/minecraft/loot_table, recipe, tags"
+  ],
+  "tags": {
+    "block": {
+      "beacon_base_blocks": [
+        "netherite_block",
+        "emerald_block",
+        "diamond_block",
+        "gold_block",
+        "iron_block"
+      ],
+      "supports_vegetation": [
+        "#minecraft:substrate_overworld",
+        "farmland"
+      ],
+      "supports_wither_rose": [
+        "#minecraft:supports_vegetation",
+        "netherrack",
+        "soul_sand",
+        "soul_soil"
+      ],
+      "wither_immune": [
+        "barrier",
+        "bedrock",
+        "end_portal",
+        "end_portal_frame",
+        "end_gateway",
+        "command_block",
+        "repeating_command_block",
+        "chain_command_block",
+        "structure_block",
+        "jigsaw",
+        "moving_piston",
+        "light",
+        "reinforced_deepslate",
+        "test_block",
+        "test_instance_block"
+      ],
+      "wither_summon_base_blocks": [
+        "soul_sand",
+        "soul_soil"
+      ]
+    },
+    "damage_type": {
+      "wither_immune_to": [
+        "drown"
+      ]
+    },
+    "entity_type": {
+      "undead": [
+        "#minecraft:skeletons",
+        "#minecraft:zombies",
+        "wither",
+        "phantom"
+      ],
+      "wither_friends": [
+        "#minecraft:undead"
+      ]
+    },
+    "item": {
+      "beacon_payment_items": [
+        "netherite_ingot",
+        "emerald",
+        "diamond",
+        "gold_ingot",
+        "iron_ingot"
+      ],
+      "noteblock_top_instruments": [
+        "zombie_head",
+        "skeleton_skull",
+        "creeper_head",
+        "dragon_head",
+        "wither_skeleton_skull",
+        "piglin_head",
+        "player_head"
+      ],
+      "skulls": [
+        "player_head",
+        "creeper_head",
+        "zombie_head",
+        "skeleton_skull",
+        "wither_skeleton_skull",
+        "dragon_head",
+        "piglin_head"
+      ]
+    }
+  },
+  "wither": {
+    "attributes": {
+      "armor": 4.0,
+      "flying_speed": 0.6000000238418579,
+      "follow_range": 40.0,
+      "max_health": 300.0,
+      "movement_speed": 0.6000000238418579
+    },
+    "charge_heal": 10.0,
+    "constants": {
+      "DEFAULT_INVULNERABLE_TICKS": 0,
+      "INVULNERABLE_TICKS": 220
+    },
+    "dangerous_chance": 0.001,
+    "head_attack_range_sqr": 900.0,
+    "head_offset": 1.3,
+    "head_targeting_box": [
+      20.0,
+      8.0,
+      20.0
+    ],
+    "head_y": [
+      3.0,
+      2.2
+    ],
+    "heal": 1.0,
+    "invulnerable_health_divisor": 3.0,
+    "powered_divisor": 2.0,
+    "ranged_attack_goal": [
+      1.0,
+      40,
+      20.0
+    ],
+    "spawn_explosion_power": 7.0,
+    "spawn_level_event": 1023,
+    "targeting_range": 20.0,
+    "xp_reward": 50
+  },
+  "wither_rose_contact_ticks": 40,
+  "wither_skull": {
+    "acceleration_power": 0.1,
+    "dangerous_inertia": 0.73,
+    "dangerous_resistance_cap": 0.8,
+    "explosion_power": 1.0,
+    "inertia": 0.95,
+    "kill_heal": 5.0,
+    "liquid_inertia": 0.8,
+    "owner_damage": 8.0,
+    "ownerless_damage": 5.0,
+    "wither_amplifier": 1,
+    "wither_seconds": [
+      10,
+      40
+    ]
+  }
+}

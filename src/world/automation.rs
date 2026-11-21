@@ -159,6 +159,11 @@ impl World {
         if b == Block::AIR || b.is_fluid() {
             return Reaction::Empty;
         }
+        // v0.16 Track B: shulker boxes pop (`PushReaction.POPPED`), dropping
+        // themselves with their contents.
+        if super::shulker_box::owns(b.0) {
+            return Reaction::Destroy;
+        }
         if !b.hardness().is_finite()
             || matches!(
                 b,
@@ -185,6 +190,8 @@ impl World {
             // Jukeboxes (a block entity) and reinforced deepslate
             // (`PushReaction.IMMOVEABLE`).
             || super::jukebox::piston_immovable(b)
+            // v0.16 Track C: the beacon's block entity.
+            || b == super::beacon::BEACON
             || super::utilities::campfire_of(b).is_some()
             || matches!(
                 r::component(b),
@@ -211,6 +218,8 @@ impl World {
             || super::utilities::decorated_pot_of(b).is_some()
             || super::scaffolding::is_scaffolding(b)
             || super::colour_blocks::pops_on_push(b)
+            // v0.16 Track C: heads are `PushReaction.POPPED`.
+            || super::skulls::owns(b.0)
             || b.is_fire()
             || matches!(
                 r::component(b),
@@ -407,7 +416,8 @@ impl World {
                 if let &[x, y, z, stack] = rest.split(',').collect::<Vec<_>>().as_slice()
                     && let (Ok(x), Ok(y), Ok(z), Some(Some(stack))) =
                         (x.parse(), y.parse(), z.parse(), crate::inventory::stack_from_str(stack))
-                    && crate::entity::aquatic::bucket_kind(stack.item).is_some()
+                    && (crate::entity::aquatic::bucket_kind(stack.item).is_some()
+                        || stack.item == crate::entity::sulfur_cube::BUCKET)
                 {
                     self.automation.creatures.push((IVec3::new(x, y, z), stack));
                 }
@@ -541,7 +551,9 @@ impl World {
             return slot == 0 && super::jukebox::song_of(item).is_some() && self.container_stack(p, 0).is_none();
         }
         if self.chest(p).is_some() {
-            return true;
+            // v0.16 Track B: `ShulkerBoxBlockEntity.canPlaceItemThroughFace`.
+            return !(self.get_block(p).is_some_and(|b| super::shulker_box::owns(b.0))
+                && crate::content::shulker_box::is_shulker_box(item));
         }
         if self.furnace(p).is_some() {
             return if side == IVec3::Y {
@@ -733,6 +745,14 @@ impl World {
         if !dropper && stack.item.block() == Some(Block::TNT) && !self.rules.tnt_explodes {
             return;
         }
+        // v0.16 Track B: `ShulkerBoxDispenseBehavior` places the box; a box
+        // that can't be placed stays in the dispenser.
+        if !dropper && crate::content::shulker_box::is_shulker_box(stack.item) {
+            if self.dispense_shulker_box(front, d, &one) {
+                self.set_container_stack(p, slot, None);
+            }
+            return;
+        }
         if !dropper && stack.item == Item::BONE_MEAL {
             // Java `BoneMealDispenseItemBehavior`: it fertilises the block in front and is only
             // used up when that grew something; otherwise the stack stays in the slot.
@@ -760,6 +780,12 @@ impl World {
                     if self.generator.dimension != super::terrain::Dimension::Nether && !block.holds_water() {
                         self.set_block(front, Block::WATER);
                     }
+                    self.automation.creatures.push((front, one));
+                    Some(Item::BUCKET)
+                }
+                // v0.16 Track D: a sulfur cube bucket has no fluid to pour;
+                // `MobBucketItem.checkExtraContent` lets the cube out.
+                crate::entity::sulfur_cube::BUCKET => {
                     self.automation.creatures.push((front, one));
                     Some(Item::BUCKET)
                 }
@@ -794,7 +820,12 @@ impl World {
         let shot = !dropper
             && matches!(
                 stack.item,
-                Item::ARROW | Item::SPECTRAL_ARROW | Item::TIPPED_ARROW | Item::FIRE_CHARGE | Item::EXPERIENCE_BOTTLE
+                Item::ARROW
+                    | Item::SPECTRAL_ARROW
+                    | Item::TIPPED_ARROW
+                    | Item::FIRE_CHARGE
+                    | Item::EXPERIENCE_BOTTLE
+                    | crate::content::fireworks::FIREWORK_ROCKET
             );
         self.automation.output.push((p, facing, shot, one));
     }
@@ -803,7 +834,10 @@ impl World {
     /// Headless callers use this same method with their Entities collection.
     pub fn tick_automation_entities(&mut self, entities: &mut crate::entity::Entities) {
         for (p, stack) in std::mem::take(&mut self.automation.creatures) {
-            entities.release_water_creature(stack, p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
+            let at = p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
+            if !entities.release_sulfur_cube(stack, at) {
+                entities.release_water_creature(stack, at);
+            }
         }
         let mut rings = std::mem::take(&mut self.bell_rings);
         for &pos in &rings {
@@ -818,6 +852,8 @@ impl World {
                 entities.dispense_fire_charge(p, step);
             } else if arrow && stack.item == Item::EXPERIENCE_BOTTLE {
                 entities.dispense_thrown(stack.item, p, step);
+            } else if arrow && stack.item == crate::content::fireworks::FIREWORK_ROCKET {
+                entities.dispense_firework(stack, p, step);
             } else if arrow {
                 entities.dispense_arrow_stack(stack, p, step);
             } else {

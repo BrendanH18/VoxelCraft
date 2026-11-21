@@ -21,6 +21,8 @@ impl Game {
                 Request::Break { cell, .. } | Request::Hit { cell, .. } => (cell.as_dvec3(), 128.0),
                 Request::Burst(b) | Request::Tracking(b) => (b.pos, if b.forced { 128.0 } else { 32.0 }),
                 Request::Explosion { pos, .. } => (*pos, 128.0),
+                // v0.16 Track B: `ClientLevel.createFireworks` adds the burst whatever the distance.
+                Request::Firework { pos, .. } => (*pos, 256.0),
                 Request::EyeBreak { pos } | Request::Honey { pos, .. } => (*pos, 48.0),
             };
             centers.iter().any(|center| pos.distance_squared(*center) <= radius * radius)

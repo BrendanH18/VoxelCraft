@@ -19,6 +19,8 @@ mod copper;
 mod copper_golem_statue;
 #[path = "crop_textures.rs"]
 mod crops;
+#[path = "gen5_textures.rs"]
+mod gen5;
 #[path = "nether_textures.rs"]
 mod nether;
 #[path = "overworld_textures.rs"]
@@ -111,6 +113,25 @@ const DIRT: [u8; 3] = [134, 96, 67];
 const GRASS: [u8; 3] = [95, 159, 53];
 
 pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
+    // v0.16 Track C: heads, the wither rose and its pot, the beacon.
+    if (crate::world::skulls::TEX..crate::world::skulls::TEX_END).contains(&layer) {
+        return crate::world::skulls::pixel(layer, x, y);
+    }
+    if (crate::world::wither_rose::TEX..crate::world::wither_rose::TEX_END).contains(&layer) {
+        return match crate::world::wither_rose::pot_layer_plant(layer) {
+            Some(plant) => utility::potted_side(layer, plant, x, y),
+            None => crate::world::wither_rose::pixel(x, y),
+        };
+    }
+    if (crate::world::beacon::GLASS_TEX..crate::world::beacon::TEX_END).contains(&layer) {
+        return crate::world::beacon::pixel(layer, x, y);
+    }
+    if (crate::world::camp_maps::TEX..crate::world::camp_maps::TEX_END).contains(&layer) {
+        return crate::world::camp_maps::pixel(layer, x, y);
+    }
+    if gen5::owns(layer) {
+        return gen5::pixel(layer, x, y);
+    }
     if (crate::world::eyeblossom::TEX..crate::world::eyeblossom::TEX_END).contains(&layer) {
         return match crate::world::eyeblossom::pot_layer_plant(layer) {
             Some(plant) => utility::potted_side(layer, plant, x, y),
@@ -288,8 +309,18 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     if (crate::world::heavy_core::TEX..crate::world::heavy_core::TEX_END).contains(&layer) {
         return crate::world::heavy_core::pixel(layer, x, y);
     }
+    if (crate::world::end_blocks::TEX..crate::world::end_blocks::TEX_END).contains(&layer) {
+        return crate::world::end_blocks::pixel(layer, x, y);
+    }
     if (crate::world::dried_ghast::TEX..crate::world::dried_ghast::TEX_END).contains(&layer) {
         return crate::world::dried_ghast::pixel(layer, x, y);
+    }
+    // v0.16 Track B: shulker boxes.
+    if (crate::world::shulker_box::TEX..crate::world::shulker_box::TEX_END).contains(&layer) {
+        return crate::world::shulker_box::pixel(layer, x, y);
+    }
+    if layer == voxelcraft::content::elytra::WING_TEX {
+        return voxelcraft::content::elytra::wing_pixel(x, y);
     }
     if (crate::world::sniffer_plants::t::BASE..crate::world::sniffer_plants::t::END).contains(&layer) {
         return sniffer_plants::pixel(layer, x, y);

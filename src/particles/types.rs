@@ -38,10 +38,16 @@ pub enum Kind {
     SoulFlame,
     /// Java's `NoteParticle`, tinted by the note's pitch (`note / 24`).
     Note,
+    /// v0.16 Track B: `FireworkParticles.SparkParticle` (`FIREWORK`).
+    FireworkSpark,
+    /// v0.16 Track B: `FireworkParticles.OverlayParticle` (`FLASH`).
+    FireworkFlash,
+    /// v0.16 Track A: `EndRodParticle`, from End rods and shulker bullets.
+    EndRod,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 24] = [
+    pub const ALL: [Kind; 27] = [
         Kind::Smoke,
         Kind::LargeSmoke,
         Kind::Rain,
@@ -66,6 +72,9 @@ impl Kind {
         Kind::WhiteAsh,
         Kind::SoulFlame,
         Kind::Note,
+        Kind::FireworkSpark,
+        Kind::FireworkFlash,
+        Kind::EndRod,
     ];
 
     pub fn sprite(self) -> u16 {
@@ -86,6 +95,11 @@ impl Kind {
             Self::CrimsonSpore | Self::WarpedSpore | Self::Ash | Self::WhiteAsh => 13,
             Self::SoulFlame => 14,
             Self::Note => 15,
+            // v0.16 Track B: sparks reuse the crit star, the flash the effect swirl.
+            Self::FireworkSpark => 2,
+            Self::FireworkFlash => 9,
+            // A white glint on the critical-hit sprite.
+            Self::EndRod => 2,
         }
     }
 }
@@ -139,6 +153,8 @@ pub struct System {
     pub(super) biomes: super::ambient::BiomeWindow,
     explosions: VecDeque<Emitter>,
     tracking: VecDeque<Tracking>,
+    /// v0.16 Track B: firework bursts in progress.
+    pub(super) fireworks: VecDeque<super::firework::Starter>,
 }
 
 impl System {
@@ -149,6 +165,7 @@ impl System {
             biomes: Default::default(),
             explosions: VecDeque::with_capacity(256),
             tracking: VecDeque::with_capacity(256),
+            fireworks: VecDeque::with_capacity(64),
         }
     }
 
@@ -156,6 +173,7 @@ impl System {
         self.pool.clear();
         self.explosions.clear();
         self.tracking.clear();
+        self.fireworks.clear();
     }
 
     /// Java's ordinary particle filter: All, 2/3 Decreased, zero Minimal.
@@ -197,6 +215,17 @@ impl System {
                 }
             }
             Request::EyeBreak { pos } => self.eye_break(pos, setting),
+            // Firework bursts are spawned whatever the particle setting.
+            Request::Firework { pos, vel, fireworks } => {
+                if let Some(crate::inventory::components::Payload::Fireworks(f)) = fireworks.map(|f| f.get())
+                    && !f.explosions.is_empty()
+                {
+                    if self.fireworks.len() == 64 {
+                        self.fireworks.pop_front();
+                    }
+                    self.fireworks.push_back(super::firework::Starter::new(pos, vel, &f.explosions));
+                }
+            }
             Request::Honey { pos, count, .. } => {
                 for _ in 0..count {
                     if self.accept(setting, false, false) {
@@ -223,6 +252,7 @@ impl System {
 
     pub fn tick(&mut self, world: &World, setting: Setting) {
         self.pool.tick(world);
+        self.tick_fireworks();
         let n = self.tracking.len();
         for _ in 0..n {
             let mut emitter = self.tracking.pop_front().unwrap();
@@ -445,6 +475,16 @@ impl System {
                 p.size *= 0.75;
                 p.lifetime = (20.0 / rng.range(0.2, 1.0)) as u16;
             }
+            // v0.16 Track B: a rocket's white trail spark (`SparkParticle`
+            // keeps the velocity it is given).
+            Kind::FireworkSpark => return super::firework::trail_spark(rng, pos, velocity),
+            Kind::FireworkFlash => {
+                p.motion = Motion::Stationary;
+                p.physics = false;
+                p.emissive = true;
+                p.lifetime = 4;
+                p.size = 0.0;
+            }
             Kind::Note => {
                 // NoteParticle: the base random drift at a hundredth plus a 0.2 rise, friction
                 // 0.66, no collisions, 1.5 times the base size and six ticks of life.
@@ -453,6 +493,17 @@ impl System {
                 p.velocity = java_velocity(rng, DVec3::ZERO) * 0.01 + DVec3::new(0.0, 0.2, 0.0);
                 p.size *= 1.5;
                 p.lifetime = 6;
+            }
+            Kind::EndRod => {
+                // `EndRodParticle`: the given velocity, gravity 0.0125,
+                // friction 0.91, 60–71 ticks, three-quarter size, white.
+                p.physics = false;
+                p.friction = 0.91;
+                p.gravity = 0.0125;
+                p.velocity = velocity;
+                p.size *= 0.75;
+                p.lifetime = 60 + (rng.next_f32() * 12.0) as u16;
+                p.color = [0.97, 0.97, 0.97, 1.0];
             }
             Kind::Heart | Kind::Angry => {
                 p.velocity *= 0.01;
@@ -529,7 +580,10 @@ impl System {
         let neighbour = |side: crate::world::block::Facing| world.get_block(cell + side.offset()).unwrap_or(Block::AIR);
         let boxes = if block.kind() == crate::world::block::RenderKind::Shaped {
             let below = world.get_block(cell - IVec3::Y).unwrap_or(Block::AIR);
-            crate::world::shape::shape(block, neighbour, below)
+            let boxes = crate::world::shape::shape(block, neighbour, below);
+            // v0.16 Track B: blocks drawn only as models (shulker boxes)
+            // crumble from their outline.
+            if boxes.is_empty() { crate::world::shape::outline(block, neighbour, below) } else { boxes }
         } else {
             crate::world::shape::Boxes::from_box(crate::world::shape::Box16 {
                 min: [0; 3],
@@ -591,7 +645,7 @@ fn java_velocity(rng: &mut Rng, supplied: DVec3) -> DVec3 {
     v.normalize_or(DVec3::Y) * speed + DVec3::Y * 0.1
 }
 
-fn gaussian(rng: &mut Rng) -> f64 {
+pub(super) fn gaussian(rng: &mut Rng) -> f64 {
     let radius = (-2.0 * (1.0 - rng.next_f32() as f64).ln()).sqrt();
     radius * (std::f64::consts::TAU * rng.next_f32() as f64).cos()
 }

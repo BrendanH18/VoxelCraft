@@ -293,14 +293,27 @@ impl PlayerSession {
                     } else if let Some(placed) = crate::world::wood::placed(raw, &ctx, |c| world.get_block(c)) {
                         // Signs, shelves and chiseled bookshelves (`world::wood`).
                         placed.ok_or("block cannot survive here")?
+                    } else if let Some(shulker) = crate::world::shulker_box::placed(raw, normal) {
+                        // v0.16 Track B: the lid faces away from the clicked face.
+                        shulker
+                    } else if let Some(placed) = crate::world::gen5_blocks::placed(raw, &ctx, |c| world.get_block(c)) {
+                        // Sulfur spikes and shelf mushrooms (`world::gen5_blocks`).
+                        placed.ok_or("block cannot survive here")?
                     } else if let Some(banner) = cb::placed(raw, &ctx, |c| world.get_block(c)) {
                         banner.ok_or("block cannot survive here")?
+                    } else if let Some(head) =
+                        crate::world::skulls::placed(raw, &ctx, world.redstone_power(at) > 0, |c| world.get_block(c))
+                    {
+                        // v0.16 Track C: heads on the floor or a wall.
+                        head.ok_or("block cannot survive here")?
                     } else if let Some(mounted) = crate::world::copper::placed(raw, &ctx, |c| world.get_block(c))
                         .or_else(|| crate::world::mount_states::placed(raw, &ctx, |c| world.get_block(c)))
                     {
                         mounted.ok_or("block cannot survive here")?
                     } else {
                         let raw = crate::world::creaking::placed(raw, normal);
+                        // v0.16 Track A: purpur pillar axes and End rod facings.
+                        let raw = crate::world::end_blocks::placed(raw, normal, world.get_block(hit));
                         let raw = crate::world::frog_blocks::placed(raw, normal);
                         let block = ob::placed(raw, normal).unwrap_or(raw);
                         let block = crate::world::village_blocks::placed(
@@ -350,7 +363,8 @@ impl PlayerSession {
                     }
                     let below = world.get_block(at - IVec3::Y);
                     let support = world
-                        .overworld_placement_ok(at, block)
+                        .chorus_placement_ok(at, block)
+                        .or_else(|| world.overworld_placement_ok(at, block))
                         .unwrap_or_else(|| below.is_some_and(|b| block.can_stay_on(b)))
                         && (block != Block::SUGAR_CANE || below == Some(Block::SUGAR_CANE) || world.cane_has_water(at))
                         && (!block.is_mushroom() || world.mushroom_survives(at));
@@ -372,6 +386,7 @@ impl PlayerSession {
                         || ss::slab(block).is_some()
                         || crate::world::wood::owns(block.0)
                         || crate::world::copper_golem_statue::owns(block.0)
+                        || crate::world::skulls::owns(block.0)
                         || cb::owns(block.0);
                     if (block.is_solid() && if shaped_half { obstructed(world, at, block) } else { blocked(at) })
                         || partner.is_some_and(|(p, b)| !free(world, p) || (b.is_solid() && blocked(p)))
@@ -407,6 +422,7 @@ impl PlayerSession {
         let placed = world.set_block(cell, block);
         debug_assert!(placed, "validated loaded placement must succeed");
         world.restore_hive_item(cell, held.hive);
+        world.restore_shulker_box_item(cell, &held);
         world.name_copper_golem_statue(cell, held.name);
         if kind != Kind::Block
             && let Some((pos, partner)) = partner

@@ -458,6 +458,33 @@ fn unsupported_stalactites_fall_break_and_hurt() {
     assert_eq!(items, 3);
 }
 
+/// v0.16 Track D: an unsupported sulfur stalactite falls like dripstone
+/// (`SulfurSpikeBlock` is a `SpeleothemBlock`), hurts and breaks.
+#[test]
+fn unsupported_sulfur_stalactites_fall_too() {
+    use crate::world::gen5_blocks::{SULFUR_SPIKE, spike};
+    let mut w = world();
+    let roof = IVec3::new(4, 120, 4);
+    w.set_block(roof, Block::STONE);
+    w.set_block(roof - IVec3::Y, spike(true, ob::Thickness::Base, false));
+    w.set_block(roof - IVec3::Y * 2, spike(true, ob::Thickness::Tip, false));
+    let floor = roof - IVec3::Y * 12;
+    w.set_block(floor, Block::STONE);
+    w.drops.clear();
+    w.set_block(roof, Block::AIR);
+    assert_eq!(w.falling_blocks().len(), 2, "the whole run falls");
+    let mut hit = None;
+    for _ in 0..60 {
+        w.tick_falling(crate::simulation::TICK_SECONDS);
+        if let Some(&h) = w.stalactite_hits().first() {
+            hit = Some(h);
+        }
+    }
+    assert!(hit.is_some_and(|(p, d)| p == floor + IVec3::Y && d > 0.0), "{hit:?}");
+    let items = w.drops.iter().filter(|(_, s)| s.item == Item::from_block(SULFUR_SPIKE)).count();
+    assert_eq!(items, 2);
+}
+
 #[test]
 fn respawn_anchors_use_a_charge_and_stand_the_player_beside_them() {
     use crate::world::terrain::Dimension;

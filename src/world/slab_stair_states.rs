@@ -41,7 +41,12 @@ pub const LEGACY_COUNT: usize = 39;
 /// [`colour_blocks`] (from [`COLOUR_FIRST`]).
 pub const WAXED_FIRST: usize = COLOUR_FIRST + colour_blocks::SHAPE_FAMILIES;
 pub const RESIN_FAMILY: usize = WAXED_FIRST + super::copper::STAIR_FAMILIES;
-pub const FAMILY_COUNT: usize = RESIN_FAMILY + 1;
+/// v0.16 Track A: purpur (`world::end_blocks`), appended after resin.
+pub const PURPUR_FAMILY: usize = RESIN_FAMILY + 1;
+/// v0.16 Track D's families (`gen5_blocks::SHAPES`: poplar, then the
+/// cinnabar and sulfur stones), appended after purpur.
+pub const TRACK_D_FIRST: usize = PURPUR_FAMILY + 1;
+pub const FAMILY_COUNT: usize = TRACK_D_FIRST + super::gen5_blocks::SHAPES.len();
 /// The first wool and concrete family, after copper's.
 pub const COLOUR_FIRST: usize = super::copper::STAIR_FAMILY + super::copper::STAIR_FAMILIES;
 /// Ids per appended copper family (see the module docs).
@@ -110,6 +115,8 @@ pub const FAMILIES: [Family; FAMILY_COUNT] = {
             _ if i < super::copper::STAIR_FAMILY => super::stone_blocks::SHAPES[i - LEGACY_COUNT],
             _ if i < COLOUR_FIRST => super::copper::stair_family(i - super::copper::STAIR_FAMILY),
             RESIN_FAMILY => super::creaking::SHAPES,
+            PURPUR_FAMILY => super::end_blocks::PURPUR_SHAPES,
+            _ if i >= TRACK_D_FIRST => super::gen5_blocks::SHAPES[i - TRACK_D_FIRST],
             _ if i >= WAXED_FIRST => super::copper::waxed_stair_family(i - WAXED_FIRST),
             _ => {
                 let index = i - COLOUR_FIRST;
@@ -222,6 +229,18 @@ const fn extended(id: u16, slab: bool) -> Option<(u8, u16)> {
     let stride = if slab { EXTENDED_SLABS } else { EXTENDED_STAIRS };
     if id >= first && id < first + stride {
         return Some((RESIN_FAMILY as u8, id - first));
+    }
+    let purpur = if slab { super::end_blocks::PURPUR_SLAB.0 } else { super::end_blocks::PURPUR_STAIRS.0 };
+    if id >= purpur && id < purpur + stride {
+        return Some((PURPUR_FAMILY as u8, id - purpur));
+    }
+    let mut d = if super::gen5_blocks::owns_shape(id) { TRACK_D_FIRST } else { FAMILY_COUNT };
+    while d < FAMILY_COUNT {
+        let first = if slab { FAMILIES[d].slab.0 } else { FAMILIES[d].stairs.0 };
+        if id >= first && id < first + stride {
+            return Some((d as u8, id - first));
+        }
+        d += 1;
     }
     if id < EXTENDED_BOUNDS.0 || id >= EXTENDED_BOUNDS.1 {
         return None;
@@ -471,8 +490,10 @@ pub const fn owns(id: u16) -> bool {
     (id >= STAIRS_ORIGIN && id <= RESERVED_LAST)
         || (id >= super::creaking::STAIRS.0 && id < super::creaking::STAIRS.0 + EXTENDED_STAIRS)
         || (id >= super::creaking::SLAB.0 && id < super::creaking::SLAB.0 + EXTENDED_SLABS)
+        || super::end_blocks::owns_shape(id)
         || super::stone_blocks::owns_shape(id)
         || colour_blocks::owns_shape(id)
+        || super::gen5_blocks::owns_shape(id)
 }
 
 /// `Block::shaped` for this module's ids.

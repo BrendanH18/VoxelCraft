@@ -381,8 +381,12 @@ pub mod tex {
         ];
         // v0.15 Track D's frosted ice (layers 4000..4004) and Track F's
         // explorer maps (4056..4066) set the count.
-        const ENDS2: [u32; 2] =
-            [super::super::frosted_ice::TEX_END as u32, super::super::explorer_maps::TEX_END as u32];
+        const ENDS2: [u32; 3] = [
+            super::super::frosted_ice::TEX_END as u32,
+            super::super::explorer_maps::TEX_END as u32,
+            // v0.16 Track A (layers 529..541).
+            super::super::end_blocks::TEX_END as u32,
+        ];
         let mut max = 0;
         let mut i = 0;
         while i < ENDS.len() {
@@ -761,6 +765,9 @@ impl Block {
         if let Some(odds) = super::cave_blocks::fire_odds(self) {
             return odds;
         }
+        if let Some(odds) = super::gen5_blocks::fire_odds(self) {
+            return odds;
+        }
         if let Some(p) = super::wood::props(self) {
             return p.fire;
         }
@@ -779,7 +786,7 @@ impl Block {
         if let Some(odds) = super::overworld_blocks::fire_odds(self).or_else(|| super::biome_plants::fire_odds(self)) {
             return odds;
         }
-        if matches!(self, super::eyeblossom::OPEN | super::eyeblossom::CLOSED) {
+        if matches!(self, super::eyeblossom::OPEN | super::eyeblossom::CLOSED | super::wither_rose::WITHER_ROSE) {
             return (60, 100);
         }
         // `FireBlock.bootStrap` lists no doors: the wooden ones only burn from lava.
@@ -940,6 +947,9 @@ impl Block {
         if let Some(b) = super::stone_blocks::wall_base(self.0) {
             return Some(b);
         }
+        if let Some(b) = super::gen5_blocks::wall_base(self.0) {
+            return Some(b);
+        }
         match super::forms::stone_form(self.0) {
             Some(super::forms::StoneForm::Wall { index }) => Some(super::forms::wall_material(index)),
             _ => None,
@@ -948,11 +958,33 @@ impl Block {
 
     /// What kind of shaped block this is, with its state.
     pub fn shaped(self) -> Option<Shaped> {
-        if super::sniffer_egg::owns(self.0) || super::heavy_core::owns(self.0) || super::dried_ghast::owns(self.0) {
+        // v0.16 Track A: End rods and chorus are custom; purpur stairs and
+        // slabs are the shared shapes.
+        if super::end_blocks::owns(self.0) {
+            return if super::end_blocks::owns_shape(self.0) {
+                super::slab_stair_states::shaped(self.0)
+            } else if super::end_blocks::is_end_rod(self) || super::end_blocks::is_chorus(self) {
+                Some(Shaped::Custom)
+            } else {
+                None
+            };
+        }
+        if super::sniffer_egg::owns(self.0)
+            || super::heavy_core::owns(self.0)
+            || super::dried_ghast::owns(self.0)
+            || super::shulker_box::owns(self.0)
+        {
             return Some(Shaped::Custom);
         }
-        if super::creaking::wall_local(self.0).is_some() {
+        // v0.16 Track C: heads (drawn as models) and the beacon.
+        if super::skulls::owns(self.0) || self == super::beacon::BEACON {
+            return Some(Shaped::Custom);
+        }
+        if super::creaking::wall_local(self.0).is_some() || super::gen5_blocks::wall_local(self.0).is_some() {
             return Some(Shaped::Wall);
+        }
+        if super::gen5_blocks::shelf_of(self).is_some() {
+            return Some(Shaped::Custom);
         }
         if super::copper_golem_statue::owns(self.0) {
             return Some(Shaped::Custom);
@@ -1154,6 +1186,9 @@ impl Block {
     /// The kind of wood a log, leaves, planks or sapling block is made of.
     pub fn wood(self) -> Option<Wood> {
         let block = self.base();
+        if super::wood::poplar::is_leaves(block) {
+            return Some(Wood::Poplar);
+        }
         Wood::ALL.into_iter().find(|w| [w.log(), w.leaves(), w.planks(), w.sapling()].contains(&block))
     }
 
@@ -1168,21 +1203,27 @@ impl Block {
         if let Some(c) = self.alias() {
             return c.is_leaves();
         }
-        matches!(self.0, 7 | 23 | 73..=75) || super::overworld_blocks::is_leaves(self)
+        matches!(self.0, 7 | 23 | 73..=75)
+            || super::overworld_blocks::is_leaves(self)
+            || super::wood::poplar::is_leaves(self)
     }
 
     pub fn is_planks(self) -> bool {
         if let Some(c) = self.alias() {
             return c.is_planks();
         }
-        matches!(self.0, 8 | 76..=79 | 336..=338) || super::overworld_blocks::is_planks(self)
+        matches!(self.0, 8 | 76..=79 | 336..=338)
+            || super::overworld_blocks::is_planks(self)
+            || super::wood::poplar::is_planks(self)
     }
 
     pub fn is_sapling(self) -> bool {
         if let Some(c) = self.alias() {
             return c.is_sapling();
         }
-        matches!(self.0, 67 | 68 | 80..=82) || super::overworld_blocks::is_sapling(self)
+        matches!(self.0, 67 | 68 | 80..=82)
+            || super::overworld_blocks::is_sapling(self)
+            || super::wood::poplar::is_sapling(self)
     }
 
     /// Holds a water source in its cell: always (kelp and seagrass) or as
@@ -1314,6 +1355,9 @@ impl Block {
         if let Some(b) = super::trial::base(self) {
             return b;
         }
+        if let Some(b) = super::end_blocks::base(self) {
+            return b;
+        }
         if super::sniffer_egg::owns(self.0) {
             return super::sniffer_egg::EGG;
         }
@@ -1326,6 +1370,12 @@ impl Block {
         if super::dried_ghast::owns(self.0) {
             return super::dried_ghast::DRIED_GHAST;
         }
+        if let Some(s) = super::shulker_box::decode(self) {
+            return super::shulker_box::item_state(s.colour);
+        }
+        if let Some(s) = super::skulls::decode(self) {
+            return super::skulls::item_block(s.kind);
+        }
         if self.0 == super::sniffer_plants::PITCHER_PLANT.0 + 1 {
             return super::sniffer_plants::PITCHER_PLANT;
         }
@@ -1335,6 +1385,9 @@ impl Block {
         }
         if super::creaking::wall_local(self.0).is_some() {
             return super::creaking::WALL;
+        }
+        if let Some(b) = super::gen5_blocks::base(self.0) {
+            return b;
         }
         if super::creaking::heart(self).is_some() {
             return super::creaking::HEART;
@@ -1426,10 +1479,17 @@ impl Block {
         if let Some(s) = super::dried_ghast::decode(self) {
             return super::dried_ghast::block(super::dried_ghast::State { facing, ..s });
         }
+        // Heads place by their own rules (`skulls::placed`).
+        if super::skulls::owns(self.0) {
+            return self;
+        }
         if let Some((nest, _, honey)) = super::bees::hive(self) {
             return super::bees::block(nest, facing, honey);
         }
-        if super::scaffolding::is_scaffolding(self) || super::stone_blocks::is_pillar(self) {
+        if super::scaffolding::is_scaffolding(self)
+            || super::stone_blocks::is_pillar(self)
+            || (super::end_blocks::owns(self.0) && !super::end_blocks::owns_shape(self.0))
+        {
             return self;
         }
         if let Some(b) = super::copper::with_facing(self, facing) {
@@ -1439,7 +1499,10 @@ impl Block {
         if let Some(s) = super::double_chest::state(self) {
             return super::double_chest::block(super::double_chest::ChestState { facing, ..s });
         }
-        if super::wood::owns(self.0) && super::wood::switches::twin(self.0).is_none() {
+        if super::wood::owns(self.0)
+            && super::wood::switches::twin(self.0).is_none()
+            && !super::wood::poplar::generic(self.0)
+        {
             return super::wood::with_facing(self, facing);
         }
         // Candles, cakes, banners and straw beds keep their state; stairs
@@ -1664,6 +1727,9 @@ impl Block {
         if let Some(drop) = super::jukebox::drop(self) {
             return drop;
         }
+        if let Some(drop) = super::end_blocks::drop(self) {
+            return drop;
+        }
         // `blocks/trial_spawner` and `blocks/vault` are empty tables.
         if super::trial::owns(self.0) {
             return None;
@@ -1677,6 +1743,18 @@ impl Block {
         // `blocks/dried_ghast`: itself, when it survives an explosion.
         if super::dried_ghast::owns(self.0) {
             return Some(Item::from_block(super::dried_ghast::DRIED_GHAST));
+        }
+        // `blocks/*shulker_box`: itself; `World::shulker_box_drop` adds the contents.
+        if let Some(s) = super::shulker_box::decode(self) {
+            return Some(Item::from_block(super::shulker_box::item_state(s.colour)));
+        }
+        // v0.16 Track C: `blocks/*_head`, `*_skull`, `wither_rose` and
+        // `beacon` drop themselves.
+        if let Some(s) = super::skulls::decode(self) {
+            return Some(super::skulls::item(s.kind));
+        }
+        if self == super::wither_rose::WITHER_ROSE || self == super::beacon::BEACON {
+            return Some(Item::from_block(self));
         }
         if self == super::sniffer_plants::POTTED_TORCHFLOWER {
             return Some(super::utilities::FLOWER_POT.into());
@@ -1706,6 +1784,9 @@ impl Block {
             return drop;
         }
         if let Some(drop) = super::utilities::drop(self) {
+            return drop;
+        }
+        if let Some(drop) = super::gen5_blocks::drop(self) {
             return drop;
         }
         if super::scaffolding::is_scaffolding(self) {
@@ -1835,6 +1916,9 @@ impl Block {
         if let Some(h) = super::jukebox::hardness(self) {
             return h;
         }
+        if let Some(h) = super::end_blocks::hardness(self) {
+            return h;
+        }
         // `strength(50.0F)` for both the trial spawner and the vault.
         if super::trial::owns(self.0) {
             return 50.0;
@@ -1850,6 +1934,20 @@ impl Block {
         }
         // `Blocks.DRIED_GHAST`: `instabreak()`.
         if super::dried_ghast::owns(self.0) {
+            return 0.0;
+        }
+        if super::shulker_box::owns(self.0) {
+            return super::shulker_box::HARDNESS;
+        }
+        // v0.16 Track C: heads `strength(1.0)`, the beacon `strength(3.0)`,
+        // the wither rose `instabreak()`.
+        if super::skulls::owns(self.0) {
+            return 1.0;
+        }
+        if self == super::beacon::BEACON {
+            return 3.0;
+        }
+        if self == super::wither_rose::WITHER_ROSE {
             return 0.0;
         }
         if super::archaeology::owns(self.0) {
@@ -1917,6 +2015,9 @@ impl Block {
         }
         if let Some(c) = self.alias() {
             return c.hardness();
+        }
+        if let Some((hardness, ..)) = super::gen5_blocks::mining(self.material()) {
+            return hardness;
         }
         if let Some(h) = super::stone_blocks::slab_hardness(self) {
             return h;
@@ -2084,6 +2185,9 @@ impl Block {
 
     /// The tool kind that mines this block faster.
     pub fn best_tool(self) -> Option<ToolKind> {
+        if let Some(tool) = super::end_blocks::best_tool(self) {
+            return tool;
+        }
         if super::jukebox::is_jukebox(self) {
             return Some(ToolKind::Axe);
         }
@@ -2096,7 +2200,8 @@ impl Block {
         if super::archaeology::owns(self.0) {
             return Some(ToolKind::Shovel);
         }
-        if super::heavy_core::owns(self.0) {
+        // `#mineable/pickaxe` lists every shulker box.
+        if super::heavy_core::owns(self.0) || super::shulker_box::owns(self.0) {
             return Some(ToolKind::Pickaxe);
         }
         if super::creaking::heart(self).is_some() {
@@ -2145,6 +2250,9 @@ impl Block {
         }
         if let Some(c) = self.alias() {
             return c.best_tool();
+        }
+        if let Some((_, tool, _)) = super::gen5_blocks::mining(self.material()) {
+            return tool;
         }
         if let Some((_, tool, _)) = super::colour_blocks::mining(self) {
             return tool;
@@ -2285,6 +2393,9 @@ impl Block {
         if super::jukebox::owns(self.0) {
             return None;
         }
+        if let Some(level) = super::end_blocks::harvest_level(self) {
+            return level;
+        }
         if super::creaking::owns(self.0)
             && super::creaking::heart(self).is_none()
             && self != super::creaking::RESIN_BLOCK
@@ -2308,6 +2419,9 @@ impl Block {
         }
         if let Some(c) = self.alias() {
             return c.harvest_level();
+        }
+        if let Some((.., level)) = super::gen5_blocks::mining(self.material()) {
+            return level;
         }
         if let Some((.., level)) = super::colour_blocks::mining(self) {
             return level;
@@ -2437,6 +2551,8 @@ impl Block {
                 super::heavy_core::HEAVY_CORE.0,
                 super::dried_ghast::DRIED_GHAST.0,
             ])
+            .chain(super::skulls::palette_ids())
+            .chain([super::wither_rose::WITHER_ROSE.0, super::beacon::BEACON.0])
             .chain(super::forms::palette_ids())
             .chain(super::nether_blocks::palette_ids())
             .chain(super::village_blocks::palette_ids())
@@ -2465,6 +2581,10 @@ impl Block {
             .chain(super::frog_blocks::palette_ids())
             .chain(super::jukebox::palette_ids())
             .chain(super::trial::palette_ids())
+            // v0.16 Track B: the seventeen shulker boxes.
+            .chain((0..super::shulker_box::COLOURS).map(|c| super::shulker_box::FIRST + c * 6))
+            .chain(super::end_blocks::palette_ids())
+            .chain(super::gen5_blocks::palette_ids())
             .map(Block)
     }
 
@@ -2483,6 +2603,7 @@ impl Block {
             || super::overworld_blocks::replaceable(self)
             || super::biome_plants::replaceable(self)
             || super::cave_blocks::replaceable(self)
+            || super::gen5_blocks::replaceable(self)
     }
 
     /// Java `BlockBehaviour.canBeReplaced(state, fluid)`: replaceable, or not
@@ -2545,6 +2666,12 @@ impl Block {
             return ok;
         }
         if let Some(ok) = super::eyeblossom::can_stay_on(self, below) {
+            return ok;
+        }
+        if let Some(ok) = super::wither_rose::can_stay_on(self, below) {
+            return ok;
+        }
+        if let Some(ok) = super::gen5_blocks::can_stay_on(self, below) {
             return ok;
         }
         if self.alias().is_some() || below.alias().is_some() {
@@ -2660,7 +2787,11 @@ impl Block {
         (0..STATE_CAPACITY as u16)
             .map(Block)
             .find(|b| b.kind() != RenderKind::Invisible && b.name() == name)
-            .map(|b| if super::copper_golem_statue::owns(b.0) { b.base() } else { b })
+            .map(
+                |b| {
+                    if super::copper_golem_statue::owns(b.0) || super::end_blocks::is_end_rod(b) { b.base() } else { b }
+                },
+            )
             .or((name == "air").then_some(Block::AIR))
     }
 
@@ -2745,10 +2876,13 @@ pub enum Wood {
     Mangrove,
     Cherry,
     PaleOak,
+    /// v0.16 Track D (`wood::poplar`). Its leaves come in three colours;
+    /// [`Wood::leaves`] is the orange ones.
+    Poplar,
 }
 
 impl Wood {
-    pub const ALL: [Wood; 9] = [
+    pub const ALL: [Wood; 10] = [
         Wood::Oak,
         Wood::Spruce,
         Wood::Birch,
@@ -2758,6 +2892,7 @@ impl Wood {
         Wood::Mangrove,
         Wood::Cherry,
         Wood::PaleOak,
+        Wood::Poplar,
     ];
 
     pub const fn log(self) -> Block {
@@ -2771,6 +2906,7 @@ impl Wood {
             Wood::Mangrove => Block::MANGROVE_LOG,
             Wood::Cherry => Block::CHERRY_LOG,
             Wood::PaleOak => super::overworld_blocks::PALE_OAK_LOG,
+            Wood::Poplar => super::wood::poplar::LOG,
         }
     }
 
@@ -2785,6 +2921,7 @@ impl Wood {
             Wood::Mangrove => super::overworld_blocks::MANGROVE_LEAVES,
             Wood::Cherry => super::overworld_blocks::CHERRY_LEAVES,
             Wood::PaleOak => super::overworld_blocks::PALE_OAK_LEAVES,
+            Wood::Poplar => super::wood::poplar::ORANGE_LEAVES,
         }
     }
 
@@ -2799,6 +2936,7 @@ impl Wood {
             Wood::Mangrove => Block::MANGROVE_PLANKS,
             Wood::Cherry => Block::CHERRY_PLANKS,
             Wood::PaleOak => super::overworld_blocks::PALE_OAK_PLANKS,
+            Wood::Poplar => super::wood::poplar::PLANKS,
         }
     }
 
@@ -2813,6 +2951,7 @@ impl Wood {
             Wood::Mangrove => super::overworld_blocks::MANGROVE_PROPAGULE,
             Wood::Cherry => super::overworld_blocks::CHERRY_SAPLING,
             Wood::PaleOak => super::overworld_blocks::PALE_OAK_SAPLING,
+            Wood::Poplar => super::wood::poplar::SAPLING,
         }
     }
 }
@@ -3098,6 +3237,10 @@ pub(super) const fn make(id: u16) -> BlockInfo {
         },
         id if super::creaking::owns(id) => super::creaking::registry(id),
         id if super::eyeblossom::owns(id) => super::eyeblossom::registry(id),
+        id if super::gen5_blocks::owns(id) => match super::gen5_blocks::registry(id) {
+            Some(info) => info,
+            None => ("unknown", Invisible, all(0)),
+        },
         id if super::cave_blocks::owns(id) => match super::cave_blocks::registry(id) {
             Some(info) => info,
             None => ("unknown", Invisible, all(0)),
@@ -3122,7 +3265,12 @@ pub(super) const fn make(id: u16) -> BlockInfo {
         15120..=super::sniffer_egg::LAST => super::sniffer_egg::registry(id),
         12256..=super::frosted_ice::LAST => super::frosted_ice::registry(id),
         super::heavy_core::FIRST..=super::heavy_core::LAST => super::heavy_core::registry(id),
+        super::shulker_box::FIRST..=super::shulker_box::LAST => super::shulker_box::registry(id),
         super::dried_ghast::FIRST..=super::dried_ghast::LAST => super::dried_ghast::registry(id),
+        super::skulls::FIRST..=super::skulls::LAST => super::skulls::registry(id),
+        12724..=12725 => super::wither_rose::registry(id),
+        12726 => super::beacon::registry(),
+        super::end_blocks::FIRST..=super::end_blocks::LAST => super::end_blocks::registry(id),
         super::jukebox::FIRST..=super::jukebox::LAST => super::jukebox::registry(id),
         super::archaeology::FIRST..=super::archaeology::LAST => super::archaeology::registry(id),
         super::copper::FIRST..=super::copper::RESERVED_LAST
@@ -3577,18 +3725,20 @@ const fn emission_of(i: usize) -> u8 {
         match i {
             _ if super::frog_blocks::owns(i as u16) => super::frog_blocks::emission(i as u16),
             _ if super::trial::owns(i as u16) => super::trial::emission(i as u16),
-            22 | 37..=41 | 165..=180 | 208 | 210 => 15, // glowstone, lava, fire, portals
-            36 => 14,                                   // torch
-            46 | 50..=52 | 913..=916 | 921..=924 => 13, // lit furnace, every facing
-            104 => 11,                                  // Nether portal
-            200..=207 | 209 => 1,                       // portal frames and dragon egg
-            213 => 7,                                   // enchanting table
-            1152 | 1154 | 1156 | 1158 | 1160 => 7,      // lit redstone torches
-            1435..=1436 => 9,                           // glowing redstone ores
-            1211 => 15,                                 // lit redstone lamp
-            957..=960 => 15,                            // jack o'lanterns
+            _ if super::end_blocks::owns(i as u16) => super::end_blocks::emission(i as u16),
+            12726 => 15,                                            // beacon
+            22 | 37..=41 | 165..=180 | 208 | 210 => 15,             // glowstone, lava, fire, portals
+            36 => 14,                                               // torch
+            46 | 50..=52 | 913..=916 | 921..=924 => 13,             // lit furnace, every facing
+            104 => 11,                                              // Nether portal
+            200..=207 | 209 => 1,                                   // portal frames and dragon egg
+            213 => 7,                                               // enchanting table
+            1152 | 1154 | 1156 | 1158 | 1160 => 7,                  // lit redstone torches
+            1435..=1436 => 9,                                       // glowing redstone ores
+            1211 => 15,                                             // lit redstone lamp
+            957..=960 => 15,                                        // jack o'lanterns
             7920..=7927 => super::mount_states::emission(i as u16), // lanterns
-            812 => 3,                                   // magma
+            812 => 3,                                               // magma
             1600..=1687 => super::nether_biome_blocks::emission(i as u16),
             1800 => 10, // crying obsidian
             1900..=2076 | 2400..=2415 => super::overworld_blocks::emission(i as u16),
@@ -3614,13 +3764,32 @@ static SHAPE_LIGHT: [bool; STATE_CAPACITY] = {
     arr
 };
 
-// Bounded by `STATE_CAPACITY`, like `INFO`.
-#[allow(long_running_const_eval)]
+const fn opacity_part(start: usize) -> [u8; INFO_PART] {
+    let mut arr = [15u8; INFO_PART];
+    let mut i = 0;
+    while i < INFO_PART {
+        arr[i] = opacity_of(start + i);
+        i += 1;
+    }
+    arr
+}
+
+// Evaluated in four parts, like `INFO`, to keep each evaluation short.
+#[allow(long_running_const_eval, clippy::large_const_arrays)]
+const OPACITY_0: [u8; INFO_PART] = opacity_part(0);
+#[allow(long_running_const_eval, clippy::large_const_arrays)]
+const OPACITY_1: [u8; INFO_PART] = opacity_part(INFO_PART);
+#[allow(long_running_const_eval, clippy::large_const_arrays)]
+const OPACITY_2: [u8; INFO_PART] = opacity_part(2 * INFO_PART);
+#[allow(long_running_const_eval, clippy::large_const_arrays)]
+const OPACITY_3: [u8; INFO_PART] = opacity_part(3 * INFO_PART);
+
 static LIGHT_OPACITY: [u8; STATE_CAPACITY] = {
+    let parts = [OPACITY_0, OPACITY_1, OPACITY_2, OPACITY_3];
     let mut arr = [15u8; STATE_CAPACITY];
     let mut i = 0;
     while i < STATE_CAPACITY {
-        arr[i] = opacity_of(i);
+        arr[i] = parts[i / INFO_PART][i % INFO_PART];
         i += 1;
     }
     arr
@@ -3731,12 +3900,20 @@ mod tests {
                     return if lit { 3 } else { 0 };
                 }
             }
+            // `Blocks.BEACON`: `lightLevel(state -> 15)`.
+            if block == super::super::beacon::BEACON {
+                return 15;
+            }
             // `TrialSpawnerState.lightLevel` and `VaultState.LightLevel`.
             if let Some((state, _)) = super::super::trial::spawner(block) {
                 return state.light();
             }
             if let Some((_, state, _)) = super::super::trial::vault(block) {
                 return state.light();
+            }
+            // `Blocks.END_ROD`: `lightLevel(14)`.
+            if super::super::end_blocks::is_end_rod(block) {
+                return 14;
             }
             // Checked against Java in `cave_blocks::tests`.
             if super::super::cave_blocks::owns(block.0) {

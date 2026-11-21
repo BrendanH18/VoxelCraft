@@ -169,6 +169,7 @@ impl Game {
             self.audio.play_in(SoundSource::Blocks, Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.95, 1.05));
         }
         crate::entity::golem::finish_golems(&mut self.world, &mut self.mobs.entities);
+        self.finish_withers();
         crate::entity::frog::finish_hatches(&mut self.world, &mut self.mobs.entities);
         for (cell, count) in std::mem::take(&mut self.world.hatched_turtles) {
             self.mobs.entities.hatch_turtles(cell, count);
@@ -190,6 +191,7 @@ impl Game {
             health: self.session.vitals.health,
             effects: self.session.vitals.effects.mask(),
             armor_pieces: self.session.inventory.armor.iter().flatten().count() as u8,
+            head: self.session.inventory.armor[0].and_then(|s| crate::world::skulls::kind_of_item(s.item)),
             sneaking: self.session.player.sneaking,
             darkness_ticks: self
                 .session
@@ -202,6 +204,7 @@ impl Game {
             time_since_rest: self.session.vitals.time_since_rest,
             sprinting: self.session.player.sprinting,
             blocking: self.session.blocking(),
+            fall_flying: self.session.player.fall_flying,
             passenger: self.session.player.vehicle.is_some(),
             ..Target::new(
                 PlayerId::HOST,
@@ -244,6 +247,11 @@ impl Game {
                     self.world.touch_redstone_ore(cell);
                     if burning {
                         self.world.light_candle(cell);
+                    }
+                    // v0.16 Track A: `ChorusFlowerBlock.onProjectileHit`: a
+                    // projectile that may break blocks breaks the flower.
+                    if self.gamerules.bool("projectiles_can_break_blocks") {
+                        self.world.chorus_flower_shot(cell);
                     }
                 }
                 EntityEvent::PlayerHit { player: PlayerId::HOST, damage, knockback, java, cause } => {
@@ -308,6 +316,36 @@ impl Game {
                         bot.agent.hurt(5., Cause::LIGHTNING, DVec3::ZERO, &mut self.mobs.entities);
                     }
                 }
+                // v0.16 Track B: a held rocket pushes a gliding player.
+                EntityEvent::RocketBoost { player } => {
+                    if player == PlayerId::HOST {
+                        self.session.player.rocket_boost();
+                    } else if let Some(bot) = self.agents.by_id_mut(player) {
+                        bot.agent.session.player.rocket_boost();
+                    }
+                }
+                // v0.16 Track B: `fireworks` damage, never scaled by
+                // difficulty, with the rocket's knockback toward it.
+                EntityEvent::PlayerFirework { player, damage, from } => {
+                    let push = |victim: DVec3| crate::knockback::Hit {
+                        pushes: [Some(crate::knockback::Push::hurt(victim, from)), None],
+                        punch: None,
+                        throw: None,
+                    };
+                    if player == PlayerId::HOST {
+                        let hit = push(self.session.player.pos);
+                        let toward = from - self.session.player.pos;
+                        if self.damage_player_from(damage, Cause::FIREWORKS, Some(toward)) > 0.0 {
+                            let entities = &mut self.mobs.entities;
+                            self.session.knocked_back(&hit, &mut || f64::from(entities.roll_range(0.0, 1.0)));
+                        }
+                    } else if let Some(bot) = self.agents.by_id_mut(player) {
+                        let hit = push(bot.agent.session.player.pos);
+                        bot.agent.hurt_knocked(damage, Cause::FIREWORKS, &hit, &mut self.mobs.entities);
+                    }
+                }
+                // Its sounds and particles came from the entity pass.
+                EntityEvent::FireworkBurst { .. } => {}
                 EntityEvent::PlayerFall { player, damage } => {
                     if player == PlayerId::HOST {
                         self.damage_player(damage, Cause::FALL);
@@ -438,6 +476,10 @@ impl Game {
                     self.explode(center, power, cause, credit_player)
                 }
                 EntityEvent::WindBurst(burst) => self.wind_burst(&burst),
+                // v0.16 Track C: the Wither's blasts, broken blocks and roses.
+                EntityEvent::WitherBlast { center, power, dangerous } => self.wither_explode(center, power, dangerous),
+                EntityEvent::WitherBreak { min, max, pos } => self.wither_break(min, max, pos),
+                EntityEvent::WitherRose { pos } => self.wither_rose(pos),
                 EntityEvent::PearlLanded { owner, pos } => {
                     let mut burst = crate::particles::Burst::new(crate::particles::Kind::Portal, pos + DVec3::Y, 32);
                     burst.spread = DVec3::Y;
@@ -463,6 +505,7 @@ impl Game {
                     }
                 }
                 EntityEvent::Fireball { .. }
+                | EntityEvent::ChargedBlast { .. }
                 | EntityEvent::MobArrow { .. }
                 | EntityEvent::ThrowPotion { .. }
                 | EntityEvent::ThrowTrident { .. }
@@ -525,6 +568,26 @@ impl Game {
                         MobSound::Breeze(cue) => (Sound::Breeze(cue), 1.0),
                         MobSound::Illager(cue) => (Sound::Illager(cue), 1.0),
                         MobSound::Raid(cue) => (Sound::Raid(cue), 1.0),
+                        MobSound::Flight(cue) => (Sound::Flight(self.far_firework(cue, pos)), 1.0),
+                        // `globalLevelEvent(1023)`: the whole dimension hears the Wither arrive.
+                        MobSound::Wither(voxelcraft::entity::wither::Cue::Spawn) => {
+                            let sound = Sound::Wither(voxelcraft::entity::wither::Cue::Spawn);
+                            self.audio.play_in(SoundSource::Hostile, sound, None, 1.0, (1.0, 1.0));
+                            continue;
+                        }
+                        MobSound::Wither(cue) => (Sound::Wither(cue), 1.0),
+                        // v0.16 Track A: the nearest shared sounds for the shulker's cues.
+                        MobSound::Shulker(cue) => {
+                            use voxelcraft::entity::shulker::Cue;
+                            match cue {
+                                Cue::Open => (Sound::Door(true), 0.6),
+                                Cue::Close => (Sound::Door(false), 0.6),
+                                Cue::Shoot => (Sound::Bow, 1.0),
+                                Cue::Teleport => (Sound::Teleport, 1.0),
+                                Cue::BulletHit | Cue::BulletHurt => (Sound::Hit, 1.0),
+                            }
+                        }
+                        MobSound::SulfurCube(cue) => (Sound::SulfurCube(cue), 0.8),
                         MobSound::CopperGolem(action, stage) => (Sound::CopperGolem(action, stage), 0.7),
                         MobSound::Hurt(MobKind::CopperGolem) => {
                             (Sound::CopperGolem(voxelcraft::entity::copper_golem::Sound::Hurt, 0), 0.9)
@@ -702,6 +765,7 @@ fn mob_sound_source(sound: MobSound) -> Option<SoundSource> {
         MobSound::DragonSmash => Some(SoundSource::Hostile),
         // Skeletons and pillagers shoot as hostile mobs, not as the player.
         MobSound::Bow => Some(SoundSource::Hostile),
+        MobSound::Shulker(_) => Some(SoundSource::Hostile),
         // The snow golem borrows the slime's voice but is a friendly mob.
         MobSound::Ambient(MobKind::SnowGolem)
         | MobSound::Hurt(MobKind::SnowGolem)
@@ -725,6 +789,22 @@ fn warden_volume(cue: voxelcraft::entity::warden::Cue) -> f32 {
 // Java Bat.getSoundVolume; samples stay normalized like the other voices.
 fn mob_volume(kind: MobKind) -> f32 {
     if kind == MobKind::Bat { 0.1 } else { 1.0 }
+}
+
+/// v0.16 Track C: `NOTE_BLOCK_IMITATE_*`, the sound a note block plays with
+/// a mob head on it: the mob's own ambient call (the dragon's growl).
+pub(super) fn head_note(i: crate::world::gadgets::Instrument) -> Option<Sound> {
+    use crate::world::gadgets::Instrument as I;
+    let kind = match i {
+        I::Zombie => MobKind::Zombie,
+        I::Skeleton => MobKind::Skeleton,
+        I::Creeper => MobKind::Creeper,
+        I::WitherSkeleton => MobKind::WitherSkeleton,
+        I::Piglin => MobKind::Piglin,
+        I::Dragon => return Some(Sound::DragonGrowl),
+        _ => return None,
+    };
+    Some(Sound::Mob(voice(kind), Call::Ambient))
 }
 
 fn voice(kind: MobKind) -> Voice {
@@ -752,6 +832,9 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::ZombieNautilus => Voice::ZombieNautilus,
         MobKind::CamelHusk => Voice::CamelHusk,
         MobKind::Parched => Voice::Parched,
+        MobKind::Wither => Voice::Wither,
+        MobKind::Shulker => Voice::Shulker,
+        MobKind::SulfurCube => Voice::SulfurCube,
         MobKind::Allay => Voice::Allay,
         MobKind::CopperGolem => Voice::Skeleton,
         MobKind::Creaking => Voice::Creaking,

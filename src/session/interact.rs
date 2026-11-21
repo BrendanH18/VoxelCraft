@@ -69,6 +69,11 @@ pub enum Used {
     PearlThrown {
         from: DVec3,
     },
+    /// v0.16 Track B: a firework rocket left the hand (launched from a
+    /// block, or held by a gliding player for a boost).
+    RocketLaunched {
+        from: DVec3,
+    },
     PotionThrown {
         from: DVec3,
     },
@@ -551,6 +556,25 @@ impl PlayerSession {
         let (eye, dir) = (p.eye(), p.forward().as_dvec3());
         // Java adds the thrower's motion, vertical only while airborne.
         let carry = if p.on_ground { p.vel.with_y(0.0) } else { p.vel };
+        // v0.16 Track B: `FireworkRocketItem.use` boosts a gliding player;
+        // otherwise `useOn` launches it 0.15 off the clicked face.
+        if held == crate::content::fireworks::FIREWORK_ROCKET {
+            let stack = self.inventory.get(slot).ok_or("selected slot empty")?;
+            let from = if self.player.fall_flying {
+                entities.boost_firework(&stack, self.id, self.player.pos);
+                self.player.pos
+            } else if let Some(hit) = self.block_hit(world) {
+                let at = hit.point + hit.normal.as_dvec3() * crate::entity::firework::PLACEMENT_OFFSET;
+                entities.launch_firework(&stack, at, Some(self.id));
+                at
+            } else {
+                return Ok(None);
+            };
+            if survival {
+                self.inventory.take_one(slot);
+            }
+            return Ok(Some(Used::RocketLaunched { from }));
+        }
         if held == Item::ENDER_PEARL {
             if self.vitals.pearl_cooldown > 0.0 {
                 return Err("ender pearl cooling down");
@@ -825,6 +849,11 @@ impl PlayerSession {
             match world.get_block(pos) {
                 // `ChestBlock.getMenuProvider`: a chest blocked from above stays shut.
                 Some(b) if crate::world::double_chest::state(b).is_some() && !world.chest_opens(pos) => {
+                    let effect = crate::world::utilities::interact::Effect::Consumed;
+                    return Ok(Some(Used::Utility { cell: pos, effect }));
+                }
+                // v0.16 Track B: `ShulkerBoxBlock.canOpen`: no room for the lid.
+                Some(b) if crate::world::shulker_box::owns(b.0) && !world.shulker_box_opens(pos) => {
                     let effect = crate::world::utilities::interact::Effect::Consumed;
                     return Ok(Some(Used::Utility { cell: pos, effect }));
                 }

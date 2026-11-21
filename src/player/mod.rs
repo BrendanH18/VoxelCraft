@@ -102,6 +102,16 @@ pub struct Player {
     modifiers: Modifiers,
     /// Minecart this player is riding.
     pub vehicle: Option<u32>,
+    /// v0.16 Track B: gliding on elytra (`isFallFlying`, shared flag 7).
+    pub fall_flying: bool,
+    /// Ticks since gliding began (`getFallFlyingTicks`); zero on foot.
+    pub fall_fly_ticks: u32,
+    /// `fly_into_wall` damage the last tick's glide took from a wall.
+    pub kinetic_damage: f32,
+    /// The last tick used the worn glider (`updateFallFlying`, every 20 ticks).
+    pub glider_used: bool,
+    /// `ElytraAnimationState`: the wings' x, y and z rotations a tick ago and now.
+    pub elytra_rot: [[f32; 3]; 2],
     /// `GameRenderer`'s previous and current field-of-view modifier.
     fov: (f32, f32),
     /// Java movement state carried between ticks.
@@ -125,6 +135,9 @@ struct Modifiers {
     /// Swift Sneak level of the worn leggings (see
     /// [`Player::powder_snow_equipment`]).
     swift_sneak: u8,
+    /// v0.16 Track B: the chest slot holds an elytra that can glide
+    /// (`canGlideUsing`).
+    glider: bool,
 }
 
 impl Player {
@@ -133,6 +146,7 @@ impl Player {
     pub fn powder_snow_equipment(&mut self, armor: &[Option<crate::inventory::Stack>; 4], ticks_frozen: u16) {
         use crate::item::{ArmorMaterial, ArmorPiece};
         self.modifiers.swift_sneak = crate::enchant::armor_level(armor, crate::enchant::Enchantment::SwiftSneak);
+        self.modifiers.glider = crate::content::elytra::can_glide_with(armor[1]);
         self.leather_boots =
             armor[3].is_some_and(|s| s.item.as_armor() == Some((ArmorPiece::Boots, ArmorMaterial::Leather)));
         self.freeze_immune =
@@ -178,6 +192,11 @@ impl Player {
             frozen_fraction: 0.0,
             modifiers: Modifiers::default(),
             vehicle: None,
+            fall_flying: false,
+            fall_fly_ticks: 0,
+            kinetic_damage: 0.0,
+            glider_used: false,
+            elytra_rot: [ELYTRA_REST; 2],
             fov: (1.0, 1.0),
             motion: Default::default(),
         }
@@ -282,6 +301,7 @@ impl Player {
             weaving: effects.has(Effect::Weaving),
             depth_strider: self.modifiers.depth_strider,
             swift_sneak: self.modifiers.swift_sneak,
+            glider: self.modifiers.glider,
         };
     }
 
@@ -384,4 +404,66 @@ impl Player {
     pub fn horizontal_collision(&self) -> bool {
         self.motion.horizontal_collision
     }
+
+    /// v0.16 Track B: Java's yaw and pitch in degrees (`getYRot`, `getXRot`:
+    /// pitch down positive).
+    pub fn java_rotation(&self) -> (f32, f32) {
+        (crate::knockback::java_yaw_degrees(self.yaw), -self.pitch.to_degrees())
+    }
+
+    /// `Entity.getLookAngle`.
+    pub fn look_angle(&self) -> DVec3 {
+        let (yaw, pitch) = self.java_rotation();
+        crate::content::elytra::look_angle(yaw, pitch)
+    }
+
+    /// `LivingEntity.canGlide` and `Player.canGlide`: in the air, not
+    /// riding, not levitating, not creative-flying, with a usable elytra.
+    pub fn can_glide(&self) -> bool {
+        !self.on_ground
+            && self.vehicle.is_none()
+            && self.modifiers.levitation.is_none()
+            && !self.flying
+            && self.modifiers.glider
+    }
+
+    /// `FireworkRocketEntity.tick` for a rocket this gliding player holds.
+    pub fn rocket_boost(&mut self) {
+        if self.fall_flying {
+            let movement = crate::content::elytra::rocket_boost(self.vel / 20.0, self.look_angle());
+            self.vel = movement * 20.0;
+        }
+    }
+
+    /// Stops gliding (a command, dismount, teleport or death).
+    pub fn stop_fall_flying(&mut self) {
+        self.fall_flying = false;
+        self.fall_fly_ticks = 0;
+    }
+
+    /// `ElytraAnimationState.getRot*` between the last two ticks.
+    pub fn elytra_rotation(&self, alpha: f32) -> [f32; 3] {
+        let [old, now] = self.elytra_rot;
+        std::array::from_fn(|i| old[i] + (now[i] - old[i]) * alpha.clamp(0.0, 1.0))
+    }
+
+    /// `ElytraAnimationState.tick`: the wings ease toward spread (gliding,
+    /// wider the less steep the dive), tucked (crouching) or folded.
+    fn tick_elytra_animation(&mut self) {
+        use std::f32::consts::PI;
+        let target = if self.fall_flying {
+            let movement = self.vel / 20.0;
+            let ratio = if movement.y < 0.0 { 1.0 - (-movement.normalize_or_zero().y).powf(1.5) as f32 } else { 1.0 };
+            [PI / 12.0 + (PI / 9.0 - PI / 12.0) * ratio, 0.0, -PI / 12.0 + (-PI / 2.0 + PI / 12.0) * ratio]
+        } else if self.crouching {
+            [PI * 2.0 / 9.0, 0.087_266_46, -PI / 4.0]
+        } else {
+            ELYTRA_REST
+        };
+        let now = self.elytra_rot[1];
+        self.elytra_rot = [now, std::array::from_fn(|i| now[i] + (target[i] - now[i]) * 0.3)];
+    }
 }
+
+/// `ElytraAnimationState`'s folded wings: x, y and z rotations.
+pub const ELYTRA_REST: [f32; 3] = [std::f32::consts::PI / 12.0, 0.0, -std::f32::consts::PI / 12.0];

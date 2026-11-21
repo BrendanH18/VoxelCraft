@@ -451,6 +451,8 @@ impl Arrow {
                         b.base(),
                         crate::world::block::Block::REDSTONE_ORE | crate::world::block::Block::DEEPSLATE_REDSTONE_ORE
                     ) || burning && crate::world::colour_blocks::candle::can_light(b)
+                        // v0.16 Track A: `ChorusFlowerBlock.onProjectileHit`.
+                        || crate::world::end_blocks::flower_age(b).is_some()
                 }) {
                     events.push(EntityEvent::ProjectileBlockHit { cell, pos: hit, normal, arrow: true, burning });
                 }

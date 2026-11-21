@@ -565,6 +565,9 @@ impl Cause {
     /// Unowned primed TNT.
     pub const TNT: Cause = Cause::new(DamageType::Explosion, "was blown up by TNT");
     pub const END_CRYSTAL: Cause = Cause::new(DamageType::Explosion, "was blown up by an End crystal");
+    /// v0.16 Track B: `death.attack.fireworks` and `death.attack.flyIntoWall`.
+    pub const FIREWORKS: Cause = Cause::new(DamageType::Fireworks, "went off with a bang");
+    pub const FLY_INTO_WALL: Cause = Cause::new(DamageType::FlyIntoWall, "experienced kinetic energy");
     /// Beds outside the Overworld and respawn anchors outside the Nether.
     pub const BAD_RESPAWN_POINT: Cause =
         Cause::new(DamageType::BadRespawnPoint, "was killed by [Intentional Game Design]");

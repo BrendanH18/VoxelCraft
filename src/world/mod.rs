@@ -17,6 +17,7 @@ pub mod ancient_city;
 pub mod archaeology;
 mod automation;
 pub mod bastion;
+pub mod beacon;
 pub mod bees;
 pub mod bell;
 pub mod biome;
@@ -26,6 +27,7 @@ pub mod block;
 pub mod brewing;
 pub mod bubble;
 pub mod buried_treasure;
+pub mod camp_maps;
 pub mod cave_blocks;
 pub mod caves;
 pub mod chest;
@@ -44,6 +46,8 @@ pub mod double_chest;
 pub mod dried_ghast;
 pub mod dungeon;
 pub mod end;
+pub mod end_blocks;
+pub mod end_city;
 pub mod end_portal;
 pub mod explorer_maps;
 pub mod explosion;
@@ -58,6 +62,7 @@ pub mod frog_blocks;
 pub mod frosted_ice;
 pub mod furnace;
 pub mod gadgets;
+pub mod gen5_blocks;
 pub mod geode;
 mod growth;
 pub mod heavy_core;
@@ -87,6 +92,7 @@ pub mod ore;
 pub mod overworld_blocks;
 mod overworld_flora;
 pub mod pale_garden;
+pub mod poplar_trees;
 mod portal;
 pub mod precipitation;
 pub mod pumpkin_blocks;
@@ -102,6 +108,8 @@ pub mod scaffolding;
 pub mod sculk;
 pub mod sculk_spread;
 pub mod shape;
+pub mod shulker_box;
+pub mod skulls;
 pub mod slab_stair_states;
 pub mod sniffer_egg;
 pub mod sniffer_plants;
@@ -126,6 +134,7 @@ pub mod village_blocks;
 mod village_life;
 pub mod wall_states;
 pub mod waterlog;
+pub mod wither_rose;
 pub mod wood;
 pub mod workstations;
 
@@ -383,6 +392,13 @@ pub struct World {
     pub trip_sounds: Vec<(IVec3, gadgets::TripSound)>,
     /// Freshly placed carved pumpkins and jack o'lanterns, checked for golem patterns by the game.
     pub golem_heads: Vec<IVec3>,
+    /// v0.16 Track C: freshly placed wither skeleton skulls, checked for
+    /// the Wither's pattern by the game (`WitherSkullBlock.setPlacedBy`).
+    pub wither_skulls: Vec<IVec3>,
+    /// v0.16 Track C: beacons (see [`beacon`]) and what they did since the
+    /// game last asked.
+    pub(crate) beacons: beacon::State,
+    pub(crate) beacon_events: Vec<beacon::Event>,
     /// Turtle eggs that hatched: cell and how many babies; the game spawns them.
     pub hatched_turtles: Vec<(IVec3, u8)>,
     pub hatched_tadpoles: Vec<(IVec3, u8)>,
@@ -390,12 +406,16 @@ pub struct World {
     pub sniffer_egg_events: Vec<(IVec3, bool)>,
     /// Dried ghasts that hydrated or hatched; entities spawn and play them.
     pub dried_ghast_events: Vec<dried_ghast::Hydration>,
+    /// v0.16 Track A: chorus flowers that grew or died; the game plays them.
+    pub chorus_events: Vec<end_blocks::ChorusEvent>,
     /// Jukeboxes and their records (see [`jukebox`]).
     pub(crate) jukeboxes: jukebox::State,
     /// Banner patterns and lecterns (v0.15 Track B, see [`workstations`]).
     workstations: workstations::State,
     /// Lectern pages turned since the game last asked (level event 1043).
     pub page_turns: Vec<workstations::PageTurn>,
+    /// v0.16 Track B: shulker box lids, viewers and removed contents.
+    shulker_boxes: shulker_box::Shulkers,
     /// Jukebox game events since the entity pass last drained them
     /// (allays dance; track A's vibrations hook in there).
     pub jukebox_events: Vec<(IVec3, jukebox::JukeboxEvent)>,
@@ -502,6 +522,7 @@ impl World {
             self.reheight_and_remesh(p, old, block, false);
             self.track_banner(p, old, block);
             self.track_workstations(p, old, block);
+            self.track_shulker_box(p, old, block);
         }
         self.update_block_light();
     }
@@ -524,6 +545,8 @@ impl World {
         // The snapshot replaces the chunk's banners for the renderer.
         self.banners.retain(|p, _| chunk_of(*p) != pos);
         self.register_banners(pos, &data);
+        self.forget_shulker_boxes(pos);
+        self.register_shulker_boxes(pos, &data);
         self.forget_campfires(pos);
         self.register_campfires(pos, &data);
         self.register_beehives(pos, &data, true);
@@ -672,13 +695,18 @@ impl World {
             allay_notes: Vec::new(),
             trip_sounds: Vec::new(),
             golem_heads: Vec::new(),
+            wither_skulls: Vec::new(),
+            beacons: Default::default(),
+            beacon_events: Vec::new(),
             hatched_turtles: Vec::new(),
             hatched_tadpoles: Vec::new(),
             sniffer_egg_events: Vec::new(),
             dried_ghast_events: Vec::new(),
+            chorus_events: Vec::new(),
             jukeboxes: Default::default(),
             workstations: Default::default(),
             page_turns: Vec::new(),
+            shulker_boxes: Default::default(),
             jukebox_events: Vec::new(),
             records: Vec::new(),
             records_started: Vec::new(),
@@ -1040,6 +1068,10 @@ impl World {
         if pumpkin_blocks::is_head(block) {
             self.golem_heads.push(p);
         }
+        if old != block && skulls::is_wither_skull(block) && !skulls::is_wither_skull(old) {
+            self.wither_skulls.push(p);
+        }
+        self.track_beacon(p, old, block);
         if old.is_log() && !block.is_log() {
             self.log_removed(p);
         }
@@ -1436,6 +1468,7 @@ impl World {
     fn install_chunk(&mut self, pos: IVec3, data: Arc<ChunkData>, modified: bool) {
         self.register_village_life(pos, &data);
         self.register_banners(pos, &data);
+        self.register_shulker_boxes(pos, &data);
         self.register_campfires(pos, &data);
         self.register_beehives(pos, &data, modified);
         self.register_creaking_hearts(pos, &data);
@@ -1505,6 +1538,7 @@ impl World {
         self.village_homes.retain(|p, _| chunk_of(*p) != pos);
         self.village_residents.retain(|p, _| chunk_of(*p) != pos);
         self.banners.retain(|p, _| chunk_of(*p) != pos);
+        self.forget_shulker_boxes(pos);
         self.forget_campfires(pos);
         self.unload_block_light(pos, slot.block_light.as_ref());
         if slot.modified {

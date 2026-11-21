@@ -444,10 +444,11 @@ fn game_table(java: &str) -> String {
     java.strip_prefix("chests/").unwrap_or(java).to_string()
 }
 
-/// Java tables that name a bundle but that the game doesn't roll yet:
-/// abandoned camps (v0.16) own them. The village tannery and weaponsmith
-/// chests are rolled since v0.15 Track G's generation 4 villages.
-const TABLE_GAPS: &[&str] = &["barrels/abandoned_camp_barrel", "chests/abandoned_camp_common_chest"];
+/// Java tables that name a bundle but that the game doesn't roll yet. The
+/// village tannery and weaponsmith chests are rolled since v0.15 Track G's
+/// generation 4 villages, and the abandoned camp barrel and common chest
+/// since v0.16 Track D's generation 5 camps.
+const TABLE_GAPS: &[&str] = &[];
 
 #[test]
 fn village_chests_hold_a_bundle_one_time_in_three() {
@@ -463,7 +464,17 @@ fn village_chests_hold_a_bundle_one_time_in_three() {
             continue;
         }
         assert!(rolls > 0, "{java} is not a table the game rolls");
-        // Each live table has one pool for the bundle: weight 1 against an
+        // The abandoned camp chest rolls four to six times from a longer
+        // list; it is enough that its bundles turn up.
+        if java == "chests/abandoned_camp_common_chest" {
+            let found = (0..2000u64).any(|seed| {
+                roll_items(&name, &mut LootRandom::new(seed), Some).iter().any(|s| bundle::is_bundle(s.item))
+            });
+            assert!(found, "{java} never holds a bundle");
+            live.push(java.as_str());
+            continue;
+        }
+        // Every other live table has one pool for the bundle: weight 1 against an
         // empty entry of weight 2, one roll, one bundle.
         let [pool] = pools.as_array().unwrap().as_slice() else { panic!("{java}") };
         assert_eq!(pool["rolls"], 1, "{java}");
@@ -487,7 +498,7 @@ fn village_chests_hold_a_bundle_one_time_in_three() {
         assert!((with_bundle as i64 - 2000).abs() <= 183, "{java}: {with_bundle} of {N}");
         live.push(java.as_str());
     }
-    assert_eq!(live.len(), 8, "{live:?}");
+    assert_eq!(live.len(), 10, "{live:?}");
 }
 
 #[test]

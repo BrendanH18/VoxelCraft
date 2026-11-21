@@ -354,6 +354,7 @@ impl PlayerSession {
                     owner: self.id,
                     smash: smash_bonus,
                     armor_effectiveness,
+                    pitch: -self.player.pitch.to_degrees(),
                 };
                 killed = entities.player_melee(i, hit);
                 living_hit = true;

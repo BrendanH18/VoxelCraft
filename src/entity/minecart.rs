@@ -56,6 +56,8 @@ impl CartKind {
             Self::Chest => 1,
             Self::Hopper => 2,
             Self::Tnt => 3,
+            // v0.16 Track D: the poplar boats take 40 and 41, after the cushions.
+            Self::Boat { wood: 10, chest } => 40 + chest as u8,
             Self::Boat { wood, chest } => 4 + wood + if chest { 10 } else { 0 },
             Self::Cushion { colour } => 24 + colour,
         }
@@ -81,6 +83,7 @@ impl CartKind {
             3 => Self::Tnt,
             4..=23 => Self::Boat { wood: (v - 4) % 10, chest: v >= 14 },
             24..=39 => Self::Cushion { colour: v - 24 },
+            40 | 41 => Self::Boat { wood: 10, chest: v == 41 },
             _ => return None,
         })
     }
@@ -100,8 +103,8 @@ impl CartKind {
         if let Some(c) = item.cushion_color() {
             return Some(Self::Cushion { colour: c as u8 });
         }
-        if (960..980).contains(&item.0) {
-            return Some(Self::Boat { wood: ((item.0 - 960) % 10) as u8, chest: item.0 >= 970 });
+        if let Some((wood, chest)) = item.boat_of() {
+            return Some(Self::Boat { wood, chest });
         }
         Some(match item {
             Item::MINECART => Self::Rideable,
@@ -1178,11 +1181,7 @@ impl super::Entities {
                 let cart = self.minecarts.swap_remove(i);
                 self.clear_cart(cart.id);
                 if let Some((wood, _)) = cart.kind.boat().filter(|_| self.entity_drops) {
-                    let plank = if wood == 9 {
-                        crate::world::overworld_blocks::BAMBOO_PLANKS
-                    } else {
-                        crate::world::block::Wood::ALL[wood as usize].planks()
-                    };
+                    let plank = Item::boat_planks(wood);
                     for stack in [
                         Some(Stack::new(plank, 3)),
                         Some(Stack::new(Item::STICK, 2)),
@@ -1495,6 +1494,27 @@ mod tests {
         assert!(e.dismount(&w, super::super::PlayerId(1)).is_some());
         assert_eq!(e.cart(id).unwrap().rider, Some(super::super::PlayerId(2)));
         e.tick_minecarts(&mut w, &[]);
+    }
+
+    #[test]
+    fn chorus_fruit_dismounts_a_boat_rider_before_teleporting() {
+        // `TeleportRandomlyConsumeEffect` calls `stopRiding` first, so the
+        // seat can't pull the player back.
+        let mut e = super::super::Entities::new(1);
+        let mut w = world();
+        for x in 0..16 {
+            for z in 0..16 {
+                w.set_block(IVec3::new(x, 139, z), Block::STONE);
+            }
+        }
+        let player = super::super::PlayerId(3);
+        let id = e.spawn_cart(CartKind::Boat { wood: 0, chest: false }, DVec3::new(8., 140., 8.));
+        assert_eq!(e.mount_cart(DVec3::new(8., 140.3, 6.), DVec3::Z, 5., player), Some(id));
+        let mut s = crate::session::PlayerSession::new(player, DVec3::new(8., 140., 8.));
+        s.player.vehicle = Some(id);
+        s.chorus_teleport(&w, &mut e);
+        assert_eq!(s.player.vehicle, None);
+        assert_eq!(e.cart(id).unwrap().rider, None);
     }
 
     #[test]

@@ -56,6 +56,9 @@ impl Mob {
         if let Some(s) = &self.warden {
             v["warden"] = s.look_state();
         }
+        if let Some(s) = &self.shulker {
+            v["shulker"] = s.look();
+        }
         if let Some(s) = &self.copper_golem {
             v["copper_golem"] = s.look();
         }
@@ -86,8 +89,15 @@ impl Mob {
         if let Some(s) = &self.happy_ghast {
             v["happy_ghast"] = json!({"still": s.still(), "goggles": s.goggles_down});
         }
+        if let Some(s) = &self.sulfur_cube {
+            v["sulfur_cube"] = json!({"fuse": s.fuse, "size": self.size});
+        }
         if let Some(s) = &self.nautilus {
             v["nautilus"] = json!({"dashing": s.dashing});
+        }
+        // v0.16 Track C: the charge (model scale, boss bar) and side heads.
+        if let Some(s) = &self.wither {
+            v["wither"] = json!({"invul": s.invul, "heads": s.head_rot.map(|(y, p)| [y, p])});
         }
         if let Some(name) = self.name.as_str() {
             v["name"] = json!(name);
@@ -177,6 +187,9 @@ impl Mob {
         if let Some(s) = &mut self.warden {
             s.apply_look(&v["warden"]);
         }
+        if let Some(s) = &mut self.shulker {
+            s.apply_look(&v["shulker"]);
+        }
         if let Some(s) = &mut self.copper_golem {
             s.load_look(&v["copper_golem"]);
         }
@@ -213,9 +226,21 @@ impl Mob {
         if let Some(s) = &mut self.mooshroom {
             s.brown = v["mooshroom_brown"] == true;
         }
+        if let Some(s) = &mut self.wither {
+            let w = &v["wither"];
+            s.invul = w["invul"].as_i64().unwrap_or(0).clamp(0, i64::from(super::wither::INVULNERABLE_TICKS)) as i32;
+            for (i, h) in w["heads"].as_array().into_iter().flatten().take(2).enumerate() {
+                let f = |k: usize| h[k].as_f64().filter(|x| x.is_finite()).unwrap_or(0.0) as f32;
+                s.head_rot[i] = (f(0), f(1));
+            }
+        }
         if let Some(s) = &mut self.happy_ghast {
             s.still_timeout = i32::from(v["happy_ghast"]["still"] == true);
             s.goggles_down = v["happy_ghast"]["goggles"] == true;
+        }
+        if let Some(s) = &mut self.sulfur_cube {
+            s.fuse = v["sulfur_cube"]["fuse"].as_i64().map_or(-1, |f| f.clamp(-1, 1000) as i32);
+            self.size = v["sulfur_cube"]["size"].as_u64().map_or(self.size, |n| n.clamp(1, 2) as u8);
         }
         if let Some(s) = &mut self.nautilus {
             s.dashing = v["nautilus"]["dashing"] == true;
