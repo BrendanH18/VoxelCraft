@@ -2073,8 +2073,9 @@ impl Game {
         }
         // Scripted runs (screenshots, benchmarks) have no options path and never autosave.
         if self.settings_path.is_some() && now - self.last_save > AUTOSAVE_EVERY {
+            // A death the save's settling caused respawns at the next
+            // frame's start, before its camera is sampled.
             self.save();
-            self.respawn_if_due();
         }
 
         // --- Render ---------------------------------------------------------
