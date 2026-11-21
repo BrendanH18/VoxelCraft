@@ -175,21 +175,17 @@ fn generation_5_overworld_structures_stay_cleared_after_a_restart() {
     entities.mobs.retain(|m| m.kind != MobKind::ElderGuardian);
 
     let (mut world, mut entities) = restart(&folder, &world, &entities, Dimension::Overworld);
-    for (at, cells) in [
-        (wreck_chest, vec![wreck_chest]),
-        (camp_chest, vec![camp_chest]),
-        (library, vec![library]),
-        (cage, vec![cage]),
-        (monument, vec![monument]),
-    ] {
-        load(&mut world, at, &cells);
-    }
+    // Each place is checked while it is loaded: streaming to the next one
+    // unloads it.
     for chest in [wreck_chest, camp_chest, library] {
+        load(&mut world, chest, &[chest]);
         assert!(empty(&world, chest), "the chest at {chest} refilled after the restart");
     }
+    load(&mut world, cage, &[cage]);
     assert_eq!(world.get_block(cage), Some(Block::AIR), "the broken spawner came back");
     assert_eq!(world.spawner(cage), None);
     assert!(world.spawners().iter().all(|(p, _)| *p != cage));
+    load(&mut world, monument, &[monument]);
     for _ in 0..5 {
         world.update(monument.as_dvec3());
         entities.populate_structures(1.0, &world, &near, Difficulty::Normal);
