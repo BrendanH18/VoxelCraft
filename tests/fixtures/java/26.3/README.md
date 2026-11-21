@@ -1242,3 +1242,35 @@ and its tests check every list, modifier, constant and tag against it.
 The abandoned camps' three loot tables were added to
 `src/world/loot_tables.json` from `loot_table/chests/abandoned_camp_*_chest.json`
 and `loot_table/barrels/abandoned_camp_barrel.json` unchanged.
+
+## Classic structures and infested blocks (v0.16 Track E)
+
+`classic_structures.json` holds layout vectors printed by the 26.3 jar's
+own piece generators: `tools/JavaStructureVectors.java` (original code that
+only calls the jar's public API) builds Nether fortresses
+(`NetherFortressPieces.StartPiece`, the pending loop and
+`moveInsideHeights(48, 70)`), strongholds (`StrongholdStructure`'s retry
+loop with `moveBelowSeaLevel(63, -64, random, 10)`), normal mineshafts
+(`MineShaftRoom` after the placement's `nextDouble`, then
+`moveBelowSeaLevel`) and mesa mineshafts (centred between sea level and a
+surface given as `mesa_surface`) for two seeds and three start chunks each,
+with every piece's class, orientation, depth and box in builder order. It
+also records each infested block's host, hardness and blast resistance
+(`InfestedBlock`), the `ore_infested` feature, its placement and the biomes
+that list it, the placement of the `nether_complexes`, `strongholds` and
+`mineshafts` structure sets with their structures, the four structures'
+spawn overrides, and the biomes each mineshaft type takes. The extractor
+needs a JDK 25 (`javac`, `java`) on `PATH`. Regenerate and compare with:
+
+```sh
+python3 tools/extract_java_classic_structure_fixtures.py /path/to/server.jar --output target/java-classic-structures.json
+diff tests/fixtures/java/26.3/classic_structures.json target/java-classic-structures.json
+cargo test --release --lib java_pieces
+```
+
+`world::java_pieces::layout_tests` lays out every vector with generation
+5's builders and compares each piece's kind, facing and box. The same
+change taught `extract_java_block_mining_fixtures.py` that `InfestedBlock`'s
+constructor sets `destroyTime(host / 2)` and `explosionResistance(0.75)`,
+which `Blocks.<clinit>` alone doesn't show: `block_mining.json`'s seven
+infested entries now carry Java's values instead of 0.

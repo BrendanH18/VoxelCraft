@@ -1162,6 +1162,19 @@ camp map draw from block texture layers); `slab_stair_states` purpur
 (`PURPUR_FAMILY`) then Track D's seven (`TRACK_D_FIRST`). Wave 2 (Tracks
 E, F and G) was not started this push and keeps its reserved rows.
 
+**Track E (classic structures), 2026-11-21, implemented, unverified.**
+Block states 30720–30728 of 30720–30847 (`world::infested`): 30720
+infested stone, 30721 infested cobblestone, 30722 infested stone bricks,
+30723 infested mossy stone bricks, 30724 infested cracked stone bricks,
+30725 infested chiseled stone bricks, 30726–30728 infested deepslate
+(`axis` y, x, z; y the item's state); 30729–30847 stay unregistered. No
+items (1730–1739 stay free) and no texture layers (949–988 stay unused):
+each infested block draws its host's layers. No append-only ordering is
+touched: no `MobKind`, `Effect`, sound, particle, item icon or property key.
+The silverfish's goal state (`Mob::silverfish`) and generation 5's new
+`stronghold::Kind::FillerCorridor` are never saved. Record:
+[v0.16 classic structures](verification/2026-11-21-v0.16-classic-structures.md).
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating
