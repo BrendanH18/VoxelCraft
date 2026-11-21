@@ -81,11 +81,19 @@ wait   # let tee finish writing the log
 if [ "$save" = 1 ]; then
     id=$(grep -o -E 'bx_[a-z0-9]+' "$log" | head -n 1)
     if [ "$status" = 0 ] && [ -n "$id" ]; then
-        # The save runs in the background; the snapshot keeps its own copy once it is done.
+        # The save runs in the background; the snapshot keeps its own copy once
+        # it is done. When refreshing, the old save already reads ready, so
+        # wait for the name's record to change before trusting its state.
+        record() { boat snapshots --json | jq -c --arg n "$snapshot" '[.named[]? | select(.name == $n)][0] // {}'; }
+        before=$(record)
         boat snapshot "$id" "$snapshot" >/dev/null && echo "boat-check: saving $id as $snapshot" >&2
+        state=""
         for _ in $(seq 1 120); do
-            state=$(boat snapshots --json | jq -r --arg n "$snapshot" '[.named[]? | select(.name == $n) | (.status // .state // "")][0] // ""')
-            case "$state" in ready|saved|completed) break ;; esac
+            now=$(record)
+            if [ "$now" != "$before" ]; then
+                state=$(printf '%s' "$now" | jq -r '.status // .state // ""')
+                case "$state" in ready|saved|completed) break ;; esac
+            fi
             sleep 5
         done
         echo "boat-check: $snapshot is ${state:-unknown}" >&2
