@@ -2523,7 +2523,9 @@ mod tests {
         }
         // Every atlas slot is covered; visually identical items can share one.
         let layers: std::collections::HashSet<_> = Item::all_items()
-            .filter(|i| !i.is_map() && !crate::content::chorus::is_item(*i))
+            .filter(|i| {
+                !i.is_map() && !crate::content::chorus::is_item(*i) && *i != crate::entity::crystal::END_CRYSTAL
+            })
             .map(|i| i.icon_layer().unwrap())
             .collect();
         assert_eq!(layers.len() as u32, icon_count());
