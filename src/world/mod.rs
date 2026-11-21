@@ -76,6 +76,7 @@ pub mod loot;
 pub mod mansion;
 pub mod maps;
 pub mod mineshaft;
+pub mod monument;
 pub mod mount_states;
 mod navigation;
 pub mod nether;
@@ -108,6 +109,7 @@ pub mod scaffolding;
 pub mod sculk;
 pub mod sculk_spread;
 pub mod shape;
+pub mod shipwreck;
 pub mod shulker_box;
 pub mod skulls;
 pub mod slab_stair_states;
@@ -137,6 +139,7 @@ pub mod waterlog;
 pub mod wither_rose;
 pub mod wood;
 pub mod workstations;
+pub mod worldgen_random;
 
 use std::sync::Arc;
 
