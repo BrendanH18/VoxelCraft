@@ -1294,6 +1294,11 @@ mod tests {
             assert_eq!(sh.pieces[1].kind, Kind::FiveCrossing, "the start leads to a five-way crossing");
             for (j, p) in sh.pieces.iter().enumerate() {
                 for q in &sh.pieces[j + 1..] {
+                    // Java's `FillerCorridor.findPieceBox` reaches one block
+                    // into the piece it stops against.
+                    if p.kind == Kind::FillerCorridor || q.kind == Kind::FillerCorridor {
+                        continue;
+                    }
                     assert!(!p.bounds.intersects(&q.bounds), "{p:?} overlaps {q:?}");
                 }
             }
