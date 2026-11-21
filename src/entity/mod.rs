@@ -1837,9 +1837,10 @@ impl Entities {
             if !player_kill
                 && matches!(
                     item,
+                    // v0.16 Track G: `entities/ghast`'s tear has no
+                    // `killed_by_player` condition (its music disc does).
                     crate::item::Item::SPIDER_EYE
                         | crate::item::Item::BLAZE_ROD
-                        | crate::item::Item::GHAST_TEAR
                         | crate::item::Item::WITHER_SKULL
                         | crate::item::Item::PHANTOM_MEMBRANE
                 )
@@ -4483,6 +4484,35 @@ mod tests {
                 e.trader_tick(1200.0, &world, &c);
             }
             assert_eq!(e.count(MobKind::WanderingTrader) > 0, allowed, "spawn_wandering_traders = {allowed}");
+        }
+    }
+
+    /// v0.16 Track G (M5 audit): the mobs the way to the End depends on
+    /// drop what the jar's tables give: blaze rods only to players, ender
+    /// pearls and ghast tears (for End crystals) on any death.
+    #[test]
+    fn progression_mobs_drop_their_java_loot() {
+        let fx: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/dragon_respawn.json")).unwrap();
+        for (kind, name, item, id) in [
+            (MobKind::Blaze, "blaze", crate::item::Item::BLAZE_ROD, "minecraft:blaze_rod"),
+            (MobKind::Enderman, "enderman", crate::item::Item::ENDER_PEARL, "minecraft:ender_pearl"),
+            (MobKind::Ghast, "ghast", crate::item::Item::GHAST_TEAR, "minecraft:ghast_tear"),
+        ] {
+            let pools = fx["loot_tables"][format!("entities/{name}")]["pools"].as_array().unwrap();
+            let pool = pools.iter().find(|p| p["entries"][0]["name"] == id).unwrap();
+            let player_only = pool["condition"]["type"] == "minecraft:killed_by_player";
+            let count = &pool["entries"][0]["modifier"][0]["count"];
+            let (min, max) = (count["min"].as_i64().unwrap() as i8, count["max"].as_u64().unwrap() as u8);
+            assert!(kind.loot().contains(&(item, min, max)), "{name}");
+            for player_kill in [false, true] {
+                let mut e = Entities::new(3);
+                for _ in 0..64 {
+                    e.drop_loot_with_fire(kind, DVec3::new(0.5, 10.0, 0.5), 0, false, player_kill);
+                }
+                let dropped = e.items.iter().any(|i| i.stack.item == item);
+                assert_eq!(dropped, player_kill || !player_only, "{name}, player kill {player_kill}");
+            }
         }
     }
 

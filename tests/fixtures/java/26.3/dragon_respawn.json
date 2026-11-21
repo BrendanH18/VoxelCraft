@@ -147,6 +147,173 @@
       "rarity": "common"
     }
   },
+  "loot_tables": {
+    "entities/blaze": {
+      "pools": [
+        {
+          "condition": {
+            "type": "minecraft:killed_by_player"
+          },
+          "entries": [
+            {
+              "modifier": [
+                {
+                  "count": {
+                    "max": 1,
+                    "min": 0,
+                    "type": "minecraft:uniform"
+                  },
+                  "type": "minecraft:set_count"
+                },
+                {
+                  "count": {
+                    "max": 1.0,
+                    "min": 0.0,
+                    "type": "minecraft:uniform"
+                  },
+                  "enchantment": "minecraft:looting",
+                  "type": "minecraft:enchanted_count_increase"
+                }
+              ],
+              "name": "minecraft:blaze_rod",
+              "type": "minecraft:item"
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "type": "minecraft:entity"
+    },
+    "entities/enderman": {
+      "pools": [
+        {
+          "entries": [
+            {
+              "modifier": [
+                {
+                  "count": {
+                    "max": 1,
+                    "min": 0,
+                    "type": "minecraft:uniform"
+                  },
+                  "type": "minecraft:set_count"
+                },
+                {
+                  "count": {
+                    "max": 1.0,
+                    "min": 0.0,
+                    "type": "minecraft:uniform"
+                  },
+                  "enchantment": "minecraft:looting",
+                  "type": "minecraft:enchanted_count_increase"
+                }
+              ],
+              "name": "minecraft:ender_pearl",
+              "type": "minecraft:item"
+            }
+          ],
+          "rolls": 1
+        }
+      ],
+      "type": "minecraft:entity"
+    },
+    "entities/ghast": {
+      "pools": [
+        {
+          "entries": [
+            {
+              "modifier": [
+                {
+                  "count": {
+                    "max": 1,
+                    "min": 0,
+                    "type": "minecraft:uniform"
+                  },
+                  "type": "minecraft:set_count"
+                },
+                {
+                  "count": {
+                    "max": 1.0,
+                    "min": 0.0,
+                    "type": "minecraft:uniform"
+                  },
+                  "enchantment": "minecraft:looting",
+                  "type": "minecraft:enchanted_count_increase"
+                }
+              ],
+              "name": "minecraft:ghast_tear",
+              "type": "minecraft:item"
+            }
+          ],
+          "rolls": 1
+        },
+        {
+          "entries": [
+            {
+              "modifier": [
+                {
+                  "count": {
+                    "max": 2,
+                    "min": 0,
+                    "type": "minecraft:uniform"
+                  },
+                  "type": "minecraft:set_count"
+                },
+                {
+                  "count": {
+                    "max": 1.0,
+                    "min": 0.0,
+                    "type": "minecraft:uniform"
+                  },
+                  "enchantment": "minecraft:looting",
+                  "type": "minecraft:enchanted_count_increase"
+                }
+              ],
+              "name": "minecraft:gunpowder",
+              "type": "minecraft:item"
+            }
+          ],
+          "rolls": 1
+        },
+        {
+          "condition": {
+            "terms": [
+              {
+                "predicate": {
+                  "direct_entity": {
+                    "minecraft:entity_type": "minecraft:fireball"
+                  },
+                  "tags": [
+                    {
+                      "expected": true,
+                      "id": "#minecraft:is_projectile"
+                    }
+                  ]
+                },
+                "type": "minecraft:damage_source_properties"
+              },
+              {
+                "type": "minecraft:killed_by_player"
+              }
+            ],
+            "type": "minecraft:all_of"
+          },
+          "entries": [
+            {
+              "name": "minecraft:music_disc_tears",
+              "type": "minecraft:item"
+            }
+          ],
+          "modifier": {
+            "count": 1,
+            "type": "minecraft:set_count"
+          },
+          "rolls": 1
+        }
+      ],
+      "type": "minecraft:entity"
+    }
+  },
   "portal_forcer": {
     "constants": {
       "FRAME_BOX": 3,
@@ -306,7 +473,8 @@
     "EndSpikeFeature (constants, getSpikesForLevel, SpikeCacheLoader.load)",
     "TheEndGatewayBlockEntity (constants, findExitPortalXZPosTentative, findValidSpawnInChunk, findOrCreateValidTeleportPos, findExitPosition), EndIslandFeature.place",
     "PortalForcer (constants, createPortal)",
-    "data/minecraft/recipe/end_crystal.json"
+    "data/minecraft/recipe/end_crystal.json",
+    "data/minecraft/loot_table/entities/blaze, enderman, ghast"
   ],
   "spikes": {
     "cache_key_mask": 65535,

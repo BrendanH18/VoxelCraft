@@ -28,6 +28,9 @@ from extract_java_item_fixtures import SERVER_SHA1
 from extract_java_new_mob_fixtures import constants, method, number, ops
 from extract_java_wither_beacon_fixtures import before, entity_type, item_facts
 
+# The progression mobs whose drops the M5 audit checks.
+LOOT_TABLES = ["entities/blaze", "entities/enderman", "entities/ghast"]
+
 
 def numbers(code, signature):
     """Every constant the method pushes, in order."""
@@ -131,6 +134,9 @@ def extract(server):
 
     with zipfile.ZipFile(io.BytesIO(data)) as jar:
         recipe = json.loads(jar.read("data/minecraft/recipe/end_crystal.json"))
+        loot = {name: json.loads(jar.read(f"data/minecraft/loot_table/{name}.json")) for name in LOOT_TABLES}
+        for table in loot.values():
+            table.pop("random_sequence", None)
     return {
         "reference": "Minecraft Java Edition 26.3",
         "server_sha1": SERVER_SHA1,
@@ -145,10 +151,12 @@ def extract(server):
             "findOrCreateValidTeleportPos, findExitPosition), EndIslandFeature.place",
             "PortalForcer (constants, createPortal)",
             "data/minecraft/recipe/end_crystal.json",
+            "data/minecraft/loot_table/entities/blaze, enderman, ghast",
         ],
         "entity_types": entity_types,
         "items": items,
         "recipe": recipe,
+        "loot_tables": loot,
         "end_crystal": end_crystal,
         "fight": fight_facts,
         "respawn": respawn,
