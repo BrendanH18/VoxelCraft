@@ -700,6 +700,7 @@ mod animals;
 mod aquatic;
 mod bee;
 mod breeze;
+mod conduit;
 mod copper_golem;
 mod creaking;
 mod hostiles;
@@ -712,6 +713,7 @@ mod shulker;
 mod sniffer;
 mod warden;
 mod wither;
+pub use conduit::build_conduits;
 pub use wither::{build_beacon_beams, build_wither_skulls};
 
 /// Animated parts for a mob, in model space (pixels).

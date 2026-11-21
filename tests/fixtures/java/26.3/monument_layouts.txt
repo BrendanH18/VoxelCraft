@@ -1,0 +1,128 @@
+case 12345 5 -3 north 51 39 -77 108 61 -20
+  OceanMonumentEntryRoom 76 39 -49 83 42 -42 room 2 000011
+  OceanMonumentCoreRoom 60 39 -73 75 46 -58 room 10 001100
+  OceanMonumentDoubleYRoom 68 39 -57 75 46 -50 room 6 011100
+  OceanMonumentSimpleRoom 1 84 39 -49 91 42 -42 room 3 000010
+  OceanMonumentDoubleZRoom 84 43 -65 91 46 -50 room 33 001110
+  OceanMonumentDoubleZRoom 68 47 -57 75 50 -42 room 51 001000
+  OceanMonumentSimpleRoom 1 92 39 -73 99 42 -66 room 19 000010
+  OceanMonumentDoubleYRoom 92 39 -49 99 46 -42 room 4 010000
+  OceanMonumentDoubleZRoom 92 43 -73 99 46 -58 room 39 101000
+  OceanMonumentSimpleRoom 0 60 43 -57 67 46 -50 room 30 000100
+  OceanMonumentDoubleXYRoom 76 39 -73 91 46 -66 room 17 010001
+  OceanMonumentSimpleRoom 0 84 39 -65 91 42 -58 room 13 001100
+  OceanMonumentDoubleZRoom 92 39 -65 99 42 -50 room 9 001000
+  OceanMonumentDoubleYRoom 76 39 -65 83 46 -58 room 12 010000
+  OceanMonumentSimpleRoom 2 76 47 -49 83 50 -42 room 52 110000
+  OceanMonumentDoubleXRoom 76 39 -57 91 42 -50 room 7 010001
+  OceanMonumentDoubleZRoom 84 47 -57 91 50 -42 room 53 001000
+  OceanMonumentDoubleXRoom 68 43 -49 83 46 -42 room 26 001001
+  OceanMonumentSimpleRoom 1 76 47 -57 83 50 -50 room 57 100011
+  OceanMonumentSimpleRoom 0 60 43 -49 67 46 -42 room 25 101100
+  OceanMonumentSimpleRoom 0 92 43 -57 99 46 -50 room 34 000100
+  OceanMonumentSimpleRoom 0 68 39 -49 75 42 -42 room 1 001011
+  OceanMonumentSimpleRoom 0 84 43 -49 91 46 -42 room 28 001001
+  OceanMonumentDoubleZRoom 60 39 -57 67 42 -42 room 0 011001
+  OceanMonumentSimpleRoom 1 76 43 -57 83 46 -50 room 32 111011
+  OceanMonumentWingRoom 1 52 40 -41 74 47 -21
+  OceanMonumentWingRoom 0 85 40 -41 107 47 -21
+  OceanMonumentPenthouse 73 52 -55 86 56 -42
+case -987654321 -40 17 east -669 39 243 -612 61 300
+  OceanMonumentEntryRoom -647 39 268 -640 42 275 room 2 000001
+  OceanMonumentCoreRoom -631 39 268 -616 46 283 room 12 001001
+  OceanMonumentDoubleXRoom -631 43 252 -624 46 267 room 35 000001
+  OceanMonumentDoubleXRoom -623 43 252 -616 46 267 room 40 100001
+  OceanMonumentDoubleXRoom -639 39 260 -632 42 275 room 6 000111
+  OceanMonumentSimpleRoom 0 -647 39 260 -640 42 267 room 1 001000
+  OceanMonumentDoubleXRoom -631 39 252 -624 42 267 room 10 000001
+  OceanMonumentDoubleZRoom -647 43 276 -632 46 283 room 28 001000
+  OceanMonumentDoubleXRoom -639 39 276 -632 42 291 room 8 010101
+  OceanMonumentSimpleRoom 1 -623 43 284 -616 46 291 room 44 000010
+  OceanMonumentSimpleRoom 1 -639 47 276 -632 50 283 room 58 000100
+  OceanMonumentDoubleZRoom -647 43 284 -632 46 291 room 29 101100
+  OceanMonumentSimpleRoom 0 -623 39 260 -616 42 267 room 16 010101
+  OceanMonumentDoubleZRoom -647 43 268 -632 46 275 room 27 001010
+  OceanMonumentDoubleXRoom -639 43 252 -632 46 267 room 30 000001
+  OceanMonumentSimpleRoom 0 -639 39 252 -632 42 259 room 5 000001
+  OceanMonumentSimpleTopRoom -631 43 284 -624 46 291 room 39 100000
+  OceanMonumentSimpleRoom 2 -647 39 284 -640 42 291 room 4 011000
+  OceanMonumentDoubleXRoom -647 47 260 -640 50 275 room 51 000001
+  OceanMonumentSimpleRoom 2 -623 39 252 -616 42 259 room 15 010000
+  OceanMonumentSimpleRoom 2 -647 47 276 -640 50 283 room 53 001010
+  OceanMonumentSimpleRoom 1 -639 47 268 -632 50 275 room 57 100110
+  OceanMonumentSimpleRoom 0 -623 39 284 -616 42 291 room 19 000100
+  OceanMonumentDoubleYRoom -647 39 252 -640 46 259 room 0 010000
+  OceanMonumentSimpleRoom 1 -631 39 284 -624 42 291 room 14 011100
+  OceanMonumentSimpleRoom 2 -639 47 260 -632 50 267 room 56 100001
+  OceanMonumentSimpleRoom 0 -647 39 276 -640 42 283 room 3 001010
+  OceanMonumentSimpleRoom 1 -647 43 260 -640 46 267 room 26 000011
+  OceanMonumentWingRoom 1 -668 40 244 -648 47 266
+  OceanMonumentWingRoom 0 -668 40 277 -648 47 299
+  OceanMonumentPenthouse -647 52 265 -634 56 278
+case 42 0 0 south -29 39 -29 28 61 28
+  OceanMonumentEntryRoom -4 39 -7 3 42 0 room 2 011010
+  OceanMonumentCoreRoom -20 39 9 -5 46 24 room 10 000001
+  OceanMonumentDoubleZRoom -4 43 1 3 46 16 room 32 001010
+  OceanMonumentSimpleRoom 1 -12 39 -7 -5 42 0 room 1 000001
+  OceanMonumentDoubleXRoom -20 43 -7 -5 46 0 room 25 100101
+  OceanMonumentDoubleXRoom -4 39 17 11 42 24 room 17 000011
+  OceanMonumentDoubleXRoom 4 43 1 19 46 8 room 33 000001
+  OceanMonumentSimpleRoom 0 12 39 17 19 42 24 room 19 000110
+  OceanMonumentDoubleYRoom -12 39 1 -5 46 8 room 6 010000
+  OceanMonumentSimpleRoom 0 12 39 1 19 42 8 room 9 000110
+  OceanMonumentDoubleXRoom 4 43 -7 19 46 0 room 28 010001
+  OceanMonumentSimpleRoom 1 -4 43 -7 3 46 0 room 27 100010
+  OceanMonumentDoubleZRoom 4 43 9 11 46 24 room 38 001011
+  OceanMonumentDoubleYRoom -20 39 1 -13 46 8 room 5 010000
+  OceanMonumentDoubleZRoom 4 39 -7 11 42 8 room 3 001000
+  OceanMonumentSimpleRoom 2 12 43 9 19 46 16 room 39 000010
+  OceanMonumentSimpleRoom 0 4 47 1 11 50 8 room 58 000010
+  OceanMonumentSimpleRoom 1 -4 47 -7 3 50 0 room 52 010010
+  OceanMonumentSimpleRoom 0 -20 39 -7 -13 42 0 room 0 010000
+  OceanMonumentSimpleRoom 0 -4 43 17 3 46 24 room 42 000100
+  OceanMonumentSimpleRoom 2 -4 39 9 3 42 16 room 12 010010
+  OceanMonumentDoubleXRoom 4 39 9 19 42 16 room 13 000001
+  OceanMonumentDoubleXRoom -12 47 1 3 50 8 room 56 000101
+  OceanMonumentSimpleRoom 0 -4 39 1 3 42 8 room 7 000101
+  OceanMonumentSimpleRoom 0 -12 47 -7 -5 50 0 room 51 101001
+  OceanMonumentSimpleTopRoom 4 47 -7 11 50 0 room 53 100000
+  OceanMonumentSimpleRoom 0 12 43 17 19 46 24 room 44 000010
+  OceanMonumentSimpleRoom 2 12 39 -7 19 42 0 room 4 011000
+  OceanMonumentWingRoom 1 -28 40 -28 -6 47 -8
+  OceanMonumentWingRoom 0 5 40 -28 27 47 -8
+  OceanMonumentPenthouse -7 52 -7 6 56 6
+case 7777777777 100 -200 south 1571 39 -3229 1628 61 -3172
+  OceanMonumentEntryRoom 1596 39 -3207 1603 42 -3200 room 2 000011
+  OceanMonumentCoreRoom 1588 39 -3191 1603 46 -3176 room 11 000001
+  OceanMonumentSimpleRoom 2 1588 39 -3207 1595 42 -3200 room 1 000011
+  OceanMonumentDoubleZRoom 1580 43 -3207 1587 46 -3192 room 25 001100
+  OceanMonumentSimpleRoom 0 1580 39 -3207 1587 42 -3200 room 0 000001
+  OceanMonumentSimpleRoom 2 1604 43 -3199 1611 46 -3192 room 33 000100
+  OceanMonumentDoubleXRoom 1588 43 -3199 1603 46 -3192 room 31 010101
+  OceanMonumentDoubleZRoom 1596 47 -3207 1603 50 -3192 room 52 011010
+  OceanMonumentSimpleTopRoom 1588 47 -3199 1595 50 -3192 room 56 100000
+  OceanMonumentDoubleYRoom 1612 39 -3191 1619 46 -3184 room 14 010100
+  OceanMonumentDoubleXRoom 1596 39 -3199 1611 42 -3192 room 7 010001
+  OceanMonumentSimpleRoom 2 1580 39 -3183 1587 42 -3176 room 15 000101
+  OceanMonumentDoubleZRoom 1604 39 -3191 1611 42 -3176 room 13 001010
+  OceanMonumentSimpleTopRoom 1612 43 -3199 1619 46 -3192 room 34 100000
+  OceanMonumentSimpleRoom 0 1588 39 -3199 1595 42 -3192 room 6 000010
+  OceanMonumentSimpleRoom 0 1604 47 -3199 1611 50 -3192 room 58 000100
+  OceanMonumentDoubleZRoom 1580 43 -3191 1587 46 -3176 room 35 001100
+  OceanMonumentSimpleRoom 2 1604 43 -3183 1611 46 -3176 room 43 000110
+  OceanMonumentSimpleRoom 0 1580 39 -3191 1587 42 -3184 room 10 001100
+  OceanMonumentSimpleRoom 2 1580 39 -3199 1587 42 -3192 room 5 011001
+  OceanMonumentSimpleRoom 1 1604 47 -3207 1611 50 -3200 room 53 101000
+  OceanMonumentDoubleYRoom 1612 39 -3183 1619 46 -3176 room 19 010010
+  OceanMonumentSimpleRoom 2 1588 47 -3207 1595 50 -3200 room 51 100001
+  OceanMonumentSimpleRoom 0 1604 43 -3191 1611 46 -3184 room 38 001001
+  OceanMonumentDoubleXRoom 1604 39 -3207 1619 42 -3200 room 3 000011
+  OceanMonumentSimpleRoom 1 1612 43 -3207 1619 46 -3200 room 29 000110
+  OceanMonumentSimpleRoom 2 1612 39 -3199 1619 42 -3192 room 9 011110
+  OceanMonumentDoubleXRoom 1588 43 -3207 1603 46 -3200 room 26 011001
+  OceanMonumentSimpleRoom 0 1604 43 -3207 1611 46 -3200 room 28 011011
+  OceanMonumentWingRoom 0 1572 40 -3228 1594 47 -3208
+  OceanMonumentWingRoom 1 1605 40 -3228 1627 47 -3208
+  OceanMonumentPenthouse 1593 52 -3207 1606 56 -3194
+decoration -939719918171316023
+draws 0 2 1 1 2 1 false true false false false true 1 -2268288476502206663

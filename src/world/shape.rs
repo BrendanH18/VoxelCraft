@@ -398,6 +398,9 @@ pub fn shape_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Bloc
     if super::heavy_core::owns(block.0) {
         return super::heavy_core::boxes();
     }
+    if super::conduit::owns(block.0) {
+        return super::conduit::boxes();
+    }
     if super::dried_ghast::owns(block.0) {
         return super::dried_ghast::boxes();
     }
@@ -582,6 +585,9 @@ pub fn outline_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Bl
     }
     if super::heavy_core::owns(block.0) {
         return super::heavy_core::boxes();
+    }
+    if super::conduit::owns(block.0) {
+        return super::conduit::boxes();
     }
     if super::dried_ghast::owns(block.0) {
         return super::dried_ghast::boxes();
@@ -849,6 +855,9 @@ pub fn collision_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: 
     if super::heavy_core::owns(block.0) {
         return super::heavy_core::boxes();
     }
+    if super::conduit::owns(block.0) {
+        return super::conduit::boxes();
+    }
     if super::dried_ghast::owns(block.0) {
         return super::dried_ghast::boxes();
     }
@@ -899,6 +908,9 @@ pub fn collision_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: 
         }
         Some(Shaped::Custom) if super::heavy_core::owns(block.0) => {
             return super::heavy_core::boxes();
+        }
+        Some(Shaped::Custom) if super::conduit::owns(block.0) => {
+            return super::conduit::boxes();
         }
         Some(Shaped::Custom) if super::dried_ghast::owns(block.0) => {
             return super::dried_ghast::boxes();

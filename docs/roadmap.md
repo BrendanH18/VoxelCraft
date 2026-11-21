@@ -1458,6 +1458,19 @@ v0.16.
 6. **F. Ocean structures** (GEN-05e). Shipwrecks and ocean monuments
    reassessed against Java's templates, placement and residents in
    generation 5; the conduit with its frame, Conduit Power and its attack.
+   *Implemented, unverified (2026-11-21):* generation 5 shipwrecks follow
+   Java's set, both structures' biome rules, the 20 ocean and 11 beached
+   template lists, the pivot, heights, eight wood palettes and the three
+   chests, with original templates of Java's sizes and markers; generation
+   5 monuments are a port of `OceanMonumentPieces` (room graph and pieces
+   pinned against Java's own output, each chunk's `postProcess` with its
+   decoration random), with the three elder guardians and the guardian
+   spawn override over the building's box; elder guardians skip players
+   who already have their curse; the conduit (block, recipe, frame,
+   Conduit Power with water breathing, mining speed and underwater vision,
+   the hunt, sounds, particles, model, save and LAN animation). Original
+   templates, model and sounds, and the unsaved conduit target, are listed
+   in the [record](verification/2026-11-21-v0.16-ocean-structures.md).
 7. **G. Dragon respawn and the exit audits** (PRO-01, PRO-05, GEN-04b,
    GEN-04c, GEN-07). Placeable End crystals and the respawn ritual; a
    gateway and portal-forcer parity check; the M3 exit corpus and the M5

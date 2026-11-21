@@ -192,6 +192,8 @@ impl World {
             || super::jukebox::piston_immovable(b)
             // v0.16 Track C: the beacon's block entity.
             || b == super::beacon::BEACON
+            // v0.16 Track F: and the conduit's.
+            || super::conduit::owns(b.0)
             || super::utilities::campfire_of(b).is_some()
             || matches!(
                 r::component(b),

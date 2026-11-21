@@ -17,10 +17,6 @@
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
     },
-    "conduit": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
     "crafter": {
       "release": "v0.17",
       "reason": "Redstone and automation completion."
@@ -154,10 +150,6 @@
     "command_block_minecart": {
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
-    },
-    "conduit": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "copper_golem_spawn_egg": {
       "release": "v0.18",

@@ -123,6 +123,9 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             None => crate::world::wither_rose::pixel(x, y),
         };
     }
+    if (crate::world::conduit::SHELL_TEX..crate::world::conduit::TEX_END).contains(&layer) {
+        return crate::world::conduit::pixel(layer, x, y);
+    }
     if (crate::world::beacon::GLASS_TEX..crate::world::beacon::TEX_END).contains(&layer) {
         return crate::world::beacon::pixel(layer, x, y);
     }

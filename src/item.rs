@@ -1625,6 +1625,8 @@ impl Item {
     /// Bottle o' Enchanting.
     pub fn is_uncommon(self) -> bool {
         crate::world::skulls::kind_of_item(self).is_some_and(|k| k.rarity() == 1)
+            // v0.16 Track F: `Items.CONDUIT`.
+            || self == Item::from_block(crate::world::conduit::CONDUIT)
             || self == Item::EXPERIENCE_BOTTLE
             || crate::equipment::is_uncommon(self)
             || crate::content::banner_patterns::rarity(self) == Some(crate::content::banner_patterns::Rarity::Uncommon)

@@ -681,6 +681,8 @@ static TABLES: LazyLock<Tables> = LazyLock::new(|| {
             // v0.16 Track C: the head and beacon tables have no
             // `survives_explosion` condition.
             None if super::skulls::owns(b.0) || b == super::beacon::BEACON => Loot::Keep,
+            // v0.16 Track F: `blocks/conduit` has none either.
+            None if super::conduit::owns(b.0) => Loot::Keep,
             // `blocks/chorus_plant` and `blocks/purpur_slab`: `explosion_decay`.
             None if b == super::end_blocks::CHORUS_PLANT || b.slab_base() == Some(super::end_blocks::PURPUR_BLOCK) => {
                 Loot::Decay

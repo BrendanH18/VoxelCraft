@@ -744,6 +744,14 @@ pub fn recipes() -> &'static [Recipe] {
             Item::from_block(crate::world::beacon::BEACON),
             1,
         ));
+        // v0.16 Track F: `recipe/conduit.json`, eight nautilus shells round a
+        // heart of the sea.
+        r.push(shaped(
+            &["###", "#X#", "###"],
+            &[('#', &[Item::NAUTILUS_SHELL]), ('X', &[Item::HEART_OF_THE_SEA])],
+            Item::from_block(crate::world::conduit::CONDUIT),
+            1,
+        ));
         r
     })
 }

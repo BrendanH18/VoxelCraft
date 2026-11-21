@@ -341,6 +341,53 @@ impl System {
 
     /// Ambient mob/projectile visuals are sampled client-side, without
     /// modifying authoritative AI RNG state or creating headless particles.
+    /// v0.16 Track F: `ConduitBlockEntity.animationTick` for each active
+    /// conduit near a view: a mote flies in from each frame block one tick
+    /// in 50, and one leaves the hunted mob's eyes every tick.
+    pub fn conduits(&mut self, world: &World, entities: &Entities, centers: &[DVec3], setting: Setting) {
+        if setting == Setting::Minimal {
+            return;
+        }
+        let near = |pos: DVec3| centers.iter().any(|&center| pos.distance_squared(center) <= 32.0 * 32.0);
+        let mut emit = Vec::new();
+        for (pos, c) in world.loaded_conduits() {
+            let centre = pos.as_dvec3() + DVec3::splat(0.5);
+            if !c.active || !near(centre) {
+                continue;
+            }
+            let wave = ((c.tick_count as f32 + 35.0) * 0.1).sin() / 2.0 + 0.5;
+            let hh = f64::from((wave * wave + wave) * 0.3);
+            let end = centre + DVec3::new(0.0, 1.0 + hh, 0.0);
+            for block in &c.frame {
+                if self.rng.next_f32() * 50.0 < 1.0 {
+                    let d = (*block - pos).as_dvec3();
+                    let v = DVec3::new(
+                        -0.5 + f64::from(self.rng.next_f32()) + d.x,
+                        -2.0 + f64::from(self.rng.next_f32()) + d.y,
+                        -0.5 + f64::from(self.rng.next_f32()) + d.z,
+                    );
+                    emit.push((end, v));
+                }
+            }
+            if let Some(m) = c.target.and_then(|uid| entities.mobs.iter().find(|m| m.uid == uid && m.alive())) {
+                let shape = m.shape();
+                let eye = m.pos + DVec3::Y * (shape.height * 0.85);
+                let (w, h) = (shape.half_width * 2.0, shape.height);
+                let v = DVec3::new(
+                    (-0.5 + f64::from(self.rng.next_f32())) * (3.0 + w),
+                    -1.0 + f64::from(self.rng.next_f32()) * h,
+                    (-0.5 + f64::from(self.rng.next_f32())) * (3.0 + w),
+                );
+                emit.push((eye, v));
+            }
+        }
+        for (pos, velocity) in emit {
+            let mut b = Burst::new(Kind::Nautilus, pos, 1);
+            b.velocity = velocity;
+            self.burst(b, setting);
+        }
+    }
+
     pub fn entities(&mut self, world: &World, entities: &Entities, centers: &[DVec3], setting: Setting) {
         let near = |pos: DVec3| centers.iter().any(|&center| pos.distance_squared(center) <= 32.0 * 32.0);
         for mob in &entities.mobs {

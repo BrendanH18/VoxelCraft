@@ -415,7 +415,10 @@ impl Game {
                     }
                 }
                 EntityEvent::PlayerEffect { player: PlayerId::HOST, effect, amplifier, ticks } => {
-                    if arrow_effects.allows() && self.session.mode.is_survival() {
+                    if arrow_effects.allows()
+                        && self.session.mode.is_survival()
+                        && !elder_curse_held(&self.session.vitals.effects, effect, amplifier, ticks)
+                    {
                         let damage = self.session.vitals.apply_effect(effect, amplifier, ticks);
                         if damage > 0.0 {
                             self.damage_player(damage, Cause::MAGIC);
@@ -426,6 +429,7 @@ impl Game {
                     if arrow_effects.allows()
                         && let Some(bot) = self.agents.by_id_mut(player)
                         && bot.agent.session.mode.is_survival()
+                        && !elder_curse_held(&bot.agent.session.vitals.effects, effect, amplifier, ticks)
                     {
                         let damage = bot.agent.session.vitals.apply_effect(effect, amplifier, ticks);
                         if damage > 0.0 {
@@ -963,4 +967,22 @@ impl Game {
             ),
         ]
     }
+}
+
+/// v0.16 Track F: `MobEffectUtil.addEffectToPlayersAround` as the elder
+/// guardian calls it (Mining Fatigue III for 6000 ticks, display limit
+/// 1200) skips a player whose Mining Fatigue is already at least III with
+/// more than 1199 ticks left. The elder's pulse is the only source of that
+/// exact effect.
+fn elder_curse_held(
+    effects: &voxelcraft::simulation::effects::Effects,
+    effect: voxelcraft::simulation::effects::Effect,
+    amplifier: u8,
+    ticks: u32,
+) -> bool {
+    use voxelcraft::simulation::effects::Effect;
+    effect == Effect::MiningFatigue
+        && amplifier == 2
+        && ticks == 6000
+        && effects.get(Effect::MiningFatigue).is_some_and(|a| a.amplifier >= 2 && a.ticks > 1199)
 }
