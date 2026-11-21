@@ -39,7 +39,9 @@ mode=checks action=run cmd=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --full) mode=full ;;
-        --save|--status|--stop|--done) action=${1#--} ;;
+        --save|--status|--stop|--done)
+            [ "$action" = run ] || { echo "boat-check: give one of --save, --status, --stop or --done" >&2; exit 2; }
+            action=${1#--} ;;
         --) shift
             [ $# -gt 0 ] || { echo "boat-check: -- needs a command" >&2; exit 2; }
             if [ $# -eq 1 ]; then cmd=$1; else cmd=$(printf '%q ' "$@"); fi
@@ -188,6 +190,8 @@ say() { echo "boat-check: $*" >&2; }
 # A check whose CLI was killed may still be running here; wait for it rather than pull its tree away.
 exec 9>"$HOME/.boat-check.lock"
 flock -w 900 9 || { say "an earlier check is still running in this sandbox; try again later"; exit 2; }
+# Pushes older than 12 hours (from checks that stopped before syncing) go first.
+find /home/user/push -mindepth 1 -maxdepth 1 -mmin +720 -exec rm -rf {} + 2>/dev/null || true
 
 # System libraries and Rust: already in the warm snapshot, installed here on a bare sandbox.
 pkgs="libasound2-dev libudev-dev libfontconfig1-dev libfreetype6-dev pkg-config rsync"
@@ -208,7 +212,6 @@ export CARGO_TARGET_DIR=$HOME/target CARGO_TERM_COLOR=always
 mkdir -p "$repo"
 rsync -rlpc --delete "$push/" "$repo/"
 rm -rf "$push"
-find /home/user/push -mindepth 1 -maxdepth 1 -mmin +720 -exec rm -rf {} + 2>/dev/null || true
 cd "$repo"
 say "$(rustc --version) on $(nproc) vCPUs"
 
@@ -270,6 +273,7 @@ case "$action" in
         # A fresh bare sandbox builds origin's default branch, so no worktree's changes reach
         # the snapshot every later sandbox starts from. Uses one start.
         git fetch -q origin
+        git remote set-head origin --auto >/dev/null 2>&1 || true   # the server's current default branch
         base=$(git rev-parse -q --verify origin/HEAD || git rev-parse --verify origin/main)
         tree=$(mktemp -d "${TMPDIR:-/tmp}/boat-check-save.XXXXXX")
         git archive "$base" | tar -x -C "$tree"
