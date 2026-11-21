@@ -124,7 +124,7 @@ cargo fmt && cargo clippy --profile ci --all-targets --locked -- -D warnings && 
 ```
 
 Checks and tests use the `ci` profile (owner, 2026-11-21): release's
-optimisations and assertions without its link-time optimisation. On a
+optimisations and assertions without its cross-crate link-time optimisation. On a
 `large` sandbox the test build after a source change takes 259 s instead of
 858 s with `--release`. Only shipped builds use `--release`.
 

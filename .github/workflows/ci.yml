@@ -83,7 +83,7 @@ jobs:
           cache: rust
       - if: runner.os == 'Windows'
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      # The `ci` profile is release without LTO and one codegen unit (Cargo.toml):
+      # The `ci` profile is release without cross-crate LTO and with 16 codegen units (Cargo.toml):
       # the same optimisations and assertions, much faster to build and link.
       - run: cargo clippy --profile ci --all-targets --locked -- -D warnings
       - run: cargo test --profile ci --locked

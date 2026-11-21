@@ -60,7 +60,7 @@ jobs:
         shell: bash
         run: python3 packaging/check-version.py
       - run: cargo fmt --check
-      # Checks and tests use the `ci` profile (release without LTO, Cargo.toml);
+      # Checks and tests use the `ci` profile (release without cross-crate LTO, Cargo.toml);
       # the shipped build below keeps `--release`.
       - run: cargo clippy --profile ci --all-targets --locked --target ${{ matrix.target }} -- -D warnings
       - run: cargo test --profile ci --locked --target ${{ matrix.target }}

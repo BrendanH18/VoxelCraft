@@ -68,7 +68,7 @@ uvx ruff@0.17.5 format --check
 ```
 
 On Windows, pass `target/ci/voxelcraft.exe` to `--executable`. The `ci`
-profile is release without link-time optimisation ([checks](docs/development.md#checks)).
+profile is release without cross-crate link-time optimisation ([checks](docs/development.md#checks)).
 
 For a documentation change, run `python3 tools/check_doc_links.py`: it checks
 that every relative link and `#anchor` in the tracked Markdown files resolves

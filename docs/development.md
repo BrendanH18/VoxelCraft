@@ -16,7 +16,7 @@ cargo test --profile ci
 ```
 
 The `ci` profile (in `Cargo.toml`, owner, 2026-11-21) is the release profile
-without link-time optimisation and with 16 codegen units: the same
+without cross-crate link-time optimisation and with 16 codegen units: the same
 optimisations and assertions, but the ~70 test binaries build and link
 about three times as fast (259 s instead of 858 s after a source change on
 a `large` Boat sandbox). Its output goes to `target/ci/`. Only shipped builds use `--release`
