@@ -265,8 +265,9 @@ fn idle_flight_hovers_over_the_ground() {
     let mut hovered = 0;
     for _ in 0..40 {
         let Some(p) = m.hover_spot(&world, &ctx, &mut rng) else { continue };
-        assert!(p.y >= 1, "{p}");
-        hovered += usize::from((2..=4).contains(&p.y));
+        // The grid's ground is y -1, so one to three over it is 1..=3.
+        assert!(p.y >= 0, "{p}");
+        hovered += usize::from((1..=3).contains(&p.y));
         assert!(p.x.abs() <= 9 && p.z.abs() <= 9, "{p}");
     }
     assert!(hovered >= 30, "{hovered} of 40 hover over the ground");

@@ -119,7 +119,24 @@ fn generation_5_grows_sulfur_springs() {
             }
         }
     }
-    let spring = found.expect("a sulfur spring near the sulfur caves");
+    if found.is_none() {
+        // Why every try near the cave failed, for the failure message.
+        let mut why: std::collections::BTreeMap<String, usize> = Default::default();
+        let per = CHUNK_SIZE_I / JAVA_CHUNK;
+        for dz in -12..=12 {
+            for dx in -12..=12 {
+                for sub in 0..per * per {
+                    let col = IVec2::new(c.x + dx, c.z + dz) * per + IVec2::new(sub % per, sub / per);
+                    for (start, rng) in generator.sulfur_springs.candidates(col) {
+                        let r = generator.sulfur_springs.try_build(&generator, start, rng);
+                        *why.entry(format!("{:?}", r.map(|_| ()))).or_default() += 1;
+                    }
+                }
+            }
+        }
+        panic!("no sulfur spring near {at}: {why:?}");
+    }
+    let spring = found.unwrap();
     assert!(spring.spring.y > spring.origin.y);
     assert_eq!(generator.biome_at(spring.origin), Biome::SulfurCaves);
     // The generated chunks hold the vent and the template's water.

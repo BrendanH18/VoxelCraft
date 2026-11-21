@@ -272,6 +272,24 @@ pub fn placed_cell(origin: IVec3, size: IVec3, turns: u8, local: IVec3) -> IVec3
     corner + rot(local)
 }
 
+/// Why a try placed no spring.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Reject {
+    /// The column's climate can never be sulfur caves.
+    Climate,
+    /// `environment_scan`: the start isn't air, or no ceiling within 12.
+    StartNotAir,
+    NoCeiling,
+    /// The origin isn't in the sulfur caves (`biome`).
+    Biome,
+    /// The root system's climb reached the surface, met a liquid or
+    /// unsolid floor, or found no room within 184 blocks.
+    Surface,
+    Floor,
+    NoRoom,
+    Template,
+}
+
 /// What one spring writes, in Java's order.
 #[derive(Debug)]
 pub struct Spring {
@@ -345,12 +363,17 @@ impl SulfurSprings {
 
     /// One try: the placement filters, the root system's climb and the
     /// spring, against pristine terrain.
-    pub fn build(&self, generator: &Generator, start: IVec3, mut rng: Rng) -> Option<Spring> {
+    pub fn build(&self, generator: &Generator, start: IVec3, rng: Rng) -> Option<Spring> {
+        self.try_build(generator, start, rng).ok()
+    }
+
+    /// [`SulfurSprings::build`], saying which filter refused a try.
+    pub fn try_build(&self, generator: &Generator, start: IVec3, mut rng: Rng) -> Result<Spring, Reject> {
         // Only columns whose climate allows sulfur caves can pass the
         // biome filter; skip the terrain probes elsewhere.
         let column = generator.column(start.x, start.z);
         if super::biome::cave_in(&column.climate, 40, true) != Some(Biome::SulfurCaves) {
-            return None;
+            return Err(Reject::Climate);
         }
         let mut heights = FxHashMap::default();
         let mut nodes = FxHashMap::default();
@@ -371,7 +394,7 @@ impl SulfurSprings {
         };
         // `environment_scan` up through air to a solid ceiling, then one down.
         if terrain(start) != Block::AIR {
-            return None;
+            return Err(Reject::StartNotAir);
         }
         let mut p = start;
         let mut found = false;
@@ -386,11 +409,11 @@ impl SulfurSprings {
             }
         }
         if !found {
-            return None;
+            return Err(Reject::NoCeiling);
         }
         let origin = p - IVec3::Y;
         if generator.biome_at(origin) != Biome::SulfurCaves || terrain(origin) != Block::AIR {
-            return None;
+            return Err(Reject::Biome);
         }
         // `placeDirtAndTree`: climb to a cave floor with room above.
         let surface = column.height.max(super::climate::SEA_LEVEL - 1);
@@ -400,7 +423,7 @@ impl SulfurSprings {
             work.y += 1;
             // `getHeight(WORLD_SURFACE)` is one over the top block.
             if surface + 1 < work.y {
-                return None;
+                return Err(Reject::Surface);
             }
             if terrain(work) != Block::AIR || !(1..=REQUIRED_SPACE).all(|i| terrain(work + IVec3::Y * i) == Block::AIR)
             {
@@ -417,12 +440,12 @@ impl SulfurSprings {
             }
             let floor = terrain(work - IVec3::Y);
             if floor.is_lava() || !floor.is_solid() {
-                return None;
+                return Err(Reject::Floor);
             }
             spot = Some((work, y));
             break;
         }
-        let (spring, climbed) = spot?;
+        let (spring, climbed) = spot.ok_or(Reject::NoRoom)?;
         // `sulfur_spring`: a size by weight.
         let total: u32 = SIZES.iter().map(|s| s.0).sum();
         let mut pick = rng.below(total);
@@ -473,7 +496,7 @@ impl SulfurSprings {
         }
         // The template, seven down, centred and turned.
         let name = names[rng.below(names.len() as u32) as usize];
-        let template = templates().iter().find(|t| t.name == name)?;
+        let template = templates().iter().find(|t| t.name == name).ok_or(Reject::Template)?;
         let turns = rng.below(4) as u8;
         let corner = spring + IVec3::Y * TEMPLATE_OFFSET_Y;
         for &(local, b) in &template.cells {
@@ -500,7 +523,7 @@ impl SulfurSprings {
             bounds.min = bounds.min.min(p);
             bounds.max = bounds.max.max(p);
         }
-        Some(Spring { origin, spring, bounds, cells: cells.into(), roots: roots.into(), hanging })
+        Ok(Spring { origin, spring, bounds, cells: cells.into(), roots: roots.into(), hanging })
     }
 
     /// The springs placed from the Java chunks of one 32×32 column.
