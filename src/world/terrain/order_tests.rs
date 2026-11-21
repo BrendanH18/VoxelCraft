@@ -169,7 +169,7 @@ fn evict(g: &mut Generator, generation: Generation, step: usize) {
             g.temples = crate::world::temples::Temples::new(SEED);
             g.ruined_portals = crate::world::ruined_portal::RuinedPortals::new(SEED);
             g.buried_treasure = crate::world::buried_treasure::BuriedTreasure::new(SEED);
-            g.mineshafts = crate::world::mineshaft::Mineshafts::new(SEED);
+            g.mineshafts = crate::world::mineshaft::Mineshafts::with_generation(SEED, generation);
             g.dungeons = crate::world::dungeon::Dungeons::new(SEED);
             g.relics = crate::world::relics::Relics::new(SEED);
             g.trail_ruins = crate::world::trail_ruins::TrailRuins::new(SEED);
