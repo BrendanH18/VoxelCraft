@@ -75,6 +75,24 @@ impl Game {
         }
     }
 
+    /// v0.16 Track H: potent sulfur's block entities on the world's game
+    /// time, then their gas, lifts and sounds.
+    pub(super) fn tick_potent_sulfur(&mut self) {
+        use voxelcraft::world::potent_sulfur::Event as Geyser;
+        self.world.tick_potent_sulfur(self.world.maps.game_ticks);
+        for event in self.world.take_potent_sulfur_events() {
+            if let Geyser::Sound { cue, pos } = event {
+                self.audio.play(Sound::Geyser(cue), Some(pos), 1.0, (1.0, 1.0));
+                continue;
+            }
+            self.session.potent_sulfur(&self.world, &event);
+            for bot in self.agents.players.values_mut().filter(|b| b.active) {
+                bot.agent.session.potent_sulfur(&self.world, &event);
+            }
+            self.mobs.entities.potent_sulfur(&self.world, &event);
+        }
+    }
+
     fn beacon_sound(&mut self, cue: Cue, p: glam::IVec3) {
         self.audio.play(Sound::Beacon(cue), Some(p.as_dvec3() + DVec3::splat(0.5)), 1.0, (1.0, 1.0));
     }

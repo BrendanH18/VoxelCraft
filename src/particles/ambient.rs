@@ -179,6 +179,22 @@ impl System {
             let mut b = Burst::new(Kind::Bubble, pos, 1);
             b.velocity = DVec3::new(0.0, if down { -0.5 } else { 0.5 }, 0.0);
             self.burst(b, setting);
+        } else if crate::world::gen5_blocks::potent_state(block)
+            .is_some_and(|s| s != crate::world::gen5_blocks::Potent::Dry)
+        {
+            // v0.16 Track H: `PotentSulfurBlock.animateTick`: two sulfur
+            // bubbles in the water above and, one time in ten, the gas.
+            if world.get_block(cell + IVec3::Y).is_some_and(crate::world::potent_sulfur::water_source) {
+                for _ in 0..2 {
+                    let pos = base + DVec3::Y + random_vec(&mut self.rng);
+                    let mut b = Burst::new(Kind::Bubble, pos, 1);
+                    b.color = Some(crate::world::potent_sulfur::BUBBLE_COLOUR);
+                    self.burst(b, setting);
+                }
+                if self.rng.next_int(10) == 0 && self.gas_sounds.len() < 16 {
+                    self.gas_sounds.push(base);
+                }
+            }
         } else if block == Block::END_PORTAL {
             // Java End portals produce smoke rather than Nether-style purple particles.
             let mut pos = base + random_vec(&mut self.rng);

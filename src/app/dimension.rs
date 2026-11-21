@@ -55,6 +55,8 @@ pub(super) const DIMENSION_KEYS: [&str; 29] = [
     "raids",
     // v0.16 Track C.
     "beacons",
+    // v0.16 Track H.
+    "potent_sulfur",
 ];
 /// How far around the arrival point to look for an existing portal.
 const SEARCH_RADIUS: i32 = 16;
@@ -149,6 +151,7 @@ impl Game {
         props.insert("utilities".to_string(), self.world.utilities_to_string());
         props.insert("workstations".to_string(), self.world.workstations_to_string());
         props.insert("beacons".to_string(), self.world.beacons_to_string());
+        props.insert("potent_sulfur".to_string(), self.world.potent_sulfur_to_string());
         self.mobs.entities.save_props(&mut props);
         if let Some(fight) = &self.mobs.entities.fight {
             props.insert("dragon".to_string(), fight.serialize());
@@ -215,6 +218,9 @@ impl Game {
         }
         if let Some(b) = props.get("beacons") {
             self.world.load_beacons(b);
+        }
+        if let Some(g) = props.get("potent_sulfur") {
+            self.world.load_potent_sulfur(g);
         }
         // Entities in chunks that haven't streamed in yet move to per-chunk
         // storage on the first tick; ridden vehicles stay with their riders.

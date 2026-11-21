@@ -93,6 +93,7 @@ pub mod overworld_blocks;
 mod overworld_flora;
 pub mod pale_garden;
 pub mod poplar_trees;
+pub mod potent_sulfur;
 mod portal;
 pub mod precipitation;
 pub mod pumpkin_blocks;
@@ -399,6 +400,12 @@ pub struct World {
     /// game last asked.
     pub(crate) beacons: beacon::State,
     pub(crate) beacon_events: Vec<beacon::Event>,
+    /// v0.16 Track H: potent sulfur block entities (see [`potent_sulfur`]),
+    /// what they did since the game last asked, and freshly loaded cells
+    /// whose state is settled on the next tick.
+    pub(crate) potent_sulfur: potent_sulfur::State,
+    pub(crate) potent_events: Vec<potent_sulfur::Event>,
+    pub(crate) potent_settle: Vec<IVec3>,
     /// Turtle eggs that hatched: cell and how many babies; the game spawns them.
     pub hatched_turtles: Vec<(IVec3, u8)>,
     pub hatched_tadpoles: Vec<(IVec3, u8)>,
@@ -551,6 +558,7 @@ impl World {
         self.register_campfires(pos, &data);
         self.register_beehives(pos, &data, true);
         self.register_creaking_hearts(pos, &data);
+        self.register_potent_sulfur(pos, &data);
         self.chunks.insert(
             pos,
             ChunkSlot {
@@ -698,6 +706,9 @@ impl World {
             wither_skulls: Vec::new(),
             beacons: Default::default(),
             beacon_events: Vec::new(),
+            potent_sulfur: Default::default(),
+            potent_events: Vec::new(),
+            potent_settle: Vec::new(),
             hatched_turtles: Vec::new(),
             hatched_tadpoles: Vec::new(),
             sniffer_egg_events: Vec::new(),
@@ -1072,6 +1083,11 @@ impl World {
             self.wither_skulls.push(p);
         }
         self.track_beacon(p, old, block);
+        // v0.16 Track H: potent sulfur's block entity and `updateShape`.
+        self.track_potent_sulfur(p, old, block);
+        if old != block {
+            self.potent_sulfur_neighbours(p);
+        }
         if old.is_log() && !block.is_log() {
             self.log_removed(p);
         }
@@ -1472,6 +1488,7 @@ impl World {
         self.register_campfires(pos, &data);
         self.register_beehives(pos, &data, modified);
         self.register_creaking_hearts(pos, &data);
+        self.register_potent_sulfur(pos, &data);
         self.register_sculk(pos, &data);
         let heights = mesh::chunk_heights(&data, pos.y * CHUNK_SIZE_I);
         let workers = &self.workers;

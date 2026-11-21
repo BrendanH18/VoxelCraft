@@ -532,6 +532,11 @@ pub fn placed(
     use glam::IVec3;
     let at = ctx.at;
     let block = |p: IVec3| get(p).unwrap_or(Block::AIR);
+    // v0.16 Track H: `PotentSulfurBlock.getStateForPlacement`.
+    if raw == POTENT_SULFUR {
+        let (state, _) = super::potent_sulfur::valid_state(Potent::Dry, block(at + IVec3::Y), block(at - IVec3::Y));
+        return Some(Some(potent(state)));
+    }
     if raw == SULFUR_SPIKE {
         let first_down = ctx.look.y > 0.0;
         for down in [first_down, !first_down] {
