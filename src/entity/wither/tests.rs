@@ -267,7 +267,7 @@ fn idle_flight_hovers_over_the_ground() {
         let Some(p) = m.hover_spot(&world, &ctx, &mut rng) else { continue };
         assert!(p.y >= 1, "{p}");
         hovered += usize::from((2..=4).contains(&p.y));
-        assert!((p.x - 0).abs() <= 9 && (p.z - 0).abs() <= 9, "{p}");
+        assert!(p.x.abs() <= 9 && p.z.abs() <= 9, "{p}");
     }
     assert!(hovered >= 30, "{hovered} of 40 hover over the ground");
 }

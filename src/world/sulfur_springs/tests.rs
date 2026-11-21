@@ -106,7 +106,7 @@ fn generation_5_grows_sulfur_springs() {
     let at = generator.nearest_biome(IVec2::ZERO, Biome::SulfurCaves, 6000).expect("a sulfur cave within 6000 blocks");
     let c = at.div_euclid(IVec3::splat(CHUNK_SIZE_I));
     let mut found = None;
-    'search: for r in 0..12 {
+    'search: for r in 0i32..12 {
         for dz in -r..=r {
             for dx in -r..=r {
                 if dx.abs().max(dz.abs()) != r {
