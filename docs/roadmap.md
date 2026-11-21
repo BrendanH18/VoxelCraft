@@ -873,6 +873,29 @@ evictions; compare outputs and inspect borders. Explore each core biome/
 structure family without cheats, obtain its rewards, and prove cleared
 containers/residents stay cleared after restart.
 
+*M3 exit assessment (v0.16, 2026-11-21):* every exit criterion except the
+owner's play now has automated evidence, and every GEN row has its code,
+tests and fixtures listed in the
+[audit table](verification/2026-11-21-v0.16-m3-exit.md#audit-of-the-gen-rows),
+but M3 does not close yet. Under FE-01 no Java seed reproduces a Java world,
+so the documented corpus (`world::terrain::m3_corpus`, two seeds) pins
+VoxelCraft's coordinates for all 26 structure families of generation 5 and
+checks each against the jar's data (`m3_corpus.json`): Java's random-spread
+start chunk, frequency reducers, the outposts' exclusion zone, the 128
+stronghold rings, the feature counts and rarities, every container's loot
+table, and the residents and spawners. Whole generation 5 structures
+generate identically in any order, on six threads and across cache
+evictions in all three dimensions, and cleared chests, broken spawners and
+killed residents stay cleared after a save and reload on a fresh
+generator. The audit fixed monuments that never got their elder guardians
+(an elder reaching into a wall held back the whole monument). Still open:
+the owner's exploration of each family without cheats; GEN-04a's Nether
+biome and feature parity, GEN-04b and GEN-04c (Track G); and, with
+releases the audit proposes for the owner to approve, mineshaft chest
+minecarts (v0.17), the stronghold ring biome search and the bastion pool
+catalogue (v0.18). Every row stays Implemented, unverified or Partial until
+the owner has played it.
+
 #### v0.13 scope: terrain
 
 Done (owner, 2026-10-31), tagged `v0.13`: generation 2 density terrain (FE-01),
@@ -1475,6 +1498,8 @@ v0.16.
    GEN-04c, GEN-07). Placeable End crystals and the respawn ritual; a
    gateway and portal-forcer parity check; the M3 exit corpus and the M5
    progression audit.
+   The M3 exit corpus was built as its own audit (2026-11-21,
+   [record](verification/2026-11-21-v0.16-m3-exit.md)).
 8. **H. Wave 1 leftovers** (BLD-01b, GEN-03, PRO-06, MOB-04b; approved by
    the owner on 2026-11-21). What Tracks C and D left: potent sulfur's
    states, gas and geysers; sulfur spike growth and thickness updates;
