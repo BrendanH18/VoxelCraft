@@ -10,30 +10,35 @@
 # `boat run` pushes the working tree (tracked and untracked, non-ignored files)
 # to a new sandbox, runs the command and deletes the sandbox. Runs start from
 # the saved snapshot voxelcraft-warm (system packages, toolchain and a built
-# target directory) when it exists, else from a bare machine. Overrides:
+# target directory) when it is ready, else from a bare machine. Overrides:
 # VC_BOAT_TYPE (default large: the release test build needs 16 GB) and
 # VC_BOAT_SNAPSHOT. See docs/development.md#boat-checks.
 main() {
 set -euo pipefail
 export BOAT_NO_UPDATE=1
-type=${VC_BOAT_TYPE:-large}
-if [ -z "${VC_BOAT_TYPE:-}" ] && [ "$(boat limits --json 2>/dev/null | jq -r '[.machineTypes[]? | select(.type == "large") | .available | tostring][0] // "true"')" = false ]; then
-    type=default   # the free trial can't start large
-    echo "boat-check: this account can't start large sandboxes yet; using default (8 GB), where the full release test build runs out of memory" >&2
-fi
 snapshot=${VC_BOAT_SNAPSHOT:-voxelcraft-warm}
 cmd="" full=0 save=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --full) full=1 ;;
         --save) save=1 ;;
-        --) shift; if [ $# -eq 1 ]; then cmd=$1; else cmd=$(printf '%q ' "$@"); fi; break ;;
+        --) shift
+            [ $# -gt 0 ] || { echo "boat-check: -- needs a command" >&2; exit 2; }
+            if [ $# -eq 1 ]; then cmd=$1; else cmd=$(printf '%q ' "$@"); fi
+            break ;;
         -h|--help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "boat-check: unknown option $1 (try --help)" >&2; exit 2 ;;
     esac
     shift
 done
-command -v boat >/dev/null || { echo "boat-check: boat is not installed" >&2; exit 2; }
+for tool in boat jq; do
+    command -v "$tool" >/dev/null || { echo "boat-check: $tool is not installed" >&2; exit 2; }
+done
+type=${VC_BOAT_TYPE:-large}
+if [ -z "${VC_BOAT_TYPE:-}" ] && [ "$(boat limits --json 2>/dev/null | jq -r '[.machineTypes[]? | select(.type == "large") | .available | tostring][0] // "true"' || true)" = false ]; then
+    type=default   # the free trial can't start large
+    echo "boat-check: this account can't start large sandboxes yet; using default (8 GB), where the full release test build runs out of memory" >&2
+fi
 cd "$(git rev-parse --show-toplevel)"
 if [ -z "$cmd" ]; then
     cargo fmt   # formatting rewrites files, so it runs here and the result is pushed
@@ -45,10 +50,12 @@ fi
 # Install what a bare machine lacks (a no-op on the snapshot). `boat push`
 # keeps each file's original timestamp, and the snapshot's target directory
 # was built from older sources, so cargo could take an edited file for an
-# unchanged one: stamp every pushed file as new first. In --save mode, drop
-# the checkout afterwards so the snapshot keeps only packages, toolchain and
-# target directory.
+# unchanged one: stamp every pushed file as new first. The command runs in a
+# subshell on its own lines, so a `cd`, `;` or trailing comment in it can't
+# change what follows. In --save mode, the checkout is then removed so the
+# snapshot keeps only packages, toolchain and target directory.
 remote='set -euo pipefail
+workdir=$PWD
 pkgs="libasound2-dev libudev-dev libfontconfig1-dev libfreetype6-dev pkg-config"
 missing=$(for p in $pkgs; do dpkg-query -W -f="\${Status}" "$p" 2>/dev/null | grep -q "install ok installed" || echo "$p"; done)
 if [ -n "$missing" ]; then
@@ -63,60 +70,82 @@ rustup -q toolchain install stable --profile minimal -c clippy -c rustfmt >/dev/
 export CARGO_TARGET_DIR=$HOME/target CARGO_TERM_COLOR=always
 find . -type f -exec touch -c {} +
 echo "boat-check: $(rustc --version) on $(nproc) vCPUs" >&2
-'"$cmd"
-[ "$save" = 0 ] || remote="$remote"' && dir=$PWD && cd && rm -rf "$dir"'
+(
+'"$cmd"'
+)'
+if [ "$save" = 1 ]; then
+    remote="$remote"'
+cd
+if [ "$workdir" != "$HOME" ]; then rm -rf "$workdir"; fi'
+fi
 
 from=()
-if boat snapshots --json 2>/dev/null | jq -e --arg n "$snapshot" '.named[]? | select(.name == $n) | select((.status // .state // "ready") | IN("ready", "saved", "completed"))' >/dev/null; then
+if boat snapshots --json 2>/dev/null | jq -e --arg n "$snapshot" '.named[]? | select(.name == $n and .status == "ready")' >/dev/null; then
     from=(--from "$snapshot")
 else
-    echo "boat-check: no $snapshot snapshot yet, so this is a cold build; --save makes one" >&2
+    echo "boat-check: no ready $snapshot snapshot, so this is a cold build; --save makes one" >&2
 fi
 keep=()
 [ "$save" = 0 ] || keep=(--keep)
+
 log=$(mktemp "${TMPDIR:-/tmp}/boat-check.XXXXXX")
-id="" handled=0
-# A --save run keeps its sandbox. If the script stops before handling it
-# (an interrupt, or a failed save), delete it rather than leave it running.
+id="" handled=0 saving=0
+sandbox_id() { awk 'match($0, /bx_[a-z0-9]+/) { print substr($0, RSTART, RLENGTH); exit }' "$log" 2>/dev/null || true; }
+# A --save run keeps its sandbox. If the script stops before handling it,
+# delete it; once a save has started, stop it instead, because the snapshot
+# needs its source until the save reads ready.
 cleanup() {
+    set +e
     if [ "$save" = 1 ] && [ "$handled" = 0 ]; then
-        [ -n "$id" ] || id=$(grep -o -E 'bx_[a-z0-9]+' "$log" 2>/dev/null | head -n 1)
-        [ -z "$id" ] || boat delete "$id" --yes --json >/dev/null 2>&1 || echo "boat-check: delete sandbox $id: boat delete $id --yes" >&2
+        [ -n "$id" ] || id=$(sandbox_id)
+        if [ -n "$id" ] && [ "$saving" = 1 ]; then
+            boat stop "$id" --json >/dev/null 2>&1
+            echo "boat-check: stopped $id mid-save; once boat snapshots shows $snapshot ready: boat delete $id --yes" >&2
+        elif [ -n "$id" ]; then
+            boat delete "$id" --yes --json >/dev/null 2>&1 || echo "boat-check: delete sandbox $id: boat delete $id --yes" >&2
+        fi
     fi
     rm -f "$log"
 }
 trap cleanup EXIT
 trap 'exit 130' INT TERM
-status=0
-boat run --no-env --type "$type" ${from[@]+"${from[@]}"} ${keep[@]+"${keep[@]}"} --push . -- "$remote" 2> >(tee "$log" >&2) || status=$?
-wait   # let tee finish writing the log
-if [ "$save" = 1 ]; then
-    id=$(grep -o -E 'bx_[a-z0-9]+' "$log" | head -n 1)
-    if [ "$status" = 0 ] && [ -n "$id" ]; then
-        # The save runs in the background; the snapshot keeps its own copy once
-        # it is done. When refreshing, the old save already reads ready, so
-        # wait for the name's record to change before trusting its state.
-        record() { boat snapshots --json | jq -c --arg n "$snapshot" '[.named[]? | select(.name == $n)][0] // {}'; }
-        before=$(record)
-        boat snapshot "$id" "$snapshot" >/dev/null || { echo "boat-check: saving $snapshot failed" >&2; exit 1; }
-        echo "boat-check: saving $id as $snapshot" >&2
-        state=""
-        for _ in $(seq 1 120); do
-            now=$(record) || now=$before
-            if [ "$now" != "$before" ]; then
-                state=$(printf '%s' "$now" | jq -r '.status // .state // ""')
-                case "$state" in ready|saved|completed) break ;; esac
-            fi
-            sleep 5
-        done
-        echo "boat-check: $snapshot is ${state:-unknown}" >&2
-        case "$state" in
-            ready|saved|completed) boat delete "$id" --yes --json >/dev/null ;;
-            *) boat stop "$id" --json >/dev/null; echo "boat-check: stopped $id instead of deleting it; once boat snapshots shows $snapshot ready: boat delete $id --yes" >&2 ;;
-        esac
+
+# A plain pipeline, so tee has finished writing the log when it returns.
+set +e
+boat run --no-env --type "$type" ${from[@]+"${from[@]}"} ${keep[@]+"${keep[@]}"} --push . -- "$remote" 2>&1 | tee "$log"
+status=${PIPESTATUS[0]}
+set -e
+[ "$save" = 1 ] || exit "$status"
+
+id=$(sandbox_id)
+[ -n "$id" ] || { echo "boat-check: couldn't find the sandbox id in boat run's output" >&2; exit "$(( status ? status : 1 ))"; }
+[ "$status" = 0 ] || exit "$status"   # the exit trap deletes the kept sandbox
+
+# The save runs in the background. Wait for this sandbox's save of the name
+# (sourceSandboxId) to read ready; an older save of the name doesn't count.
+boat snapshot "$id" "$snapshot" >/dev/null || { echo "boat-check: saving $snapshot failed" >&2; exit 1; }
+saving=1
+echo "boat-check: saving $id as $snapshot" >&2
+state=""
+for _ in $(seq 1 120); do
+    state=$(boat snapshots --json 2>/dev/null | jq -r --arg n "$snapshot" --arg id "$id" \
+        '[.named[]? | select(.name == $n and .sourceSandboxId == $id) | .status][0] // ""' || true)
+    case "$state" in ready|failed) break ;; esac
+    sleep 5
+done
+case "$state" in
+    ready)
+        echo "boat-check: saved $snapshot" >&2
         handled=1
-    fi
-fi
-exit "$status"
+        boat delete "$id" --yes --json >/dev/null || echo "boat-check: delete sandbox $id: boat delete $id --yes" >&2 ;;
+    failed)
+        echo "boat-check: saving $snapshot failed (boat snapshots shows why)" >&2
+        saving=0   # nothing left to protect: the exit trap deletes the sandbox
+        exit 1 ;;
+    *)
+        echo "boat-check: $snapshot isn't ready after 10 minutes" >&2
+        exit 1 ;;   # the exit trap stops the sandbox
+esac
+exit 0
 }
 main "$@"; exit

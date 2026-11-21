@@ -54,7 +54,9 @@ Docs: https://docs.boat.dev/llms.txt. Prices and limits: run `boat limits`; neve
 - When done: `boat stop "$id"` (keeps the disk for at least 14 days) or `boat delete "$id" --yes` (erases it)
 - Rust builds and tests, while iterating and at hand-off, run through
   `scripts/boat-check.sh` (see [Boat checks](docs/development.md#boat-checks)):
-  `-- 'cargo check'` or `-- 'cargo test --release <filter>'` while working,
+  `-- 'cargo clippy --release --all-targets'` or
+  `-- 'cargo test --release <filter>'` while working (release builds, which
+  the warm snapshot has already compiled),
   `--full` once the work is finished, and `--save` after dependency or
   toolchain changes to refresh the warm snapshot runs start from.
 - Stay on this Mac: running the game (Metal rendering, screenshots, scripted
@@ -108,11 +110,11 @@ Run it with `scripts/boat-check.sh --full`: formatting here, the rest in a
 Boat sandbox, plus the headless-build checks.
 
 When a change touches Python (`tools/`, `packaging/` or `ruff.toml`), also run
-the Ruff checks CI runs here and the Python tool tests in Boat
-(`scripts/boat-check.sh -- "python3 -m unittest discover -s tools -p 'test_*.py'"`):
+the Ruff checks CI runs here and the Python tool tests in Boat:
 
 ```sh
-uvx ruff@0.17.5 check && uvx ruff@0.17.5 format --check && python3 -m unittest discover -s tools -p 'test_*.py'
+uvx ruff@0.17.5 check && uvx ruff@0.17.5 format --check
+scripts/boat-check.sh -- "python3 -m unittest discover -s tools -p 'test_*.py'"
 ```
 
 `uvx ruff@0.17.5 format` applies the formatting. Ruff runs through `uvx` at
