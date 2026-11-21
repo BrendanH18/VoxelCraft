@@ -151,8 +151,9 @@ impl Found {
     }
 }
 
-fn xz(p: IVec3) -> IVec2 {
-    IVec2::new(p.x, p.z)
+/// The Java (16-block) chunk holding `p`; VoxelCraft's chunks are 32³.
+fn chunk16(p: IVec3) -> IVec2 {
+    IVec2::new(p.x.div_euclid(16), p.z.div_euclid(16))
 }
 
 fn around_bounds(at: IVec3, r: i32, y: (i32, i32)) -> Bounds {
@@ -261,7 +262,7 @@ fn locate(family: &str, g: &Generator) -> Found {
     match family {
         "village" => {
             let at = g.villages.nearest(g, IVec3::ZERO).expect("a village");
-            let region = region_of("villages", xz(chunk_of(at)));
+            let region = region_of("villages", chunk16(at));
             let v = g.villages.get(g, region).expect("the located village");
             let start = g.villages.candidate(region).div_euclid(IVec2::splat(16));
             Found::new(at, Some(start), v.bounds)
@@ -289,7 +290,7 @@ fn locate(family: &str, g: &Generator) -> Found {
             let at = g.mineshafts.nearest(g, from).unwrap_or_else(|| panic!("{family} on {seed}"));
             // The located shaft's start: the chunk whose start VoxelCraft
             // accepts nearest the located centre.
-            let here = xz(chunk_of(at));
+            let here = chunk16(at);
             let start = (-6..=6)
                 .flat_map(|z| (-6..=6).map(move |x| here + IVec2::new(x, z)))
                 .filter(|&c| g.mineshafts.starts_at(g, c))
@@ -301,7 +302,7 @@ fn locate(family: &str, g: &Generator) -> Found {
         }
         "buried_treasure" => {
             let at = g.buried_treasure.nearest_buried_treasure(g, IVec3::ZERO, 400).expect("buried treasure");
-            let chunk = xz(chunk_of(at));
+            let chunk = chunk16(at);
             Found::new(at, Some(chunk), around_bounds(at, 4, rows(Dimension::Overworld)))
         }
         "stronghold" => {
@@ -312,7 +313,7 @@ fn locate(family: &str, g: &Generator) -> Found {
                 .into_iter()
                 .next()
                 .expect("the located stronghold");
-            Found::new(at, Some(xz(chunk_of(at))), sh.bounds)
+            Found::new(at, Some(chunk16(at)), sh.bounds)
         }
         "fortress" | "bastion_remnant" => {
             let n = g.nether.as_ref().expect("a Nether generator");
@@ -342,29 +343,29 @@ fn locate(family: &str, g: &Generator) -> Found {
         }
         "ruined_portal" => {
             let at = g.ruined_portals.nearest(g, IVec3::ZERO, 10).expect("a ruined portal");
-            let region = region_of("ruined_portals", xz(chunk_of(at)));
+            let region = region_of("ruined_portals", chunk16(at));
             let portal = (-1..=1)
                 .flat_map(|z| (-1..=1).map(move |x| region + IVec2::new(x, z)))
                 .filter_map(|r| g.ruined_portals.get(g, r))
                 .find(|p| p.bounds.contains(at) || p.origin == at)
                 .expect("the located portal");
-            Found::new(at, Some(xz(chunk_of(portal.origin))), portal.bounds)
+            Found::new(at, Some(chunk16(portal.origin)), portal.bounds)
         }
         "trail_ruins" => {
             let at = g.trail_ruins.nearest(g, IVec2::ZERO, 6400).expect("trail ruins");
-            let ruin = g.trail_ruins.get(g, region_of("trail_ruins", xz(chunk_of(at)))).expect("the ruins");
+            let ruin = g.trail_ruins.get(g, region_of("trail_ruins", chunk16(at))).expect("the ruins");
             let bounds = ruin.pieces.iter().fold(ruin.pieces[0].bounds, |b, p| b.union(&p.bounds));
-            Found::new(at, Some(xz(chunk_of(ruin.at))), bounds)
+            Found::new(at, Some(chunk16(ruin.at)), bounds)
         }
         "ancient_city" => {
             let at = g.ancient_cities.nearest(g, IVec2::ZERO, 6400).expect("an ancient city");
-            let city = g.ancient_cities.get(g, region_of("ancient_cities", xz(chunk_of(at)))).expect("the city");
-            Found::new(at, Some(xz(chunk_of(city.at))), city.bounds)
+            let city = g.ancient_cities.get(g, region_of("ancient_cities", chunk16(at))).expect("the city");
+            Found::new(at, Some(chunk16(city.at)), city.bounds)
         }
         "trial_chambers" => {
             let at = g.trial_chambers.nearest(g, IVec2::ZERO, 6400).expect("trial chambers");
-            let chamber = g.trial_chambers.get(g, region_of("trial_chambers", xz(chunk_of(at)))).expect("the chamber");
-            Found::new(at, Some(xz(chunk_of(chamber.at))), chamber.bounds())
+            let chamber = g.trial_chambers.get(g, region_of("trial_chambers", chunk16(at))).expect("the chamber");
+            Found::new(at, Some(chunk16(chamber.at)), chamber.bounds())
         }
         "end_city" => {
             let end = g.end().expect("an End generator");
@@ -391,7 +392,7 @@ fn locate(family: &str, g: &Generator) -> Found {
         }
         "nether_fossil" => {
             let at = g.nearest_nether_fossil(IVec2::ZERO, 6400).expect("a Nether fossil");
-            Found::new(at, Some(xz(chunk_of(at))), around_bounds(at, 12, (at.y - 4, at.y + 16)))
+            Found::new(at, Some(chunk16(at)), around_bounds(at, 12, (at.y - 4, at.y + 16)))
         }
         other => panic!("no family {other}"),
     }
@@ -585,9 +586,21 @@ fn every_gen_05_family_matches_the_java_corpus_on_two_seeds() {
     for family in FAMILIES {
         for seed in SEEDS {
             let started = std::time::Instant::now();
-            let (at, line) = check(family, seed, &mut failures);
-            lines.push(format!("{line}  ({:.1?})", started.elapsed()));
-            located.insert((family, seed), at);
+            // One family's panic (nothing located) mustn't hide the others.
+            let mut found = Vec::new();
+            let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| check(family, seed, &mut found)));
+            failures.extend(found);
+            match run {
+                Ok((at, line)) => {
+                    lines.push(format!("{line}  ({:.1?})", started.elapsed()));
+                    located.insert((family, seed), at);
+                }
+                Err(e) => {
+                    let why =
+                        e.downcast_ref::<String>().cloned().or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string()));
+                    failures.push(format!("{family} on {seed}: panicked: {}", why.unwrap_or_default()));
+                }
+            }
         }
     }
     for line in &lines {
@@ -637,7 +650,8 @@ fn ring_and_feature_placements_match_java() {
                 spread_now = spread_now.min(count - i as i32);
             }
         }
-        assert_eq!(ring, 8, "seed {seed}: 128 strongholds make eight rings");
+        // Eight rings: the last has room for ten and holds the nine left.
+        assert_eq!((ring, in_ring), (7, 9), "seed {seed}: 128 strongholds make eight rings");
     }
 
     // Dungeons, fossils and desert wells.
