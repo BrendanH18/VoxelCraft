@@ -74,7 +74,18 @@ fi
 keep=()
 [ "$save" = 0 ] || keep=(--keep)
 log=$(mktemp "${TMPDIR:-/tmp}/boat-check.XXXXXX")
-trap 'rm -f "$log"' EXIT
+id="" handled=0
+# A --save run keeps its sandbox. If the script stops before handling it
+# (an interrupt, or a failed save), delete it rather than leave it running.
+cleanup() {
+    if [ "$save" = 1 ] && [ "$handled" = 0 ]; then
+        [ -n "$id" ] || id=$(grep -o -E 'bx_[a-z0-9]+' "$log" 2>/dev/null | head -n 1)
+        [ -z "$id" ] || boat delete "$id" --yes --json >/dev/null 2>&1 || echo "boat-check: delete sandbox $id: boat delete $id --yes" >&2
+    fi
+    rm -f "$log"
+}
+trap cleanup EXIT
+trap 'exit 130' INT TERM
 status=0
 boat run --no-env --type "$type" ${from[@]+"${from[@]}"} ${keep[@]+"${keep[@]}"} --push . -- "$remote" 2> >(tee "$log" >&2) || status=$?
 wait   # let tee finish writing the log
@@ -101,8 +112,7 @@ if [ "$save" = 1 ]; then
             ready|saved|completed) boat delete "$id" --yes --json >/dev/null ;;
             *) boat stop "$id" --json >/dev/null; echo "boat-check: stopped $id instead of deleting it; once boat snapshots shows $snapshot ready: boat delete $id --yes" >&2 ;;
         esac
-    elif [ -n "$id" ]; then
-        boat delete "$id" --yes --json >/dev/null
+        handled=1
     fi
 fi
 exit "$status"
