@@ -113,9 +113,9 @@ impl Kind {
             Kind::JungleTemple => (32, 8, 14_357_619),
             Kind::SwampHut => (32, 8, 14_357_620),
             Kind::OceanRuin => (20, 8, 14_357_621),
-            Kind::Shipwreck => (24, 4, 165_745_295),
+            Kind::Shipwreck => (super::shipwreck::SPACING, super::shipwreck::SEPARATION, super::shipwreck::SALT),
             Kind::Outpost => (32, 8, 165_745_296),
-            Kind::Monument => (32, 5, 10_387_313),
+            Kind::Monument => (super::monument::SPACING, super::monument::SEPARATION, super::monument::SALT),
             Kind::Mansion => (super::mansion::SPACING, super::mansion::SEPARATION, super::mansion::SALT),
             Kind::AbandonedCamp => (camp_templates::SPACING, camp_templates::SEPARATION, camp_templates::SALT),
         }

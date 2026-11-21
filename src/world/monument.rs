@@ -49,6 +49,11 @@ const LIGHT: Block = ob::PRISMARINE_BRICKS;
 const BLACK: Block = ob::DARK_PRISMARINE;
 const LAMP: Block = ob::SEA_LANTERN;
 
+/// `StructureSets.OCEAN_MONUMENTS`, a triangular spread in 16-block chunks.
+pub const SPACING: i32 = 32;
+pub const SEPARATION: i32 = 5;
+pub const SALT: u64 = 10_387_313;
+
 /// `MonumentBuilding`'s box: 58 wide and deep, 23 high, from y 39.
 pub const WIDTH: i32 = 58;
 pub const HEIGHT: i32 = 23;

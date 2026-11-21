@@ -1162,6 +1162,27 @@ camp map draw from block texture layers); `slab_stair_states` purpur
 (`PURPUR_FAMILY`) then Track D's seven (`TRACK_D_FIRST`). Wave 2 (Tracks
 E, F and G) was not started this push and keeps its reserved rows.
 
+**Track F (ocean structures), 2026-11-21, implemented, unverified.** Used:
+block states 30848 (`world::conduit::CONDUIT`, dry) and 30849 (its
+waterlogged state, a `waterlog::pair` like the heavy core's), so the
+conduit's block item is `BLOCK_ITEM_BASE + 30848`; texture layer 989 (the
+conduit's shell; the active cage and eye draw as model boxes). Unused and
+unregistered: states 30850–30975, items 1740–1749 (no new non-block item:
+the nautilus shell and heart of the sea already existed) and layers
+990–1028. Appended orderings: `Sound::Conduit` with
+`world::conduit::Cue`'s five cues after `Sound::SulfurCube`, particle kind
+`Nautilus` after `EndRod`, and the `conduits` dimension property key after
+`beacons`. The conduit joins the block-entity index the banners and
+beacons share (`colour_blocks::world::is_banner`) so LAN replicas animate
+it. Not saved: `conduit::Event`, a conduit's target (mob uids are not
+persistent). No `MobKind`, `Effect` (Conduit Power was registered in
+2026-11-13's effect slice), item icon, thrown kind, `slab_stair_states`,
+`wall_states` or `utilities::POTTED` member. New modules:
+`world::monument`, `world::shipwreck` (with `templates`),
+`world::worldgen_random`, `world::conduit`, `entity::conduit_hunt`,
+`entity::model::conduit`, `app::conduit`. Record:
+[v0.16 ocean structures](verification/2026-11-21-v0.16-ocean-structures.md).
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating
