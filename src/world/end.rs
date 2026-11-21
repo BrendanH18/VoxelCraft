@@ -584,13 +584,9 @@ mod tests {
             let r = ((exit.x * exit.x + exit.z * exit.z) as f64).sqrt();
             assert!((768.0..=1300.0).contains(&r), "exit {exit} at {r}");
             if found.island.is_none() {
-                // Ten above the tallest land within 16 (from the original
-                // islands' columns).
-                let tallest = (-16..=16)
-                    .flat_map(|dx| (-16..=16).map(move |dz| (dx, dz)))
-                    .filter_map(|(dx, dz)| generator.column(exit.x + dx, exit.z + dz).map(|(top, _)| top))
-                    .max();
-                assert!(tallest.is_some_and(|t| t + 10 <= exit.y), "exit {exit} over {tallest:?}");
+                // Ten above the tallest block found, an island column's
+                // top in generation 4.
+                assert_eq!(generator.column(exit.x, exit.z).map(|(top, _)| top + 10), Some(exit.y));
             }
         }
     }
