@@ -67,6 +67,8 @@ pub mod geode;
 mod growth;
 pub mod heavy_core;
 mod honey;
+pub mod infested;
+pub mod java_pieces;
 pub mod jigsaw;
 pub mod jukebox;
 mod light_shape;
@@ -385,6 +387,9 @@ pub struct World {
     /// TNT blocks a blast or fire took out, with whether to shorten the
     /// fuse (blasts only); the game turns them into entities.
     pub primed_tnt: Vec<(IVec3, bool)>,
+    /// v0.16 Track E: infested blocks broken this tick that let their
+    /// silverfish out (`InfestedBlock.spawnAfterBreak`); the game spawns them.
+    pub released_silverfish: Vec<IVec3>,
     /// Note blocks that played this tick: position, pitch 0..=24, instrument.
     pub notes: Vec<(IVec3, u8, u8)>,
     pub(crate) allay_notes: Vec<IVec3>,
@@ -691,6 +696,7 @@ impl World {
             xp_drops: Vec::new(),
             brews_done: Vec::new(),
             primed_tnt: Vec::new(),
+            released_silverfish: Vec::new(),
             notes: Vec::new(),
             allay_notes: Vec::new(),
             trip_sounds: Vec::new(),
@@ -1931,17 +1937,23 @@ mod tests {
     fn fortress_chunks_register_loot_chests_and_blaze_spawners() {
         use super::fortress::{Fortresses, Kind};
         let layouts = Fortresses::new(1);
-        let fortress = (-2..=2).find_map(|x| layouts.get(IVec2::new(x, 0))).unwrap();
         let generator = Arc::new(Generator::for_dimension(1, super::terrain::Dimension::Nether));
         let mut found = (None, None);
-        for piece in &fortress.pieces {
-            let chunk = chunk_of(piece.bounds.min);
-            for (p, f) in generator.structure_features(chunk) {
-                match f {
-                    super::fortress::Feature::Chest(_) if found.0.is_none() => found.0 = Some(p),
-                    super::fortress::Feature::Spawner(_) if piece.kind == Kind::Throne => found.1 = Some(p),
-                    _ => {}
+        // The first fortress with both a chest turn and a throne.
+        for fortress in (-4..=4).flat_map(|z| (-4..=4).map(move |x| IVec2::new(x, z))).filter_map(|r| layouts.get(r)) {
+            found = (None, None);
+            for piece in &fortress.pieces {
+                let chunk = chunk_of(piece.bounds.min);
+                for (p, f) in generator.structure_features(chunk) {
+                    match f {
+                        super::fortress::Feature::Chest(_) if found.0.is_none() => found.0 = Some(p),
+                        super::fortress::Feature::Spawner(_) if piece.kind == Kind::Throne => found.1 = Some(p),
+                        _ => {}
+                    }
                 }
+            }
+            if found.0.is_some() && found.1.is_some() {
+                break;
             }
         }
         let (chest, cage) = (found.0.expect("a loot chest"), found.1.expect("a throne"));

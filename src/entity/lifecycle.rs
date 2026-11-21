@@ -59,6 +59,7 @@ impl Entities {
         self.cat_spawner_tick(dt, world, ctx);
         self.assign_hunts(ctx);
         self.endermite_upkeep(dt, world);
+        self.silverfish_upkeep(dt, world, &mut events);
         self.sulfur_cube_upkeep(dt, world, ctx, &mut events);
         self.illager_upkeep(dt, world, ctx, &mut events);
         self.raid_tick(dt, world, ctx, &mut events);

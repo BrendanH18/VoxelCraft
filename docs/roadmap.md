@@ -1441,6 +1441,20 @@ v0.16.
    Dungeons, mineshafts, strongholds and fortresses rebuilt to Java's
    piece rules in generation 5; infested blocks and silverfish behaviour;
    structure spawn overrides using Java's piece bounds.
+   *Implemented, unverified (2026-11-21):* the seven infested blocks
+   (half their host's mining time, Silk Touch drops the host, silverfish
+   released when broken or blown up), `ore_infested` in the ten mountain
+   biomes and infested stone bricks in stronghold walls (generation 5);
+   silverfish merging into host blocks and waking friends; generation 5
+   fortresses, strongholds and mineshafts (normal and mesa) laid out by
+   Java's piece generators over Java's random sequence, checked piece by
+   piece against vectors the 26.3 jar printed, with Java's fortress
+   bridge ends, stronghold filler corridors and ring math, and mineshaft
+   `legacy_type_3` placement and biomes; fortress mobs on nether bricks
+   anywhere in the fortress's box. Dungeons already matched
+   `MonsterRoomFeature`. Mineshaft chest minecarts and the stronghold
+   ring biome search remain
+   ([record](verification/2026-11-21-v0.16-classic-structures.md)).
 6. **F. Ocean structures** (GEN-05e). Shipwrecks and ocean monuments
    reassessed against Java's templates, placement and residents in
    generation 5; the conduit with its frame, Conduit Power and its attack.

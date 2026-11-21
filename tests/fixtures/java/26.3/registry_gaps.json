@@ -25,34 +25,6 @@
       "release": "v0.17",
       "reason": "Redstone and automation completion."
     },
-    "infested_chiseled_stone_bricks": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "infested_cobblestone": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "infested_cracked_stone_bricks": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "infested_deepslate": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "infested_mossy_stone_bricks": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "infested_stone": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "infested_stone_bricks": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
     "jigsaw": {
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
@@ -318,34 +290,6 @@
     "husk_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "infested_chiseled_stone_bricks": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "infested_cobblestone": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "infested_cracked_stone_bricks": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "infested_deepslate": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "infested_mossy_stone_bricks": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "infested_stone": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
-    },
-    "infested_stone_bricks": {
-      "release": "v0.16",
-      "reason": "End/Wither progression and remaining terrain, plants and material families."
     },
     "iron_golem_spawn_egg": {
       "release": "v0.18",

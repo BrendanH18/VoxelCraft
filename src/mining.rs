@@ -282,6 +282,10 @@ pub fn silk_drop(block: Block) -> Option<Item> {
     if crate::world::cave_blocks::owns(block.0) {
         return crate::world::cave_blocks::silk_drop(block);
     }
+    // v0.16 Track E: `blocks/infested_*` drop the host block.
+    if let Some(item) = crate::world::infested::silk_drop(block) {
+        return Some(item);
+    }
     let b = if block.base() == Block::SNOWY_GRASS { Block::GRASS } else { block.base() };
     let silky = matches!(
         b,

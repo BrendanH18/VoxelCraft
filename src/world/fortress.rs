@@ -21,6 +21,7 @@ use rustc_hash::FxHashMap;
 use super::block::{Block, Facing};
 use super::chest::Chest;
 use super::chunk::{CHUNK_SIZE, CHUNK_SIZE_I, CHUNK_VOLUME};
+use super::java_pieces;
 use super::noise::hash3;
 use super::structure::{Bounds, Oriented, Paint, Rng};
 #[cfg(test)]
@@ -93,6 +94,9 @@ pub struct Piece {
     variant: u64,
     /// Corridor turns that hold a loot chest (one in three).
     chest: bool,
+    /// v0.16 Track E: laid out by [`Fortress::generate_java`] (generation
+    /// 5); a bridge end's `variant` is then Java's `selfSeed`.
+    java: bool,
 }
 
 impl Oriented for Piece {
@@ -150,8 +154,28 @@ fn castle_weights() -> Vec<Weight> {
     ]
 }
 
+/// The layout's random source: VoxelCraft's own before generation 5,
+/// Java's `WorldgenRandom` from generation 5 (v0.16 Track E).
+enum LayoutRng {
+    Own(Rng),
+    Java(crate::enchant::JavaRandom),
+}
+
+impl LayoutRng {
+    fn below(&mut self, n: u32) -> u32 {
+        match self {
+            LayoutRng::Own(r) => r.below(n),
+            LayoutRng::Java(r) => r.next_bounded(n as i32) as u32,
+        }
+    }
+
+    fn java(&self) -> bool {
+        matches!(self, LayoutRng::Java(_))
+    }
+}
+
 struct Builder {
-    rng: Rng,
+    rng: LayoutRng,
     pieces: Vec<Piece>,
     pending: Vec<usize>,
     bridges: Vec<Weight>,
@@ -170,9 +194,15 @@ impl Builder {
         if bounds.min.y <= 10 || self.collides(&bounds) {
             return None;
         }
-        let variant = self.rng.next_u64();
+        let (variant, java) = match &mut self.rng {
+            LayoutRng::Own(r) => (r.next_u64(), false),
+            // `BridgeEndFiller`'s `selfSeed = random.nextInt()`; other
+            // pieces draw nothing here (a chest's loot seed is positional).
+            LayoutRng::Java(r) if kind == Kind::BridgeEnd => (r.next_int() as u32 as u64, true),
+            LayoutRng::Java(_) => (hash3(bounds.min.x, bounds.min.y, bounds.min.z, SALT), true),
+        };
         let chest = matches!(kind, Kind::RightTurn | Kind::LeftTurn) && self.rng.below(3) == 0;
-        Some(Piece { kind, facing, bounds, depth, variant, chest })
+        Some(Piece { kind, facing, bounds, depth, variant, chest, java })
     }
 
     /// Java's `generatePiece`: up to five weighted picks, falling through
@@ -214,13 +244,18 @@ impl Builder {
     /// Java's `generateAndAddPiece`.
     fn grow(&mut self, (door, facing): (IVec3, Facing), depth: u32, castle: bool) {
         let start = self.pieces[0].bounds.min;
-        // Past the reach Java makes a bridge end but never adds it.
+        // Past the reach Java makes a bridge end but never adds it (its
+        // `selfSeed` still draws when it would fit).
         if (door.x - start.x).abs() > REACH || (door.z - start.z).abs() > REACH {
+            if self.rng.java() {
+                let _ = self.create(Kind::BridgeEnd, door, facing, depth);
+            }
             return;
         }
         if let Some(piece) = self.pick(castle, door, facing, depth + 1) {
             self.pieces.push(piece);
-            if piece.kind != Kind::BridgeEnd {
+            // Java queues every new piece, bridge ends included.
+            if piece.kind != Kind::BridgeEnd || self.rng.java() {
                 self.pending.push(self.pieces.len() - 1);
             }
         }
@@ -251,9 +286,24 @@ impl Builder {
             }
             Kind::RightTurn => self.grow(p.side(false, 0, 1), d, true),
             Kind::LeftTurn => self.grow(p.side(true, 0, 1), d, true),
+            Kind::Balcony if self.rng.java() => {
+                // `CastleCorridorTBalconyPiece.addChildren`: z offset 5 for
+                // west and north, 1 otherwise; each side stays in the castle
+                // seven times in eight (drawn before the child).
+                let z = if matches!(p.facing, Facing::West | Facing::North) { 5 } else { 1 };
+                let castle = self.rng.below(8) > 0;
+                self.grow(java_pieces::left(&p.bounds, p.facing, 0, z), d, castle);
+                let castle = self.rng.below(8) > 0;
+                self.grow(java_pieces::right(&p.bounds, p.facing, 0, z), d, castle);
+            }
             Kind::Balcony => {
                 self.grow(p.side(true, 0, 1), d, true);
                 self.grow(p.side(false, 0, 1), d, true);
+            }
+            Kind::StalkRoom if self.rng.java() => {
+                // `CastleStalkRoom.addChildren`: both doorways ahead.
+                self.grow(p.ahead(5, 3), d, true);
+                self.grow(p.ahead(5, 11), d, true);
             }
             Kind::StalkRoom => self.grow(p.ahead(5, 3), d, true),
             Kind::Throne | Kind::BridgeEnd => {}
@@ -271,6 +321,20 @@ pub struct Fortress {
 impl Fortress {
     /// Lays out the fortress whose start piece's corner is at `x, z`.
     fn generate(rng: Rng, x: i32, z: i32) -> Fortress {
+        Self::build(LayoutRng::Own(rng), x, z)
+    }
+
+    /// v0.16 Track E, generation 5: `NetherFortressStructure.generatePieces`
+    /// for the start chunk `chunk`, drawing from Java's random sequence
+    /// (`setLargeFeatureSeed`): the start's direction, every weighted pick,
+    /// `selfSeed`s and chest rolls, the pending piece order (`nextInt` of
+    /// the queue, removed in place) and `moveInsideHeights(48, 70)`.
+    pub fn generate_java(seed: u64, chunk: IVec2) -> Fortress {
+        let corner = chunk * 16 + IVec2::splat(2);
+        Self::build(LayoutRng::Java(java_pieces::large_feature_random(seed, chunk)), corner.x, corner.y)
+    }
+
+    fn build(rng: LayoutRng, x: i32, z: i32) -> Fortress {
         let mut b = Builder {
             rng,
             pieces: Vec::new(),
@@ -279,14 +343,25 @@ impl Fortress {
             castle: castle_weights(),
             previous: None,
         };
-        let facing = Facing::ALL[b.rng.below(4) as usize];
+        let java = b.rng.java();
+        let facing =
+            if java { java_pieces::HORIZONTAL[b.rng.below(4) as usize] } else { Facing::ALL[b.rng.below(4) as usize] };
         let min = IVec3::new(x, 64, z);
         let start = Bounds { min, max: min + IVec3::new(18, 9, 18) };
-        b.pieces.push(Piece { kind: Kind::BridgeCrossing, facing, bounds: start, depth: 0, variant: 0, chest: false });
+        b.pieces.push(Piece {
+            kind: Kind::BridgeCrossing,
+            facing,
+            bounds: start,
+            depth: 0,
+            variant: 0,
+            chest: false,
+            java,
+        });
         b.add_children(0);
         while !b.pending.is_empty() {
             let i = b.rng.below(b.pending.len() as u32) as usize;
-            let piece = b.pending.swap_remove(i);
+            // Java's `ArrayList.remove(index)` keeps the queue's order.
+            let piece = if java { b.pending.remove(i) } else { b.pending.swap_remove(i) };
             b.add_children(piece);
         }
         // Java's `moveInsideHeights(48, 70)`.
@@ -355,6 +430,8 @@ pub enum Feature {
 /// Fortress layouts for one Nether, cached by region.
 pub struct Fortresses {
     seed: u64,
+    /// Generation 5 lays fortresses out with Java's random sequence.
+    generation: super::terrain::Generation,
     pub bastions: super::bastion::Bastions,
     cache: Mutex<FxHashMap<IVec2, Option<Arc<Fortress>>>>,
 }
@@ -367,6 +444,7 @@ impl Fortresses {
     pub fn with_generation(seed: u64, generation: super::terrain::Generation) -> Self {
         Self {
             seed,
+            generation,
             bastions: super::bastion::Bastions::with_generation(seed, generation),
             cache: Mutex::new(FxHashMap::default()),
         }
@@ -391,7 +469,11 @@ impl Fortresses {
             return None;
         }
         let (start, rng) = self.start(region);
-        let fortress = Some(Arc::new(Fortress::generate(rng, start.x, start.y)));
+        let fortress = Some(Arc::new(if self.generation >= super::terrain::Generation::V5 {
+            Fortress::generate_java(self.seed, start.div_euclid(IVec2::splat(16)))
+        } else {
+            Fortress::generate(rng, start.x, start.y)
+        }));
         let mut cache = self.cache.lock().unwrap();
         if cache.len() >= CACHE_LIMIT {
             cache.clear();
@@ -516,6 +598,12 @@ impl Fortresses {
         let c = IVec2::new(p.x, p.z);
         self.near(c, c).iter().any(|f| f.holds(p))
     }
+
+    /// Whether `p` is inside a fortress's whole bounding box.
+    pub fn within_bounds(&self, p: IVec3) -> bool {
+        let c = IVec2::new(p.x, p.z);
+        self.near(c, c).iter().any(|f| f.bounds.contains(p))
+    }
 }
 
 fn has_pillars(kind: Kind) -> bool {
@@ -593,7 +681,12 @@ impl Paint<'_, Piece> {
 
     /// A broken-off bridge: rows of random length.
     fn bridge_end(&mut self) {
-        let mut rng = Rng(self.piece.variant);
+        // Generation 5: `RandomSource.create(selfSeed)`, as Java paints it.
+        let mut rng = if self.piece.java {
+            LayoutRng::Java(crate::enchant::JavaRandom::new(self.piece.variant as u32 as i32 as i64))
+        } else {
+            LayoutRng::Own(Rng(self.piece.variant))
+        };
         for x in 0..=4 {
             for y in 3..=4 {
                 let len = rng.below(8) as i32;

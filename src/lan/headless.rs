@@ -202,6 +202,8 @@ impl HeadlessHost {
         // and TNT a blast primes are discarded rather than kept forever.
         self.world.drops.clear();
         self.world.primed_tnt.clear();
+        // v0.16 Track E: silverfish out of broken infested blocks.
+        self.entities.release_silverfish(&mut self.world.released_silverfish);
         sessions.retain(|s| !s.dead);
         self.players.retain(|name, _| sessions.iter().any(|s| s.profile.as_ref() == Some(name)));
         self.sessions = sessions;
