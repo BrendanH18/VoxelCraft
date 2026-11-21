@@ -2512,7 +2512,10 @@ mod tests {
     #[test]
     fn icon_layers_fit_the_texture_array() {
         // Maps and v0.16 Track A's items draw their own texture layers.
-        for i in Item::all_items().filter(|i| !i.is_map() && !crate::content::chorus::is_item(*i)) {
+        // So does v0.16 Track G's End crystal.
+        for i in Item::all_items().filter(|i| {
+            !i.is_map() && !crate::content::chorus::is_item(*i) && *i != crate::entity::crystal::END_CRYSTAL
+        }) {
             let index = tex::item_index(i.icon_layer().unwrap()).unwrap();
             assert!((index as u32) < icon_count());
 

@@ -140,13 +140,26 @@ impl EndView<'_> {
         self.section(super::chunk::chunk_of(p)).get(l.x as usize, l.y as usize, l.z as usize)
     }
 
-    /// The top of the chunk column's highest non-empty section, if any
-    /// (`getHighestSectionPosition() + 15`).
+    /// For Java's 16-block chunk column `cx, cz`, the top of its highest
+    /// non-empty 16-high section, if any (`getHighestSectionPosition() +
+    /// 15`). VoxelCraft's chunks are larger cubes, so the column's own
+    /// cells are read.
     fn highest(&self, cx: i32, cz: i32) -> Option<i32> {
-        (0..self.max_y / 16)
-            .rev()
-            .find(|&cy| self.section(IVec3::new(cx, cy, cz)).uniform() != Some(Block::AIR))
-            .map(|cy| cy * 16 + 15)
+        use super::chunk::CHUNK_SIZE_I as S;
+        let (x0, z0) = (cx * 16, cz * 16);
+        for cy in (0..self.max_y.div_euclid(S)).rev() {
+            let cpos = IVec3::new(x0.div_euclid(S), cy, z0.div_euclid(S));
+            if self.section(cpos).uniform() == Some(Block::AIR) {
+                continue;
+            }
+            for y in (cy * S..cy * S + S).rev() {
+                let filled = (z0..z0 + 16).any(|z| (x0..x0 + 16).any(|x| self.get(IVec3::new(x, y, z)) != Block::AIR));
+                if filled {
+                    return Some(y.div_euclid(16) * 16 + 15);
+                }
+            }
+        }
+        None
     }
 }
 

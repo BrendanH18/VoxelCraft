@@ -91,8 +91,13 @@ const TARGETS: &[(&str, &[&str])] = &[
     ("Wither and beacons", &["beacon", "diamond_block", "gold_block"]),
 ];
 
+/// The item with Java name `name`, resolved with its English name as
+/// `tests/java_recipes.rs` does.
 fn item(name: &str) -> Item {
-    java_registry::item(name, "").unwrap_or_else(|| panic!("{name} isn't registered"))
+    let names: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/java/26.3/registry_names.json")).unwrap();
+    let english = names["items"][name].as_str().or(names["blocks"][name].as_str()).unwrap_or_default();
+    java_registry::item(name, english).unwrap_or_else(|| panic!("{name} ({english}) isn't registered"))
 }
 
 /// Everything craftable, smeltable or forged from `start`.

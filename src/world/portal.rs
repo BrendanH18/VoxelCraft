@@ -119,21 +119,22 @@ impl World {
     /// so hold no portal. Returns the lowest portal block under the one
     /// found, where the traveller stands.
     pub fn find_portal(&self, near: IVec3, radius: i32) -> Option<IVec3> {
+        use super::chunk::{CHUNK_SIZE, CHUNK_SIZE_I as S};
         let mut best: Option<(i64, i32, IVec3)> = None;
         let (min_y, max_y) = (self.min_y(), self.max_y());
-        for cz in (near.z - radius).div_euclid(16)..=(near.z + radius).div_euclid(16) {
-            for cx in (near.x - radius).div_euclid(16)..=(near.x + radius).div_euclid(16) {
-                for cy in min_y.div_euclid(16)..=(max_y - 1).div_euclid(16) {
+        for cz in (near.z - radius).div_euclid(S)..=(near.z + radius).div_euclid(S) {
+            for cx in (near.x - radius).div_euclid(S)..=(near.x + radius).div_euclid(S) {
+                for cy in min_y.div_euclid(S)..=(max_y - 1).div_euclid(S) {
                     let Some(data) = self.section_data(IVec3::new(cx, cy, cz)) else { continue };
                     if !data.contains(Block::NETHER_PORTAL) {
                         continue;
                     }
                     for i in 0..super::chunk::CHUNK_VOLUME {
-                        let (x, y, z) = (i % 16, (i / 16) % 16, i / 256);
+                        let (x, y, z) = (i % CHUNK_SIZE, (i / CHUNK_SIZE) % CHUNK_SIZE, i / (CHUNK_SIZE * CHUNK_SIZE));
                         if data.get(x, y, z) != Block::NETHER_PORTAL {
                             continue;
                         }
-                        let p = IVec3::new(cx * 16 + x as i32, cy * 16 + y as i32, cz * 16 + z as i32);
+                        let p = IVec3::new(cx * S + x as i32, cy * S + y as i32, cz * S + z as i32);
                         if (p.x - near.x).abs() > radius || (p.z - near.z).abs() > radius {
                             continue;
                         }

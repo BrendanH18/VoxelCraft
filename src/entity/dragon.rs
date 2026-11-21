@@ -1817,8 +1817,8 @@ mod tests {
     #[test]
     fn death_takes_ten_seconds_and_pays_out_experience() {
         let end = EndGen::new(5);
-        let mut fight = Fight::new(&end);
-        let mut crystals = Crystals::default();
+        let (mut fight, mut crystals) = fresh(&end);
+        crystals.list.clear();
         fight.dragon.as_mut().unwrap().hurt_by(Part::Head, 500.0, true);
         let mut events = Vec::new();
         let mut rng = Rng::new(1);
@@ -1859,8 +1859,8 @@ mod tests {
     #[test]
     fn the_exit_portal_waits_for_its_whole_footprint() {
         let end = EndGen::new(5);
-        let mut fight = Fight::new(&end);
-        let mut crystals = Crystals::default();
+        let (mut fight, mut crystals) = fresh(&end);
+        crystals.list.clear();
         fight.dragon.as_mut().unwrap().hurt_by(Part::Head, 500.0, true);
         let mut events = Vec::new();
         let mut rng = Rng::new(1);
@@ -2006,7 +2006,8 @@ mod tests {
         run(&mut fight, &mut crystals, 1, &mut events);
         let d = fight.dragon.as_ref().expect("the dragon is back");
         assert_eq!(d.health, MAX_HEALTH);
-        assert_eq!(d.pos, SPAWN);
+        // Made at (0, 128, 0) and flown one tick since.
+        assert!(d.pos.distance(SPAWN) < 2.0, "{}", d.pos);
         assert!(fight.respawn.is_none());
         // The ritual crystals blow up without breaking blocks and are gone;
         // the new pillar crystals lose their beams and invulnerability.
