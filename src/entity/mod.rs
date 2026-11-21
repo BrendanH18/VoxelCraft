@@ -2259,6 +2259,9 @@ impl Entities {
     /// the crystals go, the fight hears of it, and the blasts are returned
     /// for the caller to set off (which may hit more crystals).
     pub fn settle_crystal_hits(&mut self, ctx: &Ctx, events: &mut Vec<EntityEvent>) {
+        if let Some(fight) = &mut self.fight {
+            fight.restore_ritual(&self.crystals);
+        }
         self.crystals.settle(events);
         match &mut self.fight {
             Some(fight) => fight.settle_destroyed(ctx, &mut self.crystals, events),

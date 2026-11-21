@@ -594,6 +594,7 @@ impl Fight {
         self.pending += dt;
         while self.pending >= TICK - 1e-9 {
             self.pending -= TICK;
+            self.restore_ritual(crystals);
             crystals.tick(world, true, events);
             self.tick(world, ctx, rng, crystals, events);
         }
@@ -617,13 +618,6 @@ impl Fight {
         self.crystal_scan += 1;
         if self.crystal_scan >= CRYSTAL_SCAN_TICKS {
             self.scan_crystals(crystals);
-        }
-        if let Some((stage, time, at)) = self.respawn_saved.take() {
-            let ids = at
-                .iter()
-                .filter_map(|p| crystals.list.iter().find(|c| c.pos.distance_squared(*p) < 1e-6).map(|c| c.id))
-                .collect();
-            self.respawn = Some(Respawn { stage, time, crystals: ids });
         }
         if std::mem::take(&mut self.respawn_check) {
             self.try_respawn(crystals, events);
@@ -680,6 +674,18 @@ impl Fight {
     /// Crystals on the pillars at the last scan (`aliveCrystals`).
     pub fn alive_crystals(&self) -> u32 {
         self.alive_crystals
+    }
+
+    /// A ritual saved mid-way finds its crystals by position, before any
+    /// hit on one of them is resolved (so the hit still ends the ritual).
+    pub(super) fn restore_ritual(&mut self, crystals: &Crystals) {
+        if let Some((stage, time, at)) = self.respawn_saved.take() {
+            let ids = at
+                .iter()
+                .filter_map(|p| crystals.list.iter().find(|c| c.pos.distance_squared(*p) < 1e-6).map(|c| c.id))
+                .collect();
+            self.respawn = Some(Respawn { stage, time, crystals: ids });
+        }
     }
 
     /// [`Fight::crystal_destroyed`] for each crystal gone since it last ran.
@@ -2095,6 +2101,27 @@ mod tests {
         assert!(!e.crystals.hits_pending());
         assert!(e.crystals.get(ritual[2]).is_none(), "the hit crystal is gone");
         assert!(out.iter().any(|ev| matches!(ev, EntityEvent::Explosion { .. })), "with its blast");
+        assert!(out.contains(&EntityEvent::ExitPortal { active: true }), "the ritual ends");
+        assert!(e.fight.as_ref().unwrap().respawn.is_none());
+    }
+
+    /// A hit on a ritual crystal right after loading a mid-ritual save,
+    /// settled before the fight's first tick, still ends the ritual.
+    #[test]
+    fn a_hit_before_a_loaded_ritual_ticks_still_ends_it() {
+        let end = EndGen::new(11);
+        let (mut fight, mut crystals, _) = ritual_ready(&end, 4);
+        let mut events = Vec::new();
+        run(&mut fight, &mut crystals, 1 + 101 + 10, &mut events);
+        let (text, saved) = (fight.serialize(&crystals), crystals.serialize());
+        let mut e = crate::entity::Entities::new(1);
+        e.fight = Some(Fight::load(&end, Some(&text)));
+        e.crystals.load(&saved);
+        let ritual = e.fight.as_ref().unwrap().respawn_saved.as_ref().unwrap().2[0];
+        let id = e.crystals.list.iter().find(|c| c.pos.distance_squared(ritual) < 1e-6).unwrap().id;
+        assert!(e.crystals.hit(id, Blow::Player { id: PlayerId::HOST, creative: false }));
+        let mut out = Vec::new();
+        e.settle_crystal_hits(&ctx(Vec::new()), &mut out);
         assert!(out.contains(&EntityEvent::ExitPortal { active: true }), "the ritual ends");
         assert!(e.fight.as_ref().unwrap().respawn.is_none());
     }

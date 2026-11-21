@@ -174,6 +174,10 @@ struct Game {
     /// Sneak and Sprint while their Controls option is Toggle.
     sneak_toggled: bool,
     sprint_toggled: bool,
+    /// An immediate respawn waits for the step that killed the player
+    /// (a blast, a save's settling) to finish; the next frame runs it, as
+    /// Java's client sends its respawn request after the death.
+    respawn_due: bool,
     /// Java's `ScrollWheelHandler`: wheel movement short of a whole notch.
     scroll: f64,
     frame_limit: frame_limit::FrameLimit,
@@ -1182,7 +1186,7 @@ impl Game {
         if self.hardcore {
             self.set_grab(true);
         } else if self.gamerules.respawns_immediately(self.hardcore) {
-            self.respawn();
+            self.respawn_due = true;
         }
     }
 
@@ -1945,6 +1949,9 @@ impl Game {
             self.menu.is_open() || self.console.open || self.credits.is_some(),
             self.agents.host.is_some() || self.lan.host.is_some() || self.lan.client.is_some(),
         );
+        if std::mem::take(&mut self.respawn_due) && self.session.vitals.is_dead() {
+            self.respawn();
+        }
         let elapsed = now - self.last_frame;
         self.last_frame = now;
         let ticks = self.clock.advance(elapsed, paused);

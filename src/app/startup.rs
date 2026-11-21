@@ -260,6 +260,7 @@ impl Game {
             keys: FxHashSet::default(),
             sneak_toggled: false,
             sprint_toggled: false,
+            respawn_due: false,
             scroll: 0.0,
             frame_limit: Default::default(),
             distortion: Default::default(),

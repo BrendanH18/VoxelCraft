@@ -477,14 +477,7 @@ impl Game {
                     }
                 }
                 EntityEvent::Explosion { center, power, cause, credit_player } => {
-                    // `ServerExplosion.explode` posts `explode` at its centre.
-                    self.world.emit_game_event(
-                        center,
-                        crate::world::vibration::GameEvent::Explode,
-                        crate::world::vibration::EventSource::NONE,
-                        None,
-                    );
-                    self.explode(center, power, cause, credit_player)
+                    self.explosion_event(center, power, cause, credit_player)
                 }
                 EntityEvent::WindBurst(burst) => self.wind_burst(&burst),
                 // v0.16 Track C: the Wither's blasts, broken blocks and roses.
@@ -925,8 +918,6 @@ impl Game {
         );
     }
 
-    /// Blows a hole in the world and hurts everything around `center`.
-    /// `cause` completes the death message, as for [`Game::damage_player`].
     /// Before a save: End crystal hits still queued for the next tick are
     /// resolved now, as Java resolves them at once (`EndCrystal.hurtServer`),
     /// so a save never keeps a hit crystal whole. Their blasts go off here
@@ -939,15 +930,32 @@ impl Game {
             for event in events {
                 match event {
                     EntityEvent::Explosion { center, power, cause, credit_player } => {
-                        self.explode(center, power, cause, credit_player)
+                        self.explosion_event(center, power, cause, credit_player)
                     }
                     EntityEvent::ExitPortal { active } => self.world.set_exit_portal(active, false),
                     _ => {}
                 }
             }
+            // What the blasts broke drops now, before the save is written.
+            self.spawn_world_drops();
+            self.mobs.entities.release_silverfish(&mut self.world.released_silverfish);
         }
     }
 
+    /// An entity's [`EntityEvent::Explosion`]: `ServerExplosion.explode`
+    /// posts `explode` at its centre, then the blast.
+    fn explosion_event(&mut self, center: DVec3, power: f32, cause: Cause, credit_player: bool) {
+        self.world.emit_game_event(
+            center,
+            crate::world::vibration::GameEvent::Explode,
+            crate::world::vibration::EventSource::NONE,
+            None,
+        );
+        self.explode(center, power, cause, credit_player);
+    }
+
+    /// Blows a hole in the world and hurts everything around `center`.
+    /// `cause` completes the death message, as for [`Game::damage_player`].
     pub(super) fn explode(&mut self, center: DVec3, power: f32, cause: Cause, credit_player: bool) {
         self.explode_with(center, power, cause, credit_player, true);
     }
