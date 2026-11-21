@@ -282,6 +282,13 @@ mod tests {
         let saves = root.join("saves");
         let dim = world(&saves, "alpha").join("DIM-1");
         std::fs::set_permissions(&dim, std::fs::Permissions::from_mode(0o300)).unwrap();
+        if std::fs::read_dir(&dim).is_ok() {
+            // Running as root (Boat sandboxes, containers): permissions
+            // aren't enforced, so there is nothing unreadable to test.
+            std::fs::set_permissions(&dim, std::fs::Permissions::from_mode(0o755)).unwrap();
+            std::fs::remove_dir_all(root).unwrap();
+            return;
+        }
         let result = backup_saves(&saves, &root.join("backups"), "0.11.0");
         std::fs::set_permissions(&dim, std::fs::Permissions::from_mode(0o755)).unwrap();
         assert!(result.unwrap_err().starts_with("could not back up your worlds"));
