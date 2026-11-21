@@ -252,7 +252,10 @@ impl Crystals {
     }
 
     /// The save: `x y z beam flags` per crystal, `;`-separated; the beam is
-    /// `x,y,z` or `-`; flags are 1 for the bottom plate, 2 invulnerable.
+    /// `x,y,z` or `-`; flags are 1 for the bottom plate, 2 invulnerable,
+    /// and 4 (blows up) or 8 (a blast got it) for a hit that lands on the
+    /// next tick: Java resolves a hit at once, so a save never keeps a hit
+    /// crystal whole.
     pub fn serialize(&self) -> String {
         let mut out = String::new();
         for c in &self.list {
@@ -260,7 +263,12 @@ impl Crystals {
                 out.push(';');
             }
             let beam = c.beam.map_or("-".to_string(), |b| format!("{},{},{}", b.x, b.y, b.z));
-            let flags = u8::from(c.show_bottom) | u8::from(c.invulnerable) << 1;
+            let hit = match self.pending.iter().find(|&&(i, _)| i == c.id) {
+                Some((_, Blow::Explosion)) => 8,
+                Some(_) => 4,
+                None => 0,
+            };
+            let flags = u8::from(c.show_bottom) | u8::from(c.invulnerable) << 1 | hit;
             out += &format!("{} {} {} {beam} {flags}", c.pos.x, c.pos.y, c.pos.z);
         }
         out
@@ -284,7 +292,14 @@ impl Crystals {
                 }
             };
             let flags: u8 = flags.parse().unwrap_or(1);
-            self.spawn(pos, beam, flags & 1 != 0, flags & 2 != 0);
+            let id = self.spawn(pos, beam, flags & 1 != 0, flags & 2 != 0);
+            // A pending hit lands on the first tick after loading (the
+            // player's credit for the blast isn't kept).
+            if flags & 8 != 0 {
+                self.pending.push((id, Blow::Explosion));
+            } else if flags & 4 != 0 {
+                self.pending.push((id, Blow::Other));
+            }
         }
     }
 
@@ -474,5 +489,20 @@ mod tests {
         client.apply_replica(&crystals.replica_json());
         assert_eq!(client.list.len(), 2);
         assert_eq!(client.list[1].beam, Some(IVec3::new(0, 128, 0)));
+    }
+
+    /// A save between a hit and the next tick keeps the hit: the reloaded
+    /// crystal still blows up.
+    #[test]
+    fn a_hit_pending_at_save_still_lands_after_loading() {
+        let mut crystals = Crystals::default();
+        let id = crystals.place(DVec3::new(0.5, 65.0, 0.5));
+        assert!(crystals.hit(id, Blow::Player { id: PlayerId::HOST, creative: false }));
+        let mut loaded = Crystals::default();
+        loaded.load(&crystals.serialize());
+        let mut events = Vec::new();
+        loaded.tick(&Cells(Vec::new()), false, &mut events);
+        assert!(loaded.list.is_empty(), "the hit crystal goes");
+        assert!(events.iter().any(|e| matches!(e, EntityEvent::Explosion { .. })), "with its blast");
     }
 }
