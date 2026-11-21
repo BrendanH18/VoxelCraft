@@ -272,9 +272,9 @@ case "$action" in
     save)
         # A fresh bare sandbox builds origin's default branch, so no worktree's changes reach
         # the snapshot every later sandbox starts from. Uses one start.
-        git fetch -q origin
-        git remote set-head origin --auto >/dev/null 2>&1 || true   # the server's current default branch
-        base=$(git rev-parse -q --verify origin/HEAD || git rev-parse --verify origin/main)
+        # The server's current default branch, fetched by name so no stale origin/HEAD is used.
+        git fetch -q origin HEAD || { echo "boat-check: couldn't fetch origin's default branch" >&2; exit 1; }
+        base=$(git rev-parse --verify FETCH_HEAD)
         tree=$(mktemp -d "${TMPDIR:-/tmp}/boat-check-save.XXXXXX")
         git archive "$base" | tar -x -C "$tree"
         echo "boat-check: building $snapshot from origin's default branch ($(git rev-parse --short "$base")) in a fresh sandbox" >&2
