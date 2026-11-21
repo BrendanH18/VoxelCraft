@@ -37,8 +37,14 @@ for tool in boat jq; do
 done
 type=${VC_BOAT_TYPE:-large}
 if [ -z "${VC_BOAT_TYPE:-}" ] && [ "$(boat limits --json 2>/dev/null | jq -r '[.machineTypes[]? | select(.type == "large") | .available | tostring][0] // "true"' || true)" = false ]; then
-    type=default   # the free trial can't start large
-    echo "boat-check: this account can't start large sandboxes yet; using default (8 GB), where the full release test build runs out of memory" >&2
+    # The free trial can't start large, and the full release test build runs
+    # out of memory on default (8 GB): refuse it, but allow focused commands.
+    if [ -z "$cmd" ]; then
+        echo "boat-check: this account can't start large sandboxes yet, and the full checks run out of memory on default (8 GB). Tell the owner; focused runs (-- CMD) still work." >&2
+        exit 3
+    fi
+    type=default
+    echo "boat-check: this account can't start large sandboxes yet; using default (8 GB)" >&2
 fi
 cd "$(git rev-parse --show-toplevel)"
 if [ -z "$cmd" ]; then
