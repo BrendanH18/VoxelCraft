@@ -358,7 +358,9 @@ impl super::World {
                     if is_potent(data.get(x, y, z)) {
                         let p = pos * CHUNK_SIZE_I + IVec3::new(x as i32, y as i32, z as i32);
                         self.potent_sulfur.cells.entry(p.to_array()).or_default();
-                        self.potent_settle.push(p);
+                        if !self.remote {
+                            self.potent_settle.push(p);
+                        }
                     }
                 }
             }
@@ -415,7 +417,10 @@ impl super::World {
         for key in keys {
             let p = IVec3::from_array(key);
             let Some(state) = self.get_block(p).and_then(g::potent_state) else {
-                if self.is_loaded(p) {
+                // Gone, or in an unloaded chunk with nothing to save (it is
+                // registered again when the chunk loads).
+                let idle = self.potent_sulfur.cells.get(&key).is_some_and(|g| g.countdown == -1);
+                if self.is_loaded(p) || idle {
                     self.potent_sulfur.cells.remove(&key);
                 }
                 continue;
