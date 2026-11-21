@@ -171,6 +171,17 @@ fn boxes_near<W: BlockSource + ?Sized>(world: &W, min: DVec3, max: DVec3, mut f:
     }
 }
 
+/// Java's `BlockState.isCollisionShapeFullBlock`: the block at `p` has one
+/// collision box filling its whole cell (unloaded cells count as full).
+pub fn full_collision<W: BlockSource + ?Sized>(world: &W, p: IVec3) -> bool {
+    let (lo, hi) = (p.as_dvec3(), p.as_dvec3() + DVec3::ONE);
+    let mut full = false;
+    cell_boxes(world, p, |min, max| {
+        full |= min.abs_diff_eq(lo, 1e-9) && max.abs_diff_eq(hi, 1e-9);
+    });
+    full
+}
+
 /// Whether the box at `pos` overlaps any solid (or unloaded) block.
 pub fn overlaps_solid<W: BlockSource + ?Sized>(world: &W, pos: DVec3, shape: Shape) -> bool {
     let (min, max) = shape.aabb(pos);

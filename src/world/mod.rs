@@ -722,6 +722,13 @@ impl World {
         self.render_distance
     }
 
+    /// v0.16 Track G: the blocks of chunk section `cpos` as they stand,
+    /// loaded or saved (player-modified but unloaded); `None` if it has
+    /// only ever been generated and isn't loaded.
+    pub fn section_data(&self, cpos: IVec3) -> Option<Arc<ChunkData>> {
+        self.chunks.get(&cpos).map(|s| s.data.clone()).or_else(|| self.saved.get(&cpos).cloned())
+    }
+
     /// Lowest block y of this world's dimension.
     #[inline]
     pub fn min_y(&self) -> i32 {

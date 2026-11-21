@@ -74,13 +74,15 @@ pub(super) enum Arrival {
     Anchor(IVec3),
     EndSpawn,
     /// Through an End gateway at `from` to the one at `exit`, which is
-    /// built (with an island under it if `island`) and linked back if it's
-    /// new.
+    /// built (after the `EndIslandFeature` island at `island`, if any) and
+    /// linked back if it's new. The traveller keeps `vel` (Java's
+    /// `Relative.DELTA`).
     Gateway {
         exit: IVec3,
         from: IVec3,
-        island: bool,
+        island: Option<IVec3>,
         link: bool,
+        vel: DVec3,
     },
 }
 
@@ -336,7 +338,9 @@ impl Game {
             Arrival::Respawn => 0,
             Arrival::Anchor(_) => 1,
             Arrival::EndSpawn => 2,
-            Arrival::Gateway { .. } => 6,
+            // Room for the gateway's arrival search and a new island.
+            Arrival::Gateway { island: None, .. } => 6,
+            Arrival::Gateway { island: Some(_), .. } => 16,
         };
         let ready = [(-r, -r), (r, -r), (-r, r), (r, r), (0, 0)]
             .iter()
@@ -404,9 +408,9 @@ impl Game {
                     return true;
                 }
             },
-            Arrival::Gateway { exit, from, island, link } => {
-                if island && self.world.get_block(exit - IVec3::Y * 10) == Some(Block::AIR) {
-                    self.world.build_end_island(exit - IVec3::Y * 10);
+            Arrival::Gateway { exit, from, island, link, .. } => {
+                if let Some(origin) = island {
+                    self.world.build_end_island(origin);
                 }
                 if self.world.get_block(exit) != Some(Block::END_GATEWAY) {
                     self.world.build_gateway(exit);
@@ -420,7 +424,10 @@ impl Game {
             }
         };
         self.relocate_agents();
-        self.session.player.vel = DVec3::ZERO;
+        self.session.player.vel = match arrival {
+            Arrival::Gateway { vel, .. } => vel,
+            _ => DVec3::ZERO,
+        };
         self.session.player.flying = self.session.player.flying && self.session.mode.can_fly();
         self.session.vitals.reset_fall();
         self.arrival = None;
@@ -443,12 +450,14 @@ impl Game {
     /// exit, or out to the outer islands the first time.
     pub(super) fn enter_gateway(&mut self, cell: IVec3) {
         let Some(fight) = &self.mobs.entities.fight else { return };
+        // `EndGatewayBlock.getPortalDestination`: players keep their motion
+        // and facing (`Relative.DELTA`, `ROTATION`).
+        let vel = self.session.player.vel;
         let arrival = match fight.gateway_exit(cell) {
-            Some(exit) => Arrival::Gateway { exit, from: cell, island: false, link: false },
+            Some(exit) => Arrival::Gateway { exit, from: cell, island: None, link: false, vel },
             None => {
-                let Some(end) = self.world.generator.end() else { return };
-                let (exit, island) = end.gateway_exit(cell);
-                Arrival::Gateway { exit, from: cell, island, link: true }
+                let Some(found) = self.world.find_gateway_exit(cell) else { return };
+                Arrival::Gateway { exit: found.exit, from: cell, island: found.island, link: true, vel }
             }
         };
         self.audio.play_in(SoundSource::Ambient, Sound::Teleport, None, 0.8, (0.7, 0.8));

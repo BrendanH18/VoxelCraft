@@ -208,11 +208,13 @@ impl EndGen {
         &self.pillars
     }
 
-    /// The exit portal's centre: the cell above the central island's
-    /// surface at 0, 0 (Java's `EndPodiumFeature` origin).
+    /// The exit portal's centre (Java's `EndPodiumFeature` origin): the
+    /// cell above the central island's surface at 0, 0. Generation 5 (v0.16
+    /// Track G) puts it where `spawnExitPortal` does, on the surface block
+    /// itself (`MOTION_BLOCKING_NO_LEAVES` heightmap, one down).
     pub fn podium(&self) -> IVec3 {
         let top = self.column(0, 0).map_or(SPAWN.y, |(top, _)| top);
-        IVec3::new(0, top + 1, 0)
+        IVec3::new(0, top + i32::from(!self.v5()), 0)
     }
     /// The 20 spots around the central island where a gateway appears for
     /// each dragon killed, in the order they're used (Java shuffles them by
@@ -228,55 +230,6 @@ impl EndGen {
         let mut order: [usize; 20] = std::array::from_fn(|i| i);
         order.sort_unstable_by_key(|&i| hash3(i as i32, 1, 0, self.seed ^ 0x4741_5445));
         order.map(gateway_spot)
-    }
-
-    /// Where the gateway at `gateway` leads, found like Java's
-    /// `TheEndGatewayBlockEntity.findOrCreateValidTeleportPos`: 1024 blocks
-    /// straight out from the centre, moved to the first chunk with land
-    /// (up to 16 chunks either way), then ten blocks above the highest
-    /// block within 16. Returns the exit gateway's cell, and whether no
-    /// land was found, so a small island must be built under it.
-    pub fn gateway_exit(&self, gateway: IVec3) -> (IVec3, bool) {
-        let dir = glam::DVec2::new(gateway.x as f64, gateway.z as f64).normalize_or(glam::DVec2::X);
-        let mut at = dir * 1024.0;
-        let chunk_land = |at: glam::DVec2| {
-            let (cx, cz) = ((at.x.floor() as i32) >> 4 << 4, (at.y.floor() as i32) >> 4 << 4);
-            (0..16)
-                .flat_map(|z| (0..16).map(move |x| (cx + x, cz + z)))
-                .filter_map(|(x, z)| self.column(x, z).map(|(top, _)| (IVec3::new(x, top, z), cx, cz)))
-                .min_by_key(|(p, cx, cz)| (p.x - cx - 8).pow(2) + (p.z - cz - 8).pow(2))
-                .map(|(p, ..)| p)
-        };
-        for _ in 0..16 {
-            if chunk_land(at).is_none() {
-                break;
-            }
-            at -= dir * 16.0;
-        }
-        for _ in 0..16 {
-            if chunk_land(at).is_some() {
-                break;
-            }
-            at += dir * 16.0;
-        }
-        let Some(land) = chunk_land(at) else {
-            return (IVec3::new((at.x + 0.5).floor() as i32, 75 + 10, (at.y + 0.5).floor() as i32), true);
-        };
-        // The tallest land within 16, the land itself excluded like Java.
-        let mut best = land;
-        for dz in -16..=16 {
-            for dx in -16..=16 {
-                if (dx, dz) == (0, 0) {
-                    continue;
-                }
-                if let Some((top, _)) = self.column(land.x + dx, land.z + dz)
-                    && top > best.y
-                {
-                    best = IVec3::new(land.x + dx, top, land.z + dz);
-                }
-            }
-        }
-        (best + IVec3::Y * 10, false)
     }
 
     /// Surface and bottom of the floating island, or no land. No bedrock floor under the void.
@@ -626,13 +579,61 @@ mod tests {
         }
         assert_ne!(EndGen::new(43).gateways(), gateways);
         for g in &gateways[..5] {
-            let (exit, island) = generator.gateway_exit(*g);
+            let found = super::super::end_portal::gateway_exit(&generator, &|_| None, *g, 256);
+            let exit = found.exit;
             let r = ((exit.x * exit.x + exit.z * exit.z) as f64).sqrt();
             assert!((768.0..=1300.0).contains(&r), "exit {exit} at {r}");
-            if !island {
-                assert_eq!(generator.column(exit.x, exit.z).map(|(top, _)| top + 10), Some(exit.y));
+            if found.island.is_none() {
+                // Ten above the tallest land within 16 (from the original
+                // islands' columns).
+                let tallest = (-16..=16)
+                    .flat_map(|dx| (-16..=16).map(move |dz| (dx, dz)))
+                    .filter_map(|(dx, dz)| generator.column(exit.x + dx, exit.z + dz).map(|(top, _)| top))
+                    .max();
+                assert!(tallest.is_some_and(|t| t + 10 <= exit.y), "exit {exit} over {tallest:?}");
             }
         }
+    }
+
+    #[test]
+    fn generation_5_uses_javas_spikes_and_gateway_order() {
+        // `EndSpikeFeature`'s spike positions are fixed; sizes and cages
+        // come from the seed's shuffle.
+        let spikes = java_spikes(0);
+        let xz: Vec<(i32, i32)> = spikes.iter().map(|p| (p.x, p.z)).collect();
+        assert_eq!(
+            xz,
+            vec![
+                (42, 0),
+                (33, 24),
+                (12, 39),
+                (-13, 39),
+                (-34, 24),
+                (-42, -1),
+                (-34, -25),
+                (-13, -40),
+                (12, -40),
+                (33, -25)
+            ]
+        );
+        let mut sizes: Vec<i32> = spikes.iter().map(|p| (p.top - 76) / 3).collect();
+        sizes.sort_unstable();
+        assert_eq!(sizes, (0..10).collect::<Vec<_>>());
+        assert!(
+            spikes.iter().all(|p| p.radius == 2 + (p.top - 76) / 9 && p.guarded == matches!((p.top - 76) / 3, 1 | 2))
+        );
+        let v5 = EndGen::with_generation(0, super::super::terrain::Generation::V5);
+        assert_eq!(v5.pillars(), &spikes);
+        // The gateway list is every spot once, used from its shuffled end.
+        let order = java_gateway_order(0);
+        let mut sorted = order.to_vec();
+        sorted.sort_unstable();
+        assert_eq!(sorted, (0..20).collect::<Vec<_>>());
+        assert_eq!(v5.gateways()[0], gateway_spot(order[0]));
+        assert_eq!(gateway_spot(0), IVec3::new(96, 75, 0));
+        assert_eq!(gateway_spot(5), IVec3::new(-1, 75, 96));
+        // Generation 4 keeps its own order and round pillars.
+        assert!(EndGen::new(0).pillars().iter().all(|p| !p.java));
     }
 
     #[test]
