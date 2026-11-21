@@ -24,7 +24,7 @@ use crate::world::terrain::{Dimension, Generator, SEA_LEVEL};
 use super::Game;
 
 /// Level properties that belong to one dimension rather than the player.
-pub(super) const DIMENSION_KEYS: [&str; 29] = [
+pub(super) const DIMENSION_KEYS: [&str; 30] = [
     "furnaces",
     "chests",
     "items",
@@ -55,6 +55,8 @@ pub(super) const DIMENSION_KEYS: [&str; 29] = [
     "raids",
     // v0.16 Track C.
     "beacons",
+    // v0.16 Track G.
+    "end_crystals",
 ];
 /// How far around the arrival point to look for an existing portal.
 const SEARCH_RADIUS: i32 = 16;
@@ -151,7 +153,7 @@ impl Game {
         props.insert("beacons".to_string(), self.world.beacons_to_string());
         self.mobs.entities.save_props(&mut props);
         if let Some(fight) = &self.mobs.entities.fight {
-            props.insert("dragon".to_string(), fight.serialize());
+            props.insert("dragon".to_string(), fight.serialize(&self.mobs.entities.crystals));
         }
         props
     }
@@ -245,6 +247,11 @@ impl Game {
             .generator
             .end()
             .map(|end| crate::entity::dragon::Fight::load(end, props.get("dragon").map(String::as_str)));
+        // v0.16 Track G: older saves kept the pillar crystals in the fight.
+        let entities = &mut self.mobs.entities;
+        if let Some(fight) = &mut entities.fight {
+            fight.restore_crystals(&mut entities.crystals, props.contains_key("end_crystals"));
+        }
     }
 
     /// Saves this dimension and swaps in `to`, with the player waiting at

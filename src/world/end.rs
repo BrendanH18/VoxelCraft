@@ -460,9 +460,10 @@ impl EndGen {
                 let column = self.column(wx, wz);
                 let pillar = self.pillars.iter().find(|p| p.holds(wx, wz));
                 // Generation 5: `placeSpike` also clears its square above y 65.
-                let square = self.pillars.iter().find(|p| {
-                    p.java && (wx - p.x).abs() <= p.radius && (wz - p.z).abs() <= p.radius
-                });
+                let square = self
+                    .pillars
+                    .iter()
+                    .find(|p| p.java && (wx - p.x).abs() <= p.radius && (wz - p.z).abs() <= p.radius);
                 // Cages reach past the round pillar, to its 5x5 square.
                 let cage = self.pillars.iter().find(|p| p.guarded && (wx - p.x).abs() <= 2 && (wz - p.z).abs() <= 2);
                 for y in 0..CHUNK_SIZE {

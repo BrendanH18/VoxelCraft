@@ -152,12 +152,21 @@ impl World {
     /// Opens the exit portal in the End's podium once the dragon is dead,
     /// with the dragon egg on its pillar after the first kill.
     pub fn open_exit_portal(&mut self, egg: bool) {
+        self.set_exit_portal(true, egg);
+    }
+
+    /// v0.16 Track G: builds the exit portal open (`END_PODIUM_ACTIVE`) or
+    /// shut (`END_PODIUM_INACTIVE`, the respawn ritual's), with the dragon
+    /// egg on top if `egg`. Shutting it is `respawnDragon`'s: every bedrock
+    /// and portal block of the podium turns to end stone, then the shut
+    /// podium is built over it, which leaves the bowl empty.
+    pub fn set_exit_portal(&mut self, active: bool, egg: bool) {
         let Some(origin) = self.generator.end().map(|e| e.podium()) else { return };
         for dy in -1..=3 {
             for dz in -4..=4 {
                 for dx in -4..=4 {
                     let p = origin + IVec3::new(dx, dy, dz);
-                    if let Some(b) = super::end::podium_block(origin, p, true)
+                    if let Some(b) = super::end::podium_block(origin, p, active)
                         && self.get_block(p) != Some(b)
                     {
                         self.set_block(p, b);
@@ -168,6 +177,46 @@ impl World {
         if egg {
             self.set_block(origin + IVec3::Y * 4, Block::DRAGON_EGG);
         }
+    }
+
+    /// v0.16 Track G: the first half of `SUMMONING_PILLARS`' rebuild: every
+    /// block within 10 of the pillar's bedrock cap goes (`removeBlock`).
+    pub fn clear_spike_top(&mut self, p: &super::end::Pillar) {
+        let top = IVec3::new(p.x, p.top, p.z);
+        for dy in -10..=10 {
+            for dz in -10..=10 {
+                for dx in -10..=10 {
+                    let at = top + IVec3::new(dx, dy, dz);
+                    if self.get_block(at).is_some_and(|b| b != Block::AIR) {
+                        self.set_block(at, Block::AIR);
+                    }
+                }
+            }
+        }
+    }
+
+    /// v0.16 Track G: the second half, `EndSpikeFeature.placeSpike`: the
+    /// pillar, its cage and bedrock cap rebuilt, with fire where its
+    /// crystal stands (the caller adds the crystal).
+    pub fn build_spike(&mut self, p: &super::end::Pillar) {
+        let r = p.radius.max(2);
+        for y in self.min_y()..=p.top + 10 {
+            for dz in -r..=r {
+                for dx in -r..=r {
+                    let at = IVec3::new(p.x + dx, y, p.z + dz);
+                    if let Some(b) = p.block_at(at)
+                        && self.get_block(at).is_some_and(|old| old != b)
+                    {
+                        self.set_block(at, b);
+                    }
+                }
+            }
+        }
+        let cell = p.crystal().floor().as_ivec3();
+        if self.get_block(cell) != Some(Block::AIR) {
+            self.set_block(cell, Block::AIR);
+        }
+        self.crystal_fire(cell);
     }
 
     /// Puts an eye of ender in the empty frame at `pos`. Returns `None` if

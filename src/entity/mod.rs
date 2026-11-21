@@ -2156,8 +2156,9 @@ impl Entities {
         model::build_orbs(&self.orbs, camera, max_dist, time, alpha, &mut self.mesh);
         model::build_minecarts(&self.minecarts, camera, alpha, &mut self.mesh);
         decor::build(&self.decor, camera, max_dist, alpha, &mut self.mesh);
+        dragon_model::build_crystals(&self.crystals, camera, time, alpha, &mut self.mesh);
         if let Some(fight) = &self.fight {
-            dragon_model::build_fight(fight, camera, time, alpha, &mut self.mesh);
+            dragon_model::build_fight(fight, &self.crystals, camera, time, alpha, &mut self.mesh);
         }
         &mut self.mesh
     }
@@ -2257,7 +2258,9 @@ impl Entities {
                 || self.decor.iter().any(|d| overlaps(d.aabb(), (min, max)))
                 || self.items.iter().any(|i| overlaps(i.aabb(), (min, max)))
                 || self.minecarts.iter().any(|c| overlaps(c.aabb(), (min, max)))
-                || self.tnt.iter().any(|t| overlaps((t.pos - DVec3::new(0.49, 0.0, 0.49), t.pos + DVec3::new(0.49, 0.98, 0.49)), (min, max)))
+                || self.tnt.iter().any(|t| {
+                    overlaps((t.pos - DVec3::new(0.49, 0.0, 0.49), t.pos + DVec3::new(0.49, 0.98, 0.49)), (min, max))
+                })
         };
         let Some(at) = self.crystals.placement(world, clicked, occupied) else { return false };
         self.crystals.place(at);
@@ -4120,7 +4123,9 @@ mod tests {
         let end = crate::world::end::EndGen::new(5);
         let mut fight = dragon::Fight::new(&end);
         fight.dragon = None;
-        let c = fight.crystals[0].pos;
+        let mut crystals = crystal::Crystals::default();
+        fight.spawn_pillar_crystals(&mut crystals);
+        let c = crystals.list[0].pos;
         // A cow standing just in front of the crystal: one arrow step ends
         // inside both, but it enters the cow first.
         let mut mobs = [Mob::new(MobKind::Cow, DVec3::new(c.x - 0.6, c.y, c.z), 0.0)];
@@ -4135,7 +4140,7 @@ mod tests {
                 &ctx(DVec3::new(0.0, 10.0, 0.0)),
                 &mut mobs,
                 &[],
-                Some(&mut fight),
+                Some(&mut dragon::Targets { fight: Some(&mut fight), crystals: &mut crystals }),
                 &mut Rng::new(1),
                 &mut events,
             );
@@ -4146,8 +4151,8 @@ mod tests {
         assert!(events.iter().any(|e| matches!(e, EntityEvent::MobShot { kind: MobKind::Cow, .. })), "{events:?}");
         assert!(mobs[0].health < MobKind::Cow.max_health());
         let mut events = Vec::new();
-        fight.update(0.05, &world, &ctx(DVec3::new(0.0, 10.0, 0.0)), &mut Rng::new(1), &mut events);
-        assert_eq!(fight.crystals.len(), 10, "the crystal behind the cow survives");
+        fight.update(0.05, &world, &ctx(DVec3::new(0.0, 10.0, 0.0)), &mut Rng::new(1), &mut crystals, &mut events);
+        assert_eq!(crystals.len(), 10, "the crystal behind the cow survives");
     }
 
     /// `AbstractArrow.onHitEntity`: a piercing arrow passes through `level + 1`

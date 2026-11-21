@@ -726,6 +726,14 @@ pub fn recipes() -> &'static [Recipe] {
         // v0.16 Track A: purpur and End rods.
         end::add(&mut r);
         gen5::add(&mut r);
+        // v0.16 Track G: `recipe/end_crystal.json`, glass around an eye of
+        // ender over a ghast tear.
+        r.push(shaped(
+            &["GGG", "GEG", "GTG"],
+            &[('G', const { &[b(Block::GLASS)] }), ('E', &[Item::EYE_OF_ENDER]), ('T', &[Item::GHAST_TEAR])],
+            crate::entity::crystal::END_CRYSTAL,
+            1,
+        ));
         // v0.15 Track C: `recipe/dried_ghast.json`, eight ghast tears around soul sand.
         r.push(shaped(
             &["###", "#X#", "###"],

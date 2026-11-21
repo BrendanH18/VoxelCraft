@@ -724,6 +724,21 @@ impl Game {
                     self.world.open_exit_portal(first);
                     self.audio.play(Sound::PortalSpawn, None, 1.0, (1.0, 1.0));
                 }
+                // v0.16 Track G: End crystals and the dragon respawn ritual.
+                EntityEvent::CrystalFire { cell } => {
+                    self.world.crystal_fire(cell);
+                }
+                EntityEvent::ExitPortal { active } => self.world.set_exit_portal(active, false),
+                EntityEvent::RespawnPillar { index } => self.respawn_pillar(index),
+                EntityEvent::QuietBlast { center, power } => {
+                    self.world.emit_game_event(
+                        center,
+                        crate::world::vibration::GameEvent::Explode,
+                        crate::world::vibration::EventSource::NONE,
+                        None,
+                    );
+                    self.explode_with(center, power, Cause::END_CRYSTAL, false, false);
+                }
             }
         }
         if self.difficulty == crate::simulation::difficulty::Difficulty::Peaceful {
@@ -902,9 +917,23 @@ impl Game {
     /// Blows a hole in the world and hurts everything around `center`.
     /// `cause` completes the death message, as for [`Game::damage_player`].
     pub(super) fn explode(&mut self, center: DVec3, power: f32, cause: Cause, credit_player: bool) {
+        self.explode_with(center, power, cause, credit_player, true);
+    }
+
+    /// [`Game::explode`], breaking no blocks unless `breaks_blocks`
+    /// (`ExplosionInteraction.NONE`).
+    pub(super) fn explode_with(
+        &mut self,
+        center: DVec3,
+        power: f32,
+        cause: Cause,
+        credit_player: bool,
+        breaks_blocks: bool,
+    ) {
         // `ServerLevel.explode`: the interaction decides whether blocks break
         // and whether their drops decay.
-        let blast = self.gamerules.explosion(voxelcraft::rules::ExplosionSource::of_cause(cause.text));
+        let mut blast = self.gamerules.explosion(voxelcraft::rules::ExplosionSource::of_cause(cause.text));
+        blast.destroys_blocks &= breaks_blocks;
         // `ServerExplosion.explode`: find the cells, hurt entities while the
         // walls about to go still shield them, then break the blocks.
         let cells = if blast.destroys_blocks { self.world.exploded_cells(center, power) } else { Vec::new() };
@@ -933,6 +962,26 @@ impl Game {
             self.mobs.entities.prime_tnt(cell, short_fuse);
         }
         self.audio.play(Sound::Explosion, Some(center), 1.0, (0.9, 1.05));
+    }
+
+    /// v0.16 Track G: `SUMMONING_PILLARS` rebuilds pillar `index`: its top
+    /// cleared, a power 5 blast with no source at the cap (breaking
+    /// blocks), the spike rebuilt, and a new invulnerable crystal beaming
+    /// at (0, 128, 0).
+    fn respawn_pillar(&mut self, index: usize) {
+        let Some(p) = self.world.generator.end().and_then(|e| e.pillars().get(index).copied()) else { return };
+        self.world.clear_spike_top(&p);
+        let center = DVec3::new(f64::from(p.x) + 0.5, f64::from(p.top), f64::from(p.z) + 0.5);
+        self.world.emit_game_event(
+            center,
+            crate::world::vibration::GameEvent::Explode,
+            crate::world::vibration::EventSource::NONE,
+            None,
+        );
+        self.explode(center, 5.0, Cause::EXPLOSION, false);
+        self.world.build_spike(&p);
+        let beam = Some(crate::entity::dragon::RESPAWN_BEAM);
+        self.mobs.entities.crystals.spawn(p.crystal(), beam, true, true);
     }
 
     /// F3 line with entity counts.

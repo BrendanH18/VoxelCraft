@@ -215,11 +215,13 @@ impl Crystals {
 
     /// The crystal whose box holds `p`.
     pub fn hit_at(&self, p: DVec3) -> Option<u32> {
-        self.list.iter().find(|c| {
-            let (min, max) = c.aabb();
-            p.cmpge(min).all() && p.cmple(max).all()
-        })
-        .map(|c| c.id)
+        self.list
+            .iter()
+            .find(|c| {
+                let (min, max) = c.aabb();
+                p.cmpge(min).all() && p.cmple(max).all()
+            })
+            .map(|c| c.id)
     }
 
     /// One tick: crystals hit since the last one go (blowing up unless a
@@ -414,7 +416,10 @@ mod tests {
         assert!(crystals.hit(a, Blow::Player { id: PlayerId::HOST, creative: false }));
         let mut events = Vec::new();
         crystals.tick(&Cells(Vec::new()), false, &mut events);
-        assert_eq!(crystals.destroyed, vec![Destroyed { id: a, pos: DVec3::new(0.5, 65.0, 0.5), by: Some(PlayerId::HOST) }]);
+        assert_eq!(
+            crystals.destroyed,
+            vec![Destroyed { id: a, pos: DVec3::new(0.5, 65.0, 0.5), by: Some(PlayerId::HOST) }]
+        );
         let blasts: Vec<_> = events
             .iter()
             .filter_map(|e| match e {

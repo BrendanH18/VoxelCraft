@@ -1191,6 +1191,10 @@ impl Item {
         if self == crate::entity::wither::NETHER_STAR {
             return item("nether star", Sprite::NetherStar);
         }
+        // v0.16 Track G: the End crystal.
+        if let Some(info) = crate::entity::crystal::item_info(self) {
+            return info;
+        }
         // v0.16 Track D: the poplar boats.
         match self {
             Self::POPLAR_BOAT => return single("poplar boat", Sprite::Boat([196, 188, 166], false)),
@@ -1665,6 +1669,7 @@ impl Item {
     pub fn has_glint(self) -> bool {
         matches!(self, Item::ENCHANTED_GOLDEN_APPLE | Item::EXPERIENCE_BOTTLE | Item::WRITTEN_BOOK)
             || self == crate::entity::wither::NETHER_STAR
+            || self == crate::entity::crystal::END_CRYSTAL
     }
 
     /// The equipment slot this goes on (`Equippable.slot`): armor its
@@ -1728,6 +1733,10 @@ impl Item {
         }
         if self == crate::world::camp_maps::CAMP_MAP {
             return Some(crate::world::camp_maps::TEX);
+        }
+        // v0.16 Track G: the End crystal draws its own layer.
+        if self == crate::entity::crystal::END_CRYSTAL {
+            return Some(crate::entity::crystal::ICON_TEX);
         }
         if self.is_map() {
             return Some(2944 + self.0 - 1255);
@@ -1847,6 +1856,8 @@ impl Item {
             .chain(gen5_items())
             // v0.16 Track D: the abandoned camp map, which draws its own layers.
             .chain([crate::world::camp_maps::CAMP_MAP])
+            // v0.16 Track G: the End crystal, which draws its own layer.
+            .chain([crate::entity::crystal::END_CRYSTAL])
     }
 
     /// Everything a creative player can pick from: blocks, then items.

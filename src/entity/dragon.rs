@@ -381,6 +381,17 @@ impl Fight {
         self.scan_crystals(crystals);
     }
 
+    /// After a load: the pillar crystals of an older save (or a new End)
+    /// spawn unless the crystals were `saved` as entities, then the
+    /// pillars are counted.
+    pub fn restore_crystals(&mut self, crystals: &mut Crystals, saved: bool) {
+        if saved {
+            self.legacy_crystals = None;
+        }
+        self.spawn_pillar_crystals(crystals);
+        self.scan_crystals(crystals);
+    }
+
     /// The pillars, in Java's spike order.
     pub fn pillars(&self) -> &[Pillar; 10] {
         &self.pillars
@@ -609,7 +620,8 @@ impl Fight {
         }
         // `EnderDragonFight.tick` runs only while players are in the
         // fight's area and the arena is loaded.
-        let watched = ctx.players.iter().any(|t| t.alive && t.pos.distance_squared(RESPAWN_BEAM.as_dvec3()) < ARENA * ARENA);
+        let watched =
+            ctx.players.iter().any(|t| t.alive && t.pos.distance_squared(RESPAWN_BEAM.as_dvec3()) < ARENA * ARENA);
         if self.respawn.is_some() && watched && self.arena_loaded(world) {
             self.respawn_tick(rng, crystals, events);
         }
@@ -674,7 +686,9 @@ impl Fight {
         let player = d.by.or_else(|| {
             ctx.players
                 .iter()
-                .filter(|t| t.targetable && t.pos.distance_squared(d.pos) <= CRYSTAL_DESTROY_RANGE * CRYSTAL_DESTROY_RANGE)
+                .filter(|t| {
+                    t.targetable && t.pos.distance_squared(d.pos) <= CRYSTAL_DESTROY_RANGE * CRYSTAL_DESTROY_RANGE
+                })
                 .min_by(|a, b| a.pos.distance_squared(d.pos).total_cmp(&b.pos.distance_squared(d.pos)))
                 .map(|t| t.id)
         });
@@ -921,7 +935,13 @@ pub enum Hit {
 
 /// The End crystals (in any dimension) and, in the End, the fight, as a
 /// ray meets them: the nearest within `max_dist`.
-pub fn raycast(fight: Option<&Fight>, crystals: &Crystals, origin: DVec3, dir: DVec3, max_dist: f64) -> Option<(Hit, f64)> {
+pub fn raycast(
+    fight: Option<&Fight>,
+    crystals: &Crystals,
+    origin: DVec3,
+    dir: DVec3,
+    max_dist: f64,
+) -> Option<(Hit, f64)> {
     let crystal = crystals.raycast(origin, dir, max_dist).map(|(id, t)| (Hit::Crystal(id), t));
     let dragon = fight.and_then(|f| f.raycast(origin, dir, max_dist));
     crystal.into_iter().chain(dragon).min_by(|a, b| a.1.total_cmp(&b.1))
@@ -1992,7 +2012,10 @@ mod tests {
         for _ in 0..DEATH_TICKS + 5 {
             fight.update(TICK, &Air, &ctx(Vec::new()), &mut rng, &mut crystals, &mut out);
         }
-        let xp: u32 = out.iter().filter_map(|e| if let EntityEvent::DragonXp { points, .. } = e { Some(*points) } else { None }).sum();
+        let xp: u32 = out
+            .iter()
+            .filter_map(|e| if let EntityEvent::DragonXp { points, .. } = e { Some(*points) } else { None })
+            .sum();
         assert_eq!(xp, 10 * 40 + 100);
         assert!(out.contains(&EntityEvent::DragonKilled { first: false }));
         assert!(out.contains(&EntityEvent::BuildGateway { pos: end.gateways()[1] }));

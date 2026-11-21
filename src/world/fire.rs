@@ -226,6 +226,16 @@ impl World {
                 && self.set_block(p, self.fire_state(p, 0)))
     }
 
+    /// v0.16 Track G: `EndCrystal.tick` in the End sets fire in its own
+    /// air cell (`BaseFireBlock.getState`, no portal lighting: the End
+    /// isn't a portal dimension); unsupported fire goes at its next tick.
+    pub fn crystal_fire(&mut self, p: IVec3) -> bool {
+        self.contains_y(p.y)
+            && self.get_block(p) == Some(Block::AIR)
+            && self.fire_supported(p)
+            && self.set_block(p, self.fire_state(p, 0))
+    }
+
     pub(super) fn tick_fire_block(&mut self, p: IVec3, age: u8) {
         if SIDES.iter().any(|&d| self.get_block(p + d).is_none()) {
             return;

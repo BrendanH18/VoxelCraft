@@ -7,6 +7,7 @@ use std::f32::consts::PI;
 
 use glam::{DVec3, Quat, Vec3};
 
+use super::crystal::Crystals;
 use super::dragon::{Dragon, Fight, Phase};
 use super::model::{Cuboid, EntityMesh, Rgb, cube, push_cuboid};
 
@@ -51,14 +52,33 @@ const FRONT_LEG: &[Cuboid] =
 const REAR_LEG: &[Cuboid] =
     &[cube([-7.0, -30.0, -7.0], [7.0, 4.0, 7.0], SCALE, 26), cube([-8.0, -36.0, -8.0], [8.0, -30.0, 14.0], SCALE, 26)];
 
-/// Healing beams, crystals, the dragon, its fireballs and breath.
-pub fn build_fight(fight: &Fight, camera: DVec3, time: f32, alpha: f64, out: &mut EntityMesh) {
-    for (i, c) in fight.crystals.iter().enumerate() {
-        crystal(out, (crystal_center(c, alpha) - camera).as_vec3(), c.age as f32 + alpha as f32, i);
+/// v0.16 Track G: End crystals in any dimension, their bedrock plates and
+/// their beams (the respawn ritual's, `EndCrystalRenderer`).
+pub fn build_crystals(crystals: &Crystals, camera: DVec3, time: f32, alpha: f64, out: &mut EntityMesh) {
+    for c in &crystals.list {
+        let center = crystal_center(c, alpha);
+        crystal(out, (center - camera).as_vec3(), c.age as f32 + alpha as f32, c.id as usize);
+        if c.show_bottom {
+            plate(out, (c.pos - camera).as_vec3());
+        }
+        if let Some(to) = c.beam {
+            let to = to.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
+            beam(out, (center - camera).as_vec3(), (to - camera).as_vec3(), time);
+        }
     }
+}
+
+/// `EndCrystalModel`'s base: a bedrock-grey slab under a pillar crystal.
+fn plate(out: &mut EntityMesh, rel: Vec3) {
+    let base = cube([-6.0, 0.0, -6.0], [6.0, 4.0, 6.0], [62, 60, 64], 20);
+    push_cuboid(out, &base, &|v: Vec3| rel + v / 16.0, Quat::IDENTITY, ([200, 0, 0, 255], 0), ([0.0; 3], 0.0), 0.0);
+}
+
+/// Healing beams, the dragon, its fireballs and breath.
+pub fn build_fight(fight: &Fight, crystals: &Crystals, camera: DVec3, time: f32, alpha: f64, out: &mut EntityMesh) {
     if let Some(d) = &fight.dragon {
         let pos = d.previous_pos.lerp(d.pos, alpha);
-        if let Some(c) = d.healer.and_then(|i| fight.crystals.get(i)) {
+        if let Some(c) = d.healer.and_then(|id| crystals.get(id)) {
             let from = (crystal_center(c, alpha) - camera).as_vec3();
             let to = (pos + DVec3::Y * 1.5 - camera).as_vec3();
             beam(out, from, to, time);
@@ -82,7 +102,7 @@ pub fn build_fight(fight: &Fight, camera: DVec3, time: f32, alpha: f64, out: &mu
     }
 }
 
-fn crystal_center(c: &super::dragon::Crystal, alpha: f64) -> DVec3 {
+fn crystal_center(c: &super::crystal::Crystal, alpha: f64) -> DVec3 {
     // Java's bob: up and down by about half a block.
     let t = c.age as f64 + alpha;
     let b = (t * 0.2).sin() / 2.0 + 0.5;
