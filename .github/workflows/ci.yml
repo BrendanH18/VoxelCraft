@@ -83,14 +83,16 @@ jobs:
           cache: rust
       - if: runner.os == 'Windows'
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      - run: cargo clippy --release --all-targets --locked -- -D warnings
-      - run: cargo test --release --locked
+      # The `ci` profile is release without cross-crate LTO and with 16 codegen units (Cargo.toml):
+      # the same optimisations and assertions, much faster to build and link.
+      - run: cargo clippy --profile ci --all-targets --locked -- -D warnings
+      - run: cargo test --profile ci --locked
       - name: Headless generation/meshing benchmark
-        run: cargo run --release --locked -- --bench --rd 4
-      # The release binary from the benchmark step checks its embedded asset manifest.
+        run: cargo run --profile ci --locked -- --bench --rd 4
+      # The binary from the benchmark step checks its embedded asset manifest.
       - name: Validate assets
         if: runner.os == 'Linux'
-        run: python3 tools/validate_assets.py --executable target/release/voxelcraft
+        run: python3 tools/validate_assets.py --executable target/ci/voxelcraft
       - name: Benchmark gate tool tests
         if: runner.os == 'Linux'
         run: python3 -m unittest tools/test_benchmark_scenes.py
@@ -119,6 +121,6 @@ jobs:
       - uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
         with:
           cache: rust
-      - run: cargo clippy --release --no-default-features --all-targets --locked -- -D warnings
-      - run: cargo test --release --no-default-features --locked
-      - run: cargo run --release --no-default-features --locked --example headless
+      - run: cargo clippy --profile ci --no-default-features --all-targets --locked -- -D warnings
+      - run: cargo test --profile ci --no-default-features --locked
+      - run: cargo run --profile ci --no-default-features --locked --example headless

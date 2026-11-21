@@ -11,12 +11,19 @@ Boat through `scripts/boat-check.sh` (see [Boat checks](#boat-checks)):
 
 ```sh
 cargo fmt --check
-cargo clippy --release --all-targets -- -D warnings
-cargo test --release
+cargo clippy --profile ci --all-targets -- -D warnings
+cargo test --profile ci
 ```
 
-The Linux CI job also checks the release binary's embedded assets with
-`python3 tools/validate_assets.py --executable target/release/voxelcraft` and
+The `ci` profile (in `Cargo.toml`, owner, 2026-11-21) is the release profile
+without cross-crate link-time optimisation and with 16 codegen units: the same
+optimisations and assertions, but the ~70 test binaries build and link
+about three times as fast (259 s instead of 858 s after a source change on
+a `large` Boat sandbox). Its output goes to `target/ci/`. Only shipped builds use `--release`
+([releases](releases.md)).
+
+The Linux CI job also checks the built binary's embedded assets with
+`python3 tools/validate_assets.py --executable target/ci/voxelcraft` and
 runs the benchmark-gate tool tests. The **ruff** job lints and
 format-checks the Python tools with `uvx ruff@0.17.5 check` and
 `uvx ruff@0.17.5 format --check` (settings in `ruff.toml`; run
@@ -49,34 +56,64 @@ builds do not use that path.
 
 `scripts/boat-check.sh` runs the hand-off checks on a [Boat](https://boat.dev)
 sandbox instead of this Mac. It needs the `boat` CLI, installed and signed in
-(`curl -fsSL https://boat.dev/install | sh`), and `jq`.
+(`curl -fsSL https://boat.dev/install | sh`), `jq` and git.
 
 ```sh
-scripts/boat-check.sh --save --full   # first run: builds both feature sets, then saves the warm snapshot
 scripts/boat-check.sh          # cargo fmt here, then clippy and tests in Boat
 scripts/boat-check.sh --full   # also the --no-default-features checks
-scripts/boat-check.sh -- cargo test --release some_test   # any command
+scripts/boat-check.sh -- cargo test --profile ci some_test   # any command
+scripts/boat-check.sh --status # this worktree's sandbox
+scripts/boat-check.sh --done   # delete it when the work ends
+scripts/boat-check.sh --save   # rebuild the warm snapshot from origin's default branch
 ```
 
-Each run is one `boat run`: it pushes the working tree (tracked and untracked,
-non-ignored files), runs the command and deletes the sandbox. (With
-`--save`, once the checks pass and a save has started, any outcome other
-than a confirmed save asks Boat to stop the sandbox instead, so the passing
-build can be saved again once `boat info` shows it stopped.) Sandboxes are
-`large` (8 vCPU, 16 GB; `VC_BOAT_TYPE` to change it), because the release
-test build runs out of memory on 8 GB. They start with `--no-env`, so none of
-the account's stored secrets go in. The script installs the Linux audio,
-device and font libraries the build needs, updates Rust to current stable
-(CI's toolchain) and keeps the target directory in `/home/user/target`.
+Each worktree has one long-lived sandbox (owner, 2026-11-21), named
+`voxelcraft-check-<worktree>`, because the Boat account's daily starts are
+shared by every project and one `boat run` per check used a start each. The
+first check creates it from the saved snapshot `voxelcraft-warm`
+(`VC_BOAT_SNAPSHOT`), or bare when there is none, and records its id in the
+worktree's git directory (`.git/.../boat-check/`). Every later check reuses
+it:
 
-`--save` stores a passing run's sandbox, without the checkout, as the saved
-snapshot `voxelcraft-warm` (`VC_BOAT_SNAPSHOT`): system libraries, toolchain
-and the built target directory. Later runs start from a copy of it, so each
-run has its own warm target directory and no lock to wait on. Re-run with
-`--save --full` after dependency or toolchain changes to keep it warm. `boat push`
-keeps files' original timestamps, so the script stamps every pushed file as
-new; otherwise cargo could take an edited file for one the snapshot already
-built. The free trial allows neither `large` sandboxes nor saved snapshots.
+1. `cargo fmt` runs here.
+2. The working tree (tracked and untracked, non-ignored files) is pushed to
+   a fresh directory in the sandbox.
+3. It's synced into the checkout at `/home/user/voxelcraft` with
+   `rsync --checksum --delete`: deleted files go, and only files whose
+   contents changed are rewritten, with the current time. `boat push` keeps
+   this computer's timestamps, which cargo could otherwise take for
+   unchanged files.
+4. The checks run there with `boat exec --timeout 0`. Cargo's target
+   directory (`/home/user/target`) stays between checks, so a check rebuilds
+   only what changed.
+
+Boat's auto-stop is a deadline, not an idle timer: the script keeps it two
+hours ahead while a check runs and sets it to `VC_BOAT_IDLE` seconds after
+each one. By default that follows the machine size (owner, 2026-11-21),
+because idle time bills like work and bigger machines bill more: 5 minutes
+on `xlarge`, 15 minutes on `default` and `large`. A forgotten sandbox stops by itself, and the next check
+resumes it, which uses one start. `--stop` stops it at once; `--done` deletes
+it and is how an agent ends its work. Agents sharing a worktree each set
+`VC_BOAT_SLOT`, so no two share a sandbox; a lock in the git directory stops
+two checks in one slot from racing. Starts use `--fail-fast` and retry, so a
+busy moment costs nothing; when Boat refuses a start (no starts left today),
+the script stops and says so.
+
+Sandboxes are `large` (8 vCPU, 16 GB; `VC_BOAT_TYPE` to change it) for every
+mode (owner, 2026-11-21). The test build runs out of memory on 8 GB, and
+`xlarge` (16 vCPU, 32 GB) was slower, not faster: from the same warm state
+it took 450 s to `large`'s 197 s for the test build after a source change
+and 1,543 s to 1,006 s for the full chain, at about 2.8 times the price.
+They start with `--no-env`, so none
+of the account's stored secrets go in. The script installs the Linux audio,
+device and font libraries and `rsync` when they're missing and updates Rust
+to current stable (CI's toolchain).
+
+`--save` builds origin's default branch, not the worktree, in a fresh
+sandbox named `voxelcraft-warm-build`, runs the full checks there and saves
+it, checkout and target directory included, as `voxelcraft-warm`. New check
+sandboxes start from a copy of it with every dependency built. Re-run it
+after dependency or toolchain changes.
 
 Sandboxes run Linux, like the Linux CI job: they check the code and tests
 but not macOS- or Windows-only code, the GPU or performance. Run the game,
@@ -96,11 +133,11 @@ GPU, audio and UI dependencies. Disable it to use the engine without those
 libraries or devices:
 
 ```sh
-cargo clippy --release --no-default-features --all-targets -- -D warnings
-cargo test --release --no-default-features
-cargo run --release --no-default-features --example headless
-cargo run --release --no-default-features --example headless -- --nether
-cargo run --release --no-default-features --example headless -- --end
+cargo clippy --profile ci --no-default-features --all-targets -- -D warnings
+cargo test --profile ci --no-default-features
+cargo run --profile ci --no-default-features --example headless
+cargo run --profile ci --no-default-features --example headless -- --nether
+cargo run --profile ci --no-default-features --example headless -- --end
 ```
 
 The example streams terrain and advances 200 fixed gameplay ticks without

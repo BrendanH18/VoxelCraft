@@ -16,8 +16,8 @@ CI additionally runs a headless benchmark on Linux, macOS and Windows; see
 also check the device-independent configuration:
 
 ```sh
-cargo clippy --release --no-default-features --all-targets -- -D warnings
-cargo test --release --no-default-features
+cargo clippy --profile ci --no-default-features --all-targets -- -D warnings
+cargo test --profile ci --no-default-features
 ```
 
 Tests validate every WGSL shader with naga. Check changed gameplay against the

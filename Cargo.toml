@@ -70,3 +70,13 @@ lto = "thin"
 codegen-units = 1
 panic = "abort"
 debug = false
+
+# Checks and tests (owner, 2026-11-21): the release profile's optimisations
+# and assertions, without its cross-crate (thin) LTO and single codegen unit,
+# which made every one of the ~67 test binaries slow to build and link. The
+# shipped build keeps `--release`. `cargo test --profile ci`; output in
+# target/ci/.
+[profile.ci]
+inherits = "release"
+lto = false
+codegen-units = 16

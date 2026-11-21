@@ -57,17 +57,18 @@ Run the same checks as CI before submitting:
 
 ```sh
 cargo fmt --check
-cargo clippy --release --all-targets -- -D warnings
-cargo test --release
-cargo run --release -- --bench --rd 4
-python3 tools/validate_assets.py --executable target/release/voxelcraft
+cargo clippy --profile ci --all-targets -- -D warnings
+cargo test --profile ci
+cargo run --profile ci -- --bench --rd 4
+python3 tools/validate_assets.py --executable target/ci/voxelcraft
 python3 -m unittest discover -s tools -p 'test_*.py'
 python3 tools/check_doc_links.py
 uvx ruff@0.17.5 check
 uvx ruff@0.17.5 format --check
 ```
 
-On Windows, pass `target/release/voxelcraft.exe` to `--executable`.
+On Windows, pass `target/ci/voxelcraft.exe` to `--executable`. The `ci`
+profile is release without cross-crate link-time optimisation ([checks](docs/development.md#checks)).
 
 For a documentation change, run `python3 tools/check_doc_links.py`: it checks
 that every relative link and `#anchor` in the tracked Markdown files resolves

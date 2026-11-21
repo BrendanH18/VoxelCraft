@@ -9,6 +9,6 @@
      before/after measurements with hardware/settings for performance changes. -->
 
 - [ ] `cargo fmt --check`
-- [ ] `cargo clippy --release --all-targets -- -D warnings`
-- [ ] `cargo test --release`
-- [ ] `cargo run --release -- --bench --rd 4`
+- [ ] `cargo clippy --profile ci --all-targets -- -D warnings`
+- [ ] `cargo test --profile ci`
+- [ ] `cargo run --profile ci -- --bench --rd 4`

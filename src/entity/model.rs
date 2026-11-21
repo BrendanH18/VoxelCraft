@@ -209,7 +209,7 @@ const fn glass(min: [f32; 3], max: [f32; 3], color: Rgb, noise: u8) -> Cuboid {
 }
 
 const MAGMA_BODY: &[Cuboid] = &[cube([-4.08, 0.0, -4.08], [4.08, 8.16, 4.08], [50, 28, 25], 80)];
-const MAGMA_GLOW: &[Cuboid] = &[
+static MAGMA_GLOW: &[Cuboid] = &[
     cube([-4.1, 1.8, -4.1], [4.1, 2.1, 4.1], [245, 99, 16], 0),
     cube([-4.1, 3.8, -4.1], [4.1, 4.1, 4.1], [245, 99, 16], 0),
     cube([-4.1, 5.8, -4.1], [4.1, 6.1, 4.1], [245, 99, 16], 0),
@@ -604,7 +604,7 @@ const ENDERMAN_HEAD: &[Cuboid] = &[cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], ENDE
 /// The lower jaw left behind when an angry enderman's head lifts.
 const ENDERMAN_JAW: &[Cuboid] = &[cube([-4.2, -0.2, -4.2], [4.2, 3.0, 4.2], ENDER_JAW, 10)];
 /// Drawn glowing, like Java's eye layer.
-const ENDERMAN_EYES: &[Cuboid] = &[
+static ENDERMAN_EYES: &[Cuboid] = &[
     cube([-3.5, 3.0, 4.0], [-1.0, 4.0, 4.1], [204, 0, 250], 0),
     cube([-2.5, 3.0, 4.1], [-1.5, 4.0, 4.15], [240, 150, 255], 0),
     cube([1.0, 3.0, 4.0], [3.5, 4.0, 4.1], [204, 0, 250], 0),

@@ -60,8 +60,10 @@ jobs:
         shell: bash
         run: python3 packaging/check-version.py
       - run: cargo fmt --check
-      - run: cargo clippy --release --all-targets --locked --target ${{ matrix.target }} -- -D warnings
-      - run: cargo test --release --locked --target ${{ matrix.target }}
+      # Checks and tests use the `ci` profile (release without cross-crate LTO, Cargo.toml);
+      # the shipped build below keeps `--release`.
+      - run: cargo clippy --profile ci --all-targets --locked --target ${{ matrix.target }} -- -D warnings
+      - run: cargo test --profile ci --locked --target ${{ matrix.target }}
       - run: cargo build --release --locked --target ${{ matrix.target }}
       - name: Install license notice generator
         uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
