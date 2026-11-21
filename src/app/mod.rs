@@ -1198,6 +1198,8 @@ impl Game {
     fn respawn_if_due(&mut self) {
         if std::mem::take(&mut self.respawn_due) && self.session.vitals.is_dead() {
             self.respawn();
+            // A teleport: the camera snaps instead of gliding from the death spot.
+            self.previous_eye = self.session.player.eye();
         }
     }
 
