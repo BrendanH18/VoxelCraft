@@ -33,7 +33,7 @@ use super::{Biome, Dimension, Generation, Generator};
 use crate::enchant::JavaRandom;
 use crate::entity::MobKind;
 use crate::world::block::Block;
-use crate::world::chunk::{CHUNK_SIZE_I, chunk_of, local_of};
+use crate::world::chunk::{chunk_of, local_of};
 use crate::world::fortress::Feature;
 use crate::world::java_pieces::{next_double, next_long};
 use crate::world::structure::Bounds;

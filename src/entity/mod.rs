@@ -51,6 +51,8 @@ mod lifecycle;
 pub mod lightning;
 pub mod lingering;
 mod look;
+#[cfg(test)]
+mod m3_restart_tests;
 pub mod minecart;
 mod mob;
 pub mod mob_combat;

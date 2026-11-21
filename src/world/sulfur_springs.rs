@@ -348,7 +348,7 @@ impl SulfurSprings {
 
     /// The tries of Java chunk `c`: positions and the random stream each
     /// continues with.
-    fn candidates(&self, c: IVec2) -> Vec<(IVec3, Rng)> {
+    pub(in crate::world) fn candidates(&self, c: IVec2) -> Vec<(IVec3, Rng)> {
         let mut rng = Rng(hash3(c.x, 0, c.y, self.seed ^ SALT));
         let n = rng.range(COUNT.0, COUNT.1);
         (0..n)

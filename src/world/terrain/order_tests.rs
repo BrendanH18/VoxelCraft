@@ -134,10 +134,73 @@ fn corpus(generation: Generation) -> Vec<IVec3> {
             chunks.extend(around(at, 1));
         }
     }
+    if generation >= Generation::V5 {
+        chunks.extend(generation_5_corpus(&g));
+    }
     chunks.retain(|p| rows.contains(&p.y));
     chunks.sort_by_key(|p| (p.z, p.x, p.y));
     chunks.dedup();
     chunks
+}
+
+/// Every chunk intersecting `bounds` grown by `margin` blocks.
+fn chunks_of(bounds: Bounds, margin: i32) -> impl Iterator<Item = IVec3> {
+    let lo = (bounds.min - IVec3::splat(margin)).div_euclid(IVec3::splat(CHUNK_SIZE_I));
+    let hi = (bounds.max + IVec3::splat(margin)).div_euclid(IVec3::splat(CHUNK_SIZE_I));
+    (lo.z..=hi.z).flat_map(move |z| (lo.x..=hi.x).flat_map(move |x| (lo.y..=hi.y).map(move |y| IVec3::new(x, y, z))))
+}
+
+/// v0.16's M3 exit (2026-11-21): generation 5's new and rebuilt Overworld
+/// structures, whole: the nearest monument, shipwreck and abandoned camp,
+/// the nearest stronghold (Track E's Java layout, every piece), a mesa
+/// mineshaft and a sulfur spring (Track H) with their neighbours.
+fn generation_5_corpus(g: &Generator) -> Vec<IVec3> {
+    let mut chunks = Vec::new();
+    for (kind, radius) in [(Kind::Monument, 12_800), (Kind::Shipwreck, 6400), (Kind::AbandonedCamp, 6400)] {
+        let at = g.temples.nearest(g, kind, IVec2::ZERO, radius).unwrap_or_else(|| panic!("{kind:?}"));
+        let built = g.temples.near(g, at, 16).into_iter().find(|b| b.kind == kind).expect("the located build");
+        chunks.extend(chunks_of(built.bounds, 8));
+    }
+    let stronghold = g.strongholds.nearest(IVec3::ZERO).expect("a stronghold");
+    let stronghold = g
+        .strongholds
+        .near(IVec2::new(stronghold.x, stronghold.z), IVec2::new(stronghold.x, stronghold.z))
+        .into_iter()
+        .next()
+        .expect("the located stronghold");
+    chunks.extend(chunks_of(stronghold.bounds, 4));
+    let badlands = g.nearest_biome(IVec2::ZERO, super::Biome::Badlands, 12_800).expect("badlands");
+    chunks.extend(around(g.mineshafts.nearest(g, badlands).expect("a mesa mineshaft"), 2));
+    chunks.extend(around(sulfur_spring(g).origin, 1));
+    eprintln!("GEN-07 generation 5: stronghold {:?}, {} added chunks", stronghold.bounds, chunks.len());
+    chunks
+}
+
+/// The first sulfur spring of the sulfur caves near the origin, searched
+/// site by site (each cave region is small).
+fn sulfur_spring(g: &Generator) -> crate::world::sulfur_springs::Spring {
+    let per = CHUNK_SIZE_I / 16;
+    for oz in -3i32..=3 {
+        for ox in -3i32..=3 {
+            let Some(at) = g.nearest_biome(IVec2::new(ox, oz) * 1500, super::Biome::SulfurCaves, 1500) else {
+                continue;
+            };
+            let c = at.div_euclid(IVec3::splat(CHUNK_SIZE_I));
+            for dz in -4..=4 {
+                for dx in -4..=4 {
+                    for sub in 0..per * per {
+                        let col = IVec2::new(c.x + dx, c.z + dz) * per + IVec2::new(sub % per, sub / per);
+                        for (start, rng) in g.sulfur_springs.candidates(col) {
+                            if let Ok(s) = g.sulfur_springs.try_build(g, start, rng) {
+                                return s;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    panic!("no sulfur spring")
 }
 
 fn blocks(chunk: &ChunkData) -> Vec<Block> {
@@ -175,6 +238,10 @@ fn evict(g: &mut Generator, generation: Generation, step: usize) {
             g.trail_ruins = crate::world::trail_ruins::TrailRuins::new(SEED);
             g.ancient_cities = crate::world::ancient_city::AncientCities::new(SEED);
             g.trial_chambers = crate::world::trial_chambers::TrialChambers::new(SEED);
+            // v0.16 (M3 exit): strongholds and the generation 5 features.
+            g.strongholds = crate::world::stronghold::Strongholds::with_generation(SEED, generation);
+            g.geodes = crate::world::geode::Geodes::new(SEED);
+            g.sulfur_springs = crate::world::sulfur_springs::SulfurSprings::new(SEED);
         }
         _ => {}
     }
@@ -254,6 +321,30 @@ fn generation_ignores_order_threads_and_caches(generation: Generation) {
         }
         assert!(vaults.into_iter().all(|covered| covered), "generation 3: normal and ominous trial vaults");
     }
+    if generation >= Generation::V5 {
+        use crate::world::temples::LootTable;
+        assert!(has(|f| matches!(f, Feature::Spawner(crate::entity::MobKind::Silverfish))), "no stronghold spawner");
+        assert!(has(|f| matches!(f, Feature::StrongholdChest(_))), "no stronghold chest");
+        assert!(
+            has(|f| matches!(
+                f,
+                Feature::TempleChest(_, LootTable::ShipSupply | LootTable::ShipTreasure | LootTable::ShipMap)
+            )),
+            "no shipwreck chest"
+        );
+        assert!(
+            has(|f| matches!(f, Feature::StructureLoot(_, t) if t.starts_with("abandoned_camp"))),
+            "no abandoned camp chest"
+        );
+        let mut found = [false; 2];
+        for (chunk, _) in &reference {
+            chunk.for_each_block(|b| {
+                found[0] |= b == crate::world::overworld_blocks::PRISMARINE_BRICKS;
+                found[1] |= crate::world::gen5_blocks::potent_state(b).is_some();
+            });
+        }
+        assert_eq!(found, [true; 2], "generation 5: monument bricks and a sulfur spring's vents");
+    }
     let mut failures = Vec::new();
 
     // (b) Shuffled, on another fresh generator.
@@ -327,6 +418,99 @@ fn generation_3_ignores_order_threads_and_caches() {
 #[test]
 fn generation_4_ignores_order_threads_and_caches() {
     generation_ignores_order_threads_and_caches(Generation::V4);
+}
+
+/// v0.16's M3 exit (2026-11-21): generation 5's monuments, shipwrecks,
+/// abandoned camps, Java strongholds, mesa mineshafts and sulfur springs
+/// with everything generation 4 has.
+#[test]
+fn generation_5_ignores_order_threads_and_caches() {
+    generation_ignores_order_threads_and_caches(Generation::V5);
+}
+
+/// Runs `chunks` of a `dimension` generation 5 world reversed, on threads
+/// and on a fresh generator each, against a row-order reference.
+fn other_dimension_ignores_order(dimension: Dimension, chunks: &[IVec3], what: &str) -> Vec<(ChunkData, Features)> {
+    let fresh = || Generator::with_generation(SEED, dimension, Generation::V5);
+    let g = fresh();
+    let reference: Vec<_> = chunks.iter().map(|&p| (g.generate(p), g.structure_features(p))).collect();
+    drop(g);
+    let mut failures = Vec::new();
+    let g = fresh();
+    failures.extend((0..chunks.len()).rev().filter_map(|i| differs(&g, chunks[i], &reference[i], "reverse")));
+    drop(g);
+    let g = fresh();
+    std::thread::scope(|s| {
+        let handles: Vec<_> = (0..THREADS)
+            .map(|t| {
+                let (g, chunks, reference) = (&g, chunks, &reference);
+                s.spawn(move || {
+                    (t..chunks.len())
+                        .step_by(THREADS)
+                        .filter_map(|i| differs(g, chunks[i], &reference[i], "parallel"))
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect();
+        for h in handles {
+            failures.extend(h.join().unwrap());
+        }
+    });
+    drop(g);
+    for (i, &p) in chunks.iter().enumerate() {
+        // A fresh generator every third chunk: cold caches next to warm ones.
+        if i % 3 == 0 {
+            failures.extend(differs(&fresh(), p, &reference[i], "cold"));
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "{what}: {} of {} chunks differ:\n{}",
+        failures.len(),
+        chunks.len(),
+        failures.join("\n")
+    );
+    eprintln!("{what}: {} chunks", chunks.len());
+    reference
+}
+
+/// v0.16's M3 exit: a whole generation 5 fortress (Track E's Java layout)
+/// and a whole bastion, every chunk their boxes touch, in the Nether.
+#[test]
+fn generation_5_nether_complexes_ignore_order_threads_and_caches() {
+    let n = crate::world::nether::NetherGen::with_generation(SEED, Generation::V5);
+    let regions = || (-3..=3).flat_map(|z| (-3..=3).map(move |x| IVec2::new(x, z)));
+    let fortress = regions().find_map(|r| n.fortresses.get(r)).expect("a generation 5 fortress");
+    let bastion = regions().find_map(|r| n.fortresses.bastions.get(r)).expect("a bastion");
+    let rows = Dimension::Nether.chunk_rows();
+    let mut chunks: Vec<_> =
+        chunks_of(fortress.bounds, 0).chain(chunks_of(bastion.bounds, 0)).filter(|p| rows.contains(&p.y)).collect();
+    chunks.sort_by_key(|p| (p.z, p.x, p.y));
+    chunks.dedup();
+    let reference = other_dimension_ignores_order(Dimension::Nether, &chunks, "generation 5 Nether complexes");
+    let all: Vec<_> = reference.iter().flat_map(|(_, f)| f.iter().map(|(_, f)| *f)).collect();
+    assert!(all.iter().any(|f| matches!(f, Feature::Spawner(crate::entity::MobKind::Blaze))), "no blaze spawner");
+    assert!(all.iter().any(|f| matches!(f, Feature::BastionChest(..))), "no bastion chest");
+}
+
+/// v0.16's M3 exit: a generation 5 End city with its ship (wave 1's Track A),
+/// every chunk its box touches.
+#[test]
+fn generation_5_end_city_ignores_order_threads_and_caches() {
+    let probe = Generator::with_generation(SEED, Dimension::End, Generation::V5);
+    let end = probe.end().unwrap();
+    let city = (1..=40)
+        .flat_map(|r| (-r..=r).flat_map(move |z| (-r..=r).map(move |x| IVec2::new(x, z) * 320)))
+        .flat_map(|p| end.cities_near(p, p))
+        .find(|c| c.elytra_frame.is_some())
+        .expect("an End city with a ship");
+    let rows = Dimension::End.chunk_rows();
+    let chunks: Vec<_> = chunks_of(city.bounds, 0).filter(|p| rows.contains(&p.y)).collect();
+    let reference = other_dimension_ignores_order(Dimension::End, &chunks, "generation 5 End city");
+    assert!(
+        reference.iter().any(|(_, f)| f.iter().any(|(_, f)| matches!(f, Feature::TempleChest(..)))),
+        "no End city chest"
+    );
 }
 
 /// GEN-07's Nether counterpart includes every chunk intersecting a treasure
