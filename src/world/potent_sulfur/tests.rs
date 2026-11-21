@@ -174,6 +174,12 @@ fn continuous_geysers_lift_every_tick_and_wet_ones_gas() {
     geyser(&mut w, hot, Block::LAVA, 2);
     let wet = IVec3::new(8, 10, 8);
     geyser(&mut w, wet, Block::STONE, 1);
+    // A wider pool, so eyes beside the gas source are over water too.
+    for dz in -1..=1 {
+        for dx in -1..=1 {
+            w.set_block(wet + IVec3::new(dx, 1, dz), Block::WATER);
+        }
+    }
     let events = run(&mut w, 1, 20);
     let lifts = events.iter().filter(|e| matches!(e, Event::Launch { .. })).count();
     assert_eq!(lifts, 20);

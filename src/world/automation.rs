@@ -32,6 +32,8 @@ pub(super) struct AutomationState {
     pickups: Vec<IVec3>,
     output: Vec<(IVec3, u8, bool, Stack)>,
     creatures: Vec<(IVec3, Stack)>,
+    /// v0.16 Track H: blocks a dispenser offers a sulfur cube in front.
+    cube_feeds: Vec<(IVec3, u8, Stack)>,
 }
 
 #[derive(PartialEq)]
@@ -753,6 +755,57 @@ impl World {
             }
             return;
         }
+        // v0.16 Track H: `DispenseItemBehavior`'s wither skeleton skull. It
+        // goes into an empty cell that is part of a Wither's base
+        // (`WitherSkullBlock.canSpawnMob`), turned the dispenser's way, and
+        // the placement checks the full pattern; otherwise it stays put
+        // (`EquipmentDispenseItemBehavior` onto an entity isn't modelled).
+        let wither_skull = super::skulls::item(super::skulls::Kind::WitherSkeleton);
+        if !dropper && stack.item == wither_skull {
+            let peaceful = self.rules.difficulty == 0;
+            let get = |q: IVec3| self.get_block(q);
+            if self.get_block(front) == Some(Block::AIR)
+                && crate::entity::wither::can_spawn_mob(get, front, self.min_y(), peaceful)
+            {
+                // `RotationSegment.convertToSegment(direction)`: south 0, west
+                // 4, north 8, east 12, vertical 0.
+                let rotation = match (d.x, d.z) {
+                    (-1, _) => 4,
+                    (_, -1) => 8,
+                    (1, _) => 12,
+                    _ => 0,
+                };
+                self.set_block(front, super::skulls::floor(super::skulls::Kind::WitherSkeleton, rotation));
+                self.emit_game_event(
+                    front.as_dvec3() + DVec3::splat(0.5),
+                    super::vibration::GameEvent::BlockPlace,
+                    super::vibration::EventSource::NONE,
+                    None,
+                );
+                self.set_container_stack(
+                    p,
+                    slot,
+                    (stack.count > 1).then_some(Stack { count: stack.count - 1, ..stack }),
+                );
+            }
+            return;
+        }
+        // v0.16 Track H: `SulfurCubeBlockDispenseItemBehavior`: a swallowable
+        // block (without a behaviour of its own) or TNT goes into an adult
+        // sulfur cube in front, decided with the entities.
+        let feeds_cube = !dropper
+            && (stack.item.block() == Some(Block::TNT)
+                || crate::entity::sulfur_cube::swallowable(stack.item)
+                    && stack.item.block() != Some(Block::CARVED_PUMPKIN));
+        if feeds_cube {
+            self.set_container_stack(
+                p,
+                slot,
+                (stack.count > 1).then_some(Stack { count: stack.count.saturating_sub(1), ..stack }),
+            );
+            self.automation.cube_feeds.push((p, facing, one));
+            return;
+        }
         if !dropper && stack.item == Item::BONE_MEAL {
             // Java `BoneMealDispenseItemBehavior`: it fertilises the block in front and is only
             // used up when that grew something; otherwise the stack stays in the slot.
@@ -833,6 +886,20 @@ impl World {
     /// Consume entity work after shared world rules and before entity physics.
     /// Headless callers use this same method with their Entities collection.
     pub fn tick_automation_entities(&mut self, entities: &mut crate::entity::Entities) {
+        // v0.16 Track H: `SulfurCubeBlockDispenseItemBehavior.dispenseBlock`:
+        // the first adult cube in the cell in front that takes the block;
+        // otherwise TNT is primed and other blocks are dispensed as items.
+        for (p, facing, stack) in std::mem::take(&mut self.automation.cube_feeds) {
+            let front = p + r::direction(facing);
+            if entities.feed_sulfur_cube(front, stack) {
+                continue;
+            }
+            if stack.item.block() == Some(Block::TNT) {
+                self.primed_tnt.push((front, false));
+            } else {
+                self.automation.output.push((p, facing, false, stack));
+            }
+        }
         for (p, stack) in std::mem::take(&mut self.automation.creatures) {
             let at = p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
             if !entities.release_sulfur_cube(stack, at) {

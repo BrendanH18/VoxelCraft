@@ -2246,7 +2246,7 @@ impl Mob {
             }
             (None, 0.)
         } else if self.kind == MobKind::Wither {
-            self.wither_wander(rng);
+            // Its goals run in `Entities::wither_tick`.
             (None, 0.)
         } else {
             super::mounts::control(self, dt, rng).unwrap_or_else(|| self.think(dtf, world, ctx, rng, events))

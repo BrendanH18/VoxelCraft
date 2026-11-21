@@ -600,6 +600,21 @@ impl Entities {
         true
     }
 
+    /// v0.16 Track H: `SulfurCubeBlockDispenseItemBehavior.dispenseBlock`:
+    /// the first sulfur cube whose box meets `cell` that takes the block
+    /// (`equipItem`). Returns whether one did.
+    pub fn feed_sulfur_cube(&mut self, cell: glam::IVec3, stack: Stack) -> bool {
+        let (lo, hi) = (cell.as_dvec3(), cell.as_dvec3() + DVec3::ONE);
+        let cubes: Vec<usize> = (0..self.mobs.len())
+            .filter(|&i| {
+                let m = &self.mobs[i];
+                let (a, b) = m.aabb();
+                m.sulfur_cube.is_some() && m.alive() && a.cmplt(hi).all() && b.cmpgt(lo).all()
+            })
+            .collect();
+        cubes.into_iter().any(|i| self.sulfur_swallow(i, Stack { count: 1, ..stack }))
+    }
+
     /// `SulfurCube.shear`: the block pops out and the cube waits
     /// [`PICKUP_TIMER`] ticks before taking another.
     pub fn shear_sulfur_cube(&mut self, index: usize) -> bool {
