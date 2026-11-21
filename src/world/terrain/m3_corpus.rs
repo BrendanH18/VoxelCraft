@@ -74,6 +74,8 @@ const CORPUS: &[(&str, u64, [i32; 3])] = &[
     ("mansion", 12345, [4600, 69, -424]),
     ("mineshaft", 42, [72, 0, 25]),
     ("mineshaft", 12345, [70, -57, -5]),
+    ("mineshaft_mesa", 42, [1174, 61, 483]),
+    ("mineshaft_mesa", 12345, [-2836, 52, 996]),
     ("monument", 42, [24, 48, 712]),
     ("monument", 12345, [-392, 48, -360]),
     ("nether_fossil", 42, [-444, 36, 774]),
@@ -579,7 +581,7 @@ fn check(family: &str, seed: u64, failures: &mut Vec<String>) -> (IVec3, String)
     let mut tables = BTreeSet::new();
     let mut spawners = BTreeSet::new();
     let mut residents: BTreeSet<_> = found.residents.iter().map(|k| k.name()).collect();
-    let mut checked_block = false;
+    let (mut found_container, mut misses) = (false, Vec::new());
     for (at, f) in &features {
         let block = || {
             let c = chunk_of(*at);
@@ -593,12 +595,20 @@ fn check(family: &str, seed: u64, failures: &mut Vec<String>) -> (IVec3, String)
             if !ours["tables"][table].is_object() {
                 fail(format!("{table} at {at} has no VoxelCraft loot data"));
             }
-            if !checked_block && !matches!(f, Feature::TempleChest(_, crate::world::temples::LootTable::Dispenser)) {
+            // A container feature whose piece couldn't place it (a mesa
+            // mineshaft corridor over open air, as Java's `createChest`
+            // needs a floor) leaves no block entity: check that one of the
+            // first few holds a container.
+            if !found_container
+                && misses.len() < 8
+                && !matches!(f, Feature::TempleChest(_, crate::world::temples::LootTable::Dispenser))
+            {
                 let b = block();
-                if !crate::world::chest::is_chest(b) && b.base() != Block::BARREL {
-                    fail(format!("{table} container at {at} is {}", b.name()));
+                if crate::world::chest::is_chest(b) || b.base() == Block::BARREL {
+                    found_container = true;
+                } else {
+                    misses.push(format!("{table} at {at} is {}", b.name()));
                 }
-                checked_block = true;
             }
             tables.insert(table);
         }
@@ -632,6 +642,9 @@ fn check(family: &str, seed: u64, failures: &mut Vec<String>) -> (IVec3, String)
         if !spawners.contains(k.name()) {
             fail(format!("no {} spawner among {spawners:?}", k.name()));
         }
+    }
+    if !found_container && !misses.is_empty() {
+        fail(format!("no generated container: {}", misses.join(", ")));
     }
     if container && tables.is_empty() {
         fail("no loot container".into());

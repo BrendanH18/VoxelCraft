@@ -1309,3 +1309,27 @@ scripts/boat-check.sh -- 'cargo test --release --lib -- potent_sulfur speleothem
 
 `world::potent_sulfur`, `world::speleothem`, `world::sulfur_springs` and
 `entity::wither` test against it ([record](../../../../docs/verification/2026-11-21-v0.16-wave-1-leftovers.md)).
+
+## The M3 exit corpus (v0.16)
+
+`m3_corpus.json` holds the placement and container facts every GEN-05
+structure family is checked against, read from the pinned server artifact's
+data files by `tools/extract_java_m3_corpus_fixtures.py`: every
+`worldgen/structure_set` (its placement, with spacing, separation, salt,
+spread type, frequency and reduction method, exclusion zone, locate offset
+or concentric rings, and its weighted structures); every
+`worldgen/structure`'s type, biome tag, step, terrain adaptation and spawn
+overrides (no start pool or template data); the placed features of
+dungeons, fossils and desert wells; and the names of Java's chest, barrel,
+dispenser and pot loot tables. Regenerate and compare with:
+
+```sh
+python3 tools/extract_java_m3_corpus_fixtures.py /path/to/server.jar --output target/java-m3-corpus.json
+diff tests/fixtures/java/26.3/m3_corpus.json target/java-m3-corpus.json
+scripts/boat-check.sh -- 'cargo test --release --lib m3_corpus'
+```
+
+`world::terrain::m3_corpus` ports Java's placement (random spread, the
+frequency reducers, the outposts' exclusion zone, the stronghold rings) from
+this file and checks a located instance of every family on two seeds
+([record](../../../../docs/verification/2026-11-21-v0.16-m3-exit.md)).
