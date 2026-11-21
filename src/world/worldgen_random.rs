@@ -51,7 +51,7 @@ impl WorldgenRandom {
     /// `BitRandomSource.nextInt(bound)`.
     pub fn next_int(&mut self, bound: i32) -> i32 {
         assert!(bound > 0);
-        if bound & -bound == bound {
+        if bound.isolate_lowest_one() == bound {
             return ((i64::from(bound) * i64::from(self.next(31))) >> 31) as i32;
         }
         loop {

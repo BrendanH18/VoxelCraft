@@ -460,7 +460,6 @@ impl Game {
                     if arrow_effects.allows()
                         && let Some(bot) = self.agents.by_id_mut(player)
                         && bot.agent.session.mode.is_survival()
-                        && !elder_curse_held(&bot.agent.session.vitals.effects, effect, amplifier, ticks)
                     {
                         if amount > 0.0 {
                             bot.agent.hurt_magic(amount, &mut self.mobs.entities);

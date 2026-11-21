@@ -102,8 +102,8 @@ pub fn is_water(b: Block) -> bool {
 /// of the three axis planes through the conduit, at distance 2 along one of
 /// that plane's axes.
 pub fn frame_offsets() -> impl Iterator<Item = IVec3> {
-    (-2..=2).flat_map(|x| {
-        (-2..=2).flat_map(move |y| {
+    (-2..=2i32).flat_map(|x| {
+        (-2..=2i32).flat_map(move |y| {
             (-2..=2i32).filter_map(move |z| {
                 let (ax, ay, az) = (x.abs(), y.abs(), z.abs());
                 let outside = ax > 1 || ay > 1 || az > 1;

@@ -44,7 +44,7 @@ fn the_frame_is_javas_42_cells() {
     assert_eq!(cells.len(), 42);
     for c in &cells {
         assert!(c.abs().max_element() == 2, "{c}");
-        assert_eq!((c.x == 0) as u8 + (c.y == 0) as u8 + (c.z == 0) as u8 >= 1, true, "{c}");
+        assert!(c.x == 0 || c.y == 0 || c.z == 0, "{c}");
     }
     let mut sorted = cells.clone();
     sorted.sort_by_key(|c| c.to_array());
@@ -85,7 +85,8 @@ fn a_full_frame_activates_hunts_and_powers_every_40_ticks() {
     let pulse = run(&mut w, 80, 80);
     assert!(pulse.contains(&Event::Sound(Cue::Ambient, p)));
     assert!(pulse.contains(&Event::Power { pos: p, range: 96 }));
-    assert_eq!(w.conduit(p).unwrap().rotation, 41.0 + 39.0);
+    // The cage turned every tick from the pulse that woke it (40 to 80).
+    assert_eq!(w.conduit(p).unwrap().rotation, 41.0);
 }
 
 #[test]
