@@ -1242,3 +1242,38 @@ and its tests check every list, modifier, constant and tag against it.
 The abandoned camps' three loot tables were added to
 `src/world/loot_tables.json` from `loot_table/chests/abandoned_camp_*_chest.json`
 and `loot_table/barrels/abandoned_camp_barrel.json` unchanged.
+
+## Wave 1 leftovers (v0.16 Track H)
+
+`wave1_leftovers.json` holds what Track H follows, read from the pinned
+server artifact with `javap` and from its data files:
+`PotentSulfurBlock`'s and `PotentSulfurBlockEntity`'s constants (water
+depth, Nausea cadence, duration and range, particle and sound cadence,
+launch speed and force, `GEYSER_SALT`), the
+`causes_continuous_geyser_eruptions`, `causes_periodic_geyser_eruptions`
+and `not_affected_by_geysers` tags and the geyser sound event names;
+`SpeleothemBlock`'s growth, falling and damage constants,
+`SulfurSpikeBlock`'s growth length and landing event, pointed dripstone's
+landing event and `fallOn` numbers, which classes declare `fallOn`, and the
+`speleothems` tag; the `sulfur_spring` selector (weights, tuff scatter,
+template names and offset), the ten spring templates' sizes (from the NBT
+header only; no block is copied), `rooted_sulfur_spring`'s root system and
+placement, the sulfur caves' feature step and the
+`azalea_root_replaceable` and `base_stone_overworld` tags; `WitherBoss`'s
+goals and priorities, `WaterAvoidingRandomFlyingGoal`'s `HoverRandomPos` and
+`AirAndWaterRandomPos` arguments, `RandomStrollGoal`'s interval,
+`Goal.reducedTickDelay`'s divisor, `Mob.serverAiStep`'s selector cadence and
+`WitherSkullBlock`'s patterns and `canSpawnMob` height offset. Its
+`geyser_countdowns` are draws made by the jar's own `XoroshiroRandomSource`
+through `tools/JavaGeyserVectors.java` (an original JDK oracle the script
+compiles against the jar and the libraries its bundler carries). Regenerate
+and compare with (a JDK 21 or newer on `PATH`):
+
+```sh
+python3 tools/extract_java_wave1_leftovers_fixtures.py /path/to/server.jar --output target/java-wave1-leftovers.json
+diff tests/fixtures/java/26.3/wave1_leftovers.json target/java-wave1-leftovers.json
+scripts/boat-check.sh -- 'cargo test --release --lib -- potent_sulfur speleothem sulfur_springs wither'
+```
+
+`world::potent_sulfur`, `world::speleothem`, `world::sulfur_springs` and
+`entity::wither` test against it ([record](../../../../docs/verification/2026-11-21-v0.16-wave-1-leftovers.md)).
