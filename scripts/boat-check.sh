@@ -127,15 +127,25 @@ cleanup() {
     set +e
     trap '' INT TERM HUP   # a second Ctrl-C must not cut the cleanup short
     stop_keepalive
+    in_flight=0; [ -z "$job" ] || in_flight=1
     end_job "$job"
     rm -f "$out_file"
     # Interrupted while Boat made a sandbox: it may exist with no id here yet, so find it by
     # its name, in any state but stopped (Boat's state groups don't name every starting state),
-    # taking the newest, so an older stopped sandbox of the name is never picked.
+    # taking the newest, so an older stopped sandbox of the name is never picked. A create
+    # request still in flight can land after the first look, so then look for 20 seconds.
     if [ -n "$creating" ]; then
-        made=$(boat list --all --json 2>/dev/null | jq -r --arg n "$creating" \
-            '[.sandboxes[]? | select(.name == $n and .state != "stopped")] | sort_by(.createdAt // "") | last | .id // empty' 2>/dev/null)
-        if [ -z "$made" ]; then :
+        tries=1; [ "$in_flight" = 0 ] || tries=10
+        made=""
+        while [ "$tries" -gt 0 ]; do
+            made=$(boat list --all --json 2>/dev/null | jq -r --arg n "$creating" \
+                '[.sandboxes[]? | select(.name == $n and .state != "stopped")] | sort_by(.createdAt // "") | last | .id // empty' 2>/dev/null)
+            [ -z "$made" ] || break
+            tries=$((tries - 1))
+            [ "$tries" = 0 ] || sleep 2
+        done
+        if [ -z "$made" ]; then
+            [ "$in_flight" = 0 ] || echo "boat-check: found no sandbox named $creating; if one shows up in boat list, delete it: boat delete <id> --yes" >&2
         elif [ "$action" = save ]; then build=$made
         else id=$made extended=1; echo "$id" > "$id_file"
         fi
