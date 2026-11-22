@@ -68,8 +68,10 @@ scripts/boat-check.sh --save   # rebuild the warm snapshot from origin's default
 ```
 
 Each worktree has one long-lived sandbox (owner, 2026-11-21), named
-`voxelcraft-check-<worktree>`, because the Boat account's daily starts are
-shared by every project and one `boat run` per check used a start each. The
+`voxelcraft-check-<worktree>-<time>-<pid>` (unique to the run that made it,
+so an interrupted create cleans up only its own sandbox), because the Boat
+account's daily starts are shared by every project and one `boat run` per
+check used a start each. The
 first check creates it from the saved snapshot `voxelcraft-warm`
 (`VC_BOAT_SNAPSHOT`), or bare when there is none, and records its id in the
 worktree's git directory (`.git/.../boat-check/`). Every later check reuses
@@ -87,13 +89,28 @@ it:
    directory (`/home/user/target`) stays between checks, so a check rebuilds
    only what changed.
 
-Boat's auto-stop is a deadline, not an idle timer: the script keeps it two
-hours ahead while a check runs and sets it to `VC_BOAT_IDLE` seconds after
-each one. By default that follows the machine size (owner, 2026-11-21),
-because idle time bills like work and bigger machines bill more: 5 minutes
-on `xlarge`, 15 minutes on `default` and `large`. A forgotten sandbox stops by itself, and the next check
-resumes it, which uses one start. `--stop` stops it at once; `--done` deletes
-it and is how an agent ends its work. Agents sharing a worktree each set
+The sandbox stops as soon as each check ends, whatever its size (owner,
+2026-11-22; it replaces the 2026-11-21 idle timeouts of 15 minutes, 5 on
+`xlarge`). Idle time bills like work, while a stopped sandbox bills nothing,
+and Boat keeps the machine, unbilled, for 10 minutes after the sandbox reads
+`stopped`: a resume in that time, or while it is still `stopping`, usually
+takes back the same machine, which [uses no start](https://docs.boat.dev/limits.md)
+and restores nothing ([stop](https://docs.boat.dev/snapshots/stop.md#resume-within-10-minutes)).
+So the next check resumes it, without `--type` unless its size must change
+(a new size always needs a new machine and a start), and a check more than
+10 minutes later uses one start and comes back from the snapshot, target
+directory included. `VC_BOAT_IDLE=<seconds>` instead leaves the sandbox up
+that long through auto-stop.
+
+Boat's auto-stop is a deadline, not an idle timer. While a check runs, the
+script keeps it 30 minutes ahead and renews it every 10 minutes from a loop
+that first checks the script is still alive (owner, 2026-11-22; it was two
+hours ahead, renewed every 30 minutes by a loop that outlived a killed
+script). A check killed outright (`kill -9`) leaves its sandbox to stop by
+itself within 30 minutes; an interrupted one (Ctrl-C, `kill`, a closed
+terminal) stops it at once, even while Boat is still creating it.
+`--stop` stops it by hand; `--done` deletes it and is how an agent ends its
+work. Agents sharing a worktree each set
 `VC_BOAT_SLOT`, so no two share a sandbox; a lock in the git directory stops
 two checks in one slot from racing. Starts use `--fail-fast` and retry, so a
 busy moment costs nothing; when Boat refuses a start (no starts left today),
@@ -110,8 +127,11 @@ device and font libraries and `rsync` when they're missing and installs the
 Rust toolchain `rust-toolchain.toml` pins, the one CI and release builds use.
 
 `--save` builds origin's default branch, not the worktree, in a fresh
-sandbox named `voxelcraft-warm-build`, runs the full checks there and saves
-it, checkout and target directory included, as `voxelcraft-warm`. New check
+sandbox named `voxelcraft-warm-build-<time>-<pid>`, runs the full checks
+there and saves it, checkout and target directory included, as
+`voxelcraft-warm`. The build sandbox is deleted when the script ends,
+however it ends short of `kill -9`, or only stopped while a save from it may
+still be running; a killed `--save` leaves it to stop within 30 minutes. New check
 sandboxes start from a copy of it with every dependency built. Re-run it
 after dependency or toolchain changes.
 

@@ -16,25 +16,32 @@
 # reuse it: each pushes the working tree to a fresh directory, syncs it into the checkout at
 # /home/user/voxelcraft (deleted files go; only changed files get a new timestamp, so cargo
 # rebuilds exactly what changed) and runs there with `boat exec --timeout 0`, keeping cargo's
-# target directory between runs. Boat's auto-stop is a deadline, not an idle timer, so it is
-# kept two hours ahead while a check runs and set to VC_BOAT_IDLE seconds after it ends
-# (by size: 300 on xlarge, 900 otherwise): a forgotten sandbox stops by itself, and the
-# next check resumes it. One
+# target directory between runs. The sandbox stops as soon as each check ends (owner,
+# 2026-11-22): a stopped sandbox bills nothing, and a resume within 10 minutes of the stop (or
+# while it is still stopping) takes back the same machine without using a start. While a check
+# runs, Boat's auto-stop (a deadline, not an idle timer) is kept 30 minutes ahead and renewed
+# every 10 by a loop that ends with this script, so a killed run stops within 30 minutes. One
 # sandbox per worktree; agents sharing a worktree each set VC_BOAT_SLOT. Overrides:
 # VC_BOAT_TYPE (default large for every mode, owner, 2026-11-21: measured from the same warm
 # state, xlarge took 450 s to large's 197 s for the test build and 1543 s to 1006 s for the
-# full chain, at about 2.8 times the price), VC_BOAT_SNAPSHOT. See docs/development.md#boat-checks.
+# full chain, at about 2.8 times the price), VC_BOAT_IDLE (seconds to keep the sandbox up after
+# a check, through auto-stop, instead of stopping it; default 0), VC_BOAT_SNAPSHOT.
+# See docs/development.md#boat-checks.
 main() {
 set -euo pipefail
 export BOAT_NO_UPDATE=1
 snapshot=${VC_BOAT_SNAPSHOT:-voxelcraft-warm}
 type=${VC_BOAT_TYPE:-large}
-# Idle time bills like work, and bigger machines bill more (owner, 2026-11-21): xlarge stops
-# about 5 minutes after a check, smaller sizes about 15.
-idle_for() { case "$1" in xlarge) echo 300 ;; *) echo 900 ;; esac; }   # set from the sandbox's size
-idle=${VC_BOAT_IDLE:-$(idle_for "$type")}
+# Idle time bills like work, while a stopped sandbox bills nothing and is taken back without a
+# start for 10 minutes, so every size stops the moment a check ends (owner, 2026-11-22; it
+# replaces the 2026-11-21 idle timeouts of 15 minutes, 5 on xlarge). VC_BOAT_IDLE > 0 instead
+# leaves the sandbox up that many seconds, through auto-stop.
+idle=${VC_BOAT_IDLE:-0}
 slot=${VC_BOAT_SLOT:-}
-budget=7200   # auto-stop is kept this far ahead while a check runs
+# While a check runs, auto-stop is kept $budget seconds ahead and renewed every $renew seconds
+# by a loop that ends with this script (owner, 2026-11-22; it was two hours, renewed every 30
+# minutes, and outlived a killed script), so a killed run stops within $budget seconds.
+budget=1800 renew=600
 mode=checks action=run cmd=""
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -48,13 +55,14 @@ while [ $# -gt 0 ]; do
             [ -n "$cmd" ] || { echo "boat-check: -- needs a command" >&2; exit 2; }
             mode=cmd
             break ;;
-        -h|--help) sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,29p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "boat-check: unknown option $1 (try --help)" >&2; exit 2 ;;
     esac
     shift
 done
 [ "$action" = run ] || [ "$mode" = checks ] || { echo "boat-check: --$action takes no --full or command" >&2; exit 2; }
 case "$slot" in *[!A-Za-z0-9_-]*) echo "boat-check: VC_BOAT_SLOT may use letters, digits, - and _" >&2; exit 2 ;; esac
+case "$idle" in ''|*[!0-9]*) echo "boat-check: VC_BOAT_IDLE is a number of seconds" >&2; exit 2 ;; esac
 for tool in boat jq git; do
     command -v "$tool" >/dev/null || { echo "boat-check: $tool is not installed" >&2; exit 2; }
 done
@@ -63,43 +71,109 @@ state_dir=$(git rev-parse --path-format=absolute --git-path boat-check)
 mkdir -p "$state_dir"
 id_file=$state_dir/sandbox${slot:+-$slot}
 lock=$state_dir/lock${slot:+-$slot}
-# Every sandbox says which project it belongs to (owner, 2026-11-21).
+# Every sandbox says which project it belongs to (owner, 2026-11-21). Each creation adds the
+# time and this run's pid, so an interrupted create finds only the sandbox it made, never one
+# another clone with the same directory name and slot made.
 name="voxelcraft-check-$(basename "$PWD" | tr -c 'A-Za-z0-9_\n-' '-' | cut -c1-80)${slot:+-$slot}"
 
-id=""
-extended=0 keepalive="" build="" saving=0 locked=0 tree=""
-stop_keepalive() {   # the keepalive loop and its sleep
-    [ -n "$keepalive" ] || return 0
-    pkill -P "$keepalive" 2>/dev/null || true
-    kill "$keepalive" 2>/dev/null || true
-    keepalive=""
+# run_name BASE: BASE plus this run's time and pid, BASE cut so the whole fits Boat's
+# 120-character limit on names; the suffix stays whole, since cleanup finds the sandbox by it.
+run_name() {
+    local suffix
+    suffix="-$(date +%Y%m%d-%H%M%S)-$$"
+    echo "${1:0:$((120 - ${#suffix}))}$suffix"
 }
+id="" new_id=""
+out_file=$state_dir/out${slot:+-$slot}-$$
+extended=0 keepalive="" job="" creating="" build="" saving=0 locked=0 tree=""
+end_job() {   # end_job PID: a background job and its children
+    [ -n "$1" ] || return 0
+    pkill -P "$1" 2>/dev/null || true
+    kill "$1" 2>/dev/null || true
+}
+stop_keepalive() { end_job "$keepalive"; keepalive=""; }   # the keepalive loop and its sleep
+# stop_now, park and cleanup run from the exit trap.
+# shellcheck disable=SC2329
+# stop_now ID: stop a sandbox. If Boat refuses, set its auto-stop a minute away instead and
+# return 1; if Boat refuses that too, return 2: its last auto-stop (up to $budget s) stands.
+stop_now() {
+    boat stop "$1" --json >/dev/null 2>&1 && return 0
+    boat extend "$1" --ttl 60 --json >/dev/null 2>&1 && return 1
+    return 2
+}
+# shellcheck disable=SC2329
+# left_running ID RC FIX: say what a failed stop_now (RC) left, and the command FIX to run.
+left_running() {
+    if [ "$2" = 1 ]; then
+        echo "boat-check: couldn't stop $1, so its auto-stop is now a minute away: $3" >&2
+    else
+        echo "boat-check: couldn't stop $1 or move its auto-stop up, so it runs until its last auto-stop (up to $budget s): $3" >&2
+    fi
+}
+# shellcheck disable=SC2329
+# park ID: stop the check sandbox, or with VC_BOAT_IDLE set, set its auto-stop that far ahead.
+park() {
+    if [ "$idle" -gt 0 ]; then
+        boat extend "$1" --ttl "$idle" --json >/dev/null 2>&1 \
+            || echo "boat-check: couldn't set auto-stop on $1: boat extend $1 --ttl $idle" >&2
+    else
+        local rc=0
+        stop_now "$1" || rc=$?
+        [ "$rc" = 0 ] || left_running "$1" "$rc" "boat stop $1"
+    fi
+}
+# shellcheck disable=SC2329
 cleanup() {
     set +e
+    trap '' INT TERM HUP   # a second Ctrl-C must not cut the cleanup short
     stop_keepalive
-    # Leave auto-stop VC_BOAT_IDLE seconds from now, whatever happened to the check.
-    if [ "$extended" = 1 ] && [ -n "$id" ]; then
-        boat extend "$id" --ttl "$idle" --json >/dev/null 2>&1 \
-            || echo "boat-check: couldn't reset auto-stop on $id: boat extend $id --ttl $idle" >&2
+    in_flight=0; [ -z "$job" ] || in_flight=1
+    end_job "$job"
+    rm -f "$out_file"
+    # Interrupted while Boat made a sandbox: it may exist with no id here yet, so find it by
+    # its name, in any state but stopped (Boat's state groups don't name every starting state),
+    # taking the newest, so an older stopped sandbox of the name is never picked. A create
+    # request still in flight can land after the first look, so then look for 20 seconds.
+    if [ -n "$creating" ]; then
+        tries=1; [ "$in_flight" = 0 ] || tries=10
+        made=""
+        while [ "$tries" -gt 0 ]; do
+            made=$(boat list --all --json 2>/dev/null | jq -r --arg n "$creating" \
+                '[.sandboxes[]? | select(.name == $n and .state != "stopped")] | sort_by(.createdAt // "") | last | .id // empty' 2>/dev/null)
+            [ -z "$made" ] || break
+            tries=$((tries - 1))
+            [ "$tries" = 0 ] || sleep 2
+        done
+        if [ -z "$made" ]; then
+            [ "$in_flight" = 0 ] || echo "boat-check: found no sandbox named $creating; if one shows up in boat list, delete it: boat delete <id> --yes" >&2
+        elif [ "$action" = save ]; then build=$made
+        else id=$made extended=1; echo "$id" > "$id_file"
+        fi
     fi
+    # Stop the sandbox (or with VC_BOAT_IDLE, leave it that long), whatever happened to the check.
+    if [ "$extended" = 1 ] && [ -n "$id" ]; then park "$id"; fi
     # The --save build sandbox is deleted, or only stopped while a save from it may still be
     # running (an unfinished save needs its source; a stopped sandbox costs nothing).
     if [ -n "$build" ]; then
         if [ "$saving" = 1 ]; then
-            if boat stop "$build" --json >/dev/null 2>&1; then
+            rc=0
+            stop_now "$build" || rc=$?
+            if [ "$rc" = 0 ]; then
                 echo "boat-check: stopped the build sandbox $build; once boat snapshots shows $snapshot ready from it: boat delete $build --yes" >&2
             else
-                echo "boat-check: couldn't stop the build sandbox: boat stop $build, then once boat snapshots shows $snapshot ready from it: boat delete $build --yes" >&2
+                left_running "$build" "$rc" "boat stop $build, then once boat snapshots shows $snapshot ready from it: boat delete $build --yes"
             fi
-        else
-            boat delete "$build" --yes --json >/dev/null 2>&1 || echo "boat-check: delete the build sandbox: boat delete $build --yes" >&2
+        elif ! boat delete "$build" --yes --json >/dev/null 2>&1; then
+            rc=1
+            boat extend "$build" --ttl 60 --json >/dev/null 2>&1 || rc=2
+            left_running "$build" "$rc" "boat delete $build --yes"
         fi
     fi
     [ -z "$tree" ] || rm -rf "$tree"
     [ "$locked" = 0 ] || rm -rf "$lock"   # only a lock this run took
 }
 trap cleanup EXIT
-trap 'exit 130' INT TERM
+trap 'exit 130' INT TERM HUP
 # --status only reads, so it needs no lock.
 if [ "$action" = status ]; then
     id=$(cat "$id_file" 2>/dev/null || true)
@@ -126,18 +200,20 @@ echo $$ > "$lock/pid"
 # Read under the lock, so a run that waited never misses the sandbox another run just made.
 id=$(cat "$id_file" 2>/dev/null || true)
 
-# The sandbox's state, or "gone" when Boat no longer knows it. Any other failure (network, auth,
-# rate limit) is an error, so a passing hiccup never orphans a sandbox or spends a start.
-sandbox_state() {
+# The sandbox's state and size ("stopped large"), or "gone" when Boat no longer knows it. Any
+# other failure (network, auth, rate limit) is an error, so a passing hiccup never orphans a
+# sandbox or spends a start.
+sandbox_info() {
     local out
     if out=$(boat info "$1" --json 2>&1); then
-        printf '%s\n' "$out" | jq -r '.sandbox.state // "unknown"'
+        printf '%s\n' "$out" | jq -r '"\(.sandbox.state // "unknown") \(.sandbox.type // "")"'
         return
     fi
     case "$out" in *'"not_found"'*) echo gone; return 0 ;; esac
     echo "boat-check: couldn't read sandbox $1 from Boat: $out" >&2
     return 1
 }
+sandbox_state() { local info; info=$(sandbox_info "$1") || return 1; echo "${info%% *}"; }
 
 # Each create or resume uses one of the account's daily starts; reusing a running sandbox uses none.
 start_failed() {
@@ -154,30 +230,40 @@ start_failed() {
 }
 # With --fail-fast, a start that finds no ready machine creates nothing and isn't counted against
 # the start limits, so retry it a few times. A failed attempt can leave Boat finishing a resume for
-# a moment ("resume already in progress"), which a retry also waits out (as jev_fsd's script does).
+# a moment ("resume already in progress"), which a retry also waits out (as jev_fsd's script does),
+# and a resume Boat can't yet match to a stop in progress fails with sandbox_stopping until it can.
+# Each call runs in the background and is waited on, so a signal reaches the cleanup at once
+# rather than after the call (a create waits until the sandbox is ready).
 fast_start() {   # fast_start WHAT boat ARGS...; leaves the output in $out
-    local what=$1 attempt
+    local what=$1 attempt rc
     shift
     for attempt in 1 2 3 4 5 6; do
-        if out=$("$@" --fail-fast --json 2>&1); then return 0; fi
+        "$@" --fail-fast --json >"$out_file" 2>&1 </dev/null &
+        job=$!
+        rc=0; wait "$job" || rc=$?
+        job=""
+        out=$(cat "$out_file" 2>/dev/null || true)
+        if [ "$rc" = 0 ]; then return 0; fi
         case "$out" in
             *no_ready_machine*) [ "$attempt" = 6 ] || echo "boat-check: no machine ready for $what; trying again in 10 s" >&2 ;;
-            *"already in progress"*) [ "$attempt" = 6 ] || echo "boat-check: Boat is still busy with $what; trying again in 10 s" >&2 ;;
+            *"already in progress"*|*sandbox_stopping*) [ "$attempt" = 6 ] || echo "boat-check: Boat is still busy with $what; trying again in 10 s" >&2 ;;
             *) return 1 ;;
         esac
         [ "$attempt" = 6 ] || sleep 10
     done
     return 1
 }
-new_sandbox() {   # new_sandbox NAME [boat new ARGS...]: prints the new sandbox's id
-    local sandbox_name=$1 new_id
+# new_sandbox NAME [boat new ARGS...]: sets new_id to the new sandbox's id. Set creating=NAME
+# around it, so a run interrupted before the id comes back still finds the sandbox and cleans
+# it up. It runs in this shell, not $(...), so a signal interrupts it at once.
+new_sandbox() {
+    local sandbox_name=$1
     shift
     # --no-env: none of the account's stored secrets or logins go in.
     fast_start "a new sandbox" boat new --no-env --type "$type" --ttl "$budget" --name "$sandbox_name" "$@" \
         || start_failed "creating a sandbox" "$out"
     new_id=$(printf '%s\n' "$out" | jq -r 'select(.event == "ready") | .id // empty' 2>/dev/null | head -n 1 || true)
     [ -n "$new_id" ] || start_failed "creating a sandbox" "$out"
-    echo "$new_id"
 }
 
 # Runs in the sandbox as `bash -c`: $1 mode (checks, full, cmd or build), $2 push directory,
@@ -250,23 +336,35 @@ unframe() {
     return "$rc"
 }
 # run_remote ID MODE PUSH CMD: run the remote script in sandbox ID and return its exit code.
-# Auto-stop is pushed back every 30 minutes meanwhile, so a long check never reaches it.
+# Auto-stop is pushed back to $budget seconds every $renew seconds meanwhile, so a long check
+# never reaches it, by a loop that checks this script is still alive first: if the script is
+# killed outright, the loop ends and the sandbox stops within $budget seconds.
 run_remote() {
-    local codes rc
+    local rc=0
     # Its own stdio, so its sleep never holds the caller's output pipe open after the script ends.
-    ( while sleep 1800; do boat extend "$1" --ttl "$budget" --json >/dev/null 2>&1; done ) </dev/null >/dev/null 2>&1 &
+    ( while sleep "$renew"; do
+          kill -0 "$$" 2>/dev/null || exit 0
+          boat extend "$1" --ttl "$budget" --json >/dev/null 2>&1
+      done ) </dev/null >/dev/null 2>&1 &
     keepalive=$!
-    set +e
-    boat exec "$1" --timeout 0 --json -- bash -c "$remote" boat-check "$2" "$3" "$4" | frames | unframe
-    codes=("${PIPESTATUS[@]}")
-    set -e
+    # In the background, because bash runs a signal trap only once a foreground command ends:
+    # waiting on it instead lets TERM or HUP reach the cleanup at once, not after the check.
+    (
+        set +e
+        boat exec "$1" --timeout 0 --json -- bash -c "$remote" boat-check "$2" "$3" "$4" | frames | unframe
+        codes=("${PIPESTATUS[@]}")
+        rc=${codes[2]}
+        if [ "$rc" = 255 ]; then   # no exit frame: the CLI failed before or while running the command
+            rc=${codes[0]}
+            [ "$rc" != 0 ] || rc=1
+            echo "boat-check: boat exec ended without the command's exit code (exit ${codes[0]})" >&2
+        fi
+        exit "$rc"
+    ) &
+    job=$!
+    wait "$job" || rc=$?
+    job=""
     stop_keepalive
-    rc=${codes[2]}
-    if [ "$rc" = 255 ]; then   # no exit frame: the CLI failed before or while running the command
-        rc=${codes[0]}
-        [ "$rc" != 0 ] || rc=1
-        echo "boat-check: boat exec ended without the command's exit code (exit ${codes[0]})" >&2
-    fi
     return "$rc"
 }
 push_dir() { echo "/home/user/push/$(date +%Y%m%d-%H%M%S)-$$"; }
@@ -281,13 +379,18 @@ case "$action" in
         tree=$(mktemp -d "${TMPDIR:-/tmp}/boat-check-save.XXXXXX")
         git archive "$base" | tar -x -C "$tree"
         echo "boat-check: building $snapshot from origin's default branch ($(git rev-parse --short "$base")) in a fresh sandbox" >&2
-        build=$(new_sandbox "voxelcraft-${snapshot#voxelcraft-}-build")
+        # A name only this run uses, so an interrupted create is found and deleted.
+        creating=$(run_name "voxelcraft-${snapshot#voxelcraft-}-build")
+        new_sandbox "$creating"; build=$new_id
+        creating=""
         push=$(push_dir)
         boat push "$build" "$tree" --to "$push" >/dev/null
         run_remote "$build" build "$push" "" || { echo "boat-check: the build failed, so $snapshot was not saved" >&2; exit 1; }
         # The save runs in the background. Wait for this sandbox's save of the name
-        # (sourceSandboxId) to read ready; an older save of the name doesn't count.
+        # (sourceSandboxId) to read ready; an older save of the name doesn't count. Auto-stop
+        # is put back $budget seconds ahead to cover the 10-minute wait.
         echo "boat-check: saving $build as $snapshot" >&2
+        boat extend "$build" --ttl "$budget" --json >/dev/null 2>&1 || true
         saving=1
         boat snapshot "$build" "$snapshot" >/dev/null || { echo "boat-check: saving $snapshot failed" >&2; exit 1; }
         deadline=$((SECONDS + 600)) status=""
@@ -323,25 +426,52 @@ esac
 [ "$mode" = cmd ] || cargo fmt
 
 # Find this slot's sandbox and get it running, or make one.
-state=""
+state="" size=""
+read_state() {
+    local info
+    info=$(sandbox_info "$id") || return 1
+    state=${info%% *} size=${info#"$state"}; size=${size# }
+}
 if [ -n "$id" ]; then
-    state=$(sandbox_state "$id") || { echo "boat-check: try again once Boat answers" >&2; exit 1; }
+    read_state || { echo "boat-check: try again once Boat answers" >&2; exit 1; }
 fi
-# A sandbox not yet ready (starting, provisioning, cloning) or stopping is waited for, not replaced.
-case "$state" in init|provisioning|provisioned|cloning|starting|resuming|stopping)
+# A sandbox not yet ready (starting, provisioning, cloning) is waited for, not replaced. A
+# stopping one is resumed at once, which takes back its machine with no start, unless it must
+# change size: that needs a new machine, so it waits for stopped first.
+waiting() {
+    case "$state" in
+        init|provisioning|provisioned|cloning|starting|resuming) return 0 ;;
+        stopping) [ "$size" != "$type" ] ;;
+        *) return 1 ;;
+    esac
+}
+if waiting; then
     for _ in $(seq 1 24); do
-        sleep 5; state=$(sandbox_state "$id") || exit 1
-        case "$state" in init|provisioning|provisioned|cloning|starting|resuming|stopping) ;; *) break ;; esac
-    done ;;
-esac
+        sleep 5; read_state || exit 1
+        waiting || break
+    done
+fi
+if [ "$state" = stopping ] && waiting; then
+    echo "boat-check: $id is still stopping, and resuming it as $type needs it stopped; try again in a minute" >&2
+    exit 2
+fi
 case "$state" in
     ready|idle|running) ;;
-    init|provisioning|provisioned|cloning|starting|resuming|stopping) echo "boat-check: $id is still $state; try again in a minute" >&2; exit 2 ;;
-    stopped)
-        echo "boat-check: resuming $id as $type" >&2
-        if ! fast_start "resuming $id" boat resume "$id" --no-env --type "$type" --ttl "$budget"; then
+    init|provisioning|provisioned|cloning|starting|resuming) echo "boat-check: $id is still $state; try again in a minute" >&2; exit 2 ;;
+    stopped|stopping)
+        if [ "$size" = "$type" ]; then
+            # A plain resume: within 10 minutes of the stop (or during it) Boat usually takes
+            # back the same machine, which uses no start.
+            resize=()
+            echo "boat-check: resuming $id ($state)" >&2
+        else
+            resize=(--type "$type")
+            echo "boat-check: resuming $id as $type (it was ${size:-of unknown size}; a new size uses a start)" >&2
+        fi
+        extended=1   # before the resume, so an interruption once it has started still stops it
+        if ! fast_start "resuming $id" boat resume "$id" --no-env ${resize[@]+"${resize[@]}"} --ttl "$budget"; then
             case "$out" in
-                *snapshot_data_expired*) echo "boat-check: $id can't be resumed (its data expired); making a new one" >&2; state="" ;;
+                *snapshot_data_expired*) echo "boat-check: $id can't be resumed (its data expired); making a new one" >&2; state="" extended=0 ;;
                 *) start_failed "resuming $id" "$out" ;;
             esac
         fi ;;
@@ -362,25 +492,24 @@ if [ -z "$state" ]; then
     else
         echo "boat-check: no ready $snapshot snapshot, so this sandbox starts bare and builds everything; --save makes one" >&2
     fi
-    echo "boat-check: creating $name" >&2
-    id=$(new_sandbox "$name" ${from[@]+"${from[@]}"})
+    creating=$(run_name "$name")
+    echo "boat-check: creating $creating" >&2
+    new_sandbox "$creating" ${from[@]+"${from[@]}"}; id=$new_id
     echo "$id" > "$id_file"
+    creating=""
 fi
-extended=1   # from here on, the exit trap sets the idle auto-stop
-# The idle timeout follows the sandbox's own size, whatever this run asked for; when Boat
-# doesn't say, the shorter (xlarge) timeout costs least.
-if [ -z "${VC_BOAT_IDLE:-}" ]; then
-    size=$(boat info "$id" --json 2>/dev/null | jq -r '.sandbox.type // empty' || true)
-    idle=$(idle_for "${size:-xlarge}")
-fi
+extended=1   # from here on, the exit trap stops the sandbox
 boat extend "$id" --ttl "$budget" --json >/dev/null
-echo "boat-check: sandbox $id ($name)" >&2
+echo "boat-check: sandbox $id" >&2
 
 # Push into a fresh directory; the remote script syncs it into the checkout.
 push=$(push_dir)
 boat push "$id" . --to "$push" >/dev/null
+boat extend "$id" --ttl "$budget" --json >/dev/null   # a slow push mustn't eat into the first renewal
 status=0
 run_remote "$id" "$mode" "$push" "$cmd" || status=$?
 exit "$status"
 }
-main "$@"; exit
+# The exit stops bash reading on, should this file change while the check runs.
+# shellcheck disable=SC2317
+{ main "$@"; exit; }
