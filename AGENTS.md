@@ -63,6 +63,12 @@ Docs: https://docs.boat.dev/llms.txt. Prices and limits: run `boat limits`; neve
   `--full` once the work is finished, `--done` when the agent's work ends
   (it deletes the worktree's sandbox), and `--save` after dependency or
   toolchain changes to refresh the warm snapshot sandboxes start from.
+- One Rust toolchain (2026-11-21): `rust-toolchain.toml` pins the version CI,
+  release builds and `boat-check.sh` use. Change it on purpose, and once the
+  change is on origin's default branch run `scripts/boat-check.sh --save`.
+  rustup installs that toolchain the first time `cargo` runs in a checkout,
+  so on the Mac check `rustup toolchain list` and ask the owner before a
+  local `cargo fmt` would install it.
 - Stay on this Mac: running the game (Metal rendering, screenshots, scripted
   scenes, hands-on runs) and benchmarks, whose frame-time gate is measured on
   the reference M5. Boat is x86_64 Linux with no GPU, so it can't check

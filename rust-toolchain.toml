@@ -1,0 +1,7 @@
+# The one Rust toolchain for CI, release builds and Boat checks, so what ships
+# is what was tested. Change it on purpose, then refresh the warm Boat snapshot
+# (`scripts/boat-check.sh --save`).
+[toolchain]
+channel = "1.100.0"
+components = ["clippy", "rustfmt"]
+profile = "minimal"
