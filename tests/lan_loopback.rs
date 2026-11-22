@@ -151,3 +151,50 @@ fn two_clients_share_ordered_authoritative_edits() {
     assert!(!host.players.contains_key("A"));
     assert!(host.players.contains_key("B"));
 }
+/// Issue #97: a guest's long book reaches the host whole, and the guest stays connected.
+#[test]
+fn long_books_from_a_guest_reach_the_host() {
+    use voxelcraft::content::books::{self, WRITABLE_BOOK};
+    use voxelcraft::inventory::{
+        Stack,
+        components::{WRITABLE_MAX_PAGES, WRITABLE_PAGE_LENGTH},
+    };
+    let mut host = fixture();
+    let mut client = Connection::connect(host.address(), "Writer").unwrap();
+    until(&mut host, &mut client, |p| matches!(p, Packet::Welcome { .. }));
+    let writer = host.players.get_mut("Writer").unwrap();
+    let selected = writer.selected;
+    writer.session.inventory.slots[selected] = Some(Stack::new(WRITABLE_BOOK, 1));
+    // The largest book the packet carries: every page full of three-byte
+    // characters. (The headless harness sends no inventories back.)
+    let pages = vec!["語".repeat(WRITABLE_PAGE_LENGTH); WRITABLE_MAX_PAGES];
+    client.send(Packet::Book { pages: pages.clone(), title: None, offhand: false }).unwrap();
+    client.flush().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        host.step().unwrap();
+        client.poll().expect("the guest stays connected");
+        let book = host.players["Writer"].session.inventory.slots[selected].unwrap();
+        if books::pages(&book) == pages {
+            break;
+        }
+        assert!(Instant::now() < deadline, "the book never arrived");
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    // Signing the off-hand book sends its title too.
+    host.players.get_mut("Writer").unwrap().session.inventory.offhand = Some(Stack::new(WRITABLE_BOOK, 1));
+    client.send(Packet::Book { pages: pages.clone(), title: Some("Saga".into()), offhand: true }).unwrap();
+    client.flush().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        host.step().unwrap();
+        client.poll().expect("the guest stays connected");
+        let book = host.players["Writer"].session.inventory.offhand.unwrap();
+        if book.item == books::WRITTEN_BOOK {
+            assert_eq!(books::pages(&book), pages);
+            break;
+        }
+        assert!(Instant::now() < deadline, "the signed book never arrived");
+        std::thread::sleep(Duration::from_millis(1));
+    }
+}

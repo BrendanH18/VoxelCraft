@@ -380,8 +380,10 @@ impl Game {
     pub(super) fn finish_book_edit(&mut self, slot: usize, pages: Vec<String>, title: Option<String>) {
         if self.lan.client.is_some() {
             // The host edits the peer's selected slot, or its off-hand when
-            // the book was opened from there (issue #92).
-            self.lan_command(&voxelcraft::agent::Command::book_text(slot, &pages, title.as_deref()));
+            // the book was opened from there (issue #92). A whole book is
+            // too long for a command, so it has its own packet (issue #97).
+            let offhand = slot == voxelcraft::session::books::OFFHAND_SLOT;
+            self.lan_send(voxelcraft::lan::Packet::Book { pages, title, offhand });
             return;
         }
         let result = match title {
