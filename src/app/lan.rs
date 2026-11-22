@@ -106,6 +106,10 @@ pub(super) struct Lan {
     look_ticks: u32,
     /// Particle effects since the last state, for clients to replay (JSON requests).
     pub effects: Vec<(DVec3, Value)>,
+    /// Raid horns for other players since the last state, each positioned
+    /// for its player: Java's `Raid.playSound` sends every player its own
+    /// (issue #98).
+    pub horns: Vec<(voxelcraft::entity::PlayerId, DVec3)>,
     /// A client's view of every player's block breaking, from the host.
     pub remote_cracks: Vec<(IVec3, f32)>,
     /// Host tick timing and traffic since the last `LAN stats` log line.
@@ -1184,6 +1188,7 @@ impl Game {
         if self.lan.peers.is_empty() {
             self.audio.tap = None;
             self.lan.effects.clear();
+            self.lan.horns.clear();
             return;
         }
         let mut host = Agent::new(self.session.player.pos);
@@ -1227,6 +1232,7 @@ impl Game {
         }
         // Sounds and particles since the last state, replayed by clients near them.
         let sounds = self.audio.tap.replace(Vec::new()).unwrap_or_default();
+        let horns = std::mem::take(&mut self.lan.horns);
         let effects = std::mem::take(&mut self.lan.effects);
         let host_pos = self.session.player.pos;
         let breaking = self.all_breaking();
@@ -1372,26 +1378,7 @@ impl Game {
                 .collect();
             peer.looked = looked;
             let me = bot.agent.session.player.pos;
-            let sounds: Vec<_> = sounds
-                .iter()
-                .filter_map(|&(sound, pos, gain, (lo, hi), source)| {
-                    use crate::audio::sounds::Sound;
-                    let movement = matches!(sound, Sound::Step(_) | Sound::Land | Sound::Splash | Sound::Swim);
-                    // Positionless sounds are the host's own: only body sounds others would hear.
-                    let pos = match pos {
-                        Some(p) => p,
-                        None if movement || sound == Sound::Hurt => host_pos,
-                        None => return None,
-                    };
-                    // A client hears its own steps locally.
-                    if movement && pos.distance_squared(me) < 1.0 {
-                        return None;
-                    }
-                    (pos.distance_squared(me) < 64.0 * 64.0)
-                        .then(|| json!([sound.key(), pos.x, pos.y, pos.z, gain, lo, hi, source.index()]))
-                })
-                .take(96)
-                .collect();
+            let sounds = peer_sounds(&sounds, &horns, bot.agent.session.id, me, host_pos);
             let effects: Vec<_> = effects
                 .iter()
                 .filter(|(p, _)| p.distance_squared(me) < 96.0 * 96.0)
@@ -2431,9 +2418,77 @@ fn button_transitions(mut previous: u8, edges: &[(u8, bool)], latest: u8) -> Vec
     result
 }
 
+/// A guest's share of this tick's sounds, as `[key, x, y, z, gain, low pitch,
+/// high pitch, source]`: the raid horns played for it, then the host's sounds
+/// within 64 blocks. A horn is personal (`Raid.playSound` sends each player
+/// its own, positioned for them), so the host's horn isn't forwarded and a
+/// guest near both hears only its own (issue #98).
+fn peer_sounds(
+    tapped: &[crate::audio::Tapped],
+    horns: &[(voxelcraft::entity::PlayerId, DVec3)],
+    id: voxelcraft::entity::PlayerId,
+    me: DVec3,
+    host_pos: DVec3,
+) -> Vec<Value> {
+    use crate::audio::sounds::Sound;
+    let horn = Sound::Raid(voxelcraft::entity::raid::Cue::Horn);
+    let own = horns.iter().filter(|(player, _)| *player == id).map(|&(_, at)| {
+        json!([horn.key(), at.x, at.y, at.z, 1.0, 1.0, 1.0, crate::audio::SoundSource::Neutral.index()])
+    });
+    let heard = tapped.iter().filter(|t| t.0 != horn).filter_map(|&(sound, pos, gain, (lo, hi), source)| {
+        let movement = matches!(sound, Sound::Step(_) | Sound::Land | Sound::Splash | Sound::Swim);
+        // Positionless sounds are the host's own: only body sounds others would hear.
+        let pos = match pos {
+            Some(p) => p,
+            None if movement || sound == Sound::Hurt => host_pos,
+            None => return None,
+        };
+        // A client hears its own steps locally.
+        if movement && pos.distance_squared(me) < 1.0 {
+            return None;
+        }
+        (pos.distance_squared(me) < 64.0 * 64.0)
+            .then(|| json!([sound.key(), pos.x, pos.y, pos.z, gain, lo, hi, source.index()]))
+    });
+    own.chain(heard).take(96).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue #98: a LAN guest hears the raid horn played for it, at its own
+    /// position, once, whether or not the host heard one.
+    #[test]
+    fn raid_horns_reach_their_own_guest_once() {
+        use crate::audio::{SoundSource, sounds::Sound};
+        use voxelcraft::entity::PlayerId;
+        let horn = Sound::Raid(voxelcraft::entity::raid::Cue::Horn);
+        let heard = |sounds: Vec<Value>| -> Vec<DVec3> {
+            sounds
+                .iter()
+                .filter(|s| s[0] == json!(horn.key()))
+                .map(|s| DVec3::new(s[1].as_f64().unwrap(), s[2].as_f64().unwrap(), s[3].as_f64().unwrap()))
+                .collect()
+        };
+        let (guest, other) = (PlayerId(2), PlayerId(3));
+        let me = DVec3::new(0.5, 64.0, 0.5);
+        let mine = DVec3::new(13.5, 64.0, 0.5);
+        // The host is 150 blocks away and outside the raid: it played no horn.
+        let far = DVec3::new(150.5, 64.0, 0.5);
+        assert_eq!(heard(peer_sounds(&[], &[(guest, mine)], guest, me, far)), [mine]);
+        // The host played its own horn beside the guest: the guest still
+        // hears only its own, and another guest only theirs.
+        let near = DVec3::new(4.5, 64.0, 0.5);
+        let tapped = [(horn, Some(DVec3::new(17.5, 64.0, 0.5)), 1.0, (1.0, 1.0), SoundSource::Neutral)];
+        let theirs = DVec3::new(0.5, 64.0, 13.5);
+        let horns = [(guest, mine), (other, theirs)];
+        assert_eq!(heard(peer_sounds(&tapped, &horns, guest, me, near)), [mine]);
+        assert_eq!(heard(peer_sounds(&tapped, &horns, other, me, near)), [theirs]);
+        // Other sounds still reach a guest in range.
+        let hurt = [(Sound::Hurt, Some(near), 1.0, (1.0, 1.0), SoundSource::Neutral)];
+        assert_eq!(peer_sounds(&hurt, &[], guest, me, near).len(), 1);
+    }
 
     #[test]
     fn statue_prediction_matches_block_use_priority() {

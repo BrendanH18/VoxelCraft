@@ -936,3 +936,40 @@ fn bar_titles_round_trip_and_read_like_java() {
     }
     let _ = Dimension::Overworld;
 }
+
+/// Issue #98: a wave's horn goes to each player in range, once, positioned
+/// 13 blocks from that player toward the wave, and not to a host over 100
+/// blocks away and outside the raid.
+#[test]
+fn the_wave_horn_reaches_each_player_in_range_once() {
+    let guest = PlayerId(2);
+    let guest_pos = DVec3::new(0.5, f64::from(FLOOR), 0.5);
+    for host_pos in [DVec3::new(150.5, f64::from(FLOOR), 0.5), DVec3::new(4.5, f64::from(FLOOR), 0.5)] {
+        let mut e = Entities::new(21);
+        let w = village(&mut e);
+        e.difficulty = Difficulty::Easy;
+        let c = ctx(vec![player_at(host_pos), Target::new(guest, guest_pos, false)]);
+        let id = e.create_or_extend_raid(&w, guest, IVec3::new(0, FLOOR, 0), 1, true).unwrap();
+        let mut horns = Vec::new();
+        for _ in 0..2_000 {
+            tick(&mut e, &w, &c, Difficulty::Easy);
+            for o in std::mem::take(&mut e.raids.outcomes) {
+                if let Outcome::Horn { player, at } = o {
+                    horns.push((player, at));
+                }
+            }
+            if e.raiders_alive(id) > 0 {
+                break;
+            }
+        }
+        assert!(e.raiders_alive(id) > 0, "the first wave spawned");
+        let hosts_in_range = usize::from(host_pos.x < 64.0);
+        assert_eq!(horns.iter().filter(|(p, _)| *p == guest).count(), 1, "{horns:?}");
+        assert_eq!(horns.iter().filter(|(p, _)| *p == PlayerId::HOST).count(), hosts_in_range, "{horns:?}");
+        for &(player, at) in &horns {
+            let from = if player == guest { guest_pos } else { host_pos };
+            assert_eq!(at.y, from.y);
+            assert!((at.with_y(0.0).distance(from.with_y(0.0)) - 13.0).abs() < 1e-9, "{at} from {from}");
+        }
+    }
+}
