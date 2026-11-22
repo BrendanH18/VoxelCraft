@@ -29,9 +29,17 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The toolchain rust-toolchain.toml pins, the one CI, releases and Boat checks share.
+      - name: Read the pinned Rust toolchain
+        id: rust
+        shell: bash
+        run: |
+          toolchain=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)
+          test -n "$toolchain"
+          echo "toolchain=$toolchain" >> "$GITHUB_OUTPUT"
       - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master, 2026-11-15 (no release tags)
         with:
-          toolchain: stable
+          toolchain: ${{ steps.rust.outputs.toolchain }}
           components: rustfmt
       - run: cargo fmt --check
 
@@ -73,9 +81,17 @@ jobs:
       - name: Install Linux audio/windowing headers
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev libfontconfig1-dev libfreetype6-dev pkg-config
+      # The toolchain rust-toolchain.toml pins, the one CI, releases and Boat checks share.
+      - name: Read the pinned Rust toolchain
+        id: rust
+        shell: bash
+        run: |
+          toolchain=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)
+          test -n "$toolchain"
+          echo "toolchain=$toolchain" >> "$GITHUB_OUTPUT"
       - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master, 2026-11-15 (no release tags)
         with:
-          toolchain: stable
+          toolchain: ${{ steps.rust.outputs.toolchain }}
           components: clippy
       - if: runner.os != 'Windows'
         uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
@@ -114,9 +130,17 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The toolchain rust-toolchain.toml pins, the one CI, releases and Boat checks share.
+      - name: Read the pinned Rust toolchain
+        id: rust
+        shell: bash
+        run: |
+          toolchain=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)
+          test -n "$toolchain"
+          echo "toolchain=$toolchain" >> "$GITHUB_OUTPUT"
       - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master, 2026-11-15 (no release tags)
         with:
-          toolchain: stable
+          toolchain: ${{ steps.rust.outputs.toolchain }}
           components: clippy
       - uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
         with:

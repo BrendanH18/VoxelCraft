@@ -7,7 +7,8 @@ No verified publisher signing certificates or notarization are used.
 ## Automated builds
 
 `.github/workflows/release.yml` builds on native Windows (GitHub-hosted) and Mac
-(Namespace) runners using Rust 1.99.1 and the committed Cargo.lock. It checks
+(Namespace) runners using the Rust toolchain `rust-toolchain.toml` pins (the
+one CI tests with) and the committed Cargo.lock. It checks
 formatting, runs Clippy and tests, generates dependency license notices, then
 packages and smoke-tests the downloads. Windows uses a static C runtime so users
 do not need a separate Visual C++ redistributable installation.

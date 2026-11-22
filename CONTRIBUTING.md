@@ -19,9 +19,10 @@ tracks proposed changes and review of pending v0.7 work.
 
 ## Set up
 
-Install a recent stable Rust toolchain with `rustfmt` and `clippy`. VoxelCraft uses
-Rust edition 2024. Playing the game requires a GPU supported by wgpu's Metal,
-Vulkan, or DirectX 12 backends.
+Install Rust with rustup. `rust-toolchain.toml` pins the toolchain CI and
+release builds use, and rustup selects it, with `rustfmt` and `clippy`, in
+this checkout. VoxelCraft uses Rust edition 2024. Playing the game requires a
+GPU supported by wgpu's Metal, Vulkan, or DirectX 12 backends.
 
 On Debian/Ubuntu, install the native development dependencies used in CI:
 

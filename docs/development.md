@@ -106,8 +106,8 @@ it took 450 s to `large`'s 197 s for the test build after a source change
 and 1,543 s to 1,006 s for the full chain, at about 2.8 times the price.
 They start with `--no-env`, so none
 of the account's stored secrets go in. The script installs the Linux audio,
-device and font libraries and `rsync` when they're missing and updates Rust
-to current stable (CI's toolchain).
+device and font libraries and `rsync` when they're missing and installs the
+Rust toolchain `rust-toolchain.toml` pins, the one CI and release builds use.
 
 `--save` builds origin's default branch, not the worktree, in a fresh
 sandbox named `voxelcraft-warm-build`, runs the full checks there and saves

@@ -201,9 +201,8 @@ if [ -n "$missing" ]; then
     sudo apt-get update -qq --allow-releaseinfo-change || true
     sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1 apt-get install -y -qq $missing >/dev/null
 fi
-# The image keeps rustup in /usr/local, and its stable lags behind; CI builds with current stable.
+# The image keeps rustup in /usr/local.
 export CARGO_HOME=/usr/local/cargo
-rustup -q toolchain install stable --profile minimal -c clippy -c rustfmt >/dev/null
 export CARGO_TARGET_DIR=$HOME/target CARGO_TERM_COLOR=always
 
 # The checkout stays at one path, so cargo keeps its build of it. Sync the pushed tree into it:
@@ -213,6 +212,9 @@ mkdir -p "$repo"
 rsync -rlpc --delete "$push/" "$repo/"
 rm -rf "$push"
 cd "$repo"
+# The toolchain rust-toolchain.toml pins, as CI and the release builds use.
+channel=$(sed -n '\''s/^channel *= *"\(.*\)"/\1/p'\'' rust-toolchain.toml 2>/dev/null)
+rustup -q toolchain install "${channel:-stable}" --profile minimal -c clippy -c rustfmt >/dev/null
 say "$(rustc --version) on $(nproc) vCPUs"
 
 checks="cargo clippy --profile ci --all-targets --locked -- -D warnings && cargo test --profile ci --locked"
