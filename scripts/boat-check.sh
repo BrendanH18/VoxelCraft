@@ -76,6 +76,13 @@ lock=$state_dir/lock${slot:+-$slot}
 # another clone with the same directory name and slot made.
 name="voxelcraft-check-$(basename "$PWD" | tr -c 'A-Za-z0-9_\n-' '-' | cut -c1-80)${slot:+-$slot}"
 
+# run_name BASE: BASE plus this run's time and pid, BASE cut so the whole fits Boat's
+# 120-character limit on names; the suffix stays whole, since cleanup finds the sandbox by it.
+run_name() {
+    local suffix
+    suffix="-$(date +%Y%m%d-%H%M%S)-$$"
+    echo "${1:0:$((120 - ${#suffix}))}$suffix"
+}
 id="" new_id=""
 out_file=$state_dir/out${slot:+-$slot}-$$
 extended=0 keepalive="" job="" creating="" build="" saving=0 locked=0 tree=""
@@ -363,7 +370,7 @@ case "$action" in
         git archive "$base" | tar -x -C "$tree"
         echo "boat-check: building $snapshot from origin's default branch ($(git rev-parse --short "$base")) in a fresh sandbox" >&2
         # A name only this run uses, so an interrupted create is found and deleted.
-        creating="voxelcraft-${snapshot#voxelcraft-}-build-$(date +%Y%m%d-%H%M%S)-$$"
+        creating=$(run_name "voxelcraft-${snapshot#voxelcraft-}-build")
         new_sandbox "$creating"; build=$new_id
         creating=""
         push=$(push_dir)
@@ -475,7 +482,7 @@ if [ -z "$state" ]; then
     else
         echo "boat-check: no ready $snapshot snapshot, so this sandbox starts bare and builds everything; --save makes one" >&2
     fi
-    creating="$name-$(date +%Y%m%d-%H%M%S)-$$"
+    creating=$(run_name "$name")
     echo "boat-check: creating $creating" >&2
     new_sandbox "$creating" ${from[@]+"${from[@]}"}; id=$new_id
     echo "$id" > "$id_file"
