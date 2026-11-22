@@ -213,8 +213,9 @@ rsync -rlpc --delete "$push/" "$repo/"
 rm -rf "$push"
 cd "$repo"
 # The toolchain rust-toolchain.toml pins, as CI and the release builds use.
-channel=$(sed -n '\''s/^channel *= *"\(.*\)"/\1/p'\'' rust-toolchain.toml 2>/dev/null)
-rustup -q toolchain install "${channel:-stable}" --profile minimal -c clippy -c rustfmt >/dev/null
+channel=stable
+[ ! -f rust-toolchain.toml ] || channel=$(sed -n '\''s/^channel *= *"\(.*\)"/\1/p'\'' rust-toolchain.toml)
+rustup -q toolchain install "$channel" --profile minimal -c clippy -c rustfmt >/dev/null
 say "$(rustc --version) on $(nproc) vCPUs"
 
 checks="cargo clippy --profile ci --all-targets --locked -- -D warnings && cargo test --profile ci --locked"

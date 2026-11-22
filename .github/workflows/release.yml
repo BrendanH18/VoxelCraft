@@ -48,7 +48,6 @@ jobs:
         shell: bash
         run: |
           toolchain=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)
-          test -n "$toolchain"
           echo "toolchain=$toolchain" >> "$GITHUB_OUTPUT"
       - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master, 2026-11-15 (no release tags)
         with:
