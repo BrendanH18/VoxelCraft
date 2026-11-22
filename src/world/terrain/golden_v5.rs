@@ -27,6 +27,7 @@ use std::collections::HashSet;
 
 use glam::{IVec2, IVec3};
 
+use super::m3_corpus::mesa_mineshaft;
 use super::order_tests::{chunks_of, sulfur_spring};
 use super::{Biome, CHUNK_SIZE_I, Dimension, Generation, Generator};
 use crate::entity::MobKind;
@@ -78,7 +79,7 @@ fn overworld(g: &Generator) -> Vec<Place> {
         })
     };
     let stronghold = g.strongholds.nearest(IVec3::ZERO);
-    let badlands = g.nearest_biome(IVec2::ZERO, Biome::Badlands, 12_800).expect("badlands");
+    let (mesa, _, _) = mesa_mineshaft(g);
     let spring = sulfur_spring(g);
     vec![
         located("village", g.villages.nearest(g, IVec3::ZERO), |at| near(at, 2).collect()),
@@ -96,7 +97,7 @@ fn overworld(g: &Generator) -> Vec<Place> {
         temple("monument", Kind::Monument, 12_800, true),
         temple("shipwreck", Kind::Shipwreck, 6400, true),
         temple("abandoned camp", Kind::AbandonedCamp, 6400, true),
-        located("mesa mineshaft", g.mineshafts.nearest(g, badlands), |at| near(at, 1).collect()),
+        located("mesa mineshaft", Some(mesa), |at| near(at, 1).collect()),
         located("dappled forest", g.nearest_biome(IVec2::ZERO, Biome::DappledForest, 12_800), |at| {
             let y = g.column(at.x, at.z).height.div_euclid(CHUNK_SIZE_I);
             around(at, 1, (y - 1)..(y + 2)).collect()
@@ -235,10 +236,10 @@ fn generation_5_chunk_hashes_stay_identical() {
     }
     assert!(failures.is_empty(), "the pinned set lacks content:\n{}", failures.join("\n"));
     let expected: [(u64, &str, u64, u64); 6] = [
-        (12345, "overworld", 0xec3c_c524_fb66_b005, 0x58bf_619e_0463_375d),
+        (12345, "overworld", 0x741c_0fc3_eb2c_9335, 0x0bc1_396f_498c_75f7),
         (12345, "nether", 0x5724_95a5_1925_c9df, 0x032a_89dd_4274_d036),
         (12345, "end", 0x1e25_f271_38e6_1cc6, 0x53b5_ed1f_fed3_fac9),
-        (42, "overworld", 0xabe3_f8fb_0191_bb7c, 0x48f5_6a75_5601_72f7),
+        (42, "overworld", 0xe511_7a57_e998_ec3b, 0xbd63_5b22_a998_d05e),
         (42, "nether", 0x5d16_5681_bc8a_e36f, 0xcd54_3cb0_7702_2693),
         (42, "end", 0x360b_40d6_6887_c9ad, 0x14ce_6254_3838_2d7a),
     ];

@@ -2194,6 +2194,18 @@ mod tests {
         assert_eq!(reloaded.crystals.len(), 4);
 
         let mut reloaded_world = World::new_remote(Arc::clone(&generator), 2);
+        let portal = podium - IVec3::X;
+        let missing_chunk = chunk_of(portal);
+        let mut last_chunk = None;
+        for (pos, chunk) in world.network_chunks(chunk_of(podium), 2) {
+            if pos == missing_chunk {
+                last_chunk = Some(chunk);
+            } else {
+                reloaded_world.receive_chunk(pos, chunk);
+            }
+        }
+        assert_eq!(reloaded_world.get_block(podium + IVec3::X), Some(Block::END_PORTAL));
+        assert_eq!(reloaded_world.get_block(portal), None);
         let mut events = Vec::new();
         let mut rng = Rng::new(9);
         let ctx = ctx(vec![Target::new(PlayerId::HOST, player.player.pos, true)]);
@@ -2201,10 +2213,7 @@ mod tests {
         assert!(fight.respawn.is_none(), "the ritual waits for the podium chunks");
         assert!(!events.contains(&EntityEvent::ExitPortal { active: false }));
 
-        for (pos, chunk) in world.network_chunks(chunk_of(podium), 2) {
-            reloaded_world.receive_chunk(pos, chunk);
-        }
-        let portal = podium + IVec3::X;
+        reloaded_world.receive_chunk(missing_chunk, last_chunk.expect("the missing side of the portal"));
         assert_eq!(reloaded_world.get_block(portal), Some(Block::END_PORTAL));
         fight.update(TICK, &reloaded_world, &ctx, &mut rng, &mut reloaded.crystals, &mut events);
         let ritual = fight.respawn.as_ref().expect("the ritual starts as soon as the podium loads");
