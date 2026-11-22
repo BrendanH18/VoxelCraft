@@ -661,6 +661,13 @@ impl Game {
                         }
                     }
                     Packet::Click { slot, right, shift } => self.remote_click(peer, slot, right, shift),
+                    Packet::Book { pages, title, offhand } => {
+                        let bot = self.agents.players.get_mut(peer.profile.as_deref().unwrap()).unwrap();
+                        let book = Command::Book { pages, title, offhand };
+                        if let Err(e) = bot.agent.execute(book, &mut self.world, &mut self.mobs.entities, &[]) {
+                            let _ = peer.connection.send(Packet::Chat(format!("Error: {e}")));
+                        }
+                    }
                     Packet::Disconnect(_) => {
                         self.leave_lan(peer);
                         peer.dead = true;

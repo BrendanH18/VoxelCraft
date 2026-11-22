@@ -111,24 +111,13 @@ impl HeadlessHost {
                     continue;
                 }
                 let name = s.profile.as_deref().unwrap();
-                match packet {
-                    Packet::Input(input) => s.input = input,
-                    Packet::Command(text) => {
-                        let result = Command::parse(&text).and_then(|command| {
-                            if command.cheat() {
-                                return Err("Headless harness cheats are disabled".into());
-                            }
-                            self.players.get_mut(name).unwrap().execute(
-                                command,
-                                &mut self.world,
-                                &mut self.entities,
-                                &[],
-                            )
-                        });
-                        if let Err(e) = result {
-                            let _ = s.connection.send(Packet::Chat(format!("Error: {e}")));
-                        }
+                let parsed = match packet {
+                    Packet::Input(input) => {
+                        s.input = input;
+                        continue;
                     }
+                    Packet::Command(text) => Command::parse(&text),
+                    Packet::Book { pages, title, offhand } => Ok(Command::Book { pages, title, offhand }),
                     Packet::Disconnect(_) => {
                         s.connection.close("Player left");
                         return false;
@@ -137,6 +126,15 @@ impl HeadlessHost {
                         s.connection.close("Invalid harness packet");
                         return false;
                     }
+                };
+                let result = parsed.and_then(|command| {
+                    if command.cheat() {
+                        return Err("Headless harness cheats are disabled".into());
+                    }
+                    self.players.get_mut(name).unwrap().execute(command, &mut self.world, &mut self.entities, &[])
+                });
+                if let Err(e) = result {
+                    let _ = s.connection.send(Packet::Chat(format!("Error: {e}")));
                 }
             }
             true

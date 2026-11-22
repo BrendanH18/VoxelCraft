@@ -89,6 +89,10 @@ Welcome supplies seed, dimension and player ID. Input contains a sequence,
 four `f32` values (yaw/pitch/forward/right), button bits and selected slot.
 Nonfinite values, movement outside −1…1, unknown buttons/slots, malformed RLE
 and out-of-range block states are rejected. Text is bounded to 1024 bytes.
+A guest's book editor sends its own Book packet instead (issue #97): flags
+(off-hand, signed), the title when signed, and up to 100 pages, each text a
+`u16` count of UTF-16 units, the unit Java's limits count (32 for the title,
+1024 per page), so the largest book, about 205 KB, fits a frame.
 
 Chunk packets contain three `i32` coordinates and `(u16 length, u16 block
 state)` RLE pairs totaling exactly 32³ cells. After Welcome the client asks

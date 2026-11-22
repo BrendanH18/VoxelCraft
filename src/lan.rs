@@ -7,6 +7,7 @@ use std::net::{SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use crate::inventory::components::{WRITABLE_MAX_PAGES, WRITABLE_PAGE_LENGTH, WRITTEN_TITLE_MAX_LENGTH};
 use crate::world::{
     block::Block,
     chunk::{CHUNK_VOLUME, ChunkData},
@@ -18,6 +19,7 @@ use glam::IVec3;
 /// 4: `Welcome` carries the world's generation (v0.13).
 /// 5: v0.16's mobs, voices and sounds shift the dense `MobKind` and sound
 /// numbers, so a build still versioned 0.15.0 refuses v0.15 peers.
+/// It also adds the Book packet (issue #97), before any release used 5.
 pub const PROTOCOL: u16 = 5;
 pub const GAME_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const MAX_FRAME: usize = 256 * 1024;
@@ -83,10 +85,29 @@ pub enum Packet {
         cells: Vec<(u16, Block)>,
     },
     Disconnect(String),
+    /// A guest's book editor closed (`ServerboundEditBookPacket`): the pages
+    /// of its book and quill, signed when `title` is set. Its own packet
+    /// because a full book is far over a `Command`'s 1024 bytes (issue #97).
+    Book {
+        pages: Vec<String>,
+        title: Option<String>,
+        offhand: bool,
+    },
 }
 
 /// Most cells an `Edits` packet carries; more changes send the whole chunk.
 pub const MAX_EDITS: usize = 1024;
+/// Book text goes as UTF-16, the unit Java's page and title limits count, so
+/// the largest book (100 pages of 1024 units, about 205 KB) fits a frame.
+fn utf16(out: &mut Vec<u8>, s: &str, max: usize) -> io::Result<()> {
+    let units: Vec<u16> = s.encode_utf16().collect();
+    if units.len() > max {
+        return Err(bad("book text too long"));
+    }
+    out.extend_from_slice(&(units.len() as u16).to_le_bytes());
+    out.extend(units.iter().flat_map(|u| u.to_le_bytes()));
+    Ok(())
+}
 fn bad(message: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
 }
@@ -178,6 +199,20 @@ impl Packet {
                 out.push(8);
                 out.extend_from_slice(&slot.to_le_bytes());
                 out.extend_from_slice(&[u8::from(*right), u8::from(*shift)]);
+            }
+            Self::Book { pages, title, offhand } => {
+                if pages.len() > WRITABLE_MAX_PAGES {
+                    return Err(bad("too many book pages"));
+                }
+                out.push(10);
+                out.push(u8::from(*offhand) | u8::from(title.is_some()) << 1);
+                if let Some(title) = title {
+                    utf16(&mut out, title, WRITTEN_TITLE_MAX_LENGTH)?;
+                }
+                out.push(pages.len() as u8);
+                for page in pages {
+                    utf16(&mut out, page, WRITABLE_PAGE_LENGTH)?;
+                }
             }
         }
         if out.len() > MAX_FRAME {
@@ -277,6 +312,19 @@ impl Packet {
                 }
                 Self::Click { slot, right: right != 0, shift: shift != 0 }
             }
+            10 => {
+                let flags = r.u8()?;
+                if flags > 3 {
+                    return Err(bad("invalid book flags"));
+                }
+                let title = if flags & 2 != 0 { Some(r.utf16(WRITTEN_TITLE_MAX_LENGTH)?) } else { None };
+                let count = r.u8()? as usize;
+                if count > WRITABLE_MAX_PAGES {
+                    return Err(bad("too many book pages"));
+                }
+                let pages = (0..count).map(|_| r.utf16(WRITABLE_PAGE_LENGTH)).collect::<io::Result<_>>()?;
+                Self::Book { pages, title, offhand: flags & 1 != 0 }
+            }
             _ => return Err(bad("unknown packet")),
         };
         if !r.0.is_empty() {
@@ -321,6 +369,16 @@ impl Reader<'_> {
         let (a, b) = self.0.split_at(n);
         self.0 = b;
         Ok(std::str::from_utf8(a).map_err(io::Error::other)?.to_owned())
+    }
+    fn utf16(&mut self, max: usize) -> io::Result<String> {
+        let n = self.u16()? as usize;
+        if n > max || self.0.len() < n * 2 {
+            return Err(bad("invalid book text length"));
+        }
+        let (a, b) = self.0.split_at(n * 2);
+        self.0 = b;
+        let units: Vec<u16> = a.chunks_exact(2).map(|u| u16::from_le_bytes([u[0], u[1]])).collect();
+        String::from_utf16(&units).map_err(|_| bad("invalid book text"))
     }
 }
 
@@ -641,6 +699,38 @@ mod tests {
         chunk.extend_from_slice(&1u16.to_le_bytes());
         chunk.extend_from_slice(&0u16.to_le_bytes());
         assert!(Packet::decode(&chunk).is_err(), "partial chunks must not render");
+    }
+    /// Issue #97: the largest book the editor makes fits one frame, and
+    /// anything over Java's limits is refused both ways.
+    #[test]
+    fn books_round_trip_within_their_limits() {
+        let full = vec!["語".repeat(WRITABLE_PAGE_LENGTH); WRITABLE_MAX_PAGES];
+        let title = Some("𝄞".repeat(WRITTEN_TITLE_MAX_LENGTH / 2));
+        for (title, offhand) in [(None, false), (title, true)] {
+            let book = Packet::Book { pages: full.clone(), title: title.clone(), offhand };
+            let encoded = book.encode().unwrap();
+            assert!(encoded.len() - 4 <= MAX_FRAME);
+            let Packet::Book { pages, title: t, offhand: o } = Packet::decode(&encoded[4..]).unwrap() else {
+                panic!("wrong packet")
+            };
+            assert_eq!((pages, t, o), (full.clone(), title, offhand));
+        }
+        let page = |n| "a".repeat(n);
+        for (pages, title) in [
+            (vec![page(1); WRITABLE_MAX_PAGES + 1], None),
+            (vec![page(WRITABLE_PAGE_LENGTH + 1)], None),
+            (vec![page(1)], Some(page(WRITTEN_TITLE_MAX_LENGTH + 1))),
+        ] {
+            assert!(Packet::Book { pages, title, offhand: false }.encode().is_err());
+        }
+        // Bad flags, a page over the limit, an unpaired surrogate, too many pages.
+        assert!(Packet::decode(&[10, 4, 0]).is_err());
+        let mut long = vec![10, 0, 1];
+        long.extend_from_slice(&(WRITABLE_PAGE_LENGTH as u16 + 1).to_le_bytes());
+        long.resize(long.len() + 2 * (WRITABLE_PAGE_LENGTH + 1), b'a');
+        assert!(Packet::decode(&long).is_err());
+        assert!(Packet::decode(&[10, 0, 1, 1, 0, 0x00, 0xd8]).is_err());
+        assert!(Packet::decode(&[10, 0, WRITABLE_MAX_PAGES as u8 + 1]).is_err());
     }
     #[test]
     fn fragmented_frames_and_invalid_length() {

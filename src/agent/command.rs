@@ -693,9 +693,10 @@ impl Command {
     }
 
     /// The `book` command text that [`Command::parse`] reads back as
-    /// [`Command::Book`]: how a LAN guest's book editor, opened on `slot`,
-    /// submits to the host. Slot 40 is the off-hand; any other slot is the
-    /// selected hotbar slot, which the host already tracks.
+    /// [`Command::Book`], for a book edited from `slot`. Slot 40 is the
+    /// off-hand; any other slot is the selected hotbar slot. A LAN guest's
+    /// editor sends [`crate::lan::Packet::Book`] instead: a long book is over
+    /// a command's 1024 bytes (issue #97).
     pub fn book_text(slot: usize, pages: &[String], title: Option<&str>) -> String {
         let pages = serde_json::to_string(pages).unwrap_or_else(|_| "[]".into());
         let hand = if slot == crate::session::books::OFFHAND_SLOT { " offhand" } else { "" };
