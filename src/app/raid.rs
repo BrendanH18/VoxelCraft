@@ -41,9 +41,12 @@ impl Game {
                     let sound = crate::audio::sounds::Sound::Raid(Cue::Horn);
                     self.audio.play_in(crate::audio::SoundSource::Neutral, sound, Some(at), 1.0, (1.0, 1.0));
                 }
+                // Any other player's horn goes to that LAN guest with its
+                // next state (issue #98).
+                Outcome::Horn { player, at } => self.lan.horns.push((player, at)),
                 // VoxelCraft has no statistics or advancements yet
                 // (`Stats.RAID_TRIGGER`, `RAID_WIN`).
-                Outcome::Horn { .. } | Outcome::Triggered { .. } => {}
+                Outcome::Triggered { .. } => {}
             }
         }
     }
