@@ -16,12 +16,12 @@
 //! - Nether: around spawn (nether gold ore), the nearest fortress (Java's
 //!   pieces) and bastion, and a Nether fossil.
 //! - End: the central island out to the gateways, an outer-island stretch
-//!   with chorus, the nearest End city whole and the nearest one with a
-//!   ship whole.
+//!   with chorus, the nearest End city and a sampled city with a ship,
+//!   both whole.
 //!
-//! The test also checks that the set holds the content it is meant to
-//! pin, so a search that stops finding something fails here rather than
-//! pinning less.
+//! The test also checks for representative blocks and structure features in
+//! each dimension. The hashes cover changes to the sampled chunks and their
+//! located positions, including whether a location was found.
 
 use std::collections::HashSet;
 
