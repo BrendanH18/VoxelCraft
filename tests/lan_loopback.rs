@@ -165,7 +165,7 @@ fn long_books_from_a_guest_reach_the_host() {
     let writer = host.players.get_mut("Writer").unwrap();
     let selected = writer.selected;
     writer.session.inventory.slots[selected] = Some(Stack::new(WRITABLE_BOOK, 1));
-    // The largest upload the editor allows: every page full of three-byte
+    // The largest book the packet carries: every page full of three-byte
     // characters. (The headless harness sends no inventories back.)
     let pages = vec!["語".repeat(WRITABLE_PAGE_LENGTH); WRITABLE_MAX_PAGES];
     client.send(Packet::Book { pages: pages.clone(), title: None, offhand: false }).unwrap();
