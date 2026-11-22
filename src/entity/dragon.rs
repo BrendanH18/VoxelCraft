@@ -231,7 +231,7 @@ pub struct Fight {
     /// A saved ritual whose crystals (saved by position) are matched to
     /// the loaded ones on the next tick.
     respawn_saved: Option<(Stage, u32, Vec<DVec3>)>,
-    /// A crystal was placed in this End: `tryRespawn` at the next tick.
+    /// A crystal was placed in this End: `tryRespawn` once the podium is loaded.
     respawn_check: bool,
     /// The pillar crystals an older save recorded as a mask, before
     /// crystals were saved as entities (`None` once they are).
@@ -461,6 +461,7 @@ impl Fight {
         let unbuilt: u32 = fields.get(5).and_then(|g| g.parse().ok()).unwrap_or(0);
         fight.unbuilt = (0..20).filter(|i| unbuilt & (1 << i) != 0).collect();
         let sections: Vec<&str> = sections.collect();
+        fight.respawn_check = sections.contains(&"check_respawn");
         // The respawn ritual: `r stage time` then each crystal's feet.
         fight.respawn_saved = sections.iter().find_map(|r| {
             let mut f = r.strip_prefix("r ")?.split(' ');
@@ -511,8 +512,9 @@ impl Fight {
     }
 
     /// `state,previously_killed,health,-,gateways,unbuilt mask` then
-    /// `;a b c d e f` per gateway link and, during the respawn ritual,
-    /// `;r stage time x,y,z ...` with its crystals' feet. The state is 0
+    /// `;a b c d e f` per gateway link, `;check_respawn` for a pending
+    /// ritual check, and `;r stage time x,y,z ...` during the ritual.
+    /// The coordinates are the crystals' feet. The state is 0
     /// for dead, 1 alive, 2 dying (health holds the death's ticks so far)
     /// and 3 dead with the exit portal still to open. The fourth field was
     /// the pillar crystal mask before crystals were saved as entities.
@@ -528,6 +530,9 @@ impl Fight {
         let mut out = format!("{state},{},{health},{mask},{},{unbuilt}", self.previously_killed as u8, self.gateways);
         for (a, b) in &self.links {
             out += &format!(";{} {} {} {} {} {}", a.x, a.y, a.z, b.x, b.y, b.z);
+        }
+        if self.respawn_check {
+            out += ";check_respawn";
         }
         let saved = self.respawn.as_ref().map(|r| {
             let at: Vec<DVec3> = r.crystals.iter().filter_map(|&id| crystals.get(id)).map(|c| c.pos).collect();
@@ -600,8 +605,7 @@ impl Fight {
         }
     }
 
-    /// `EndCrystalItem.useOn` placed a crystal in this End: the next tick
-    /// tries to start the respawn ritual.
+    /// `EndCrystalItem.useOn` placed a crystal in this End: queue a ritual check.
     pub fn crystal_placed(&mut self) {
         self.respawn_check = true;
     }
@@ -619,8 +623,8 @@ impl Fight {
         if self.crystal_scan >= CRYSTAL_SCAN_TICKS {
             self.scan_crystals(crystals);
         }
-        if std::mem::take(&mut self.respawn_check) {
-            self.try_respawn(crystals, events);
+        if self.respawn_check {
+            self.try_respawn(world, crystals, events);
         }
         // `EnderDragonFight.tick` runs only while players are in the
         // fight's area and the arena is loaded.
@@ -732,10 +736,16 @@ impl Fight {
     /// `tryRespawn`: a crystal on each of the exit portal's four edges (in
     /// the cells three out from the pillar, one above the rim) starts the
     /// ritual with every crystal found there.
-    fn try_respawn(&mut self, crystals: &Crystals, events: &mut Vec<EntityEvent>) {
+    fn try_respawn<W: BlockSource + ?Sized>(&mut self, world: &W, crystals: &Crystals, events: &mut Vec<EntityEvent>) {
         if !self.dragon_dead() || self.respawn.is_some() {
+            self.respawn_check = false;
             return;
         }
+        // A reload can tick before the portal's chunks are available to close it.
+        if !loaded(world, self.podium, IVec3::new(4, 0, 4), -1..=3) {
+            return;
+        }
+        self.respawn_check = false;
         let center = self.podium + IVec3::Y;
         let mut found = Vec::new();
         // `Direction.Plane.HORIZONTAL`: north, east, south, west.
@@ -2124,6 +2134,87 @@ mod tests {
         e.settle_crystal_hits(&ctx(Vec::new()), &mut out);
         assert!(out.contains(&EntityEvent::ExitPortal { active: true }), "the ritual ends");
         assert!(e.fight.as_ref().unwrap().respawn.is_none());
+    }
+
+    #[test]
+    fn a_save_before_the_fight_ticks_preserves_the_ritual_start() {
+        use crate::{
+            inventory::Stack,
+            session::{
+                PlayerSession,
+                interact::{UseContext, Used},
+            },
+            world::{
+                World,
+                chunk::{ChunkData, chunk_of},
+                terrain::Generator,
+            },
+        };
+        use std::{collections::BTreeMap, sync::Arc};
+
+        let generator = Arc::new(Generator::for_dimension(11, Dimension::End));
+        let end = generator.end().unwrap();
+        let podium = end.podium();
+        let mut world = World::new_remote(Arc::clone(&generator), 2);
+        for x in [-4, 4] {
+            for z in [-4, 4] {
+                for y in [-1, 3] {
+                    let chunk = chunk_of(podium + IVec3::new(x, y, z));
+                    world.receive_chunk(chunk, Arc::new(ChunkData::Uniform(Block::AIR)));
+                }
+            }
+        }
+        world.set_exit_portal(true, false);
+        let mut entities = crate::entity::Entities::new(11);
+        entities.fight = Some(Fight::load(end, Some("0,1,0,-,1,0")));
+        let mut player = PlayerSession::new(PlayerId::HOST, DVec3::ZERO);
+        player.inventory.slots[0] = Some(Stack::new(crate::entity::crystal::END_CRYSTAL, 4));
+        for outward in [IVec3::NEG_Z, IVec3::X, IVec3::Z, IVec3::NEG_X] {
+            let base = podium + outward * 3;
+            let center = base.as_dvec3() + DVec3::splat(0.5);
+            player.player.pos = center + (outward * 2).as_dvec3() + DVec3::Y * 0.5;
+            let aim = center - player.player.eye();
+            player.player.yaw = aim.z.atan2(aim.x) as f32;
+            player.player.pitch = aim.y.atan2(aim.x.hypot(aim.z)) as f32;
+            let placed = player.use_held(0, &mut world, &mut entities, &UseContext { sneaking: false, others: &[] });
+            assert!(matches!(placed.unwrap().unwrap().used, Used::CrystalPlaced { .. }));
+        }
+        assert!(player.inventory.get(0).is_none());
+
+        let fight = entities.fight.as_ref().unwrap();
+        assert!(fight.respawn.is_none());
+        let mut props = BTreeMap::new();
+        entities.save_props(&mut props);
+        props.insert("dragon".into(), fight.serialize(&entities.crystals));
+
+        let mut reloaded = crate::entity::Entities::new(11);
+        reloaded.load_props(&props);
+        let mut fight = Fight::load(end, props.get("dragon").map(String::as_str));
+        fight.restore_crystals(&mut reloaded.crystals, props.contains_key("end_crystals"));
+        assert_eq!(reloaded.crystals.len(), 4);
+
+        let mut reloaded_world = World::new_remote(Arc::clone(&generator), 2);
+        let mut events = Vec::new();
+        let mut rng = Rng::new(9);
+        let ctx = ctx(vec![Target::new(PlayerId::HOST, player.player.pos, true)]);
+        fight.update(TICK, &reloaded_world, &ctx, &mut rng, &mut reloaded.crystals, &mut events);
+        assert!(fight.respawn.is_none(), "the ritual waits for the podium chunks");
+        assert!(!events.contains(&EntityEvent::ExitPortal { active: false }));
+
+        for (pos, chunk) in world.network_chunks(chunk_of(podium), 2) {
+            reloaded_world.receive_chunk(pos, chunk);
+        }
+        let portal = podium + IVec3::X;
+        assert_eq!(reloaded_world.get_block(portal), Some(Block::END_PORTAL));
+        fight.update(TICK, &reloaded_world, &ctx, &mut rng, &mut reloaded.crystals, &mut events);
+        let ritual = fight.respawn.as_ref().expect("the ritual starts as soon as the podium loads");
+        assert_eq!((ritual.stage, ritual.time, ritual.crystals.len()), (Stage::Start, 0, 4));
+        for event in events {
+            if let EntityEvent::ExitPortal { active } = event {
+                reloaded_world.set_exit_portal(active, false);
+            }
+        }
+        assert_eq!(reloaded_world.get_block(portal), Some(Block::AIR));
     }
 
     #[test]
