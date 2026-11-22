@@ -295,6 +295,18 @@ fn regions(rings: i32) -> impl Iterator<Item = IVec2> {
     })
 }
 
+/// Locates the first mesa mineshaft start around the nearest badlands.
+pub(super) fn mesa_mineshaft(g: &Generator) -> (IVec3, IVec2, Bounds) {
+    let badlands = g.nearest_biome(IVec2::ZERO, Biome::Badlands, 12_800).expect("badlands");
+    let home = chunk16(badlands);
+    let (start, shaft) = regions(64)
+        .find_map(|d| g.mineshafts.get(g, home + d).filter(|s| s.is_mesa()).map(|s| (home + d, s)))
+        .unwrap_or_else(|| panic!("no mesa mineshaft near the badlands at {badlands} on {}", g.seed));
+    let b = shaft.bounds;
+    let at = IVec3::new((b.min.x + b.max.x) / 2, b.min.y, (b.min.z + b.max.z) / 2);
+    (at, start, b)
+}
+
 /// Locates `family` on `g` (a generation 5 generator of its dimension).
 fn locate(family: &str, g: &Generator) -> Found {
     let seed = g.seed;
@@ -348,21 +360,8 @@ fn locate(family: &str, g: &Generator) -> Found {
             Found::new(at, Some(start), around_bounds(at, 96, rows(Dimension::Overworld)))
         }
         "mineshaft_mesa" => {
-            // `/locate` doesn't tell the two apart: the nearest start that
-            // builds a mesa shaft, ring by ring from the nearest badlands.
-            let badlands = g.nearest_biome(IVec2::ZERO, Biome::Badlands, 12_800).expect("badlands");
-            let home = chunk16(badlands);
-            let (start, shaft) = (0..=64)
-                .flat_map(|r| {
-                    (-r..=r)
-                        .flat_map(move |z| (-r..=r).map(move |x| IVec2::new(x, z)))
-                        .filter(move |p| p.abs().max_element() == r)
-                })
-                .find_map(|d| g.mineshafts.get(g, home + d).filter(|s| s.is_mesa()).map(|s| (home + d, s)))
-                .unwrap_or_else(|| panic!("no mesa mineshaft near the badlands at {badlands} on {seed}"));
-            let b = shaft.bounds;
-            let at = IVec3::new((b.min.x + b.max.x) / 2, b.min.y, (b.min.z + b.max.z) / 2);
-            Found::new(at, Some(start), b)
+            let (at, start, bounds) = mesa_mineshaft(g);
+            Found::new(at, Some(start), bounds)
         }
         "buried_treasure" => {
             let at = g.buried_treasure.nearest_buried_treasure(g, IVec3::ZERO, 400).expect("buried treasure");

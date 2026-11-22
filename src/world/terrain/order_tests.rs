@@ -144,7 +144,7 @@ fn corpus(generation: Generation) -> Vec<IVec3> {
 }
 
 /// Every chunk intersecting `bounds` grown by `margin` blocks.
-fn chunks_of(bounds: Bounds, margin: i32) -> impl Iterator<Item = IVec3> {
+pub(super) fn chunks_of(bounds: Bounds, margin: i32) -> impl Iterator<Item = IVec3> {
     let lo = (bounds.min - IVec3::splat(margin)).div_euclid(IVec3::splat(CHUNK_SIZE_I));
     let hi = (bounds.max + IVec3::splat(margin)).div_euclid(IVec3::splat(CHUNK_SIZE_I));
     (lo.z..=hi.z).flat_map(move |z| (lo.x..=hi.x).flat_map(move |x| (lo.y..=hi.y).map(move |y| IVec3::new(x, y, z))))
@@ -178,7 +178,7 @@ fn generation_5_corpus(g: &Generator) -> Vec<IVec3> {
 
 /// The first sulfur spring of the sulfur caves near the origin, searched
 /// site by site (each cave region is small).
-fn sulfur_spring(g: &Generator) -> crate::world::sulfur_springs::Spring {
+pub(super) fn sulfur_spring(g: &Generator) -> crate::world::sulfur_springs::Spring {
     let per = CHUNK_SIZE_I / 16;
     for oz in -3i32..=3 {
         for ox in -3i32..=3 {

@@ -1548,6 +1548,18 @@ requirement inventory is refreshed. The offscreen frame-time run, which
 needs the reference Mac, and the owner's play remain
 ([integration](verification/2026-11-21-v0.16-wave-2-integration.md)).
 
+*Stabilization (owner-approved, 2026-11-21):* the generation 5 [golden
+test](../src/world/terrain/golden_v5.rs) pins block IDs, structure locations
+and features in 3,377 chunks across two seeds and all three dimensions
+(GEN-07). The Overworld, Nether and End contribute 663, 377 and 628 chunks
+on seed 12345, and 720, 317 and 672 on seed 42. The
+[dragon fight](../src/entity/dragon.rs) saves a pending ritual
+start after the fourth End crystal is placed. After reload it waits for the
+podium chunks before closing the portal and starting the ritual (PRO-05).
+The save regression covers shared item placement through reload and portal
+closure. Saves that already lost the request still need a crystal placement
+to queue another check.
+
 ### M4 — A complete living world
 
 Close MOB, FOO and relevant ENV rules: animals and companions, villagers/

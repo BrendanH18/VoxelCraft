@@ -39,6 +39,8 @@ mod density;
 #[cfg(test)]
 mod gen5_tests;
 #[cfg(test)]
+mod golden_v5;
+#[cfg(test)]
 mod m3_corpus;
 #[cfg(test)]
 mod order_tests;
@@ -86,7 +88,8 @@ pub enum Generation {
     /// sulfur, abandoned camps, nether gold ore, and Java's piece rules for
     /// dungeons, mineshafts, strongholds, fortresses, shipwrecks and
     /// monuments. Generation 4's Overworld, Nether and End output is pinned
-    /// by `generation_4_chunk_hashes_stay_identical`.
+    /// by `generation_4_chunk_hashes_stay_identical`, and generation 5's
+    /// own by `generation_5_chunk_hashes_stay_identical`.
     V5 = 5,
 }
 
