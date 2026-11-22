@@ -56,7 +56,7 @@ Docs: https://docs.boat.dev/llms.txt. Prices and limits: run `boat limits`; neve
   owner's projects share one Boat account. A sandbox an agent creates by hand
   passes `--name voxelcraft-<purpose>` and is never left unnamed;
   `boat-check.sh` names its own (`voxelcraft-check-<worktree>`,
-  `voxelcraft-warm-build`).
+  `voxelcraft-warm-build-<time>-<pid>`).
 - Rust builds and tests, while iterating and at hand-off, run through
   `scripts/boat-check.sh` (see [Boat checks](docs/development.md#boat-checks)):
   `-- 'cargo test --profile ci <filter>'` while working,
@@ -99,10 +99,14 @@ Docs: https://docs.boat.dev/llms.txt. Prices and limits: run `boat limits`; neve
   only. Each worktree has one long-lived sandbox, reused by every
   `boat-check.sh` run (owner, 2026-11-21; it replaces one `boat run` per
   check, which used a daily start each): created from the warm snapshot when
-  one exists, it keeps cargo's target directory between checks, stops itself
-  after an idle timeout set by its size (owner, 2026-11-21: about 15
-  minutes on `default` and `large`, 5 on `xlarge`, `VC_BOAT_IDLE` to
-  override) and is deleted with `--done`. Checks use `large` sandboxes
+  one exists, it keeps cargo's target directory between checks, stops as
+  soon as each check ends (owner, 2026-11-22; it replaces the 2026-11-21
+  idle timeouts of 15 minutes, 5 on `xlarge`: a stopped sandbox bills
+  nothing, and a resume within 10 minutes of the stop takes back the same
+  machine without a start; `VC_BOAT_IDLE` to keep it up longer) and is
+  deleted with `--done`. While a check runs, its auto-stop is kept 30
+  minutes ahead by a loop that ends with the script (owner, 2026-11-22), so
+  a killed check stops within 30 minutes. Checks use `large` sandboxes
   (owner, 2026-11-21): measured, `xlarge` was slower for this build at
   about 2.8 times the price. Never share
   a sandbox between agents: agents in one worktree each set `VC_BOAT_SLOT`.
