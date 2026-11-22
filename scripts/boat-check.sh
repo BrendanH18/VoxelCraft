@@ -76,7 +76,8 @@ lock=$state_dir/lock${slot:+-$slot}
 # another clone with the same directory name and slot made.
 name="voxelcraft-check-$(basename "$PWD" | tr -c 'A-Za-z0-9_\n-' '-' | cut -c1-80)${slot:+-$slot}"
 
-id=""
+id="" new_id=""
+out_file=$state_dir/out${slot:+-$slot}-$$
 extended=0 keepalive="" job="" creating="" build="" saving=0 locked=0 tree=""
 end_job() {   # end_job PID: a background job and its children
     [ -n "$1" ] || return 0
@@ -86,11 +87,21 @@ end_job() {   # end_job PID: a background job and its children
 stop_keepalive() { end_job "$keepalive"; keepalive=""; }   # the keepalive loop and its sleep
 # stop_now, park and cleanup run from the exit trap.
 # shellcheck disable=SC2329
-# stop_now ID: stop a sandbox; if Boat refuses, auto-stop a minute away still stops it.
+# stop_now ID: stop a sandbox. If Boat refuses, set its auto-stop a minute away instead and
+# return 1; if Boat refuses that too, return 2: its last auto-stop (up to $budget s) stands.
 stop_now() {
     boat stop "$1" --json >/dev/null 2>&1 && return 0
-    boat extend "$1" --ttl 60 --json >/dev/null 2>&1 || true
-    return 1
+    boat extend "$1" --ttl 60 --json >/dev/null 2>&1 && return 1
+    return 2
+}
+# shellcheck disable=SC2329
+# left_running ID RC FIX: say what a failed stop_now (RC) left, and the command FIX to run.
+left_running() {
+    if [ "$2" = 1 ]; then
+        echo "boat-check: couldn't stop $1, so its auto-stop is now a minute away: $3" >&2
+    else
+        echo "boat-check: couldn't stop $1 or move its auto-stop up, so it runs until its last auto-stop (up to $budget s): $3" >&2
+    fi
 }
 # shellcheck disable=SC2329
 # park ID: stop the check sandbox, or with VC_BOAT_IDLE set, set its auto-stop that far ahead.
@@ -99,7 +110,9 @@ park() {
         boat extend "$1" --ttl "$idle" --json >/dev/null 2>&1 \
             || echo "boat-check: couldn't set auto-stop on $1: boat extend $1 --ttl $idle" >&2
     else
-        stop_now "$1" || echo "boat-check: couldn't stop $1 (auto-stop is a minute away): boat stop $1" >&2
+        local rc=0
+        stop_now "$1" || rc=$?
+        [ "$rc" = 0 ] || left_running "$1" "$rc" "boat stop $1"
     fi
 }
 # shellcheck disable=SC2329
@@ -108,6 +121,7 @@ cleanup() {
     trap '' INT TERM HUP   # a second Ctrl-C must not cut the cleanup short
     stop_keepalive
     end_job "$job"
+    rm -f "$out_file"
     # Interrupted while Boat made a sandbox: it may exist with no id here yet, so find it by
     # its name, in any state but stopped (Boat's state groups don't name every starting state),
     # taking the newest, so an older stopped sandbox of the name is never picked.
@@ -125,14 +139,17 @@ cleanup() {
     # running (an unfinished save needs its source; a stopped sandbox costs nothing).
     if [ -n "$build" ]; then
         if [ "$saving" = 1 ]; then
-            if stop_now "$build"; then
+            rc=0
+            stop_now "$build" || rc=$?
+            if [ "$rc" = 0 ]; then
                 echo "boat-check: stopped the build sandbox $build; once boat snapshots shows $snapshot ready from it: boat delete $build --yes" >&2
             else
-                echo "boat-check: couldn't stop the build sandbox (auto-stop is a minute away): boat stop $build, then once boat snapshots shows $snapshot ready from it: boat delete $build --yes" >&2
+                left_running "$build" "$rc" "boat stop $build, then once boat snapshots shows $snapshot ready from it: boat delete $build --yes"
             fi
         elif ! boat delete "$build" --yes --json >/dev/null 2>&1; then
-            boat extend "$build" --ttl 60 --json >/dev/null 2>&1 || true
-            echo "boat-check: couldn't delete the build sandbox (auto-stop is a minute away): boat delete $build --yes" >&2
+            rc=1
+            boat extend "$build" --ttl 60 --json >/dev/null 2>&1 || rc=2
+            left_running "$build" "$rc" "boat delete $build --yes"
         fi
     fi
     [ -z "$tree" ] || rm -rf "$tree"
@@ -198,11 +215,18 @@ start_failed() {
 # the start limits, so retry it a few times. A failed attempt can leave Boat finishing a resume for
 # a moment ("resume already in progress"), which a retry also waits out (as jev_fsd's script does),
 # and a resume Boat can't yet match to a stop in progress fails with sandbox_stopping until it can.
+# Each call runs in the background and is waited on, so a signal reaches the cleanup at once
+# rather than after the call (a create waits until the sandbox is ready).
 fast_start() {   # fast_start WHAT boat ARGS...; leaves the output in $out
-    local what=$1 attempt
+    local what=$1 attempt rc
     shift
     for attempt in 1 2 3 4 5 6; do
-        if out=$("$@" --fail-fast --json 2>&1); then return 0; fi
+        "$@" --fail-fast --json >"$out_file" 2>&1 </dev/null &
+        job=$!
+        rc=0; wait "$job" || rc=$?
+        job=""
+        out=$(cat "$out_file" 2>/dev/null || true)
+        if [ "$rc" = 0 ]; then return 0; fi
         case "$out" in
             *no_ready_machine*) [ "$attempt" = 6 ] || echo "boat-check: no machine ready for $what; trying again in 10 s" >&2 ;;
             *"already in progress"*|*sandbox_stopping*) [ "$attempt" = 6 ] || echo "boat-check: Boat is still busy with $what; trying again in 10 s" >&2 ;;
@@ -212,17 +236,17 @@ fast_start() {   # fast_start WHAT boat ARGS...; leaves the output in $out
     done
     return 1
 }
-# new_sandbox NAME [boat new ARGS...]: prints the new sandbox's id. Set creating=NAME around
-# it, so a run interrupted before the id comes back still finds the sandbox and cleans it up.
+# new_sandbox NAME [boat new ARGS...]: sets new_id to the new sandbox's id. Set creating=NAME
+# around it, so a run interrupted before the id comes back still finds the sandbox and cleans
+# it up. It runs in this shell, not $(...), so a signal interrupts it at once.
 new_sandbox() {
-    local sandbox_name=$1 new_id
+    local sandbox_name=$1
     shift
     # --no-env: none of the account's stored secrets or logins go in.
     fast_start "a new sandbox" boat new --no-env --type "$type" --ttl "$budget" --name "$sandbox_name" "$@" \
         || start_failed "creating a sandbox" "$out"
     new_id=$(printf '%s\n' "$out" | jq -r 'select(.event == "ready") | .id // empty' 2>/dev/null | head -n 1 || true)
     [ -n "$new_id" ] || start_failed "creating a sandbox" "$out"
-    echo "$new_id"
 }
 
 # Runs in the sandbox as `bash -c`: $1 mode (checks, full, cmd or build), $2 push directory,
@@ -340,7 +364,7 @@ case "$action" in
         echo "boat-check: building $snapshot from origin's default branch ($(git rev-parse --short "$base")) in a fresh sandbox" >&2
         # A name only this run uses, so an interrupted create is found and deleted.
         creating="voxelcraft-${snapshot#voxelcraft-}-build-$(date +%Y%m%d-%H%M%S)-$$"
-        build=$(new_sandbox "$creating")
+        new_sandbox "$creating"; build=$new_id
         creating=""
         push=$(push_dir)
         boat push "$build" "$tree" --to "$push" >/dev/null
@@ -453,7 +477,7 @@ if [ -z "$state" ]; then
     fi
     creating="$name-$(date +%Y%m%d-%H%M%S)-$$"
     echo "boat-check: creating $creating" >&2
-    id=$(new_sandbox "$creating" ${from[@]+"${from[@]}"})
+    new_sandbox "$creating" ${from[@]+"${from[@]}"}; id=$new_id
     echo "$id" > "$id_file"
     creating=""
 fi
