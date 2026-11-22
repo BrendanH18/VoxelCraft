@@ -71,7 +71,9 @@ state_dir=$(git rev-parse --path-format=absolute --git-path boat-check)
 mkdir -p "$state_dir"
 id_file=$state_dir/sandbox${slot:+-$slot}
 lock=$state_dir/lock${slot:+-$slot}
-# Every sandbox says which project it belongs to (owner, 2026-11-21).
+# Every sandbox says which project it belongs to (owner, 2026-11-21). Each creation adds the
+# time and this run's pid, so an interrupted create finds only the sandbox it made, never one
+# another clone with the same directory name and slot made.
 name="voxelcraft-check-$(basename "$PWD" | tr -c 'A-Za-z0-9_\n-' '-' | cut -c1-80)${slot:+-$slot}"
 
 id=""
@@ -449,15 +451,15 @@ if [ -z "$state" ]; then
     else
         echo "boat-check: no ready $snapshot snapshot, so this sandbox starts bare and builds everything; --save makes one" >&2
     fi
-    echo "boat-check: creating $name" >&2
-    creating=$name
-    id=$(new_sandbox "$name" ${from[@]+"${from[@]}"})
+    creating="$name-$(date +%Y%m%d-%H%M%S)-$$"
+    echo "boat-check: creating $creating" >&2
+    id=$(new_sandbox "$creating" ${from[@]+"${from[@]}"})
     echo "$id" > "$id_file"
     creating=""
 fi
 extended=1   # from here on, the exit trap stops the sandbox
 boat extend "$id" --ttl "$budget" --json >/dev/null
-echo "boat-check: sandbox $id ($name)" >&2
+echo "boat-check: sandbox $id" >&2
 
 # Push into a fresh directory; the remote script syncs it into the checkout.
 push=$(push_dir)

@@ -68,8 +68,10 @@ scripts/boat-check.sh --save   # rebuild the warm snapshot from origin's default
 ```
 
 Each worktree has one long-lived sandbox (owner, 2026-11-21), named
-`voxelcraft-check-<worktree>`, because the Boat account's daily starts are
-shared by every project and one `boat run` per check used a start each. The
+`voxelcraft-check-<worktree>-<time>-<pid>` (unique to the run that made it,
+so an interrupted create cleans up only its own sandbox), because the Boat
+account's daily starts are shared by every project and one `boat run` per
+check used a start each. The
 first check creates it from the saved snapshot `voxelcraft-warm`
 (`VC_BOAT_SNAPSHOT`), or bare when there is none, and records its id in the
 worktree's git directory (`.git/.../boat-check/`). Every later check reuses

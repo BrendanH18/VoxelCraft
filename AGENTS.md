@@ -55,7 +55,7 @@ Docs: https://docs.boat.dev/llms.txt. Prices and limits: run `boat limits`; neve
 - Every sandbox says which project it belongs to (owner, 2026-11-21): all the
   owner's projects share one Boat account. A sandbox an agent creates by hand
   passes `--name voxelcraft-<purpose>` and is never left unnamed;
-  `boat-check.sh` names its own (`voxelcraft-check-<worktree>`,
+  `boat-check.sh` names its own (`voxelcraft-check-<worktree>-<time>-<pid>`,
   `voxelcraft-warm-build-<time>-<pid>`).
 - Rust builds and tests, while iterating and at hand-off, run through
   `scripts/boat-check.sh` (see [Boat checks](docs/development.md#boat-checks)):
