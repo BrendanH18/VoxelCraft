@@ -107,10 +107,11 @@ cleanup() {
     stop_keepalive
     end_job "$job"
     # Interrupted while Boat made a sandbox: it may exist with no id here yet, so find it by
-    # its name, which only this run uses.
+    # its name, in any state but stopped (Boat's state groups don't name every starting state),
+    # taking the newest, so an older stopped sandbox of the name is never picked.
     if [ -n "$creating" ]; then
-        made=$(boat list --filter rpe --json 2>/dev/null \
-            | jq -r --arg n "$creating" '.sandboxes[]? | select(.name == $n) | .id' 2>/dev/null | head -n 1)
+        made=$(boat list --all --json 2>/dev/null | jq -r --arg n "$creating" \
+            '[.sandboxes[]? | select(.name == $n and .state != "stopped")] | sort_by(.createdAt // "") | last | .id // empty' 2>/dev/null)
         if [ -z "$made" ]; then :
         elif [ "$action" = save ]; then build=$made
         else id=$made extended=1; echo "$id" > "$id_file"
@@ -424,9 +425,10 @@ case "$state" in
             resize=(--type "$type")
             echo "boat-check: resuming $id as $type (it was ${size:-of unknown size}; a new size uses a start)" >&2
         fi
+        extended=1   # before the resume, so an interruption once it has started still stops it
         if ! fast_start "resuming $id" boat resume "$id" --no-env ${resize[@]+"${resize[@]}"} --ttl "$budget"; then
             case "$out" in
-                *snapshot_data_expired*) echo "boat-check: $id can't be resumed (its data expired); making a new one" >&2; state="" ;;
+                *snapshot_data_expired*) echo "boat-check: $id can't be resumed (its data expired); making a new one" >&2; state="" extended=0 ;;
                 *) start_failed "resuming $id" "$out" ;;
             esac
         fi ;;
@@ -460,6 +462,7 @@ echo "boat-check: sandbox $id ($name)" >&2
 # Push into a fresh directory; the remote script syncs it into the checkout.
 push=$(push_dir)
 boat push "$id" . --to "$push" >/dev/null
+boat extend "$id" --ttl "$budget" --json >/dev/null   # a slow push mustn't eat into the first renewal
 status=0
 run_remote "$id" "$mode" "$push" "$cmd" || status=$?
 exit "$status"
