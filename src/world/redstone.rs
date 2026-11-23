@@ -220,8 +220,7 @@ impl World {
         if let Some(ticks) = self.redstone.suspended.remove(&c) {
             self.redstone.scheduled.extend(ticks);
         }
-        // Saved state needs its connections refreshed once when loaded, including
-        // adjacent chunks. Generation never places redstone components.
+        // Modified chunks restore the block-entity-like state below.
         let Some(slot) = self.chunks.get(&c) else { return };
         if !slot.modified {
             return;
@@ -234,21 +233,13 @@ impl World {
             if super::lightning::rod(b).is_some() {
                 self.track_lightning_rod(c * CHUNK_SIZE_I + local, Block::AIR, b);
             }
-            if r::component(b).is_some()
-                || b.is_door()
-                || b.is_gate()
-                || b.is_rail()
-                || super::gadgets::participates(b)
-                || b.base() == Block::BELL
-                || super::copper::bulb(b).is_some()
-            {
+            // Java re-evaluates nothing when a chunk loads: a BUD stays
+            // untriggered and a burned-out torch stays out. Only a powered
+            // observer whose old save lost its scheduled tick gets one, so
+            // it can still fall.
+            if matches!(r::component(b), Some(Component::Observer { on: true, .. })) {
                 let p = c * CHUNK_SIZE_I + local;
-                self.queue_refresh(p);
-                // A powered observer needs its falling edge even if an old
-                // save did not carry the scheduled tick.
-                if matches!(r::component(b), Some(Component::Observer { on: true, .. }))
-                    && !self.redstone.pending.contains_key(&p)
-                {
+                if !self.redstone.pending.contains_key(&p) {
                     self.schedule_redstone(p, 2, priority::NORMAL);
                 }
             }
@@ -1379,13 +1370,8 @@ impl World {
         for (p, power) in &self.redstone.comparator {
             entries.push(format!("c,{},{},{},{}", p.x, p.y, p.z, power));
         }
-        for (p, history) in &self.redstone.toggles {
-            for t in history {
-                if self.redstone.tick - t <= 60 {
-                    entries.push(format!("h,{},{},{},{}", p.x, p.y, p.z, self.redstone.tick - t));
-                }
-            }
-        }
+        // `RedstoneTorchBlock.RECENT_TOGGLES` lives in memory only, as in
+        // Java: a restart forgets it (older saves' `h` entries still load).
         for p in &self.redstone.powered {
             entries.push(format!("p,{},{},{}", p.x, p.y, p.z));
         }
@@ -2061,10 +2047,12 @@ mod tests {
         let save = w.redstone_to_string();
         assert!(save.starts_with("v2,"), "{save}");
         restored.load_redstone(&save);
-        assert_eq!(restored.redstone.toggles, w.redstone.toggles);
+        // Java never saves `RECENT_TOGGLES`: a reload starts with no history.
+        assert!(restored.redstone.toggles.is_empty());
+        restored.redstone.toggles = w.redstone.toggles.clone();
         restored.load_redstone("broken");
         assert_eq!(restored.redstone.toggles, w.redstone.toggles);
-        // A v1 save's burnout deadline is dropped; its history and pending tick carry it.
+        // A v1 save's burnout deadline is dropped; its history and pending tick still load.
         restored.load_redstone("v1,40,3|b,8,145,8,120|h,8,145,8,2");
         assert_eq!(restored.redstone.tick, 40);
         assert_eq!(restored.redstone.toggles[&AT], VecDeque::from([38]));
