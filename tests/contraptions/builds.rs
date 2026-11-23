@@ -116,8 +116,6 @@ fn repeater_loop_clock() {
 /// pulse (off at 28); the burnout torch, placed in set-up, first turns off
 /// at tick 2.
 #[test]
-#[ignore = "needs Track A: VoxelCraft queues the neighbour updates of a player's edit to the next tick's drain, \
-            so everything a player starts happens a tick late (repeater on at 9 with a 19-tick pulse, torch off at 3)"]
 fn player_actions_take_effect_at_once() {
     let loop_run = run(&repeater_loop(), Cut::None);
     let east = rises(&bools(&loop_run, 0, is(r::repeater(Facing::East, 4, true))));
@@ -131,11 +129,13 @@ fn player_actions_take_effect_at_once() {
 
 /// Two observers facing each other.
 ///
-/// Java (`ObserverBlock.tick`, `startSignal`; `LevelTicks` drains a tick's
-/// due ticks before running them, so `hasScheduledTick` is false for a tick
-/// already running): placing B in front of A schedules A 2 ticks later.
-/// Each observer is then on for 2 and off for 2 ticks, in antiphase: A
-/// from tick 2, B from tick 4.
+/// Java (`ObserverBlock.tick`, `startSignal`): placing B in front of A
+/// schedules A 2 ticks later. A's on-tick sets its state (the shape update
+/// schedules B) before it schedules its own off-tick, so B's tick runs
+/// first 2 ticks later and each observer is on for 2 and off for 4 ticks:
+/// A from tick 2, B from tick 4, period 6. Checked on the vanilla 26.3
+/// server (2026-11-23, Track A: `/tick freeze`, `/tick step 1`): once
+/// running, A was on at ticks 8-9 and 14, B at 6-7 and 12-13.
 fn observer_clock() -> Spec {
     Spec {
         name: "observer_clock",
@@ -152,8 +152,8 @@ fn verify_observer_clock(run: &Run) -> Result<(), String> {
     let a = bools(run, 0, is(r::observer(2, true)));
     let b = bools(run, 1, is(r::observer(3, true)));
     for m in 1..=run.lines.len() as u64 {
-        let want_a = m >= 2 && (m - 2) % 4 < 2;
-        let want_b = m >= 4 && (m - 4) % 4 < 2;
+        let want_a = m >= 2 && (m - 2) % 6 < 2;
+        let want_b = m >= 4 && (m - 4) % 6 < 2;
         let (got_a, got_b) = (a[m as usize - 1], b[m as usize - 1]);
         ensure(got_a == want_a && got_b == want_b, || {
             format!("tick {m}: A {got_a} B {got_b}, Java A {want_a} B {want_b}")
@@ -163,9 +163,6 @@ fn verify_observer_clock(run: &Run) -> Result<(), String> {
 }
 
 #[test]
-#[ignore = "needs Track A: Java drains a tick's due ticks before running them (LevelTicks.tick), so an observer \
-            whose own tick is due this tick is not 'scheduled' and reschedules; VoxelCraft treats it as pending and \
-            the clock runs at period 6 (2 on, 4 off) instead of 4"]
 fn observer_clock_pulses() {
     check(&observer_clock(), verify_observer_clock);
 }
@@ -332,9 +329,6 @@ fn verify_torch_burnout(run: &Run) -> Result<(), String> {
 }
 
 #[test]
-#[ignore = "needs Track A: Java keeps one scheduled tick per block and position (LevelChunkTicks.schedule), so the \
-            burnout's 160-tick restart is dropped behind the 2-tick check its own neighbour update scheduled, and \
-            the torch stays out; VoxelCraft relights it 160 ticks later"]
 fn torch_burnout_stays_out() {
     check(&torch_burnout(), verify_torch_burnout);
 }
@@ -348,8 +342,6 @@ fn torch_burnout_survives_unload_and_restart() {
 /// a `WeakHashMap` per level that nothing saves): after a restart the
 /// torch needs eight fresh turn-offs before it burns out.
 #[test]
-#[ignore = "needs Track A: Java's torch toggle history (RedstoneTorchBlock.RECENT_TOGGLES) is never saved, so a \
-            restart mid-toggling restarts the count; VoxelCraft saves it in the redstone property's `h` entries"]
 fn torch_burnout_history_is_not_saved() {
     let spec = torch_burnout();
     let run = run(&spec, Cut::Restart(12));
@@ -1190,9 +1182,6 @@ fn verify_bud_switch(run: &Run) -> Result<(), String> {
 }
 
 #[test]
-#[ignore = "needs Track A: Java notifies only the six direct neighbours of a changed block \
-            (Level.updateNeighborsAt), so a quasi-powered piston waits for a direct update; VoxelCraft wakes a \
-            two-block neighbourhood and the piston extends as soon as the redstone block is placed"]
 fn bud_switch_waits_for_an_update() {
     check(&bud_switch(), verify_bud_switch);
 }
@@ -1273,9 +1262,10 @@ fn verify_t_flip_flop(run: &Run) -> Result<(), String> {
 }
 
 #[test]
-#[ignore = "needs Track A: Java runs the torch's tick, scheduled during the observer's on-tick, before the \
-            observer's own off-tick 2 ticks later, so a 2-tick pulse turns the torch off; VoxelCraft delivers the \
-            observer's update a tick late and the torch never sees the pulse"]
+#[ignore = "the build doesn't toggle in Java either: the observer's on-tick schedules its off-tick before \
+            updateNeighborsInFront reaches the torch, so the off-tick runs first and a redstone torch never sees a \
+            2-tick observer pulse (checked on the vanilla 26.3 server, 2026-11-23, Track A: observer -> stone -> \
+            wall torch, the torch stayed lit through every pulse); it needs a longer pulse (Track F)"]
 fn t_flip_flop_toggles() {
     check(&t_flip_flop(), verify_t_flip_flop);
 }
