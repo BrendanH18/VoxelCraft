@@ -27,7 +27,7 @@ impl World {
         if !self.get_block(p).is_some_and(|b| super::decorated_pot_of(b).is_some()) {
             return false;
         }
-        match self.utilities.decorated.get_mut(&p) {
+        let added = match self.utilities.decorated.get_mut(&p) {
             None => {
                 self.utilities.decorated.insert(p, one);
                 true
@@ -37,7 +37,12 @@ impl World {
                 true
             }
             Some(_) => false,
+        };
+        // `BlockEntity.setChanged` wakes comparators reading the pot.
+        if added {
+            self.redstone_changed(p);
         }
+        added
     }
 
     /// Puts `contents` in the chest table at `p` for a screen (an ender

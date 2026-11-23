@@ -143,16 +143,19 @@ used, stepped on or hit by arrows, and goes dark on a random tick like Java's
 `RedStoneOreBlock.randomTick` (no fixed expiry; lighting a lit ore schedules
 nothing); stone/deepslate ore harvest and fortune rules remain.
 
-Daylight detectors update every 20 ticks and invert on use. They use VoxelCraft's
-existing day clock and heightmap exposure; sun-angle easing and diffuse sky
-light beneath transparent roofs are approximated. In sky-less dimensions they
-produce no power. Chests, furnaces and brewing stand contents notify comparators
+Daylight detectors update every 20 ticks and invert on use. They follow
+`DaylightDetectorBlock.updateSignalStrength`: propagated sky light at the
+detector minus the shared `skyDarken`, then, unless inverted, scaled by the
+cosine of the sun angle eased 20% toward noon or midnight and rounded
+(`simulation::lighting::daylight_detector_power`). Dimensions without
+skylight read 0, so an inverted detector there gives 15. Chests, furnaces and brewing stand contents notify comparators
 on player mutations and processing completion. Container UI slot changes must
 use the mutable world accessor to issue those notifications.
 
 Every core component has its vanilla shaped/shapeless recipe; target crafting
-adds hay bales (nine wheat, reversible). Oak, pale oak, bamboo, crimson and warped
-buttons, plates and trapdoors exist; the other overworld woods' do not. Door hinges,
+adds hay bales (nine wheat, reversible). Every Java 26.3 button, pressure
+plate, trapdoor, door and fence gate exists (all woods, stone, polished
+blackstone, iron and copper; see [component inventory](#component-inventory-v017-track-e2)). Door hinges,
 waterlogging and floor/ceiling switch horizontal orientation are simplified. Hay bales multiply landing damage by
 0.2f before flooring, as in Java 26.3 `HayBlock.fallOn` and
 `LivingEntity.calculateFallDamage` (pinned in `building.json`, including threshold
@@ -190,7 +193,9 @@ placement, through the same host/pad/CLI placement path.
 Observers watch shape updates from their front face, delay two game ticks, then
 emit strength 15 from their rear for two ticks. Repeated changes during a
 pending/on pulse do not retrigger it. Container-only mutations do not count as
-block state changes.
+block state changes. Fire ageing does: `FireBlock.tick` writes the new age
+with flags 260, which still update neighbour shapes, so an observer facing
+fire sees it age (v0.17 Track E2).
 
 Sources: [PistonStructureResolver](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/piston/PistonStructureResolver.java),
 [PistonBaseBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/piston/PistonBaseBlock.java),
@@ -464,11 +469,16 @@ attach 0.7, detach about 1.2) through the existing procedural click. The particl
 class and tripwire sounds are client resources absent from the server jar, so
 the note colour and lifetime follow the documented client behaviour.
 
-Known gaps: mob-head instruments above the note block are absent (there are no
-mob heads). Procedural instruments are original
-approximations of the Java timbres. Substrate mapping covers the sixteen
-canonical blocks and common existing wood/stone forms, but is not a complete
-Java block-tag table. Tripwire geometry does not yet visibly sag when detached.
+A mob head above the note block sets its instrument (since v0.16): the note
+plays the mob's sound at pitch 1 with no particle, as `NoteBlock` does for
+`NoteBlockInstrument`'s mob-head entries; a player head without a
+`note_block_sound` plays nothing. Known gaps: procedural instruments are
+original approximations of the Java timbres. Substrate mapping covers the
+sixteen canonical blocks and common existing wood/stone forms, but is not a
+complete Java block-tag table. Java 26.3's tripwire models
+(`tripwire_ns` and `tripwire_attached_ns` in the client jar) put the string at
+the same height, 1.5/16, whether attached or not, and only use a different
+strip of the texture; the game draws one texture for both.
 
 Research: [NoteBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/NoteBlock.java),
 [TripWireBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/TripWireBlock.java),
@@ -486,3 +496,39 @@ On the Apple M5, three final `--bench --rd 8` runs had median generation
 baseline runs measured 0.227 and 0.727 ms/chunk; timings show no regression.
 Local inspected captures: `target/redstone-review/rails-carts.png`,
 `rails-close.png`, `notes-tripwire.png` and `tripwire-close.png` in that directory.
+
+
+## Component inventory (v0.17 Track E2)
+
+[`redstone_components.json`](../tests/fixtures/java/26.3/redstone_components.json)
+lists the 237 Java 26.3 blocks (75 classes) that emit power, are read by
+comparators or react to power, extracted from the jar by
+[`tools/extract_java_redstone_component_fixtures.py`](../tools/extract_java_redstone_component_fixtures.py).
+[`world::redstone_catalogue`](../src/world/redstone_catalogue.rs) gives the
+game's role for every block state from the same predicates the engine
+dispatches on, and [`tests/redstone_components.rs`](../tests/redstone_components.rs)
+compares the two both ways with no recorded exceptions: every Java
+component resolves to a game block with the same source, strong, analog and
+reads-power columns (or is a listed registry gap: the command, structure
+and test blocks, and the crafter that v0.17 Track C1 adds), and every game
+block state with a role is a Java component.
+
+Comparators read these state-only outputs (`getAnalogOutputSignal`): cake
+`(7 - bites) * 2`, candle cakes 14, a cauldron's level (lava 3, empty 0),
+a respawn anchor `floor(charges / 4 * 15)` and an end portal frame 15 with
+an eye. A decorated pot reads as a one-slot container and wakes adjacent
+comparators when an item goes in. Beehives and bee nests give their honey
+level, the composter its level, the copper golem statue its pose plus one,
+the copper bulb 15 when lit, the jukebox its disc's output, the lectern its
+page fraction, the creaking heart its state, shelves their filled-slot bits
+from behind, chiseled bookshelves their last used slot plus one, and item
+frames their rotation. Ender chests have no comparator output.
+
+Scenarios cover every button's press length (from the registration's
+constructor argument: 30 ticks for wood, 20 for stone and polished
+blackstone), every door, trapdoor and fence gate following power, levers,
+the redstone block's weak-only output, the lamp's 4-tick off delay, copper
+bulbs toggling on rising edges with no delay (Java 26.3 `CopperBulbBlock`
+schedules no tick), lightning rods' 8-tick pulse, targets, trapped chests,
+jukeboxes, note blocks under mob heads, TNT, iron doors, redstone ore and
+observers seeing fire age.

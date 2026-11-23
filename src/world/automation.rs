@@ -122,6 +122,16 @@ impl World {
         }
     }
 
+    /// An observer watches state changes on precisely its front face
+    /// (`ObserverBlock.updateShape` from its `FACING` side, while unpowered).
+    /// `BlockBehaviour.updateNeighbourShapes` for a change that skips the
+    /// rest of the edit path (fire ageing): observers facing `p` see it.
+    pub(super) fn notify_observers(&mut self, p: IVec3) {
+        for d in super::redstone_order::UPDATE_SHAPE_ORDER {
+            self.neighbor_shape_changed(p + d, -d);
+        }
+    }
+
     pub(super) fn automation_update(&mut self, p: IVec3, b: Block) {
         match r::component(b) {
             Some(Component::Dispenser { .. }) => {
