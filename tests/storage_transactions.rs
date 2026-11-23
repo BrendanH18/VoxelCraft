@@ -679,7 +679,8 @@ impl Harness {
         };
         self.world.set_shulker_viewers(&open);
         self.world.set_chest_viewers(open);
-        simulation::tick_world(&mut self.world, self.center);
+        // The world rules, then the entity pass with the hoppers, as the game does.
+        simulation::tick_world_rules(&mut self.world, self.center, true, 3);
         for (p, before) in stands {
             if before == 0 && self.world.brewing_stand(p).is_some_and(|b| b.fuel_left == brewing::FUEL_USES) {
                 self.burned_powder += 1;

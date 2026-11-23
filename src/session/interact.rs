@@ -41,6 +41,7 @@ pub enum Used {
     /// it took the held coal or charcoal (`MinecartFurnace.interact`).
     FurnaceCart {
         fuelled: bool,
+        at: DVec3,
     },
     MapCreated,
     /// A cushion was set down at this position (`CushionItem.useOn`).
@@ -413,6 +414,8 @@ impl PlayerSession {
                     world.emit_game_event(at, E::EntityInteract, source, None);
                 }
             }
+            // `Player.interactOn`: `MinecartFurnace.interact` consumes the use.
+            Used::FurnaceCart { at, .. } => world.emit_game_event(at, E::EntityInteract, source, None),
             Used::Mounted(id) => {
                 if let Some(at) = entities.vehicle_pos(id) {
                     world.emit_game_event(at, E::EntityMount, source, None);
@@ -527,7 +530,7 @@ impl PlayerSession {
             if fuelled && !creative {
                 self.inventory.take_one(slot);
             }
-            return Ok(Some(Used::FurnaceCart { fuelled }));
+            return Ok(Some(Used::FurnaceCart { fuelled, at: entities.minecarts[i].pos }));
         }
         // Leads, name tags, food and taming come before mounting.
         if survival_items::use_animal_target(

@@ -12,8 +12,8 @@ observer clock the same way).
 A spec is JSON: {"setup": [commands], "probes": [commands], "ticks": N},
 with an optional "script": {"m": [commands]} run before tick m is stepped,
 the way a player's action lands between two server ticks (v0.17 Track F).
-Commands are console commands without the slash. Needs `java` (JDK 21 or
-newer) on `PATH`; the server unpacks its bundled libraries and writes its
+Commands are console commands without the slash. Needs `java` (JDK 25 or
+newer, which the 26.3 server requires) on `PATH`; the server unpacks its bundled libraries and writes its
 world into a scratch folder.
 """
 

@@ -328,6 +328,12 @@ impl World {
         let changed_block = super::redstone::family(old) != super::redstone::family(new);
         if (changed_block || new.is_rail()) && (flags & UPDATE_NEIGHBORS != 0 || moved) {
             self.affect_neighbors_after_removal(p, old, moved);
+            // `Containers.updateNeighboursAfterDestroy`: a removed block with
+            // an analog output tells comparators beside it and beyond one
+            // conductor.
+            if changed_block && !moved && super::redstone_catalogue::role(old).analog {
+                self.update_neighbour_for_output_signal(p);
+            }
         }
         self.redstone.order.removed_tick = None;
         if self.get_block(p) != Some(new) {

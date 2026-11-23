@@ -378,6 +378,9 @@ impl StorageScreen<'_> {
                         if c.count == 0 {
                             *cursor = None;
                         }
+                    } else if c.count == 1 && f.fuel.is_some_and(|s| !s.stacks_with(c)) {
+                        // The pickup swap: one bucket fits the slot's cap of one.
+                        std::mem::swap(&mut f.fuel, cursor);
                     }
                 }
                 _ if cursor.is_none_or(|c| furnace::burn_time(c.item).is_some()) => {

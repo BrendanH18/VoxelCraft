@@ -102,6 +102,8 @@ pub(super) struct RedstoneState {
     /// Due work in unloaded chunks. Woken only by a chunk load, never retried each tick.
     suspended: FxHashMap<IVec3, Vec<ScheduledTick>>,
     sleeping_updates: FxHashMap<IVec3, Vec<IVec3>>,
+    /// Saved `redstone_changed` notifications whose chunk hasn't loaded yet.
+    sleeping_changes: FxHashMap<IVec3, Vec<IVec3>>,
     /// Pack relative scheduled delays while a storage chunk is unloaded.
     unloaded_at: FxHashMap<IVec3, u64>,
     /// Detector-rail comparator output, filled by the minecart tick.
@@ -216,6 +218,9 @@ impl World {
         }
         if let Some(updates) = self.redstone.sleeping_updates.remove(&c) {
             self.redstone.updates.extend(updates);
+        }
+        for p in self.redstone.sleeping_changes.remove(&c).unwrap_or_default() {
+            self.redstone_changed(p);
         }
         if let Some(ticks) = self.redstone.suspended.remove(&c) {
             self.redstone.scheduled.extend(ticks);
@@ -1372,7 +1377,7 @@ impl World {
         }
         // Deferred `redstone_changed` notifications (a container changed
         // since the last tick), in order, so a save between ticks keeps them.
-        for p in &self.redstone.changed {
+        for p in self.redstone.changed.iter().chain(self.redstone.sleeping_changes.values().flatten()) {
             entries.push(format!("n,{},{},{}", p.x, p.y, p.z));
         }
         // `RedstoneTorchBlock.RECENT_TOGGLES` lives in memory only, as in
@@ -1451,7 +1456,15 @@ impl World {
                 ("c", &[power]) if (0..=15).contains(&power) => {
                     self.redstone.comparator.insert(p, power as u8);
                 }
-                ("n", []) => self.redstone_changed(p),
+                // A saved notification runs once its chunk is loaded.
+                ("n", []) => {
+                    let c = super::chunk::chunk_of(p);
+                    if self.chunks.contains_key(&c) {
+                        self.redstone_changed(p);
+                    } else {
+                        self.redstone.sleeping_changes.entry(c).or_default().push(p);
+                    }
+                }
                 ("e", values) => self.load_block_event(p, values),
                 ("h", &[age]) if (0..=60).contains(&age) && age as u64 <= tick => {
                     self.redstone.toggles.entry(p).or_default().push_back(tick - age as u64);

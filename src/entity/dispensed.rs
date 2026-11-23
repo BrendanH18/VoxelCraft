@@ -246,6 +246,7 @@ impl Entities {
                 config.uncertainty,
                 &mut self.rng,
             ));
+            self.sculk.shot(pos, crate::world::vibration::EventSource::NONE);
             return true;
         }
         let lingering = stack.item == Item::LINGERING_POTION;
@@ -255,6 +256,7 @@ impl Entities {
         let mut thrown = super::potion::ThrownPotion::new(potion, None, pos, vel);
         thrown.lingering = lingering;
         self.potions.push(thrown);
+        self.sculk.shot(pos, crate::world::vibration::EventSource::NONE);
         true
     }
 

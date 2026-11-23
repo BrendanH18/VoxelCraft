@@ -8,17 +8,21 @@ Starts the server headless in a superflat world, freezes the tick, builds
 the same four probes the contraption test reads: iron blocks in the chest
 in front, items in the crafter, in the top chest and in the hopper.
 
-Requires a Java runtime new enough for the server. The server's world and
+Requires `java` (JDK 25 or newer, which the 26.3 server requires); the
+server jar must be the pinned artifact. The server's world and
 logs go into the given scratch directory.
 """
 
 import argparse
+import hashlib
 import queue
 import re
 import subprocess
 import threading
 import time
 from pathlib import Path
+
+from extract_java_item_fixtures import SERVER_SHA1
 
 ORIGIN = (0, -60, 0)
 # (relative position, block state), in the build's placement order.
@@ -103,6 +107,8 @@ def main():
     parser.add_argument("work", type=Path)
     parser.add_argument("--ticks", type=int, default=240)
     args = parser.parse_args()
+    if hashlib.sha1(args.server.read_bytes()).hexdigest() != SERVER_SHA1:
+        raise SystemExit("not the pinned official Java 26.3 server artifact")
     s = Server(args.server.resolve(), args.work)
     try:
         s.ask("tick freeze", r"frozen")

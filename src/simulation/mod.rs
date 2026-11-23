@@ -90,8 +90,10 @@ pub fn advance_day(day_time: f64, day_count: i64, dt: f64, rules: &crate::rules:
     if day_time >= 1.0 { (day_time.fract(), day_count.saturating_add(1)) } else { (day_time, day_count) }
 }
 
-/// Run the world systems once, in the same order for graphical and headless
-/// sessions. Streaming is independent and may be polled between ticks.
+/// Run the world systems once, with no entity pass: the entry point for
+/// world-only callers. Callers that run `World::tick_automation_entities`
+/// use [`tick_world_rules`] instead, so hoppers tick once, after the entity
+/// pass. Streaming is independent and may be polled between ticks.
 pub fn tick_world(world: &mut World, player: DVec3) {
     tick_world_rules(world, player, true, 3);
     // Callers without entities still move items between block containers;

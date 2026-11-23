@@ -1149,6 +1149,26 @@ mod tests {
             w.tick_redstone();
         }
     }
+    /// `Containers.updateNeighboursAfterDestroy`: removing a container
+    /// tells a comparator reading it through a conductor, which turns off.
+    #[test]
+    fn removing_a_container_turns_off_a_comparator_through_a_conductor() {
+        use super::super::block::Facing;
+        let mut w = world();
+        let comparator = P;
+        put(&mut w, comparator - IVec3::Y, Block::STONE);
+        put(&mut w, comparator, r::comparator(Facing::North, false, false));
+        put(&mut w, comparator + IVec3::Z, Block::STONE);
+        put(&mut w, comparator + IVec3::Z * 2, Block::CHEST);
+        w.chest_mut(comparator + IVec3::Z * 2).unwrap().slots[0] = Some(Stack::new(Item::STICK, 64));
+        w.redstone_changed(comparator + IVec3::Z * 2);
+        ticks(&mut w, 4);
+        assert!(w.redstone_power(comparator - IVec3::Z) > 0, "the comparator reads the chest");
+        put(&mut w, comparator + IVec3::Z * 2, Block::AIR);
+        ticks(&mut w, 4);
+        assert_eq!(w.redstone_power(comparator - IVec3::Z), 0, "and turns off once it is gone");
+    }
+
     /// `tryMoveInItem` caps a slot at `getMaxStackSize`: a stack of three
     /// copies (a crafter's clone result) fills three chiseled bookshelf
     /// slots, one book each, and nothing is lost.
