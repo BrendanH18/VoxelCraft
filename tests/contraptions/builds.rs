@@ -11,6 +11,7 @@ use voxelcraft::{
     item::Item,
     world::{
         block::{Block, Facing, RailShape},
+        crafter,
         crops::{self, Fruit},
         rails::{self, RailKind},
         redstone_blocks::{self as r, Component},
@@ -1053,13 +1054,14 @@ fn minecart_storage_line_survives_unload_and_restart() {
 
 // -------------------------------------------------------------- crafting
 
-/// The crafter, once Track C1 adds it: its east-facing state.
-///
-/// Integrator seam: replace this lookup with C1's state constructor (the
-/// crafter must face east, untriggered, with all nine slots enabled) and
-/// make `crafter_slots` read its nine slots if they are not chest-backed.
-fn crafter_facing_east() -> Option<Block> {
-    Block::from_name("crafter")
+/// The crafter facing east (`FrontAndTop.EAST_UP`), untriggered and idle,
+/// so it puts its results into the chest east of it. A new crafter has all
+/// nine slots enabled, and they are chest-backed. (`Block::from_name`
+/// gives the item's state, `north_up`, which would drop the iron blocks
+/// north of the crafter as items.)
+fn crafter_facing_east() -> Block {
+    let orientation = crafter::orientation_of(IVec3::X, IVec3::Y).expect("east_up is a FrontAndTop value");
+    crafter::encode(crafter::State { orientation, triggered: false, crafting: false })
 }
 
 /// A chest feeds 27 iron ingots through a hopper into a crafter set to
@@ -1073,7 +1075,9 @@ fn crafter_facing_east() -> Option<Block> {
 /// powers the crafter, and it crafts one iron block 6 ticks after the
 /// ninth ingot arrived, before the hopper's next ingot (8 ticks). Three
 /// iron blocks, 72 ticks apart; ingots in iron blocks plus loose ingots
-/// stay 27.
+/// stay 27. Checked on the pinned 26.3 server (2026-11-23,
+/// `tools/java_autocrafter_trace.py`): all four probes match tick for tick
+/// over the 320 ticks, with iron blocks at 79, 151 and 223.
 fn crafter_autocrafter(crafter: Block) -> Spec {
     let mut blocks = vec![
         (v(2, 1, 0), crafter),
@@ -1118,16 +1122,14 @@ fn verify_crafter(run: &Run) -> Result<(), String> {
     let blocks = run.column(0);
     let made: Vec<u64> =
         blocks.windows(2).enumerate().filter(|(_, w)| w[1] > w[0]).map(|(i, _)| i as u64 + 2).collect();
-    ensure(made.len() == 3, || format!("iron blocks at {made:?}; Java three"))?;
-    ensure(made.windows(2).all(|w| w[1] - w[0] == 72), || format!("iron blocks at {made:?}; Java 72 ticks apart"))
+    // The pinned vanilla server, stepped tick by tick
+    // (`tools/java_autocrafter_trace.py`), made them at 79, 151 and 223.
+    ensure(made == [79, 151, 223], || format!("iron blocks at {made:?}; Java 79, 151 and 223"))
 }
 
 #[test]
-#[ignore = "needs Track C1: the crafter block (Block::from_name(\"crafter\") is None today), its nine-slot \
-            container, its comparator reading and its 4-tick craft on a rising edge"]
 fn crafter_autocrafts() {
-    let crafter = crafter_facing_east().expect("Track C1 adds the crafter");
-    check(&crafter_autocrafter(crafter), verify_crafter);
+    check(&crafter_autocrafter(crafter_facing_east()), verify_crafter);
 }
 
 // ---------------------------------------------------------------- memory
