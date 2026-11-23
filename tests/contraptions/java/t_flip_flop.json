@@ -1,0 +1,41 @@
+{
+ "setup": [
+  "setblock 0 101 0 minecraft:hopper[facing=east]{Items:[{Slot:0b,id:\"minecraft:diamond\",count:1}]}",
+  "setblock 1 101 0 minecraft:hopper[facing=west]",
+  "setblock 1 100 1 minecraft:stone",
+  "setblock 1 101 1 minecraft:comparator[facing=north,mode=compare]",
+  "setblock 1 101 2 minecraft:redstone_lamp",
+  "setblock 3 102 0 minecraft:stone",
+  "setblock 4 101 0 minecraft:stone",
+  "setblock 5 102 0 minecraft:observer[facing=east]",
+  "setblock 0 102 0 minecraft:redstone_wire[north=none,south=none,east=side,west=side,power=0]",
+  "setblock 1 102 0 minecraft:redstone_wire[north=none,south=none,east=side,west=side,power=0]",
+  "setblock 2 102 0 minecraft:redstone_wall_torch[facing=west]"
+ ],
+ "script": {
+  "5": [
+   "setblock 4 102 0 minecraft:repeater[facing=east,delay=2]"
+  ],
+  "10": [
+   "setblock 6 102 0 minecraft:stone"
+  ],
+  "40": [
+   "setblock 6 102 0 minecraft:air"
+  ],
+  "70": [
+   "setblock 6 102 0 minecraft:stone"
+  ],
+  "100": [
+   "setblock 6 102 0 minecraft:air"
+  ]
+ },
+ "probes": [
+  "data get block 0 101 0 Items",
+  "data get block 1 101 0 Items",
+  "execute if block 1 101 2 minecraft:redstone_lamp[lit=true]",
+  "execute if block 2 102 0 minecraft:redstone_wall_torch[lit=true]",
+  "execute if block 4 102 0 minecraft:repeater[powered=true]",
+  "execute if block 5 102 0 minecraft:observer[powered=true]"
+ ],
+ "ticks": 130
+}
