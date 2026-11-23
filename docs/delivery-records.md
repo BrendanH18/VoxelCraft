@@ -357,6 +357,27 @@ sections for players coming from v0.13 or v0.14.
   [v0.16 integration](verification/2026-11-21-v0.16-wave-2-integration.md)
   and track records.
 
+### 3.7 v0.17 delivery record — 2026-11-23
+
+The owner played v0.17 on 2026-11-23 and reported that it plays well; it
+is tagged and released the way v0.16 was. The v0.17 build is v0.16 plus
+redstone and automation ([#115](https://github.com/BrendanH18/VoxelCraft/pull/115):
+Java's update order, pistons, the crafter, dispensing and sided transfers,
+carts, storage transactions, game events, redstone components, reference
+contraptions and workstations). Players on v0.16 update straight to it.
+
+- **Evidence:** the owner's play of the v0.17 build; CI's full suite on
+  `62bf017`, the head #115 merged from; the 29 contraption checks, several
+  matched tick by tick against the vanilla 26.3 server run headless
+  ([record](verification/2026-11-23-v0.17-reference-contraptions.md)).
+  v0.17 has no frame-time run yet.
+- **Exception (owner, 2026-11-23):** to be tagged and released without
+  v0.17's offscreen frame-time run, which needs the reference Mac. It is
+  still owed, with v0.16's, and no row moved to **Verified**.
+- **Known gaps** ship as the release notes' known limitations, from the
+  track records listed in the
+  [v0.17 scope](roadmap.md#v017-scope-redstone-and-automation).
+
 ## Assessment follow-ups, 2026-10-13 to 2026-10-16
 
 These paragraphs opened the roadmap's §4 "Core requirement catalogue".
