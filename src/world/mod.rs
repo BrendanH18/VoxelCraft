@@ -394,6 +394,8 @@ pub struct World {
     /// TNT blocks a blast or fire took out, with whether to shorten the
     /// fuse (blasts only); the game turns them into entities.
     pub primed_tnt: Vec<(IVec3, bool)>,
+    /// The entity whose box `redstone_contacts` is marking (E1 game events).
+    pub(crate) contact_source: Option<vibration::EventSource>,
     /// v0.16 Track E: infested blocks broken this tick that let their
     /// silverfish out (`InfestedBlock.spawnAfterBreak`); the game spawns them.
     pub released_silverfish: Vec<IVec3>,
@@ -714,6 +716,7 @@ impl World {
             xp_drops: Vec::new(),
             brews_done: Vec::new(),
             primed_tnt: Vec::new(),
+            contact_source: None,
             released_silverfish: Vec::new(),
             notes: Vec::new(),
             allay_notes: Vec::new(),

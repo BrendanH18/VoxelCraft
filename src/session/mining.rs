@@ -321,8 +321,17 @@ impl PlayerSession {
         }
         // Neighbor drops use the same gamerule.
         world.set_tile_drops(rules.bool("block_drops"));
-        if held.is_some_and(|s| s.item == Item::SHEARS) {
+        if held.is_some_and(|s| s.item == Item::SHEARS)
+            && crate::world::gadgets::is_tripwire(block)
+        {
             world.disarm_tripwire(pos);
+            // `TripWireBlock.playerWillDestroy`: shears post `shear` first.
+            world.emit_block_event(
+                pos,
+                crate::world::vibration::GameEvent::Shear,
+                crate::world::vibration::EventSource::player(self.id, self.player.sneaking),
+                None,
+            );
         }
         // `Block.playerWillDestroy`: the vibration names the broken block.
         world.emit_game_event(

@@ -696,6 +696,7 @@ impl Player {
             self.on_ground = false;
             return;
         }
+        self.bounced = false;
         if self.motion.stuck.length_squared() > 1.0e-7 {
             delta *= self.motion.stuck;
             self.motion.stuck = DVec3::ZERO;
@@ -725,7 +726,7 @@ impl Player {
         }
         if (delta.y.abs() > 0.0 && vertical) || self.motion.horizontal_collision {
             let effect = world.block(self.on_pos(world, 0.2));
-            self.restitute(effect, x_collision, z_collision, vertical, below, movement, dm);
+            self.bounced = self.restitute(effect, x_collision, z_collision, vertical, below, movement, dm);
         }
         // `Player.getBlockSpeedFactor`: none while flying or gliding.
         let factor = if self.flying || self.fall_flying { 1.0 } else { self.block_speed_factor(world) } as f64;
@@ -745,7 +746,7 @@ impl Player {
         below: bool,
         movement: DVec3,
         dm: &mut DVec3,
-    ) {
+    ) -> bool {
         let suppress = self.sneaking;
         let mut restitution = 0.0;
         let current = *dm;
@@ -774,6 +775,8 @@ impl Player {
             after.y = (compensation - current.y) * drag * restitution;
         }
         *dm = after;
+        // Bounced: `bounceOn` and the `bounce` game event.
+        restitution > 0.0
     }
 
     /// `LocalPlayer.isHorizontalCollisionMinor`: the wall turned the move by

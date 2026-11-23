@@ -12,9 +12,15 @@ use super::chunk::CHUNK_SIZE_I;
 use super::nether_biome_blocks::keep_wood;
 use super::rails;
 use super::redstone_blocks::{self as r, Component, conductor};
+use super::vibration::{EventSource, GameEvent};
 
 /// The block a scheduled tick is keyed by: the redstone, rail or gadget
 /// family, or the plain base block (bells, composters).
+/// `block_open` or `block_close` for a door, gate or trapdoor's new state.
+fn open_event(open: bool) -> GameEvent {
+    if open { GameEvent::BlockOpen } else { GameEvent::BlockClose }
+}
+
 fn family(b: Block) -> Block {
     if let Some(copper) = super::copper::unstaged(b) {
         return copper;
@@ -655,6 +661,8 @@ impl World {
                             {
                                 self.edit(lower + IVec3::Y, upper.toggled(facing), false);
                             }
+                            // `DoorBlock` / `FenceGateBlock.neighborChanged`.
+                            self.emit_block_event(lower, open_event(powered), EventSource::NONE, None);
                         }
                     }
                 }
@@ -663,6 +671,8 @@ impl World {
             _ if b == Block::TNT && self.rules.tnt_explodes && self.redstone_power(p) > 0 => {
                 self.edit(p, Block::AIR, false);
                 self.primed_tnt.push((p, false));
+                // `TntBlock.prime` with no igniter.
+                self.emit_block_event(p, GameEvent::PrimeFuse, EventSource::NONE, None);
             }
             _ => {}
         }
@@ -767,15 +777,21 @@ impl World {
                     self.schedule_redstone(p, 30, 0);
                 } else {
                     self.edit(p, keep_wood(b, r::button(mount, false, wood)), false);
+                    // `ButtonBlock.checkPressed` releasing: no arrow, no source.
+                    self.emit_block_event(p, GameEvent::BlockDeactivate, EventSource::NONE, None);
                 }
             }
-            Some(Component::Plate { kind, .. }) => {
+            Some(Component::Plate { kind, power: old }) => {
                 let power = super::redstone_contacts::plate_power(
                     kind,
                     self.redstone.contacts.get(&p).copied().unwrap_or_default(),
                 );
                 if b != keep_wood(b, r::plate(kind, power)) {
                     self.edit(p, keep_wood(b, r::plate(kind, power)), false);
+                }
+                // `BasePressurePlateBlock.checkPressed(null, ...)` from its tick.
+                if old > 0 && power == 0 {
+                    self.emit_block_event(p, GameEvent::BlockDeactivate, EventSource::NONE, None);
                 }
                 if power > 0 {
                     self.schedule_redstone(p, if kind < 2 { 20 } else { 10 }, 0);
@@ -908,6 +924,7 @@ impl World {
             Some(Component::IronDoor { upper, .. }) => {
                 let lower = if upper { p - IVec3::Y } else { p };
                 let on = self.redstone_power(lower) > 0 || self.redstone_power(lower + IVec3::Y) > 0;
+                let mut changed = false;
                 for (q, upper) in [(lower, false), (lower + IVec3::Y, true)] {
                     if let Some(block) = self.get_block(q)
                         && let Some(Component::IronDoor { facing, open, .. }) = r::component(block)
@@ -915,7 +932,12 @@ impl World {
                     {
                         let door = super::mount_states::keep_hinge(block, r::iron_door(facing, on, upper));
                         self.edit(q, door, false);
+                        changed = true;
                     }
+                }
+                // `DoorBlock.neighborChanged`: one event for the pair.
+                if changed {
+                    self.emit_block_event(lower, open_event(on), EventSource::NONE, None);
                 }
             }
             Some(Component::Trapdoor { facing, open, top, iron }) => {
@@ -928,6 +950,8 @@ impl World {
                 }
                 if (iron || was != on) && open != on {
                     self.edit(p, keep_wood(b, r::trapdoor(facing, on, top, iron)), false);
+                    // `TrapDoorBlock.playSound` from `neighborChanged`.
+                    self.emit_block_event(p, open_event(on), EventSource::NONE, None);
                 }
             }
             _ => {}
@@ -1072,14 +1096,43 @@ impl World {
     }
 
     pub fn use_redstone(&mut self, p: IVec3) -> bool {
+        self.use_redstone_by(p, EventSource::NONE)
+    }
+
+    /// [`World::use_redstone`] by `source`, posting what Java's use posts:
+    /// `note_block_play` (`NoteBlock.playNote`), `block_change` for a bell
+    /// (`attemptToRing`) or daylight detector, `block_activate` or
+    /// `block_deactivate` for a lever (`pull`) and `block_activate` for a
+    /// button (`press`), `block_open` or `block_close` for a trapdoor
+    /// (`playSound`). Repeaters, comparators and wire post nothing.
+    pub fn use_redstone_by(&mut self, p: IVec3, source: EventSource) -> bool {
         let Some(b) = self.get_block(p) else { return false };
         if super::gadgets::is_note(b) {
-            self.cycle_note(p, b);
+            self.cycle_note_by(p, b, source);
             return true;
         }
         if b.base() == Block::BELL {
-            return self.ring_bell(p);
+            return self.ring_bell_by(p, source);
         }
+        let event = match r::component(b) {
+            Some(Component::Trapdoor { open, iron: false, .. }) => Some(open_event(!open)),
+            Some(Component::Daylight { .. }) => Some(GameEvent::BlockChange),
+            Some(Component::Lever { on, .. }) => {
+                Some(if on { GameEvent::BlockDeactivate } else { GameEvent::BlockActivate })
+            }
+            Some(Component::Button { on: false, .. }) => Some(GameEvent::BlockActivate),
+            _ => None,
+        };
+        let used = self.use_redstone_inner(p, b);
+        if used && let Some(event) = event {
+            // The daylight detector names its new state (`Context.of(player, newState)`).
+            let affected = (event == GameEvent::BlockChange).then(|| self.get_block(p)).flatten();
+            self.emit_block_event(p, event, source, affected);
+        }
+        used
+    }
+
+    fn use_redstone_inner(&mut self, p: IVec3, b: Block) -> bool {
         let next = match r::component(b) {
             Some(Component::Wire(power)) => {
                 if self.wire_connections(p) == [1; 4] || self.wire_connections(p) == [0; 4] {

@@ -975,6 +975,14 @@ impl Agent {
             entities.seat_player(&mut self.session.player, self.session.id);
             self.session.player.refresh_riding_contact(world);
         }
+        // Damage, death and armor changes as game events.
+        world.player_vitals(
+            self.session.id,
+            self.session.player.pos,
+            self.session.vitals.health,
+            self.session.inventory.armor.map(|s| s.map(|s| s.item)),
+            self.session.event_source(),
+        );
         let moved = (self.session.player.pos - before).with_y(0.0).length();
         let env = simulation::survival::Env {
             respiration: crate::enchant::armor_level(

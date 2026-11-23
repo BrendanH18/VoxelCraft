@@ -88,6 +88,8 @@ pub struct Player {
     pub honey_sliding: bool,
     /// Landed on honey this tick (sound and ten block particles).
     pub honey_landed: bool,
+    /// Bounced off a slime block or bed this tick (`restituteMovementAfterCollisions`).
+    pub bounced: bool,
     /// The sneak key is held (Java `isShiftKeyDown`).
     pub sneaking: bool,
     /// Java powder-snow contacts (previous contact is used for climbing).
@@ -184,6 +186,7 @@ impl Player {
             in_web: false,
             honey_sliding: false,
             honey_landed: false,
+            bounced: false,
             sneaking: false,
             in_powder_snow: false,
             was_in_powder_snow: false,

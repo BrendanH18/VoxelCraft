@@ -1003,7 +1003,14 @@ impl super::Entities {
     }
 
     pub fn dismount(&mut self, world: &World, player: super::PlayerId) -> Option<DVec3> {
+        // `Entity.removeVehicle`: `entity_dismount` at the vehicle, from the rider.
+        let source = crate::world::vibration::EventSource::player(player, false);
+        let event = crate::world::vibration::GameEvent::EntityDismount;
+        let mount = self.mount_for_player(player).and_then(|id| self.vehicle_pos(id));
         if let Some(pos) = self.dismount_animal(world, player) {
+            if let Some(at) = mount {
+                self.sculk.post(at, event, source, None);
+            }
             return Some(pos);
         }
         let cart = self.minecarts.iter_mut().find(|c| c.seat_for(player).is_some())?;
@@ -1012,7 +1019,9 @@ impl super::Entities {
         } else {
             cart.second_rider = None;
         }
-        Some(cart.dismount_position(world))
+        let (at, pos) = (cart.pos, cart.dismount_position(world));
+        self.sculk.post(at, event, source, None);
+        Some(pos)
     }
 
     /// Contact push from a walking player or mob; velocity is in blocks/tick.

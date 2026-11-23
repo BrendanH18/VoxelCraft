@@ -551,6 +551,23 @@ impl Entities {
         for i in done.into_iter().rev() {
             let s = self.item_spawners.swap_remove(i);
             self.cue(Cue::ItemSpawnerDrop, s.pos);
+            // `OminousItemSpawner.spawnItem`: `entity_place` where it hangs;
+            // a projectile also posts its own first-tick `projectile_shoot`.
+            let none = crate::world::vibration::EventSource::NONE;
+            self.sculk.post(s.pos, crate::world::vibration::GameEvent::EntityPlace, none, None);
+            let item = s.item.item;
+            let projectile = super::thrown::Kind::from_item(item).is_some()
+                || s.item.lingering_contents().is_some()
+                || matches!(
+                    item,
+                    crate::item::Item::ARROW
+                        | crate::item::Item::TIPPED_ARROW
+                        | crate::item::Item::SPECTRAL_ARROW
+                        | crate::item::Item::FIRE_CHARGE
+                );
+            if projectile {
+                self.sculk.shot(s.pos, none);
+            }
             let down = DVec3::NEG_Y;
             let item = s.item.item;
             if let Some(kind) = super::thrown::Kind::from_item(item) {

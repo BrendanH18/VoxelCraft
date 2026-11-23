@@ -3293,6 +3293,12 @@ impl Mob {
             let loaded = world.loaded(to.floor().as_ivec3());
             let dry = !physics::touches_block(world, to, shape, |b| b.holds_water() || b.is_lava());
             if loaded && dry && !physics::overlaps_solid(world, to, shape) {
+                // `Enderman.teleport`: `teleport` where it left.
+                events.push(EntityEvent::Vibration {
+                    pos: self.pos,
+                    event: crate::world::vibration::GameEvent::Teleport,
+                    source: crate::world::vibration::EventSource::mob(self.uid),
+                });
                 events.push(EntityEvent::Sound { sound: MobSound::Teleport, pos: self.pos + DVec3::Y });
                 events.push(EntityEvent::Sound { sound: MobSound::Teleport, pos: to + DVec3::Y });
                 self.pos = to;
@@ -3358,6 +3364,11 @@ impl Mob {
     /// (15%, eye in water), Fire Resistance (15%, burning) or Healing (5%,
     /// hurt), and its drink (1.6 s, standing still) applies the potion's
     /// effects to itself. Returns whether it is mid-drink.
+    /// A witch is drinking a potion (`isDrinkingPotion`).
+    pub fn drinking_potion(&self) -> bool {
+        self.drink_left > 0.0
+    }
+
     fn witch_upkeep<W: MobWorld + ?Sized>(&mut self, dt: f32, world: &W, rng: &mut Rng) -> bool {
         use crate::simulation::effects::Effect;
         if self.drink_left > 0.0 {

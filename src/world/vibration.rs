@@ -268,6 +268,12 @@ impl GameEvent {
         matches!(self, GameEvent::SculkSensorTendrilsClicking)
     }
 
+    /// `#minecraft:allay_can_listen` (allays hear note blocks through
+    /// [`World::allay_notes`](super::World), with the same 16-block radius).
+    pub const fn allay_listens(self) -> bool {
+        matches!(self, GameEvent::NoteBlockPlay)
+    }
+
     /// `#minecraft:ignore_vibrations_sneaking`.
     pub const fn sneaking_ignored(self) -> bool {
         matches!(
@@ -280,6 +286,16 @@ impl GameEvent {
                 | GameEvent::ItemInteractFinish
         )
     }
+}
+
+/// `Warden.VibrationUser.getListenerRadius` and the allay's.
+pub const WARDEN_LISTENER_RADIUS: i32 = 16;
+pub const ALLAY_LISTENER_RADIUS: i32 = 16;
+
+/// The centre of a block (`Vec3.atCenterOf`), where Java posts events given
+/// a `BlockPos`.
+pub fn block_center(p: IVec3) -> DVec3 {
+    p.as_dvec3() + DVec3::splat(0.5)
 }
 
 /// An entity a game event or vibration names.
@@ -608,6 +624,35 @@ impl World {
             self.sculk.entity_events.push(Posted { event, pos, source, affected, tick });
         }
         self.sculk_hear(pos, event, source, affected, tick);
+    }
+
+    /// Posts `event` at the centre of the block `p` (Java
+    /// `level.gameEvent(entity, event, pos)` with a `BlockPos`).
+    pub fn emit_block_event(&mut self, p: IVec3, event: GameEvent, source: EventSource, affected: Option<Block>) {
+        self.emit_game_event(block_center(p), event, source, affected);
+    }
+
+    /// A mob changed the block at `cell` from `from` to `to`
+    /// ([`crate::entity::EntityEvent::AnimalBlock`]), posting Java's event:
+    /// `block_place` for a laid turtle egg or frogspawn
+    /// (`TurtleLayEggGoal`, `TryLaySpawnOnFluidNearLand`), `block_destroy`
+    /// for a trampled turtle egg (`TurtleEggBlock.decreaseEggs`) and a block
+    /// a mob broke (`Level.destroyBlock`). A sheep's grass and a silverfish
+    /// merging into stone post nothing. Returns whether it changed.
+    pub fn animal_block(&mut self, cell: IVec3, from: Block, to: Block) -> bool {
+        if self.get_block(cell) != Some(from) || !self.set_block(cell, to) {
+            return false;
+        }
+        let eggs = super::overworld_blocks::egg_count(from).is_some();
+        let (event, affected) = if from == Block::AIR {
+            (GameEvent::BlockPlace, to)
+        } else if to == Block::AIR || eggs {
+            (GameEvent::BlockDestroy, from)
+        } else {
+            return true;
+        };
+        self.emit_block_event(cell, event, EventSource::NONE, Some(affected));
+        true
     }
 
     /// Events posted since the entity simulation last asked, for entity
