@@ -233,9 +233,8 @@ impl World {
     /// Keeps the brewing stand table in step with a block change at `p`.
     pub(super) fn track_brewing_stand(&mut self, p: IVec3, old: Block, new: Block) {
         if old == Block::BREWING_STAND && new != Block::BREWING_STAND {
-            if let Some(mut stand) = self.brewing_stands.remove(&p)
-                && self.tile_drops
-            {
+            // Contents don't depend on `block_drops` (`Containers.dropContents`).
+            if let Some(mut stand) = self.brewing_stands.remove(&p) {
                 self.drops.extend(stand.take_all().into_iter().map(|s| (p, s)));
             }
         } else if new == Block::BREWING_STAND {
@@ -246,20 +245,26 @@ impl World {
     /// Brews in every stand whose chunk is block-ticking, noting finished brews
     /// in [`World::brews_done`] for the sound.
     pub fn tick_brewing(&mut self, dt: f64) {
-        let before = self.brews_done.len();
+        let mut changed = Vec::new();
         for (&p, stand) in self.brewing_stands.iter_mut() {
-            if self.activity.contains(p, true)
-                && self.chunks.contains_key(&super::chunk::chunk_of(p))
-                && stand.tick(dt as f32)
-            {
+            if !self.activity.contains(p, true) || !self.chunks.contains_key(&super::chunk::chunk_of(p)) {
+                continue;
+            }
+            let before = (stand.bottles, stand.ingredient, stand.fuel);
+            if stand.tick(dt as f32) {
                 self.brews_done.push(p);
                 if stand.ingredient.is_some_and(|s| s.item == Item::DRAGON_BREATH) {
                     self.drops.push((p, Stack::new(Item::GLASS_BOTTLE, 1)));
                 }
             }
+            // `BrewingStandBlockEntity.serverTick` calls `setChanged` when
+            // it loads blaze powder as well as when a brew finishes.
+            if (stand.bottles, stand.ingredient, stand.fuel) != before {
+                changed.push(p);
+            }
         }
-        for i in before..self.brews_done.len() {
-            self.redstone_changed(self.brews_done[i]);
+        for p in changed {
+            self.redstone_changed(p);
         }
     }
 

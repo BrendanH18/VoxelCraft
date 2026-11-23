@@ -532,8 +532,13 @@ impl World {
         if let Some(f) = self.furnace_mut(p) {
             match slot {
                 0 => {
+                    // `AbstractFurnaceBlockEntity.setItem` restarts the cook
+                    // only for a different input; a hopper topping up the
+                    // stack (`tryMoveInItem` grows it in place) keeps it.
+                    if !stack.is_some_and(|s| f.input.is_some_and(|old| old.stacks_with(&s))) {
+                        f.cook = 0.0;
+                    }
                     f.input = stack;
-                    f.cook = 0.0;
                 }
                 1 => f.fuel = stack,
                 _ => f.output = stack,

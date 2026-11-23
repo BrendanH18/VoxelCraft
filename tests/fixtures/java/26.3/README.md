@@ -1360,3 +1360,27 @@ scripts/boat-check.sh -- 'cargo test --release --lib m3_corpus'
 frequency reducers, the outposts' exclusion zone, the stronghold rings) from
 this file and checks a located instance of every family on two seeds
 ([record](../../../../docs/verification/2026-11-21-v0.16-m3-exit.md)).
+
+## Storage transactions (v0.17 Track D2)
+
+`storage_transactions.json` holds the Java facts behind the storage
+transaction fuzz: the `[start, end, backwards]` slot ranges each storage
+menu's `quickMoveStack` passes to `moveItemStackTo` (`ChestMenu`,
+`ShulkerBoxMenu`, `HopperMenu`, `DispenserMenu`, `AbstractFurnaceMenu`,
+`BrewingStandMenu`; bounds computed from the container size are null), the
+potion and furnace-bucket slot limits, `HopperBlockEntity.MOVE_ITEM_SPEED`,
+whether the comparator formula runs in floats, whether
+`BlockEntity.preRemoveSideEffects` spills contents with no game rule, whether
+`BrewingStandBlockEntity.serverTick` calls `setChanged` after loading fuel,
+whether `AbstractFurnaceBlockEntity.setItem` compares components, and the
+explosion conditions of the shulker box and chest loot tables. It needs
+`javap`:
+
+```sh
+python3 tools/extract_java_storage_fixtures.py /path/to/server.jar --output target/java-storage.json
+diff tests/fixtures/java/26.3/storage_transactions.json target/java-storage.json
+scripts/boat-check.sh -- 'cargo test --profile ci --locked --test storage_transactions'
+```
+
+`tests/storage_transactions.rs` checks `session::storage` against it
+([record](../../../../docs/verification/2026-11-23-v0.17-storage-fuzz.md)).

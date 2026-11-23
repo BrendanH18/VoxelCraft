@@ -113,11 +113,13 @@ impl World {
         {
             self.stash_shulker_box(p, chest);
         }
+        // Contents spill whatever the `block_drops` rule says: Java's
+        // `BlockEntity.preRemoveSideEffects` drops them through
+        // `Containers.dropContents`, which no game rule gates.
         if is_chest(old)
             && old.base() != new.base()
             && !super::copper::same_chest(old, new)
             && let Some(chest) = self.chests.remove(&p)
-            && self.tile_drops
         {
             self.chest_positions.remove(&p.to_array());
             self.drops.extend(chest.slots.into_iter().flatten().map(|s| (p, s)));

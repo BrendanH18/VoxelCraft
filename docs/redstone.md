@@ -109,7 +109,8 @@ Daylight detectors update every 20 ticks and invert on use. They use VoxelCraft'
 existing day clock and heightmap exposure; sun-angle easing and diffuse sky
 light beneath transparent roofs are approximated. In sky-less dimensions they
 produce no power. Chests, furnaces and brewing stand contents notify comparators
-on player mutations and processing completion. Container UI slot changes must
+on player mutations and processing completion, and a brewing stand also when it
+loads blaze powder into its fuel bar (`BrewingStandBlockEntity.serverTick`). Container UI slot changes must
 use the mutable world accessor to issue those notifications.
 
 Every core component has its vanilla shaped/shapeless recipe; target crafting
@@ -206,6 +207,51 @@ Sources: [HopperBlockEntity](https://raw.githubusercontent.com/mahtomedi/minecra
 [DispenserBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/DispenserBlock.java),
 [DropperBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/DropperBlock.java),
 [DispenseItemBehavior](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/core/dispenser/DispenseItemBehavior.java).
+
+## Storage transactions
+
+Every storage screen runs through `session::storage` (v0.17 Track D2): chests
+(both halves of a double chest as one 54-slot container), trapped and copper
+chests, barrels, shulker boxes, hoppers, dispensers, droppers, furnaces,
+smokers, blast furnaces, brewing stands, chest and hopper carts (and the other
+vehicles with storage) and the ender inventory. The desktop host, controller
+seats and LAN peers reach it through the app's screen layer; headless callers
+and the fuzz use it directly. It follows Java 26.3's
+`AbstractContainerMenu.doClick`, `moveItemStackTo` and each menu's
+`quickMoveStack`, pinned in `tests/fixtures/java/26.3/storage_transactions.json`:
+
+- A click picks up, places, merges or swaps under each slot's rules (bottle
+  slots hold one potion and keep its components; the furnace output only
+  gives, half of it with the right button).
+- A shift-click moves storage slots to the hotbar from the right, then the
+  main grid from the bottom right, except a furnace's input and fuel, which go
+  to the main grid from the top left first. From the inventory, chest-backed
+  storage fills forwards; a furnace takes smeltables into its input, else fuel;
+  a brewing stand takes blaze powder into its fuel slot and only tries the
+  ingredient slot when the fuel slot took none, other ingredients only into
+  the ingredient slot and potions one per empty bottle slot. Something a
+  storage refuses stays put rather than moving between hotbar and grid.
+- On the desktop, a number key over a slot swaps it with that hotbar slot
+  (`SWAP`), as far as the slot's rules and limit allow, and the drop key over
+  a storage slot throws one item or, with Ctrl, the stack (`THROW`).
+- Breaking a container spills its contents whatever the `block_drops` rule
+  says (`Containers.dropContents`); only the block's own loot follows the
+  rule. A shulker box's contents ride in its item (its loot has no explosion
+  condition); a furnace releases its stored experience either way.
+- A hopper topping up a furnace's input keeps the cook going; only a
+  different input restarts it (`AbstractFurnaceBlockEntity.setItem`).
+
+`tests/storage_transactions.rs` drives seeded random sequences of these
+operations, the CLI and headless LAN `chest` and `furnace` commands, pickups,
+hoppers, droppers, dispensers, carts, survival mining, explosions and a chunk
+unload or a save and reload, and checks after every step that every item and
+component is conserved, that no stack breaks its limit or a slot rule, and
+that each comparator shows Java's reading. New storage joins it as one entry
+in its `KINDS` table. Not modelled: dragging a stack across slots
+(`QUICK_CRAFT`), double-click collecting (`PICKUP_ALL`), number keys on
+controllers and LAN clients, and a hopper under a rail (VoxelCraft rails need
+a full block below, so no hopper drains a cart). See the
+[verification record](verification/2026-11-23-v0.17-storage-fuzz.md).
 
 
 ## Rails and minecarts (round 2)
