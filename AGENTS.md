@@ -98,7 +98,8 @@ Docs: https://docs.boat.dev/llms.txt. Prices and limits: run `boat limits`; neve
   works and the measurements and earlier rules behind it. Never share a
   sandbox between agents: agents in one worktree each set `VC_BOAT_SLOT`.
   Each agent runs targeted checks on its own worktree, and CI runs the full
-  suite on every pushed commit, the integrator's merged result included.
+  suite on every commit of a pull request and every push to `main`, the
+  integrator's merged result included.
   Check `boat limits` before work that starts sandboxes: the account's daily
   starts are shared by every project. If `boat` isn't installed or signed
   in, or `boat-check.sh` can't start a sandbox (no starts left today, or the
