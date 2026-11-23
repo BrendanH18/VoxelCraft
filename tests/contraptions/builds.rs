@@ -1040,9 +1040,6 @@ fn verify_minecart_line(run: &Run) -> Result<(), String> {
 }
 
 #[test]
-#[ignore = "needs Track D1: Java rails stand on hoppers (BaseRailBlock.canSurvive -> canSupportRigidBlock; the \
-            hopper's top rim is rigid), VoxelCraft pops that rail into an item; and a hopper under a cart pushes \
-            and pulls in the same 8-tick cycle (tryMoveItems), while VoxelCraft drains the cart every 16 ticks"]
 fn minecart_storage_line() {
     check(&minecart_line(), verify_minecart_line);
 }
