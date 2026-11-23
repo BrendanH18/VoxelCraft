@@ -1370,6 +1370,11 @@ impl World {
         for (p, power) in &self.redstone.comparator {
             entries.push(format!("c,{},{},{},{}", p.x, p.y, p.z, power));
         }
+        // Deferred `redstone_changed` notifications (a container changed
+        // since the last tick), in order, so a save between ticks keeps them.
+        for p in &self.redstone.changed {
+            entries.push(format!("n,{},{},{}", p.x, p.y, p.z));
+        }
         // `RedstoneTorchBlock.RECENT_TOGGLES` lives in memory only, as in
         // Java: a restart forgets it (older saves' `h` entries still load).
         for p in &self.redstone.powered {
@@ -1446,6 +1451,7 @@ impl World {
                 ("c", &[power]) if (0..=15).contains(&power) => {
                     self.redstone.comparator.insert(p, power as u8);
                 }
+                ("n", []) => self.redstone_changed(p),
                 ("e", values) => self.load_block_event(p, values),
                 ("h", &[age]) if (0..=60).contains(&age) && age as u64 <= tick => {
                     self.redstone.toggles.entry(p).or_default().push_back(tick - age as u64);

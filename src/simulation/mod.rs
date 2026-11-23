@@ -94,6 +94,9 @@ pub fn advance_day(day_time: f64, day_count: i64, dt: f64, rules: &crate::rules:
 /// sessions. Streaming is independent and may be polled between ticks.
 pub fn tick_world(world: &mut World, player: DVec3) {
     tick_world_rules(world, player, true, 3);
+    // Callers without entities still move items between block containers;
+    // a later `tick_automation_entities` in the same tick finishes the rest.
+    world.tick_hoppers();
 }
 
 /// [`tick_world`] with the gamerules that govern world block ticks.

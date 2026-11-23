@@ -328,9 +328,10 @@ impl World {
             }
             // `tryMoveInItem`: an empty slot takes the stack; a slot holding
             // the same item and components grows by what fits.
+            let cap = sides::max_stack(kind);
             let room = match old {
-                None => left.max(),
-                Some(s) if s.stacks_with(&left) => s.max().saturating_sub(s.count),
+                None => left.max().min(cap),
+                Some(s) if s.stacks_with(&left) => s.max().min(cap).saturating_sub(s.count),
                 _ => 0,
             };
             let n = room.min(left.count);
@@ -1148,6 +1149,20 @@ mod tests {
             w.tick_redstone();
         }
     }
+    /// `tryMoveInItem` caps a slot at `getMaxStackSize`: a stack of three
+    /// copies (a crafter's clone result) fills three chiseled bookshelf
+    /// slots, one book each, and nothing is lost.
+    #[test]
+    fn a_stack_into_a_chiseled_bookshelf_takes_one_book_a_slot() {
+        let mut w = world();
+        put(&mut w, P, super::super::wood::bookshelf::state(super::super::block::Facing::North, 0));
+        let left = w.insert_container(P, Stack::new(Item::BOOK, 3), IVec3::Y);
+        assert_eq!(left, None);
+        let books = w.wood_entities().bookshelf(P).unwrap().books;
+        assert_eq!(books.iter().flatten().map(|s| s.count as u32).sum::<u32>(), 3);
+        assert_eq!(books.iter().flatten().count(), 3, "one book in each of three slots");
+    }
+
     #[test]
     fn piston_pushes_twelve_atomically_but_rejects_thirteen_and_containers() {
         for (count, blocked) in [(12, false), (13, true)] {

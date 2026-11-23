@@ -177,8 +177,12 @@ impl HeadlessHost {
             crate::world::piston::push_player(&self.world, &mut agent.session.player);
         }
         self.entities.apply_piston_pushes(&self.world);
-        // No entity pass here: hoppers tick against blocks alone.
-        self.world.tick_hoppers();
+        // The automation entity pass (hoppers, deferred dispenses). This
+        // harness simulates no item, projectile or vehicle entities, so what
+        // dispensers and hoppers would spawn goes into a scratch collection
+        // and is discarded, as block drops are below.
+        let mut scratch = crate::entity::Entities::new(self.world.generator.seed);
+        self.world.tick_automation_entities(&mut scratch);
         // As `Game::tick` does: players in a stalactite's cell as it lands
         // are hit on their next tick, and anchors used outside the Nether
         // explode (`RespawnAnchorBlock.explode`, power 5).

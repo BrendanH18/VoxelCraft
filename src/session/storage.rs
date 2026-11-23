@@ -368,11 +368,23 @@ impl StorageScreen<'_> {
         let before = f.output.map_or(0, |s| s.count);
         match slot {
             StorageSlot::FurnaceInput => f.click_input(cursor, right),
-            StorageSlot::FurnaceFuel => {
-                if cursor.is_none_or(|c| furnace::burn_time(c.item).is_some()) {
+            StorageSlot::FurnaceFuel => match cursor {
+                // `FurnaceFuelSlot.mayPlace` takes an empty bucket, one at a
+                // time (`getMaxStackSize`), into an empty fuel slot.
+                Some(c) if c.item == Item::BUCKET => {
+                    if f.fuel.is_none() {
+                        f.fuel = c.with_count(1);
+                        c.count -= 1;
+                        if c.count == 0 {
+                            *cursor = None;
+                        }
+                    }
+                }
+                _ if cursor.is_none_or(|c| furnace::burn_time(c.item).is_some()) => {
                     click_slot(&mut f.fuel, cursor, right)
                 }
-            }
+                _ => {}
+            },
             StorageSlot::FurnaceOutput => match (cursor.as_mut(), f.output) {
                 (None, Some(out)) => {
                     let n = if right { out.count.div_ceil(2) } else { out.count };

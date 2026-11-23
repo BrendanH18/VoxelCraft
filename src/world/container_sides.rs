@@ -79,6 +79,16 @@ pub const fn size(kind: Kind) -> usize {
     }
 }
 
+/// `Container.getMaxStackSize`: the most one slot holds whatever the item,
+/// which `tryMoveInItem` caps an insertion at (1 for a chiseled bookshelf
+/// and a jukebox; the item's own limit everywhere else).
+pub const fn max_stack(kind: Kind) -> u8 {
+    match kind {
+        Kind::ChiseledBookshelf | Kind::Jukebox => 1,
+        _ => u8::MAX,
+    }
+}
+
 /// Every slot in order: where a hopper puts an item entity it collects
 /// (Java's `addItem` with no direction).
 pub fn all_slots(kind: Kind) -> &'static [u8] {
