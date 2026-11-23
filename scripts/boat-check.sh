@@ -333,8 +333,11 @@ fast_start() {   # fast_start WHAT boat ARGS...; leaves the output in $out
         case "$out" in
             *no_ready_machine*|*"already in progress"*|*sandbox_stopping*)
                 job=""
-                echo "boat-check: Boat is still busy with $what; trying again in 10 s" >&2
-                sleep 10 ;;
+                left=$((deadline - $(date +%s)))
+                [ "$left" -le 10 ] || left=10
+                [ "$left" -gt 0 ] || continue
+                echo "boat-check: Boat is still busy with $what; trying again in $left s" >&2
+                sleep "$left" ;;
             *) return 1 ;;
         esac
     done
