@@ -36,12 +36,19 @@ touched now record them. GEN-05c, GEN-05e and GEN-07 moved to Implemented,
 unverified; no row became Verified. The state counts below are recounted
 from the rows: the table had fallen behind rows updated since 2026-11-14.
 
+**Refreshed 2026-11-23** on the v0.17 integration branch
+(`v017-redstone-automation`): the ten v0.17 tracks moved AUT-01a, AUT-02,
+AUT-03, AUT-04a, AUT-04b, AUT-05 and FOO-04b to Implemented, unverified,
+and AUT-06 from Missing to Partial. AUT-01b stays Partial, because some
+Java game events are still not posted. No row became Verified. The counts
+below are recounted from the rows.
+
 | State | Rows |
 |---|---|
 | Verified | 3 |
-| Implemented, unverified | 73 |
-| Partial | 47 |
-| Missing | 2 |
+| Implemented, unverified | 80 |
+| Partial | 41 |
+| Missing | 1 |
 | Unassessed | 0 |
 | Deferred | 6 |
 | Total | 131 |
