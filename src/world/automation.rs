@@ -888,8 +888,8 @@ impl World {
             // `DispensibleContainerItem.emptyContents(null, level, target, null)`:
             // water fills a waterloggable block and evaporates in the Nether.
             Item::POWDER_SNOW_BUCKET => {
-                let placed = self.get_block(front) == Some(Block::AIR)
-                    && self.set_block(front, super::scaffolding::POWDER_SNOW);
+                let placed =
+                    self.get_block(front) == Some(Block::AIR) && self.set_block(front, super::scaffolding::POWDER_SNOW);
                 // `SolidBucketItem.emptyContents`.
                 if placed {
                     self.emit_block_event(front, GameEvent::FluidPlace, EventSource::NONE, None);
