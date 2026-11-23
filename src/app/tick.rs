@@ -261,7 +261,28 @@ impl Game {
         for bot in self.agents.players.values_mut().filter(|b| b.active) {
             landed(&self.world, &mut bot.agent.session);
         }
-        self.world.tick_automation_entities(&mut self.mobs.entities);
+        if self.world.has_deferred_dispenses() {
+            // v0.17 Track C2: dispensers dress players in front of them too.
+            use voxelcraft::entity::dispensed::DispenseTarget;
+            fn target(s: &mut voxelcraft::session::PlayerSession) -> DispenseTarget<'_> {
+                let shape = s.player.collision_shape();
+                DispenseTarget {
+                    pos: s.player.pos,
+                    half_width: shape.half_width,
+                    height: shape.height,
+                    can_equip: !s.vitals.is_dead() && s.mode != GameMode::Spectator,
+                    armor: &mut s.inventory.armor,
+                    offhand: &mut s.inventory.offhand,
+                }
+            }
+            let mut players = vec![target(&mut self.session)];
+            for bot in self.agents.players.values_mut().filter(|b| b.active) {
+                players.push(target(&mut bot.agent.session));
+            }
+            self.world.tick_automation_entities_with(&mut self.mobs.entities, &mut players);
+        } else {
+            self.world.tick_automation_entities(&mut self.mobs.entities);
+        }
         self.tick_trial();
         self.tick_beacons();
         self.tick_conduits();

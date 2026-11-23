@@ -7,6 +7,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use super::{
     World,
     block::Block,
+    container_sides as sides,
+    dispensing::{self, Behaviour},
     redstone_blocks::{self as r, Component},
 };
 
@@ -30,10 +32,40 @@ pub(super) struct AutomationState {
     /// Redstone tick on which each hopper last ran its transfer tick (Java `tickedGameTime`).
     hopper_ticked: FxHashMap<IVec3, u64>,
     pickups: Vec<IVec3>,
-    output: Vec<(IVec3, u8, bool, Stack)>,
+    pub(super) output: Vec<(IVec3, u8, Output, Stack)>,
     creatures: Vec<(IVec3, Stack)>,
     /// v0.16 Track H: blocks a dispenser offers a sulfur cube in front.
     cube_feeds: Vec<(IVec3, u8, Stack)>,
+    /// v0.17 Track C2: dispenses waiting for the entity pass: the
+    /// dispenser, its facing, the slot and the stack it held.
+    pub(super) deferred: Vec<(IVec3, u8, u8, Stack)>,
+    /// v0.17 Track C2: reused buffers for hopper item collection (item
+    /// cells sorted, and the candidates of one hopper).
+    item_cells: Vec<([i32; 3], u32)>,
+    item_found: Vec<u32>,
+}
+
+/// `Hopper.SUCK_AABB`'s bottom: `Block.column(16, 11, 32)`.
+const SUCK_MIN_Y: f64 = 11.0 / 16.0;
+
+/// What the entity pass makes of a stack a dispenser let go of.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(super) enum Output {
+    /// `DefaultDispenseItemBehavior.spawnItem`.
+    Item,
+    /// `ProjectileDispenseBehavior`.
+    Shot,
+    Boat,
+    Cart,
+    Stand,
+}
+
+impl Output {
+    const ALL: [Output; 5] = [Output::Item, Output::Shot, Output::Boat, Output::Cart, Output::Stand];
+    /// The saved code: 0 and 1 are the item and shot flags of older saves.
+    fn code(self) -> u8 {
+        Output::ALL.iter().position(|&o| o == self).unwrap() as u8
+    }
 }
 
 /// `PistonBaseBlock.TRIGGER_EXTEND`, `TRIGGER_CONTRACT` and `TRIGGER_DROP`,
@@ -392,14 +424,26 @@ impl World {
         for (p, due) in &self.automation.cooldown {
             entries.push(format!("c,{},{},{},{}", p.x, p.y, p.z, due.saturating_sub(self.redstone.tick)));
         }
-        for &(p, facing, arrow, stack) in &self.automation.output {
+        for &(p, facing, kind, stack) in &self.automation.output {
             entries.push(format!(
                 "e,{},{},{},{},{},{}",
                 p.x,
                 p.y,
                 p.z,
                 facing,
-                arrow as u8,
+                kind.code(),
+                crate::inventory::stack_to_string(Some(stack))
+            ));
+        }
+        // v0.17 Track C2: dispenses waiting for the entity pass.
+        for &(p, facing, slot, stack) in &self.automation.deferred {
+            entries.push(format!(
+                "d,{},{},{},{},{},{}",
+                p.x,
+                p.y,
+                p.z,
+                facing,
+                slot,
                 crate::inventory::stack_to_string(Some(stack))
             ));
         }
@@ -416,22 +460,27 @@ impl World {
         }
         self.automation = AutomationState::default();
         for entry in entries {
-            if let Some(rest) = entry.strip_prefix("e,") {
+            if let Some((tag, rest)) = entry.split_once(',').filter(|(tag, _)| matches!(*tag, "e" | "d")) {
                 let fields: Vec<&str> = rest.split(',').collect();
-                if let &[x, y, z, facing, arrow, stack] = fields.as_slice() {
+                if let &[x, y, z, facing, code, stack] = fields.as_slice() {
                     let parsed = (|| {
                         Some((
                             IVec3::new(x.parse().ok()?, y.parse().ok()?, z.parse().ok()?),
                             facing.parse::<u8>().ok()?,
-                            arrow.parse::<u8>().ok()?,
+                            code.parse::<u8>().ok()?,
                             crate::inventory::stack_from_str(stack)??,
                         ))
                     })();
-                    if let Some((p, facing, arrow, stack)) = parsed
+                    if let Some((p, facing, code, stack)) = parsed
                         && facing < 6
-                        && arrow < 2
                     {
-                        self.automation.output.push((p, facing, arrow == 1, stack));
+                        if tag == "d" {
+                            if code < 9 {
+                                self.automation.deferred.push((p, facing, code, stack));
+                            }
+                        } else if let Some(&kind) = Output::ALL.get(code as usize) {
+                            self.automation.output.push((p, facing, kind, stack));
+                        }
                     }
                 }
                 continue;
@@ -497,161 +546,54 @@ impl World {
 }
 
 impl World {
+    /// Slots of the container at `p`, 0 when there is none.
     fn container_count(&self, p: IVec3) -> usize {
-        // An ender chest's table entry is a player's inventory lent to an
-        // open screen; hoppers and droppers can't reach it.
-        if self.lent_chest() == Some(p)
-            || self.get_block(p).is_none_or(|b| super::utilities::ender_chest_of(b).is_some())
-        {
-            return 0;
-        }
-        if self.get_block(p).and_then(super::composter::level).is_some() {
-            return 1;
-        }
-        if self.get_block(p).is_some_and(super::jukebox::is_jukebox) {
-            return 1;
-        }
-        if self.chest(p).is_some() {
-            self.container_slots(p)
-        } else if self.furnace(p).is_some() {
-            3
-        } else if self.brewing_stand(p).is_some() {
-            5
-        } else {
-            0
-        }
-    }
-
-    fn container_stack(&self, p: IVec3, slot: usize) -> Option<Stack> {
-        if self.get_block(p).and_then(super::composter::level) == Some(8) {
-            return Some(Stack::new(Item::BONE_MEAL, 1));
-        }
-        if self.get_block(p).is_some_and(super::jukebox::is_jukebox) {
-            return self.jukebox(p).and_then(|j| j.record);
-        }
-        if self.chest(p).is_some() {
-            return self.chest_slot(p, slot);
-        }
-        if let Some(f) = self.furnace(p) {
-            return [f.input, f.fuel, f.output][slot];
-        }
-        let b = self.brewing_stand(p)?;
-        [b.bottles[0], b.bottles[1], b.bottles[2], b.ingredient, b.fuel][slot]
-    }
-
-    fn set_container_stack(&mut self, p: IVec3, slot: usize, stack: Option<Stack>) {
-        if stack.is_none() && self.take_compost(p).is_some() {
-            return;
-        }
-        if self.set_jukebox_record(p, stack) {
-            return;
-        }
-        if self.set_chest_slot(p, slot, stack) {
-            return;
-        }
-        if let Some(f) = self.furnace_mut(p) {
-            match slot {
-                // `setItem`: a different item restarts cooking.
-                0 => f.set_input(stack),
-                1 => f.fuel = stack,
-                _ => f.output = stack,
-            }
-            return;
-        }
-        if let Some(b) = self.brewing_stand_mut(p) {
-            match slot {
-                0..=2 => b.bottles[slot] = stack,
-                3 => b.ingredient = stack,
-                _ => b.fuel = stack,
-            }
-        }
-    }
-
-    fn can_insert(&self, p: IVec3, slot: usize, item: Item, side: IVec3) -> bool {
-        // `JukeboxBlockEntity.canPlaceItem`: a playable disc into an empty slot.
-        if self.get_block(p).is_some_and(super::jukebox::is_jukebox) {
-            return slot == 0 && super::jukebox::song_of(item).is_some() && self.container_stack(p, 0).is_none();
-        }
-        if self.chest(p).is_some() {
-            // v0.16 Track B: `ShulkerBoxBlockEntity.canPlaceItemThroughFace`.
-            return !(self.get_block(p).is_some_and(|b| super::shulker_box::owns(b.0))
-                && crate::content::shulker_box::is_shulker_box(item));
-        }
-        if self.furnace(p).is_some() {
-            return if side == IVec3::Y {
-                slot == 0
-            } else if side == IVec3::NEG_Y {
-                false
-            } else {
-                slot == 1 && (super::furnace::burn_time(item).is_some() || item == Item::BUCKET)
-            };
-        }
-        if self.brewing_stand(p).is_some() {
-            return if side == IVec3::Y {
-                slot == 3 && super::brewing::is_ingredient(item)
-            } else if slot == 4 {
-                item == Item::BLAZE_POWDER
-            } else {
-                slot < 3 && super::brewing::fits_bottle_slot(item)
-            };
-        }
-        false
-    }
-
-    fn can_extract(&self, p: IVec3, slot: usize, side: IVec3) -> bool {
-        if self.get_block(p).and_then(super::composter::level).is_some() {
-            return side == IVec3::NEG_Y;
-        }
-        // `canTakeItem` needs an empty slot in the taker, which a one-item
-        // disc can only go into anyway.
-        if self.get_block(p).is_some_and(super::jukebox::is_jukebox) {
-            return true;
-        }
-        if self.chest(p).is_some() {
-            return true;
-        }
-        if self.furnace(p).is_some() {
-            return side == IVec3::NEG_Y
-                && (slot == 2
-                    || slot == 1
-                        && self
-                            .container_stack(p, slot)
-                            .is_some_and(|s| matches!(s.item, Item::BUCKET | Item::WATER_BUCKET)));
-        }
-        if self.brewing_stand(p).is_some() {
-            return slot < 3
-                || slot == 3 && self.container_stack(p, slot).is_some_and(|s| s.item == Item::GLASS_BOTTLE);
-        }
-        false
+        self.container_kind(p).map_or(0, sides::size)
     }
 
     /// Returns the remaining stack; merges components exactly like inventories.
     fn insert_container(&mut self, p: IVec3, stack: Stack, side: IVec3) -> Option<Stack> {
-        self.insert_container_from(p, stack, side, None)
+        self.insert_container_from(p, stack, Some(side), None)
     }
 
+    /// Java's `HopperBlockEntity.addItem` into the container at `p` through
+    /// `side` (`None`: an item entity a hopper collects, which tries every
+    /// slot): the face's slots in order, each taking what
+    /// `canPlaceItemInContainer` allows (`tryMoveInItem`).
     /// `source_hopper` is the hopper pushing into `p`: Java gives an emptied destination hopper
     /// cooldown `8 - k`, where `k` is 1 when the destination already ticked this game tick.
     fn insert_container_from(
         &mut self,
         p: IVec3,
         stack: Stack,
-        side: IVec3,
+        side: Option<IVec3>,
         source_hopper: Option<IVec3>,
     ) -> Option<Stack> {
-        if self.get_block(p).and_then(super::composter::level).is_some() {
-            if side == IVec3::Y && self.compost(p, stack.item) {
+        let Some(kind) = self.container_kind(p) else { return Some(stack) };
+        // `ComposterBlock.InputContainer.setChanged` composts the one item
+        // the top face takes.
+        if kind == sides::Kind::ComposterInput {
+            if side == Some(IVec3::Y)
+                && sides::can_place(kind, 0, stack.item, None, side)
+                && self.compost(p, stack.item)
+            {
                 return (stack.count > 1).then_some(Stack { count: stack.count.saturating_sub(1), ..stack });
             }
             return Some(stack);
         }
-        let count = self.container_count(p);
+        let slots = match side {
+            Some(side) => sides::slots_for_face(kind, side),
+            None => sides::all_slots(kind),
+        };
         let mut left = stack;
-        for slot in 0..count {
-            if !self.can_insert(p, slot, left.item, side) {
+        for &slot in slots {
+            let slot = slot as usize;
+            let old = self.container_stack(p, slot);
+            if !sides::can_place(kind, slot, left.item, old.as_ref(), side) {
                 continue;
             }
-            let old = self.container_stack(p, slot);
+            // `tryMoveInItem`: an empty slot takes the stack; a slot holding
+            // the same item and components grows by what fits.
             let room = match old {
                 None => left.max(),
                 Some(s) if s.stacks_with(&left) => s.max().saturating_sub(s.count),
@@ -661,6 +603,7 @@ impl World {
             if n == 0 {
                 continue;
             }
+            let count = self.container_count(p);
             let empty_hopper = matches!(self.get_block(p).and_then(r::component), Some(Component::Hopper { .. }))
                 && (0..count).all(|i| self.container_stack(p, i).is_none());
             self.set_container_stack(p, slot, Some(Stack { count: old.map_or(0, |s| s.count) + n, ..left }));
@@ -677,20 +620,24 @@ impl World {
         Some(left)
     }
 
+    /// One item from `from` (through its face `out_side`) into `to`
+    /// (through `in_side`): Java's `ejectItems` and `suckInItems`, which try
+    /// the source face's slots in order.
     fn transfer_one(&mut self, from: IVec3, to: IVec3, out_side: IVec3, in_side: IVec3) -> bool {
-        if self.container_count(to) == 0 {
+        let (Some(source), Some(_)) = (self.container_kind(from), self.container_kind(to)) else {
             return false;
-        }
-        for slot in 0..self.container_count(from) {
+        };
+        for &slot in sides::slots_for_face(source, out_side) {
+            let slot = slot as usize;
             let Some(stack) = self.container_stack(from, slot) else {
                 continue;
             };
-            if !self.can_extract(from, slot, out_side) {
+            if !sides::can_take(source, slot, stack.item, out_side) {
                 continue;
             }
             let source_hopper =
                 matches!(self.get_block(from).and_then(r::component), Some(Component::Hopper { .. })).then_some(from);
-            if self.insert_container_from(to, Stack { count: 1, ..stack }, in_side, source_hopper).is_none() {
+            if self.insert_container_from(to, Stack { count: 1, ..stack }, Some(in_side), source_hopper).is_none() {
                 self.set_container_stack(
                     from,
                     slot,
@@ -713,10 +660,16 @@ impl World {
         let d = r::hopper_direction(facing);
         let pushed = self.transfer_one(p, p + d, d, -d);
         let above = p + IVec3::Y;
-        let pulled = if self.container_count(above) > 0 {
+        let pulled = if self.container_kind(above).is_some() {
             self.transfer_one(above, p, IVec3::NEG_Y, IVec3::Y)
         } else {
-            self.automation.pickups.push(p);
+            // `suckInItems`: a full-cube block above stops collection unless
+            // it is `#does_not_block_hoppers` (beehives and bee nests).
+            let blocked = crate::physics::full_collision(self, above)
+                && self.get_block(above).and_then(super::bees::hive).is_none();
+            if !blocked {
+                self.automation.pickups.push(p);
+            }
             false
         };
         let delay = if pushed || pulled {
@@ -747,160 +700,229 @@ impl World {
         let slot = slots[(self.roll() % count as u64) as usize];
         let stack = self.container_stack(p, slot).unwrap();
         let one = Stack { count: 1, ..stack };
+        let rest = (stack.count > 1).then_some(Stack { count: stack.count.saturating_sub(1), ..stack });
         let d = r::direction(facing);
         let front = p + d;
         if self.get_block(front).is_none() {
             return;
         }
-        if dropper && self.container_count(front) > 0 {
-            if self.insert_container(front, one, -d).is_some() {
+        if dropper {
+            // `DropperBlock.dispenseFrom`: into the container in front
+            // through its facing side (keeping the item if it won't fit),
+            // else out as a plain drop.
+            if self.container_kind(front).is_some() {
+                if self.insert_container(front, one, -d).is_none() {
+                    self.set_container_stack(p, slot, rest);
+                }
                 return;
             }
-            self.set_container_stack(
-                p,
-                slot,
-                (stack.count > 1).then_some(Stack { count: stack.count.saturating_sub(1), ..stack }),
-            );
+            self.set_container_stack(p, slot, rest);
+            self.queue_dispensed(p, facing, Output::Item, one);
             return;
         }
-        // Java's TNT dispense behaviour fails, keeping the item, without `tnt_explodes`.
-        if !dropper && stack.item.block() == Some(Block::TNT) && !self.rules.tnt_explodes {
+        let behaviour = dispensing::behaviour(stack.item);
+        // v0.17 Track C2: behaviours that look for entities finish in
+        // `tick_automation_entities`, which takes the item then.
+        if behaviour.needs_entities() {
+            self.automation.deferred.push((p, facing, slot as u8, stack));
             return;
         }
-        // v0.16 Track B: `ShulkerBoxDispenseBehavior` places the box; a box
-        // that can't be placed stays in the dispenser.
-        if !dropper && crate::content::shulker_box::is_shulker_box(stack.item) {
-            if self.dispense_shulker_box(front, d, &one) {
-                self.set_container_stack(p, slot, None);
+        match behaviour {
+            // Java's TNT dispense behaviour fails, keeping the item, without `tnt_explodes`.
+            Behaviour::Tnt if !self.rules.tnt_explodes => return,
+            // v0.16 Track B: `ShulkerBoxDispenseBehavior` places the box; a box
+            // that can't be placed stays in the dispenser.
+            Behaviour::ShulkerBox => {
+                if self.dispense_shulker_box(front, d, &one) {
+                    self.set_container_stack(p, slot, None);
+                }
+                return;
             }
-            return;
-        }
-        // v0.16 Track H: `DispenseItemBehavior`'s wither skeleton skull. It
-        // goes into an empty cell that is part of a Wither's base
-        // (`WitherSkullBlock.canSpawnMob`), turned the dispenser's way, and
-        // the placement checks the full pattern; otherwise it stays put
-        // (`EquipmentDispenseItemBehavior` onto an entity isn't modelled).
-        let wither_skull = super::skulls::item(super::skulls::Kind::WitherSkeleton);
-        if !dropper && stack.item == wither_skull {
-            let peaceful = self.rules.difficulty == 0;
-            let get = |q: IVec3| self.get_block(q);
-            if self.get_block(front) == Some(Block::AIR)
-                && crate::entity::wither::can_spawn_mob(get, front, self.min_y(), peaceful)
+            // v0.16 Track H: `DispenseItemBehavior`'s wither skeleton skull. It
+            // goes into an empty cell that is part of a Wither's base
+            // (`WitherSkullBlock.canSpawnMob`), turned the dispenser's way, and
+            // the placement checks the full pattern; otherwise it is offered to
+            // an entity in front (`EquipmentDispenseItemBehavior`).
+            Behaviour::WitherSkull => {
+                let peaceful = self.rules.difficulty == 0;
+                let get = |q: IVec3| self.get_block(q);
+                if self.get_block(front) == Some(Block::AIR)
+                    && crate::entity::wither::can_spawn_mob(get, front, self.min_y(), peaceful)
+                {
+                    // `RotationSegment.convertToSegment(direction)`: south 0, west
+                    // 4, north 8, east 12, vertical 0.
+                    let rotation = match (d.x, d.z) {
+                        (-1, _) => 4,
+                        (_, -1) => 8,
+                        (1, _) => 12,
+                        _ => 0,
+                    };
+                    self.set_block(front, super::skulls::floor(super::skulls::Kind::WitherSkeleton, rotation));
+                    self.emit_game_event(
+                        front.as_dvec3() + DVec3::splat(0.5),
+                        super::vibration::GameEvent::BlockPlace,
+                        super::vibration::EventSource::NONE,
+                        None,
+                    );
+                    self.set_container_stack(p, slot, rest);
+                } else {
+                    self.automation.deferred.push((p, facing, slot as u8, stack));
+                }
+                return;
+            }
+            // v0.17 Track C2: a carved pumpkin completes a golem in front, or
+            // is offered to an entity's head.
+            Behaviour::CarvedPumpkin => {
+                if self.place_dispensed_pumpkin(front) {
+                    self.set_container_stack(p, slot, rest);
+                } else {
+                    self.automation.deferred.push((p, facing, slot as u8, stack));
+                }
+                return;
+            }
+            Behaviour::BoneMeal => {
+                // Java `BoneMealDispenseItemBehavior`: it fertilises the block in front and is only
+                // used up when that grew something; otherwise the stack stays in the slot.
+                if self.apply_bone_meal(front) {
+                    self.set_container_stack(p, slot, rest);
+                }
+                return;
+            }
+            // v0.17 Track C2: glowstone charges a respawn anchor (a full one
+            // keeps it); anything else in front gets a plain drop.
+            Behaviour::Glowstone => match self.dispense_glowstone(front) {
+                Some(true) => {
+                    self.set_container_stack(p, slot, rest);
+                    return;
+                }
+                Some(false) => return,
+                None => {}
+            },
+            // `HoneycombItem.getWaxed`: copper in front is waxed.
+            Behaviour::Honeycomb if self.wax_copper(front) => {
+                self.set_container_stack(p, slot, rest);
+                return;
+            }
+            // A water bottle turns dirt into mud and leaves a glass bottle.
+            Behaviour::WaterPotion
+                if stack.item.as_potion() == Some(crate::potion::Potion::WATER)
+                    && self.dispense_water_onto_dirt(front) =>
             {
-                // `RotationSegment.convertToSegment(direction)`: south 0, west
-                // 4, north 8, east 12, vertical 0.
-                let rotation = match (d.x, d.z) {
-                    (-1, _) => 4,
-                    (_, -1) => 8,
-                    (1, _) => 12,
-                    _ => 0,
-                };
-                self.set_block(front, super::skulls::floor(super::skulls::Kind::WitherSkeleton, rotation));
-                self.emit_game_event(
-                    front.as_dvec3() + DVec3::splat(0.5),
-                    super::vibration::GameEvent::BlockPlace,
-                    super::vibration::EventSource::NONE,
-                    None,
-                );
-                self.set_container_stack(
-                    p,
-                    slot,
-                    (stack.count > 1).then_some(Stack { count: stack.count - 1, ..stack }),
-                );
+                self.consume_with_remainder(p, facing, slot, Item::GLASS_BOTTLE);
+                return;
             }
-            return;
+            Behaviour::Projectile => {
+                self.set_container_stack(p, slot, rest);
+                self.queue_dispensed(p, facing, Output::Shot, one);
+                return;
+            }
+            Behaviour::Boat if self.dispensed_boat_pos(p, d).is_some() => {
+                self.set_container_stack(p, slot, rest);
+                self.queue_dispensed(p, facing, Output::Boat, one);
+                return;
+            }
+            Behaviour::Minecart if self.dispensed_cart_pos(p, d).is_some() => {
+                self.set_container_stack(p, slot, rest);
+                self.queue_dispensed(p, facing, Output::Cart, one);
+                return;
+            }
+            Behaviour::ArmorStand => {
+                self.set_container_stack(p, slot, rest);
+                self.queue_dispensed(p, facing, Output::Stand, one);
+                return;
+            }
+            _ => {}
         }
         // v0.16 Track H: `SulfurCubeBlockDispenseItemBehavior`: a swallowable
         // block (without a behaviour of its own) or TNT goes into an adult
         // sulfur cube in front instead, which the entities decide; until
         // then it is dispensed (or primed) as usual.
-        if !dropper
-            && (stack.item.block() == Some(Block::TNT)
-                || crate::entity::sulfur_cube::swallowable(stack.item)
-                    && stack.item.block() != Some(Block::CARVED_PUMPKIN))
-        {
+        if matches!(behaviour, Behaviour::Tnt | Behaviour::SulfurCubeBlock) {
             self.automation.cube_feeds.push((p, facing, one));
         }
-        if !dropper && stack.item == Item::BONE_MEAL {
-            // Java `BoneMealDispenseItemBehavior`: it fertilises the block in front and is only
-            // used up when that grew something; otherwise the stack stays in the slot.
-            if self.apply_bone_meal(front) {
-                self.set_container_stack(
-                    p,
-                    slot,
-                    (stack.count > 1).then_some(Stack { count: stack.count - 1, ..stack }),
-                );
+        self.set_container_stack(p, slot, rest);
+        let block = self.get_block(front).unwrap();
+        let replacement = match stack.item {
+            item if crate::entity::aquatic::bucket_kind(item).is_some()
+                && (block.is_replaceable() || block.holds_water()) =>
+            {
+                // Waterlogged plants already hold the water.
+                if self.generator.dimension != super::terrain::Dimension::Nether && !block.holds_water() {
+                    self.set_block(front, Block::WATER);
+                }
+                self.automation.creatures.push((front, one));
+                Some(Item::BUCKET)
+            }
+            // v0.16 Track D: a sulfur cube bucket has no fluid to pour;
+            // `MobBucketItem.checkExtraContent` lets the cube out.
+            crate::entity::sulfur_cube::BUCKET => {
+                self.automation.creatures.push((front, one));
+                Some(Item::BUCKET)
+            }
+            // `DispensibleContainerItem.emptyContents(null, level, target, null)`:
+            // water fills a waterloggable block and evaporates in the Nether.
+            Item::POWDER_SNOW_BUCKET => (self.get_block(front) == Some(Block::AIR)
+                && self.set_block(front, super::scaffolding::POWDER_SNOW))
+            .then_some(Item::BUCKET),
+            Item::WATER_BUCKET | Item::LAVA_BUCKET => {
+                let fluid = if stack.item == Item::WATER_BUCKET { Block::WATER } else { Block::LAVA };
+                crate::survival_items::bucket::empty_at(self, front, fluid, None).map(|_| Item::BUCKET)
+            }
+            // `BucketPickup.pickupBlock`, waterlogged blocks included.
+            Item::BUCKET => crate::survival_items::bucket::pick_up(self, front).map(|(item, _)| item),
+            _ => None,
+        };
+        if let Some(item) = replacement {
+            // `consumeWithRemainder`: the slot just emptied takes the
+            // remainder, or it joins another slot, or it pops out.
+            if rest.is_none() {
+                self.set_container_stack(p, slot, Some(Stack::new(item, 1)));
+            } else if let Some(left) = self.insert_dispenser(p, Stack::new(item, 1)) {
+                self.queue_dispensed(p, facing, Output::Item, left);
             }
             return;
         }
-        self.set_container_stack(
-            p,
-            slot,
-            (stack.count > 1).then_some(Stack { count: stack.count.saturating_sub(1), ..stack }),
-        );
-        if !dropper {
-            let block = self.get_block(front).unwrap();
-            let replacement = match stack.item {
-                item if crate::entity::aquatic::bucket_kind(item).is_some()
-                    && (block.is_replaceable() || block.holds_water()) =>
-                {
-                    // Waterlogged plants already hold the water.
-                    if self.generator.dimension != super::terrain::Dimension::Nether && !block.holds_water() {
-                        self.set_block(front, Block::WATER);
-                    }
-                    self.automation.creatures.push((front, one));
-                    Some(Item::BUCKET)
-                }
-                // v0.16 Track D: a sulfur cube bucket has no fluid to pour;
-                // `MobBucketItem.checkExtraContent` lets the cube out.
-                crate::entity::sulfur_cube::BUCKET => {
-                    self.automation.creatures.push((front, one));
-                    Some(Item::BUCKET)
-                }
-                // `DispensibleContainerItem.emptyContents(null, level, target, null)`:
-                // water fills a waterloggable block and evaporates in the Nether.
-                Item::POWDER_SNOW_BUCKET => (self.get_block(front) == Some(Block::AIR)
-                    && self.set_block(front, super::scaffolding::POWDER_SNOW))
-                .then_some(Item::BUCKET),
-                Item::WATER_BUCKET | Item::LAVA_BUCKET => {
-                    let fluid = if stack.item == Item::WATER_BUCKET { Block::WATER } else { Block::LAVA };
-                    crate::survival_items::bucket::empty_at(self, front, fluid, None).map(|_| Item::BUCKET)
-                }
-                // `BucketPickup.pickupBlock`, waterlogged blocks included.
-                Item::BUCKET => crate::survival_items::bucket::pick_up(self, front).map(|(item, _)| item),
-                _ => None,
-            };
-            if let Some(item) = replacement {
-                let left = self.insert_container(p, Stack::new(item, 1), IVec3::Y);
-                if let Some(left) = left {
-                    self.automation.output.push((p, facing, false, left));
-                }
-                return;
-            }
-            if stack.item.block() == Some(Block::TNT) {
-                self.primed_tnt.push((front, false));
-                return;
-            }
+        if behaviour == Behaviour::Tnt {
+            self.primed_tnt.push((front, false));
+            return;
         }
-        // The flag marks a dispenser-shot projectile (arrow, fire charge or
-        // experience bottle); everything else, including a dropper's fire
-        // charge, is spawned as an item.
-        let shot = !dropper
-            && matches!(
-                stack.item,
-                Item::ARROW
-                    | Item::SPECTRAL_ARROW
-                    | Item::TIPPED_ARROW
-                    | Item::FIRE_CHARGE
-                    | Item::EXPERIENCE_BOTTLE
-                    | crate::content::fireworks::FIREWORK_ROCKET
-            );
-        self.automation.output.push((p, facing, shot, one));
+        self.queue_dispensed(p, facing, Output::Item, one);
+    }
+
+    /// `DispenserBlockEntity.insertItem`: the first empty or matching slot.
+    pub(super) fn insert_dispenser(&mut self, p: IVec3, stack: Stack) -> Option<Stack> {
+        self.insert_container(p, stack, IVec3::Y)
+    }
+
+    /// Hands `stack` from the dispenser at `p` to the entity pass.
+    pub(super) fn queue_dispensed(&mut self, p: IVec3, facing: u8, kind: Output, stack: Stack) {
+        self.automation.output.push((p, facing, kind, stack));
     }
 
     /// Consume entity work after shared world rules and before entity physics.
     /// Headless callers use this same method with their Entities collection.
     pub fn tick_automation_entities(&mut self, entities: &mut crate::entity::Entities) {
+        self.tick_automation_entities_with(entities, &mut []);
+    }
+
+    /// Whether a dispense waits for the entity pass (the app then lends
+    /// [`World::tick_automation_entities_with`] its players).
+    pub fn has_deferred_dispenses(&self) -> bool {
+        !self.automation.deferred.is_empty()
+    }
+
+    /// [`World::tick_automation_entities`] with the players a dispenser can
+    /// dress (v0.17 Track C2: `EquipmentDispenseItemBehavior` reaches
+    /// players too).
+    pub fn tick_automation_entities_with(
+        &mut self,
+        entities: &mut crate::entity::Entities,
+        players: &mut [crate::entity::dispensed::DispenseTarget<'_>],
+    ) {
+        // v0.17 Track C2: dispenses that look for entities.
+        if !self.automation.deferred.is_empty() {
+            self.run_deferred_dispenses(entities, players);
+        }
         // v0.16 Track H: `SulfurCubeBlockDispenseItemBehavior.dispenseBlock`:
         // the first adult cube in the cell in front that takes the block;
         // otherwise TNT is primed and other blocks are dispensed as items.
@@ -914,8 +936,11 @@ impl World {
                 if let Some(i) = self.primed_tnt.iter().position(|&t| t == (front, false)) {
                     self.primed_tnt.remove(i);
                 }
-            } else if let Some(i) =
-                self.automation.output.iter().position(|&(q, f, shot, s)| q == p && f == facing && !shot && s == stack)
+            } else if let Some(i) = self
+                .automation
+                .output
+                .iter()
+                .position(|&(q, f, kind, s)| q == p && f == facing && kind == Output::Item && s == stack)
             {
                 self.automation.output.remove(i);
             }
@@ -933,57 +958,105 @@ impl World {
         rings.clear();
         self.bell_rings = rings;
         let mut output = std::mem::take(&mut self.automation.output);
-        for &(p, facing, arrow, stack) in &output {
+        for &(p, facing, kind, stack) in &output {
             let step = r::direction(facing);
-            if arrow && stack.item == Item::FIRE_CHARGE {
-                entities.dispense_fire_charge(p, step);
-            } else if arrow && stack.item == Item::EXPERIENCE_BOTTLE {
-                entities.dispense_thrown(stack.item, p, step);
-            } else if arrow && stack.item == crate::content::fireworks::FIREWORK_ROCKET {
-                entities.dispense_firework(stack, p, step);
-            } else if arrow {
-                entities.dispense_arrow_stack(stack, p, step);
-            } else {
-                entities.dispense_item(stack, p, step);
+            match kind {
+                Output::Shot if stack.item == Item::FIRE_CHARGE => entities.dispense_fire_charge(p, step),
+                Output::Shot if stack.item == crate::content::fireworks::FIREWORK_ROCKET => {
+                    entities.dispense_firework(stack, p, step)
+                }
+                Output::Shot if matches!(stack.item, Item::ARROW | Item::SPECTRAL_ARROW | Item::TIPPED_ARROW) => {
+                    entities.dispense_arrow_stack(stack, p, step)
+                }
+                // Eggs, snowballs, wind charges, experience bottles, splash
+                // and lingering potions.
+                Output::Shot if entities.dispense_projectile(stack, p, step) => {}
+                // `BoatDispenseItemBehavior` and `MinecartDispenseItemBehavior`
+                // through the cart API Track D1 owns; if the water or rail
+                // went away since, the item pops out instead.
+                Output::Boat | Output::Cart => {
+                    let pos = if kind == Output::Boat {
+                        self.dispensed_boat_pos(p, step)
+                    } else {
+                        self.dispensed_cart_pos(p, step)
+                    };
+                    match (pos, crate::entity::minecart::CartKind::from_item(stack.item)) {
+                        (Some(pos), Some(cart)) => {
+                            entities.spawn_cart(cart, pos);
+                        }
+                        _ => entities.dispense_item(stack, p, step),
+                    }
+                }
+                Output::Stand => entities.dispense_armor_stand(p + step, step),
+                _ => entities.dispense_item(stack, p, step),
             }
         }
         output.clear();
         self.automation.output = output;
+        self.collect_hopper_items(entities);
+        self.exchange_minecarts(entities);
+    }
+
+    /// v0.17 Track C2: Java's `HopperBlockEntity.suckInItems` for each
+    /// hopper with nothing above it to pull from: the item entities whose
+    /// boxes meet `Hopper.SUCK_AABB` (the hopper's top from 11/16 up, and
+    /// the whole cell above) go in, ignoring pickup delay, until one goes in
+    /// whole; a partly taken stack stays with the rest and the next is
+    /// tried. Items are found through a sorted cell index built once per
+    /// tick, not by walking every item for every hopper.
+    fn collect_hopper_items(&mut self, entities: &mut crate::entity::Entities) {
         let mut pickups = std::mem::take(&mut self.automation.pickups);
+        if pickups.is_empty() || entities.items.is_empty() {
+            pickups.clear();
+            self.automation.pickups = pickups;
+            return;
+        }
+        let mut cells = std::mem::take(&mut self.automation.item_cells);
+        cells.clear();
+        cells.extend(entities.items.iter().enumerate().map(|(i, e)| (e.pos.floor().as_ivec3().to_array(), i as u32)));
+        cells.sort_unstable();
+        let mut found = std::mem::take(&mut self.automation.item_found);
         for &p in &pickups {
             if !self.is_block_ticking(p)
                 || !matches!(self.get_block(p).and_then(r::component), Some(Component::Hopper { disabled: false, .. }))
             {
                 continue;
             }
-            for entity in &mut entities.items {
-                // Item entities are 1/4-block wide and tall. Include the hopper's
-                // upper cavity and the cell above, ignoring player pickup delay.
-                let min = p.as_dvec3() + DVec3::new(0.0, 0.625, 0.0);
-                let max = p.as_dvec3() + DVec3::new(1.0, 2.0, 1.0);
-                if entity.stack.count == 0
-                    || entity.pos.x + 0.125 < min.x
-                    || entity.pos.x - 0.125 > max.x
-                    || entity.pos.z + 0.125 < min.z
-                    || entity.pos.z - 0.125 > max.z
-                    || entity.pos.y + 0.25 < min.y
-                    || entity.pos.y > max.y
-                {
+            let (min, max) =
+                (p.as_dvec3() + DVec3::new(0.0, SUCK_MIN_Y, 0.0), p.as_dvec3() + DVec3::new(1.0, 2.0, 1.0));
+            // An item's feet lie in its own cell; its 0.25-wide, 0.25-tall
+            // box reaches the box from the cells around it.
+            found.clear();
+            for x in p.x - 1..=p.x + 1 {
+                for z in p.z - 1..=p.z + 1 {
+                    for y in p.y..=p.y + 1 {
+                        let key = [x, y, z];
+                        let at = cells.partition_point(|c| c.0 < key);
+                        found.extend(cells[at..].iter().take_while(|c| c.0 == key).map(|c| c.1));
+                    }
+                }
+            }
+            found.sort_unstable();
+            for &i in &found {
+                let entity = &mut entities.items[i as usize];
+                let (lo, hi) = entity.aabb();
+                if entity.stack.count == 0 || !(lo.cmplt(max).all() && hi.cmpgt(min).all()) {
                     continue;
                 }
-                let before = entity.stack.count;
-                let left = self.insert_container(p, entity.stack, IVec3::Y);
+                let left = self.insert_container_from(p, entity.stack, None, None);
                 entity.stack.count = left.map_or(0, |s| s.count);
-                if entity.stack.count < before {
+                if left.is_none() {
                     self.automation.cooldown.insert(p, self.redstone.tick + 8);
                     break;
                 }
             }
         }
         entities.items.retain(|e| e.stack.count > 0);
+        found.clear();
+        self.automation.item_found = found;
+        self.automation.item_cells = cells;
         pickups.clear();
         self.automation.pickups = pickups;
-        self.exchange_minecarts(entities);
     }
 
     fn exchange_minecarts(&mut self, entities: &mut crate::entity::Entities) {
@@ -1033,7 +1106,7 @@ impl World {
             }
             if kind == CartKind::Hopper && !entities.minecarts[i].disabled && entities.minecarts[i].cooldown == 0 {
                 let above = cell + IVec3::Y;
-                if self.container_count(above) > 0
+                if self.container_kind(above).is_some()
                     && self.pull_into_cart(above, &mut entities.minecarts[i].slots[..slots])
                 {
                     entities.minecarts[i].cooldown = 0;
@@ -1049,10 +1122,11 @@ impl World {
 
     fn transfer_into_cart(&mut self, hopper: IVec3, slots: &mut [Option<Stack>], side: IVec3) -> bool {
         use crate::entity::minecart::insert_slots;
-        let count = self.container_count(hopper);
-        for slot in 0..count {
+        let Some(kind) = self.container_kind(hopper) else { return false };
+        for &slot in sides::slots_for_face(kind, side) {
+            let slot = slot as usize;
             let Some(stack) = self.container_stack(hopper, slot) else { continue };
-            if !self.can_extract(hopper, slot, side) {
+            if !sides::can_take(kind, slot, stack.item, side) {
                 continue;
             }
             let one = Stack { count: 1, ..stack };
@@ -1625,7 +1699,7 @@ mod tests {
         put(&mut w, P - IVec3::X, Block::CHEST);
         w.chest_mut(P - IVec3::X).unwrap().slots[0] = Some(Stack::new(Item::DIAMOND, 1));
         w.automation.hopper_ticked.insert(P + IVec3::X, now);
-        assert!(w.insert_container_from(P + IVec3::X, Stack::new(Item::DIAMOND, 1), IVec3::Y, None).is_none());
+        assert!(w.insert_container_from(P + IVec3::X, Stack::new(Item::DIAMOND, 1), Some(IVec3::Y), None).is_none());
         assert_eq!(w.automation.cooldown.get(&(P + IVec3::X)), Some(&(now + 8)));
     }
     /// Java 26.3 `ExperienceBottleItem.createDispenseConfig` through

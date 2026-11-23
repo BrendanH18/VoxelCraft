@@ -25,6 +25,7 @@ pub(crate) mod cat_spawner;
 pub mod category;
 mod chunk_storage;
 pub mod decor;
+pub mod dispensed;
 pub mod path;
 pub use bobber::{CatchContext, roll_catch, set_damage};
 pub mod armadillo;

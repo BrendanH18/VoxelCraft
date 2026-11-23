@@ -206,21 +206,56 @@ its contents once and creates empty storage.
 
 Dispensers/droppers fire four game ticks after a rising power edge and select a
 nonempty slot uniformly. Holding power does not repeatedly dispense. Droppers
-insert one item into the front container (retaining it if full) or eject it.
-Dispensers eject ordinary items, shoot recoverable unowned arrows and fire
-charges, place or collect water/lava source buckets, and prime TNT. Following
-Java 26.3 `DefaultDispenseItemBehavior.spawnItem`, dispensed and dropped items
-appear 0.7 blocks out (0.15625 lower, 0.125 vertically) at 0.2-0.3 blocks per
-tick plus `triangle(0.0172275 * 6)` noise per axis with a 10-tick pickup delay.
-`ProjectileDispenseBehavior` arrows start 0.7 out and 0.1 up at power 1.1
-with the same noise and no upward bias. `FireChargeItem` launches a small
-fireball one block out with a `triangle(0.11485)` noise heading; it no longer
-ignites the front cell directly (the fireball ignites where it lands). Other
-behaviours (equipment, spawn eggs and the remaining projectile items such as
-eggs, snowballs and potions) fall back to item drops: spawn eggs do not exist
-yet and equipping a player or mob needs a session adapter. A dispensed bone
-meal fertilises the block in front exactly like hand use and is only spent when
-it grew something (`BoneMealDispenseItemBehavior`).
+insert one item into the front container through its facing side (retaining
+it if full) or eject it. Following Java 26.3 `DefaultDispenseItemBehavior.spawnItem`,
+dispensed and dropped items appear 0.7 blocks out (0.15625 lower, 0.125
+vertically) at 0.2-0.3 blocks per tick plus `triangle(0.0172275 * 6)` noise
+per axis with a 10-tick pickup delay.
+
+Dispensers follow Java 26.3's dispense table (v0.17 Track C2,
+[record](verification/2026-11-23-v0.17-dispensing.md)): `world::dispensing::behaviour`
+resolves an item as `DispenserBlock.getDispenseMethod` does (the
+`DispenseItemBehavior.bootStrap` registry, then any equippable item, then
+`#sulfur_cube_swallowable`), checked both ways against
+`tests/fixtures/java/26.3/dispensing.json`.
+
+- Projectiles leave at their `DispenseConfig` power and uncertainty: arrows,
+  eggs and snowballs 0.7 out and 0.1 up at 1.1 (uncertainty 6), experience
+  bottles and splash and lingering potions at 1.375 (3), fire charges and
+  wind charges a block out at 1.0 (6.67), rockets half a block out at 0.5 (1).
+  A fire charge launches a small fireball, which ignites where it lands.
+- Equippable items (armour, elytra, heads, carved pumpkins, shields,
+  saddles, horse and nautilus armour, carpets, harnesses) go into the empty
+  slot of the first entity in front that `canEquipWithDispenser` allows: a
+  mob that can pick up loot, a tamed horse, donkey, mule, camel or llama (a
+  saddle, armour or carpet), a grown pig, strider or happy ghast (saddle or
+  harness), an armour stand, or a player; a mob keeps it on death and stops
+  despawning. With nobody to take it the item pops out. A carved pumpkin
+  first completes a snow, iron or copper golem base in front; a wither
+  skeleton skull a Wither base; with no base and nobody to wear them they
+  stay put.
+- Shears harvest a full hive (three honeycomb, bees out), cut a lead or a
+  fence knot's leads, or shear a sheep, mooshroom, bogged, sulfur cube or
+  copper golem, losing one durability; a brush brushes an armadillo (16).
+  Flint and steel primes a sulfur cube, sets fire, lights a campfire,
+  candle or candle cake, or primes TNT, and wears even when it meets
+  nothing (as in Java).
+- Water, lava, powder snow and mob buckets empty in front and empty
+  buckets fill, leaving the bucket in the same slot (`consumeWithRemainder`);
+  glass bottles fill at a full hive (honey) or from water; a water bottle
+  turns dirt, coarse dirt or rooted dirt into mud; glowstone charges a
+  respawn anchor (a full one keeps it); honeycomb waxes copper; bone meal
+  is spent only when it grew something; TNT is primed (kept without
+  `tnt_explodes`); shulker boxes are placed.
+- Boats go a block up onto water in front, or onto water below an air cell;
+  minecarts onto a rail in front or over one (through the cart API); an
+  armour stand stands in front turned the dispenser's way; a chest goes
+  onto a tamed donkey, mule or llama. Otherwise each pops out.
+- Spawn eggs don't exist yet (v0.18).
+
+Behaviours that look for entities finish in `tick_automation_entities`
+later in the same game tick, with the slot they came from; the app lends
+its players through `tick_automation_entities_with`.
 
 Hoppers push one item, then pull one from the container above in the same
 eligible cycle, followed by eight game ticks of cooldown. An emptied
@@ -228,16 +263,35 @@ destination hopper receives cooldown `8 - k` as in Java's `tryMoveInItem`: seven
 when a hopper source pushes into a hopper that already ran its tick this game
 tick, otherwise eight. The scheduled-tick order stands in for Java's
 block-entity ticker order, and a destination idling on cooldown is not
-re-ticked, so it counts as not yet ticked. Power disables transfer and pickup. Furnace insertion
-uses top input/side fuel and bottom extraction uses output or empty buckets;
-brewing insertion uses top ingredient/side bottle or blaze powder. Stack
-components survive transfer, and full/incompatible destinations consume
-nothing. With no container above, a hopper collects item entities above its
-cavity, ignoring player pickup delay. A whole entity stack can be collected at
-once, as in Java. Active hoppers retry idle transfers each tick; item pickup
-currently scans the entity list rather than a spatial entity index.
+re-ticked, so it counts as not yet ticked. Power disables transfer and pickup.
 
-Scheduled ticks, cooldowns, power edges and pending ejections survive saves.
+Hoppers, droppers and hopper minecarts reach containers through Java 26.3's
+faces (`world::container_sides`, checked against the same fixture): each
+face's slots in Java's order, with each container's `canPlaceItem` and
+`canTakeItem`. A furnace (smoker, blast furnace) takes input from above,
+fuel from the sides and below (a second bucket never joins a bucket in the
+fuel slot) and gives up its output, then an empty or water bucket from the
+fuel slot, below. A brewing stand takes its ingredient from above, bottles
+and blaze powder from the sides, and bottles and the ingredient from below,
+and gives up bottles and an emptied glass bottle. Shulker boxes refuse
+shulker boxes; a composter takes compostables from above and gives bone
+meal below, and at level 7 still counts as a container. Jukeboxes take a
+disc, chiseled bookshelves one book (written and writable books included)
+per slot, and shelves anything. Stack components survive transfer, and
+full/incompatible destinations consume nothing. Decorated pots hold no item
+yet, and the crafter's faces are Track C1's.
+
+With no container above, a hopper collects item entities whose boxes meet
+Java's `Hopper.SUCK_AABB` (from 11/16 up the hopper to the top of the cell
+above), ignoring player pickup delay, through a sorted cell index of item
+entities built once per tick, not a walk over every item per hopper. A
+full block above (other than a hive or nest) stops collection. A whole
+entity stack can be collected at once; a stack only partly taken stays and
+the next item is tried, as in Java. Active hoppers retry idle transfers each
+tick.
+
+Scheduled ticks, cooldowns, power edges, pending ejections and queued
+dispenses survive saves.
 The client calls `tick_automation_entities` between world rules and entity
 physics; headless callers must invoke it with their entity collection too.
 Only loaded containers transfer items. Round 2 rails, carts, tripwire and note
@@ -246,7 +300,8 @@ blocks are described below.
 Sources: [HopperBlockEntity](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/entity/HopperBlockEntity.java),
 [DispenserBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/DispenserBlock.java),
 [DropperBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/DropperBlock.java),
-[DispenseItemBehavior](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/core/dispenser/DispenseItemBehavior.java).
+[DispenseItemBehavior](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/core/dispenser/DispenseItemBehavior.java);
+v0.17 Track C2 read the pinned 26.3 jar itself ([record](verification/2026-11-23-v0.17-dispensing.md)).
 
 
 ## Rails and minecarts (round 2)

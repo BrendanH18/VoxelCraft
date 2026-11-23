@@ -266,6 +266,35 @@ impl World {
         Some((used, out))
     }
 
+    /// v0.17 Track C2: a hopper or dropper fills or empties shelf slot
+    /// `slot` (`ShelfBlockEntity` is a plain three-slot container).
+    pub(in crate::world) fn set_shelf_slot(&mut self, p: IVec3, slot: usize, stack: Option<Stack>) {
+        if slot >= 3 || self.get_block(p).and_then(shelves::shelf).is_none() {
+            return;
+        }
+        self.wood.shelves.entry(p).or_default()[slot] = stack;
+        self.wood.version += 1;
+        self.redstone_changed(p);
+    }
+
+    /// v0.17 Track C2: a hopper or dropper puts a book into, or takes one
+    /// out of, chiseled bookshelf slot `slot`. As Java's
+    /// `ChiseledBookShelfBlockEntity.updateState`, the slot becomes the last
+    /// one used and the block shows which slots hold books.
+    pub(in crate::world) fn set_bookshelf_book(&mut self, p: IVec3, slot: usize, stack: Option<Stack>) {
+        let Some((facing, slots)) = self.get_block(p).and_then(bookshelf::shelf) else { return };
+        if slot >= 6 {
+            return;
+        }
+        let entity = self.wood.bookshelves.entry(p).or_default();
+        entity.books[slot] = stack.map(|s| Stack { count: 1, ..s });
+        entity.last_slot = Some(slot as u8);
+        let slots = if stack.is_some() { slots | 1 << slot } else { slots & !(1 << slot) };
+        self.edit(p, bookshelf::state(facing, slots), false);
+        self.wood.version += 1;
+        self.redstone_changed(p);
+    }
+
     /// A comparator's reading of the block at `p`, read from the side
     /// `toward` points to: shelves give their filled-slot bits from behind,
     /// chiseled bookshelves the last slot used plus one.
