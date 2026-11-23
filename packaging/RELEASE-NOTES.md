@@ -1,11 +1,11 @@
 VoxelCraft 0.17.0 is the redstone and automation update. **Redstone:**
-signals now travel in Java's update order, so contraptions built from Java
-designs behave the way they do in Java. **Pistons:** slime and honey blocks
+signals now travel in Java's update order, so common contraptions built
+from Java designs behave the way they do in Java. **Pistons:** slime and honey blocks
 pull their neighbours along, so flying machines fly, and pistons push mobs
 and players. **The crafter:** a block that crafts on a redstone pulse.
-**And more:** dispensers that handle every item as Java does, the furnace
-minecart, hoppers with Java's timing, sculk sensors that hear everything
-Java's hear, and workstations that match Java. If you have 0.10.0 or later,
+**And more:** dispensers that handle items as Java's do, the furnace
+minecart, hoppers with Java's timing, sculk sensors that hear far more of
+what Java's hear, and workstations that match Java. If you have 0.10.0 or later,
 the title screen offers this update; choose **Update and Restart**. If
 you're coming from 0.9.0 or earlier, install it by hand once, as below, and
 it updates itself from then on.
@@ -82,8 +82,9 @@ Choose your download:
 
 ### Sculk sensors
 
-- Sculk sensors and the warden hear the same actions as in Java, including
-  redstone, pistons, dispensers, projectiles, containers and doors.
+- Sculk sensors and the warden hear many more actions, as in Java,
+  including redstone, pistons, dispensers, projectiles, containers and
+  doors. A few are still missing (see the known limitations).
 
 ### Farms
 
