@@ -57,12 +57,13 @@ Docs: https://docs.boat.dev/llms.txt. Prices and limits: run `boat limits`; neve
   passes `--name voxelcraft-<purpose>` and is never left unnamed;
   `boat-check.sh` names its own (`voxelcraft-check-<worktree>-<time>-<pid>`,
   `voxelcraft-warm-build-<time>-<pid>`).
-- Rust builds and tests, while iterating and at hand-off, run through
-  `scripts/boat-check.sh` (see [Boat checks](docs/development.md#boat-checks)):
-  `-- 'cargo test --profile ci <filter>'` while working,
-  `--full` once the work is finished, `--done` when the agent's work ends
-  (it deletes the worktree's sandbox), and `--save` after dependency or
-  toolchain changes to refresh the warm snapshot sandboxes start from.
+- Rust builds and tests run through `scripts/boat-check.sh` (see
+  [Boat checks](docs/development.md#boat-checks)): `-- CMD` for the targeted
+  checks while working and to reproduce a failed CI job (CI runs the full
+  suite; see [Before handing work back](#before-handing-work-back)), `--done`
+  when the agent's work ends (it deletes the worktree's sandbox), and
+  `--save` after dependency or toolchain changes to refresh the warm
+  snapshot sandboxes start from.
 - One Rust toolchain (2026-11-21): `rust-toolchain.toml` pins the version CI,
   release builds and `boat-check.sh` use. Change it on purpose, and once the
   change is on origin's default branch run `scripts/boat-check.sh --save`.
@@ -110,8 +111,8 @@ Docs: https://docs.boat.dev/llms.txt. Prices and limits: run `boat limits`; neve
   (owner, 2026-11-21): measured, `xlarge` was slower for this build at
   about 2.8 times the price. Never share
   a sandbox between agents: agents in one worktree each set `VC_BOAT_SLOT`.
-  Each agent runs the hand-off chain on its own worktree, and the integrator
-  runs it again on the merged result. Check `boat limits` before work that
+  Each agent runs targeted checks on its own worktree, and CI runs the full
+  suite on every pushed commit, the integrator's merged result included. Check `boat limits` before work that
   starts sandboxes: the account's daily starts are shared by every project. If
   `boat` isn't installed or signed in, or `boat-check.sh` can't start a
   sandbox (no starts left today, or the account can't start `large`
@@ -127,10 +128,22 @@ Docs: https://docs.boat.dev/llms.txt. Prices and limits: run `boat limits`; neve
 
 ## Before handing work back
 
-The hand-off chain, which stops at the first broken step:
+CI is the gate (owner, 2026-11-22; it replaces running the full chain in
+Boat before every hand-off). It runs the full suite once, on the pushed
+commit, and `main` is protected, so a change merges only with CI green.
+Agents don't run `scripts/boat-check.sh` with no command, or with `--full`,
+before handing work back. Those modes run nothing CI doesn't (compared
+2026-11-22): their `cargo fmt`, clippy and tests are CI's **rustfmt** job
+and its **clippy + test** job, which runs them on Linux, macOS and Windows,
+and `--full`'s `--no-default-features` clippy and tests are its
+**simulation without client dependencies** job. CI also runs Ruff, the
+headless benchmark, the asset check, the doc-link check and the Python tool
+tests it names ([ci.yml](.github/workflows/ci.yml)).
+
+CI's Rust checks are this chain:
 
 ```sh
-cargo fmt && cargo clippy --profile ci --all-targets --locked -- -D warnings && cargo test --profile ci --locked
+cargo fmt --check && cargo clippy --profile ci --all-targets --locked -- -D warnings && cargo test --profile ci --locked
 ```
 
 Checks and tests use the `ci` profile (owner, 2026-11-21): release's
@@ -138,24 +151,59 @@ optimisations and assertions without its cross-crate link-time optimisation. On 
 `large` sandbox the test build after a source change takes 259 s instead of
 858 s with `--release`. Only shipped builds use `--release`.
 
-Run it with `scripts/boat-check.sh --full`: formatting here, the rest in a
-Boat sandbox, plus the headless-build checks.
+1. While working, run targeted checks: `cargo fmt --check` here, and the
+   rest on Boat with `scripts/boat-check.sh -- CMD`. VoxelCraft is one
+   crate, so narrow by test target and filter rather than by crate. The
+   cheap choices, which reuse the sandbox's warm `ci` build:
+   - the unit tests of the modules you changed:
+     `cargo test --profile ci --locked --lib world::` (a module path under
+     `src/`);
+   - the integration tests that cover the change:
+     `cargo test --profile ci --locked --test copper` for `tests/copper.rs`,
+     one `--test` per file;
+   - clippy on what you touched:
+     `cargo clippy --profile ci --locked --lib -- -D warnings`, adding
+     `--test <name>` for each changed test file;
+   - for code the headless build compiles differently (`client` feature
+     gates), the same clippy with `--no-default-features`.
 
-When a change touches Python (`tools/`, `packaging/` or `ruff.toml`), also run
-the Ruff checks CI runs here and the Python tool tests in Boat:
+   Chain them in one command, so the sandbox resumes once:
 
-```sh
-uvx ruff@0.17.5 check && uvx ruff@0.17.5 format --check
-scripts/boat-check.sh -- "python3 -m unittest discover -s tools -p 'test_*.py'"
-```
+   ```sh
+   scripts/boat-check.sh -- 'cargo clippy --profile ci --locked --lib --test copper -- -D warnings && cargo test --profile ci --locked --lib world:: && cargo test --profile ci --locked --test copper'
+   ```
 
-`uvx ruff@0.17.5 format` applies the formatting. Ruff runs through `uvx` at
-that pinned version and is not a project dependency; the settings are in
-`ruff.toml`. The scripts must keep running on Python 3.9 (macOS's
-`/usr/bin/python3`).
+   When a change touches Python (`tools/`, `packaging/` or `ruff.toml`), run
+   `uvx ruff@0.17.5 check && uvx ruff@0.17.5 format --check` here and the
+   tests of the tool you changed on Boat, for example
+   `scripts/boat-check.sh -- 'python3 -m unittest tools/test_campaign_ledger.py'`.
+   `uvx ruff@0.17.5 format` applies the formatting. Ruff runs through `uvx`
+   at that pinned version and is not a project dependency; the settings are
+   in `ruff.toml`. The scripts must keep running on Python 3.9 (macOS's
+   `/usr/bin/python3`).
+2. Push and let CI run everything. When a CI job fails, reproduce that job,
+   or just its failing test, on Boat with the script (the headless job's
+   test, for example, with
+   `scripts/boat-check.sh -- 'cargo test --profile ci --locked --no-default-features --test <name>'`),
+   fix it and push again. macOS and Windows failures can't be reproduced on
+   Boat's Linux; work from the job's log. A full run (`scripts/boat-check.sh`
+   or `--full`) is only for reproducing a CI failure a narrower command
+   can't, or for checks CI doesn't run.
+3. These aren't in CI, so they stay required before hand-off:
+   - a new `tools/test_*.py`: CI runs only the tool test files `ci.yml`
+     names (`test_benchmark_scenes.py`, `test_check_doc_links.py` and
+     `test_campaign_ledger.py`), so run a new one on Boat until it's added
+     there;
+   - the relevant frame-time, visual and persistence checks below. CI runs
+     only the headless generation and meshing benchmark; the frame-time
+     suite, scripted scenes and screenshots stay on this Mac.
 
-Documentation-only changes skip this chain (owner, 2026-10-26); check their
-links and rendering instead.
+The hand-off report names the targeted checks that ran, with their
+commands and results, and says CI is the full check (with its result on
+the pushed commit, if it has finished).
+
+Documentation-only changes skip the targeted checks (owner, 2026-10-26);
+check their links and rendering instead.
 
 Run relevant headless, benchmark, visual and persistence checks as described in
 [the agent guide](docs/agent-guide.md) and [development guide](docs/development.md).

@@ -1974,10 +1974,10 @@ feature; they are not a release step.
   that push ([current plan](#current-plan--updated-2026-11-13)); the
   frame-time step still applies to everything it merges.
 
-Use the repository's required check chain for source changes:
-`cargo fmt && cargo clippy --release --all-targets -- -D warnings && cargo test --release`.
-Also run relevant headless checks, shader validation, cross-platform CI
-and applicable benchmark/player/save checks. Tests that merely mirror the
+Source changes go through [the repository's checks](../AGENTS.md#before-handing-work-back):
+targeted checks on Boat while working, then CI's full suite, on Linux,
+macOS and Windows, on the pushed commit (owner, 2026-11-22). Also run
+the applicable benchmark/player/save checks CI doesn't. Tests that merely mirror the
 implementation do not establish Java correctness.
 
 Minor releases can contain completed subsets of the roadmap, but shipped

@@ -6,8 +6,11 @@ Run commands from the repository root. See the README for platform prerequisites
 
 ## Checks
 
-Use the same checks as [CI](../.github/workflows/ci.yml). Agents run them in
-Boat through `scripts/boat-check.sh` (see [Boat checks](#boat-checks)):
+[CI](../.github/workflows/ci.yml) runs these on every pull request and push
+to `main`, and it is the full check (owner, 2026-11-22): agents run targeted
+checks in Boat through `scripts/boat-check.sh -- CMD` while working and leave
+the full suite to CI ([before handing work back](../AGENTS.md#before-handing-work-back),
+[Boat checks](#boat-checks)):
 
 ```sh
 cargo fmt --check
@@ -54,7 +57,7 @@ builds do not use that path.
 
 ## Boat checks
 
-`scripts/boat-check.sh` runs the hand-off checks on a [Boat](https://boat.dev)
+`scripts/boat-check.sh` runs checks on a [Boat](https://boat.dev)
 sandbox instead of this Mac. It needs the `boat` CLI, installed and signed in
 (`curl -fsSL https://boat.dev/install | sh`), `jq` and git.
 
@@ -66,6 +69,12 @@ scripts/boat-check.sh --status # this worktree's sandbox
 scripts/boat-check.sh --done   # delete it when the work ends
 scripts/boat-check.sh --save   # rebuild the warm snapshot from origin's default branch
 ```
+
+Agents use `-- CMD` (owner, 2026-11-22): the targeted tests and clippy for
+what they changed while working, and the failing job or test when CI fails.
+The default and `--full` modes run nothing CI doesn't, so they're for
+reproducing a CI failure a narrower command can't, not a step before every
+hand-off ([the targeted checks](../AGENTS.md#before-handing-work-back)).
 
 Each worktree has one long-lived sandbox (owner, 2026-11-21), named
 `voxelcraft-check-<worktree>-<time>-<pid>` (unique to the run that made it,

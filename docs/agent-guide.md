@@ -10,14 +10,17 @@ conversation. Keep only useful historical briefs in `docs/archive/briefs/`.
 
 ## Checks and feature evidence
 
-Before handing work back, run the chain in [AGENTS.md](../AGENTS.md#before-handing-work-back).
-CI additionally runs a headless benchmark on Linux, macOS and Windows; see
-[the workflow](../.github/workflows/ci.yml). For engine/shared-feature changes,
-also check the device-independent configuration:
+Before handing work back, run the targeted checks in
+[AGENTS.md](../AGENTS.md#before-handing-work-back) and let CI run the full
+suite (owner, 2026-11-22). CI also runs a headless benchmark on Linux, macOS
+and Windows and checks the device-independent configuration in its
+**simulation without client dependencies** job; see
+[the workflow](../.github/workflows/ci.yml). For engine/shared-feature
+changes, add the matching `--no-default-features` targeted check while
+working, for example:
 
 ```sh
-cargo clippy --profile ci --no-default-features --all-targets -- -D warnings
-cargo test --profile ci --no-default-features
+scripts/boat-check.sh -- 'cargo test --profile ci --locked --no-default-features --test <name>'
 ```
 
 Tests validate every WGSL shader with naga. Check changed gameplay against the
