@@ -307,7 +307,9 @@ fast_start() {   # fast_start WHAT boat ARGS...; leaves the output in $out
     rm -f "$out_file.timeout"
     "$@" --json >"$out_file" 2>&1 </dev/null &
     job=$!
-    (sleep "$wait_for"; : >"$out_file.timeout"; end_job "$job") >/dev/null 2>&1 </dev/null &
+    # The marker is written only when the sleep ran out: ending the watchdog kills the sleep
+    # first, and the && then skips the rest.
+    (sleep "$wait_for" && : >"$out_file.timeout" && end_job "$job") >/dev/null 2>&1 </dev/null &
     watchdog=$!
     rc=0; wait "$job" || rc=$?
     end_job "$watchdog"; watchdog=""
