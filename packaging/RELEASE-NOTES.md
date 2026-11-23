@@ -1,15 +1,14 @@
-VoxelCraft 0.16.0 opens the End and brings the Wither. **The outer End:**
-End cities and End ships, shulkers and shulker boxes, chorus plants and
-purpur, elytra and firework rockets, and a dragon you can summon again with
-End crystals. **The Wither and beacons:** every mob head, the Wither and its
-Nether star, wither roses and beacons with their powers. **New worlds:**
-poplar forests, sulfur caves with geysers, cinnabar, abandoned camps, and
-strongholds, mineshafts, fortresses, shipwrecks and ocean monuments rebuilt
-piece by piece. **And more:** the conduit, infested blocks, nether gold ore
-and the sulfur cube. If you have 0.10.0 or later, the title screen offers
-this update; choose **Update and Restart**. If you're coming from 0.9.0 or
-earlier, install it by hand once, as below, and it updates itself from then
-on.
+VoxelCraft 0.17.0 is the redstone and automation update. **Redstone:**
+signals now travel in Java's update order, so contraptions built from Java
+designs behave the way they do in Java. **Pistons:** slime and honey blocks
+pull their neighbours along, so flying machines fly, and pistons push mobs
+and players. **The crafter:** a block that crafts on a redstone pulse.
+**And more:** dispensers that handle every item as Java does, the furnace
+minecart, hoppers with Java's timing, sculk sensors that hear everything
+Java's hear, and workstations that match Java. If you have 0.10.0 or later,
+the title screen offers this update; choose **Update and Restart**. If
+you're coming from 0.9.0 or earlier, install it by hand once, as below, and
+it updates itself from then on.
 
 VoxelCraft is an unofficial fan project, inspired by Minecraft Java Edition. It
 is not affiliated with or endorsed by Mojang Studios or Microsoft, and it
@@ -17,10 +16,81 @@ contains no Minecraft code or assets.
 
 Choose your download:
 
-- **Windows 10/11 x64:** `VoxelCraft-0.16.0-windows-x64-Setup.exe`
-- **Mac with Apple Silicon (M-series), macOS 13+:** `VoxelCraft-0.16.0-macos-apple-silicon.dmg`
+- **Windows 10/11 x64:** `VoxelCraft-0.17.0-windows-x64-Setup.exe`
+- **Mac with Apple Silicon (M-series), macOS 13+:** `VoxelCraft-0.17.0-macos-apple-silicon.dmg`
 
-## What's new in 0.16.0
+## What's new in 0.17.0
+
+### Redstone in Java's order
+
+- Blocks update their neighbours in Java's order and directions, and
+  repeaters, comparators and observers take their turns as Java's do.
+  Block update detectors, observer clocks, hopper clocks, item sorters and
+  T flip-flops built from Java designs work, and keep working after you
+  leave the area, save or restart.
+- Every redstone component was checked against Java's: comparators read
+  every container correctly, and observers notice fire burning.
+
+### Pistons
+
+- Slime and honey blocks move the blocks stuck to them, so flying machines
+  and block-moving doors work. Every block moves, breaks or refuses to move
+  as it does in Java: pumpkins and melons break off, for example.
+- Pistons push mobs and players. Slime launches them, and honey carries
+  them along.
+- A short pulse makes a sticky piston spit its block out, as in Java.
+- A moving block survives a save part way through its move.
+
+### The crafter
+
+- Craft with redstone: fill the crafter's grid by hand or with hoppers and
+  give it a pulse, and it crafts one item and pushes it out of its face,
+  into a container if there is one. Click an empty slot to switch it off,
+  so hoppers fill only the slots you want. A comparator reads how many
+  slots are filled.
+
+### Dispensers, droppers and hoppers
+
+- Dispensers handle items the way Java's do: they put armour, heads,
+  saddles and carpets on mobs and players, shear, place shulker boxes and
+  pumpkins, fill and empty buckets and bottles, use bone meal and flint and
+  steel, light TNT, place boats and minecarts, and more.
+- Hoppers pick up items from the area Java's do and move items on Java's
+  timing, and every container takes items from the sides Java's do.
+
+### Carts
+
+- The furnace minecart: fuel it with coal or charcoal and it pushes itself
+  and the carts in front of it.
+- Rails can sit on hoppers, so a hopper under the track empties hopper and
+  chest minecarts as they pass.
+- Carts push and pick up mobs the way Java's do, slow down on waterlogged
+  rails, and roll with their own sounds. A lit TNT minecart doesn't destroy
+  the rails it sits on, and burning arrows and fireballs set it off.
+- Villagers, wandering traders and golems stay in their cart when you save.
+
+### Containers and workstations
+
+- Furnaces, brewing stands, enchanting tables, anvils, grindstones and
+  smithing tables follow Java's rules and costs. Hoppers no longer restart a
+  furnace's cooking each time they top up its input.
+- Four cases where moving items between containers, hoppers and carts lost
+  items or missed a comparator update are fixed.
+- On a keyboard, a number key over a container slot swaps it with that
+  hotbar slot, and the drop key throws the item from the slot under the
+  pointer.
+
+### Sculk sensors
+
+- Sculk sensors and the warden hear the same actions as in Java, including
+  redstone, pistons, dispensers, projectiles, containers and doors.
+
+### Farms
+
+- Sugar cane grows at Java's rate: it was growing four times too fast.
+  Observer and piston sugar cane, pumpkin and melon farms work.
+
+## What's new in 0.16.0 (if you're coming from 0.15.0 or earlier)
 
 ### The outer End (new worlds only)
 
@@ -556,8 +626,8 @@ new giant trees.
   them borrow other mobs' sounds. Item frames don't show map images.
 - The Host, Raiser, Shaper and Wayfinder armor trim templates have no
   survival source yet: trail ruins have no suspicious gravel loot.
-- The Wither's flight and attack timing are simpler than Java's. Dispensers
-  can't put armour or heads on players or mobs.
+- The Wither's flight and attack timing are simpler than Java's.
+- Dispensers can't put armour or heads on other LAN players.
 - Music discs can be heard 24 blocks away (Java: 64), and other music
   doesn't fade while a disc plays.
 - Some Java options aren't in yet because nothing in the game uses them:
@@ -588,11 +658,15 @@ new giant trees.
 - The off-hand item isn't drawn in your hand, and bows can't be drawn from
   the off-hand.
 - There is no Soul Speed.
-- Complex redstone contraptions that depend on Java's exact update order may
-  behave differently.
+- Pistons don't push arrows, falling blocks, End crystals, item frames,
+  paintings or armour stands.
+- Anvils can't rename items yet: the name box isn't on the anvil screen.
+- You can't drag a stack across slots to share it out, or double-click to
+  collect a stack.
+- Sculk sensors don't hear a few actions yet, such as leads, shearing
+  some mobs, goat horns and spawners.
 - Commands accept `@s` and `@p` only.
-- Bells don't swing, strider jockeys don't spawn,
-  boats ignore currents, and minecarts can't carry mobs across a save.
+- Bells don't swing, strider jockeys don't spawn and boats ignore currents.
 - Streaming in new terrain quickly can still cause an occasional long frame
   on an Apple M5; that work is planned for 0.18.
 - World generation is VoxelCraft's own: worlds aren't seed-compatible with
@@ -602,14 +676,16 @@ new giant trees.
 
 Players on 0.10.0 or later get this version from the title screen. Install
 it by hand if you're on 0.9.0 or earlier; later versions then arrive in game.
-Worlds and options from 0.15.0 and earlier load in 0.16.0 and keep the
-terrain and structures they were created with; End cities and ships,
-poplar forests, sulfur caves, abandoned camps and the rebuilt strongholds,
+Worlds and options from 0.16.0 and earlier load in 0.17.0, and everything
+new in 0.17.0 works in them: it changes no terrain. Worlds keep the terrain
+and structures they were created with, so End cities and ships, poplar
+forests, sulfur caves, abandoned camps and the rebuilt strongholds,
 mineshafts, fortresses, shipwrecks and monuments appear only in worlds
-created in 0.16.0. The Wither, beacons, mob heads, fireworks, the conduit
-and summoning the dragon again work in every world. Once 0.16.0 has saved a world, don't
-open it in an older version: older versions can't read chunks holding the
-new blocks and lose the new mobs and items. Back up your worlds before
+created in 0.16.0 or later. Redstone in an old world switches to Java's
+update order when it loads, so a contraption that relied on the old order
+may behave differently. Once 0.17.0 has saved a world, don't open it in an
+older version: older versions can't read chunks holding the new blocks,
+and lose the new carts and items. Back up your worlds before
 upgrading from 0.8.0, and don't open a world saved by 0.9.0 or later in
 0.8.0. LAN players all need the same version.
 
