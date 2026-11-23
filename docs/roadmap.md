@@ -1975,8 +1975,9 @@ feature; they are not a release step.
   frame-time step still applies to everything it merges.
 
 Source changes go through [the repository's checks](../AGENTS.md#before-handing-work-back):
-targeted checks on Boat while working, then CI's full suite, on Linux,
-macOS and Windows, on the pushed commit (owner, 2026-11-22). Also run
+targeted checks on Boat while working, then CI's full suite on the pushed
+commit (owner, 2026-11-22); its clippy and test job runs on Linux, macOS
+and Windows, the other jobs on Linux. Also run
 the applicable benchmark/player/save checks CI doesn't. Tests that merely mirror the
 implementation do not establish Java correctness.
 

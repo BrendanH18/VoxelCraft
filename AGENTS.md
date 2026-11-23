@@ -181,7 +181,9 @@ optimisations and assertions without its cross-crate link-time optimisation. On 
    at that pinned version and is not a project dependency; the settings are
    in `ruff.toml`. The scripts must keep running on Python 3.9 (macOS's
    `/usr/bin/python3`).
-2. Push and let CI run everything. When a CI job fails, reproduce that job,
+2. Push and let CI run everything. CI runs on pull requests and pushes to
+   `main`, not on a branch push alone, so it starts once the branch has a
+   pull request. When a CI job fails, reproduce that job,
    or just its failing test, on Boat with the script (the headless job's
    test, for example, with
    `scripts/boat-check.sh -- 'cargo test --profile ci --locked --no-default-features --test <name>'`),
