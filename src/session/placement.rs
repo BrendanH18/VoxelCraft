@@ -296,6 +296,11 @@ impl PlayerSession {
                     } else if let Some(shulker) = crate::world::shulker_box::placed(raw, normal) {
                         // v0.16 Track B: the lid faces away from the clicked face.
                         shulker
+                    } else if let Some(crafter) =
+                        crate::world::crafter::placed(raw, ctx.look, ctx.facing, world.redstone_power(at) > 0)
+                    {
+                        // v0.17 Track C1: `CrafterBlock.getStateForPlacement`.
+                        crafter
                     } else if let Some(placed) = crate::world::gen5_blocks::placed(raw, &ctx, |c| world.get_block(c)) {
                         // Sulfur spikes and shelf mushrooms (`world::gen5_blocks`).
                         placed.ok_or("block cannot survive here")?
@@ -368,7 +373,9 @@ impl PlayerSession {
                         .chorus_placement_ok(at, block)
                         .or_else(|| world.overworld_placement_ok(at, block))
                         .unwrap_or_else(|| below.is_some_and(|b| block.can_stay_on(b)))
-                        && (block != Block::SUGAR_CANE || below == Some(Block::SUGAR_CANE) || world.cane_has_water(at))
+                        && (block != Block::SUGAR_CANE
+                            || below.is_some_and(crate::world::sugar_cane::is_cane)
+                            || world.cane_has_water(at))
                         && (!block.is_mushroom() || world.mushroom_survives(at));
                     if !support || !world.redstone_supported(at, block) {
                         return Err("block cannot survive here");

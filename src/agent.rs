@@ -15,7 +15,7 @@ use crate::simulation::{self, TICK_SECONDS};
 use crate::world::{World, block::Block};
 use command::CartographyAction;
 
-pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink, or hold a brush for 200 ticks) | draw [ticks] (hold use with a bow or crossbow: a bow shoots at that draw, a crossbow loads after 25 ticks; a charged crossbow fires at once) | sleep | place (throws a selected ender pearl, splash potion or eye of ender, puts the eye in a targeted End portal frame, or launches a firework rocket, which boosts a glide; a fresh jump in mid-air with elytra worn glides) | attack | select 1..9 | fly on/off | craft item | chest take/put slot (an aimed ender chest holds your own items) | sign x y z front|back [\"line\", ...] (write one side of a sign within reach) | furnace take/put input/fuel/output | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | grindstone [1..9] (disenchant or combine held gear) | trade [1..10] (inspect or buy a targeted villager offer) | smithing (upgrade held diamond gear using a template and ingot) | stonecut item (cut the held stack at an aimed stonecutter) | loom pattern dye (weave onto the held banner at an aimed loom) | cartography copy|zoom|lock (the held map at an aimed cartography table) | book write [offhand] [\"page\", ...] | book sign [offhand] \"title\" [\"page\", ...] (the book and quill in the selected slot, or the off-hand) | lectern x y z page n|take | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp|teleport [@s] x y z, tp @s x y z yaw pitch|facing x y z|facing entity @s [eyes|feet], rotate @s yaw pitch|facing x y z|facing entity @s [eyes|feet] (Java degrees: yaw 0 south, 90 west; pitch -90 up; ~ is relative), spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
+pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink, or hold a brush for 200 ticks) | draw [ticks] (hold use with a bow or crossbow: a bow shoots at that draw, a crossbow loads after 25 ticks; a charged crossbow fires at once) | sleep | place (throws a selected ender pearl, splash potion or eye of ender, puts the eye in a targeted End portal frame, or launches a firework rocket, which boosts a glide; a fresh jump in mid-air with elytra worn glides) | attack | select 1..9 | fly on/off | craft item | chest take/put slot (an aimed ender chest holds your own items) | crafter toggle 0..8 (turn an empty slot of an aimed crafter off or on; observe shows its slots, result and power) | sign x y z front|back [\"line\", ...] (write one side of a sign within reach) | furnace take/put input/fuel/output | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | grindstone [1..9] (disenchant or combine held gear) | trade [1..10] (inspect or buy a targeted villager offer) | smithing (upgrade held diamond gear using a template and ingot) | stonecut item (cut the held stack at an aimed stonecutter) | loom pattern dye (weave onto the held banner at an aimed loom) | cartography copy|zoom|lock (the held map at an aimed cartography table) | book write [offhand] [\"page\", ...] | book sign [offhand] \"title\" [\"page\", ...] (the book and quill in the selected slot, or the off-hand) | lectern x y z page n|take | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp|teleport [@s] x y z, tp @s x y z yaw pitch|facing x y z|facing entity @s [eyes|feet], rotate @s yaw pitch|facing x y z|facing entity @s [eyes|feet] (Java degrees: yaw 0 south, 90 west; pitch -90 up; ~ is relative), spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
 
 /// Something an agent did that players nearby should hear.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -177,20 +177,22 @@ impl Agent {
         let f = world.furnace_mut(pos).unwrap();
         match slot {
             0 => {
-                // Reuse desktop/controller input-change timer handling.
-                let mut cursor = next;
-                f.input = None;
-                f.click_input(&mut cursor, false);
-                f.cook = 0.0;
+                // Putting items in is Java's `setItem` (a different item
+                // restarts cooking); taking some out isn't.
+                if take {
+                    f.input = next;
+                } else {
+                    f.set_input(next);
+                }
             }
             1 => f.fuel = next,
             _ => f.output = next,
         }
-        if take && slot == 2 {
-            let roll = entities.roll();
-            if let Some(xp) = world.furnace_mut(pos).unwrap().take_output_xp(before_output, roll) {
-                entities.spawn_xp(self.session.player.pos, xp);
-            }
+        if take
+            && slot == 2
+            && let Some(xp) = world.furnace_mut(pos).unwrap().take_output_xp(before_output, || entities.roll())
+        {
+            entities.spawn_xp(self.session.player.pos, xp);
         }
         Ok(())
     }
@@ -567,6 +569,10 @@ impl Agent {
                 if slot >= slots {
                     return Err("container slot out of range".into());
                 }
+                // v0.17 Track C1: `CrafterSlot.mayPlace`.
+                if !take && !ender && world.crafter_slot_disabled(pos, slot) {
+                    return Err("that crafter slot is disabled".into());
+                }
                 let (inventory, selected) = (&mut self.session.inventory, self.selected);
                 if ender {
                     chest_transfer(&mut self.session.ender.slots[slot], inventory, selected, take)?;
@@ -581,17 +587,22 @@ impl Agent {
                 }
             }
             Command::Enchanting(i) => self.enchant_at_table(i, world)?,
-            Command::Anvil(slot) => {
+            command @ (Command::Anvil(_) | Command::AnvilName(_)) => {
                 let (pos, _) = self.target(world).ok_or("no anvil within reach")?;
                 if !world.get_block(pos).is_some_and(Block::is_anvil) {
                     return Err("target is not an anvil".into());
                 }
-                if slot == self.selected {
+                let (slot, name) = match &command {
+                    Command::Anvil(slot) => (Some(*slot), None),
+                    Command::AnvilName(name) => (None, Some(name.as_str())),
+                    _ => unreachable!(),
+                };
+                if slot == Some(self.selected) {
                     return Err("pick a different slot for the second item".into());
                 }
                 let left = self.session.inventory.get(self.selected).ok_or("selected slot empty")?;
-                let right = self.session.inventory.get(slot);
-                let r = crate::enchant::anvil_any_cost(left, right, self.creative).ok_or("those don't combine")?;
+                let right = slot.and_then(|slot| self.session.inventory.get(slot));
+                let r = crate::enchant::anvil_menu(left, right, name, self.creative).ok_or("those don't combine")?;
                 if !self.creative && r.cost >= crate::enchant::TOO_EXPENSIVE {
                     return Err("too expensive".into());
                 }
@@ -599,10 +610,12 @@ impl Agent {
                     return Err(format!("needs level {}", r.cost));
                 }
                 self.session.inventory.slots[self.selected] = Some(r.output);
-                self.session.inventory.slots[slot] = match (r.uses, right) {
-                    (Some(n), Some(s)) if s.count > n => Some(Stack { count: s.count - n, ..s }),
-                    _ => None,
-                };
+                if let Some(slot) = slot {
+                    self.session.inventory.slots[slot] = match (r.uses, right) {
+                        (Some(n), Some(s)) if s.count > n => Some(Stack { count: s.count - n, ..s }),
+                        _ => None,
+                    };
+                }
                 if !self.creative {
                     self.session.vitals.xp.add_levels(-(r.cost as i64));
                     crate::enchant::wear_anvil(world, pos);
@@ -673,6 +686,15 @@ impl Agent {
             Command::Loom(pattern, dye) => self.loom(&pattern, dye, world)?,
             Command::Cartography(action) => self.cartography(action, world)?,
             Command::Beacon(primary, secondary) => self.beacon(primary, secondary, world)?,
+            Command::CrafterToggle(slot) => {
+                let pos = self.target(world).map(|(p, _)| p).filter(|&p| world.crafter(p).is_some());
+                let pos = pos.ok_or("no crafter within reach")?;
+                if world.chest_slot(pos, slot).is_some() {
+                    return Err("only an empty crafter slot can be turned off or on".into());
+                }
+                let enabled = world.crafter_slot_disabled(pos, slot);
+                world.set_crafter_slot_enabled(pos, slot, enabled);
+            }
             Command::Book { pages, title, offhand } => {
                 let slot = if offhand { crate::session::books::OFFHAND_SLOT } else { self.selected };
                 match title {
@@ -975,6 +997,14 @@ impl Agent {
             entities.seat_player(&mut self.session.player, self.session.id);
             self.session.player.refresh_riding_contact(world);
         }
+        // Damage, death and armor changes as game events.
+        world.player_vitals(
+            self.session.id,
+            self.session.player.pos,
+            self.session.vitals.health,
+            self.session.inventory.armor.map(|s| s.map(|s| s.item)),
+            self.session.event_source(),
+        );
         let moved = (self.session.player.pos - before).with_y(0.0).length();
         let env = simulation::survival::Env {
             respiration: crate::enchant::armor_level(
@@ -1262,11 +1292,10 @@ impl Agent {
         } else if inv.add_stack(out) > 0 {
             return Err("inventory full".into());
         }
-        if !self.creative {
-            self.session.vitals.xp.add_levels(-(i as i64 + 1));
-        }
+        // Java takes the levels in every game mode (`onEnchantmentPerformed`).
+        self.session.vitals.xp.add_levels(-(i as i64 + 1));
         self.session.inventory = inv;
-        self.session.vitals.xp.seed = (crate::enchant::roll() * u32::MAX as f32) as u32 as i32;
+        self.session.vitals.xp.seed = crate::enchant::new_seed();
         Ok(())
     }
 
@@ -1474,7 +1503,18 @@ impl Agent {
             .table_offers(world)
             .map(|(_, o)| o.map(|o| json!({"cost":o.cost,"clue":o.clue.map(|(e, l)| e.describe(l))})).to_vec());
         let target = self.target(world).map(|(p, n)| {
-            json!({"position":p.to_array(),"face":n.to_array(),"block":world.get_block(p).map(|b|b.name()),"enchanting_offers":offers})
+            // v0.17 Track C1: a crafter's slots, toggles, power and result.
+            let crafter = world.crafter(p).map(|c| {
+                let slots: Vec<_> = (0..crate::world::crafter::SLOTS)
+                    .map(|i| world.chest_slot(p, i).map(|s| json!({"item":s.item.name(),"count":s.count})))
+                    .collect();
+                let disabled: Vec<usize> = (0..crate::world::crafter::SLOTS).filter(|&i| c.disabled(i)).collect();
+                let state = world.get_block(p).and_then(crate::world::crafter::decode);
+                json!({"slots":slots,"disabled":disabled,"triggered":state.is_some_and(|s|s.triggered),
+                    "crafting":state.is_some_and(|s|s.crafting),
+                    "result":world.crafter_result(p).map(|s| json!({"item":s.item.name(),"count":s.count}))})
+            });
+            json!({"position":p.to_array(),"face":n.to_array(),"block":world.get_block(p).map(|b|b.name()),"enchanting_offers":offers,"crafter":crafter})
         });
         json!({"position":self.session.player.pos.to_array(),"yaw":self.session.player.yaw.to_degrees(),"pitch":self.session.player.pitch.to_degrees(),"loaded":world.is_loaded(center),"dimension":world.generator.dimension.name(),"health":self.session.vitals.health,"absorption":self.session.vitals.effects.absorption(),"food":self.session.vitals.hunger.food,"level":self.session.vitals.xp.level,"xp_progress":self.session.vitals.xp.progress(),"dead":self.session.vitals.is_dead(),"mode":self.session.mode.name(),"creative":self.creative,"flying":self.session.player.flying,"gliding":self.session.player.fall_flying,"sleeping":self.session.sleeping.is_some(),"spawn_bed":self.session.spawn_bed.map(|p|p.to_array()),"spawn_point":self.session.spawn_point.map(|p|p.to_array()),"selected":self.selected+1,"inventory":inventory,"target":target,"blocks":blocks})
     }
@@ -2203,6 +2243,23 @@ mod tests {
     }
 
     #[test]
+    fn agents_rename_on_an_anvil_for_a_level() {
+        let mut world = world();
+        let mut entities = Entities::new(1);
+        world.set_block(IVec3::new(4, 150, 1), Block::STONE);
+        world.set_block(IVec3::new(4, 151, 1), Block::ANVIL);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        a.inventory.slots[0] = Some(Stack::new(Item::DIAMOND, 5));
+        a.vitals.xp.add_levels(1);
+        a.execute(Command::parse("anvil name Shiny rocks").unwrap(), &mut world, &mut entities, &[]).unwrap();
+        let named = a.inventory.get(0).unwrap();
+        assert_eq!(named.display_name(), "Shiny rocks");
+        assert_eq!((named.count, named.repair_cost), (5, 0), "a rename alone adds no prior-work penalty");
+        assert_eq!(a.vitals.xp.level, 0);
+        assert!(Command::parse(&format!("anvil name {}", "x".repeat(51))).is_err(), "Java's 50-character limit");
+    }
+
+    #[test]
     fn agents_upgrade_held_diamond_gear_at_a_smithing_table() {
         use crate::enchant::{Enchantment, Enchants};
         use crate::item::{Tier, ToolKind};
@@ -2307,18 +2364,21 @@ mod tests {
         restored.set_block(p, Block::FURNACE);
         restored.load_furnaces(&save);
         restored.tick_furnaces(5.0);
-        assert!(restored.furnace(p).unwrap().xp > 0.0);
-        restored.furnace_mut(p).unwrap().xp = 3.0; // whole points, independent of the fraction roll
+        assert!(restored.furnace(p).unwrap().stored_xp() > 0.0);
+        // Whole points, independent of the fraction roll.
+        restored.furnace_mut(p).unwrap().recipes_used =
+            vec![crate::world::furnace::RecipeUse { recipe: Item::IRON_INGOT, xp: 3.0, count: 1 }];
         a.execute(Command::Furnace(true, 2), &mut restored, &mut e, &[]).unwrap();
         assert_eq!(a.inventory.get(0), Some(Stack::new(Item::IRON_INGOT, 1)));
-        assert_eq!(restored.furnace(p).unwrap().xp, 0.0);
+        assert_eq!(restored.furnace(p).unwrap().stored_xp(), 0.0);
         assert!(!e.orbs.is_empty());
         // A full player cannot drain slots or earn stored XP.
         a.inventory.slots.fill(Some(Stack::new(Item::DIAMOND, 64)));
         restored.furnace_mut(p).unwrap().output = Some(Stack::new(Item::IRON_INGOT, 1));
-        restored.furnace_mut(p).unwrap().xp = 4.0;
+        restored.furnace_mut(p).unwrap().recipes_used =
+            vec![crate::world::furnace::RecipeUse { recipe: Item::IRON_INGOT, xp: 4.0, count: 1 }];
         assert!(a.execute(Command::Furnace(true, 2), &mut restored, &mut e, &[]).is_err());
-        assert_eq!(restored.furnace(p).unwrap().xp, 4.0);
+        assert_eq!(restored.furnace(p).unwrap().stored_xp(), 4.0);
         assert_eq!(restored.furnace(p).unwrap().output, Some(Stack::new(Item::IRON_INGOT, 1)));
     }
 

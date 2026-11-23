@@ -82,6 +82,14 @@ impl Game {
         }
         let nausea = self.session.vitals.effects.get(voxelcraft::simulation::effects::Effect::Nausea).map(|e| e.ticks);
         self.distortion.tick(nausea, self.portal_time > portal_before);
+        // Damage, death and armor changes as game events.
+        self.world.player_vitals(
+            self.session.id,
+            self.session.player.pos,
+            self.session.vitals.health,
+            self.session.inventory.armor.map(|s| s.map(|s| s.item)),
+            self.session.event_source(),
+        );
         let moved = (self.session.player.pos - before).with_y(0.0).length();
         self.session.tick_lodestones(&self.world);
         for stack in [self.session.inventory.get(self.body.actions.selected), self.session.inventory.offhand]
@@ -168,6 +176,7 @@ impl Game {
         self.tick_agents();
         self.explode_anchors();
         self.ride_minecarts(input);
+        self.minecart_sounds();
         // Detectors share Java's skyDarken with spawning, then apply the sun
         // angle themselves (DaylightDetectorBlock.updateSignalStrength).
         let ticks = (self.day_time.rem_euclid(1.) * 24000.).floor() as u32;
@@ -184,18 +193,32 @@ impl Game {
             0.0
         };
         self.world.set_redstone_daylight(self.day_time, darken, sun_angle);
-        let players = std::iter::once((self.session.player.pos, self.session.player.collision_shape()))
-            .filter(|_| self.session.mode != GameMode::Spectator && self.session.vitals.health > 0.0)
-            .chain(
-                self.agents
-                    .players
-                    .values()
-                    .filter(|b| {
-                        b.active && b.agent.session.mode != GameMode::Spectator && b.agent.session.vitals.health > 0.0
-                    })
-                    .map(|b| (b.agent.session.player.pos, b.agent.session.player.collision_shape())),
-            );
-        self.world.redstone_contacts(players, &self.mobs.entities);
+        // Plates name whoever pressed them as their game event's source.
+        let source = |s: &voxelcraft::session::PlayerSession| crate::world::vibration::EventSource {
+            untargetable: s.mode.is_creative(),
+            ..crate::world::vibration::EventSource::player(s.id, s.player.sneaking)
+        };
+        let players =
+            std::iter::once((self.session.player.pos, self.session.player.collision_shape(), source(&self.session)))
+                .filter(|_| self.session.mode != GameMode::Spectator && self.session.vitals.health > 0.0)
+                .chain(
+                    self.agents
+                        .players
+                        .values()
+                        .filter(|b| {
+                            b.active
+                                && b.agent.session.mode != GameMode::Spectator
+                                && b.agent.session.vitals.health > 0.0
+                        })
+                        .map(|b| {
+                            (
+                                b.agent.session.player.pos,
+                                b.agent.session.player.collision_shape(),
+                                source(&b.agent.session),
+                            )
+                        }),
+                );
+        self.world.redstone_contacts_from(players, &self.mobs.entities);
         // Every chest a player has open, whichever input path opened it.
         let keyboard = match self.body.container {
             super::Container::Chest(p) if self.inventory_open => Some(p),
@@ -249,6 +272,15 @@ impl Game {
                 crate::world::precipitation::push_entity(&mut m.pos, shape, cell, height);
             }
         }
+        // v0.17 Track B: blocks pistons moved this tick push and launch
+        // players and entities (`PistonMovingBlockEntity.moveCollidedEntities`).
+        if !self.world.piston_pushes().is_empty() {
+            crate::world::piston::push_player(&self.world, &mut self.session.player);
+            for bot in self.agents.players.values_mut().filter(|b| b.active) {
+                crate::world::piston::push_player(&self.world, &mut bot.agent.session.player);
+            }
+            self.mobs.entities.apply_piston_pushes(&self.world);
+        }
         self.play_notes();
         self.mobs.entities.stalactite_hits(self.world.stalactite_hits());
         // Players in a stalactite's cell as it lands are hit too, wherever
@@ -261,9 +293,31 @@ impl Game {
         for bot in self.agents.players.values_mut().filter(|b| b.active) {
             landed(&self.world, &mut bot.agent.session);
         }
-        self.world.tick_automation_entities(&mut self.mobs.entities);
+        if self.world.has_deferred_dispenses() {
+            // v0.17 Track C2: dispensers dress players in front of them too.
+            use voxelcraft::entity::dispensed::DispenseTarget;
+            fn target(s: &mut voxelcraft::session::PlayerSession) -> DispenseTarget<'_> {
+                let shape = s.player.collision_shape();
+                DispenseTarget {
+                    pos: s.player.pos,
+                    half_width: shape.half_width,
+                    height: shape.height,
+                    can_equip: !s.vitals.is_dead() && s.mode != GameMode::Spectator,
+                    armor: &mut s.inventory.armor,
+                    offhand: &mut s.inventory.offhand,
+                }
+            }
+            let mut players = vec![target(&mut self.session)];
+            for bot in self.agents.players.values_mut().filter(|b| b.active) {
+                players.push(target(&mut bot.agent.session));
+            }
+            self.world.tick_automation_entities_with(&mut self.mobs.entities, &mut players);
+        } else {
+            self.world.tick_automation_entities(&mut self.mobs.entities);
+        }
         self.tick_trial();
         self.tick_beacons();
+        self.play_crafter_events();
         self.tick_conduits();
         self.tick_potent_sulfur();
         self.tick_raid_omens();

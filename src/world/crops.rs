@@ -9,6 +9,11 @@ use crate::{inventory::Stack, item::Item};
 use glam::IVec3;
 
 pub const FIRST: u16 = 10816;
+/// `CropBlock.randomTick` and `StemBlock.randomTick`: `getRawBrightness(pos, 0)`
+/// of at least this (`tests/fixtures/java/26.3/growth.json`).
+pub const MIN_LIGHT: u8 = 9;
+/// Both grow one time in `(int) (GROWTH_NUMERATOR / getGrowthSpeed) + 1`.
+pub const GROWTH_NUMERATOR: f32 = 25.0;
 pub const BEETROOT: u16 = FIRST + 24;
 pub const LAST: u16 = BEETROOT + 3;
 pub mod t {
@@ -156,8 +161,8 @@ impl World {
         if crop == Crop::Beetroot && self.one_in(3) {
             return;
         }
-        if age < crop.max_age() && self.growth_light(p, false) >= 9 {
-            let bound = (25.0 / self.crop_growth_speed(p, b)) as u64 + 1;
+        if age < crop.max_age() && self.growth_light(p, false) >= MIN_LIGHT {
+            let bound = (GROWTH_NUMERATOR / self.crop_growth_speed(p, b)) as u64 + 1;
             if self.one_in(bound) {
                 self.edit(p, Block::crop(crop, age + 1), false);
             }
@@ -165,10 +170,10 @@ impl World {
     }
     pub(super) fn tick_stem(&mut self, p: IVec3, b: Block) {
         let Some((fruit, age, None)) = stem(b) else { return };
-        if self.growth_light(p, false) < 9 {
+        if self.growth_light(p, false) < MIN_LIGHT {
             return;
         }
-        let bound = (25.0 / self.crop_growth_speed(p, b)) as u64 + 1;
+        let bound = (GROWTH_NUMERATOR / self.crop_growth_speed(p, b)) as u64 + 1;
         if !self.one_in(bound) {
             return;
         }

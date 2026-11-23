@@ -75,7 +75,7 @@ fn growth_rule(b: Block) -> RandomRule {
         b if b.is_sapling() => RandomRule::Sapling,
         b if super::overworld_blocks::snow_layers(b).is_some() => RandomRule::Snow,
         b if matches!(component(b), Some(Component::GlowingOre(_))) => RandomRule::GlowingOre,
-        Block::SUGAR_CANE => RandomRule::Cane,
+        b if super::sugar_cane::is_cane(b) => RandomRule::Cane,
         super::eyeblossom::OPEN | super::eyeblossom::CLOSED => RandomRule::Eyeblossom,
         b if super::copper::ages(b) => RandomRule::Copper,
         b if super::copper_golem_statue::ages(b) => RandomRule::Statue,
@@ -189,6 +189,15 @@ impl World {
         if !self.tile_drops {
             return;
         }
+        // v0.17 Track B: `MovingPistonBlock.getDrops` are its moved block's.
+        let block = if block == super::redstone_blocks::MOVING {
+            match self.moving_piston_drop(p) {
+                Some(moved) => moved,
+                None => return,
+            }
+        } else {
+            block
+        };
         if let Some(statue) = super::copper_golem_statue::decode(block) {
             self.drops.push((p, statue.item_stack(self.copper_golem_statue_name(p))));
             return;
@@ -496,7 +505,7 @@ impl World {
             }
             // `RedStoneOreBlock.randomTick`: a lit ore goes dark.
             RandomRule::GlowingOre => self.extinguish_ore(p, b),
-            RandomRule::Cane => self.tick_cane(p),
+            RandomRule::Cane => self.tick_cane(p, b),
             RandomRule::Eyeblossom => {
                 self.tick_eyeblossom(p, b);
             }
@@ -872,36 +881,6 @@ impl World {
     }
 }
 
-/// Sugar cane stops growing at this height.
-const CANE_HEIGHT: i32 = 3;
-
-impl World {
-    /// Sugar cane grows a block taller now and then, up to [`CANE_HEIGHT`],
-    /// while water touches the soil it stands on.
-    fn tick_cane(&mut self, p: IVec3) {
-        if self.get_block(p + IVec3::Y) != Some(Block::AIR) || !self.one_in(4) {
-            return;
-        }
-        let mut base = p;
-        while self.get_block(base - IVec3::Y) == Some(Block::SUGAR_CANE) {
-            base -= IVec3::Y;
-        }
-        if p.y - base.y + 1 < CANE_HEIGHT && self.cane_has_water(base) {
-            self.edit(p + IVec3::Y, Block::SUGAR_CANE, false);
-        }
-    }
-
-    /// Whether sugar cane at `p` (its lowest block) has water beside the
-    /// block it's planted on.
-    pub fn cane_has_water(&self, p: IVec3) -> bool {
-        let soil = p - IVec3::Y;
-        [IVec3::X, IVec3::NEG_X, IVec3::Z, IVec3::NEG_Z].iter().any(|&d| {
-            self.get_block(soil + d)
-                .is_some_and(|b| b.holds_water() || b == Block::ICE || super::frosted_ice::owns(b.0))
-        })
-    }
-}
-
 /// Items a slab's loot table gives per drop: two for a double slab.
 fn double_slab_count(block: Block) -> u8 {
     if super::slab_stair_states::slab_type(block) == Some(super::slab_stair_states::SlabType::Double) { 2 } else { 1 }
@@ -937,6 +916,7 @@ mod tests {
             (Block::GRASS, RandomRule::Grass),
             (Block::WET_FARMLAND, RandomRule::Farmland),
             (Block::SUGAR_CANE, RandomRule::Cane),
+            (super::super::sugar_cane::cane(15), RandomRule::Cane),
             (Block(165), RandomRule::Fire),
             (Block(37), RandomRule::Lava),
             (Block::nether_wart(0), RandomRule::Wart),

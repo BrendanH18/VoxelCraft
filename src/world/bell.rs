@@ -16,12 +16,19 @@ impl World {
     }
 
     pub fn ring_bell(&mut self, pos: IVec3) -> bool {
+        self.ring_bell_by(pos, super::vibration::EventSource::NONE)
+    }
+
+    /// `BellBlock.attemptToRing(ringingEntity, ...)`, which posts
+    /// `block_change` from whoever rang it.
+    pub fn ring_bell_by(&mut self, pos: IVec3, source: super::vibration::EventSource) -> bool {
         if self.get_block(pos).is_none_or(|b| b.base() != Block::BELL) {
             return false;
         }
         if !self.bell_rings.contains(&pos) {
             self.bell_rings.push(pos);
         }
+        self.emit_block_event(pos, super::vibration::GameEvent::BlockChange, source, None);
         true
     }
 }

@@ -377,9 +377,12 @@ impl Entities {
                     self.tridents.push(t);
                 }
                 EntityEvent::ThrowPotion { from, vel, potion } => {
+                    // The witch isn't named, so the shot has no source.
+                    self.sculk.shot(from, crate::world::vibration::EventSource::NONE);
                     self.potions.push(potion::ThrownPotion::new(potion, None, from, vel));
                 }
                 EntityEvent::ShootWindCharge { from, dir, inaccuracy, shooter } => {
+                    self.sculk.shot(from, crate::world::vibration::EventSource::mob(shooter));
                     self.thrown.push(thrown::Thrown::breeze_charge(from, dir, inaccuracy, shooter, &mut self.rng));
                 }
                 EntityEvent::ChargedBlast { center } => self.charged_blasts.push(center),
@@ -391,6 +394,7 @@ impl Entities {
                         burst.spread = DVec3::splat(0.4);
                         self.particles.push(crate::particles::Request::Burst(burst));
                     }
+                    self.sculk.shot(from, crate::world::vibration::EventSource::NONE);
                     self.fireballs.push(ball);
                 }
                 _ => {}
@@ -410,9 +414,23 @@ impl Entities {
         });
         self.update_wither_skulls(world, ctx, &mut events);
         {
-            let mobs = &self.mobs;
+            let (mobs, sculk) = (&self.mobs, &mut self.sculk);
+            let carts: Vec<(u32, DVec3, DVec3)> = if self.fireballs.is_empty() {
+                Vec::new()
+            } else {
+                self.minecarts.iter().map(|c| (c.id, c.aabb().0, c.aabb().1)).collect()
+            };
             self.fireballs.retain_mut(|f| {
-                !world.entity_ticking(f.pos.floor().as_ivec3()) || f.update(dt, world, ctx, mobs, &mut events)
+                if !world.entity_ticking(f.pos.floor().as_ivec3()) {
+                    return true;
+                }
+                let before = f.pos;
+                let keep = f.update(dt, world, ctx, mobs, &carts, &mut events);
+                if !keep {
+                    let none = crate::world::vibration::EventSource::NONE;
+                    sculk.land(world, f.pos, f.pos - before, none);
+                }
+                keep
             });
         }
         if self.arrows.iter().any(|a| a.piercing()) {
@@ -427,23 +445,48 @@ impl Entities {
                     return true;
                 }
                 let was_stuck = a.is_stuck();
+                let before = a.pos;
                 let keep = a.update(dt, world, ctx, mobs, &targets, Some(&mut boss), rng, &mut events);
-                // `Projectile.onHit`: `projectile_land` where it stuck.
-                if !was_stuck && a.is_stuck() {
+                // `Projectile.onHit`: `projectile_land` on the block it stuck
+                // in, or where it hit an entity and went.
+                if !was_stuck && (a.is_stuck() || !keep) {
                     let source = sculk_events::Sculk::projectile_source(a.owner, a.shooter);
-                    sculk.post(a.pos, crate::world::vibration::GameEvent::ProjectileLand, source, None);
+                    let heading = if a.is_stuck() { a.dir.as_dvec3() } else { a.pos - before };
+                    sculk.land(world, a.pos, heading, source);
                 }
                 keep
             });
+            // Thrown things are removed when they hit (`Projectile.onHit`).
             self.pearls.retain_mut(|p| {
-                !world.entity_ticking(p.pos.floor().as_ivec3()) || p.update(dt, world, mobs, rng, &mut events)
+                if !world.entity_ticking(p.pos.floor().as_ivec3()) {
+                    return true;
+                }
+                let keep = p.update(dt, world, mobs, rng, &mut events);
+                if !keep {
+                    sculk.land(world, p.pos, p.vel, sculk_events::Sculk::projectile_source(Some(p.owner), None));
+                }
+                keep
             });
             self.potions.retain_mut(|p| {
-                !world.entity_ticking(p.pos.floor().as_ivec3()) || p.update(dt, world, ctx, mobs, rng, &mut events)
+                if !world.entity_ticking(p.pos.floor().as_ivec3()) {
+                    return true;
+                }
+                let keep = p.update(dt, world, ctx, mobs, rng, &mut events);
+                if !keep {
+                    sculk.land(world, p.pos, p.vel, sculk_events::Sculk::projectile_source(p.owner, None));
+                }
+                keep
             });
             self.thrown.retain_mut(|t| {
-                !world.entity_ticking(t.pos.floor().as_ivec3())
-                    || t.update(dt, world, mobs, &self.mob_index, &ctx.players, rng, &mut events)
+                if !world.entity_ticking(t.pos.floor().as_ivec3()) {
+                    return true;
+                }
+                let keep = t.update(dt, world, mobs, &self.mob_index, &ctx.players, rng, &mut events);
+                if !keep {
+                    let source = sculk_events::Sculk::projectile_source(t.owner, t.shooter);
+                    sculk.land(world, t.pos, t.pos - t.previous_pos, source);
+                }
+                keep
             });
         }
         self.pearl_endermites(&events, ctx);
@@ -541,6 +584,9 @@ impl Entities {
                     self.drop_loot_with_fire(kind, pos, looting, burning, player_kill);
                 }
                 EntityEvent::LaidEgg { pos, variant } => {
+                    // `Chicken.aiStep`: `entity_place` at the hen (not named).
+                    let none = crate::world::vibration::EventSource::NONE;
+                    self.sculk.post(pos, crate::world::vibration::GameEvent::EntityPlace, none, None);
                     // `gameplay/chicken_lay`: the variant's egg.
                     self.drop_from_block(crate::inventory::Stack::new(variant.egg(), 1), pos.floor().as_ivec3());
                 }
@@ -587,6 +633,12 @@ impl Entities {
             p.vel.y += 1.5 * dt;
             p.age < p.life
         });
+        for e in &events {
+            if let EntityEvent::Vibration { pos, event, source } = *e {
+                self.sculk.post(pos, event, source, None);
+            }
+        }
+        events.retain(|e| !matches!(e, EntityEvent::Vibration { .. }));
         events
     }
 }

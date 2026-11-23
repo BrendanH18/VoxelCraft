@@ -176,7 +176,13 @@ impl World {
                 if next == wall {
                     break;
                 }
-                self.edit_exact_inner(n, next, sync, false);
+                self.edit_exact_inner(
+                    n,
+                    next,
+                    sync,
+                    false,
+                    super::redstone_order::flags::UPDATE_ALL | super::redstone_order::flags::COMPAT,
+                );
                 n -= IVec3::Y;
             }
         }

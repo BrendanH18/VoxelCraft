@@ -1,9 +1,11 @@
-//! Brewing stands: three bottles, an ingredient and blaze powder fuel, like
-//! Java's. A blaze powder fuels 20 brews; a brew takes 20 seconds, then
-//! turns every bottle the ingredient works on and uses up one ingredient.
-//! Contents live in [`World`] by position (block entities), like furnaces:
-//! they keep brewing while their chunk is loaded, spill when the stand is
-//! broken and are saved with the level.
+//! Brewing stands: three bottles, an ingredient and blaze powder fuel,
+//! following Java 26.3's `BrewingStandBlockEntity.serverTick` tick for
+//! tick. A blaze powder (`brewing/uses_default`: 20) fuels 20 brews; a brew
+//! takes 400 ticks (`brewing/speed_default` is 1), then turns every bottle
+//! the ingredient works on and uses up one ingredient, leaving its crafting
+//! remainder. Contents live in [`World`] by position (block entities), like
+//! furnaces: they keep brewing while their chunk is loaded, spill when the
+//! stand is broken and are saved with the level.
 
 use glam::IVec3;
 
@@ -13,9 +15,11 @@ use crate::inventory::{Stack, stack_from_str, stack_to_string};
 use crate::item::Item;
 use crate::potion::Potion;
 
-/// Seconds per brew (Java's 400 ticks).
-pub const BREW_TIME: f32 = 20.0;
-/// Brews one blaze powder fuels.
+/// Ticks per brew: `ceil(400 / speed)` with blaze powder's speed of 1.
+pub const BREW_TICKS: u16 = 400;
+/// Seconds per brew.
+pub const BREW_TIME: f32 = BREW_TICKS as f32 / 20.0;
+/// Brews one blaze powder fuels (`brewing/uses_default`).
 pub const FUEL_USES: u8 = 20;
 
 #[derive(Clone, Copy, Default, PartialEq, Debug)]
@@ -25,11 +29,13 @@ pub struct BrewingStand {
     pub fuel: Option<Stack>,
     /// Brews left from the last blaze powder.
     pub fuel_left: u8,
-    /// Seconds left on the brew in progress (0 when idle).
-    pub brew_left: f32,
+    /// `brewTime`: ticks left on the brew in progress (0 when idle).
+    pub brew_ticks: u16,
     /// The ingredient the brew in progress started with; swapping it
     /// stops the brew.
     brewing: Option<Item>,
+    /// Fraction of a tick carried between [`BrewingStand::tick`] calls.
+    carry: f32,
 }
 
 /// What `ingredient` turns `potion` into: Java's brewing mixes for the
@@ -117,12 +123,19 @@ pub fn brew_stack(stack: Stack, ingredient: Item) -> Option<Stack> {
     output.map(|out| Stack { item: out.item, entity_data: out.entity_data, count: 1, ..stack })
 }
 
-/// The bottle slots hold potions (and water bottles) and glass bottles.
+/// The bottle slots hold potions (and water bottles) and glass bottles:
+/// Java's `BREWING_INPUTS` recipe property set plus
+/// `#brewing_potion_inputs` (`PotionIngredient.isPotionInput`).
 pub fn fits_bottle_slot(item: Item) -> bool {
     if item == Item::LINGERING_POTION {
         return true;
     }
     item.as_potion().is_some() || item.as_splash_potion().is_some() || item == Item::GLASS_BOTTLE
+}
+
+/// Whether `item` fuels brewing (has Java's `brewing_fuel` component).
+pub fn is_fuel(item: Item) -> bool {
+    item == Item::BLAZE_POWDER
 }
 
 impl BrewingStand {
@@ -133,36 +146,63 @@ impl BrewingStand {
     }
 
     pub fn is_brewing(&self) -> bool {
-        self.brew_left > 0.0
+        self.brew_ticks > 0
     }
 
-    /// Advances by `dt` seconds (Java's `serverTick`). Returns whether a
-    /// brew finished.
-    pub fn tick(&mut self, dt: f32) -> bool {
-        if self.fuel_left == 0 && self.fuel.is_some_and(|f| f.item == Item::BLAZE_POWDER) {
+    /// How far the brew in progress is, 0 to 1.
+    pub fn brew_progress(&self) -> f32 {
+        if self.is_brewing() { 1.0 - self.brew_ticks as f32 / BREW_TICKS as f32 } else { 0.0 }
+    }
+
+    /// Java's `canPlaceItem`, which hoppers and droppers obey: the fuel slot
+    /// (4) takes brewing fuel, the ingredient slot (3) any brewing reagent,
+    /// and a bottle slot (0..3) a potion input only while it's empty.
+    pub fn can_place(&self, slot: usize, item: Item) -> bool {
+        match slot {
+            0..=2 => fits_bottle_slot(item) && self.bottles[slot].is_none(),
+            3 => is_ingredient(item),
+            4 => is_fuel(item),
+            _ => false,
+        }
+    }
+
+    /// One `serverTick`. Returns whether a brew finished.
+    ///
+    /// A spent stand takes a blaze powder first. A brew starts on a tick
+    /// with a brewable ingredient and fuel, then counts down 400 ticks; it
+    /// stops early if the ingredient changes or nothing can be brewed any
+    /// more, except that on its last tick it brews whatever ingredient is
+    /// in the slot then, as long as it brews something.
+    pub fn step(&mut self) -> bool {
+        if self.fuel_left == 0 && self.fuel.is_some_and(|f| is_fuel(f.item)) {
             self.fuel_left = FUEL_USES;
             self.fuel = take_one(self.fuel);
         }
-        let can = self.can_brew();
+        let brewable = self.can_brew();
         let ingredient = self.ingredient.map(|s| s.item);
         if self.is_brewing() {
-            if !can || ingredient != self.brewing {
-                self.brew_left = 0.0;
-                return false;
-            }
-            self.brew_left -= dt;
-            // The epsilon absorbs float drift so 400 ticks finish a brew.
-            if self.brew_left <= 1e-3 {
-                self.brew_left = 0.0;
+            self.brew_ticks -= 1;
+            if self.brew_ticks == 0 && brewable {
                 self.finish();
                 return true;
+            } else if !brewable || ingredient != self.brewing {
+                self.brew_ticks = 0;
             }
-        } else if can && self.fuel_left > 0 {
+        } else if brewable && self.fuel_left > 0 {
             self.fuel_left -= 1;
-            self.brew_left = BREW_TIME;
+            self.brew_ticks = BREW_TICKS;
             self.brewing = ingredient;
         }
         false
+    }
+
+    /// Runs the whole game ticks in `dt` seconds (20 per second), carrying
+    /// any fraction to the next call. Returns how many brews finished.
+    pub fn tick(&mut self, dt: f32) -> usize {
+        let ticks = self.carry + dt * 20.0;
+        let whole = (ticks + 1e-3).floor().max(0.0);
+        self.carry = ticks - whole;
+        (0..whole as u32).filter(|_| self.step()).count()
     }
 
     fn finish(&mut self) {
@@ -196,7 +236,9 @@ impl BrewingStand {
             stack_to_string(self.ingredient),
             stack_to_string(self.fuel),
             self.fuel_left,
-            self.brew_left,
+            // Seconds, as saves have always stored it (ticks / 20 is exact
+            // to two places).
+            self.brew_ticks as f32 / 20.0,
             self.brewing.map_or(0, |i| i.0),
         )
     }
@@ -210,8 +252,10 @@ impl BrewingStand {
             ingredient: stack_from_str(ingredient)?,
             fuel: stack_from_str(fuel)?,
             fuel_left: fuel_left.parse::<u8>().ok()?.min(FUEL_USES),
-            brew_left: brew_left.parse::<f32>().ok().filter(|v| v.is_finite())?.clamp(0.0, BREW_TIME),
+            brew_ticks: (brew_left.parse::<f32>().ok().filter(|v| v.is_finite())?.clamp(0.0, BREW_TIME) * 20.0).round()
+                as u16,
             brewing: (brewing != 0).then_some(Item(brewing)).filter(|i| i.is_valid()),
+            carry: 0.0,
         })
     }
 }
@@ -233,9 +277,8 @@ impl World {
     /// Keeps the brewing stand table in step with a block change at `p`.
     pub(super) fn track_brewing_stand(&mut self, p: IVec3, old: Block, new: Block) {
         if old == Block::BREWING_STAND && new != Block::BREWING_STAND {
-            if let Some(mut stand) = self.brewing_stands.remove(&p)
-                && self.tile_drops
-            {
+            // Contents don't depend on `block_drops` (`Containers.dropContents`).
+            if let Some(mut stand) = self.brewing_stands.remove(&p) {
                 self.drops.extend(stand.take_all().into_iter().map(|s| (p, s)));
             }
         } else if new == Block::BREWING_STAND {
@@ -246,20 +289,28 @@ impl World {
     /// Brews in every stand whose chunk is block-ticking, noting finished brews
     /// in [`World::brews_done`] for the sound.
     pub fn tick_brewing(&mut self, dt: f64) {
-        let before = self.brews_done.len();
+        let mut changed = Vec::new();
         for (&p, stand) in self.brewing_stands.iter_mut() {
-            if self.activity.contains(p, true)
-                && self.chunks.contains_key(&super::chunk::chunk_of(p))
-                && stand.tick(dt as f32)
-            {
+            if !self.activity.contains(p, true) || !self.chunks.contains_key(&super::chunk::chunk_of(p)) {
+                continue;
+            }
+            let before = (stand.bottles, stand.ingredient, stand.fuel);
+            for _ in 0..stand.tick(dt as f32) {
                 self.brews_done.push(p);
-                if stand.ingredient.is_some_and(|s| s.item == Item::DRAGON_BREATH) {
-                    self.drops.push((p, Stack::new(Item::GLASS_BOTTLE, 1)));
+                // `doBrew`: an ingredient's remainder (dragon's breath leaves
+                // a glass bottle) is dropped while some ingredient is left.
+                if let Some(rest) = stand.ingredient.and_then(|s| s.item.remainder()) {
+                    self.drops.push((p, Stack::new(rest, 1)));
                 }
             }
+            // `BrewingStandBlockEntity.serverTick` calls `setChanged` when
+            // it loads blaze powder as well as when a brew finishes.
+            if (stand.bottles, stand.ingredient, stand.fuel) != before {
+                changed.push(p);
+            }
         }
-        for i in before..self.brews_done.len() {
-            self.redstone_changed(self.brews_done[i]);
+        for p in changed {
+            self.redstone_changed(p);
         }
     }
 
@@ -310,7 +361,7 @@ mod tests {
     }
 
     fn run(stand: &mut BrewingStand, secs: f32) -> usize {
-        (0..(secs * 20.0).round() as usize).filter(|_| stand.tick(0.05)).count()
+        (0..(secs * 20.0).round() as usize).filter(|_| stand.step()).count()
     }
 
     #[test]
@@ -380,5 +431,36 @@ mod tests {
         assert_eq!(back, s);
         assert!(is_ingredient(Item::NETHER_WART) && !is_ingredient(Item::STICK));
         assert!(fits_bottle_slot(Item::GLASS_BOTTLE) && !fits_bottle_slot(Item::NETHER_WART));
+    }
+
+    #[test]
+    fn the_last_tick_brews_a_swapped_ingredient_that_still_brews() {
+        let mut s = BrewingStand {
+            bottles: [potion("awkward"), None, None],
+            ingredient: Some(Stack::new(Item::SUGAR, 1)),
+            fuel: Some(Stack::new(Item::BLAZE_POWDER, 1)),
+            ..Default::default()
+        };
+        assert_eq!(run(&mut s, 0.05), 0);
+        assert_eq!(s.brew_ticks, BREW_TICKS, "the start tick doesn't count down");
+        for _ in 0..399 {
+            assert!(!s.step());
+        }
+        assert_eq!(s.brew_ticks, 1);
+        // Swapped on the final tick: Java brews what's there now.
+        s.ingredient = Some(Stack::new(Item::SPIDER_EYE, 1));
+        assert!(s.step());
+        assert_eq!(s.bottles[0], potion("poison"));
+        assert!(s.ingredient.is_none());
+    }
+
+    #[test]
+    fn bottle_slots_take_one_potion_input_each_when_empty() {
+        let mut s = BrewingStand::default();
+        assert!(s.can_place(0, Item::GLASS_BOTTLE) && s.can_place(2, Item::LINGERING_POTION));
+        s.bottles[0] = Some(Stack::new(Item::GLASS_BOTTLE, 1));
+        assert!(!s.can_place(0, Item::GLASS_BOTTLE), "only into an empty bottle slot");
+        assert!(s.can_place(3, Item::NETHER_WART) && !s.can_place(3, Item::STICK));
+        assert!(s.can_place(4, Item::BLAZE_POWDER) && !s.can_place(4, Item::COAL));
     }
 }

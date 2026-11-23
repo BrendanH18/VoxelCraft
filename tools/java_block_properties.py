@@ -28,6 +28,7 @@ COPPER_COLLECTION = "net/minecraft/world/level/block/WeatheringCopperCollection"
 BY_STATE = "net/minecraft/world/level/block/WeatheringCopperCollection$ByState"
 DYE_COLOR = "net/minecraft/world/item/DyeColor"
 WEATHER_STATE = "net/minecraft/world/level/block/WeatheringCopper$WeatherState"
+PUSH_REACTION = "net/minecraft/world/level/material/PushReaction"
 FUNCTIONAL = (
     "java/util/function/Function",
     "java/util/function/BiFunction",
@@ -56,18 +57,29 @@ class Opaque:
 
 
 class Props:
-    def __init__(self, destroy=0.0, resistance=0.0, requires=False, map_color="NONE"):
+    def __init__(self, destroy=0.0, resistance=0.0, requires=False, map_color="NONE", push="PUSH_PULL"):
         self.destroy, self.resistance, self.requires = destroy, resistance, requires
         self.map_color = map_color
+        # `Properties.pushReaction` (`PushReaction.PUSH_PULL` unless set).
+        self.push = push
+        # The constructed block class (`register`'s factory), set on registration.
+        self.block_class = None
 
     def key(self):
         return (self.destroy, self.resistance, self.requires)
 
     def copy(self):
-        return Props(*self.key(), self.map_color)
+        out = Props(*self.key(), self.map_color, self.push)
+        out.block_class = self.block_class
+        return out
 
     def __eq__(self, other):
-        return isinstance(other, Props) and self.key() == other.key() and self.map_color == other.map_color
+        return (
+            isinstance(other, Props)
+            and self.key() == other.key()
+            and self.map_color == other.map_color
+            and self.push == other.push
+        )
 
     def __repr__(self):
         return f"Props{self.key()}"
@@ -282,6 +294,8 @@ class Interpreter:
         self.states = self._enum_names(WEATHER_STATE)
         self.copper_prefixes = self._copper_prefixes()
         self.fork_depth = 0
+        self.headers = {}
+        self.factories = {}
 
     def cls(self, name):
         if name not in self.classes:
@@ -336,11 +350,13 @@ class Interpreter:
             return Enum("color", field)
         if owner == WEATHER_STATE:
             return Enum("state", field)
+        if owner == PUSH_REACTION:
+            return Enum("push", field)
         if owner == COLOR_COLLECTION and field == "VALUES":
             return Coll("color", {c: Enum("color", c) for c in self.colors})
         return Opaque(f"{owner}.{field}")
 
-    def register(self, key, props):
+    def register(self, key, props, factory=None):
         if not isinstance(key, Key) or not isinstance(props, Props):
             raise ValueError(f"unknown registration form: {key!r} {props!r}")
         if self.fork_depth:
@@ -348,7 +364,53 @@ class Interpreter:
         if key.name in self.registered:
             raise ValueError(f"{key.name} registered twice")
         self.registered[key.name] = props.copy()
+        self.registered[key.name].block_class = self.factory_class(factory)
+        self.factories[key.name] = factory
         return Key(key.name)
+
+    def factory_class(self, factory):
+        """The block class a registration's `Function<Properties, Block>`
+        constructs: a constructor reference, or the one `Block` subclass a
+        lambda body instantiates. `None` when it can't be read."""
+        if not isinstance(factory, Lambda):
+            return None
+        if factory.kind == "newInvokeSpecial":
+            return factory.owner
+        if factory.kind != "invokeStatic":
+            return None
+        code, _ = self.cls(factory.owner).method(factory.method, factory.descriptor)
+        made = [re.search(r"class ([\w/$]+)", c)[1] for op, _, c, _ in code.values() if op == "new"]
+        blocks = list(dict.fromkeys(m for m in made if self.is_block_class(m)))
+        return blocks[0] if len(blocks) == 1 else None
+
+    def class_header(self, name):
+        """(superclass, interfaces) of a class, from `javap`'s declaration line."""
+        if name not in self.headers:
+            text = subprocess.check_output(["javap", "-classpath", str(self.jar), name.replace("/", ".")], text=True)
+            line = next(x for x in text.split("\n") if re.search(r"\b(class|interface) ", x))
+            line = strip_generics(line)
+            parent = re.search(r" extends ([\w.$]+)", line)
+            interfaces = re.search(r" implements ([\w.$, ]+)", line)
+            self.headers[name] = (
+                parent[1].replace(".", "/") if parent and " class " in f" {line}" else None,
+                [i.strip().replace(".", "/") for i in interfaces[1].split(",")] if interfaces else [],
+            )
+        return self.headers[name]
+
+    def ancestry(self, name):
+        """A class, its superclasses and every interface they implement."""
+        out, pending = [], [name]
+        while pending:
+            current = pending.pop()
+            if current in out or not current.startswith("net/minecraft/"):
+                continue
+            out.append(current)
+            parent, interfaces = self.class_header(current)
+            pending.extend(([parent] if parent else []) + interfaces)
+        return out
+
+    def is_block_class(self, name):
+        return name.startswith("net/minecraft/") and "net/minecraft/world/level/block/Block" in self.ancestry(name)
 
     def call_function(self, fn, args):
         """Invoke a functional value (`Function.apply` and friends)."""
@@ -411,6 +473,9 @@ class Interpreter:
                             receiver.map_color = {"bed": captured[0].name}
             elif method == "requiresCorrectToolForDrops":
                 receiver.requires = True
+            elif method == "pushReaction":
+                reaction = args[1]
+                receiver.push = reaction.name if isinstance(reaction, Enum) and reaction.kind == "push" else "unknown"
             elif returns != "L" + PROPERTIES + ";":
                 return Opaque(f"Properties.{method}")
             return receiver
@@ -419,7 +484,7 @@ class Interpreter:
             and method == "register"
             and descriptor.startswith("(Lnet/minecraft/resources/ResourceKey;Ljava/util/function/Function;")
         ):
-            return self.register(args[0], args[2])
+            return self.register(args[0], args[2], args[1])
         if owner in REGISTRATION_CLASSES:
             return self.run(owner, method, descriptor, args)
         if owner == "net/minecraft/references/BlockItemId":
@@ -479,10 +544,11 @@ class Interpreter:
         if method == "pick":
             return args[0].items[args[1].name]
         if method == "registerBlocks":
-            ids, registrar, _factory, props = args
+            ids, registrar, factory, props = args
+            # The factory takes the colour too; its class is what `register` records.
             return ids.map(
                 lambda c, key: self.call_function(
-                    registrar, [key, Opaque("factory"), self.call_function(props, [Enum("color", c)])]
+                    registrar, [key, factory, self.call_function(props, [Enum("color", c)])]
                 )
             )
         if method == "zipMap":
@@ -511,10 +577,11 @@ class Interpreter:
             waxed = int(method == "waxed")
             return Coll("state", {s: v for (w, s), v in args[0].items.items() if w == waxed})
         if method == "registerBlocks":
-            ids, registrar, _waxed, _weathering, props = args
+            ids, registrar, waxed, weathering, props = args
             return ids.map(
                 lambda k, key: self.call_function(
-                    registrar, [key, Opaque("factory"), self.call_function(props, [Enum("state", k[1])])]
+                    registrar,
+                    [key, waxed if k[0] else weathering, self.call_function(props, [Enum("state", k[1])])],
                 )
             )
         raise ValueError(f"unknown WeatheringCopperCollection.{method}")
@@ -565,6 +632,8 @@ class Interpreter:
                     result = outcomes[0]
                     if any(o.map_color != result.map_color for o in outcomes):
                         result.map_color = "state_dependent"
+                    if any(o.push != result.push for o in outcomes):
+                        result.push = "branch_dependent"
                     return result
                 if any(o != outcomes[0] for o in outcomes):
                     raise ValueError(f"branch outcomes differ in {owner}: {outcomes}")
@@ -690,3 +759,27 @@ def block_map_colors(jar):
     interpreter = Interpreter(jar)
     interpreter.static(BLOCKS, "AIR")
     return {name: props.map_color for name, props in interpreter.registered.items()}
+
+
+ENTITY_BLOCK = "net/minecraft/world/level/block/EntityBlock"
+
+
+def block_push_properties(jar):
+    """Per registered block ID: its `pushReaction`, whether its class is an
+    `EntityBlock` (`BlockStateBase.hasBlockEntity`), its destroy time and
+    its class. Fails when a factory's class can't be read."""
+    interpreter = Interpreter(jar)
+    interpreter.static(BLOCKS, "AIR")
+    out = {}
+    for name, props in interpreter.registered.items():
+        if props.block_class is None:
+            raise ValueError(f"{name}: unknown block class")
+        if props.push not in ("PUSH_PULL", "PUSH", "POPPED", "IMMOVEABLE", "IGNORE_ENTITY"):
+            raise ValueError(f"{name}: unknown push reaction {props.push}")
+        out[name] = {
+            "push_reaction": props.push,
+            "block_entity": ENTITY_BLOCK in interpreter.ancestry(props.block_class),
+            "destroy_time": props.destroy,
+            "class": props.block_class.rsplit("/", 1)[-1],
+        }
+    return out

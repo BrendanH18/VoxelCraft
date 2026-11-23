@@ -741,6 +741,14 @@ pub fn roll() -> f32 {
     (z >> 40) as f32 / (1u64 << 24) as f32
 }
 
+/// A fresh enchantment seed (`Player.onEnchantmentPerformed` draws
+/// `random.nextInt()`): any of the 2^32 ints.
+pub fn new_seed() -> i32 {
+    let high = (roll() * 65536.0) as u32;
+    let low = (roll() * 65536.0) as u32;
+    ((high << 16) | low) as i32
+}
+
 /// How readily an item takes enchantments at the table (Java's
 /// `enchantable` values); 0 means it can't be enchanted there.
 pub fn enchantability(item: Item) -> u32 {
@@ -775,9 +783,29 @@ pub fn enchantability(item: Item) -> u32 {
     }
 }
 
-/// Java's `EnchantingTableBlock.isValidBookShelf`: bookshelves on the ring
-/// two blocks out, at the table's level or one up, with nothing solid in
-/// between (at the same height). At most 15 count.
+/// `#enchantment_power_transmitter` (`#replaceable`): what may stand
+/// between an enchanting table and a bookshelf. The game's
+/// [`Block::is_replaceable`] differs from the tag in four blocks, which
+/// are corrected here: Java's tag has bushes and leaf litter but not pale
+/// hanging moss or sculk veins.
+pub fn transmits_power(b: Block) -> bool {
+    use crate::world::{biome_plants as bp, cave_blocks as cb, overworld_blocks as ob};
+    if b == bp::BUSH || bp::segments(b).is_some_and(|(family, _)| family == bp::LEAF_LITTER) {
+        return true;
+    }
+    if matches!(b, ob::PALE_HANGING_MOSS | ob::PALE_HANGING_MOSS_TIP)
+        || matches!(cb::multiface_of(b), Some((cb::Multiface::SculkVein, ..)))
+    {
+        return false;
+    }
+    b.is_replaceable()
+}
+
+/// Java's `EnchantingTableBlock.isValidBookShelf` over `BOOKSHELF_OFFSETS`:
+/// the 32 cells on the ring two blocks out, at the table's level and one
+/// up, each a bookshelf (`#enchantment_power_provider`) with a power
+/// transmitter on the cell halfway to it. `getEnchantmentCost` counts at
+/// most 15 of them.
 pub fn bookshelves(world: &crate::world::World, table: glam::IVec3) -> u32 {
     let mut n = 0;
     for y in 0..=1 {
@@ -788,7 +816,7 @@ pub fn bookshelves(world: &crate::world::World, table: glam::IVec3) -> u32 {
                 }
                 let shelf = world.get_block(table + glam::IVec3::new(x, y, z)) == Some(Block::BOOKSHELF);
                 let between = world.get_block(table + glam::IVec3::new(x / 2, y, z / 2));
-                if shelf && between.is_some_and(Block::is_replaceable) {
+                if shelf && between.is_some_and(transmits_power) {
                     n += 1;
                 }
             }
@@ -974,8 +1002,8 @@ pub fn offers(seed: i32, item: Item, bookshelves: u32) -> [Offer; 3] {
 }
 
 /// The anvil's result for `left` combined with `right` (Java's
-/// `AnvilMenu.createResult`, without renaming): the new stack, its level
-/// cost, and how many of `right` it uses up (`None` = all).
+/// `AnvilMenu.createResult`): the new stack, its level cost, and how many
+/// of `right` it uses up (`None` = all of it).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct AnvilResult {
     pub output: Stack,
@@ -985,98 +1013,168 @@ pub struct AnvilResult {
 
 /// Levels at or above which survival anvils refuse ("Too Expensive!").
 pub const TOO_EXPENSIVE: u32 = 40;
+/// `AnvilMenu.MAX_NAME_LENGTH`, in UTF-16 units as Java counts them.
+pub const ANVIL_MAX_NAME_LENGTH: usize = 50;
+/// Chance an anvil wears one step each time a survival player uses it.
+pub const ANVIL_WEAR_CHANCE: f32 = 0.12;
+/// `AnvilBlock.falling`: `setHurtsEntities(2.0F, 40)`.
+pub const FALLING_ANVIL_DAMAGE_PER_BLOCK: f32 = 2.0;
+pub const FALLING_ANVIL_MAX_DAMAGE: f32 = 40.0;
 
+/// [`anvil_menu`] without renaming, refusing "Too Expensive!" in survival.
 pub fn anvil(left: Stack, right: Option<Stack>, creative: bool) -> Option<AnvilResult> {
     anvil_any_cost(left, right, creative).filter(|r| creative || r.cost < TOO_EXPENSIVE)
 }
 
 /// [`anvil`] without the survival cost limit, for showing "Too Expensive!".
 pub fn anvil_any_cost(left: Stack, right: Option<Stack>, creative: bool) -> Option<AnvilResult> {
-    let right = right?;
+    anvil_menu(left, right, None, creative)
+}
+
+/// `AnvilMenu.validateName`: the name box's text with control characters
+/// and section signs filtered out (`StringUtil.filterText`), refused past
+/// 50 characters. VoxelCraft also refuses names its stacks can't hold
+/// (more than 64 UTF-8 bytes).
+pub fn valid_anvil_name(name: &str) -> Option<String> {
+    let filtered: String = name.chars().filter(|&c| c != '\u{a7}' && c >= ' ' && c != '\u{7f}').collect();
+    let fits =
+        filtered.encode_utf16().count() <= ANVIL_MAX_NAME_LENGTH && filtered.len() <= crate::inventory::STACK_NAME_MAX;
+    fits.then_some(filtered)
+}
+
+/// Java's `AnvilMenu.createResult` with the name box holding `name`
+/// (`None`: the box still shows the item's own name, which costs
+/// nothing). A non-blank name other than the item's shown name costs a
+/// level and names it; a blank box on a named item costs a level and
+/// clears the name. The result ignores the survival cost limit: a cost of
+/// [`TOO_EXPENSIVE`] or more shows "Too Expensive!" there. A rename alone
+/// is capped at 39 levels, doesn't raise the prior-work penalty and
+/// leaves the right-hand item where it is (`uses` is `Some(0)`).
+pub fn anvil_menu(left: Stack, right: Option<Stack>, name: Option<&str>, creative: bool) -> Option<AnvilResult> {
     let mut out = left;
-    let base = left.repair_cost as u32 + right.repair_cost as u32;
-    let mut cost = 0u32;
+    let tax = left.repair_cost as u64 + right.map_or(0, |r| r.repair_cost as u64);
+    let mut price = 0u32;
     let mut uses = None;
-    let book = right.item == Item::ENCHANTED_BOOK && !right.enchants.is_empty();
-    let max = left.item.durability();
-    if let Some(max) = max
-        && repairs(left.item, right.item)
-    {
-        let mut fix = out.damage.min(max / 4);
-        if fix == 0 {
-            return None;
-        }
-        let mut used = 0;
-        while fix > 0 && used < right.count {
-            out.damage -= fix;
-            cost += 1;
-            used += 1;
-            fix = out.damage.min(max / 4);
-        }
-        uses = Some(used);
-    } else {
-        if !(book || (left.item == right.item && max.is_some()) || left.item == Item::ENCHANTED_BOOK && book) {
-            return None;
-        }
+    if let Some(right) = right {
+        // Every enchanted book carries `stored_enchantments`, empty or not.
+        let book = right.item == Item::ENCHANTED_BOOK;
+        let max = left.item.durability();
         if let Some(max) = max
-            && !book
+            && repairs(left.item, right.item)
         {
-            let left_rest = max - left.damage.min(max);
-            let right_rest = max - right.damage.min(max);
-            let rest = left_rest as u32 + right_rest as u32 + max as u32 * 12 / 100;
-            let damage = (max as u32).saturating_sub(rest) as u16;
-            if damage < out.damage {
-                out.damage = damage;
-                cost += 2;
+            let mut fix = out.damage.min(max / 4);
+            if fix == 0 {
+                return None;
             }
-        }
-        let (mut any_fit, mut any_clash) = (false, false);
-        for (e, level) in right.enchants.iter() {
-            let have = out.enchants.level(e);
-            let mut new = if have == level { level + 1 } else { have.max(level) };
-            let mut fits = e.is_supported_item(left.item) || creative || left.item == Item::ENCHANTED_BOOK;
-            for (other, _) in out.enchants.iter() {
-                if other != e && !e.compatible(other) {
-                    fits = false;
-                    cost += 1;
+            let mut used = 0;
+            while fix > 0 && used < right.count {
+                out.damage -= fix;
+                price += 1;
+                used += 1;
+                fix = out.damage.min(max / 4);
+            }
+            uses = Some(used);
+        } else {
+            if !book && (left.item != right.item || max.is_none()) {
+                return None;
+            }
+            if let Some(max) = max
+                && !book
+            {
+                let left_rest = max as i32 - left.damage as i32;
+                let right_rest = max as i32 - right.damage as i32;
+                let rest = left_rest + right_rest + max as i32 * 12 / 100;
+                let damage = (max as i32 - rest).max(0);
+                if damage < out.damage as i32 {
+                    out.damage = damage as u16;
+                    price += 2;
                 }
             }
-            if !fits {
-                any_clash = true;
-                continue;
+            let (mut any_fit, mut any_clash) = (false, false);
+            for (e, level) in right.enchants.iter() {
+                let have = out.enchants.level(e);
+                let mut new = if have == level { level + 1 } else { have.max(level) };
+                let mut fits = e.is_supported_item(left.item) || creative || left.item == Item::ENCHANTED_BOOK;
+                for (other, _) in out.enchants.iter() {
+                    if other != e && !e.compatible(other) {
+                        fits = false;
+                        price += 1;
+                    }
+                }
+                if !fits {
+                    any_clash = true;
+                    continue;
+                }
+                any_fit = true;
+                new = new.min(e.def().max_level);
+                out.enchants.set(e, new);
+                let per = if book { (e.def().anvil_cost / 2).max(1) } else { e.def().anvil_cost };
+                price += per * new as u32;
+                if left.count > 1 {
+                    price = TOO_EXPENSIVE;
+                }
             }
-            any_fit = true;
-            new = new.min(e.def().max_level);
-            out.enchants.set(e, new);
-            let per = if book { (e.def().anvil_cost / 2).max(1) } else { e.def().anvil_cost };
-            cost += per * new as u32;
-            if left.count > 1 {
-                cost = TOO_EXPENSIVE;
+            if any_clash && !any_fit {
+                return None;
             }
-        }
-        if any_clash && !any_fit {
-            return None;
         }
     }
-    if cost == 0 {
+    let mut naming = 0;
+    match name {
+        Some(n) if !n.trim().is_empty() => {
+            if n != left.display_name() {
+                naming = 1;
+                price += 1;
+                out = out.with_name(n)?;
+            }
+        }
+        Some(_) if left.name.as_str().is_some() => {
+            naming = 1;
+            price += 1;
+            out = out.with_name("")?;
+        }
+        _ => {}
+    }
+    if price == 0 {
         return None;
     }
-    let total = base + cost;
-    let prior = left.repair_cost.max(right.repair_cost) as u32;
-    out.repair_cost = (prior * 2 + 1).min(u16::MAX as u32) as u16;
-    Some(AnvilResult { output: out, cost: total, uses })
+    let mut cost = (tax + price as u64).min(i32::MAX as u64) as u32;
+    let only_renaming = naming == price && naming > 0;
+    if only_renaming {
+        cost = cost.min(TOO_EXPENSIVE - 1);
+        uses = Some(0);
+    }
+    let prior = left.repair_cost.max(right.map_or(0, |r| r.repair_cost)) as u32;
+    let next = if only_renaming { prior } else { prior * 2 + 1 };
+    out.repair_cost = next.min(u16::MAX as u32) as u16;
+    Some(AnvilResult { output: out, cost, uses })
 }
 
 /// Java's anvil wear after a use: a 12% chance it turns chipped, then
 /// damaged, then breaks. Returns `Some(broke)` if it changed.
 pub fn wear_anvil(world: &mut crate::world::World, pos: glam::IVec3) -> Option<bool> {
     let anvil = world.get_block(pos).filter(|b| b.is_anvil())?;
-    if roll() >= 0.12 {
+    if roll() >= ANVIL_WEAR_CHANCE {
         return None;
     }
     let next = anvil.anvil_damaged();
     world.set_block(pos, next.unwrap_or(Block::AIR));
     Some(next.is_none())
+}
+
+/// `FallingBlockEntity.causeFallDamage` for an anvil that fell
+/// `distance` blocks: the damage it deals (whole blocks past the first,
+/// two each, at most 40) and, when that's above 0, a `0.05 + 0.05 *
+/// blocks` chance (`roll` in 0..1) that it lands one step more worn —
+/// `Some(None)` when a damaged anvil breaks and isn't placed.
+pub fn falling_anvil_landing(anvil: Block, distance: f64, roll: f32) -> (f32, Option<Option<Block>>) {
+    let blocks = (distance - 1.0).ceil() as i32;
+    if blocks < 0 {
+        return (0.0, None);
+    }
+    let damage = ((blocks as f32 * FALLING_ANVIL_DAMAGE_PER_BLOCK).floor()).min(FALLING_ANVIL_MAX_DAMAGE);
+    let wears = damage > 0.0 && roll < 0.05 + blocks as f32 * 0.05;
+    (damage, wears.then(|| anvil.anvil_damaged()))
 }
 
 /// Whether `material` repairs `item` on an anvil (Java's repair tags).

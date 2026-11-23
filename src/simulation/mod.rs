@@ -90,10 +90,15 @@ pub fn advance_day(day_time: f64, day_count: i64, dt: f64, rules: &crate::rules:
     if day_time >= 1.0 { (day_time.fract(), day_count.saturating_add(1)) } else { (day_time, day_count) }
 }
 
-/// Run the world systems once, in the same order for graphical and headless
-/// sessions. Streaming is independent and may be polled between ticks.
+/// Run the world systems once, with no entity pass: the entry point for
+/// world-only callers. Callers that run `World::tick_automation_entities`
+/// use [`tick_world_rules`] instead, so hoppers tick once, after the entity
+/// pass. Streaming is independent and may be polled between ticks.
 pub fn tick_world(world: &mut World, player: DVec3) {
     tick_world_rules(world, player, true, 3);
+    // Callers without entities still move items between block containers;
+    // a later `tick_automation_entities` in the same tick finishes the rest.
+    world.tick_hoppers();
 }
 
 /// [`tick_world`] with the gamerules that govern world block ticks.
@@ -103,7 +108,10 @@ pub fn tick_world_rules(world: &mut World, player: DVec3, fire_tick: bool, rando
     world.clear_removed_banners();
     world.clear_removed_shulker_boxes();
     world.tick_shulker_boxes();
-    world.tick_redstone();
+    // `ServerLevel.tick`: scheduled block ticks, fluid ticks, then the
+    // chunk tick (random ticks), then block events; entities and block
+    // entities follow in the caller (docs/redstone.md "Tick phases").
+    world.tick_block_ticks();
     world.tick_sculk();
     world.tick_fluids(TICK_SECONDS);
     world.tick_falling(TICK_SECONDS);
@@ -118,6 +126,12 @@ pub fn tick_world_rules(world: &mut World, player: DVec3, fire_tick: bool, rando
     world.tick_precipitation(random_tick_speed);
     world.tick_random_rules(TICK_SECONDS, player, random_tick_speed, fire_tick);
     world.tick_leaf_decay(TICK_SECONDS);
+    world.run_block_events();
+    // v0.17 Track B: `tickBlockEntities` for moving pistons (Java runs the
+    // entities between; the caller applies their pushes after this).
+    world.tick_moving_pistons();
+    // Entities and block entities (hoppers, in `tick_automation_entities`)
+    // follow in the caller.
     world.update_block_light_within(LIGHT_TICK_BUDGET);
 }
 

@@ -88,7 +88,8 @@ pub struct Args {
     /// Opens the container at this block once loaded (screenshots).
     pub open_block: Option<glam::IVec3>,
     /// Debug cart placements on rails once the world loads.
-    pub carts: Vec<(entity::minecart::CartKind, glam::IVec3)>,
+    /// `--cart` vehicles, and whether a furnace cart starts lit.
+    pub carts: Vec<(entity::minecart::CartKind, glam::IVec3, bool)>,
     /// `--decor`: a decoration placed against a block face, with what it holds.
     pub decor: Vec<(glam::IVec3, glam::IVec3, item::Item, Option<item::Item>)>,
     /// `--brush`: accepted brush strokes on a suspicious block's face.
@@ -533,7 +534,10 @@ fn parse_args() -> Result<Args, String> {
                 let v = value("--cart")?;
                 let parts: Vec<_> = v.split(',').collect();
                 if parts.len() != 4 {
-                    return Err("--cart needs x,y,z,rideable|chest|hopper|tnt|<boat or cushion item>".into());
+                    return Err(
+                        "--cart needs x,y,z,rideable|chest|hopper|tnt|furnace|furnace_lit|<boat or cushion item>"
+                            .into(),
+                    );
                 }
                 let n: Vec<i32> = parts[..3]
                     .iter()
@@ -545,11 +549,13 @@ fn parse_args() -> Result<Args, String> {
                     "chest" => entity::minecart::CartKind::Chest,
                     "hopper" => entity::minecart::CartKind::Hopper,
                     "tnt" => entity::minecart::CartKind::Tnt,
+                    // v0.17 Track D1: `furnace_lit` places it with an item's fuel.
+                    "furnace" | "furnace_lit" => entity::minecart::CartKind::Furnace,
                     name => item::Item::from_name(name)
                         .and_then(entity::minecart::CartKind::from_item)
                         .ok_or("unknown vehicle kind")?,
                 };
-                args.carts.push((kind, glam::IVec3::new(n[0], n[1], n[2])));
+                args.carts.push((kind, glam::IVec3::new(n[0], n[1], n[2]), parts[3] == "furnace_lit"));
             }
             "--spawn" => {
                 let v = value("--spawn")?;

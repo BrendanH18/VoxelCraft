@@ -660,6 +660,8 @@ static TABLES: LazyLock<Tables> = LazyLock::new(|| {
             super::infested::RESISTANCE
         } else if super::heavy_core::owns(b.0) {
             super::heavy_core::BLAST_RESISTANCE
+        } else if super::crafter::owns(b.0) {
+            super::crafter::BLAST_RESISTANCE
         } else if super::dried_ghast::owns(b.0) {
             0.0
         } else if let Some(r) = super::end_blocks::resistance(b) {
@@ -722,7 +724,22 @@ impl World {
     /// `interactWithBlocks` breaks them. Rays stop at the world's top and
     /// bottom and at unloaded chunks. Exploded cells may be air.
     pub fn exploded_cells(&mut self, center: DVec3, radius: f32) -> Vec<IVec3> {
-        self.exploded_cells_with(center, radius, resistance_against)
+        self.exploded_cells_with(center, radius, |_, _, b| resistance_against(b), |_, _, _| true)
+    }
+
+    /// v0.17 Track D1: [`World::exploded_cells`] for a primed TNT minecart.
+    /// A rail, or a block with a rail on it, costs its rays no resistance
+    /// and is never destroyed (`MinecartTNT.getBlockExplosionResistance`
+    /// and `shouldBlockExplode`, both on `#rails`).
+    pub fn rail_sparing_exploded_cells(&mut self, center: DVec3, radius: f32) -> Vec<IVec3> {
+        let spared =
+            |w: &World, p: IVec3, b: Block| b.is_rail() || w.get_block(p + IVec3::Y).is_some_and(Block::is_rail);
+        self.exploded_cells_with(
+            center,
+            radius,
+            |w, p, b| resistance_against(b).map(|r| if spared(w, p, b) { 0.0 } else { r }),
+            |w, p, b| !spared(w, p, b),
+        )
     }
 
     /// [`World::exploded_cells`] with a wind charge's calculator
@@ -730,29 +747,35 @@ impl World {
     /// `#blocks_wind_charge_explosions`): only those blocks (bedrock; the
     /// barrier isn't registered) stop its rays, every other block costs nothing.
     pub fn wind_exploded_cells(&mut self, center: DVec3, radius: f32) -> Vec<IVec3> {
-        self.exploded_cells_with(center, radius, |b| (b == Block::BEDROCK).then_some(3_600_000.0))
+        self.exploded_cells_with(center, radius, |_, _, b| (b == Block::BEDROCK).then_some(3_600_000.0), |_, _, _| true)
     }
 
     /// v0.16 Track C: [`World::exploded_cells`] for a Wither skull; a
     /// `dangerous` (blue) one caps the resistance of every block the Wither
     /// can destroy at 0.8 (`WitherSkull.getBlockExplosionResistance`).
     pub fn wither_exploded_cells(&mut self, center: DVec3, radius: f32, dangerous: bool) -> Vec<IVec3> {
-        self.exploded_cells_with(center, radius, |b| {
-            resistance_against(b).map(|r| {
-                if dangerous && crate::entity::wither::can_destroy(b) {
-                    r.min(crate::entity::wither::DANGEROUS_RESISTANCE)
-                } else {
-                    r
-                }
-            })
-        })
+        self.exploded_cells_with(
+            center,
+            radius,
+            |_, _, b| {
+                resistance_against(b).map(|r| {
+                    if dangerous && crate::entity::wither::can_destroy(b) {
+                        r.min(crate::entity::wither::DANGEROUS_RESISTANCE)
+                    } else {
+                        r
+                    }
+                })
+            },
+            |_, _, _| true,
+        )
     }
 
     fn exploded_cells_with(
         &mut self,
         center: DVec3,
         radius: f32,
-        resistance_against: impl Fn(Block) -> Option<f32>,
+        resistance_against: impl Fn(&World, IVec3, Block) -> Option<f32>,
+        explodes: impl Fn(&World, IVec3, Block) -> bool,
     ) -> Vec<IVec3> {
         let mut cells = FxHashSet::default();
         let edge = |i: i32| i == 0 || i == 15;
@@ -773,10 +796,10 @@ impl World {
                             break;
                         }
                         let Some(b) = self.get_block(cell) else { break };
-                        if let Some(r) = resistance_against(b) {
+                        if let Some(r) = resistance_against(self, cell, b) {
                             intensity -= (r + 0.3) * 0.3;
                         }
-                        if intensity > 0.0 {
+                        if intensity > 0.0 && explodes(self, cell, b) {
                             cells.insert(cell);
                         }
                         pos += d * STEP;
@@ -856,6 +879,11 @@ impl World {
     /// break's loot, thinned by its table's explosion rules when `radius` is
     /// given (`DESTROY_WITH_DECAY`). Pushed to [`World::drops`] unmerged.
     pub fn spill_exploded(&mut self, p: IVec3, block: Block, radius: Option<f32>) {
+        // v0.17 Track B: a moving cell drops (and decays) as its moved block.
+        let block = match block {
+            super::redstone_blocks::MOVING => self.moving_piston_drop(p).unwrap_or(block),
+            _ => block,
+        };
         let start = self.drops.len();
         self.spill_with_item(p, block, None);
         let Some(radius) = radius else { return };

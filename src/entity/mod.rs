@@ -25,6 +25,7 @@ pub(crate) mod cat_spawner;
 pub mod category;
 mod chunk_storage;
 pub mod decor;
+pub mod dispensed;
 pub mod path;
 pub use bobber::{CatchContext, roll_catch, set_damage};
 pub mod armadillo;
@@ -70,6 +71,7 @@ pub mod orb;
 pub mod panda;
 pub mod pearl;
 pub mod phantom;
+mod piston_push;
 pub mod player_model;
 mod player_pose;
 pub mod polar_bear;
@@ -201,6 +203,14 @@ pub enum MobSound {
 /// Something an entity did that the game needs to react to.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum EntityEvent {
+    /// v0.17 Track E1: a game event a mob posted where only the event list
+    /// is at hand (`Entity.gameEvent`); the entity update queues it for the
+    /// world and doesn't return it.
+    Vibration {
+        pos: DVec3,
+        event: crate::world::vibration::GameEvent,
+        source: crate::world::vibration::EventSource,
+    },
     /// Shared block impact for target blocks, touched redstone ore and
     /// candles a burning arrow lights.
     ProjectileBlockHit {
@@ -308,6 +318,14 @@ pub enum EntityEvent {
         cause: crate::simulation::damage::Cause,
         credit_player: bool,
     },
+    /// v0.17 Track D1: a TNT minecart's blast (`MinecartTNT.explode`, a TNT
+    /// explosion). A cart that had been primed spares rails and the blocks
+    /// under them (`getBlockExplosionResistance`, `shouldBlockExplode`).
+    CartExplosion {
+        center: DVec3,
+        power: f32,
+        spares_rails: bool,
+    },
     Sound {
         sound: MobSound,
         pos: DVec3,
@@ -378,6 +396,8 @@ pub enum EntityEvent {
         pos: DVec3,
         damage: f32,
         burning: bool,
+        /// An arrow (`AbstractArrow`); `false` for a fireball.
+        arrow: bool,
         owner: Option<PlayerId>,
         motion: DVec3,
     },
@@ -1238,6 +1258,11 @@ pub struct Entities {
 
 impl Entities {
     /// Creates an empty entity simulation with deterministic randomness from `seed`.
+    /// Drops sounds no frame will play (the headless harness has no audio).
+    pub(crate) fn clear_pending_sounds(&mut self) {
+        self.pending_sounds.clear();
+    }
+
     pub fn new(seed: u64) -> Self {
         Self {
             mobs: Vec::new(),
@@ -1886,6 +1911,23 @@ impl Entities {
         self.items.push(item::block_drop(stack, cell, &mut self.rng));
     }
 
+    /// Item entities a player standing at `player` touches go into
+    /// `inventory`; what doesn't fit stays on the ground. Returns whether
+    /// anything was taken.
+    pub fn pick_up_items(&mut self, player: DVec3, inventory: &mut crate::inventory::Inventory) -> bool {
+        let mut picked = false;
+        self.items.retain_mut(|item| {
+            if item.pickup_delay > 0.0 || !item.touches_player(player) {
+                return true;
+            }
+            let left = inventory.add_stack(item.stack);
+            picked |= left < item.stack.count;
+            item.stack.count = left;
+            left > 0
+        });
+        picked
+    }
+
     /// Throws a stack from `eye` along `dir` (the player dropping items).
     pub fn throw(&mut self, stack: crate::inventory::Stack, eye: DVec3, dir: DVec3) {
         let spread = DVec3::new(self.rng.range(-0.3, 0.3) as f64, 0.0, self.rng.range(-0.3, 0.3) as f64);
@@ -1929,6 +1971,8 @@ impl Entities {
         arrow.tipped = stack.item == crate::item::Item::TIPPED_ARROW;
         arrow.potion = stack.arrow_potion();
         self.arrows.push(arrow);
+        // `Projectile.tick`'s first tick; a dispenser is no owner.
+        self.sculk.shot(pos, crate::world::vibration::EventSource::NONE);
     }
 
     /// Java 26.3 `FireChargeItem.asProjectile`: a small fireball one block out whose
@@ -1937,6 +1981,7 @@ impl Entities {
         let heading = self.dispense_heading(step, 6.6666665);
         let pos = block.as_dvec3() + DVec3::splat(0.5) + step.as_dvec3();
         self.fireballs.push(fireball::Fireball::new(pos, heading));
+        self.sculk.shot(pos, crate::world::vibration::EventSource::NONE);
     }
 
     fn dispense_heading(&mut self, step: IVec3, uncertainty: f64) -> DVec3 {
@@ -1983,6 +2028,7 @@ impl Entities {
         };
         let pos = block.as_dvec3() + DVec3::splat(0.5) + step.as_dvec3() * 0.7 + DVec3::Y * 0.1;
         self.thrown.push(thrown::Thrown::dispensed(kind, pos, step.as_dvec3(), power, uncertainty, &mut self.rng));
+        self.sculk.shot(pos, crate::world::vibration::EventSource::NONE);
         true
     }
 

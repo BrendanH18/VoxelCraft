@@ -891,6 +891,45 @@ cases and the stonecutter's order with the game. `tests/java_recipes.rs`
 runs the four special grid recipes (banner duplication, shield decoration,
 book cloning, map extending) on example grids.
 
+## Core workstations (v0.17 Track G)
+
+The same extractor adds `furnace`, `brewing`, `comparator`, `enchanting`,
+`anvil`, `grindstone` and `smithing` to `workstations.json` (the v0.15
+keys are unchanged). It reads `AbstractFurnaceBlockEntity`,
+`BrewingStandBlockEntity`, `AnvilMenu`, `AnvilBlock`, `FallingBlockEntity`,
+`EnchantmentHelper`, `EnchantmentMenu`, `EnchantingTableBlock`,
+`GrindstoneMenu`, `LegacyRandomSource`, `BitRandomSource`, `Mth` and
+`AbstractContainerMenu` with javap and fails if the constants their
+arithmetic uses change; the `cooking/*` and `brewing/*` context providers
+and the `#block/fast_cooking` predicate; every cooking fuel (`Items`'
+`cookingFuel` registrations) and brewing fuel; the smelting, smoking,
+blasting and brewing recipes; the enchantment definitions and the
+`#in_enchanting_table` and `#curse` tags in Java's order; the enchanting
+table's block tags; the item durabilities, enchantability and repair items
+the cases use (with the equipment and repair extractors' readers); and the
+smithing recipes' template, base and addition items.
+
+`tools/java_workstation_models.py` then plays furnace, smoker, blast
+furnace and brewing stand scenarios tick by tick, rounds furnace
+experience (`createExperience`), computes enchanting offers for 8 seeds, 5
+bookshelf counts and 16 items (`getEnchantmentCost`, `selectEnchantment`
+and the clue draw with Java's `LegacyRandomSource`), anvil results for 24
+cases (repair, merging, books, clashes, renaming, the 40-level limit),
+grindstone results and experience for 11, falling-anvil damage and wear
+chance, and comparator output, all in Java's int and float arithmetic. It
+reads no VoxelCraft source.
+
+```sh
+python3 tools/extract_java_workstation_fixtures.py /path/to/server.jar target/java-workstations.json
+diff tests/fixtures/java/26.3/workstations.json target/java-workstations.json
+scripts/boat-check.sh -- 'cargo test --profile ci --locked --test workstations --test java_workstations'
+```
+
+`tests/workstations.rs` replays every scenario and case against the game
+and checks the fuel list, brewing fuels, bottle inputs, reagents, smithing
+slots, power transmitters and enchantability both ways
+([record](../../../../docs/verification/2026-11-23-v0.17-workstations.md)).
+
 ## Illagers, vexes and ravagers
 
 `illagers.json` (v0.15 Track A) holds the facts of the vindicator, evoker,
@@ -1360,3 +1399,217 @@ scripts/boat-check.sh -- 'cargo test --release --lib m3_corpus'
 frequency reducers, the outposts' exclusion zone, the stronghold rings) from
 this file and checks a located instance of every family on two seeds
 ([record](../../../../docs/verification/2026-11-21-v0.16-m3-exit.md)).
+
+## Redstone update order (v0.17)
+
+`redstone_order.json` holds Java 26.3's update-order facts, read from the
+pinned server artifact's bytecode by
+`tools/extract_java_redstone_order_fixtures.py`:
+
+- `NeighborUpdater.UPDATE_ORDER`, `BlockBehaviour.UPDATE_SHAPE_ORDER`, and
+  the `Direction` and `Direction.Plane` orders;
+- `TickPriority`, the chained-update and scheduled-tick caps;
+- the call order of `Level.setBlock` and `LevelChunk.setBlockState`;
+- the wire evaluator's update set and `Vec3i.hashCode`;
+- the diode, comparator, torch, lamp and observer delays and priorities;
+- the `ServerLevel.tick` phases.
+
+It also holds seven contraptions' per-tick states and update logs, from an
+independent model of the Java classes that never reads VoxelCraft code.
+Regenerate and compare with:
+
+```sh
+python3 tools/extract_java_redstone_order_fixtures.py /path/to/server.jar --output target/java-redstone-order.json
+diff tests/fixtures/java/26.3/redstone_order.json target/java-redstone-order.json
+scripts/boat-check.sh -- 'cargo test --profile ci --locked --test redstone_order'
+```
+
+`tests/redstone_order.rs` rebuilds each contraption through the game's
+placement, use and tick entry points
+([record](../../../../docs/verification/2026-11-23-v0.17-update-order.md)).
+
+## Dispensing and hopper sides (v0.17 Track C2)
+
+`dispensing.json` holds Java 26.3's dispense table and container faces,
+read from the pinned server artifact by
+`tools/extract_java_dispense_fixtures.py`. It compiles the original JDK
+oracle `tools/JavaDispenseVectors.java` against the jar and its bundled
+libraries and runs it after `Bootstrap.bootStrap()` (binding the default
+item components and the jar's tags): every item whose
+`DispenserBlock.getDispenseMethod` isn't the plain drop, with its behaviour
+and any `Equippable` slot, `dispensable` flag and allowed wearers; each
+projectile's `DispenseConfig` (power, uncertainty, level event, spawn
+offset per facing); the boat width; `Hopper.SUCK_AABB`; and every container
+block's slots per face with the probe items each slot accepts and gives up
+through each face of an empty container. It adds the item, block and
+entity tags those behaviours read. Needs `javac` and `java` (JDK 25).
+Regenerate and compare with:
+
+```sh
+python3 tools/extract_java_dispense_fixtures.py /path/to/server.jar --output target/java-dispensing.json
+diff tests/fixtures/java/26.3/dispensing.json target/java-dispensing.json
+scripts/boat-check.sh -- 'cargo test --profile ci --locked --test dispensing --test hopper_sides'
+```
+
+`tests/dispensing.rs` checks the game's table against it both ways, and
+`tests/hopper_sides.rs` every container's faces
+([record](../../../../docs/verification/2026-11-23-v0.17-dispensing.md)).
+
+## Minecarts (v0.17 Track D1)
+
+`minecarts.json` holds Java 26.3's default (non-experimental) minecart
+constants, read with `javap` by `tools/extract_java_minecart_fixtures.py`
+from the pinned server artifact and the pinned client
+(SHA-1 `e877b6a07acd633fb3bb475002175cec036e7b87`): the furnace minecart's
+fuel per coal and cap, its `#furnace_minecart_fuel` tag and shapeless
+recipe, its speed share, push and friction (`MinecartFurnace`);
+`OldMinecartBehavior`'s rail speeds, slope, boost, halt and slowdowns;
+`AbstractMinecart`'s gravity, air drag, contact push and the 0.8 facing
+alignment of `pushOtherMinecart`; the pickup reach and its excluded classes;
+`AbstractMinecartContainer`'s float slowdown; the TNT minecart's fuse, blast
+power, fall rule and rail protection (`#rails`, primed only); and the
+client's rolling (`MinecartSoundInstance`) and riding
+(`LocalPlayer.startRiding`) sound volumes. Float constants are written as
+Java widens them to double. The extractor matches each method's numeric
+literals in bytecode order and fails when they change.
+
+```sh
+python3 tools/extract_java_minecart_fixtures.py /path/to/server.jar /path/to/client.jar --output target/java-minecarts.json
+diff tests/fixtures/java/26.3/minecarts.json target/java-minecarts.json
+scripts/boat-check.sh -- 'cargo test --profile ci --locked --test minecarts'
+```
+
+`tests/minecarts.rs` checks the game against it
+([record](../../../../docs/verification/2026-11-23-v0.17-d1-carts.md)).
+
+## Redstone components (v0.17 Track E2)
+
+`redstone_components.json` lists every Java 26.3 block that takes part in
+redstone: its hierarchy (below `Block`) overrides `isSignalSource`,
+`getSignal`, `ownSignal`, `getDirectSignal`, `hasAnalogOutputSignal` or
+`getAnalogOutputSignal`, or a method queries power through `SignalGetter`
+(`hasNeighborSignal`, `getBestNeighborSignal` and the rest). Each block
+records the class its `Blocks.<clinit>` factory constructs (the factory
+lambdas are resolved with the `java_block_properties` evaluator), the int
+constructor arguments (button press ticks, weighted plate maxima), and four
+derived columns: `signal_source`, `strong` (`getDirectSignal`), `analog`
+and `reads_power`. Each class records its chain, where each signal method
+is declared, which methods query power, the literal `scheduleTick` delays
+(or the field or method that supplies a computed one; waterlogged fluid
+ticks are left out) and the v0.17 track that owns its behaviour.
+`constants` holds the values checked in code: the daylight detector's
+20-tick sample and 0.2 sun easing, the lightning rod's 8-tick pulse, the
+copper bulb's absence of a scheduled tick, the lamp's 4-tick off delay and
+the trapped chest's clamped viewer count. Regenerate and compare with:
+
+```sh
+python3 tools/extract_java_redstone_component_fixtures.py /path/to/server.jar --output target/java-redstone-components.json
+diff tests/fixtures/java/26.3/redstone_components.json target/java-redstone-components.json
+cargo test --profile ci --test redstone_components
+```
+
+`tests/redstone_components.rs` compares the columns with
+`world::redstone_catalogue::role` both ways (every Java component resolves
+with the same role or is a listed registry gap; every game block state with
+a role is a Java component with that role) and runs a scenario per
+component, using the constructor ints for every button's press length.
+
+## The crafter (v0.17 Track C1)
+
+`crafter.json` holds the crafter's facts, read by
+`tools/extract_java_crafter_fixtures.py` from the pinned server artifact
+with `javap`: `CrafterBlock`'s constants, state properties, neighbour and
+placement delays, placement `top` rule (its switch over the front),
+crafting ticks, ejection speed and offset, level events and recipe cache;
+`CrafterBlockEntity`'s constants, saved keys, name and slot rules (the
+toggle needs an empty slot, `canPlaceItem` checks later smaller stacks, the
+comparator counts filled or disabled slots); `CrafterMenu`'s slot layout;
+`FrontAndTop`'s twelve values in order; which block entity method the
+server's slot-toggle packet calls; the two sound events; `Blocks.CRAFTER`'s
+strength and map colour; the recipe, the loot table, the tags naming the
+crafter; and every crafting recipe with a special type. Regenerate and
+compare with:
+
+```sh
+python3 tools/extract_java_crafter_fixtures.py /path/to/server.jar --output target/java-crafter.json
+diff tests/fixtures/java/26.3/crafter.json target/java-crafter.json
+scripts/boat-check.sh -- 'cargo test --profile ci --locked --test crafter'
+```
+
+`tests/crafter.rs` checks the game's constants, states, placement, recipe
+and drops against it, lists every special recipe type with whether the
+shared matcher makes it, and runs the crafter in a headless world
+([record](../../../../docs/verification/2026-11-23-v0.17-crafter.md)).
+
+## Game events (v0.17 Track E1)
+
+`game_events.json` holds Java's game events as sculk sensors hear them, read
+from the pinned server artifact by `tools/extract_java_game_event_fixtures.py`
+with `javap`: the `GameEvent` registry in order with each notification radius
+(16, the jukebox's 10, the shriek's 32), `VibrationSystem`'s
+`VIBRATION_FREQUENCY_FOR_EVENT` and `RESONANCE_EVENTS`, the `vibrations`,
+`warden_can_listen`, `shrieker_can_listen`, `ignore_vibrations_sneaking` and
+`allay_can_listen` tags (nested tags resolved) and the vibration block tags,
+the listener radii and timings (`getListenerRadius`, `getActiveTicks`,
+`COOLDOWN_TICKS`, `SHRIEKING_TICKS`, `RESONANCE_PITCH_BEND`'s tone map), and
+every method that posts an event: a method naming a `GameEvent` field and
+calling `gameEvent`, `causeUseVibration`, `forceScheduleVibration` or
+`ShelfBlockEntity.setChanged(Holder)`, lambdas folded into their method, plus
+the two enchantment effects that carry an event. Methods that only compare
+events (listeners) are left out. Regenerate and compare with:
+
+```sh
+python3 tools/extract_java_game_event_fixtures.py /path/to/server.jar --output target/java-game-events.json
+diff tests/fixtures/java/26.3/game_events.json target/java-game-events.json
+scripts/boat-check.sh -- 'cargo test --profile ci --locked --test game_events'
+```
+
+`tests/game_events.rs` compares the game's table with the fixture both ways,
+keeps a row for every call site (posted, absent from the game, or a gap) that
+fails when the fixture gains or loses one, and runs small scenarios for the
+events the game posts ([record](../../../../docs/verification/2026-11-23-v0.17-sculk-game-events.md)).
+
+## Storage transactions (v0.17 Track D2)
+
+`storage_transactions.json` holds the Java facts behind the storage
+transaction fuzz: the `[start, end, backwards]` slot ranges each storage
+menu's `quickMoveStack` passes to `moveItemStackTo` (`ChestMenu`,
+`ShulkerBoxMenu`, `HopperMenu`, `DispenserMenu`, `AbstractFurnaceMenu`,
+`BrewingStandMenu`; bounds computed from the container size are null), the
+potion and furnace-bucket slot limits, `HopperBlockEntity.MOVE_ITEM_SPEED`,
+whether the comparator formula runs in floats, whether
+`BlockEntity.preRemoveSideEffects` spills contents with no game rule, whether
+`BrewingStandBlockEntity.serverTick` calls `setChanged` after loading fuel,
+whether `AbstractFurnaceBlockEntity.setItem` compares components, and the
+explosion conditions of the shulker box and chest loot tables. It needs
+`javap`:
+
+```sh
+python3 tools/extract_java_storage_fixtures.py /path/to/server.jar --output target/java-storage.json
+diff tests/fixtures/java/26.3/storage_transactions.json target/java-storage.json
+scripts/boat-check.sh -- 'cargo test --profile ci --locked --test storage_transactions'
+```
+
+`tests/storage_transactions.rs` checks `session::storage` against it
+([record](../../../../docs/verification/2026-11-23-v0.17-storage-fuzz.md)).
+
+## Random-tick growth (v0.17 farms follow-up)
+
+`growth.json` holds the numbers in `SugarCaneBlock.randomTick`,
+`CactusBlock.randomTick`, `StemBlock.randomTick`, `CropBlock.getGrowthSpeed`,
+`BambooStalkBlock.randomTick` and `BambooStalkBlock.growBamboo`, and the
+`AGE` properties of sugar cane, cactus and stems. The extractor reads each
+method's numeric constants in bytecode order and fails unless they have the
+expected shape. It needs `javap`:
+
+```sh
+python3 tools/extract_java_growth_fixtures.py /path/to/server.jar --output target/java-growth.json
+diff tests/fixtures/java/26.3/growth.json target/java-growth.json
+scripts/boat-check.sh -- 'cargo test --profile ci --locked --lib world::sugar_cane'
+```
+
+`world::sugar_cane`'s `growth_constants_match_java` pins sugar cane's age
+and height and the crop and stem light and growth constants to it
+([record](../../../../docs/verification/2026-11-23-v0.17-reference-contraptions.md#farms-follow-up-2026-11-23)).
+VoxelCraft's cactus doesn't grow, and its bamboo lacks Java's `STAGE`; those
+facts wait in the fixture.

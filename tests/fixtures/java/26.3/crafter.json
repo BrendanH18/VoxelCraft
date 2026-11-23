@@ -1,0 +1,279 @@
+{
+  "block": {
+    "analog_output": true,
+    "constants": {
+      "CRAFTER_ADVANCEMENT_DIAMETER": 17,
+      "CRAFTING_TICK_DELAY": 4,
+      "MAX_CRAFTING_TICKS": 6
+    },
+    "craft_event": 1049,
+    "craft_particles_event": 2010,
+    "crafting_ticks": 6,
+    "eject_into_container": true,
+    "eject_offset": 0.7,
+    "eject_one_at_a_time_into_crafters": true,
+    "eject_speed": 6,
+    "fail_event": 1050,
+    "neighbor_changed_delay": 4,
+    "neighbor_changed_signal": "hasNeighborSignal",
+    "placed_by_delay": 4,
+    "placement_signal": "hasNeighborSignal",
+    "placement_top": {
+      "down": "horizontal_opposite",
+      "east": "up",
+      "north": "up",
+      "south": "up",
+      "up": "horizontal",
+      "west": "up"
+    },
+    "properties": [
+      "orientation",
+      "triggered",
+      "crafting"
+    ],
+    "recipe_cache_size": 10,
+    "remainders_ejected": true
+  },
+  "block_entity": {
+    "can_place_checks_later_smaller_stacks": true,
+    "constants": {
+      "CONTAINER_HEIGHT": 3,
+      "CONTAINER_SIZE": 9,
+      "CONTAINER_WIDTH": 3,
+      "DATA_TRIGGERED": 9,
+      "DEFAULT_CRAFTING_TICKS_REMAINING": 0,
+      "DEFAULT_TRIGGERED": 0,
+      "NUM_DATA": 10,
+      "SLOT_DISABLED": 1,
+      "SLOT_ENABLED": 0
+    },
+    "name": "container.crafter",
+    "saved_keys": [
+      "crafting_ticks_remaining",
+      "disabled_slots",
+      "triggered"
+    ],
+    "set_item_reenables_disabled_slot": true,
+    "set_slot_state_requires_empty_slot": true,
+    "signal_counts_filled_or_disabled": true
+  },
+  "loot_table": {
+    "pools": [
+      {
+        "condition": {
+          "type": "minecraft:survives_explosion"
+        },
+        "entries": [
+          {
+            "name": "minecraft:crafter",
+            "type": "minecraft:item"
+          }
+        ],
+        "rolls": 1
+      }
+    ],
+    "random_sequence": "minecraft:blocks/crafter",
+    "type": "minecraft:block"
+  },
+  "menu": {
+    "constants": {
+      "INV_SLOT_END": 36,
+      "INV_SLOT_START": 9,
+      "SLOT_COUNT": 9,
+      "USE_ROW_SLOT_END": 45,
+      "USE_ROW_SLOT_START": 36
+    },
+    "grid_origin": [
+      26,
+      17
+    ],
+    "inventory_origin": [
+      8,
+      84
+    ],
+    "result_slot": [
+      134,
+      35
+    ],
+    "slot_may_place_checks_disabled": true
+  },
+  "orientations": [
+    {
+      "front": "down",
+      "name": "down_east",
+      "top": "east"
+    },
+    {
+      "front": "down",
+      "name": "down_north",
+      "top": "north"
+    },
+    {
+      "front": "down",
+      "name": "down_south",
+      "top": "south"
+    },
+    {
+      "front": "down",
+      "name": "down_west",
+      "top": "west"
+    },
+    {
+      "front": "up",
+      "name": "up_east",
+      "top": "east"
+    },
+    {
+      "front": "up",
+      "name": "up_north",
+      "top": "north"
+    },
+    {
+      "front": "up",
+      "name": "up_south",
+      "top": "south"
+    },
+    {
+      "front": "up",
+      "name": "up_west",
+      "top": "west"
+    },
+    {
+      "front": "west",
+      "name": "west_up",
+      "top": "up"
+    },
+    {
+      "front": "east",
+      "name": "east_up",
+      "top": "up"
+    },
+    {
+      "front": "north",
+      "name": "north_up",
+      "top": "up"
+    },
+    {
+      "front": "south",
+      "name": "south_up",
+      "top": "up"
+    }
+  ],
+  "recipe": {
+    "category": "redstone",
+    "key": {
+      "#": "minecraft:iron_ingot",
+      "C": "minecraft:crafting_table",
+      "D": "minecraft:dropper",
+      "R": "minecraft:redstone"
+    },
+    "pattern": [
+      "###",
+      "#C#",
+      "RDR"
+    ],
+    "result": {
+      "id": "minecraft:crafter"
+    },
+    "type": "minecraft:crafting_shaped"
+  },
+  "reference": "Minecraft Java Edition 26.3",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "slot_state_packet_calls": "CrafterBlockEntity",
+  "sounds": {
+    "craft": "block.crafter.craft",
+    "fail": "block.crafter.fail"
+  },
+  "sources": [
+    "net.minecraft.world.level.block.CrafterBlock (and $1, its placement switch map)",
+    "net.minecraft.world.level.block.entity.CrafterBlockEntity (and $1, its ContainerData)",
+    "net.minecraft.world.inventory.CrafterMenu, net.minecraft.world.inventory.CrafterSlot",
+    "net.minecraft.core.FrontAndTop",
+    "net.minecraft.server.network.ServerGamePacketListenerImpl.handleContainerSlotStateChanged",
+    "net.minecraft.sounds.SoundEvents (CRAFTER_CRAFT, CRAFTER_FAIL)",
+    "net.minecraft.world.level.block.Blocks (CRAFTER)",
+    "data/minecraft/recipe/crafter.json, data/minecraft/loot_table/blocks/crafter.json",
+    "data/minecraft/tags/{block,item}/*.json naming minecraft:crafter",
+    "data/minecraft/recipe/*.json with a special crafting type"
+  ],
+  "special_recipes": {
+    "black_banner_duplicate": "crafting_special_bannerduplicate",
+    "black_bundle": "crafting_transmute",
+    "black_shulker_box": "crafting_transmute",
+    "blue_banner_duplicate": "crafting_special_bannerduplicate",
+    "blue_bundle": "crafting_transmute",
+    "blue_shulker_box": "crafting_transmute",
+    "book_cloning": "crafting_special_bookcloning",
+    "brown_banner_duplicate": "crafting_special_bannerduplicate",
+    "brown_bundle": "crafting_transmute",
+    "brown_shulker_box": "crafting_transmute",
+    "cyan_banner_duplicate": "crafting_special_bannerduplicate",
+    "cyan_bundle": "crafting_transmute",
+    "cyan_shulker_box": "crafting_transmute",
+    "decorated_pot": "crafting_decorated_pot",
+    "firework_rocket": "crafting_special_firework_rocket",
+    "firework_star": "crafting_special_firework_star",
+    "firework_star_fade": "crafting_special_firework_star_fade",
+    "gray_banner_duplicate": "crafting_special_bannerduplicate",
+    "gray_bundle": "crafting_transmute",
+    "gray_shulker_box": "crafting_transmute",
+    "green_banner_duplicate": "crafting_special_bannerduplicate",
+    "green_bundle": "crafting_transmute",
+    "green_shulker_box": "crafting_transmute",
+    "leather_boots_dyed": "crafting_dye",
+    "leather_chestplate_dyed": "crafting_dye",
+    "leather_helmet_dyed": "crafting_dye",
+    "leather_horse_armor_dyed": "crafting_dye",
+    "leather_leggings_dyed": "crafting_dye",
+    "light_blue_banner_duplicate": "crafting_special_bannerduplicate",
+    "light_blue_bundle": "crafting_transmute",
+    "light_blue_shulker_box": "crafting_transmute",
+    "light_gray_banner_duplicate": "crafting_special_bannerduplicate",
+    "light_gray_bundle": "crafting_transmute",
+    "light_gray_shulker_box": "crafting_transmute",
+    "lime_banner_duplicate": "crafting_special_bannerduplicate",
+    "lime_bundle": "crafting_transmute",
+    "lime_shulker_box": "crafting_transmute",
+    "magenta_banner_duplicate": "crafting_special_bannerduplicate",
+    "magenta_bundle": "crafting_transmute",
+    "magenta_shulker_box": "crafting_transmute",
+    "map_cloning": "crafting_transmute",
+    "map_extending": "crafting_special_mapextending",
+    "orange_banner_duplicate": "crafting_special_bannerduplicate",
+    "orange_bundle": "crafting_transmute",
+    "orange_shulker_box": "crafting_transmute",
+    "pink_banner_duplicate": "crafting_special_bannerduplicate",
+    "pink_bundle": "crafting_transmute",
+    "pink_shulker_box": "crafting_transmute",
+    "purple_banner_duplicate": "crafting_special_bannerduplicate",
+    "purple_bundle": "crafting_transmute",
+    "purple_shulker_box": "crafting_transmute",
+    "red_banner_duplicate": "crafting_special_bannerduplicate",
+    "red_bundle": "crafting_transmute",
+    "red_shulker_box": "crafting_transmute",
+    "repair_item": "crafting_special_repairitem",
+    "shield_decoration": "crafting_special_shielddecoration",
+    "tipped_arrow": "crafting_imbue",
+    "white_banner_duplicate": "crafting_special_bannerduplicate",
+    "white_bundle": "crafting_transmute",
+    "white_shulker_box": "crafting_transmute",
+    "wolf_armor_dyed": "crafting_dye",
+    "yellow_banner_duplicate": "crafting_special_bannerduplicate",
+    "yellow_bundle": "crafting_transmute",
+    "yellow_shulker_box": "crafting_transmute"
+  },
+  "strength": {
+    "blast_resistance": 3.5,
+    "hardness": 1.5,
+    "map_color": "stone",
+    "requires_correct_tool": false
+  },
+  "tags": {
+    "block": [
+      "blocks_motion_no_leaves",
+      "mineable/pickaxe",
+      "needs_stone_tool"
+    ],
+    "item": []
+  }
+}

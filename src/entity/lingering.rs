@@ -269,7 +269,7 @@ mod tests {
         s.bottles[0] = Some(Stack::new(Item::splash_potion(Potion::from_id("poison").unwrap()), 1));
         s.ingredient = Some(Stack::new(Item::DRAGON_BREATH, 1));
         s.fuel = Some(Stack::new(Item::BLAZE_POWDER, 1));
-        assert!(!s.tick(0.05));
+        assert_eq!(s.tick(0.05), 0, "the start tick brews nothing");
         s = BrewingStand::deserialize(&s.serialize()).unwrap();
         for _ in 0..400 {
             s.tick(0.05);

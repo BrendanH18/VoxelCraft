@@ -351,7 +351,9 @@ impl World {
     }
 
     fn rail_unsupported(&self, p: IVec3, shape: RailShape) -> bool {
-        let solid = |q: IVec3| self.get_block(q).is_none_or(Block::supports_fire);
+        // `BaseRailBlock.shouldBeRemoved`: `canSupportRigidBlock` below, and
+        // beside the high end of a slope.
+        let solid = |q: IVec3| self.get_block(q).is_none_or(super::mount_states::supports_rigid);
         if !solid(p - IVec3::Y) {
             return true;
         }

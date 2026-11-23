@@ -1,0 +1,3223 @@
+{
+  "reference": "Minecraft Java Edition 26.3",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "sources": [
+    "Blocks.<clinit> registrations and their factory lambdas",
+    "javap -c -p of each block class and its superclasses below Block"
+  ],
+  "notes": "signal_source: the hierarchy overrides isSignalSource; strong: it overrides getDirectSignal; analog: it overrides hasAnalogOutputSignal (a subclass may still return false, see the class's chain); reads_power: some method queries SignalGetter power. scheduled_delays lists literal scheduleTick delays, or the field or method that supplies a computed one.",
+  "constants": {
+    "daylight_detector": {
+      "sample_period_ticks": 20,
+      "sun_angle_easing": 0.2,
+      "sky": "getEffectiveSkyBrightness"
+    },
+    "lightning_rod_pulse_ticks": 8,
+    "copper_bulb_scheduled_tick": false,
+    "redstone_lamp_off_delay": 4,
+    "trapped_chest_signal": "clamp(openCount, 0, 15)"
+  },
+  "classes": {
+    "BarrelBlock": {
+      "chain": [
+        "BarrelBlock",
+        "BaseEntityBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "BarrelBlock",
+        "hasAnalogOutputSignal": "BarrelBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "BeehiveBlock": {
+      "chain": [
+        "BeehiveBlock",
+        "BaseEntityBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "BeehiveBlock",
+        "hasAnalogOutputSignal": "BeehiveBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "BellBlock": {
+      "chain": [
+        "BellBlock",
+        "BaseEntityBlock"
+      ],
+      "signal_methods": {},
+      "power_queries": {
+        "neighborChanged": [
+          "hasNeighborSignal"
+        ]
+      },
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "BigDripleafBlock": {
+      "chain": [
+        "BigDripleafBlock",
+        "HorizontalDirectionalBlock"
+      ],
+      "signal_methods": {},
+      "power_queries": {
+        "entityInside": [
+          "hasNeighborSignal"
+        ],
+        "neighborChanged": [
+          "hasNeighborSignal"
+        ],
+        "tick": [
+          "hasNeighborSignal"
+        ]
+      },
+      "scheduled_delays": [
+        "iload"
+      ],
+      "owner": "E2"
+    },
+    "BlastFurnaceBlock": {
+      "chain": [
+        "BlastFurnaceBlock",
+        "AbstractFurnaceBlock",
+        "BaseEntityBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "AbstractFurnaceBlock",
+        "hasAnalogOutputSignal": "AbstractFurnaceBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "BrewingStandBlock": {
+      "chain": [
+        "BrewingStandBlock",
+        "BaseEntityBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "BrewingStandBlock",
+        "hasAnalogOutputSignal": "BrewingStandBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "ButtonBlock": {
+      "chain": [
+        "ButtonBlock",
+        "FaceAttachedHorizontalDirectionalBlock",
+        "HorizontalDirectionalBlock"
+      ],
+      "signal_methods": {
+        "getDirectSignal": "ButtonBlock",
+        "isSignalSource": "ButtonBlock",
+        "ownSignal": "ButtonBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [
+        "ticksToStayPressed"
+      ],
+      "owner": "E2"
+    },
+    "CakeBlock": {
+      "chain": [
+        "CakeBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "CakeBlock",
+        "hasAnalogOutputSignal": "CakeBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "CalibratedSculkSensorBlock": {
+      "chain": [
+        "CalibratedSculkSensorBlock",
+        "SculkSensorBlock",
+        "BaseEntityBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "SculkSensorBlock",
+        "getDirectSignal": "SculkSensorBlock",
+        "getSignal": "CalibratedSculkSensorBlock",
+        "hasAnalogOutputSignal": "SculkSensorBlock",
+        "isSignalSource": "SculkSensorBlock",
+        "ownSignal": "SculkSensorBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [
+        10,
+        "getActiveTicks"
+      ],
+      "owner": "E1"
+    },
+    "CandleCakeBlock": {
+      "chain": [
+        "CandleCakeBlock",
+        "AbstractCandleBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "CandleCakeBlock",
+        "hasAnalogOutputSignal": "CandleCakeBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "CauldronBlock": {
+      "chain": [
+        "CauldronBlock",
+        "AbstractCauldronBlock"
+      ],
+      "signal_methods": {
+        "hasAnalogOutputSignal": "AbstractCauldronBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "ChestBlock": {
+      "chain": [
+        "ChestBlock",
+        "AbstractChestBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "ChestBlock",
+        "hasAnalogOutputSignal": "ChestBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "ChiseledBookShelfBlock": {
+      "chain": [
+        "ChiseledBookShelfBlock",
+        "BaseEntityBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "ChiseledBookShelfBlock",
+        "hasAnalogOutputSignal": "ChiseledBookShelfBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "CommandBlock": {
+      "chain": [
+        "CommandBlock",
+        "BaseEntityBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "CommandBlock",
+        "hasAnalogOutputSignal": "CommandBlock"
+      },
+      "power_queries": {
+        "neighborChanged": [
+          "hasNeighborSignal"
+        ],
+        "setPlacedBy": [
+          "hasNeighborSignal"
+        ]
+      },
+      "scheduled_delays": [
+        1
+      ],
+      "owner": "E2"
+    },
+    "ComparatorBlock": {
+      "chain": [
+        "ComparatorBlock",
+        "DiodeBlock",
+        "HorizontalDirectionalBlock"
+      ],
+      "signal_methods": {
+        "getDirectSignal": "DiodeBlock",
+        "getSignal": "DiodeBlock",
+        "isSignalSource": "DiodeBlock",
+        "ownSignal": "DiodeBlock"
+      },
+      "power_queries": {
+        "getAlternateSignal": [
+          "getControlInputSignal"
+        ],
+        "getInputSignal": [
+          "getSignal"
+        ]
+      },
+      "scheduled_delays": [
+        1,
+        "getDelay"
+      ],
+      "owner": "A"
+    },
+    "ComposterBlock": {
+      "chain": [
+        "ComposterBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "ComposterBlock",
+        "hasAnalogOutputSignal": "ComposterBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [
+        20
+      ],
+      "owner": "E2"
+    },
+    "CopperBulbBlock": {
+      "chain": [
+        "CopperBulbBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "CopperBulbBlock",
+        "hasAnalogOutputSignal": "CopperBulbBlock"
+      },
+      "power_queries": {
+        "checkAndFlip": [
+          "hasNeighborSignal"
+        ]
+      },
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "CopperChestBlock": {
+      "chain": [
+        "CopperChestBlock",
+        "ChestBlock",
+        "AbstractChestBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "ChestBlock",
+        "hasAnalogOutputSignal": "ChestBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "CopperGolemStatueBlock": {
+      "chain": [
+        "CopperGolemStatueBlock",
+        "BaseEntityBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "CopperGolemStatueBlock",
+        "hasAnalogOutputSignal": "CopperGolemStatueBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "CrafterBlock": {
+      "chain": [
+        "CrafterBlock",
+        "BaseEntityBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "CrafterBlock",
+        "hasAnalogOutputSignal": "CrafterBlock"
+      },
+      "power_queries": {
+        "getStateForPlacement": [
+          "hasNeighborSignal"
+        ],
+        "neighborChanged": [
+          "hasNeighborSignal"
+        ]
+      },
+      "scheduled_delays": [
+        4
+      ],
+      "owner": "C1"
+    },
+    "CreakingHeartBlock": {
+      "chain": [
+        "CreakingHeartBlock",
+        "BaseEntityBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "CreakingHeartBlock",
+        "hasAnalogOutputSignal": "CreakingHeartBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [
+        1
+      ],
+      "owner": "E2"
+    },
+    "DaylightDetectorBlock": {
+      "chain": [
+        "DaylightDetectorBlock",
+        "BaseEntityBlock"
+      ],
+      "signal_methods": {
+        "isSignalSource": "DaylightDetectorBlock",
+        "ownSignal": "DaylightDetectorBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "DecoratedPotBlock": {
+      "chain": [
+        "DecoratedPotBlock",
+        "BaseEntityBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "DecoratedPotBlock",
+        "hasAnalogOutputSignal": "DecoratedPotBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "DetectorRailBlock": {
+      "chain": [
+        "DetectorRailBlock",
+        "BaseRailBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "DetectorRailBlock",
+        "getDirectSignal": "DetectorRailBlock",
+        "hasAnalogOutputSignal": "DetectorRailBlock",
+        "isSignalSource": "DetectorRailBlock",
+        "ownSignal": "DetectorRailBlock"
+      },
+      "power_queries": {
+        "updateDir": [
+          "hasNeighborSignal"
+        ]
+      },
+      "scheduled_delays": [
+        20
+      ],
+      "owner": "D1"
+    },
+    "DispenserBlock": {
+      "chain": [
+        "DispenserBlock",
+        "BaseEntityBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "DispenserBlock",
+        "hasAnalogOutputSignal": "DispenserBlock"
+      },
+      "power_queries": {
+        "neighborChanged": [
+          "hasNeighborSignal"
+        ]
+      },
+      "scheduled_delays": [
+        4
+      ],
+      "owner": "C2"
+    },
+    "DoorBlock": {
+      "chain": [
+        "DoorBlock"
+      ],
+      "signal_methods": {},
+      "power_queries": {
+        "getStateForPlacement": [
+          "hasNeighborSignal"
+        ],
+        "neighborChanged": [
+          "hasNeighborSignal"
+        ]
+      },
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "DropperBlock": {
+      "chain": [
+        "DropperBlock",
+        "DispenserBlock",
+        "BaseEntityBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "DispenserBlock",
+        "hasAnalogOutputSignal": "DispenserBlock"
+      },
+      "power_queries": {
+        "neighborChanged": [
+          "hasNeighborSignal"
+        ]
+      },
+      "scheduled_delays": [
+        4
+      ],
+      "owner": "C2"
+    },
+    "EndPortalFrameBlock": {
+      "chain": [
+        "EndPortalFrameBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "EndPortalFrameBlock",
+        "hasAnalogOutputSignal": "EndPortalFrameBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "FenceGateBlock": {
+      "chain": [
+        "FenceGateBlock",
+        "HorizontalDirectionalBlock"
+      ],
+      "signal_methods": {},
+      "power_queries": {
+        "getStateForPlacement": [
+          "hasNeighborSignal"
+        ],
+        "neighborChanged": [
+          "hasNeighborSignal"
+        ]
+      },
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "FurnaceBlock": {
+      "chain": [
+        "FurnaceBlock",
+        "AbstractFurnaceBlock",
+        "BaseEntityBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "AbstractFurnaceBlock",
+        "hasAnalogOutputSignal": "AbstractFurnaceBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "HopperBlock": {
+      "chain": [
+        "HopperBlock",
+        "BaseEntityBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "HopperBlock",
+        "hasAnalogOutputSignal": "HopperBlock"
+      },
+      "power_queries": {
+        "checkPoweredState": [
+          "hasNeighborSignal"
+        ]
+      },
+      "scheduled_delays": [],
+      "owner": "C2"
+    },
+    "JukeboxBlock": {
+      "chain": [
+        "JukeboxBlock",
+        "BaseEntityBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "JukeboxBlock",
+        "hasAnalogOutputSignal": "JukeboxBlock",
+        "isSignalSource": "JukeboxBlock",
+        "ownSignal": "JukeboxBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "LavaCauldronBlock": {
+      "chain": [
+        "LavaCauldronBlock",
+        "AbstractCauldronBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "LavaCauldronBlock",
+        "hasAnalogOutputSignal": "AbstractCauldronBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "LayeredCauldronBlock": {
+      "chain": [
+        "LayeredCauldronBlock",
+        "AbstractCauldronBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "LayeredCauldronBlock",
+        "hasAnalogOutputSignal": "AbstractCauldronBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "LecternBlock": {
+      "chain": [
+        "LecternBlock",
+        "BaseEntityBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "LecternBlock",
+        "getDirectSignal": "LecternBlock",
+        "hasAnalogOutputSignal": "LecternBlock",
+        "isSignalSource": "LecternBlock",
+        "ownSignal": "LecternBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [
+        2
+      ],
+      "owner": "E2"
+    },
+    "LeverBlock": {
+      "chain": [
+        "LeverBlock",
+        "FaceAttachedHorizontalDirectionalBlock",
+        "HorizontalDirectionalBlock"
+      ],
+      "signal_methods": {
+        "getDirectSignal": "LeverBlock",
+        "isSignalSource": "LeverBlock",
+        "ownSignal": "LeverBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "LightningRodBlock": {
+      "chain": [
+        "LightningRodBlock",
+        "RodBlock",
+        "DirectionalBlock"
+      ],
+      "signal_methods": {
+        "getDirectSignal": "LightningRodBlock",
+        "isSignalSource": "LightningRodBlock",
+        "ownSignal": "LightningRodBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [
+        8
+      ],
+      "owner": "E2"
+    },
+    "NoteBlock": {
+      "chain": [
+        "NoteBlock"
+      ],
+      "signal_methods": {},
+      "power_queries": {
+        "neighborChanged": [
+          "hasNeighborSignal"
+        ]
+      },
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "ObserverBlock": {
+      "chain": [
+        "ObserverBlock",
+        "DirectionalBlock"
+      ],
+      "signal_methods": {
+        "getDirectSignal": "ObserverBlock",
+        "getSignal": "ObserverBlock",
+        "isSignalSource": "ObserverBlock",
+        "ownSignal": "ObserverBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [
+        2
+      ],
+      "owner": "E2"
+    },
+    "PiglinWallSkullBlock": {
+      "chain": [
+        "PiglinWallSkullBlock",
+        "WallSkullBlock",
+        "AbstractSkullBlock",
+        "BaseEntityBlock"
+      ],
+      "signal_methods": {},
+      "power_queries": {
+        "getStateForPlacement": [
+          "hasNeighborSignal"
+        ],
+        "neighborChanged": [
+          "hasNeighborSignal"
+        ]
+      },
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "PistonBaseBlock": {
+      "chain": [
+        "PistonBaseBlock",
+        "DirectionalBlock"
+      ],
+      "signal_methods": {},
+      "power_queries": {
+        "getNeighborSignal": [
+          "hasSignal"
+        ]
+      },
+      "scheduled_delays": [],
+      "owner": "B"
+    },
+    "PlayerHeadBlock": {
+      "chain": [
+        "PlayerHeadBlock",
+        "SkullBlock",
+        "AbstractSkullBlock",
+        "BaseEntityBlock"
+      ],
+      "signal_methods": {},
+      "power_queries": {
+        "getStateForPlacement": [
+          "hasNeighborSignal"
+        ],
+        "neighborChanged": [
+          "hasNeighborSignal"
+        ]
+      },
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "PlayerWallHeadBlock": {
+      "chain": [
+        "PlayerWallHeadBlock",
+        "WallSkullBlock",
+        "AbstractSkullBlock",
+        "BaseEntityBlock"
+      ],
+      "signal_methods": {},
+      "power_queries": {
+        "getStateForPlacement": [
+          "hasNeighborSignal"
+        ],
+        "neighborChanged": [
+          "hasNeighborSignal"
+        ]
+      },
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "PoweredBlock": {
+      "chain": [
+        "PoweredBlock"
+      ],
+      "signal_methods": {
+        "isSignalSource": "PoweredBlock",
+        "ownSignal": "PoweredBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "PoweredRailBlock": {
+      "chain": [
+        "PoweredRailBlock",
+        "BaseRailBlock"
+      ],
+      "signal_methods": {},
+      "power_queries": {
+        "isSameRailWithPower": [
+          "hasNeighborSignal"
+        ],
+        "updateDir": [
+          "hasNeighborSignal"
+        ],
+        "updateState": [
+          "hasNeighborSignal"
+        ]
+      },
+      "scheduled_delays": [],
+      "owner": "D1"
+    },
+    "PressurePlateBlock": {
+      "chain": [
+        "PressurePlateBlock",
+        "BasePressurePlateBlock"
+      ],
+      "signal_methods": {
+        "getDirectSignal": "BasePressurePlateBlock",
+        "isSignalSource": "BasePressurePlateBlock",
+        "ownSignal": "BasePressurePlateBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [
+        "getPressedTime"
+      ],
+      "owner": "E2"
+    },
+    "RailBlock": {
+      "chain": [
+        "RailBlock",
+        "BaseRailBlock"
+      ],
+      "signal_methods": {},
+      "power_queries": {
+        "updateDir": [
+          "hasNeighborSignal"
+        ]
+      },
+      "scheduled_delays": [],
+      "owner": "D1"
+    },
+    "RedstoneLampBlock": {
+      "chain": [
+        "RedstoneLampBlock"
+      ],
+      "signal_methods": {},
+      "power_queries": {
+        "getStateForPlacement": [
+          "hasNeighborSignal"
+        ],
+        "neighborChanged": [
+          "hasNeighborSignal"
+        ],
+        "tick": [
+          "hasNeighborSignal"
+        ]
+      },
+      "scheduled_delays": [
+        4
+      ],
+      "owner": "E2"
+    },
+    "RedstoneTorchBlock": {
+      "chain": [
+        "RedstoneTorchBlock",
+        "BaseTorchBlock"
+      ],
+      "signal_methods": {
+        "getDirectSignal": "RedstoneTorchBlock",
+        "getSignal": "RedstoneTorchBlock",
+        "isSignalSource": "RedstoneTorchBlock",
+        "ownSignal": "RedstoneTorchBlock"
+      },
+      "power_queries": {
+        "hasNeighborSignal": [
+          "hasSignal"
+        ]
+      },
+      "scheduled_delays": [
+        2,
+        160
+      ],
+      "owner": "A"
+    },
+    "RedstoneWallTorchBlock": {
+      "chain": [
+        "RedstoneWallTorchBlock",
+        "RedstoneTorchBlock",
+        "BaseTorchBlock"
+      ],
+      "signal_methods": {
+        "getDirectSignal": "RedstoneTorchBlock",
+        "getSignal": "RedstoneWallTorchBlock",
+        "isSignalSource": "RedstoneTorchBlock",
+        "ownSignal": "RedstoneTorchBlock"
+      },
+      "power_queries": {
+        "hasNeighborSignal": [
+          "hasSignal"
+        ]
+      },
+      "scheduled_delays": [
+        2,
+        160
+      ],
+      "owner": "A"
+    },
+    "RedstoneWireBlock": {
+      "chain": [
+        "RedstoneWireBlock"
+      ],
+      "signal_methods": {
+        "getDirectSignal": "RedstoneWireBlock",
+        "getSignal": "RedstoneWireBlock",
+        "isSignalSource": "RedstoneWireBlock",
+        "ownSignal": "RedstoneWireBlock"
+      },
+      "power_queries": {
+        "getBlockSignal": [
+          "getBestNeighborSignal"
+        ]
+      },
+      "scheduled_delays": [],
+      "owner": "A"
+    },
+    "RepeaterBlock": {
+      "chain": [
+        "RepeaterBlock",
+        "DiodeBlock",
+        "HorizontalDirectionalBlock"
+      ],
+      "signal_methods": {
+        "getDirectSignal": "DiodeBlock",
+        "getSignal": "DiodeBlock",
+        "isSignalSource": "DiodeBlock",
+        "ownSignal": "DiodeBlock"
+      },
+      "power_queries": {
+        "getAlternateSignal": [
+          "getControlInputSignal"
+        ],
+        "getInputSignal": [
+          "getSignal"
+        ]
+      },
+      "scheduled_delays": [
+        1,
+        "getDelay"
+      ],
+      "owner": "A"
+    },
+    "RespawnAnchorBlock": {
+      "chain": [
+        "RespawnAnchorBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "RespawnAnchorBlock",
+        "hasAnalogOutputSignal": "RespawnAnchorBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "SculkSensorBlock": {
+      "chain": [
+        "SculkSensorBlock",
+        "BaseEntityBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "SculkSensorBlock",
+        "getDirectSignal": "SculkSensorBlock",
+        "hasAnalogOutputSignal": "SculkSensorBlock",
+        "isSignalSource": "SculkSensorBlock",
+        "ownSignal": "SculkSensorBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [
+        10,
+        "getActiveTicks"
+      ],
+      "owner": "E1"
+    },
+    "ShelfBlock": {
+      "chain": [
+        "ShelfBlock",
+        "BaseEntityBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "ShelfBlock",
+        "hasAnalogOutputSignal": "ShelfBlock"
+      },
+      "power_queries": {
+        "getStateForPlacement": [
+          "hasNeighborSignal"
+        ],
+        "neighborChanged": [
+          "hasNeighborSignal"
+        ]
+      },
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "ShulkerBoxBlock": {
+      "chain": [
+        "ShulkerBoxBlock",
+        "BaseEntityBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "ShulkerBoxBlock",
+        "hasAnalogOutputSignal": "ShulkerBoxBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "SkullBlock": {
+      "chain": [
+        "SkullBlock",
+        "AbstractSkullBlock",
+        "BaseEntityBlock"
+      ],
+      "signal_methods": {},
+      "power_queries": {
+        "getStateForPlacement": [
+          "hasNeighborSignal"
+        ],
+        "neighborChanged": [
+          "hasNeighborSignal"
+        ]
+      },
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "SmokerBlock": {
+      "chain": [
+        "SmokerBlock",
+        "AbstractFurnaceBlock",
+        "BaseEntityBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "AbstractFurnaceBlock",
+        "hasAnalogOutputSignal": "AbstractFurnaceBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "StructureBlock": {
+      "chain": [
+        "StructureBlock",
+        "BaseEntityBlock"
+      ],
+      "signal_methods": {},
+      "power_queries": {
+        "neighborChanged": [
+          "hasNeighborSignal"
+        ]
+      },
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "TargetBlock": {
+      "chain": [
+        "TargetBlock"
+      ],
+      "signal_methods": {
+        "isSignalSource": "TargetBlock",
+        "ownSignal": "TargetBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [
+        "iload"
+      ],
+      "owner": "E2"
+    },
+    "TestBlock": {
+      "chain": [
+        "TestBlock",
+        "BaseEntityBlock"
+      ],
+      "signal_methods": {
+        "ownSignal": "TestBlock"
+      },
+      "power_queries": {
+        "neighborChanged": [
+          "hasNeighborSignal"
+        ]
+      },
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "TntBlock": {
+      "chain": [
+        "TntBlock"
+      ],
+      "signal_methods": {},
+      "power_queries": {
+        "neighborChanged": [
+          "hasNeighborSignal"
+        ],
+        "onPlace": [
+          "hasNeighborSignal"
+        ]
+      },
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "TrapDoorBlock": {
+      "chain": [
+        "TrapDoorBlock",
+        "HorizontalDirectionalBlock"
+      ],
+      "signal_methods": {},
+      "power_queries": {
+        "getStateForPlacement": [
+          "hasNeighborSignal"
+        ],
+        "neighborChanged": [
+          "hasNeighborSignal"
+        ]
+      },
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "TrappedChestBlock": {
+      "chain": [
+        "TrappedChestBlock",
+        "ChestBlock",
+        "AbstractChestBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "ChestBlock",
+        "getDirectSignal": "TrappedChestBlock",
+        "hasAnalogOutputSignal": "ChestBlock",
+        "isSignalSource": "TrappedChestBlock",
+        "ownSignal": "TrappedChestBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "TripWireHookBlock": {
+      "chain": [
+        "TripWireHookBlock"
+      ],
+      "signal_methods": {
+        "getDirectSignal": "TripWireHookBlock",
+        "isSignalSource": "TripWireHookBlock",
+        "ownSignal": "TripWireHookBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [
+        10
+      ],
+      "owner": "E2"
+    },
+    "WallSkullBlock": {
+      "chain": [
+        "WallSkullBlock",
+        "AbstractSkullBlock",
+        "BaseEntityBlock"
+      ],
+      "signal_methods": {},
+      "power_queries": {
+        "getStateForPlacement": [
+          "hasNeighborSignal"
+        ],
+        "neighborChanged": [
+          "hasNeighborSignal"
+        ]
+      },
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "WeatheringCopperBulbBlock": {
+      "chain": [
+        "WeatheringCopperBulbBlock",
+        "CopperBulbBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "CopperBulbBlock",
+        "hasAnalogOutputSignal": "CopperBulbBlock"
+      },
+      "power_queries": {
+        "checkAndFlip": [
+          "hasNeighborSignal"
+        ]
+      },
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "WeatheringCopperChestBlock": {
+      "chain": [
+        "WeatheringCopperChestBlock",
+        "CopperChestBlock",
+        "ChestBlock",
+        "AbstractChestBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "ChestBlock",
+        "hasAnalogOutputSignal": "ChestBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "WeatheringCopperDoorBlock": {
+      "chain": [
+        "WeatheringCopperDoorBlock",
+        "DoorBlock"
+      ],
+      "signal_methods": {},
+      "power_queries": {
+        "getStateForPlacement": [
+          "hasNeighborSignal"
+        ],
+        "neighborChanged": [
+          "hasNeighborSignal"
+        ]
+      },
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "WeatheringCopperGolemStatueBlock": {
+      "chain": [
+        "WeatheringCopperGolemStatueBlock",
+        "CopperGolemStatueBlock",
+        "BaseEntityBlock"
+      ],
+      "signal_methods": {
+        "getAnalogOutputSignal": "CopperGolemStatueBlock",
+        "hasAnalogOutputSignal": "CopperGolemStatueBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "WeatheringCopperTrapDoorBlock": {
+      "chain": [
+        "WeatheringCopperTrapDoorBlock",
+        "TrapDoorBlock",
+        "HorizontalDirectionalBlock"
+      ],
+      "signal_methods": {},
+      "power_queries": {
+        "getStateForPlacement": [
+          "hasNeighborSignal"
+        ],
+        "neighborChanged": [
+          "hasNeighborSignal"
+        ]
+      },
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "WeatheringLightningRodBlock": {
+      "chain": [
+        "WeatheringLightningRodBlock",
+        "LightningRodBlock",
+        "RodBlock",
+        "DirectionalBlock"
+      ],
+      "signal_methods": {
+        "getDirectSignal": "LightningRodBlock",
+        "isSignalSource": "LightningRodBlock",
+        "ownSignal": "LightningRodBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [
+        8
+      ],
+      "owner": "E2"
+    },
+    "WeightedPressurePlateBlock": {
+      "chain": [
+        "WeightedPressurePlateBlock",
+        "BasePressurePlateBlock"
+      ],
+      "signal_methods": {
+        "getDirectSignal": "BasePressurePlateBlock",
+        "isSignalSource": "BasePressurePlateBlock",
+        "ownSignal": "BasePressurePlateBlock"
+      },
+      "power_queries": {},
+      "scheduled_delays": [
+        "getPressedTime"
+      ],
+      "owner": "E2"
+    },
+    "WitherSkullBlock": {
+      "chain": [
+        "WitherSkullBlock",
+        "SkullBlock",
+        "AbstractSkullBlock",
+        "BaseEntityBlock"
+      ],
+      "signal_methods": {},
+      "power_queries": {
+        "getStateForPlacement": [
+          "hasNeighborSignal"
+        ],
+        "neighborChanged": [
+          "hasNeighborSignal"
+        ]
+      },
+      "scheduled_delays": [],
+      "owner": "E2"
+    },
+    "WitherWallSkullBlock": {
+      "chain": [
+        "WitherWallSkullBlock",
+        "WallSkullBlock",
+        "AbstractSkullBlock",
+        "BaseEntityBlock"
+      ],
+      "signal_methods": {},
+      "power_queries": {
+        "getStateForPlacement": [
+          "hasNeighborSignal"
+        ],
+        "neighborChanged": [
+          "hasNeighborSignal"
+        ]
+      },
+      "scheduled_delays": [],
+      "owner": "E2"
+    }
+  },
+  "blocks": {
+    "acacia_button": {
+      "class": "ButtonBlock",
+      "constructor_ints": [
+        30
+      ],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "acacia_door": {
+      "class": "DoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "acacia_fence_gate": {
+      "class": "FenceGateBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "acacia_pressure_plate": {
+      "class": "PressurePlateBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "acacia_shelf": {
+      "class": "ShelfBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": true
+    },
+    "acacia_trapdoor": {
+      "class": "TrapDoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "activator_rail": {
+      "class": "PoweredRailBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "bamboo_button": {
+      "class": "ButtonBlock",
+      "constructor_ints": [
+        30
+      ],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "bamboo_door": {
+      "class": "DoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "bamboo_fence_gate": {
+      "class": "FenceGateBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "bamboo_pressure_plate": {
+      "class": "PressurePlateBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "bamboo_shelf": {
+      "class": "ShelfBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": true
+    },
+    "bamboo_trapdoor": {
+      "class": "TrapDoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "barrel": {
+      "class": "BarrelBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "bee_nest": {
+      "class": "BeehiveBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "beehive": {
+      "class": "BeehiveBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "bell": {
+      "class": "BellBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "big_dripleaf": {
+      "class": "BigDripleafBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "birch_button": {
+      "class": "ButtonBlock",
+      "constructor_ints": [
+        30
+      ],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "birch_door": {
+      "class": "DoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "birch_fence_gate": {
+      "class": "FenceGateBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "birch_pressure_plate": {
+      "class": "PressurePlateBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "birch_shelf": {
+      "class": "ShelfBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": true
+    },
+    "birch_trapdoor": {
+      "class": "TrapDoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "black_candle_cake": {
+      "class": "CandleCakeBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "black_shulker_box": {
+      "class": "ShulkerBoxBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "blast_furnace": {
+      "class": "BlastFurnaceBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "blue_candle_cake": {
+      "class": "CandleCakeBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "blue_shulker_box": {
+      "class": "ShulkerBoxBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "brewing_stand": {
+      "class": "BrewingStandBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "brown_candle_cake": {
+      "class": "CandleCakeBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "brown_shulker_box": {
+      "class": "ShulkerBoxBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "cake": {
+      "class": "CakeBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "calibrated_sculk_sensor": {
+      "class": "CalibratedSculkSensorBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": true,
+      "reads_power": false
+    },
+    "candle_cake": {
+      "class": "CandleCakeBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "cauldron": {
+      "class": "CauldronBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "chain_command_block": {
+      "class": "CommandBlock",
+      "constructor_ints": [
+        1
+      ],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": true
+    },
+    "cherry_button": {
+      "class": "ButtonBlock",
+      "constructor_ints": [
+        30
+      ],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "cherry_door": {
+      "class": "DoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "cherry_fence_gate": {
+      "class": "FenceGateBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "cherry_pressure_plate": {
+      "class": "PressurePlateBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "cherry_shelf": {
+      "class": "ShelfBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": true
+    },
+    "cherry_trapdoor": {
+      "class": "TrapDoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "chest": {
+      "class": "ChestBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "chiseled_bookshelf": {
+      "class": "ChiseledBookShelfBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "command_block": {
+      "class": "CommandBlock",
+      "constructor_ints": [
+        0
+      ],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": true
+    },
+    "comparator": {
+      "class": "ComparatorBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": true
+    },
+    "composter": {
+      "class": "ComposterBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "copper_bulb": {
+      "class": "WeatheringCopperBulbBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": true
+    },
+    "copper_chest": {
+      "class": "WeatheringCopperChestBlock",
+      "constructor_ints": [
+        1,
+        0
+      ],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "copper_door": {
+      "class": "WeatheringCopperDoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "copper_golem_statue": {
+      "class": "WeatheringCopperGolemStatueBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "copper_trapdoor": {
+      "class": "WeatheringCopperTrapDoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "crafter": {
+      "class": "CrafterBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": true
+    },
+    "creaking_heart": {
+      "class": "CreakingHeartBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "creeper_head": {
+      "class": "SkullBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "creeper_wall_head": {
+      "class": "WallSkullBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "crimson_button": {
+      "class": "ButtonBlock",
+      "constructor_ints": [
+        30
+      ],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "crimson_door": {
+      "class": "DoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "crimson_fence_gate": {
+      "class": "FenceGateBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "crimson_pressure_plate": {
+      "class": "PressurePlateBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "crimson_shelf": {
+      "class": "ShelfBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": true
+    },
+    "crimson_trapdoor": {
+      "class": "TrapDoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "cyan_candle_cake": {
+      "class": "CandleCakeBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "cyan_shulker_box": {
+      "class": "ShulkerBoxBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "dark_oak_button": {
+      "class": "ButtonBlock",
+      "constructor_ints": [
+        30
+      ],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "dark_oak_door": {
+      "class": "DoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "dark_oak_fence_gate": {
+      "class": "FenceGateBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "dark_oak_pressure_plate": {
+      "class": "PressurePlateBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "dark_oak_shelf": {
+      "class": "ShelfBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": true
+    },
+    "dark_oak_trapdoor": {
+      "class": "TrapDoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "daylight_detector": {
+      "class": "DaylightDetectorBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": false,
+      "analog": false,
+      "reads_power": false
+    },
+    "decorated_pot": {
+      "class": "DecoratedPotBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "detector_rail": {
+      "class": "DetectorRailBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": true,
+      "reads_power": true
+    },
+    "dispenser": {
+      "class": "DispenserBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": true
+    },
+    "dragon_head": {
+      "class": "SkullBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "dragon_wall_head": {
+      "class": "WallSkullBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "dropper": {
+      "class": "DropperBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": true
+    },
+    "end_portal_frame": {
+      "class": "EndPortalFrameBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "exposed_copper_bulb": {
+      "class": "WeatheringCopperBulbBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": true
+    },
+    "exposed_copper_chest": {
+      "class": "WeatheringCopperChestBlock",
+      "constructor_ints": [
+        1,
+        0
+      ],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "exposed_copper_door": {
+      "class": "WeatheringCopperDoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "exposed_copper_golem_statue": {
+      "class": "WeatheringCopperGolemStatueBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "exposed_copper_trapdoor": {
+      "class": "WeatheringCopperTrapDoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "exposed_lightning_rod": {
+      "class": "WeatheringLightningRodBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "furnace": {
+      "class": "FurnaceBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "gray_candle_cake": {
+      "class": "CandleCakeBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "gray_shulker_box": {
+      "class": "ShulkerBoxBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "green_candle_cake": {
+      "class": "CandleCakeBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "green_shulker_box": {
+      "class": "ShulkerBoxBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "heavy_weighted_pressure_plate": {
+      "class": "WeightedPressurePlateBlock",
+      "constructor_ints": [
+        150
+      ],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "hopper": {
+      "class": "HopperBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": true
+    },
+    "iron_door": {
+      "class": "DoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "iron_trapdoor": {
+      "class": "TrapDoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "jukebox": {
+      "class": "JukeboxBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "jungle_button": {
+      "class": "ButtonBlock",
+      "constructor_ints": [
+        30
+      ],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "jungle_door": {
+      "class": "DoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "jungle_fence_gate": {
+      "class": "FenceGateBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "jungle_pressure_plate": {
+      "class": "PressurePlateBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "jungle_shelf": {
+      "class": "ShelfBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": true
+    },
+    "jungle_trapdoor": {
+      "class": "TrapDoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "lava_cauldron": {
+      "class": "LavaCauldronBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "lectern": {
+      "class": "LecternBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": true,
+      "reads_power": false
+    },
+    "lever": {
+      "class": "LeverBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "light_blue_candle_cake": {
+      "class": "CandleCakeBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "light_blue_shulker_box": {
+      "class": "ShulkerBoxBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "light_gray_candle_cake": {
+      "class": "CandleCakeBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "light_gray_shulker_box": {
+      "class": "ShulkerBoxBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "light_weighted_pressure_plate": {
+      "class": "WeightedPressurePlateBlock",
+      "constructor_ints": [
+        15
+      ],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "lightning_rod": {
+      "class": "WeatheringLightningRodBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "lime_candle_cake": {
+      "class": "CandleCakeBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "lime_shulker_box": {
+      "class": "ShulkerBoxBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "magenta_candle_cake": {
+      "class": "CandleCakeBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "magenta_shulker_box": {
+      "class": "ShulkerBoxBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "mangrove_button": {
+      "class": "ButtonBlock",
+      "constructor_ints": [
+        30
+      ],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "mangrove_door": {
+      "class": "DoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "mangrove_fence_gate": {
+      "class": "FenceGateBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "mangrove_pressure_plate": {
+      "class": "PressurePlateBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "mangrove_shelf": {
+      "class": "ShelfBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": true
+    },
+    "mangrove_trapdoor": {
+      "class": "TrapDoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "note_block": {
+      "class": "NoteBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "oak_button": {
+      "class": "ButtonBlock",
+      "constructor_ints": [
+        30
+      ],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "oak_door": {
+      "class": "DoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "oak_fence_gate": {
+      "class": "FenceGateBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "oak_pressure_plate": {
+      "class": "PressurePlateBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "oak_shelf": {
+      "class": "ShelfBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": true
+    },
+    "oak_trapdoor": {
+      "class": "TrapDoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "observer": {
+      "class": "ObserverBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "orange_candle_cake": {
+      "class": "CandleCakeBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "orange_shulker_box": {
+      "class": "ShulkerBoxBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "oxidized_copper_bulb": {
+      "class": "WeatheringCopperBulbBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": true
+    },
+    "oxidized_copper_chest": {
+      "class": "WeatheringCopperChestBlock",
+      "constructor_ints": [
+        1,
+        0
+      ],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "oxidized_copper_door": {
+      "class": "WeatheringCopperDoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "oxidized_copper_golem_statue": {
+      "class": "WeatheringCopperGolemStatueBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "oxidized_copper_trapdoor": {
+      "class": "WeatheringCopperTrapDoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "oxidized_lightning_rod": {
+      "class": "WeatheringLightningRodBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "pale_oak_button": {
+      "class": "ButtonBlock",
+      "constructor_ints": [
+        30
+      ],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "pale_oak_door": {
+      "class": "DoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "pale_oak_fence_gate": {
+      "class": "FenceGateBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "pale_oak_pressure_plate": {
+      "class": "PressurePlateBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "pale_oak_shelf": {
+      "class": "ShelfBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": true
+    },
+    "pale_oak_trapdoor": {
+      "class": "TrapDoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "piglin_head": {
+      "class": "SkullBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "piglin_wall_head": {
+      "class": "PiglinWallSkullBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "pink_candle_cake": {
+      "class": "CandleCakeBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "pink_shulker_box": {
+      "class": "ShulkerBoxBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "piston": {
+      "class": "PistonBaseBlock",
+      "constructor_ints": [
+        0
+      ],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "player_head": {
+      "class": "PlayerHeadBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "player_wall_head": {
+      "class": "PlayerWallHeadBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "polished_blackstone_button": {
+      "class": "ButtonBlock",
+      "constructor_ints": [
+        20
+      ],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "polished_blackstone_pressure_plate": {
+      "class": "PressurePlateBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "poplar_button": {
+      "class": "ButtonBlock",
+      "constructor_ints": [
+        30
+      ],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "poplar_door": {
+      "class": "DoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "poplar_fence_gate": {
+      "class": "FenceGateBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "poplar_pressure_plate": {
+      "class": "PressurePlateBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "poplar_shelf": {
+      "class": "ShelfBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": true
+    },
+    "poplar_trapdoor": {
+      "class": "TrapDoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "powder_snow_cauldron": {
+      "class": "LayeredCauldronBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "powered_rail": {
+      "class": "PoweredRailBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "purple_candle_cake": {
+      "class": "CandleCakeBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "purple_shulker_box": {
+      "class": "ShulkerBoxBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "rail": {
+      "class": "RailBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "red_candle_cake": {
+      "class": "CandleCakeBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "red_shulker_box": {
+      "class": "ShulkerBoxBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "redstone_block": {
+      "class": "PoweredBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": false,
+      "analog": false,
+      "reads_power": false
+    },
+    "redstone_lamp": {
+      "class": "RedstoneLampBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "redstone_torch": {
+      "class": "RedstoneTorchBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": true
+    },
+    "redstone_wall_torch": {
+      "class": "RedstoneWallTorchBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": true
+    },
+    "redstone_wire": {
+      "class": "RedstoneWireBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": true
+    },
+    "repeater": {
+      "class": "RepeaterBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": true
+    },
+    "repeating_command_block": {
+      "class": "CommandBlock",
+      "constructor_ints": [
+        0
+      ],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": true
+    },
+    "respawn_anchor": {
+      "class": "RespawnAnchorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "sculk_sensor": {
+      "class": "SculkSensorBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": true,
+      "reads_power": false
+    },
+    "shulker_box": {
+      "class": "ShulkerBoxBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "skeleton_skull": {
+      "class": "SkullBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "skeleton_wall_skull": {
+      "class": "WallSkullBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "smoker": {
+      "class": "SmokerBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "spruce_button": {
+      "class": "ButtonBlock",
+      "constructor_ints": [
+        30
+      ],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "spruce_door": {
+      "class": "DoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "spruce_fence_gate": {
+      "class": "FenceGateBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "spruce_pressure_plate": {
+      "class": "PressurePlateBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "spruce_shelf": {
+      "class": "ShelfBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": true
+    },
+    "spruce_trapdoor": {
+      "class": "TrapDoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "sticky_piston": {
+      "class": "PistonBaseBlock",
+      "constructor_ints": [
+        1
+      ],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "stone_button": {
+      "class": "ButtonBlock",
+      "constructor_ints": [
+        20
+      ],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "stone_pressure_plate": {
+      "class": "PressurePlateBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "structure_block": {
+      "class": "StructureBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "target": {
+      "class": "TargetBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": false,
+      "analog": false,
+      "reads_power": false
+    },
+    "test_block": {
+      "class": "TestBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "tnt": {
+      "class": "TntBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "trapped_chest": {
+      "class": "TrappedChestBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": true,
+      "reads_power": false
+    },
+    "tripwire_hook": {
+      "class": "TripWireHookBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "warped_button": {
+      "class": "ButtonBlock",
+      "constructor_ints": [
+        30
+      ],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "warped_door": {
+      "class": "DoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "warped_fence_gate": {
+      "class": "FenceGateBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "warped_pressure_plate": {
+      "class": "PressurePlateBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "warped_shelf": {
+      "class": "ShelfBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": true
+    },
+    "warped_trapdoor": {
+      "class": "TrapDoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "water_cauldron": {
+      "class": "LayeredCauldronBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "waxed_copper_bulb": {
+      "class": "CopperBulbBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": true
+    },
+    "waxed_copper_chest": {
+      "class": "CopperChestBlock",
+      "constructor_ints": [
+        1,
+        0
+      ],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "waxed_copper_door": {
+      "class": "DoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "waxed_copper_golem_statue": {
+      "class": "CopperGolemStatueBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "waxed_copper_trapdoor": {
+      "class": "TrapDoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "waxed_exposed_copper_bulb": {
+      "class": "CopperBulbBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": true
+    },
+    "waxed_exposed_copper_chest": {
+      "class": "CopperChestBlock",
+      "constructor_ints": [
+        1,
+        0
+      ],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "waxed_exposed_copper_door": {
+      "class": "DoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "waxed_exposed_copper_golem_statue": {
+      "class": "CopperGolemStatueBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "waxed_exposed_copper_trapdoor": {
+      "class": "TrapDoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "waxed_exposed_lightning_rod": {
+      "class": "LightningRodBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "waxed_lightning_rod": {
+      "class": "LightningRodBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "waxed_oxidized_copper_bulb": {
+      "class": "CopperBulbBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": true
+    },
+    "waxed_oxidized_copper_chest": {
+      "class": "CopperChestBlock",
+      "constructor_ints": [
+        1,
+        0
+      ],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "waxed_oxidized_copper_door": {
+      "class": "DoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "waxed_oxidized_copper_golem_statue": {
+      "class": "CopperGolemStatueBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "waxed_oxidized_copper_trapdoor": {
+      "class": "TrapDoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "waxed_oxidized_lightning_rod": {
+      "class": "LightningRodBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "waxed_weathered_copper_bulb": {
+      "class": "CopperBulbBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": true
+    },
+    "waxed_weathered_copper_chest": {
+      "class": "CopperChestBlock",
+      "constructor_ints": [
+        1,
+        0
+      ],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "waxed_weathered_copper_door": {
+      "class": "DoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "waxed_weathered_copper_golem_statue": {
+      "class": "CopperGolemStatueBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "waxed_weathered_copper_trapdoor": {
+      "class": "TrapDoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "waxed_weathered_lightning_rod": {
+      "class": "LightningRodBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "weathered_copper_bulb": {
+      "class": "WeatheringCopperBulbBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": true
+    },
+    "weathered_copper_chest": {
+      "class": "WeatheringCopperChestBlock",
+      "constructor_ints": [
+        1,
+        0
+      ],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "weathered_copper_door": {
+      "class": "WeatheringCopperDoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "weathered_copper_golem_statue": {
+      "class": "WeatheringCopperGolemStatueBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "weathered_copper_trapdoor": {
+      "class": "WeatheringCopperTrapDoorBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "weathered_lightning_rod": {
+      "class": "WeatheringLightningRodBlock",
+      "constructor_ints": [],
+      "signal_source": true,
+      "strong": true,
+      "analog": false,
+      "reads_power": false
+    },
+    "white_candle_cake": {
+      "class": "CandleCakeBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "white_shulker_box": {
+      "class": "ShulkerBoxBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "wither_skeleton_skull": {
+      "class": "WitherSkullBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "wither_skeleton_wall_skull": {
+      "class": "WitherWallSkullBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "yellow_candle_cake": {
+      "class": "CandleCakeBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "yellow_shulker_box": {
+      "class": "ShulkerBoxBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": true,
+      "reads_power": false
+    },
+    "zombie_head": {
+      "class": "SkullBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    },
+    "zombie_wall_head": {
+      "class": "WallSkullBlock",
+      "constructor_ints": [],
+      "signal_source": false,
+      "strong": false,
+      "analog": false,
+      "reads_power": true
+    }
+  }
+}

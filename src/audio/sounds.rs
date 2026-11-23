@@ -246,6 +246,10 @@ pub enum Sound {
     Conduit(crate::world::conduit::Cue),
     /// v0.16 Track H: potent sulfur's geysers and noxious gas.
     Geyser(crate::world::potent_sulfur::Cue),
+    /// v0.17 Track D1: rolling minecarts and riding in one.
+    Minecart(crate::entity::minecart::Cue),
+    /// v0.17 Track C1: the crafter's craft and failure.
+    Crafter(crate::world::crafter::Cue),
 }
 
 const M: usize = Material::ALL.len();
@@ -266,7 +270,9 @@ impl Sound {
     const BEACON_END: usize = Self::WITHER_END + crate::world::beacon::Cue::ALL.len();
     const SULFUR_CUBE_END: usize = Self::BEACON_END + crate::entity::sulfur_cube::Cue::ALL.len();
     const CONDUIT_END: usize = Self::SULFUR_CUBE_END + crate::world::conduit::Cue::ALL.len();
-    pub const COUNT: usize = Self::CONDUIT_END + crate::world::potent_sulfur::Cue::ALL.len();
+    const GEYSER_END: usize = Self::CONDUIT_END + crate::world::potent_sulfur::Cue::ALL.len();
+    const MINECART_END: usize = Self::GEYSER_END + crate::entity::minecart::Cue::ALL.len();
+    pub const COUNT: usize = Self::MINECART_END + crate::world::crafter::Cue::ALL.len();
 
     /// Dense index in `0..COUNT`.
     pub fn key(self) -> usize {
@@ -288,6 +294,8 @@ impl Sound {
             Sound::SulfurCube(cue) => Self::BEACON_END + cue as usize,
             Sound::Conduit(cue) => Self::SULFUR_CUBE_END + cue as usize,
             Sound::Geyser(cue) => Self::CONDUIT_END + cue as usize,
+            Sound::Minecart(cue) => Self::GEYSER_END + cue as usize,
+            Sound::Crafter(cue) => Self::MINECART_END + cue as usize,
             Sound::Note(i) => 3 * M + 27 + Voice::ALL.len() * CALLS + i as usize,
             Sound::Thunder => Self::BASE_COUNT - 1,
             Sound::Bell => Self::BASE_COUNT - 4,
@@ -415,6 +423,8 @@ impl Sound {
             .chain(crate::entity::sulfur_cube::Cue::ALL.map(Sound::SulfurCube))
             .chain(crate::world::conduit::Cue::ALL.map(Sound::Conduit))
             .chain(crate::world::potent_sulfur::Cue::ALL.map(Sound::Geyser))
+            .chain(crate::entity::minecart::Cue::ALL.map(Sound::Minecart))
+            .chain(crate::world::crafter::Cue::ALL.map(Sound::Crafter))
     }
 
     /// Stable sound name used when exporting or identifying samples.
@@ -435,6 +445,8 @@ impl Sound {
             Sound::SulfurCube(c) => c.key().replace('.', "_"),
             Sound::Conduit(c) => format!("conduit_{c:?}").to_lowercase(),
             Sound::Geyser(c) => c.key().replace('.', "_"),
+            Sound::Minecart(c) => format!("minecart_{c:?}").to_lowercase(),
+            Sound::Crafter(c) => format!("crafter_{c:?}").to_lowercase(),
             Sound::Thunder => "lightning_thunder".into(),
             Sound::HoneySlide => "honey_block_slide".into(),
             Sound::HoneyDrink => "honey_drink".into(),
@@ -569,6 +581,11 @@ impl Sound {
             // `animateTick` plays the gas as `AMBIENT`; the geyser is `BLOCKS`.
             Sound::Geyser(crate::world::potent_sulfur::Cue::NoxiousGas) => SoundSource::Ambient,
             Sound::Geyser(_) => SoundSource::Blocks,
+            // `MinecartSoundInstance` and `RidingMinecartSoundInstance` play
+            // as `NEUTRAL`.
+            Sound::Minecart(_) => SoundSource::Neutral,
+            // `CRAFTER_CRAFT` and `CRAFTER_FAIL` play as `BLOCKS`.
+            Sound::Crafter(_) => SoundSource::Blocks,
             Sound::Mob(voice, _) => voice.source(),
         }
     }
@@ -587,6 +604,8 @@ impl Sound {
             Sound::Wither(_) | Sound::Beacon(_) | Sound::Conduit(_) => 1,
             Sound::SulfurCube(_) => 2,
             Sound::Geyser(_) => 2,
+            Sound::Minecart(_) => 1,
+            Sound::Crafter(_) => 2,
             Sound::Warden(_) | Sound::Sculk(_) => 2,
             Sound::Sniffer(_) | Sound::Weapon(_) => 2,
             Sound::Step(_) => 4,
@@ -641,6 +660,8 @@ impl Sound {
             Sound::SulfurCube(c) => super::sulfur_cube::render(c, &mut rng),
             Sound::Conduit(c) => super::wither::render_conduit(c, &mut rng),
             Sound::Geyser(c) => super::sulfur_cube::render_geyser(c, &mut rng),
+            Sound::Minecart(c) => super::minecart::render(c, &mut rng),
+            Sound::Crafter(c) => super::crafter::render(c, &mut rng),
             Sound::Thunder => thunder(&mut rng),
             Sound::HoneySlide => honey_sound(&mut rng, 0.35),
             Sound::HoneyDrink => honey_sound(&mut rng, 0.22),

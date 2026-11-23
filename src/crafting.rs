@@ -134,22 +134,10 @@ impl Grid {
     /// Java crafting remainders: empty ingredient slots keep their bottle;
     /// a still-stacked ingredient returns its bottle to the player inventory.
     pub fn consume_with_remainders(&mut self) -> Vec<Stack> {
-        let occupied: Vec<Stack> = self.cells.iter().take(self.size * self.size).flatten().copied().collect();
+        let remainders = self.remainders();
         let mut overflow = Vec::new();
-        // `BookCloningRecipe.getRemainingItems` keeps only the first written book.
-        let mut kept_book = false;
-        for cell in self.cells.iter_mut().take(self.size * self.size) {
+        for (cell, rest) in self.cells.iter_mut().zip(remainders).take(self.size * self.size) {
             if let Some(s) = cell {
-                // Special recipes leave their source behind (`getRemainingItems`).
-                let special = crate::content::banner_patterns::duplicate_remainder(&occupied, s).or_else(|| {
-                    if kept_book {
-                        return None;
-                    }
-                    let book = crate::content::books::clone_remainder(&occupied, s);
-                    kept_book |= book.is_some();
-                    book
-                });
-                let rest = special.or_else(|| s.item.remainder().map(|item| Stack::new(item, 1)));
                 s.count -= 1;
                 if s.count == 0 {
                     *cell = rest;
@@ -163,6 +151,30 @@ impl Grid {
             }
         }
         overflow
+    }
+
+    /// The recipe's `getRemainingItems`, cell by cell: what each ingredient
+    /// leaves behind (a bucket, a bottle, or a special recipe's source).
+    /// The v0.17 crafter ejects these instead of keeping them in the grid.
+    pub fn remainders(&self) -> [Option<Stack>; 9] {
+        let occupied: Vec<Stack> = self.cells.iter().take(self.size * self.size).flatten().copied().collect();
+        let mut out = [None; 9];
+        // `BookCloningRecipe.getRemainingItems` keeps only the first written book.
+        let mut kept_book = false;
+        for (cell, rest) in self.cells.iter().zip(out.iter_mut()).take(self.size * self.size) {
+            let Some(s) = cell else { continue };
+            // Special recipes leave their source behind (`getRemainingItems`).
+            let special = crate::content::banner_patterns::duplicate_remainder(&occupied, s).or_else(|| {
+                if kept_book {
+                    return None;
+                }
+                let book = crate::content::books::clone_remainder(&occupied, s);
+                kept_book |= book.is_some();
+                book
+            });
+            *rest = special.or_else(|| s.item.remainder().map(|item| Stack::new(item, 1)));
+        }
+        out
     }
 
     /// Empties the grid, returning its stacks.
@@ -752,6 +764,18 @@ pub fn recipes() -> &'static [Recipe] {
             &["###", "#X#", "###"],
             &[('#', &[Item::GHAST_TEAR]), ('X', const { &[b(Block::SOUL_SAND)] })],
             Item::from_block(crate::world::dried_ghast::DRIED_GHAST),
+            1,
+        ));
+        // v0.17 Track C1: `recipe/crafter.json`.
+        r.push(shaped(
+            &["###", "#C#", "RDR"],
+            &[
+                ('#', IRON),
+                ('C', const { &[b(Block::CRAFTING_TABLE)] }),
+                ('R', &[Item::REDSTONE]),
+                ('D', const { &[b(crate::world::redstone_blocks::DROPPER)] }),
+            ],
+            Item::from_block(crate::world::crafter::CRAFTER),
             1,
         ));
         // v0.16 Track C: `recipe/beacon.json`, glass over a Nether star on obsidian.
@@ -1576,6 +1600,8 @@ fn add_redstone_recipes(recipes: &mut Vec<Recipe>) {
         shapeless(&[CHEST, CART], Item::CHEST_MINECART, 1),
         shapeless(&[HOPPER, CART], Item::HOPPER_MINECART, 1),
         shapeless(&[TNT_BLOCK, CART], Item::TNT_MINECART, 1),
+        // v0.17 Track D1: `furnace_minecart` (shapeless furnace and minecart).
+        shapeless(&[FURNACE, CART], Item::FURNACE_MINECART, 1),
         shaped(&["PPP", "PRP", "PPP"], &[('P', PLANKS), ('R', DUST)], b(crate::world::gadgets::NOTE), 1),
         shaped(&["I", "S", "P"], &[('I', IRON), ('S', STICK), ('P', PLANKS)], b(crate::world::gadgets::HOOK), 2),
         shaped(&["#I#", "~H~", " # "], &[('#', STICK), ('I', IRON), ('~', STRING), ('H', HOOK)], Item::CROSSBOW, 1),

@@ -19,10 +19,31 @@ pub const SHAPE: Shape = Shape::new(0.49, 0.7);
 const MAX_SPEED: f64 = 0.4;
 /// Java `OldMinecartBehavior.getMaxSpeed`: half speed while the cart is in water.
 const WATER_MAX_SPEED: f64 = 0.2;
-/// Java `AbstractMinecart.WATER_SLOWDOWN_FACTOR`, applied to the natural slowdown.
-const WATER_SLOWDOWN: f64 = 0.95;
+/// Java `AbstractMinecart.WATER_SLOWDOWN_FACTOR` (a float), applied to the natural slowdown.
+const WATER_SLOWDOWN: f64 = 0.95f32 as f64;
+/// `AbstractMinecart.getAirDrag`, off the rails and in the air.
+const AIR_DRAG: f64 = 0.95f32 as f64;
+/// `AbstractMinecart.getDefaultGravity`: 0.04, or 0.005 in water.
+const GRAVITY: f64 = 0.04;
+const WATER_GRAVITY: f64 = 0.005;
 const SLOPE: f64 = 0.0078125;
 const SEAT: f64 = 0.1875;
+/// `MinecartFurnace.FUEL_TICKS_PER_ITEM`: ticks of fuel one coal or charcoal adds.
+pub const FUEL_PER_ITEM: u16 = 3600;
+/// `MinecartFurnace.MAX_FUEL_TICKS`: fuel is refused past this.
+pub const MAX_FUEL: u16 = 32000;
+/// `MinecartFurnace.getMaxSpeed`: the furnace cart's share of the normal
+/// cap on land and in water.
+const FURNACE_SPEED_LAND: f64 = 0.5;
+const FURNACE_SPEED_WATER: f64 = 0.75;
+/// `AbstractMinecart.push`: the contact push scale (`0.1F * 0.5`).
+const CONTACT_PUSH: f64 = 0.1f32 as f64 * 0.5;
+/// `AbstractMinecart.pushOtherMinecart`: carts push only when their line
+/// meets the pushed cart's facing within this cosine.
+const ALIGNMENT: f64 = 0.8f32 as f64;
+/// `OldMinecartBehavior.pushAndPickupEntities`: the cart's box grows this
+/// much sideways to find what it touches.
+const REACH: f64 = 0.2f32 as f64;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum CartKind {
@@ -40,6 +61,8 @@ pub enum CartKind {
     Cushion {
         colour: u8,
     },
+    /// v0.17 Track D1: Java's `MinecartFurnace`, pushed along by burning coal.
+    Furnace,
 }
 
 impl CartKind {
@@ -60,6 +83,8 @@ impl CartKind {
             Self::Boat { wood: 10, chest } => 40 + chest as u8,
             Self::Boat { wood, chest } => 4 + wood + if chest { 10 } else { 0 },
             Self::Cushion { colour } => 24 + colour,
+            // v0.17 Track D1: after the poplar boats.
+            Self::Furnace => 42,
         }
     }
     pub fn seats(self) -> usize {
@@ -84,6 +109,7 @@ impl CartKind {
             4..=23 => Self::Boat { wood: (v - 4) % 10, chest: v >= 14 },
             24..=39 => Self::Cushion { colour: v - 24 },
             40 | 41 => Self::Boat { wood: 10, chest: v == 41 },
+            42 => Self::Furnace,
             _ => return None,
         })
     }
@@ -94,6 +120,7 @@ impl CartKind {
             Self::Chest => Item::CHEST_MINECART,
             Self::Hopper => Item::HOPPER_MINECART,
             Self::Tnt => Item::TNT_MINECART,
+            Self::Furnace => Item::FURNACE_MINECART,
             Self::Boat { wood, chest } => Item::boat(wood, chest),
             Self::Cushion { colour } => Item::cushion(crate::color::DyeColor::ALL[colour as usize]),
         }
@@ -111,8 +138,14 @@ impl CartKind {
             Item::CHEST_MINECART => Self::Chest,
             Item::HOPPER_MINECART => Self::Hopper,
             Item::TNT_MINECART => Self::Tnt,
+            Item::FURNACE_MINECART => Self::Furnace,
             _ => return None,
         })
+    }
+
+    /// A minecart on rails (Java `AbstractMinecart`), not a boat or a cushion.
+    pub fn is_minecart(self) -> bool {
+        self.boat().is_none() && self.cushion().is_none()
     }
 
     fn slots(self) -> usize {
@@ -160,6 +193,16 @@ pub struct Minecart {
     /// Ticks since a cushion last checked that it survives
     /// (`BlockAttachedEntity.ticksSinceLastCheck`).
     check_ticks: u16,
+    /// A furnace cart's fuel in ticks (`MinecartFurnace.fuel`); it is lit
+    /// while any is left.
+    pub fuel: u16,
+    /// A furnace cart's push in blocks per tick (`MinecartFurnace.push`):
+    /// away from whoever fuelled it, then turned along the track.
+    pub push: DVec3,
+    /// A TNT cart set off at once this tick (an impact, a fall or a burning
+    /// arrow), and whether it had been primed first: only a primed cart's
+    /// blast spares rails and what holds them (`MinecartTNT.isPrimed`).
+    impact_blast: Option<bool>,
 }
 
 impl Minecart {
@@ -188,6 +231,45 @@ impl Minecart {
             fall_distance: 0.0,
             blast_speed: 0.0,
             check_ticks: 0,
+            fuel: 0,
+            push: DVec3::ZERO,
+            impact_blast: None,
+        }
+    }
+
+    /// A furnace cart with fuel left (`MinecartFurnace.hasFuel`): it smokes
+    /// and its furnace shows lit.
+    pub fn has_fuel(&self) -> bool {
+        self.kind == CartKind::Furnace && self.fuel > 0
+    }
+
+    /// `MinecartFurnace.addFuel`: coal or charcoal adds 3600 ticks unless
+    /// that would pass 32000, and pushes the cart away from `from` (the
+    /// fuelling player's feet). Returns whether the item was used.
+    pub fn add_fuel(&mut self, from: DVec3, item: Item) -> bool {
+        if self.kind != CartKind::Furnace || !is_furnace_fuel(item) || self.fuel + FUEL_PER_ITEM > MAX_FUEL {
+            return false;
+        }
+        self.fuel += FUEL_PER_ITEM;
+        self.push = (self.pos - from).with_y(0.0);
+        true
+    }
+
+    /// `MinecartTNT.explode` now, from an impact, fall or burning arrow.
+    fn blast_now(&mut self, speed: f64) {
+        self.impact_blast = Some(self.fuse.is_some());
+        self.fuse = Some(0);
+        self.blast_speed = speed;
+    }
+
+    /// `getMaxSpeed`: Java's 0.4 blocks a tick (0.2 in water), halved for a
+    /// furnace cart on land and three quarters of it in water.
+    fn max_speed(&self, in_water: bool) -> f64 {
+        let base = if in_water { WATER_MAX_SPEED } else { MAX_SPEED };
+        match self.kind {
+            CartKind::Furnace if in_water => base * FURNACE_SPEED_WATER,
+            CartKind::Furnace => base * FURNACE_SPEED_LAND,
+            _ => base,
         }
     }
 
@@ -288,8 +370,10 @@ impl Minecart {
             self.step_boat(world, passenger);
             return;
         }
-        self.vel.y -= 0.04;
-        let in_water = physics::touches_block(world, self.pos, SHAPE, |b| b.is_water());
+        // `isInWater` counts a waterlogged block's water too, so a cart on a
+        // wet rail is in water.
+        let in_water = physics::touches_block(world, self.pos, SHAPE, Block::holds_water);
+        self.vel.y -= if in_water { WATER_GRAVITY } else { GRAVITY };
         let on_rail = rail_cell(world, self.pos);
         if let Some((cell, block)) = on_rail {
             self.fall_distance = 0.0;
@@ -312,6 +396,14 @@ impl Minecart {
                 self.flipped = !self.flipped;
             }
             self.yaw = yaw;
+        }
+        // `MinecartFurnace.tick`, after the move: burn a tick of fuel, and
+        // stop pushing once it runs out.
+        if self.kind == CartKind::Furnace {
+            self.fuel = self.fuel.saturating_sub(1);
+            if self.fuel == 0 {
+                self.push = DVec3::ZERO;
+            }
         }
     }
 
@@ -397,7 +489,7 @@ impl Minecart {
         mob_passenger: bool,
         in_water: bool,
     ) {
-        let max_speed = if in_water { WATER_MAX_SPEED } else { MAX_SPEED };
+        let max_speed = self.max_speed(in_water);
         let slope = if in_water { SLOPE * 0.2 } else { SLOPE };
         let shape = block.rail_shape().unwrap_or(RailShape::NorthSouth);
         let kind = rails::kind(block);
@@ -484,8 +576,7 @@ impl Minecart {
         let speed = self.vel.x.hypot(self.vel.z);
         let hit = physics::move_box(world, &mut self.pos, &mut velocity, delta, SHAPE);
         if self.kind == CartKind::Tnt && hit.horizontal && speed >= 0.1 {
-            self.fuse = Some(0);
-            self.blast_speed = speed;
+            self.blast_now(speed);
         }
         self.vel = velocity / 20.0;
         let fx = self.pos.x.floor() as i32 - cell.x;
@@ -495,17 +586,7 @@ impl Minecart {
         } else if e1.y != 0 && fx == e1.x && fz == e1.z {
             self.pos.y += e1.y as f64;
         }
-        let drag = if self.slot_count() > 0 {
-            0.98 + (15 - self.comparator_signal()) as f64 * 0.001
-        } else if self.rider.is_some() || mob_passenger {
-            0.997
-        } else {
-            0.96
-        };
-        let drag = if in_water { drag * WATER_SLOWDOWN } else { drag };
-        self.vel.x *= drag;
-        self.vel.y = 0.0;
-        self.vel.z *= drag;
+        self.vel = self.natural_slowdown(self.vel, mob_passenger, in_water);
         if let Some(snapped) = rail_point(world, self.pos) {
             if let Some(from) = before {
                 let dh = (from.y - snapped.y) * 0.05;
@@ -598,8 +679,41 @@ impl Minecart {
         DVec3::new(self.pos.x, self.aabb().1.y, self.pos.z)
     }
 
+    /// `applyNaturalSlowdown` once a tick on the rails. A chest or hopper
+    /// cart slows less the fuller it is (in floats, as
+    /// `AbstractMinecartContainer`); a furnace cart first adds its push,
+    /// turned along the track (`MinecartFurnace`).
+    fn natural_slowdown(&mut self, vel: DVec3, mob_passenger: bool, in_water: bool) -> DVec3 {
+        if self.slot_count() > 0 {
+            let mut drag = 0.98f32 + (15 - self.comparator_signal()) as f32 * 0.001f32;
+            if in_water {
+                drag *= 0.95f32;
+            }
+            let drag = f64::from(drag);
+            return DVec3::new(vel.x * drag, 0.0, vel.z * drag);
+        }
+        let mut vel = vel;
+        if self.kind == CartKind::Furnace {
+            if self.push.length_squared() > 1.0e-7 {
+                self.push = push_along(self.push, vel);
+                vel = DVec3::new(vel.x * 0.8, 0.0, vel.z * 0.8) + self.push;
+                if in_water {
+                    vel *= 0.1;
+                }
+            } else {
+                vel = DVec3::new(vel.x * 0.98, 0.0, vel.z * 0.98);
+            }
+        }
+        let drag = if self.rider.is_some() || self.second_rider.is_some() || mob_passenger { 0.997 } else { 0.96 };
+        let mut out = DVec3::new(vel.x * drag, 0.0, vel.z * drag);
+        if in_water {
+            out *= WATER_SLOWDOWN;
+        }
+        out
+    }
+
     fn come_off(&mut self, world: &World, in_water: bool) {
-        let max_speed = if in_water { WATER_MAX_SPEED } else { MAX_SPEED };
+        let max_speed = self.max_speed(in_water);
         self.vel.x = self.vel.x.clamp(-max_speed, max_speed);
         self.vel.z = self.vel.z.clamp(-max_speed, max_speed);
         if self.on_ground {
@@ -612,8 +726,7 @@ impl Minecart {
         self.fall_distance += (from_y - self.pos.y).max(0.0);
         if self.kind == CartKind::Tnt && (hit.horizontal && speed >= 0.1 || hit.on_ground && self.fall_distance >= 3.0)
         {
-            self.fuse = Some(0);
-            self.blast_speed = if hit.on_ground { self.fall_distance / 10.0 } else { speed };
+            self.blast_now(if hit.on_ground { self.fall_distance / 10.0 } else { speed });
         }
         if hit.on_ground {
             self.fall_distance = 0.0;
@@ -621,17 +734,25 @@ impl Minecart {
         self.vel = vel / 20.0;
         self.on_ground = hit.on_ground;
         if !hit.on_ground {
-            self.vel *= 0.95;
+            self.vel *= AIR_DRAG;
         }
         if self.pos.y < -64.0 {
             self.damage = 100.0;
         }
     }
 
+    /// Comma-separated fields for the level file and LAN. A furnace cart
+    /// appends its fuel and push (`Fuel`, `PushX`, `PushZ`); every other
+    /// cart keeps the older fifteen fields.
     pub fn serialize(&self) -> String {
         let slots: Vec<_> = self.slots.iter().map(|s| stack_to_string(*s)).collect();
+        let furnace = if self.kind == CartKind::Furnace {
+            format!(",{},{},{}", self.fuel, self.push.x, self.push.z)
+        } else {
+            String::new()
+        };
         format!(
-            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}{furnace}",
             self.id,
             self.kind.code(),
             self.pos.x,
@@ -672,10 +793,28 @@ impl Minecart {
         }
         let slot_text = parts.next()?;
         let second: i64 = parts.next().unwrap_or("-1").parse().ok()?;
-        if !(-1..=u32::MAX as i64).contains(&second) || parts.next().is_some() {
+        if !(-1..=u32::MAX as i64).contains(&second) {
+            return None;
+        }
+        // A furnace cart's fuel and push; older saves have none.
+        let (fuel, push) = match parts.next() {
+            Some(fuel) if kind == CartKind::Furnace => {
+                let fuel: u16 = fuel.parse().ok()?;
+                let push = DVec3::new(parts.next()?.parse().ok()?, 0.0, parts.next()?.parse().ok()?);
+                if fuel > MAX_FUEL || !push.is_finite() {
+                    return None;
+                }
+                (fuel, push)
+            }
+            Some(_) => return None,
+            None => (0, DVec3::ZERO),
+        };
+        if parts.next().is_some() {
             return None;
         }
         let mut cart = Self::new(id, kind, pos);
+        cart.fuel = fuel;
+        cart.push = push;
         cart.second_rider = (second >= 0).then_some(super::PlayerId(second as u32));
         cart.vel = vel;
         cart.yaw = yaw;
@@ -694,6 +833,61 @@ impl Minecart {
         }
         Some(cart)
     }
+}
+
+/// v0.17 Track D1: the minecart sounds. `Rolling` is
+/// `entity.minecart.riding`, heard from every moving cart
+/// (`MinecartSoundInstance`); `Inside` and `InsideUnderwater` are
+/// `entity.minecart.inside` and its underwater form, heard only by the
+/// cart's rider, without distance falloff (`RidingMinecartSoundInstance`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Cue {
+    Rolling,
+    Inside,
+    InsideUnderwater,
+}
+
+impl Cue {
+    pub const ALL: [Cue; 3] = [Cue::Rolling, Cue::Inside, Cue::InsideUnderwater];
+}
+
+/// `MinecartSoundInstance.tick`: the rolling sound's volume for a cart's
+/// horizontal speed in blocks per tick, `lerp(clamp(speed, 0, 0.5), 0,
+/// 0.7)`, silent below 0.01. Its pitch stays 1: the class keeps its own
+/// `pitch` field, which shadows the one the sound engine reads.
+pub fn rolling_volume(speed: f64) -> f32 {
+    let speed = speed as f32;
+    if speed >= 0.01 { speed.clamp(0.0, 0.5) * 0.7 } else { 0.0 }
+}
+
+/// `RidingEntitySoundInstance.tick` as `LocalPlayer.startRiding` sets it up
+/// for a minecart: `clampedLerp(speed, 0, 0.75)`, silent below 0.01.
+pub fn inside_volume(speed: f64) -> f32 {
+    let speed = speed as f32;
+    if speed >= 0.01 { speed.clamp(0.0, 1.0) * 0.75 } else { 0.0 }
+}
+
+/// `MinecartFurnace.calculateNewPushAlong`: once both the push and the
+/// motion are big enough, the push turns to the motion's line, keeping its
+/// length (`Vec3.projectedOn`, then `normalize().scale(length)`).
+fn push_along(push: DVec3, vel: DVec3) -> DVec3 {
+    if push.with_y(0.0).length_squared() > 1.0e-4 && vel.with_y(0.0).length_squared() > 0.001 {
+        let projected = vel * (push.dot(vel) / vel.length_squared());
+        java_normalize(projected) * push.length()
+    } else {
+        push
+    }
+}
+
+/// `Vec3.normalize`: zero below a length of 1e-5.
+fn java_normalize(v: DVec3) -> DVec3 {
+    let length = v.length();
+    if length < 1.0e-5 { DVec3::ZERO } else { v / length }
+}
+
+/// Coal and charcoal (`#furnace_minecart_fuel`).
+pub fn is_furnace_fuel(item: Item) -> bool {
+    item == Item::COAL || item == Item::CHARCOAL
 }
 
 fn wrap_radians(v: f32) -> f32 {
@@ -904,17 +1098,26 @@ impl super::Entities {
         true
     }
 
-    /// An arrow hit cart `id` (`VehicleEntity.hurtServer`, with
+    /// An arrow or fireball hit cart `id` (`VehicleEntity.hurtServer`, with
     /// `MinecartTNT.hurtServer` for a burning arrow on a TNT cart).
     /// `creative`: shot by a creative player, which removes it without drops.
-    pub(super) fn shoot_cart(&mut self, id: u32, damage: f32, burning: bool, creative: bool, motion: DVec3) {
+    /// Any burning projectile breaks a TNT cart (`shouldSourceDestroy`),
+    /// which primes it instead of dropping it.
+    pub(super) fn shoot_cart(
+        &mut self,
+        id: u32,
+        damage: f32,
+        burning: bool,
+        arrow: bool,
+        creative: bool,
+        motion: DVec3,
+    ) {
         let Some(i) = self.minecarts.iter().position(|c| c.id == id) else { return };
         let cart = &mut self.minecarts[i];
-        if cart.kind == CartKind::Tnt && burning {
+        if cart.kind == CartKind::Tnt && burning && arrow {
             // `explode(source, projectile speed²)`: the blast grows with the arrow's speed.
             if self.tnt_explodes {
-                cart.fuse = Some(0);
-                cart.blast_speed = motion.length() / 20.0;
+                cart.blast_now(motion.length() / 20.0);
             }
             return;
         }
@@ -922,12 +1125,19 @@ impl super::Entities {
             true
         } else {
             cart.damage += damage * 10.0;
-            cart.damage > 40.0
+            cart.damage > 40.0 || cart.kind == CartKind::Tnt && burning
         };
-        // `MinecartTNT.destroy`: a moving TNT cart is primed instead of dropping.
-        if broken && !creative && cart.kind == CartKind::Tnt && cart.vel.with_y(0.0).length_squared() >= 0.01 {
-            if self.tnt_explodes {
-                cart.fuse.get_or_insert(20);
+        // `MinecartTNT.destroy`: a moving TNT cart, or one a burning
+        // projectile broke, is primed with a fuse of `nextInt(20) +
+        // nextInt(20)` instead of dropping.
+        if broken
+            && !creative
+            && cart.kind == CartKind::Tnt
+            && (burning || cart.vel.with_y(0.0).length_squared() >= 0.01)
+        {
+            if self.tnt_explodes && cart.fuse.is_none() {
+                let fuse = self.rng.next_int(20) + self.rng.next_int(20);
+                self.minecarts[i].fuse = Some(fuse as u16);
             }
             return;
         }
@@ -1003,7 +1213,14 @@ impl super::Entities {
     }
 
     pub fn dismount(&mut self, world: &World, player: super::PlayerId) -> Option<DVec3> {
+        // `Entity.removeVehicle`: `entity_dismount` at the vehicle, from the rider.
+        let source = crate::world::vibration::EventSource::player(player, false);
+        let event = crate::world::vibration::GameEvent::EntityDismount;
+        let mount = self.mount_for_player(player).and_then(|id| self.vehicle_pos(id));
         if let Some(pos) = self.dismount_animal(world, player) {
+            if let Some(at) = mount {
+                self.sculk.post(at, event, source, None);
+            }
             return Some(pos);
         }
         let cart = self.minecarts.iter_mut().find(|c| c.seat_for(player).is_some())?;
@@ -1012,20 +1229,163 @@ impl super::Entities {
         } else {
             cart.second_rider = None;
         }
-        Some(cart.dismount_position(world))
+        let (at, pos) = (cart.pos, cart.dismount_position(world));
+        self.sculk.post(at, event, source, None);
+        Some(pos)
     }
 
-    /// Contact push from a walking player or mob; velocity is in blocks/tick.
-    pub fn push_carts(&mut self, feet: DVec3, half: f64) {
-        for cart in &mut self.minecarts {
+    /// A walking player's contact with carts and boats, before they tick.
+    /// Returns the push the player gets back, in blocks per tick.
+    ///
+    /// A minecart the player's box touches takes `AbstractMinecart.push`
+    /// (the player's `LivingEntity.pushEntities`): it moves away and the
+    /// player gets a quarter of that push back. A moving rideable cart also
+    /// shoves a player within its reach (`pushAndPickupEntities`, the
+    /// generic `Entity.push`). Boats keep the earlier contact push.
+    pub fn push_carts(&mut self, feet: DVec3, shape: Shape) -> DVec3 {
+        let (min, max) = shape.aabb(feet);
+        let mut back = DVec3::ZERO;
+        for i in 0..self.minecarts.len() {
+            let cart = &self.minecarts[i];
             // Cushions aren't pushable (`Entity.isPushable`).
-            if !near_cart(feet, half, cart.pos) || cart.kind.cushion().is_some() {
+            if cart.kind.cushion().is_some() {
                 continue;
             }
-            let delta = (cart.pos - feet).with_y(0.0);
-            let dist = delta.length();
-            if dist >= 0.01 {
-                cart.vel += delta / dist * (1.0 / dist).min(1.0) * 0.05;
+            if !cart.kind.is_minecart() {
+                let cart = &mut self.minecarts[i];
+                if near_cart(feet, shape.half_width, cart.pos) {
+                    let delta = (cart.pos - feet).with_y(0.0);
+                    let dist = delta.length();
+                    if dist >= 0.01 {
+                        cart.vel += delta / dist * (1.0 / dist).min(1.0) * 0.05;
+                    }
+                }
+                continue;
+            }
+            let (cmin, cmax) = cart.aabb();
+            let reach = DVec3::new(REACH, 0.0, REACH);
+            let shoves = cart.kind == CartKind::Rideable
+                && cart.vel.with_y(0.0).length_squared() >= 0.01
+                && boxes_meet(min, max, cmin - reach, cmax + reach);
+            let carrying = self.carrying(i);
+            let cart = &mut self.minecarts[i];
+            if boxes_meet(min, max, cmin, cmax)
+                && let Some(d) = contact_push(cart.pos, feet)
+            {
+                cart.vel -= d;
+                back += d / 4.0;
+            }
+            if shoves && let Some(d) = super::mob_index::java_push(feet, cart.pos) {
+                let d = d / 20.0;
+                back += d;
+                if !carrying {
+                    cart.vel -= d;
+                }
+            }
+        }
+        back
+    }
+
+    /// Cart `i` carries a player or a mob (`Entity.isVehicle`).
+    fn carrying(&self, i: usize) -> bool {
+        let cart = &self.minecarts[i];
+        cart.occupied() || self.mobs.iter().any(|m| m.alive() && m.riding == Some(cart.id))
+    }
+
+    /// Mobs touching minecarts push them (`LivingEntity.pushEntities`, then
+    /// `AbstractMinecart.push`): the cart moves away and the mob gets a
+    /// quarter of the push back.
+    fn mobs_push_carts(&mut self, world: &World) {
+        for i in 0..self.minecarts.len() {
+            let cart = &self.minecarts[i];
+            if !world.is_entity_ticking(cart.pos.floor().as_ivec3()) || cart.kind.cushion().is_some() {
+                continue;
+            }
+            let (id, at) = (cart.id, cart.pos);
+            let mut near = Vec::new();
+            self.mob_index.visit(at, MOB_REACH, |j| near.push(j));
+            near.sort_unstable();
+            for j in near {
+                let m = &self.mobs[j];
+                if !world.is_entity_ticking(m.pos.floor().as_ivec3())
+                    || !m.alive()
+                    || m.riding.is_some()
+                    || !mob_pushable(m)
+                {
+                    continue;
+                }
+                let cart = &self.minecarts[i];
+                if !cart.kind.is_minecart() {
+                    // Boats keep the earlier contact push.
+                    if near_cart(m.pos, m.shape().half_width, at) {
+                        let delta = (at - m.pos).with_y(0.0);
+                        let dist = delta.length();
+                        if dist >= 0.01 {
+                            self.minecarts[i].vel += delta / dist * (1.0 / dist).min(1.0) * 0.05;
+                        }
+                    }
+                    continue;
+                }
+                let ((min, max), (cmin, cmax)) = (m.aabb(), cart.aabb());
+                if m.riding == Some(id) || !boxes_meet(min, max, cmin, cmax) {
+                    continue;
+                }
+                if let Some(d) = contact_push(cart.pos, m.pos) {
+                    self.minecarts[i].vel -= d;
+                    self.mobs[j].vel += d / 4.0 * 20.0;
+                }
+            }
+        }
+    }
+
+    /// `OldMinecartBehavior.pushAndPickupEntities` for minecart `i` after
+    /// its move. A rideable cart moving at least 0.1 blocks a tick takes in
+    /// the first mob its reach touches while it carries nothing (never an
+    /// iron golem) and shoves the rest; every minecart pushes the other
+    /// minecarts it reaches, each through their `AbstractMinecart.push`.
+    fn push_and_pickup(&mut self, i: usize) {
+        let reach = DVec3::new(REACH, 0.0, REACH);
+        let (min, max) = self.minecarts[i].aabb();
+        let (min, max) = (min - reach, max + reach);
+        let (id, at) = (self.minecarts[i].id, self.minecarts[i].pos);
+        if self.minecarts[i].kind == CartKind::Rideable && self.minecarts[i].vel.with_y(0.0).length_squared() >= 0.01 {
+            let mut carrying = self.carrying(i);
+            let mut near = Vec::new();
+            self.mob_index.visit(at, MOB_REACH, |j| near.push(j));
+            near.sort_unstable();
+            for j in near {
+                let m = &self.mobs[j];
+                let (mmin, mmax) = m.aabb();
+                if !m.alive() || m.dying.is_some() || m.riding == Some(id) || !mob_pushable(m) {
+                    continue;
+                }
+                if !boxes_meet(min, max, mmin, mmax) {
+                    continue;
+                }
+                if m.kind != super::MobKind::IronGolem && !carrying && m.riding.is_none() {
+                    carrying = true;
+                    let seat = self.minecarts[i].passenger_seat(0);
+                    let m = &mut self.mobs[j];
+                    m.riding = Some(id);
+                    m.persistent = true;
+                    m.pos = seat;
+                    m.vel = DVec3::ZERO;
+                } else if let Some(d) = super::mob_index::java_push(m.pos, at) {
+                    self.mobs[j].vel += d;
+                    if !carrying {
+                        self.minecarts[i].vel -= d / 20.0;
+                    }
+                }
+            }
+        }
+        for j in 0..self.minecarts.len() {
+            if j == i || !self.minecarts[j].kind.is_minecart() {
+                continue;
+            }
+            let (omin, omax) = self.minecarts[j].aabb();
+            if boxes_meet(min, max, omin, omax) {
+                let (other, this) = pair_mut(&mut self.minecarts, j, i);
+                push_cart(other, this);
             }
         }
     }
@@ -1036,22 +1396,8 @@ impl super::Entities {
             world.refresh_cart_signals([]);
             return;
         }
-        for mob in &self.mobs {
-            if world.is_entity_ticking(mob.pos.floor().as_ivec3()) && mob.alive() && mob.riding.is_none() {
-                for cart in &mut self.minecarts {
-                    if world.is_entity_ticking(cart.pos.floor().as_ivec3())
-                        && cart.kind.cushion().is_none()
-                        && near_cart(mob.pos, mob.shape().half_width, cart.pos)
-                    {
-                        let delta = (cart.pos - mob.pos).with_y(0.0);
-                        let dist = delta.length();
-                        if dist >= 0.01 {
-                            cart.vel += delta / dist * (1.0 / dist).min(1.0) * 0.05;
-                        }
-                    }
-                }
-            }
-        }
+        self.mob_index.rebuild(&self.mobs);
+        self.mobs_push_carts(world);
         // Carts primed before this tick keep burning without `tnt_explodes`.
         let primed: Vec<u32> =
             self.minecarts.iter().filter(|c| c.kind == CartKind::Tnt && c.fuse.is_some()).map(|c| c.id).collect();
@@ -1124,6 +1470,9 @@ impl super::Entities {
                     mob.on_ground = true;
                 }
             }
+            if self.minecarts[i].kind.is_minecart() {
+                self.push_and_pickup(i);
+            }
         }
         world.refresh_cart_signals(signals);
         // Boats pick up small nearby mobs even while stationary; chest boats have one seat.
@@ -1131,10 +1480,7 @@ impl super::Entities {
             let players = usize::from(cart.rider.is_some()) + usize::from(cart.second_rider.is_some());
             let taken = self.mobs.iter().filter(|m| m.alive() && m.riding == Some(cart.id)).count();
             let free = cart.kind.seats().saturating_sub(players + taken);
-            if free == 0
-                || cart.fuse.is_some()
-                || cart.kind.boat().is_none() && cart.vel.with_y(0.0).length_squared() <= 0.01
-            {
+            if free == 0 || cart.fuse.is_some() || cart.kind.boat().is_none() {
                 continue;
             }
             for (offset, mob) in self
@@ -1160,7 +1506,12 @@ impl super::Entities {
         for i in 0..n {
             for j in i + 1..n {
                 let (left, right) = self.minecarts.split_at_mut(j);
-                if left[i].kind.cushion().is_none() && right[0].kind.cushion().is_none() {
+                // Minecarts push each other in `push_and_pickup`; boats
+                // keep this exchange.
+                if left[i].kind.cushion().is_none()
+                    && right[0].kind.cushion().is_none()
+                    && (left[i].kind.boat().is_some() || right[0].kind.boat().is_some())
+                {
                     push_pair(&mut left[i], &mut right[0]);
                 }
             }
@@ -1171,6 +1522,7 @@ impl super::Entities {
         if !self.tnt_explodes {
             for cart in self.minecarts.iter_mut().filter(|c| c.kind == CartKind::Tnt && !primed.contains(&c.id)) {
                 cart.fuse = None;
+                cart.impact_blast = None;
             }
         }
         // A lit TNT cart explodes and is gone.
@@ -1203,11 +1555,17 @@ impl super::Entities {
                 let cart = self.minecarts.swap_remove(i);
                 self.clear_cart(cart.id);
                 // `MinecartTNT.explode`: without `tnt_explodes` a primed cart
-                // is discarded and nothing blows up.
+                // is discarded and nothing blows up. The blast is centred on
+                // the cart's feet and, once it had been primed, spares rails
+                // and the blocks under them.
                 if cart.fuse == Some(0) && self.tnt_explodes {
                     let speed = cart.blast_speed.max(cart.vel.with_y(0.0).length()).min(5.0);
                     let power = 4.0 + self.rng.next_f32() * 1.5 * speed as f32;
-                    self.tnt.push(super::tnt::PrimedTnt::with_power(cart.pos, power));
+                    self.pending_sounds.push(super::EntityEvent::CartExplosion {
+                        center: cart.pos,
+                        power,
+                        spares_rails: cart.impact_blast.unwrap_or(true),
+                    });
                 }
                 continue;
             }
@@ -1261,6 +1619,80 @@ impl super::Entities {
     /// Reattach a saved rider once that player exists.
     pub fn claim_rider(&self, player: super::PlayerId) -> Option<u32> {
         self.minecarts.iter().find(|c| c.seat_for(player).is_some()).map(|c| c.id)
+    }
+}
+
+/// How far from a cart to look for mobs that could touch it: the cart's
+/// half width and reach plus the widest mob's half width.
+const MOB_REACH: f64 = 4.0;
+
+/// `AABB.intersects`: the boxes overlap with some volume.
+fn boxes_meet(min: DVec3, max: DVec3, omin: DVec3, omax: DVec3) -> bool {
+    min.cmplt(omax).all() && max.cmpgt(omin).all()
+}
+
+/// `LivingEntity.isPushable` for the mobs carts meet: not a bat, and not a
+/// mount carrying someone (`AbstractHorse.isPushable`).
+fn mob_pushable(m: &super::Mob) -> bool {
+    m.kind != super::MobKind::Bat && m.mount.as_ref().is_none_or(|s| s.rider.is_none() && s.passenger.is_none())
+}
+
+/// `AbstractMinecart.push`'s contact push on a cart at `cart` from
+/// something at `from`, in blocks per tick, pointing from the cart to it:
+/// the cart takes the opposite. `None` closer than 0.01 blocks.
+fn contact_push(cart: DVec3, from: DVec3) -> Option<DVec3> {
+    let (mut x, mut z) = (from.x - cart.x, from.z - cart.z);
+    let d = x * x + z * z;
+    if d < f64::from(1.0e-4f32) {
+        return None;
+    }
+    let d = d.sqrt();
+    x /= d;
+    z /= d;
+    let pow = (1.0 / d).min(1.0);
+    Some(DVec3::new(x * pow * CONTACT_PUSH, 0.0, z * pow * CONTACT_PUSH))
+}
+
+/// `AbstractMinecart.push(other)` run on minecart `this`, then
+/// `pushOtherMinecart`: nothing unless the line between the carts lies
+/// within about 37 degrees of `this` cart's facing (its yaw, as Java's
+/// `yRot`). A furnace cart keeps 95% of its speed and hands the other its
+/// own; otherwise both keep a fifth of their speed and share the average.
+fn push_cart(this: &mut Minecart, other: &mut Minecart) {
+    let Some(d) = contact_push(this.pos, other.pos) else { return };
+    let line = java_normalize((other.pos - this.pos).with_y(0.0));
+    let facing = java_normalize(DVec3::new(f64::from(this.yaw.cos()), 0.0, f64::from(this.yaw.sin())));
+    if line.dot(facing).abs() < ALIGNMENT {
+        return;
+    }
+    let (mine, theirs) = (this.vel, other.vel);
+    let keep = |v: DVec3, k: f64| DVec3::new(v.x * k, v.y, v.z * k);
+    match (this.kind == CartKind::Furnace, other.kind == CartKind::Furnace) {
+        (false, true) => {
+            this.vel = keep(mine, 0.2) + DVec3::new(theirs.x - d.x, 0.0, theirs.z - d.z);
+            other.vel = keep(theirs, 0.95);
+        }
+        (true, false) => {
+            other.vel = keep(theirs, 0.2) + DVec3::new(mine.x + d.x, 0.0, mine.z + d.z);
+            this.vel = keep(mine, 0.95);
+        }
+        _ => {
+            let (x, z) = ((theirs.x + mine.x) / 2.0, (theirs.z + mine.z) / 2.0);
+            this.vel = keep(mine, 0.2) + DVec3::new(x - d.x, 0.0, z - d.z);
+            other.vel = keep(theirs, 0.2) + DVec3::new(x + d.x, 0.0, z + d.z);
+        }
+    }
+}
+
+/// Two distinct elements of `v`, mutably.
+fn pair_mut<T>(v: &mut [T], a: usize, b: usize) -> (&mut T, &mut T) {
+    assert_ne!(a, b);
+    if a < b {
+        let (left, right) = v.split_at_mut(b);
+        (&mut left[a], &mut right[0])
+    } else {
+        let (left, right) = v.split_at_mut(a);
+        (&mut right[0], &mut left[b])
     }
 }
 
@@ -1466,18 +1898,18 @@ mod tests {
         let mut e = super::super::Entities::new(1);
         let boat = e.spawn_cart(CartKind::Boat { wood: 0, chest: false }, DVec3::new(3., 140., 3.));
         // `VehicleEntity.hurtServer`: damage * 10 adds up, and past 40 it breaks.
-        e.shoot_cart(boat, 2.0, false, false, DVec3::X * 20.0);
+        e.shoot_cart(boat, 2.0, false, true, false, DVec3::X * 20.0);
         assert!(e.cart(boat).is_some_and(|c| c.damage == 20.0));
-        e.shoot_cart(boat, 3.0, false, false, DVec3::X * 20.0);
+        e.shoot_cart(boat, 3.0, false, true, false, DVec3::X * 20.0);
         assert!(e.cart(boat).is_none());
         assert_eq!(e.items.len(), 1);
         // A creative player's arrow removes it without a drop.
         let boat = e.spawn_cart(CartKind::Boat { wood: 0, chest: false }, DVec3::new(3., 140., 3.));
-        e.shoot_cart(boat, 1.0, false, true, DVec3::X * 20.0);
+        e.shoot_cart(boat, 1.0, false, true, true, DVec3::X * 20.0);
         assert!(e.cart(boat).is_none() && e.items.len() == 1);
         // `MinecartTNT.hurtServer`: a burning arrow sets it off.
         let tnt = e.spawn_cart(CartKind::Tnt, DVec3::new(3., 140., 3.));
-        e.shoot_cart(tnt, 1.0, true, false, DVec3::X * 60.0);
+        e.shoot_cart(tnt, 1.0, true, true, false, DVec3::X * 60.0);
         assert_eq!(e.cart(tnt).and_then(|c| c.fuse), Some(0));
     }
 
@@ -1647,9 +2079,84 @@ mod tests {
             let id = e.place_cart(&w, CartKind::Tnt, IVec3::new(2, 140, 0)).unwrap();
             e.cart_mut(id).unwrap().fuse = Some(0);
             e.tick_minecarts(&mut w, &[]);
-            assert_eq!(e.tnt.len(), usize::from(explodes), "tnt_explodes = {explodes}");
+            assert_eq!(blasts(&mut e).len(), usize::from(explodes), "tnt_explodes = {explodes}");
             assert!(e.minecarts.is_empty(), "a primed cart is gone either way (`MinecartTNT.explode`)");
         }
+    }
+
+    /// The TNT cart blasts queued this tick: (centre, whether rails are spared).
+    fn blasts(e: &mut super::super::Entities) -> Vec<(DVec3, bool)> {
+        std::mem::take(&mut e.pending_sounds)
+            .into_iter()
+            .filter_map(|ev| match ev {
+                super::super::EntityEvent::CartExplosion { center, spares_rails, .. } => Some((center, spares_rails)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn only_a_primed_tnt_carts_blast_spares_rails() {
+        let mut w = world();
+        for x in 0..12 {
+            w.set_block(IVec3::new(x, 139, 0), Block::STONE);
+            w.set_block(IVec3::new(x, 140, 0), Block::rail(RailShape::EastWest));
+        }
+        w.set_block(IVec3::new(12, 140, 0), Block::STONE);
+        // The fuse ran out: primed, so the blast spares the track.
+        let mut e = super::super::Entities::new(3);
+        let id = e.place_cart(&w, CartKind::Tnt, IVec3::new(2, 140, 0)).unwrap();
+        e.cart_mut(id).unwrap().fuse = Some(1);
+        e.tick_minecarts(&mut w, &[]);
+        let at = e.minecarts.is_empty().then(|| blasts(&mut e));
+        assert_eq!(at.map(|b| b.iter().map(|&(_, s)| s).collect::<Vec<_>>()), Some(vec![true]));
+        // Unprimed and driven into a wall: it goes off at once, rails and all.
+        let mut e = super::super::Entities::new(3);
+        let id = e.place_cart(&w, CartKind::Tnt, IVec3::new(9, 140, 0)).unwrap();
+        e.cart_mut(id).unwrap().vel = DVec3::new(0.4, 0.0, 0.0);
+        let mut found = Vec::new();
+        for _ in 0..20 {
+            e.tick_minecarts(&mut w, &[]);
+            found.extend(blasts(&mut e));
+        }
+        assert_eq!(found.len(), 1, "one blast: {found:?}");
+        assert!(!found[0].1, "an unprimed cart's blast breaks rails");
+        // The blast is centred on the cart's feet (`MinecartTNT.explode` at its position).
+        assert!((found[0].0.y - 140.0625).abs() < 0.01, "{:?}", found[0].0);
+    }
+
+    #[test]
+    fn burning_fireballs_break_carts_and_prime_tnt_carts_with_a_random_fuse() {
+        let mut w = world();
+        track(&mut w, 0, 6);
+        let mut e = super::super::Entities::new(3);
+        let rideable = e.place_cart(&w, CartKind::Rideable, IVec3::new(1, 140, 0)).unwrap();
+        let tnt = e.place_cart(&w, CartKind::Tnt, IVec3::new(4, 140, 0)).unwrap();
+        // A blaze fireball's 5 damage breaks a cart into its item.
+        e.shoot_cart(rideable, 5.0, true, false, false, DVec3::X);
+        assert!(e.cart(rideable).is_none());
+        assert!(e.items.iter().any(|i| i.stack.item == Item::MINECART));
+        // A burning non-arrow projectile primes a TNT cart instead (`destroy`).
+        e.shoot_cart(tnt, 0.5, true, false, false, DVec3::X);
+        let fuse = e.cart(tnt).and_then(|c| c.fuse).expect("primed, not exploded or dropped");
+        assert!(fuse < 39, "nextInt(20) + nextInt(20): {fuse}");
+        assert!(blasts(&mut e).is_empty());
+        e.tick_minecarts(&mut w, &[]);
+        assert!(!e.items.iter().any(|i| i.stack.item == Item::TNT_MINECART));
+    }
+
+    #[test]
+    fn furnace_carts_and_their_fuel_round_trip_and_others_keep_fifteen_fields() {
+        let mut c = Minecart::new(9, CartKind::Furnace, DVec3::new(1.5, 140.0625, 0.5));
+        assert_eq!(c.serialize().split(',').count(), 18);
+        assert!(c.add_fuel(DVec3::new(0.25, 140.0, 0.5), Item::CHARCOAL));
+        let copy = Minecart::deserialize(&c.serialize()).unwrap();
+        assert_eq!((copy.kind, copy.fuel, copy.push), (CartKind::Furnace, FUEL_PER_ITEM, DVec3::new(1.25, 0.0, 0.0)));
+        // Extra fields on any other cart, or too much fuel, are refused.
+        let chest = Minecart::new(3, CartKind::Chest, DVec3::ZERO).serialize();
+        assert!(Minecart::deserialize(&format!("{chest},1,0,0")).is_none());
+        let full = c.serialize().replacen(&format!(",{FUEL_PER_ITEM},"), &format!(",{},", MAX_FUEL + 1), 1);
+        assert!(Minecart::deserialize(&full).is_none());
     }
 
     #[test]

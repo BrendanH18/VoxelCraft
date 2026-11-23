@@ -12,11 +12,11 @@ use crate::audio::{
 use crate::crafting::Grid;
 use crate::enchant::{self, AnvilResult, Offer};
 use crate::entity::Entities;
-use crate::inventory::{HOTBAR_SLOTS, SLOTS, Stack, move_into};
+use crate::inventory::{Stack, move_into};
 use crate::item::Item;
 use crate::world::World;
-use crate::world::{brewing, furnace};
 use voxelcraft::session::PlayerSession;
+use voxelcraft::session::storage::{Storage, StorageScreen, StorageSlot};
 
 use super::Container;
 use super::hud::SlotRef;
@@ -43,7 +43,36 @@ pub(super) struct Screen<'a> {
 /// Where stacks leaving a container land in the inventory: the hotbar from
 /// the right, then the main grid from the bottom right, like Minecraft.
 fn to_player_order() -> Vec<usize> {
-    (0..HOTBAR_SLOTS).rev().chain((HOTBAR_SLOTS..SLOTS).rev()).collect()
+    voxelcraft::session::storage::TO_PLAYER.to_vec()
+}
+
+/// The shared storage screen (`session::storage`) behind `container`, if
+/// it is one: every chest-backed block, furnace, brewing stand, vehicle
+/// and ender inventory.
+pub(super) fn storage_of(container: Container) -> Option<Storage> {
+    match container {
+        Container::Chest(p) => Some(Storage::Block(p)),
+        Container::EnderChest(_) => Some(Storage::Ender),
+        Container::Minecart(id) => Some(Storage::Vehicle(id)),
+        Container::Furnace(p) => Some(Storage::Furnace(p)),
+        Container::Brewing(p) => Some(Storage::Brewing(p)),
+        _ => None,
+    }
+}
+
+/// The storage slot a screen slot names, if it is one.
+pub(super) fn storage_slot(slot: SlotRef) -> Option<StorageSlot> {
+    Some(match slot {
+        SlotRef::Inventory(i) => StorageSlot::Inventory(i),
+        SlotRef::Chest(i) => StorageSlot::Container(i),
+        SlotRef::FurnaceInput => StorageSlot::FurnaceInput,
+        SlotRef::FurnaceFuel => StorageSlot::FurnaceFuel,
+        SlotRef::FurnaceOutput => StorageSlot::FurnaceOutput,
+        SlotRef::BrewBottle(i) => StorageSlot::BrewBottle(i),
+        SlotRef::BrewIngredient => StorageSlot::BrewIngredient,
+        SlotRef::BrewFuel => StorageSlot::BrewFuel,
+        _ => return None,
+    })
 }
 
 /// What the anvil or grindstone inputs make, ignoring the survival cost
@@ -102,32 +131,6 @@ impl Screen<'_> {
                 let left = self.move_from_inventory(i, stack);
                 self.session.inventory.slots[i] = left;
             }
-            SlotRef::Chest(i) => {
-                if let Container::Minecart(id) = *self.container {
-                    let stack =
-                        self.entities.vehicle_slots_mut(id).and_then(|slots| slots.get_mut(i)).and_then(Option::take);
-                    if let Some(stack) = stack {
-                        let left = self.move_to_player(stack);
-                        if let Some(slot) = self.entities.vehicle_slots_mut(id).and_then(|slots| slots.get_mut(i)) {
-                            *slot = left;
-                        }
-                    }
-                    return;
-                }
-                if let Container::EnderChest(_) = *self.container {
-                    let Some(stack) = self.session.ender.slots.get_mut(i).and_then(Option::take) else { return };
-                    self.session.ender.slots[i] = self.move_to_player(stack);
-                    return;
-                }
-                let Container::Chest(p) = *self.container else { return };
-                if i >= self.world.container_slots(p) {
-                    return;
-                }
-                let Some(stack) = self.world.chest_slot(p, i) else { return };
-                self.world.set_chest_slot(p, i, None);
-                let left = self.move_to_player(stack);
-                self.world.set_chest_slot(p, i, left);
-            }
             SlotRef::Craft(i) => {
                 let Some(stack) = self.craft.cells[i].take() else { return };
                 self.craft.cells[i] = self.move_to_player(stack);
@@ -145,45 +148,15 @@ impl Screen<'_> {
                     self.consume_craft();
                 }
             }
-            SlotRef::FurnaceInput | SlotRef::FurnaceFuel | SlotRef::FurnaceOutput => {
-                let Container::Furnace(p) = *self.container else { return };
-                let Some(f) = self.world.furnace_mut(p) else { return };
-                let cell = match slot {
-                    SlotRef::FurnaceInput => &mut f.input,
-                    SlotRef::FurnaceFuel => &mut f.fuel,
-                    _ => &mut f.output,
-                };
-                let Some(stack) = cell.take() else { return };
-                let left = self.move_to_player(stack);
-                if let Some(f) = self.world.furnace_mut(p) {
-                    match slot {
-                        SlotRef::FurnaceInput => f.input = left,
-                        SlotRef::FurnaceFuel => f.fuel = left,
-                        _ => f.output = left,
-                    }
-                }
-                if slot == SlotRef::FurnaceOutput {
-                    // The helper compares the restored output with its original
-                    // count and drains stored XP once, even for a partial move.
-                    self.award_furnace_xp(p, stack.count);
-                }
-            }
-            SlotRef::BrewBottle(_) | SlotRef::BrewIngredient | SlotRef::BrewFuel => {
-                let Container::Brewing(p) = *self.container else { return };
-                let Some(b) = self.world.brewing_stand_mut(p) else { return };
-                let cell = match slot {
-                    SlotRef::BrewBottle(i) => &mut b.bottles[i],
-                    SlotRef::BrewIngredient => &mut b.ingredient,
-                    _ => &mut b.fuel,
-                };
-                let Some(stack) = cell.take() else { return };
-                let left = self.move_to_player(stack);
-                if let Some(b) = self.world.brewing_stand_mut(p) {
-                    match slot {
-                        SlotRef::BrewBottle(i) => b.bottles[i] = left,
-                        SlotRef::BrewIngredient => b.ingredient = left,
-                        _ => b.fuel = left,
-                    }
+            SlotRef::Chest(_)
+            | SlotRef::FurnaceInput
+            | SlotRef::FurnaceFuel
+            | SlotRef::FurnaceOutput
+            | SlotRef::BrewBottle(_)
+            | SlotRef::BrewIngredient
+            | SlotRef::BrewFuel => {
+                if let (Some(mut screen), Some(slot)) = (self.storage(), storage_slot(slot)) {
+                    screen.quick_move(slot);
                 }
             }
             SlotRef::EnchantItem | SlotRef::EnchantLapis => {
@@ -251,66 +224,17 @@ impl Screen<'_> {
     /// furnace's input (smeltables) or fuel slot, or else between the hotbar
     /// and the main grid. Returns what didn't move.
     pub(super) fn move_from_inventory(&mut self, from: usize, mut stack: Stack) -> Option<Stack> {
+        if let Some(mut screen) = self.storage()
+            && let Some(left) = screen.quick_move_in(stack)
+        {
+            return left;
+        }
         match *self.container {
-            Container::Minecart(id) => {
-                if self.entities.vehicle_slots(id).is_none() {
-                    return Some(stack);
-                }
-                return self.entities.insert_vehicle(id, stack);
-            }
-            Container::EnderChest(_) => {
-                let order: Vec<usize> = (0..crate::world::chest::SLOTS).collect();
-                return move_into(stack, &mut self.session.ender.slots, &order);
-            }
-            Container::Chest(p) => {
-                // v0.16 Track B: a shulker box doesn't move into a shulker box.
-                if !self.world.container_accepts(p, &stack) {
-                    return Some(stack);
-                }
-                let order: Vec<usize> = (0..self.world.container_slots(p)).collect();
-                return self.world.with_chest_slots(p, |slots| move_into(stack, slots, &order)).unwrap_or(Some(stack));
-            }
-            Container::Furnace(p) => {
-                let smeltable = self.world.furnace(p).is_some_and(|f| f.kind.smelt(stack.item).is_some());
-                let fuel = furnace::burn_time(stack.item).is_some();
-                if let Some(f) = self.world.furnace_mut(p)
-                    && (smeltable || fuel)
-                {
-                    let cell = if smeltable { &mut f.input } else { &mut f.fuel };
-                    return move_into(stack, std::slice::from_mut(cell), &[0]);
-                }
-            }
-            Container::Brewing(p) => {
-                // Java: bottles into empty bottle slots one each, blaze
-                // powder into the fuel then the ingredient slot, other
-                // ingredients into theirs.
-                if let Some(b) = self.world.brewing_stand_mut(p) {
-                    let mut stack = stack;
-                    if brewing::fits_bottle_slot(stack.item) {
-                        let before = stack.count;
-                        for cell in b.bottles.iter_mut().filter(|c| c.is_none()) {
-                            *cell = Some(Stack::new(stack.item, 1));
-                            stack.count -= 1;
-                            if stack.count == 0 {
-                                return None;
-                            }
-                        }
-                        if stack.count != before {
-                            return Some(stack);
-                        }
-                    }
-                    let mut left = Some(stack);
-                    if stack.item == Item::BLAZE_POWDER {
-                        left = move_into(stack, std::slice::from_mut(&mut b.fuel), &[0]);
-                    }
-                    if let Some(rest) = left.filter(|s| brewing::is_ingredient(s.item)) {
-                        left = move_into(rest, std::slice::from_mut(&mut b.ingredient), &[0]);
-                    }
-                    if left != Some(stack) {
-                        return left;
-                    }
-                }
-            }
+            Container::Chest(_)
+            | Container::EnderChest(_)
+            | Container::Minecart(_)
+            | Container::Furnace(_)
+            | Container::Brewing(_) => {}
             Container::Enchanting(_) => {
                 let left = self.move_to_table(stack);
                 if left != Some(stack) {
@@ -352,81 +276,18 @@ impl Screen<'_> {
             }
             Container::Inventory | Container::CraftingTable | Container::Trading(_) => {}
         }
-        let order: Vec<usize> =
-            if from < HOTBAR_SLOTS { (HOTBAR_SLOTS..SLOTS).collect() } else { (0..HOTBAR_SLOTS).collect() };
-        move_into(stack, &mut self.session.inventory.slots, &order)
+        voxelcraft::session::storage::between_sections(&mut self.session.inventory, from, stack)
     }
 
-    /// A click on a brewing stand slot: bottles take one potion or glass
-    /// bottle each, the ingredient slot only brewing ingredients and the
-    /// fuel slot only blaze powder (Java's slot rules).
-    pub(super) fn brewing_click(&mut self, pos: IVec3, slot: SlotRef, right: bool) {
-        use crate::world::brewing;
-        let cursor = &mut self.session.inventory.cursor;
-        let Some(b) = self.world.brewing_stand_mut(pos) else { return };
-        match slot {
-            SlotRef::BrewBottle(i) => {
-                let cell = &mut b.bottles[i];
-                match cursor {
-                    None => *cursor = cell.take(),
-                    Some(c) if !brewing::fits_bottle_slot(c.item) => {}
-                    Some(c) if cell.is_none() => {
-                        *cell = Some(Stack::new(c.item, 1));
-                        c.count -= 1;
-                        if c.count == 0 {
-                            *cursor = None;
-                        }
-                    }
-                    Some(c) if c.count == 1 => std::mem::swap(cell, cursor),
-                    Some(_) => {}
-                }
-            }
-            SlotRef::BrewIngredient if cursor.is_none_or(|c| brewing::is_ingredient(c.item)) => {
-                crate::inventory::click_slot(&mut b.ingredient, cursor, right)
-            }
-            SlotRef::BrewFuel if cursor.is_none_or(|c| c.item == Item::BLAZE_POWDER) => {
-                crate::inventory::click_slot(&mut b.fuel, cursor, right)
-            }
-            _ => {}
-        }
-    }
-
-    /// A click on a furnace slot. Fuel only takes things that burn; the
-    /// output can only be taken from.
-    pub(super) fn furnace_click(&mut self, pos: IVec3, slot: SlotRef, right: bool) {
-        let cursor = &mut self.session.inventory.cursor;
-        let Some(f) = self.world.furnace_mut(pos) else { return };
-        let before = f.output.map_or(0, |s| s.count);
-        match slot {
-            SlotRef::FurnaceInput => f.click_input(cursor, right),
-            SlotRef::FurnaceFuel => {
-                if cursor.is_none_or(|c| crate::world::furnace::burn_time(c.item).is_some()) {
-                    crate::inventory::click_slot(&mut f.fuel, cursor, right)
-                }
-            }
-            SlotRef::FurnaceOutput => match (cursor.as_mut(), f.output) {
-                (None, out) => {
-                    *cursor = out;
-                    f.output = None;
-                }
-                (Some(c), Some(out)) if c.stacks_with(&out) && c.count as u16 + out.count as u16 <= c.max() as u16 => {
-                    c.count += out.count;
-                    f.output = None;
-                }
-                _ => {}
-            },
-            _ => {}
-        }
-        self.award_furnace_xp(pos, before);
-    }
-
-    /// Taking any smelted items (the output held `before` items) releases
-    /// all the experience the furnace stored, as orbs at the player, like
-    /// Java's result slot.
-    pub(super) fn award_furnace_xp(&mut self, pos: IVec3, before: u8) {
-        let roll = self.entities.roll();
-        let Some(xp) = self.world.furnace_mut(pos).and_then(|f| f.take_output_xp(before, roll)) else { return };
-        self.entities.spawn_xp(self.session.player.pos, xp);
+    /// The shared storage screen for this player's open container.
+    pub(super) fn storage(&mut self) -> Option<StorageScreen<'_>> {
+        let storage = storage_of(*self.container)?;
+        Some(StorageScreen {
+            session: &mut *self.session,
+            world: &mut *self.world,
+            entities: &mut *self.entities,
+            storage,
+        })
     }
 
     /// Shared desktop/controller/LAN remainder delivery, including stacked honey.
@@ -461,6 +322,29 @@ impl Screen<'_> {
         self.consume_craft();
     }
 
+    /// v0.17 Track C1: `CrafterScreen.slotClicked` toggles an empty slot: a
+    /// disabled one turns on (and then takes the click), an enabled one
+    /// turns off under an empty cursor. Returns whether the click is used up.
+    fn crafter_toggle(&mut self, pos: IVec3, i: usize) -> bool {
+        if self.world.crafter(pos).is_none()
+            || self.world.chest_slot(pos, i).is_some()
+            || self.session.mode == voxelcraft::rules::GameMode::Spectator
+        {
+            return false;
+        }
+        if self.world.crafter_slot_disabled(pos, i) {
+            self.world.set_crafter_slot_enabled(pos, i, true);
+            self.audio.play(Sound::Click, None, 0.4, (1.0, 1.0));
+            false
+        } else if self.session.inventory.cursor.is_none() {
+            self.world.set_crafter_slot_enabled(pos, i, false);
+            self.audio.play(Sound::Click, None, 0.4, (0.75, 0.75));
+            true
+        } else {
+            false
+        }
+    }
+
     /// A left (or right) click on a slot of the open container screen.
     pub(super) fn click_slot(&mut self, slot: SlotRef, right: bool) {
         if self.workstation_click(slot, right) {
@@ -477,39 +361,22 @@ impl Screen<'_> {
             Some(SlotRef::Armor(piece)) => {
                 self.session.inventory.click_armor(piece, right, self.session.mode.is_creative())
             }
-            Some(SlotRef::Chest(i)) => {
-                if let Container::Minecart(id) = *self.container {
-                    if self.session.inventory.cursor.is_none_or(|s| self.entities.vehicle_accepts(id, i, s.item))
-                        && let Some(slot) = self.entities.vehicle_slots_mut(id).and_then(|slots| slots.get_mut(i))
-                    {
-                        crate::inventory::click_slot(slot, &mut self.session.inventory.cursor, right);
-                    }
-                    return;
-                }
-                if let Container::EnderChest(_) = *self.container {
-                    if let Some(slot) = self.session.ender.slots.get_mut(i) {
-                        crate::inventory::click_slot(slot, &mut self.session.inventory.cursor, right);
-                    }
-                    return;
-                }
-                if let Container::Chest(pos) = *self.container
-                    && i < self.world.container_slots(pos)
-                    // v0.16 Track B: `ShulkerBoxSlot.mayPlace`.
-                    && self.session.inventory.cursor.is_none_or(|c| self.world.container_accepts(pos, &c))
+            Some(
+                s @ (SlotRef::Chest(_)
+                | SlotRef::FurnaceInput
+                | SlotRef::FurnaceFuel
+                | SlotRef::FurnaceOutput
+                | SlotRef::BrewBottle(_)
+                | SlotRef::BrewIngredient
+                | SlotRef::BrewFuel),
+            ) => {
+                if let (SlotRef::Chest(i), Container::Chest(pos)) = (s, *self.container)
+                    && self.crafter_toggle(pos, i)
                 {
-                    let cursor = &mut self.session.inventory.cursor;
-                    self.world
-                        .with_chest_slots(pos, |slots| crate::inventory::click_slot(&mut slots[i], cursor, right));
+                    return;
                 }
-            }
-            Some(s @ (SlotRef::FurnaceInput | SlotRef::FurnaceFuel | SlotRef::FurnaceOutput)) => {
-                if let Container::Furnace(pos) = *self.container {
-                    self.furnace_click(pos, s, right);
-                }
-            }
-            Some(s @ (SlotRef::BrewBottle(_) | SlotRef::BrewIngredient | SlotRef::BrewFuel)) => {
-                if let Container::Brewing(pos) = *self.container {
-                    self.brewing_click(pos, s, right);
+                if let (Some(mut screen), Some(slot)) = (self.storage(), storage_slot(s)) {
+                    screen.click(slot, right);
                 }
             }
             Some(s @ (SlotRef::EnchantItem | SlotRef::EnchantLapis | SlotRef::EnchantOffer(_))) => {
@@ -598,16 +465,18 @@ impl Screen<'_> {
             stack.enchants.set(e, level);
         }
         self.session.work[0] = Some(stack);
-        if self.session.mode.is_survival() {
-            self.session.vitals.xp.add_levels(-(i as i64 + 1));
-            if let Some(lapis) = &mut self.session.work[1] {
-                lapis.count -= i as u8 + 1;
-                if lapis.count == 0 {
-                    self.session.work[1] = None;
-                }
+        // `onEnchantmentPerformed` takes the levels in every game mode;
+        // `consume` spares a creative player's lapis.
+        self.session.vitals.xp.add_levels(-(i as i64 + 1));
+        if !self.session.mode.is_creative()
+            && let Some(lapis) = &mut self.session.work[1]
+        {
+            lapis.count -= i as u8 + 1;
+            if lapis.count == 0 {
+                self.session.work[1] = None;
             }
         }
-        self.session.vitals.xp.seed = (enchant::roll() * u32::MAX as f32) as u32 as i32;
+        self.session.vitals.xp.seed = enchant::new_seed();
         let at = pos.as_dvec3() + DVec3::splat(0.5);
         // `ENCHANTMENT_TABLE_USE` is `BLOCKS`.
         self.audio.play_in(SoundSource::Blocks, Sound::LevelUp, Some(at), 0.6, (1.5, 1.7));

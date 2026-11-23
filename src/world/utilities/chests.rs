@@ -27,7 +27,7 @@ impl World {
         if !self.get_block(p).is_some_and(|b| super::decorated_pot_of(b).is_some()) {
             return false;
         }
-        match self.utilities.decorated.get_mut(&p) {
+        let added = match self.utilities.decorated.get_mut(&p) {
             None => {
                 self.utilities.decorated.insert(p, one);
                 true
@@ -37,7 +37,12 @@ impl World {
                 true
             }
             Some(_) => false,
+        };
+        // `BlockEntity.setChanged` wakes comparators reading the pot.
+        if added {
+            self.redstone_changed(p);
         }
+        added
     }
 
     /// Puts `contents` in the chest table at `p` for a screen (an ender
@@ -67,6 +72,12 @@ impl World {
         self.utilities.lent
     }
 
+    /// Whether a player or copper golem has the chest at `p` open, so
+    /// another opener doesn't post `container_open` again.
+    pub fn container_has_viewers(&self, p: IVec3) -> bool {
+        self.utilities.viewers.contains_key(&p) || self.utilities.golem_viewers.contains_key(&p)
+    }
+
     /// `ContainerOpenersCounter.recheckOpeners`: every chest a player has
     /// open, once per tick from all input paths. Both halves of a double
     /// chest count each viewer, so trapped chests signal and copper chests
@@ -94,9 +105,12 @@ impl World {
             .collect();
         for q in changed {
             self.redstone_changed(q);
-            // `ContainerOpenersCounter.decrementOpeners`: the last viewer left.
-            // (Opening is posted by the player's use, with the player.)
-            if old.contains_key(&q) && !self.utilities.viewers.contains_key(&q) {
+            // `ContainerOpenersCounter.decrementOpeners`: the last viewer left
+            // (golems count too). Opening is posted by the player's use.
+            if old.contains_key(&q)
+                && !self.utilities.viewers.contains_key(&q)
+                && !self.utilities.golem_viewers.contains_key(&q)
+            {
                 self.emit_game_event(
                     q.as_dvec3() + glam::DVec3::splat(0.5),
                     crate::world::vibration::GameEvent::ContainerClose,
@@ -124,6 +138,17 @@ impl World {
             let changed: Vec<_> = old.keys().chain(self.utilities.golem_viewers.keys()).copied().collect();
             for p in changed {
                 self.redstone_changed(p);
+                // A golem is a `ContainerUser`: the first opener posts
+                // `container_open`, the last to leave `container_close`.
+                let (was, now) = (old.contains_key(&p), self.utilities.golem_viewers.contains_key(&p));
+                if was != now && !self.utilities.viewers.contains_key(&p) {
+                    let event = if now {
+                        crate::world::vibration::GameEvent::ContainerOpen
+                    } else {
+                        crate::world::vibration::GameEvent::ContainerClose
+                    };
+                    self.emit_block_event(p, event, crate::world::vibration::EventSource::NONE, None);
+                }
             }
         }
     }

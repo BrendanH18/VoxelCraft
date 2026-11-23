@@ -37,12 +37,15 @@ pub mod colors;
 pub mod colour_blocks;
 pub mod composter;
 pub mod conduit;
+pub mod container_sides;
 pub mod copper;
 pub mod copper_golem_statue;
+pub mod crafter;
 pub mod creaking;
 pub mod crops;
 pub mod deep_dark;
 pub mod dismount;
+pub mod dispensing;
 pub mod double_chest;
 pub mod dried_ghast;
 pub mod dungeon;
@@ -96,6 +99,7 @@ pub mod ore;
 pub mod overworld_blocks;
 mod overworld_flora;
 pub mod pale_garden;
+pub mod piston;
 pub mod poplar_trees;
 pub mod portal;
 pub mod potent_sulfur;
@@ -104,7 +108,9 @@ pub mod pumpkin_blocks;
 pub mod rails;
 pub mod redstone;
 pub mod redstone_blocks;
+pub mod redstone_catalogue;
 mod redstone_contacts;
+pub mod redstone_order;
 pub mod relics;
 pub mod ruined_portal;
 #[cfg(test)]
@@ -127,6 +133,7 @@ pub mod stone_blocks;
 pub mod storage;
 pub mod stronghold;
 pub mod structure;
+pub mod sugar_cane;
 pub mod sulfur_springs;
 pub mod temples;
 pub mod terrain;
@@ -325,6 +332,8 @@ pub struct World {
     snow_pushes: Vec<(IVec3, f64)>,
     redstone: redstone::RedstoneState,
     automation: automation::AutomationState,
+    /// v0.17 Track B: moving pistons and piston block events.
+    pistons: piston::PistonState,
     falling: Vec<falling::FallingBlock>,
     /// Falling blocks of unloaded chunks, held until their chunk loads again
     /// (Java stores falling block entities with the chunk's other entities).
@@ -394,6 +403,8 @@ pub struct World {
     /// TNT blocks a blast or fire took out, with whether to shorten the
     /// fuse (blasts only); the game turns them into entities.
     pub primed_tnt: Vec<(IVec3, bool)>,
+    /// The entity whose box `redstone_contacts` is marking (E1 game events).
+    pub(crate) contact_source: Option<vibration::EventSource>,
     /// v0.16 Track E: infested blocks broken this tick that let their
     /// silverfish out (`InfestedBlock.spawnAfterBreak`); the game spawns them.
     pub released_silverfish: Vec<IVec3>,
@@ -411,6 +422,8 @@ pub struct World {
     /// game last asked.
     pub(crate) beacons: beacon::State,
     pub(crate) beacon_events: Vec<beacon::Event>,
+    /// v0.17 Track C1: crafter block entities and their events (see [`crafter`]).
+    pub(crate) crafters: crafter::Crafters,
     /// v0.16 Track F: conduits (see [`conduit`]) and what they did since
     /// the game last asked.
     pub(crate) conduits: conduit::State,
@@ -678,6 +691,7 @@ impl World {
             snow_pushes: Vec::new(),
             redstone: Default::default(),
             automation: Default::default(),
+            pistons: Default::default(),
             falling: Vec::new(),
             stored_falling: FxHashMap::default(),
             entity_loads: FxHashSet::default(),
@@ -714,6 +728,7 @@ impl World {
             xp_drops: Vec::new(),
             brews_done: Vec::new(),
             primed_tnt: Vec::new(),
+            contact_source: None,
             released_silverfish: Vec::new(),
             notes: Vec::new(),
             allay_notes: Vec::new(),
@@ -722,6 +737,7 @@ impl World {
             wither_skulls: Vec::new(),
             beacons: Default::default(),
             beacon_events: Vec::new(),
+            crafters: Default::default(),
             conduits: Default::default(),
             conduit_events: Vec::new(),
             potent_sulfur: Default::default(),
@@ -1042,12 +1058,28 @@ impl World {
     /// drop a cell's water: bucket pickup and sponges drying a waterlogged
     /// block, sponges clearing kelp and seagrass, pistons moving blocks.
     pub(crate) fn edit_exact(&mut self, p: IVec3, block: Block, sync: bool) -> bool {
-        self.edit_exact_inner(p, block, sync, true)
+        self.edit_exact_inner(p, block, sync, true, redstone_order::flags::UPDATE_ALL | redstone_order::flags::COMPAT)
+    }
+
+    /// [`World::edit`] with Java's `Level.setBlock` flags, for ported block
+    /// behaviour ([`redstone_order::flags`]); `edit` uses `UPDATE_ALL`.
+    pub(crate) fn edit_flags(&mut self, p: IVec3, block: Block, flags: u16) -> bool {
+        let block = match self.get_block(p) {
+            Some(old) => waterlog::carried(old, block),
+            None => block,
+        };
+        self.edit_exact_inner(p, block, false, true, flags)
+    }
+
+    /// [`World::edit_flags`] that writes `block` as given (a cell a piston
+    /// empties or fills drops its water), for `world::piston`.
+    pub(crate) fn edit_exact_flags(&mut self, p: IVec3, block: Block, flags: u16) -> bool {
+        self.edit_exact_inner(p, block, false, true, flags)
     }
 
     /// The wall-post walk owns its downward notifications; other edits
     /// notify surrounding walls after recording the normal edit effects.
-    fn edit_exact_inner(&mut self, p: IVec3, block: Block, sync: bool, update_walls: bool) -> bool {
+    fn edit_exact_inner(&mut self, p: IVec3, block: Block, sync: bool, update_walls: bool, flags: u16) -> bool {
         if !self.contains_y(p.y) {
             return false;
         }
@@ -1064,6 +1096,11 @@ impl World {
         // Fire ages are saved state, but all ages have identical geometry
         // and lighting: don't invalidate meshes or copy light snapshots.
         if old.fire_age().is_some() && block.fire_age().is_some() {
+            // `FireBlock.tick` still updates neighbour shapes (flags 260), so
+            // an observer facing the fire sees its age change.
+            if old != block {
+                self.notify_observers(p);
+            }
             return true;
         }
         // Java notifies navigators only when the collision shape changes.
@@ -1108,6 +1145,7 @@ impl World {
             self.wither_skulls.push(p);
         }
         self.track_beacon(p, old, block);
+        self.track_crafter(p, old, block);
         self.track_conduit(p, old, block);
         // v0.16 Track H: potent sulfur's block entity and `updateShape`.
         self.track_potent_sulfur(p, old, block);
@@ -1140,6 +1178,11 @@ impl World {
                     self.schedule_coral_death(p + d);
                 }
             }
+        }
+        // `Level.setBlock`'s neighbour and shape updates, after every other
+        // effect of the edit is in place.
+        if old != block {
+            self.redstone_block_changed(p, old, block, flags);
         }
         true
     }
@@ -2597,10 +2640,11 @@ mod tests {
         other.load_furnaces(&saved);
         assert_eq!(other.furnace(p).unwrap().output, world.furnace(p).unwrap().output);
 
-        assert!((world.furnace(p).unwrap().xp - 0.2).abs() < 1e-4, "glass stores 0.1 each");
+        assert!((world.furnace(p).unwrap().stored_xp() - 0.2).abs() < 1e-4, "glass stores 0.1 each");
 
         // Breaking it spills everything and its experience, and the state is gone.
-        world.furnace_mut(p).unwrap().xp = 3.0;
+        world.furnace_mut(p).unwrap().recipes_used =
+            vec![super::furnace::RecipeUse { recipe: Item::from_block(Block::GLASS), xp: 3.0, count: 1 }];
         world.set_block(p, Block::AIR);
         assert_eq!(world.xp_drops, [(p, 3)]);
         assert!(world.furnace(p).is_none());

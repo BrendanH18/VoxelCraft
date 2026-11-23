@@ -1,0 +1,149 @@
+{
+  "reference": "Minecraft Java Edition 26.3",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "sources": [
+    "quickMoveStack in ChestMenu, ShulkerBoxMenu, HopperMenu, DispenserMenu, AbstractFurnaceMenu, BrewingStandMenu",
+    "BrewingStandMenu$PotionSlot.getMaxStackSize, FurnaceFuelSlot.getMaxStackSize",
+    "HopperBlockEntity.MOVE_ITEM_SPEED",
+    "AbstractContainerMenu.getRedstoneSignalFromContainer, Mth.lerpDiscrete",
+    "BlockEntity.preRemoveSideEffects, Containers",
+    "BrewingStandBlockEntity.serverTick, AbstractFurnaceBlockEntity.setItem",
+    "loot_table/blocks/shulker_box.json, loot_table/blocks/chest.json"
+  ],
+  "quick_move": {
+    "chest": [
+      [
+        null,
+        null,
+        true
+      ],
+      [
+        null,
+        null,
+        false
+      ]
+    ],
+    "shulker_box": [
+      [
+        null,
+        null,
+        true
+      ],
+      [
+        null,
+        null,
+        false
+      ]
+    ],
+    "hopper": [
+      [
+        null,
+        null,
+        true
+      ],
+      [
+        null,
+        null,
+        false
+      ]
+    ],
+    "dispenser": [
+      [
+        9,
+        45,
+        true
+      ],
+      [
+        0,
+        9,
+        false
+      ]
+    ],
+    "furnace": [
+      [
+        3,
+        39,
+        true
+      ],
+      [
+        3,
+        39,
+        false
+      ],
+      [
+        0,
+        1,
+        false
+      ],
+      [
+        1,
+        2,
+        false
+      ],
+      [
+        30,
+        39,
+        false
+      ],
+      [
+        3,
+        30,
+        false
+      ]
+    ],
+    "brewing_stand": [
+      [
+        5,
+        41,
+        true
+      ],
+      [
+        4,
+        5,
+        false
+      ],
+      [
+        3,
+        4,
+        false
+      ],
+      [
+        3,
+        4,
+        false
+      ],
+      [
+        0,
+        3,
+        false
+      ],
+      [
+        32,
+        41,
+        false
+      ],
+      [
+        5,
+        32,
+        false
+      ],
+      [
+        5,
+        41,
+        false
+      ]
+    ]
+  },
+  "potion_slot_max": 1,
+  "furnace_fuel_bucket_max": 1,
+  "hopper_cooldown": 8,
+  "comparator_float": true,
+  "contents_drop_without_rules": true,
+  "brewing_fuel_load_sets_changed": true,
+  "furnace_input_compares_components": true,
+  "shulker_box_loot_conditions": [],
+  "chest_loot_conditions": [
+    "minecraft:survives_explosion"
+  ]
+}
+

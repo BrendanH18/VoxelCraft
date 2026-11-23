@@ -94,7 +94,10 @@ impl Actor<'_> {
             self.session.cancel_mining();
         } else {
             if let Some((p, _)) = self.session.block_target(self.world) {
-                self.world.strike_note(p);
+                // `NoteBlock.attack`: the striking player is the event source.
+                let source =
+                    crate::world::vibration::EventSource::player(self.session.id, self.session.player.sneaking);
+                self.world.strike_note_by(p, source);
             }
             self.body.mine_pressed = true;
         }

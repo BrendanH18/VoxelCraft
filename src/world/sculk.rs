@@ -195,9 +195,28 @@ pub(crate) struct SculkState {
     pub(crate) sounds: Vec<(DVec3, SculkSound)>,
     shriek_triggers: Vec<(IVec3, PlayerId)>,
     responses: Vec<ShriekerResponse>,
-    /// Each player's step bookkeeping (Java's `moveDist`, `nextStep` and
-    /// the fall in progress), not saved.
-    players: FxHashMap<PlayerId, (f32, f32, Option<f64>)>,
+    /// Each player's movement bookkeeping, not saved.
+    players: FxHashMap<PlayerId, PlayerWatch>,
+    /// Each player's health and armor last tick, for damage, death and
+    /// equipment events; not saved.
+    bodies: FxHashMap<PlayerId, (f32, [Option<crate::item::Item>; 4])>,
+}
+
+/// A player's movement as game events see it: Java's `moveDist`,
+/// `nextStep`, the fall in progress, `wasTouchingWater` and `fallFlyTicks`.
+#[derive(Clone, Copy, Debug)]
+struct PlayerWatch {
+    dist: f32,
+    next: f32,
+    peak: Option<f64>,
+    in_water: bool,
+    glide_ticks: u32,
+}
+
+impl Default for PlayerWatch {
+    fn default() -> Self {
+        Self { dist: 0.0, next: 1.0, peak: None, in_water: false, glide_ticks: 0 }
+    }
 }
 
 /// `SculkSensorBlock.RESONANCE_PITCH_BEND`: `NoteBlock.getPitchFromNote`
@@ -751,7 +770,10 @@ impl World {
     /// A player just moved from `before` (Java `Entity.move` and
     /// `checkFallDamage`): steps (every 1/0.6 blocks walked on something
     /// other than air), swims and landings become game events, and the
-    /// block underfoot hears a step (`stepOn`). Spectators make none.
+    /// block underfoot hears a step (`stepOn`). Entering water splashes
+    /// (`doWaterSplashEffect`), a slime block or bed bounce posts `bounce`,
+    /// and every tenth tick of gliding `elytra_glide`
+    /// (`LivingEntity.updateFallFlying`). Spectators make none.
     pub fn player_moved(
         &mut self,
         id: PlayerId,
@@ -765,7 +787,9 @@ impl World {
             return;
         }
         let source = EventSource { untargetable: creative, ..EventSource::player(id, player.sneaking) };
-        let (mut dist, mut next, mut peak) = self.sculk.players.get(&id).copied().unwrap_or((0.0, 1.0, None));
+        let first = !self.sculk.players.contains_key(&id);
+        let mut watch = self.sculk.players.get(&id).copied().unwrap_or_default();
+        let PlayerWatch { mut dist, mut next, mut peak, .. } = watch;
         let moved = player.pos - before;
         let below = (player.pos - DVec3::Y * 0.2).floor().as_ivec3();
         let support = self.get_block(below).filter(|&b| b != Block::AIR);
@@ -793,7 +817,51 @@ impl World {
         } else {
             peak = Some(peak.map_or(before.y.max(player.pos.y), |p: f64| p.max(player.pos.y)));
         }
-        self.sculk.players.insert(id, (dist, next, peak));
+        if player.in_water && !watch.in_water && !first {
+            self.emit_game_event(player.pos, GameEvent::Splash, source, None);
+        }
+        if player.bounced {
+            self.emit_game_event(player.pos, GameEvent::Bounce, source, None);
+        }
+        watch.glide_ticks = if player.fall_flying { watch.glide_ticks + 1 } else { 0 };
+        if watch.glide_ticks > 0 && watch.glide_ticks % 10 == 0 {
+            self.emit_game_event(player.pos, GameEvent::ElytraGlide, source, None);
+        }
+        watch.in_water = player.in_water;
+        self.sculk.players.insert(id, PlayerWatch { dist, next, peak, ..watch });
+    }
+
+    /// A player's health and armor after a tick: lost health posts
+    /// `entity_damage` (`Player.actuallyHurt`), dying `entity_die`
+    /// (`ServerPlayer.die`), and each armor slot that changed `equip` for a
+    /// piece put on or `unequip` for one taken off (`onEquipItem`, which
+    /// players emit for armor slots only). Nothing is posted the first time
+    /// a player is seen.
+    pub fn player_vitals(
+        &mut self,
+        id: PlayerId,
+        pos: DVec3,
+        health: f32,
+        armor: [Option<crate::item::Item>; 4],
+        source: EventSource,
+    ) {
+        if self.remote {
+            return;
+        }
+        let Some((last, worn)) = self.sculk.bodies.insert(id, (health, armor)) else { return };
+        if health <= 0.0 && last > 0.0 {
+            self.emit_game_event(pos, GameEvent::EntityDie, source, None);
+        } else if health > 0.0 && health < last - 1e-4 {
+            self.emit_game_event(pos, GameEvent::EntityDamage, source, None);
+        }
+        if health > 0.0 && !source.spectator {
+            for (now, was) in armor.iter().zip(worn) {
+                if *now != was {
+                    let event = if now.is_some() { GameEvent::Equip } else { GameEvent::Unequip };
+                    self.emit_game_event(pos, event, source, None);
+                }
+            }
+        }
     }
 
     /// An entity died at `pos` (Java `CatalystListener.handleGameEvent` for

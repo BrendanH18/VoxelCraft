@@ -736,7 +736,8 @@ impl Entities {
             if !valid_vibration(e.event, &e.source, e.affected, GameEvent::warden_listens) {
                 continue;
             }
-            if (e.pos.floor().as_ivec3() - eye_cell).length_squared() > 16 * 16 {
+            let r = crate::world::vibration::WARDEN_LISTENER_RADIUS;
+            if (e.pos.floor().as_ivec3() - eye_cell).length_squared() > r * r {
                 continue;
             }
             // `VibrationUser.canReceiveVibration`.

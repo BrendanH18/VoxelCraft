@@ -17,10 +17,6 @@
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
     },
-    "crafter": {
-      "release": "v0.17",
-      "reason": "Redstone and automation completion."
-    },
     "jigsaw": {
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
@@ -28,10 +24,6 @@
     "light": {
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
-    },
-    "moving_piston": {
-      "release": "v0.17",
-      "reason": "Redstone and automation completion."
     },
     "petrified_oak_slab": {
       "release": "none",
@@ -159,10 +151,6 @@
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
     },
-    "crafter": {
-      "release": "v0.17",
-      "reason": "Redstone and automation completion."
-    },
     "creaking_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
@@ -226,10 +214,6 @@
     "frog_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "furnace_minecart": {
-      "release": "v0.17",
-      "reason": "Redstone and automation completion."
     },
     "ghast_spawn_egg": {
       "release": "v0.18",

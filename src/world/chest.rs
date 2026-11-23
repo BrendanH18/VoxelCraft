@@ -46,6 +46,8 @@ pub fn is_chest(b: Block) -> bool {
     matches!(b.base(), Block::CHEST | Block::BARREL | super::utilities::TRAPPED_CHEST)
         || super::copper::is_chest(b)
         || super::shulker_box::owns(b.0)
+        // v0.17 Track C1: the crafter's nine slots.
+        || super::crafter::owns(b.0)
         || matches!(
             super::redstone_blocks::component(b),
             Some(
@@ -60,6 +62,7 @@ impl World {
         match self.get_block(p).and_then(super::redstone_blocks::component) {
             Some(super::redstone_blocks::Component::Hopper { .. }) => 5,
             Some(super::redstone_blocks::Component::Dispenser { .. }) => 9,
+            _ if self.get_block(p).is_some_and(|b| super::crafter::owns(b.0)) => super::crafter::SLOTS,
             _ if self.chest_partner(p).is_some() => 2 * SLOTS,
             _ => SLOTS,
         }
@@ -113,11 +116,13 @@ impl World {
         {
             self.stash_shulker_box(p, chest);
         }
+        // Contents spill whatever the `block_drops` rule says: Java's
+        // `BlockEntity.preRemoveSideEffects` drops them through
+        // `Containers.dropContents`, which no game rule gates.
         if is_chest(old)
             && old.base() != new.base()
             && !super::copper::same_chest(old, new)
             && let Some(chest) = self.chests.remove(&p)
-            && self.tile_drops
         {
             self.chest_positions.remove(&p.to_array());
             self.drops.extend(chest.slots.into_iter().flatten().map(|s| (p, s)));

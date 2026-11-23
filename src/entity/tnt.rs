@@ -11,14 +11,14 @@ pub const FUSE: f32 = 4.0;
 /// Blast strength (a creeper is 3).
 pub const POWER: f32 = 4.0;
 const GRAVITY: f64 = 20.0;
-const SHAPE: Shape = Shape::new(0.49, 0.98);
+pub(crate) const SHAPE: Shape = Shape::new(0.49, 0.98);
 
 pub struct PrimedTnt {
     /// Bottom centre.
     pub pos: DVec3,
     /// Position at the start of the last simulation step, for rendering.
     pub previous_pos: DVec3,
-    vel: DVec3,
+    pub(crate) vel: DVec3,
     /// Seconds left before it blows.
     pub fuse: f32,
     power: f32,

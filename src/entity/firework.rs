@@ -205,6 +205,7 @@ impl Entities {
         let pos = eye - DVec3::Y * f64::from(0.15f32);
         let r = Rocket::shot(pos, stack, Some(owner), dir, CROSSBOW_POWER, 1.0, &mut self.rng);
         self.fireworks.push(r);
+        self.sculk.shot(pos, crate::world::vibration::EventSource::player(owner, false));
     }
 
     /// v0.16 Track B: `FireworkRocketItem.asProjectile` from a dispenser at
@@ -215,6 +216,7 @@ impl Entities {
         let one = Stack { count: 1, ..stack };
         let r = Rocket::shot(pos, &one, None, step.as_dvec3(), DISPENSER_POWER, 1.0, &mut self.rng);
         self.fireworks.push(r);
+        self.sculk.shot(pos, crate::world::vibration::EventSource::NONE);
         self.pending_sounds.push(EntityEvent::Sound { sound: MobSound::Flight(Cue::Shoot), pos });
     }
 
@@ -304,6 +306,11 @@ impl Entities {
         events: &mut Vec<EntityEvent>,
     ) {
         events.push(EntityEvent::FireworkBurst { pos: r.pos, vel: r.vel, fireworks: r.fireworks });
+        // `FireworkRocketEntity.explode`: `explode` from the rocket's owner.
+        let source = r.owner.map_or(crate::world::vibration::EventSource::NONE, |p| {
+            crate::world::vibration::EventSource::player(p, false)
+        });
+        self.sculk.post(r.pos, crate::world::vibration::GameEvent::Explode, source, None);
         let explosions = r.explosions();
         let stars = explosions.len();
         if stars == 0 {

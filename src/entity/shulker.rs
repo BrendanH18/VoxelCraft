@@ -485,6 +485,7 @@ impl Entities {
                     let owner = self.mobs[i].uid;
                     let bullet = Bullet::new(world, from, owner, id, tp, axis_of(attach), &mut self.rng);
                     self.shulker_bullets.push(bullet);
+                    self.sculk.shot(from, crate::world::vibration::EventSource::mob(owner));
                     events.push(EntityEvent::Sound { sound: MobSound::Shulker(Cue::Shoot), pos: from });
                 }
             } else {
@@ -557,6 +558,9 @@ impl Entities {
                 continue;
             }
             let from = self.mobs[i].pos;
+            // `Shulker.teleportSomewhere`: `teleport` where it left.
+            let source = crate::world::vibration::EventSource::mob(self.mobs[i].uid);
+            self.sculk.post(from, crate::world::vibration::GameEvent::Teleport, source, None);
             let m = &mut self.mobs[i];
             m.riding = None;
             m.pos = centre(target);
@@ -618,7 +622,9 @@ impl Entities {
             if alive {
                 i += 1;
             } else {
-                self.shulker_bullets.swap_remove(i);
+                let b = self.shulker_bullets.swap_remove(i);
+                let source = super::sculk_events::Sculk::projectile_source(None, Some(b.owner));
+                self.sculk.land(world, b.pos, b.pos - b.previous_pos, source);
             }
         }
     }

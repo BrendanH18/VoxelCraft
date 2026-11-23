@@ -1,0 +1,2330 @@
+{
+  "reference": "Minecraft Java Edition 26.3",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "sources": [
+    "net.minecraft.world.level.gameevent.GameEvent static registrations (order, notificationRadius)",
+    "net.minecraft.world.level.gameevent.vibrations.VibrationSystem VIBRATION_FREQUENCY_FOR_EVENT and RESONANCE_EVENTS",
+    "data/minecraft/tags/game_event/*.json and data/minecraft/tags/block/*.json",
+    "SculkSensorBlock, CalibratedSculkSensorBlock, SculkShriekerBlockEntity and the VibrationUser classes (getListenerRadius, getActiveTicks, COOLDOWN_TICKS, SHRIEKING_TICKS, RESONANCE_PITCH_BEND)",
+    "every net.minecraft class method naming a GameEvent field and calling gameEvent, causeUseVibration or forceScheduleVibration (lambdas folded into their method)"
+  ],
+  "events": [
+    {
+      "name": "block_activate",
+      "radius": 16,
+      "frequency": 10,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "block_attach",
+      "radius": 16,
+      "frequency": 10,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "block_change",
+      "radius": 16,
+      "frequency": 11,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "block_close",
+      "radius": 16,
+      "frequency": 9,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "block_deactivate",
+      "radius": 16,
+      "frequency": 9,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "block_destroy",
+      "radius": 16,
+      "frequency": 12,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "block_detach",
+      "radius": 16,
+      "frequency": 9,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "block_open",
+      "radius": 16,
+      "frequency": 10,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "block_place",
+      "radius": 16,
+      "frequency": 13,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "bounce",
+      "radius": 16,
+      "frequency": 2,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "container_close",
+      "radius": 16,
+      "frequency": 9,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "container_open",
+      "radius": 16,
+      "frequency": 10,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "drink",
+      "radius": 16,
+      "frequency": 8,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "eat",
+      "radius": 16,
+      "frequency": 8,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "elytra_glide",
+      "radius": 16,
+      "frequency": 4,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "entity_damage",
+      "radius": 16,
+      "frequency": 7,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "entity_die",
+      "radius": 16,
+      "frequency": 15,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "entity_dismount",
+      "radius": 16,
+      "frequency": 5,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "entity_interact",
+      "radius": 16,
+      "frequency": 6,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "entity_mount",
+      "radius": 16,
+      "frequency": 6,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "entity_place",
+      "radius": 16,
+      "frequency": 14,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "entity_action",
+      "radius": 16,
+      "frequency": 4,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "equip",
+      "radius": 16,
+      "frequency": 5,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "explode",
+      "radius": 16,
+      "frequency": 15,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "flap",
+      "radius": 16,
+      "frequency": 1,
+      "tags": [
+        "vibrations"
+      ]
+    },
+    {
+      "name": "fluid_pickup",
+      "radius": 16,
+      "frequency": 12,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "fluid_place",
+      "radius": 16,
+      "frequency": 13,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "hit_ground",
+      "radius": 16,
+      "frequency": 2,
+      "tags": [
+        "vibrations",
+        "warden_can_listen",
+        "ignore_vibrations_sneaking"
+      ]
+    },
+    {
+      "name": "instrument_play",
+      "radius": 16,
+      "frequency": 3,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "item_interact_finish",
+      "radius": 16,
+      "frequency": 3,
+      "tags": [
+        "vibrations",
+        "warden_can_listen",
+        "ignore_vibrations_sneaking"
+      ]
+    },
+    {
+      "name": "item_interact_start",
+      "radius": 16,
+      "frequency": 0,
+      "tags": [
+        "ignore_vibrations_sneaking"
+      ]
+    },
+    {
+      "name": "jukebox_play",
+      "radius": 10,
+      "frequency": 0,
+      "tags": []
+    },
+    {
+      "name": "jukebox_stop_play",
+      "radius": 10,
+      "frequency": 0,
+      "tags": []
+    },
+    {
+      "name": "lightning_strike",
+      "radius": 16,
+      "frequency": 14,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "note_block_play",
+      "radius": 16,
+      "frequency": 10,
+      "tags": [
+        "vibrations",
+        "warden_can_listen",
+        "allay_can_listen"
+      ]
+    },
+    {
+      "name": "prime_fuse",
+      "radius": 16,
+      "frequency": 10,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "projectile_land",
+      "radius": 16,
+      "frequency": 2,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "projectile_shoot",
+      "radius": 16,
+      "frequency": 3,
+      "tags": [
+        "vibrations",
+        "warden_can_listen",
+        "ignore_vibrations_sneaking"
+      ]
+    },
+    {
+      "name": "sculk_sensor_tendrils_clicking",
+      "radius": 16,
+      "frequency": 0,
+      "tags": [
+        "warden_can_listen",
+        "shrieker_can_listen"
+      ]
+    },
+    {
+      "name": "shear",
+      "radius": 16,
+      "frequency": 6,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "shriek",
+      "radius": 32,
+      "frequency": 0,
+      "tags": [
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "splash",
+      "radius": 16,
+      "frequency": 2,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "step",
+      "radius": 16,
+      "frequency": 1,
+      "tags": [
+        "vibrations",
+        "warden_can_listen",
+        "ignore_vibrations_sneaking"
+      ]
+    },
+    {
+      "name": "swim",
+      "radius": 16,
+      "frequency": 1,
+      "tags": [
+        "vibrations",
+        "warden_can_listen",
+        "ignore_vibrations_sneaking"
+      ]
+    },
+    {
+      "name": "teleport",
+      "radius": 16,
+      "frequency": 14,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "unequip",
+      "radius": 16,
+      "frequency": 4,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "resonate_1",
+      "radius": 16,
+      "frequency": 1,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "resonate_2",
+      "radius": 16,
+      "frequency": 2,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "resonate_3",
+      "radius": 16,
+      "frequency": 3,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "resonate_4",
+      "radius": 16,
+      "frequency": 4,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "resonate_5",
+      "radius": 16,
+      "frequency": 5,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "resonate_6",
+      "radius": 16,
+      "frequency": 6,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "resonate_7",
+      "radius": 16,
+      "frequency": 7,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "resonate_8",
+      "radius": 16,
+      "frequency": 8,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "resonate_9",
+      "radius": 16,
+      "frequency": 9,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "resonate_10",
+      "radius": 16,
+      "frequency": 10,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "resonate_11",
+      "radius": 16,
+      "frequency": 11,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "resonate_12",
+      "radius": 16,
+      "frequency": 12,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "resonate_13",
+      "radius": 16,
+      "frequency": 13,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "resonate_14",
+      "radius": 16,
+      "frequency": 14,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    },
+    {
+      "name": "resonate_15",
+      "radius": 16,
+      "frequency": 15,
+      "tags": [
+        "vibrations",
+        "warden_can_listen"
+      ]
+    }
+  ],
+  "tags": {
+    "vibrations": [
+      "block_attach",
+      "block_change",
+      "block_close",
+      "block_destroy",
+      "block_detach",
+      "block_open",
+      "block_place",
+      "block_activate",
+      "block_deactivate",
+      "bounce",
+      "container_close",
+      "container_open",
+      "drink",
+      "eat",
+      "elytra_glide",
+      "entity_damage",
+      "entity_die",
+      "entity_dismount",
+      "entity_interact",
+      "entity_mount",
+      "entity_place",
+      "entity_action",
+      "equip",
+      "explode",
+      "fluid_pickup",
+      "fluid_place",
+      "hit_ground",
+      "instrument_play",
+      "item_interact_finish",
+      "lightning_strike",
+      "note_block_play",
+      "prime_fuse",
+      "projectile_land",
+      "projectile_shoot",
+      "shear",
+      "splash",
+      "step",
+      "swim",
+      "teleport",
+      "unequip",
+      "resonate_1",
+      "resonate_2",
+      "resonate_3",
+      "resonate_4",
+      "resonate_5",
+      "resonate_6",
+      "resonate_7",
+      "resonate_8",
+      "resonate_9",
+      "resonate_10",
+      "resonate_11",
+      "resonate_12",
+      "resonate_13",
+      "resonate_14",
+      "resonate_15",
+      "flap"
+    ],
+    "warden_can_listen": [
+      "block_attach",
+      "block_change",
+      "block_close",
+      "block_destroy",
+      "block_detach",
+      "block_open",
+      "block_place",
+      "block_activate",
+      "block_deactivate",
+      "bounce",
+      "container_close",
+      "container_open",
+      "drink",
+      "eat",
+      "elytra_glide",
+      "entity_damage",
+      "entity_die",
+      "entity_dismount",
+      "entity_interact",
+      "entity_mount",
+      "entity_place",
+      "entity_action",
+      "equip",
+      "explode",
+      "fluid_pickup",
+      "fluid_place",
+      "hit_ground",
+      "instrument_play",
+      "item_interact_finish",
+      "lightning_strike",
+      "note_block_play",
+      "prime_fuse",
+      "projectile_land",
+      "projectile_shoot",
+      "shear",
+      "splash",
+      "step",
+      "swim",
+      "teleport",
+      "unequip",
+      "resonate_1",
+      "resonate_2",
+      "resonate_3",
+      "resonate_4",
+      "resonate_5",
+      "resonate_6",
+      "resonate_7",
+      "resonate_8",
+      "resonate_9",
+      "resonate_10",
+      "resonate_11",
+      "resonate_12",
+      "resonate_13",
+      "resonate_14",
+      "resonate_15",
+      "shriek",
+      "sculk_sensor_tendrils_clicking"
+    ],
+    "shrieker_can_listen": [
+      "sculk_sensor_tendrils_clicking"
+    ],
+    "ignore_vibrations_sneaking": [
+      "hit_ground",
+      "projectile_shoot",
+      "step",
+      "swim",
+      "item_interact_start",
+      "item_interact_finish"
+    ],
+    "allay_can_listen": [
+      "note_block_play"
+    ]
+  },
+  "block_tags": {
+    "occludes_vibration_signals": [
+      "#minecraft:wool"
+    ],
+    "dampens_vibrations": [
+      "#minecraft:wool",
+      "#minecraft:wool_carpets",
+      "#minecraft:wool_slabs",
+      "#minecraft:wool_stairs"
+    ],
+    "vibration_resonators": [
+      "minecraft:amethyst_block"
+    ]
+  },
+  "listeners": {
+    "sculk_sensor": {
+      "radius": 8,
+      "active_ticks": 30,
+      "cooldown_ticks": 10
+    },
+    "calibrated_sculk_sensor": {
+      "radius": 16,
+      "active_ticks": 10
+    },
+    "sculk_shrieker": {
+      "radius": 8,
+      "shrieking_ticks": 90
+    },
+    "warden": {
+      "radius": 16
+    },
+    "allay": {
+      "radius": 16
+    }
+  },
+  "resonance_tones": [
+    0,
+    0,
+    2,
+    4,
+    6,
+    7,
+    9,
+    10,
+    12,
+    14,
+    15,
+    18,
+    19,
+    21,
+    22,
+    24
+  ],
+  "call_sites": [
+    {
+      "class": "core.cauldron.CauldronInteractions",
+      "method": "bootStrap",
+      "events": [
+        "fluid_pickup",
+        "fluid_place"
+      ]
+    },
+    {
+      "class": "core.cauldron.CauldronInteractions",
+      "method": "emptyBucket",
+      "events": [
+        "fluid_place"
+      ]
+    },
+    {
+      "class": "core.cauldron.CauldronInteractions",
+      "method": "fillBucket",
+      "events": [
+        "fluid_pickup"
+      ]
+    },
+    {
+      "class": "core.component.BlockTransformer",
+      "method": "transformBlock",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "core.dispenser.DispenseItemBehavior$13",
+      "method": "execute",
+      "events": [
+        "fluid_place"
+      ]
+    },
+    {
+      "class": "core.dispenser.DispenseItemBehavior$4",
+      "method": "execute",
+      "events": [
+        "fluid_pickup"
+      ]
+    },
+    {
+      "class": "core.dispenser.DispenseItemBehavior$6",
+      "method": "execute",
+      "events": [
+        "entity_place"
+      ]
+    },
+    {
+      "class": "core.dispenser.DispenseItemBehavior$7",
+      "method": "execute",
+      "events": [
+        "block_place"
+      ]
+    },
+    {
+      "class": "core.dispenser.DispenseItemBehavior$8",
+      "method": "execute",
+      "events": [
+        "block_place"
+      ]
+    },
+    {
+      "class": "core.dispenser.DispenseItemBehavior$9",
+      "method": "takeLiquid",
+      "events": [
+        "fluid_pickup"
+      ]
+    },
+    {
+      "class": "core.dispenser.FlintAndSteelDispenseItemBehavior",
+      "method": "execute",
+      "events": [
+        "block_change",
+        "block_place"
+      ]
+    },
+    {
+      "class": "core.dispenser.ShearsDispenseItemBehavior",
+      "method": "tryShearBeehive",
+      "events": [
+        "shear"
+      ]
+    },
+    {
+      "class": "core.dispenser.ShearsDispenseItemBehavior",
+      "method": "tryShearEntity",
+      "events": [
+        "shear"
+      ]
+    },
+    {
+      "class": "core.dispenser.SpawnEggItemBehavior",
+      "method": "execute",
+      "events": [
+        "entity_place"
+      ]
+    },
+    {
+      "class": "server.level.ServerPlayer",
+      "method": "die",
+      "events": [
+        "entity_die"
+      ]
+    },
+    {
+      "class": "world.entity.Entity",
+      "method": "applyMovementEmissionAndPlaySound",
+      "events": [
+        "swim"
+      ]
+    },
+    {
+      "class": "world.entity.Entity",
+      "method": "checkFallDamage",
+      "events": [
+        "hit_ground"
+      ]
+    },
+    {
+      "class": "world.entity.Entity",
+      "method": "doWaterSplashEffect",
+      "events": [
+        "splash"
+      ]
+    },
+    {
+      "class": "world.entity.Entity",
+      "method": "dropAllLeashConnections",
+      "events": [
+        "shear"
+      ]
+    },
+    {
+      "class": "world.entity.Entity",
+      "method": "interact",
+      "events": [
+        "entity_action",
+        "entity_interact"
+      ]
+    },
+    {
+      "class": "world.entity.Entity",
+      "method": "kill",
+      "events": [
+        "entity_die"
+      ]
+    },
+    {
+      "class": "world.entity.Entity",
+      "method": "processFlappingMovement",
+      "events": [
+        "flap"
+      ]
+    },
+    {
+      "class": "world.entity.Entity",
+      "method": "removeVehicle",
+      "events": [
+        "entity_dismount"
+      ]
+    },
+    {
+      "class": "world.entity.Entity",
+      "method": "restituteMovementAfterCollisions",
+      "events": [
+        "bounce"
+      ]
+    },
+    {
+      "class": "world.entity.Entity",
+      "method": "startRiding",
+      "events": [
+        "entity_mount"
+      ]
+    },
+    {
+      "class": "world.entity.Entity",
+      "method": "vibrationAndSoundEffectsFromBlock",
+      "events": [
+        "step"
+      ]
+    },
+    {
+      "class": "world.entity.LightningBolt",
+      "method": "tick",
+      "events": [
+        "lightning_strike"
+      ]
+    },
+    {
+      "class": "world.entity.LivingEntity",
+      "method": "actuallyHurt",
+      "events": [
+        "entity_damage"
+      ]
+    },
+    {
+      "class": "world.entity.LivingEntity",
+      "method": "checkTotemDeathProtection",
+      "events": [
+        "item_interact_finish"
+      ]
+    },
+    {
+      "class": "world.entity.LivingEntity",
+      "method": "die",
+      "events": [
+        "entity_die"
+      ]
+    },
+    {
+      "class": "world.entity.LivingEntity",
+      "method": "onEquipItem",
+      "events": [
+        "equip",
+        "unequip"
+      ]
+    },
+    {
+      "class": "world.entity.LivingEntity",
+      "method": "startUsingItem",
+      "events": [
+        "item_interact_start"
+      ]
+    },
+    {
+      "class": "world.entity.LivingEntity",
+      "method": "stopUsingItem",
+      "events": [
+        "item_interact_finish"
+      ]
+    },
+    {
+      "class": "world.entity.LivingEntity",
+      "method": "updateFallFlying",
+      "events": [
+        "elytra_glide"
+      ]
+    },
+    {
+      "class": "world.entity.Mob",
+      "method": "ate",
+      "events": [
+        "eat"
+      ]
+    },
+    {
+      "class": "world.entity.Mob",
+      "method": "interact",
+      "events": [
+        "entity_interact"
+      ]
+    },
+    {
+      "class": "world.entity.Mob",
+      "method": "shearItem",
+      "events": [
+        "shear"
+      ]
+    },
+    {
+      "class": "world.entity.OminousItemSpawner",
+      "method": "spawnItem",
+      "events": [
+        "entity_place"
+      ]
+    },
+    {
+      "class": "world.entity.ai.behavior.HarvestFarmland",
+      "method": "tick",
+      "events": [
+        "block_place"
+      ]
+    },
+    {
+      "class": "world.entity.ai.behavior.TryLaySpawnOnFluidNearLand",
+      "method": "create",
+      "events": [
+        "block_place"
+      ]
+    },
+    {
+      "class": "world.entity.animal.armadillo.Armadillo",
+      "method": "brushOffScute",
+      "events": [
+        "entity_interact"
+      ]
+    },
+    {
+      "class": "world.entity.animal.armadillo.Armadillo",
+      "method": "customServerAiStep",
+      "events": [
+        "entity_place"
+      ]
+    },
+    {
+      "class": "world.entity.animal.armadillo.Armadillo",
+      "method": "rollOut",
+      "events": [
+        "entity_action"
+      ]
+    },
+    {
+      "class": "world.entity.animal.armadillo.Armadillo",
+      "method": "rollUp",
+      "events": [
+        "entity_action"
+      ]
+    },
+    {
+      "class": "world.entity.animal.camel.Camel",
+      "method": "handleEating",
+      "events": [
+        "eat"
+      ]
+    },
+    {
+      "class": "world.entity.animal.camel.Camel",
+      "method": "handleStartJump",
+      "events": [
+        "entity_action"
+      ]
+    },
+    {
+      "class": "world.entity.animal.camel.Camel",
+      "method": "sitDown",
+      "events": [
+        "entity_action"
+      ]
+    },
+    {
+      "class": "world.entity.animal.camel.Camel",
+      "method": "standUp",
+      "events": [
+        "entity_action"
+      ]
+    },
+    {
+      "class": "world.entity.animal.camel.Camel",
+      "method": "standUpInstantly",
+      "events": [
+        "entity_action"
+      ]
+    },
+    {
+      "class": "world.entity.animal.chicken.Chicken",
+      "method": "aiStep",
+      "events": [
+        "entity_place"
+      ]
+    },
+    {
+      "class": "world.entity.animal.cow.MushroomCow",
+      "method": "mobInteract",
+      "events": [
+        "shear"
+      ]
+    },
+    {
+      "class": "world.entity.animal.equine.AbstractHorse",
+      "method": "handleEating",
+      "events": [
+        "eat"
+      ]
+    },
+    {
+      "class": "world.entity.animal.fox.Fox$FoxEatBerriesGoal",
+      "method": "pickSweetBerries",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.entity.animal.golem.CopperGolem",
+      "method": "mobInteract",
+      "events": [
+        "shear"
+      ]
+    },
+    {
+      "class": "world.entity.animal.golem.SnowGolem",
+      "method": "aiStep",
+      "events": [
+        "block_place"
+      ]
+    },
+    {
+      "class": "world.entity.animal.golem.SnowGolem",
+      "method": "mobInteract",
+      "events": [
+        "shear"
+      ]
+    },
+    {
+      "class": "world.entity.animal.nautilus.AbstractNautilus",
+      "method": "handleStartJump",
+      "events": [
+        "entity_action"
+      ]
+    },
+    {
+      "class": "world.entity.animal.panda.Panda",
+      "method": "handleEating",
+      "events": [
+        "eat"
+      ]
+    },
+    {
+      "class": "world.entity.animal.rabbit.Rabbit$RaidGardenGoal",
+      "method": "tick",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.entity.animal.sheep.Sheep",
+      "method": "mobInteract",
+      "events": [
+        "shear"
+      ]
+    },
+    {
+      "class": "world.entity.animal.sniffer.Sniffer",
+      "method": "emitDiggingParticles",
+      "events": [
+        "entity_action"
+      ]
+    },
+    {
+      "class": "world.entity.animal.turtle.Turtle",
+      "method": "aiStep",
+      "events": [
+        "entity_action"
+      ]
+    },
+    {
+      "class": "world.entity.animal.turtle.Turtle$TurtleLayEggGoal",
+      "method": "tick",
+      "events": [
+        "block_place"
+      ]
+    },
+    {
+      "class": "world.entity.animal.wolf.Wolf",
+      "method": "tick",
+      "events": [
+        "entity_action"
+      ]
+    },
+    {
+      "class": "world.entity.boss.enderdragon.EnderDragon",
+      "method": "kill",
+      "events": [
+        "entity_die"
+      ]
+    },
+    {
+      "class": "world.entity.boss.enderdragon.EnderDragon",
+      "method": "tickDeath",
+      "events": [
+        "entity_die"
+      ]
+    },
+    {
+      "class": "world.entity.decoration.ArmorStand",
+      "method": "causeDamage",
+      "events": [
+        "entity_damage"
+      ]
+    },
+    {
+      "class": "world.entity.decoration.ArmorStand",
+      "method": "hurtServer",
+      "events": [
+        "entity_damage"
+      ]
+    },
+    {
+      "class": "world.entity.decoration.ArmorStand",
+      "method": "kill",
+      "events": [
+        "entity_die"
+      ]
+    },
+    {
+      "class": "world.entity.decoration.BlockAttachedEntity",
+      "method": "kill",
+      "events": [
+        "entity_die"
+      ]
+    },
+    {
+      "class": "world.entity.decoration.ItemFrame",
+      "method": "dropItem",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.entity.decoration.ItemFrame",
+      "method": "hurtServer",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.entity.decoration.ItemFrame",
+      "method": "interact",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.entity.decoration.LeashFenceKnotEntity",
+      "method": "interact",
+      "events": [
+        "block_attach"
+      ]
+    },
+    {
+      "class": "world.entity.item.ItemEntity",
+      "method": "hurtServer",
+      "events": [
+        "entity_damage"
+      ]
+    },
+    {
+      "class": "world.entity.monster.Creeper",
+      "method": "tick",
+      "events": [
+        "prime_fuse"
+      ]
+    },
+    {
+      "class": "world.entity.monster.Enderman",
+      "method": "teleport",
+      "events": [
+        "teleport"
+      ]
+    },
+    {
+      "class": "world.entity.monster.Enderman$EndermanLeaveBlockGoal",
+      "method": "tick",
+      "events": [
+        "block_place"
+      ]
+    },
+    {
+      "class": "world.entity.monster.Enderman$EndermanTakeBlockGoal",
+      "method": "tick",
+      "events": [
+        "block_destroy"
+      ]
+    },
+    {
+      "class": "world.entity.monster.Ravager",
+      "method": "roar",
+      "events": [
+        "entity_action"
+      ]
+    },
+    {
+      "class": "world.entity.monster.Shulker",
+      "method": "setRawPeekAmount",
+      "events": [
+        "container_close",
+        "container_open"
+      ]
+    },
+    {
+      "class": "world.entity.monster.Shulker",
+      "method": "teleportSomewhere",
+      "events": [
+        "teleport"
+      ]
+    },
+    {
+      "class": "world.entity.monster.Witch",
+      "method": "aiStep",
+      "events": [
+        "drink"
+      ]
+    },
+    {
+      "class": "world.entity.monster.creaking.Creaking",
+      "method": "activate",
+      "events": [
+        "entity_action"
+      ]
+    },
+    {
+      "class": "world.entity.monster.creaking.Creaking",
+      "method": "aiStep",
+      "events": [
+        "entity_action"
+      ]
+    },
+    {
+      "class": "world.entity.monster.creaking.Creaking",
+      "method": "deactivate",
+      "events": [
+        "entity_action"
+      ]
+    },
+    {
+      "class": "world.entity.monster.creaking.Creaking",
+      "method": "hurtServer",
+      "events": [
+        "entity_action"
+      ]
+    },
+    {
+      "class": "world.entity.monster.cubemob.SulfurCube",
+      "method": "mobInteract",
+      "events": [
+        "entity_interact",
+        "shear"
+      ]
+    },
+    {
+      "class": "world.entity.monster.cubemob.SulfurCube",
+      "method": "primeTime",
+      "events": [
+        "prime_fuse"
+      ]
+    },
+    {
+      "class": "world.entity.monster.illager.Evoker$EvokerAttackSpellGoal",
+      "method": "createSpellEntity",
+      "events": [
+        "entity_place"
+      ]
+    },
+    {
+      "class": "world.entity.monster.illager.Evoker$EvokerSummonSpellGoal",
+      "method": "performSpellCasting",
+      "events": [
+        "entity_place"
+      ]
+    },
+    {
+      "class": "world.entity.monster.skeleton.Bogged",
+      "method": "mobInteract",
+      "events": [
+        "shear"
+      ]
+    },
+    {
+      "class": "world.entity.player.Player",
+      "method": "actuallyHurt",
+      "events": [
+        "entity_damage"
+      ]
+    },
+    {
+      "class": "world.entity.player.Player",
+      "method": "interactOn",
+      "events": [
+        "entity_interact"
+      ]
+    },
+    {
+      "class": "world.entity.projectile.FireworkRocketEntity",
+      "method": "explode",
+      "events": [
+        "explode"
+      ]
+    },
+    {
+      "class": "world.entity.projectile.Projectile",
+      "method": "onHit",
+      "events": [
+        "projectile_land"
+      ]
+    },
+    {
+      "class": "world.entity.projectile.Projectile",
+      "method": "tick",
+      "events": [
+        "projectile_shoot"
+      ]
+    },
+    {
+      "class": "world.entity.projectile.ShulkerBullet",
+      "method": "destroy",
+      "events": [
+        "entity_damage"
+      ]
+    },
+    {
+      "class": "world.entity.vehicle.VehicleEntity",
+      "method": "hurtServer",
+      "events": [
+        "entity_damage"
+      ]
+    },
+    {
+      "class": "world.entity.vehicle.boat.AbstractBoat",
+      "method": "onAboveBubbleColumn",
+      "events": [
+        "splash"
+      ]
+    },
+    {
+      "class": "world.entity.vehicle.boat.AbstractChestBoat",
+      "method": "interact",
+      "events": [
+        "container_open"
+      ]
+    },
+    {
+      "class": "world.entity.vehicle.boat.AbstractChestBoat",
+      "method": "openCustomInventoryScreen",
+      "events": [
+        "container_open"
+      ]
+    },
+    {
+      "class": "world.entity.vehicle.boat.AbstractChestBoat",
+      "method": "stopOpen",
+      "events": [
+        "container_close"
+      ]
+    },
+    {
+      "class": "world.entity.vehicle.minecart.MinecartChest",
+      "method": "interact",
+      "events": [
+        "container_open"
+      ]
+    },
+    {
+      "class": "world.entity.vehicle.minecart.MinecartChest",
+      "method": "stopOpen",
+      "events": [
+        "container_close"
+      ]
+    },
+    {
+      "class": "world.item.ArmorStandItem",
+      "method": "useOn",
+      "events": [
+        "entity_place"
+      ]
+    },
+    {
+      "class": "world.item.BlockItem",
+      "method": "place",
+      "events": [
+        "block_place"
+      ]
+    },
+    {
+      "class": "world.item.BoatItem",
+      "method": "use",
+      "events": [
+        "entity_place"
+      ]
+    },
+    {
+      "class": "world.item.BoneMealItem",
+      "method": "useOn",
+      "events": [
+        "item_interact_finish"
+      ]
+    },
+    {
+      "class": "world.item.BottleItem",
+      "method": "use",
+      "events": [
+        "fluid_pickup"
+      ]
+    },
+    {
+      "class": "world.item.BucketItem",
+      "method": "playEmptySound",
+      "events": [
+        "fluid_place"
+      ]
+    },
+    {
+      "class": "world.item.BucketItem",
+      "method": "use",
+      "events": [
+        "fluid_pickup"
+      ]
+    },
+    {
+      "class": "world.item.CushionItem",
+      "method": "useOn",
+      "events": [
+        "entity_place"
+      ]
+    },
+    {
+      "class": "world.item.EndCrystalItem",
+      "method": "useOn",
+      "events": [
+        "entity_place"
+      ]
+    },
+    {
+      "class": "world.item.EnderEyeItem",
+      "method": "use",
+      "events": [
+        "projectile_shoot"
+      ]
+    },
+    {
+      "class": "world.item.FireChargeItem",
+      "method": "useOn",
+      "events": [
+        "block_change",
+        "block_place"
+      ]
+    },
+    {
+      "class": "world.item.FishingRodItem",
+      "method": "use",
+      "events": [
+        "item_interact_finish",
+        "item_interact_start"
+      ]
+    },
+    {
+      "class": "world.item.FlintAndSteelItem",
+      "method": "useOn",
+      "events": [
+        "block_change",
+        "block_place"
+      ]
+    },
+    {
+      "class": "world.item.HangingEntityItem",
+      "method": "useOn",
+      "events": [
+        "entity_place"
+      ]
+    },
+    {
+      "class": "world.item.HoneycombItem",
+      "method": "useOn",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.item.InstrumentItem",
+      "method": "play",
+      "events": [
+        "instrument_play"
+      ]
+    },
+    {
+      "class": "world.item.JukeboxPlayable",
+      "method": "tryInsertIntoJukebox",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.item.JukeboxSongPlayer",
+      "method": "stop",
+      "events": [
+        "jukebox_stop_play"
+      ]
+    },
+    {
+      "class": "world.item.JukeboxSongPlayer",
+      "method": "tick",
+      "events": [
+        "jukebox_play"
+      ]
+    },
+    {
+      "class": "world.item.LeadItem",
+      "method": "bindPlayerMobs",
+      "events": [
+        "block_attach"
+      ]
+    },
+    {
+      "class": "world.item.MinecartItem",
+      "method": "useOn",
+      "events": [
+        "entity_place"
+      ]
+    },
+    {
+      "class": "world.item.MobBucketItem",
+      "method": "checkExtraContent",
+      "events": [
+        "entity_place"
+      ]
+    },
+    {
+      "class": "world.item.PotionItem",
+      "method": "useOn",
+      "events": [
+        "fluid_place"
+      ]
+    },
+    {
+      "class": "world.item.ShearsItem",
+      "method": "useOn",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.item.SolidBucketItem",
+      "method": "emptyContents",
+      "events": [
+        "fluid_place"
+      ]
+    },
+    {
+      "class": "world.item.SpawnEggItem",
+      "method": "spawnMob",
+      "events": [
+        "entity_place"
+      ]
+    },
+    {
+      "class": "world.item.SpawnEggItem",
+      "method": "useOn",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.item.component.Consumable",
+      "method": "onConsume",
+      "events": [
+        "drink",
+        "eat"
+      ]
+    },
+    {
+      "class": "world.item.consume_effects.TeleportRandomlyConsumeEffect",
+      "method": "apply",
+      "events": [
+        "teleport"
+      ]
+    },
+    {
+      "class": "world.item.enchantment.Enchantments",
+      "method": "bootstrap",
+      "events": [
+        "block_place"
+      ]
+    },
+    {
+      "class": "world.item.enchantment.effects.SetBlockProperties",
+      "method": "<init>",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.BaseSpawner",
+      "method": "serverTick",
+      "events": [
+        "entity_place"
+      ]
+    },
+    {
+      "class": "world.level.Level",
+      "method": "destroyBlock",
+      "events": [
+        "block_destroy"
+      ]
+    },
+    {
+      "class": "world.level.ServerExplosion",
+      "method": "explode",
+      "events": [
+        "explode"
+      ]
+    },
+    {
+      "class": "world.level.block.AbstractCandleBlock",
+      "method": "extinguish",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.BasePressurePlateBlock",
+      "method": "checkPressed",
+      "events": [
+        "block_activate",
+        "block_deactivate"
+      ]
+    },
+    {
+      "class": "world.level.block.BeehiveBlock",
+      "method": "useItemOn",
+      "events": [
+        "fluid_pickup",
+        "shear"
+      ]
+    },
+    {
+      "class": "world.level.block.BellBlock",
+      "method": "attemptToRing",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.BigDripleafBlock",
+      "method": "setTilt",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.Block",
+      "method": "playerWillDestroy",
+      "events": [
+        "block_destroy"
+      ]
+    },
+    {
+      "class": "world.level.block.BrushableBlock",
+      "method": "onBrokenAfterFall",
+      "events": [
+        "block_destroy"
+      ]
+    },
+    {
+      "class": "world.level.block.ButtonBlock",
+      "method": "checkPressed",
+      "events": [
+        "block_activate",
+        "block_deactivate"
+      ]
+    },
+    {
+      "class": "world.level.block.ButtonBlock",
+      "method": "press",
+      "events": [
+        "block_activate"
+      ]
+    },
+    {
+      "class": "world.level.block.CakeBlock",
+      "method": "eat",
+      "events": [
+        "block_destroy",
+        "eat"
+      ]
+    },
+    {
+      "class": "world.level.block.CakeBlock",
+      "method": "useItemOn",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.CampfireBlock",
+      "method": "douse",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.CauldronBlock",
+      "method": "handlePrecipitation",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.CauldronBlock",
+      "method": "receiveStalactiteDrip",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.CaveVines",
+      "method": "use",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.ChiseledBookShelfBlock",
+      "method": "removeBook",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.ComposterBlock",
+      "method": "addLayer",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.ComposterBlock",
+      "method": "empty",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.CopperGolemStatueBlock",
+      "method": "updatePose",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.DaylightDetectorBlock",
+      "method": "useWithoutItem",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.DecoratedPotBlock",
+      "method": "useItemOn",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.DecoratedPotBlock",
+      "method": "useWithoutItem",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.DispenserBlock",
+      "method": "dispenseFrom",
+      "events": [
+        "block_activate"
+      ]
+    },
+    {
+      "class": "world.level.block.DoorBlock",
+      "method": "neighborChanged",
+      "events": [
+        "block_close",
+        "block_open"
+      ]
+    },
+    {
+      "class": "world.level.block.DoorBlock",
+      "method": "setOpen",
+      "events": [
+        "block_close",
+        "block_open"
+      ]
+    },
+    {
+      "class": "world.level.block.DoorBlock",
+      "method": "useWithoutItem",
+      "events": [
+        "block_close",
+        "block_open"
+      ]
+    },
+    {
+      "class": "world.level.block.DriedGhastBlock",
+      "method": "tick",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.DriedGhastBlock",
+      "method": "tickWaterlogged",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.EyeblossomBlock",
+      "method": "tryChangingState",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.FarmlandBlock",
+      "method": "turnToBaseBlock",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.FenceGateBlock",
+      "method": "neighborChanged",
+      "events": [
+        "block_close",
+        "block_open"
+      ]
+    },
+    {
+      "class": "world.level.block.FenceGateBlock",
+      "method": "onExplosionHit",
+      "events": [
+        "block_close",
+        "block_open"
+      ]
+    },
+    {
+      "class": "world.level.block.FenceGateBlock",
+      "method": "useWithoutItem",
+      "events": [
+        "block_close",
+        "block_open"
+      ]
+    },
+    {
+      "class": "world.level.block.FlowerPotBlock",
+      "method": "useItemOn",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.FlowerPotBlock",
+      "method": "useWithoutItem",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.IceBlock",
+      "method": "melt",
+      "events": [
+        "block_destroy"
+      ]
+    },
+    {
+      "class": "world.level.block.LayeredCauldronBlock",
+      "method": "handlePrecipitation",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.LayeredCauldronBlock",
+      "method": "lowerFillLevel",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.LayeredCauldronBlock",
+      "method": "receiveStalactiteDrip",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.LecternBlock",
+      "method": "resetBookState",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.LeverBlock",
+      "method": "pull",
+      "events": [
+        "block_activate",
+        "block_deactivate"
+      ]
+    },
+    {
+      "class": "world.level.block.NoteBlock",
+      "method": "playNote",
+      "events": [
+        "note_block_play"
+      ]
+    },
+    {
+      "class": "world.level.block.PathBlock",
+      "method": "turnToBaseBlock",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.PointedDripstoneBlock",
+      "method": "maybeTransferFluid",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.PotentSulfurBlock",
+      "method": "onPlace",
+      "events": [
+        "block_activate"
+      ]
+    },
+    {
+      "class": "world.level.block.PumpkinBlock",
+      "method": "useItemOn",
+      "events": [
+        "shear"
+      ]
+    },
+    {
+      "class": "world.level.block.RespawnAnchorBlock",
+      "method": "charge",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.SculkSensorBlock",
+      "method": "activate",
+      "events": [
+        "sculk_sensor_tendrils_clicking"
+      ]
+    },
+    {
+      "class": "world.level.block.SculkSensorBlock",
+      "method": "stepOn",
+      "events": [
+        "step"
+      ]
+    },
+    {
+      "class": "world.level.block.ShelfBlock",
+      "method": "neighborChanged",
+      "events": [
+        "block_activate",
+        "block_deactivate"
+      ]
+    },
+    {
+      "class": "world.level.block.ShelfBlock",
+      "method": "swapHotbar",
+      "events": [
+        "entity_interact"
+      ]
+    },
+    {
+      "class": "world.level.block.ShelfBlock",
+      "method": "swapSingleItem",
+      "events": [
+        "item_interact_finish"
+      ]
+    },
+    {
+      "class": "world.level.block.SignBlock",
+      "method": "useItemOn",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.SnifferEggBlock",
+      "method": "onPlace",
+      "events": [
+        "block_place"
+      ]
+    },
+    {
+      "class": "world.level.block.SnowLayerBlock",
+      "method": "randomTick",
+      "events": [
+        "block_destroy"
+      ]
+    },
+    {
+      "class": "world.level.block.SweetBerryBushBlock",
+      "method": "randomTick",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.SweetBerryBushBlock",
+      "method": "useWithoutItem",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.TntBlock",
+      "method": "prime",
+      "events": [
+        "prime_fuse"
+      ]
+    },
+    {
+      "class": "world.level.block.TrapDoorBlock",
+      "method": "playSound",
+      "events": [
+        "block_close",
+        "block_open"
+      ]
+    },
+    {
+      "class": "world.level.block.TripWireBlock",
+      "method": "playerWillDestroy",
+      "events": [
+        "shear"
+      ]
+    },
+    {
+      "class": "world.level.block.TripWireHookBlock",
+      "method": "emitState",
+      "events": [
+        "block_activate",
+        "block_attach",
+        "block_deactivate",
+        "block_detach"
+      ]
+    },
+    {
+      "class": "world.level.block.TurtleEggBlock",
+      "method": "decreaseEggs",
+      "events": [
+        "block_destroy"
+      ]
+    },
+    {
+      "class": "world.level.block.TurtleEggBlock",
+      "method": "randomTick",
+      "events": [
+        "block_change",
+        "block_destroy"
+      ]
+    },
+    {
+      "class": "world.level.block.entity.BeehiveBlockEntity",
+      "method": "addOccupant",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.entity.BeehiveBlockEntity",
+      "method": "releaseOccupant",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.entity.CampfireBlockEntity",
+      "method": "cookTick",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.entity.CampfireBlockEntity",
+      "method": "placeFood",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.entity.ChiseledBookShelfBlockEntity",
+      "method": "updateState",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.entity.ContainerOpenersCounter",
+      "method": "decrementOpeners",
+      "events": [
+        "container_close"
+      ]
+    },
+    {
+      "class": "world.level.block.entity.ContainerOpenersCounter",
+      "method": "incrementOpeners",
+      "events": [
+        "container_open"
+      ]
+    },
+    {
+      "class": "world.level.block.entity.ContainerOpenersCounter",
+      "method": "recheckOpeners",
+      "events": [
+        "container_close",
+        "container_open"
+      ]
+    },
+    {
+      "class": "world.level.block.entity.CreakingHeartBlockEntity",
+      "method": "creakingHurt",
+      "events": [
+        "block_place"
+      ]
+    },
+    {
+      "class": "world.level.block.entity.CreakingHeartBlockEntity",
+      "method": "spawnProtector",
+      "events": [
+        "entity_place"
+      ]
+    },
+    {
+      "class": "world.level.block.entity.JukeboxBlockEntity",
+      "method": "notifyItemChangedInJukebox",
+      "events": [
+        "block_change"
+      ]
+    },
+    {
+      "class": "world.level.block.entity.JukeboxBlockEntity",
+      "method": "setRemoved",
+      "events": [
+        "jukebox_stop_play"
+      ]
+    },
+    {
+      "class": "world.level.block.entity.PotentSulfurBlockEntity",
+      "method": "<clinit>",
+      "events": [
+        "block_deactivate"
+      ]
+    },
+    {
+      "class": "world.level.block.entity.SculkShriekerBlockEntity",
+      "method": "shriek",
+      "events": [
+        "shriek"
+      ]
+    },
+    {
+      "class": "world.level.block.entity.ShelfBlockEntity",
+      "method": "setChanged",
+      "events": [
+        "block_activate"
+      ]
+    },
+    {
+      "class": "world.level.block.entity.ShulkerBoxBlockEntity",
+      "method": "startOpen",
+      "events": [
+        "container_open"
+      ]
+    },
+    {
+      "class": "world.level.block.entity.ShulkerBoxBlockEntity",
+      "method": "stopOpen",
+      "events": [
+        "container_close"
+      ]
+    },
+    {
+      "class": "world.level.block.entity.trialspawner.TrialSpawner",
+      "method": "spawnMob",
+      "events": [
+        "entity_place"
+      ]
+    },
+    {
+      "class": "world.level.block.piston.PistonBaseBlock",
+      "method": "moveBlocks",
+      "events": [
+        "block_destroy"
+      ]
+    },
+    {
+      "class": "world.level.block.piston.PistonBaseBlock",
+      "method": "triggerEvent",
+      "events": [
+        "block_activate",
+        "block_deactivate"
+      ]
+    }
+  ]
+}

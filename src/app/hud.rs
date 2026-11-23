@@ -548,6 +548,8 @@ pub(super) fn container_title(block: Option<crate::world::block::Block>) -> &'st
         Some(b) if b.base() == crate::world::block::Block::BARREL => "Barrel",
         // `container.shulkerBox`.
         Some(b) if crate::world::shulker_box::owns(b.0) => "Shulker Box",
+        // v0.17 Track C1: `container.crafter`.
+        Some(b) if crate::world::crafter::owns(b.0) => "Crafter",
         Some(b) if crate::world::utilities::ender_chest_of(b).is_some() => "Ender Chest",
         Some(b) => match r::component(b) {
             Some(Component::Hopper { .. }) => "Item Hopper",
@@ -560,7 +562,7 @@ pub(super) fn container_title(block: Option<crate::world::block::Block>) -> &'st
 }
 
 fn brewing_ui(ui: &mut Ui, b: &crate::world::brewing::BrewingStand, px: f32, py: f32, frame: u32) {
-    use crate::world::brewing::{BREW_TIME, FUEL_USES};
+    use crate::world::brewing::FUEL_USES;
     let dark = [0.45, 0.45, 0.45, 1.0];
     // Blaze fuel left, under the fuel slot.
     let (fx, fy) = (px + 16.0, py + 39.0);
@@ -576,7 +578,7 @@ fn brewing_ui(ui: &mut Ui, b: &crate::world::brewing::BrewingStand, px: f32, py:
     let (ax, ay) = (px + 99.0, py + 18.0);
     ui.rect(ax, ay, 6.0, 18.0, dark);
     if b.is_brewing() {
-        let h = (18.0 * (1.0 - b.brew_left / BREW_TIME)).floor();
+        let h = (18.0 * b.brew_progress()).floor();
         ui.rect(ax, ay, 6.0, h, WHITE);
         // Bubbles rising on the left of the ingredient.
         for i in 0..3u32 {
@@ -893,6 +895,15 @@ impl Game {
                 }
             }
             self.top_h()
+        } else if let Container::Chest(p) = self.body.container
+            && super::crafter::is_crafter(&self.world, p)
+        {
+            // v0.17 Track C1: `CrafterMenu`'s grid (the result is drawn, not a slot).
+            for i in 0..crate::world::crafter::SLOTS {
+                let (x, y) = super::crafter::grid_slot(i);
+                out.push((SlotRef::Chest(i), px + x, py + y));
+            }
+            self.top_h()
         } else if matches!(self.body.container, Container::Chest(_) | Container::Minecart(_)) {
             let count = self.open_container_count();
             let cols = if count == 9 { 3 } else { 9 };
@@ -1052,6 +1063,7 @@ impl Game {
             self.search_ui(ui);
         }
         let py = py + self.search_h();
+        let top_py = py;
         let title = match (self.body.container, self.session.mode) {
             (Container::CraftingTable, _) => "Crafting",
             (Container::Furnace(_), _) => "Furnace",
@@ -1098,10 +1110,10 @@ impl Game {
             // and a flame between input and fuel shows the fuel left.
             let (ax, ay) = (px + 7.0 + 4.0 * SLOT + 9.0, py + 18.0 + self.top_mid() + 5.0);
             let furnace = match self.body.container {
-                Container::Furnace(p) => self.world.furnace(p).copied(),
+                Container::Furnace(p) => self.world.furnace(p).cloned(),
                 _ => None,
             };
-            let progress = furnace.map_or(0.0, |f| f.cook / crate::world::furnace::COOK_TIME);
+            let progress = furnace.as_ref().map_or(0.0, |f| f.cook_progress());
             let dark = [0.45, 0.45, 0.45, 1.0];
             let lit = [1.0, 1.0, 1.0, 1.0];
             let filled = |x: f32| if (x - ax) / 17.0 < progress { lit } else { dark };
@@ -1115,7 +1127,7 @@ impl Game {
             }
             if let Some(f) = furnace {
                 let (fx, fy) = (px + 7.0 + 3.0 * SLOT + 4.0, py + 18.0 + SLOT + 2.0);
-                let left = if f.burn_total > 0.0 { f.burn_left / f.burn_total } else { 0.0 };
+                let left = f.burn_progress();
                 ui.rect(fx, fy, 10.0, 13.0, [0.6, 0.6, 0.6, 1.0]);
                 let h = (13.0 * left).ceil();
                 ui.rect(fx + 1.0, fy + 13.0 - h, 8.0, h, [1.0, 0.55, 0.1, 1.0]);
@@ -1188,6 +1200,14 @@ impl Game {
                 ui.rect(x + 1.0, y + 1.0, SLOT - 2.0, SLOT - 2.0, [1.0, 1.0, 1.0, 0.35]);
             }
         }
+        // v0.17 Track C1: the crafter's slot covers, indicator and preview.
+        let crafter = match self.body.container {
+            Container::Chest(p) if super::crafter::is_crafter(&self.world, p) => Some(p),
+            _ => None,
+        };
+        if let Some(p) = crafter {
+            self.crafter_ui(ui, p, px, top_py);
+        }
         let hovered_stack = match hovered {
             Some(SlotRef::Inventory(i)) => self.session.inventory.get(i),
             Some(SlotRef::Palette(item)) => Some(Stack::new(item, 1)),
@@ -1201,6 +1221,12 @@ impl Game {
         let recipe_hint = if self.recipe_book.open && self.shows_recipes() { self.recipe_book_ui(ui) } else { None };
         if let Some(hint) = recipe_hint {
             self.tooltip(ui, &hint);
+        } else if let (Some(p), Some(SlotRef::Chest(i)), None, None) =
+            (crafter, hovered, hovered_stack, self.session.inventory.cursor)
+            && !self.world.crafter_slot_disabled(p, i)
+        {
+            // `CrafterScreen`: `gui.togglable_slot`.
+            self.tooltip(ui, "Click to disable slot");
         } else if let Some(SlotRef::EnchantOffer(i)) = hovered {
             self.offer_tooltip(ui, i);
         } else if let Some(stack) = hovered_stack {

@@ -640,6 +640,7 @@ impl Entities {
                 continue;
             }
             let spit = super::thrown::Thrown::spit(mouth, target, m.uid, &mut self.rng);
+            self.sculk.shot(mouth, crate::world::vibration::EventSource::mob(m.uid));
             let m = &mut self.mobs[i];
             m.look_at(target, 1.0);
             m.attack_cooldown = 2.0;
@@ -765,6 +766,10 @@ impl Entities {
         } else {
             (s.passenger == Some(player)).then_some(seat - forward)
         }
+    }
+    /// Where a vehicle is: a mount's or a cart, boat or cushion's position.
+    pub fn vehicle_pos(&self, id: u32) -> Option<DVec3> {
+        if id & MOB_VEHICLE != 0 { self.mount(id).map(|m| m.pos) } else { self.cart(id).map(|c| c.pos) }
     }
     pub fn mount_for_player(&self, player: PlayerId) -> Option<u32> {
         self.mobs

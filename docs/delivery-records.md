@@ -337,17 +337,20 @@ as documented limitations.
 The owner played v0.16 and on 2026-11-23 asked for it to be tagged and
 released. The v0.16 build carries everything merged since v0.13: v0.14
 (structures, wildlife, deep dark and trials, build-5000 wave 1; tag
-`v0.14`, draft never published), v0.15 (villages and raids; tag `v0.15`,
+`v0.14`, its release published on 2026-11-23), v0.15 (villages and raids; tag `v0.15`,
 no release built) and v0.16 (the End and the Wither; [#99](https://github.com/BrendanH18/VoxelCraft/pull/99),
 [#102](https://github.com/BrendanH18/VoxelCraft/pull/102)), with the LAN
-and generation 5 fixes of #106 to #108. Once it is published, players on v0.13 update straight to
-v0.16, and its release notes keep the 0.14.0 and 0.15.0 sections for them.
+and generation 5 fixes of #106 to #108. `v0.16` was tagged at `0848508`
+([#113](https://github.com/BrendanH18/VoxelCraft/pull/113)); its packages
+built, their checksums were checked, and the release was published as the
+latest on 2026-11-23. Its release notes keep the 0.14.0 and 0.15.0
+sections for players coming from v0.13 or v0.14.
 
 - **Evidence:** the owner's play of the v0.16 build. v0.14's tag gate run
   ([record](verification/2026-11-16-tag-gate-run.md)) and v0.15's offscreen
   run ([record](verification/2026-11-18-v0.15-frame-time.md)) pass; v0.16
   has no frame-time run yet.
-- **Exception (owner, 2026-11-23):** to be tagged and released without v0.16's
+- **Exception (owner, 2026-11-23):** tagged and released without v0.16's
   offscreen frame-time run, which needs the reference Mac. It is still
   owed, and no row moved to **Verified**.
 - **Known gaps** ship as the release notes' known limitations, from the

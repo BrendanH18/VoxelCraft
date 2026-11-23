@@ -172,6 +172,49 @@ impl HeadlessHost {
             if s.dead || s.connection.send(Packet::State(json!({"tick":self.tick,"sequence":s.input.sequence,"harness":true,"state":agent.observe(&self.world,0)}))).and_then(|()|s.connection.flush()).is_err() {s.dead=true;s.connection.close("Client is too slow or disconnected");}
         }
         crate::simulation::tick_world_rules(&mut self.world, self.spawn, true, 3);
+        // v0.17 Track B: moving blocks push the harness players and entities.
+        for agent in self.players.values_mut() {
+            crate::world::piston::push_player(&self.world, &mut agent.session.player);
+        }
+        self.entities.apply_piston_pushes(&self.world);
+        // The automation entity pass (hoppers, carts, deferred dispenses)
+        // with the harness's own entities and its players as dispense
+        // targets. It simulates no item or projectile entities: those lists
+        // are set aside for the pass, so hoppers and carts collect no loose
+        // items here, and what the pass spawns into them (with its sounds)
+        // is discarded, as block drops are below. Carts and stands stay.
+        let e = &mut self.entities;
+        let kept = (
+            std::mem::take(&mut e.items),
+            std::mem::take(&mut e.thrown),
+            std::mem::take(&mut e.potions),
+            std::mem::take(&mut e.arrows),
+            std::mem::take(&mut e.fireballs),
+            std::mem::take(&mut e.fireworks),
+        );
+        {
+            use crate::entity::dispensed::DispenseTarget;
+            let mut players: Vec<DispenseTarget<'_>> = self
+                .players
+                .values_mut()
+                .map(|agent| {
+                    let s = &mut agent.session;
+                    let shape = s.player.collision_shape();
+                    DispenseTarget {
+                        pos: s.player.pos,
+                        half_width: shape.half_width,
+                        height: shape.height,
+                        can_equip: !s.vitals.is_dead() && s.mode != crate::rules::GameMode::Spectator,
+                        armor: &mut s.inventory.armor,
+                        offhand: &mut s.inventory.offhand,
+                    }
+                })
+                .collect();
+            self.world.tick_automation_entities_with(&mut self.entities, &mut players);
+        }
+        let e = &mut self.entities;
+        (e.items, e.thrown, e.potions, e.arrows, e.fireballs, e.fireworks) = kept;
+        e.clear_pending_sounds();
         // As `Game::tick` does: players in a stalactite's cell as it lands
         // are hit on their next tick, and anchors used outside the Nether
         // explode (`RespawnAnchorBlock.explode`, power 5).

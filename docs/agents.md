@@ -70,6 +70,7 @@ positive pitch looks up. Wait until `state.loaded` is true before moving.
 | `sign x y z front\|back ["line", ...]` | Write up to four lines on one side of a sign within reach, as the sign editor's Done does (a JSON array keeps spaces) |
 | `furnace take/put slot` | Slot is `input`, `fuel` or `output`; move items through the aimed furnace; put uses the selected hotbar slot, output is take-only and taking releases stored XP |
 | `anvil 1..9` | On the targeted anvil, combine the selected stack with that hotbar slot (repair with material, merge two of an item, or apply an enchanted book), paying levels; the result replaces the selected stack |
+| `anvil name <text>` | On the targeted anvil, rename the selected stack (Java's 50-character limit; blank text clears a custom name) for one level plus its prior-work penalty, at most 39 |
 | `enchanting 1..3` | Take that offer of the targeted enchanting table for one of the selected item, paying 1–3 levels and lapis from the inventory; `observe` lists the offers (cost and clue) under `target.enchanting_offers` |
 | `smithing` | At the targeted smithing table, upgrade the selected diamond tool or armor using one Netherite upgrade template and one Netherite ingot from the inventory |
 | `respawn`, `leave` | Respawn a dead agent or deactivate the named profile |

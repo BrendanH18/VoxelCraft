@@ -37,6 +37,12 @@ pub enum Used {
     /// The player now rides this vehicle.
     Mounted(u32),
     CartPlaced,
+    /// v0.17 Track D1: a furnace minecart was right-clicked; `fuelled` when
+    /// it took the held coal or charcoal (`MinecartFurnace.interact`).
+    FurnaceCart {
+        fuelled: bool,
+        at: DVec3,
+    },
     MapCreated,
     /// A cushion was set down at this position (`CushionItem.useOn`).
     CushionPlaced {
@@ -353,7 +359,12 @@ impl PlayerSession {
         ctx: &UseContext,
         tool_broken: &mut Option<Item>,
     ) -> Result<Option<Used>, &'static str> {
+        // The mob a use reaches, for `entity_interact` and `shear` at its position.
+        let target = self.mob_target(world, entities).map(|i| entities.mobs[i].pos);
         let mut used = self.use_entity(slot, world, entities, ctx, tool_broken)?;
+        if let Some(u) = used {
+            self.entity_use_event(world, entities, u, target);
+        }
         if used.is_none()
             && self.inventory.get(slot).is_some_and(|s| s.item == Item::BRUSH)
             && self.start_brushing(slot, world)
@@ -364,7 +375,7 @@ impl PlayerSession {
             used = self.use_item(slot, world, entities, ctx)?;
         }
         if let Some(u) = used {
-            self.item_use_event(world, u);
+            self.item_use_event(world, entities, u);
         }
         // Riders use items (Java `Item.use` has no vehicle check) but not blocks.
         if used.is_none() && self.player.vehicle.is_none() {
@@ -373,12 +384,82 @@ impl PlayerSession {
         Ok(used)
     }
 
-    /// The game events Java posts for entity and item uses: buckets and
-    /// bottles (`fluid_pickup`, `fluid_place`), thrown projectiles
-    /// (`projectile_shoot` from their owner) and mounting.
-    fn item_use_event(&self, world: &mut World, used: Used) {
-        use crate::world::vibration::{EventSource, GameEvent as E};
+    /// This player as a game event source.
+    pub fn event_source(&self) -> crate::world::vibration::EventSource {
+        crate::world::vibration::EventSource {
+            untargetable: self.mode.is_creative(),
+            spectator: self.mode == crate::rules::GameMode::Spectator,
+            ..crate::world::vibration::EventSource::player(self.id, self.player.sneaking)
+        }
+    }
+
+    /// The game events Java posts for uses on entities: `Mob.interact`'s
+    /// `entity_interact` at the mob (after `shear` for a sheared sheep or
+    /// bogged), `Entity.startRiding`'s `entity_mount` at the vehicle, and a
+    /// chest boat or chest minecart's `container_open`.
+    fn entity_use_event(&self, world: &mut World, entities: &Entities, used: Used, target: Option<DVec3>) {
+        use crate::world::vibration::GameEvent as E;
+        let source = self.event_source();
+        match used {
+            Used::Sheep { sheared } => {
+                if let Some(at) = target {
+                    if sheared {
+                        world.emit_game_event(at, E::Shear, source, None);
+                    }
+                    world.emit_game_event(at, E::EntityInteract, source, None);
+                }
+            }
+            Used::Animal | Used::Mob | Used::OpenMerchant(_) | Used::MerchantRefused => {
+                if let Some(at) = target {
+                    world.emit_game_event(at, E::EntityInteract, source, None);
+                }
+            }
+            // `Player.interactOn`: `MinecartFurnace.interact` consumes the use.
+            Used::FurnaceCart { at, .. } => world.emit_game_event(at, E::EntityInteract, source, None),
+            Used::Mounted(id) => {
+                if let Some(at) = entities.vehicle_pos(id) {
+                    world.emit_game_event(at, E::EntityMount, source, None);
+                    // A mob's `mobInteract` riding consumes the use.
+                    if id & crate::entity::mounts::MOB_VEHICLE != 0 {
+                        world.emit_game_event(at, E::EntityInteract, source, None);
+                    }
+                }
+            }
+            Used::OpenVehicle(id) => {
+                // `AbstractChestBoat.interact` / `MinecartChest.interact`.
+                use crate::entity::minecart::CartKind;
+                if entities
+                    .cart(id)
+                    .is_some_and(|c| matches!(c.kind, CartKind::Chest | CartKind::Boat { chest: true, .. }))
+                    && let Some(at) = entities.vehicle_pos(id)
+                {
+                    world.emit_game_event(at, E::ContainerOpen, source, None);
+                }
+            }
+            Used::Decor { at, effect } => {
+                use crate::entity::decor::Effect as D;
+                let event = match effect {
+                    // `HangingEntityItem` / `ArmorStandItem.useOn`.
+                    D::Placed(_) => E::EntityPlace,
+                    // `ItemFrame.interact`.
+                    D::ItemAdded | D::ItemRotated | D::ItemRemoved => E::BlockChange,
+                    _ => return,
+                };
+                world.emit_game_event(at, event, source, None);
+            }
+            _ => {}
+        }
+    }
+
+    /// The game events Java posts for item uses: buckets and bottles
+    /// (`fluid_pickup`, `fluid_place`), thrown projectiles, eyes of ender,
+    /// rockets and wind charges (`projectile_shoot` from their owner), and a
+    /// fishing rod's cast (`item_interact_start` then the bobber's shot) and
+    /// reel (`item_interact_finish`).
+    fn item_use_event(&self, world: &mut World, entities: &Entities, used: Used) {
+        use crate::world::vibration::GameEvent as E;
         use survival_items::bucket::Effect as B;
+        let source = self.event_source();
         let (pos, event) = match used {
             Used::Bucket(B::Filled { at, .. } | B::BottleFilled { at }) => {
                 (at.as_dvec3() + DVec3::splat(0.5), E::FluidPickup)
@@ -386,13 +467,26 @@ impl PlayerSession {
             Used::Bucket(B::Poured { at, .. } | B::Released { at }) => {
                 (at.as_dvec3() + DVec3::splat(0.5), E::FluidPlace)
             }
-            Used::ProjectileThrown { from } | Used::PearlThrown { from } | Used::PotionThrown { from } => {
-                (from, E::ProjectileShoot)
+            Used::ProjectileThrown { from }
+            | Used::PearlThrown { from }
+            | Used::PotionThrown { from }
+            | Used::EyeReleased { from }
+            | Used::RocketLaunched { from }
+            | Used::WindChargeThrown { from } => (from, E::ProjectileShoot),
+            Used::Rod { from, .. } => {
+                // `FishingRodItem.use`: a cast leaves a bobber out.
+                let cast = entities.bobbers.iter().any(|b| b.owner == self.id);
+                let event = if cast { E::ItemInteractStart } else { E::ItemInteractFinish };
+                world.emit_game_event(self.player.pos, event, source, None);
+                if cast {
+                    (from, E::ProjectileShoot)
+                } else {
+                    return;
+                }
             }
-            Used::Mounted(_) => (self.player.pos, E::EntityMount),
             _ => return,
         };
-        world.emit_game_event(pos, event, EventSource::player(self.id, self.player.sneaking), None);
+        world.emit_game_event(pos, event, source, None);
     }
 
     /// Items whose right-click starts drawing (bows and crossbows).
@@ -425,6 +519,18 @@ impl PlayerSession {
             && (ctx.sneaking || entities.cart(id).is_some_and(|c| c.kind.boat().is_none()))
         {
             return Ok(Some(Used::OpenVehicle(id)));
+        }
+        // `MinecartFurnace.interact` always succeeds: coal or charcoal fuels
+        // it and pushes it away from the player's feet.
+        if let Some(i) = entities.cart_ray(eye, dir, reach)
+            && entities.minecarts[i].kind == crate::entity::minecart::CartKind::Furnace
+        {
+            let held = self.inventory.get(slot).map(|s| s.item);
+            let fuelled = held.is_some_and(|item| entities.minecarts[i].add_fuel(self.player.pos, item));
+            if fuelled && !creative {
+                self.inventory.take_one(slot);
+            }
+            return Ok(Some(Used::FurnaceCart { fuelled, at: entities.minecarts[i].pos }));
         }
         // Leads, name tags, food and taming come before mounting.
         if survival_items::use_animal_target(
@@ -478,6 +584,11 @@ impl PlayerSession {
             if self.mode.is_survival() {
                 self.inventory.take_one(slot);
             }
+            // `MinecartItem.useOn`: at the rail, naming the block under it;
+            // `BoatItem.use`: where it lands.
+            let below = if kind.boat().is_some() { None } else { world.get_block(cell - IVec3::Y) };
+            let event = crate::world::vibration::GameEvent::EntityPlace;
+            world.emit_block_event(cell, event, self.event_source(), below);
             return Ok(Some(Used::CartPlaced));
         }
         if !ctx.sneaking
@@ -676,47 +787,131 @@ impl PlayerSession {
         Ok(used)
     }
 
+    /// The game events Java posts for block uses, with this player as the
+    /// source unless Java names none. Redstone uses post theirs in
+    /// [`World::use_redstone_by`]; placement in the placement path.
     fn block_use_event(&self, world: &mut World, used: Used) {
-        use crate::world::redstone_blocks::{self as r, Component};
+        use crate::world::utilities::interact::Effect as U;
         use crate::world::vibration::{EventSource, GameEvent as E};
-        let (cell, event) = match used {
-            Used::Door { cell, open: Some(open) } => (cell, if open { E::BlockOpen } else { E::BlockClose }),
-            Used::Redstone { cell } => {
-                let Some(b) = world.get_block(cell) else { return };
-                let event = match r::component(b) {
-                    Some(Component::Lever { on, .. }) => {
-                        if on {
-                            E::BlockActivate
-                        } else {
-                            E::BlockDeactivate
-                        }
-                    }
-                    Some(Component::Button { .. }) => E::BlockActivate,
-                    Some(Component::Trapdoor { open, .. }) => {
-                        if open {
-                            E::BlockOpen
-                        } else {
-                            E::BlockClose
-                        }
-                    }
-                    Some(Component::Repeater { .. } | Component::Comparator { .. }) => E::BlockChange,
-                    // Note blocks post `note_block_play` themselves.
-                    _ => return,
-                };
-                (cell, event)
+        use crate::world::wood::ShelfUse;
+        let source = self.event_source();
+        let none = EventSource::NONE;
+        let state = |w: &World, cell: IVec3| w.get_block(cell);
+        let (cell, event, source, affected) = match used {
+            Used::Door { cell, open: Some(open) } => {
+                (cell, if open { E::BlockOpen } else { E::BlockClose }, source, None)
             }
-            Used::TntPrimed { cell } => (cell, E::PrimeFuse),
-            Used::CakeBitten { cell } => (cell, E::Eat),
-            Used::Screen { cell, block } if crate::world::chest::is_chest(block) => (cell, E::ContainerOpen),
-            Used::Composter { cell }
-            | Used::Harvested { cell }
-            | Used::EyeInserted { cell, .. }
-            | Used::LecternBook { cell } => (cell, E::BlockChange),
-            Used::Ignited { cell, .. } => (cell, E::BlockPlace),
+            // `TntBlock.prime(level, pos, player, ...)`.
+            Used::TntPrimed { cell } => (cell, E::PrimeFuse, source, None),
+            Used::CakeBitten { cell } => {
+                // `CakeBlock.eat`: `eat`, then `block_destroy` for the last slice.
+                world.emit_block_event(cell, E::Eat, source, None);
+                if world.get_block(cell).is_none_or(|b| b.cake_bites().is_none()) {
+                    world.emit_block_event(cell, E::BlockDestroy, source, None);
+                }
+                return;
+            }
+            // `ContainerOpenersCounter.incrementOpeners` (chests, trapped and
+            // copper chests, barrels) and `ShulkerBoxBlockEntity.startOpen`;
+            // dispensers, droppers and hoppers post nothing.
+            Used::Screen { cell, block } if opens_with_event(world, cell, block) => {
+                (cell, E::ContainerOpen, source, None)
+            }
+            // `ComposterBlock.addLayer` / `empty`, `CaveVines.use` and
+            // `SweetBerryBushBlock.useWithoutItem`, `LecternBlock.placeBook`:
+            // the new state is the context.
+            Used::Composter { cell } | Used::Harvested { cell } | Used::LecternBook { cell } => {
+                (cell, E::BlockChange, source, state(world, cell))
+            }
+            // `FlintAndSteelItem` / `FireChargeItem.useOn`: lighting a candle,
+            // candle cake or campfire changes it; fire beside is placed.
+            Used::Ignited { cell, .. } => {
+                let fire = world.get_block(cell).is_some_and(|b| b.is_fire() || b == Block::NETHER_PORTAL);
+                (cell, if fire { E::BlockPlace } else { E::BlockChange }, source, None)
+            }
+            // `BlockTransformer.transformBlock` (shovels, axes, hoes) and
+            // `HoneycombItem` / `SignBlock` waxing: the new state.
+            Used::Path { cell }
+            | Used::Stripped { cell }
+            | Used::Scraped { cell }
+            | Used::Tilled { cell }
+            | Used::Waxed { cell }
+            | Used::SignInked { cell, .. } => (cell, E::BlockChange, source, state(world, cell)),
+            // `PumpkinBlock.useItemOn`.
+            Used::Carved { cell } => (cell, E::Shear, source, None),
+            // `AbstractCandleBlock.extinguish`, `CakeBlock.useItemOn`,
+            // `CopperGolemStatueBlock.updatePose`.
+            Used::CandleExtinguished { cell } | Used::CandlePlacedOnCake { cell } | Used::Statue { cell } => {
+                (cell, E::BlockChange, source, None)
+            }
+            // `BoneMealItem.useOn`: `causeUseVibration` at the player.
+            Used::BoneMeal { .. } => {
+                world.emit_game_event(self.player.pos, E::ItemInteractFinish, source, None);
+                return;
+            }
+            // `EndCrystalItem.useOn`: the cell above the base.
+            Used::CrystalPlaced { at } => (at.floor().as_ivec3(), E::EntityPlace, source, None),
+            // `CushionItem.useOn`: at the cushion.
+            Used::CushionPlaced { at } => {
+                world.emit_game_event(at, E::EntityPlace, source, None);
+                return;
+            }
+            Used::Decor { at, effect } => {
+                use crate::entity::decor::Effect as D;
+                if matches!(effect, D::Placed(_)) {
+                    world.emit_game_event(at, E::EntityPlace, source, None);
+                }
+                return;
+            }
+            // `JukeboxPlayable.tryInsertIntoJukebox` (from the player), then
+            // `JukeboxBlockEntity.notifyItemChangedInJukebox` (no source).
+            Used::Jukebox { cell, inserted } => {
+                let block = world.get_block(cell);
+                if inserted {
+                    world.emit_block_event(cell, E::BlockChange, source, block);
+                }
+                (cell, E::BlockChange, none, block)
+            }
+            Used::Shelf { cell, used } => match used {
+                // `ShelfBlock.swapSingleItem` / `swapHotbar`: the shelf's state.
+                ShelfUse::Placed | ShelfUse::Swapped { .. } => (cell, E::ItemInteractFinish, none, state(world, cell)),
+                ShelfUse::Hotbar => (cell, E::EntityInteract, none, state(world, cell)),
+                ShelfUse::Nothing => return,
+                // `ChiseledBookShelfBlockEntity.updateState`, and
+                // `ChiseledBookShelfBlock.removeBook` from the player.
+                ShelfUse::BookIn { .. } => (cell, E::BlockChange, none, state(world, cell)),
+                ShelfUse::BookOut { .. } => {
+                    world.emit_block_event(cell, E::BlockChange, none, state(world, cell));
+                    (cell, E::BlockChange, source, None)
+                }
+            },
+            Used::Utility { cell, effect } => match effect {
+                // `FlowerPotBlock`, `DecoratedPotBlock.useItemOn`,
+                // `CampfireBlockEntity.placeFood`, lighting and dousing,
+                // `RespawnAnchorBlock.charge`.
+                U::PotPlanted
+                | U::PotEmptied
+                | U::PotFilled
+                | U::FoodPlaced
+                | U::Lit
+                | U::Doused
+                | U::AnchorCharged => (cell, E::BlockChange, source, state(world, cell)),
+                // `CauldronInteractions`: none of them names the player.
+                U::Cauldron { fill: true, .. } => (cell, E::FluidPlace, none, None),
+                U::Cauldron { fill: false, bottle, .. } => {
+                    if bottle {
+                        // `LayeredCauldronBlock.lowerFillLevel` first.
+                        world.emit_block_event(cell, E::BlockChange, none, state(world, cell));
+                    }
+                    (cell, E::FluidPickup, none, None)
+                }
+                U::Washed => (cell, E::BlockChange, none, state(world, cell)),
+                U::EnderChest => (cell, E::ContainerOpen, source, None),
+                _ => return,
+            },
             _ => return,
         };
-        let source = EventSource::player(self.id, self.player.sneaking);
-        world.emit_game_event(cell.as_dvec3() + DVec3::splat(0.5), event, source, None);
+        world.emit_block_event(cell, event, source, affected);
     }
 
     fn use_block_inner(
@@ -781,7 +976,9 @@ impl PlayerSession {
         // A bell rings only for a proper hit; otherwise the click passes on.
         let rings = world.get_block(pos).is_none_or(|b| b.base() != Block::BELL)
             || world.bell_hit_rings(pos, self.player.eye(), self.player.forward().as_dvec3());
-        if !ctx.sneaking && rings && world.use_redstone(pos) {
+        // `use_redstone_by` posts the use's game event from this player.
+        let source = crate::world::vibration::EventSource::player(self.id, self.player.sneaking);
+        if !ctx.sneaking && rings && world.use_redstone_by(pos, source) {
             return Ok(Some(Used::Redstone { cell: pos }));
         }
         world.touch_redstone_ore(pos);
@@ -1250,4 +1447,19 @@ pub fn toggle_door(world: &mut World, pos: IVec3, forward: glam::Vec3) -> Option
         }
         _ => None,
     }
+}
+
+/// Whether opening the container at `cell` posts `container_open`: the
+/// first viewer of a chest, trapped, copper or ender chest or a barrel
+/// (`ContainerOpenersCounter`), or a shulker box (`startOpen`).
+fn opens_with_event(world: &World, cell: IVec3, block: Block) -> bool {
+    let counted = crate::world::chest::is_chest(block)
+        && !matches!(
+            crate::world::redstone_blocks::component(block),
+            Some(
+                crate::world::redstone_blocks::Component::Dispenser { .. }
+                    | crate::world::redstone_blocks::Component::Hopper { .. }
+            )
+        );
+    counted && !world.container_has_viewers(cell)
 }

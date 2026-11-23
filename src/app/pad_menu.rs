@@ -670,6 +670,7 @@ impl Game {
             Tab::Crafting => "Crafting  (LB: inventory)",
             Tab::Palette => "Items  (RB: inventory)",
             Tab::Chest(p) if self.world.chest_partner(p).is_some() => "Large Chest",
+            Tab::Chest(p) if super::crafter::is_crafter(&self.world, p) => "Crafter  (A on an empty slot: toggle)",
             Tab::Chest(p) => super::hud::container_title(self.world.get_block(p)),
             Tab::EnderChest(_) => "Ender Chest",
             Tab::Vehicle(id) => self.mobs.entities.vehicle_title(id),
@@ -813,19 +814,39 @@ impl Game {
                         clue = offers[i].clue;
                     }
                 }
+                // v0.17 Track C1: a crafter's disabled slots.
+                if let (Tab::Chest(pos), Slot::Ref(SlotRef::Chest(i))) = (tab, slot(tab, c, r, lists))
+                    && self.world.crafter_slot_disabled(pos, i)
+                {
+                    super::crafter::draw_disabled(ui, x, y, 17.0);
+                }
                 if (c, r) == (col, row) {
                     ui.rect(x, y, 17.0, 17.0, [1.0, 1.0, 1.0, 0.35]);
                     hovered = Some((stack, x, y));
                 }
             }
         }
+        // v0.17 Track C1: the crafter's indicator and result preview beside its grid.
+        if let Tab::Chest(pos) = tab
+            && super::crafter::is_crafter(&self.world, pos)
+            && first == 0
+        {
+            let (x, y) = (px + 6.0 + 54.0 + 18.0 * 3.0 + 4.0, py + 18.0 + 18.0);
+            let powered =
+                self.world.get_block(pos).and_then(crate::world::crafter::decode).is_some_and(|s| s.triggered);
+            super::crafter::draw_indicator(ui, x, y, powered);
+            ui.rect(x + 22.0, y - 1.0, 17.0, 17.0, [0.3, 0.3, 0.32, 0.95]);
+            if let Some(stack) = self.world.crafter_result(pos) {
+                draw_stack(ui, x + 21.5, y - 1.5, stack, true, dial);
+            }
+        }
         if let Some(f) = furnace {
             // Flame (fuel left) and arrow (cooking) beside the furnace slots.
             let (x, y) = (px + 6.0 + 18.0 * 3.0 + 6.0, py + 18.0);
-            let burn = if f.burn_total > 0.0 { f.burn_left / f.burn_total } else { 0.0 };
+            let burn = f.burn_progress();
             ui.rect(x, y + 2.0, 40.0, 5.0, [0.0, 0.0, 0.0, 0.7]);
             ui.rect(x + 1.0, y + 3.0, 38.0 * burn.clamp(0.0, 1.0), 3.0, [1.0, 0.55, 0.1, 1.0]);
-            let cook = f.cook / crate::world::furnace::COOK_TIME;
+            let cook = f.cook_progress();
             ui.rect(x, y + 10.0, 40.0, 5.0, [0.0, 0.0, 0.0, 0.7]);
             ui.rect(x + 1.0, y + 11.0, 38.0 * cook.clamp(0.0, 1.0), 3.0, WHITE);
         }

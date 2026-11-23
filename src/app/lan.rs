@@ -1300,8 +1300,11 @@ impl Game {
                     // A double chest's other half (protocol 3 clients without it see one half).
                     let partner = self.world.chest_partner(p);
                     let partner_state = partner.and_then(|q| self.world.chest(q)).map(|c| c.serialize());
+                    // v0.17 Track C1: a crafter's disabled slots, as a bit mask.
+                    let disabled = self.world.crafter(p).map(|c| c.disabled);
                     json!({"kind":"chest","pos":p.to_array(),"state":self.world.chest(p).map(|c|c.serialize()),
-                        "partner":partner.map(|q|q.to_array()),"partner_state":partner_state})
+                        "partner":partner.map(|q|q.to_array()),"partner_state":partner_state,
+                        "crafter_disabled":disabled})
                 }
                 Container::EnderChest(p) => {
                     json!({"kind":"ender_chest","pos":p.to_array(),"state":bot.agent.session.ender.serialize()})
@@ -1367,6 +1370,11 @@ impl Game {
                         m.dying.map_or(-1.0, |d| r3(d as f64)), m.size, u8::from(m.baby)]});
                     if refresh || !peer.looked.contains(&m.uid) {
                         v["look"] = m.look();
+                    }
+                    // v0.17 Track D1: the vehicle a mob sits in, so a guest
+                    // keeps the cart-passenger link.
+                    if let Some(vehicle) = m.riding {
+                        v["r"] = json!(vehicle);
                     }
                     // The charge bar changes every tick, so it rides with the pose.
                     if let Some(mount) = m.mount.as_ref().filter(|s| s.jump_charge > 0.0) {
@@ -1749,6 +1757,9 @@ impl Game {
                 {
                     self.world.load_chests(&format!("{},{},{}={text}", q.x, q.y, q.z));
                 }
+                if let Some(mask) = c["crafter_disabled"].as_u64().and_then(|m| u16::try_from(m).ok()) {
+                    self.world.set_crafter_disabled_mask(p, mask);
+                }
                 Container::Chest(p)
             }
             // The host keeps each player's ender inventory; this copy is lent
@@ -1860,6 +1871,7 @@ impl Game {
                 if let Some(mount) = mob.mount.as_mut() {
                     mount.jump_charge = m["jump"].as_f64().map_or(0.0, |j| j.clamp(0.0, 1.0) as f32);
                 }
+                mob.riding = m["r"].as_u64().and_then(|r| u32::try_from(r).ok());
                 mob.animate_replica(voxelcraft::simulation::TICK_SECONDS as f32);
                 self.mobs.entities.mobs.push(mob);
             }

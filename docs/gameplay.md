@@ -104,8 +104,9 @@ full performance display instead of duplicating the compact counter.
   planted on grass or dirt, saplings grow into trees.
   Nether wart planted on soul sand ages through 4 stages (1 in 10 random
   ticks, in any light, ignoring bone meal); ripe wart drops 2-4, unripe 1.
-  Sugar cane grows next to water up to 3 blocks tall, and must be planted
-  on grass, dirt or sand beside water. Leaves that can't reach a log
+  Sugar cane grows up to 3 blocks tall, and must be planted on grass, dirt
+  or sand beside water. Like Java's, its top block ages one step per
+  random tick and grows a new block on the 16th (2026-11-23). Leaves that can't reach a log
   within 6 blocks decay a few seconds after a tree is felled. Grass spreads
   to lit dirt nearby and dies under blocks. Bone meal advances a crop 2-5
   stages, sometimes grows a sapling at once, and sprouts grass and flowers
@@ -239,13 +240,17 @@ full performance display instead of duplicating the compact counter.
   arrow to pick it back up (arrows shot in creative can't be collected).
   Bows have 384 uses
 - Furnaces (8 cobblestone in a ring): right-click to open; put something
-  to smelt on top and fuel below. Each item takes 10 s; coal and charcoal
-  burn 80 s, logs, planks, crafting tables and chests 15 s, wooden tools 10 s and
-  sticks 5 s. Smelts iron and gold ore into ingots, sand into glass,
-  cobblestone into stone, logs into charcoal, clay balls into bricks, clay
-  into terracotta and raw meat into cooked meat. A burning furnace glows (light 13), keeps smelting with its
-  screen closed while its chunk is loaded, and is saved with the world;
-  breaking one drops its contents
+  to smelt on top and fuel below. Each item takes 10 s (200 ticks); coal
+  and charcoal burn 80 s, logs, planks, crafting tables and chests 15 s,
+  wooden tools 10 s and sticks 5 s, Java 26.3's full fuel list. Smelts iron
+  and gold ore into ingots, sand into glass, cobblestone into stone, logs
+  into charcoal, clay balls into bricks, clay into terracotta and raw meat
+  into cooked meat. Smokers (food) and blast furnaces (ores and metal gear)
+  cook twice as fast and burn fuel twice as fast. Timing follows Java's
+  furnace tick for tick: an unfuelled furnace loses progress two ticks per
+  tick, and changing the input item starts it over. A burning furnace glows
+  (light 13), keeps smelting with its screen closed while its chunk is
+  loaded, and is saved with the world; breaking one drops its contents
 - Items beyond blocks, each with a procedurally drawn icon: sticks, coal,
   ingots, diamonds, food, mob materials, and pickaxes, shovels, axes, hoes
   and swords in five tiers with durability bars. Coal and diamond ore drop
@@ -285,8 +290,10 @@ full performance display instead of duplicating the compact counter.
   harvested with the right pickaxe), killed mobs (5 for monsters, 1-3 for
   animals) and smelting drop glowing orbs that shimmer between yellow and
   green. Furnaces store what they smelt (0.7 per iron ingot, 1 per gold
-  ingot or diamond, 0.35 per cooked meat, 0.1 for most blocks) and release
-  it when you take from the output slot or break the furnace. Orbs drift
+  ingot or diamond, 0.35 per cooked meat, 0.1 for most blocks), recipe by
+  recipe, and release it when you take from the output slot or break the
+  furnace (each recipe's fraction rounds up by chance); a hopper emptying
+  the output takes no experience and leaves it stored. Orbs drift
   toward the nearest player within 8 blocks, merge with same-sized orbs,
   burn in lava and fire, and vanish after five minutes. You absorb one orb
   every two ticks, with a ding, and a fanfare plays every five levels. The
@@ -345,25 +352,36 @@ full performance display instead of duplicating the compact counter.
   piece, bow or book and lapis lazuli for three offers. Each shows Java's
   rune words, its lapis price (1-3) and level cost; hovering shows one of
   the enchantments it will give. Costs follow Java's formula from the
-  bookshelves two blocks out at the table's height or one up (up to 15,
-  with air or plants between), so a full ring reaches 30 levels, and the
+  bookshelves on the ring two blocks out at the table's height or one up
+  (Java's 32 places, each needing air, a plant or another replaceable block
+  halfway; up to 15 count), so a full ring reaches 30 levels, and the
   enchantments are rolled with Java's algorithm and random generator from
   your enchantment seed, which changes each time you enchant. Taking
-  offer n costs n levels and n lapis (creative is free); a book becomes an
-  enchanted book. The table glows (light 7). Controller players have an
-  enchanting tab, and agents `enchanting 1..3`.
+  offer n costs n levels and n lapis (creative still pays the levels, as
+  in Java, but no lapis); a book becomes an enchanted book. The table
+  glows (light 7). Controller players have an enchanting tab, and agents
+  `enchanting 1..3`.
 - Anvils: three blocks of iron over an ingot over three ingots (a block
   of iron is nine ingots). They fall like sand and are placed broadside
-  to you. Right click for Java's screen (without renaming): repair a tool
+  to you. Right click for Java's screen: repair a tool
   or armor piece with its material (a quarter of its durability per
   item), merge two of the same item (both remainders plus 12%, and their
   enchantments: equal levels go up one, conflicting ones cost a level
   each and are dropped), or apply an enchanted book (half the price).
   Costs are Java's: each enchantment's anvil cost per level, plus the
   prior-work penalty both items carry, which doubles plus one with each
-  use; at 40 levels survival says "Too Expensive!". Each survival use
-  has a 12% chance to chip the anvil (chipped, damaged, then it breaks).
+  use; at 40 levels survival says "Too Expensive!". Renaming costs one
+  level more (a rename alone is capped at 39 levels and adds no prior
+  work); agents rename with `anvil name <text>`, but the desktop and
+  controller screens have no name box yet. Each survival use
+  has a 12% chance to chip the anvil (chipped, damaged, then it breaks),
+  and an anvil that falls more than a block lands worn one step with a
+  chance of 5% plus 5% per block fallen.
   Controller players have an anvil tab, and agents `anvil 1..9`.
+- Grindstones remove every enchantment but curses, returning experience
+  (half the enchantments' minimum costs up to twice that), and repair two
+  of the same item (both remainders plus 5%); the result's prior-work
+  penalty resets to what its curses need.
 - Ancient debris buried in the Nether, concentrated around y 16, needs a
   diamond pickaxe and drops itself (Fortune has no effect). Smelt it for
   Netherite scrap and 2 XP per block. Four scraps plus four gold ingots in
@@ -403,7 +421,9 @@ full performance display instead of duplicating the compact counter.
 - Brewing: a blaze rod over three cobblestone makes a brewing stand.
   Right click it for Java's screen: blaze powder fuel (one powder brews 20
   times, shown by the bar), an ingredient slot and three bottle slots. A
-  brew takes 20 seconds and changes every bottle the ingredient works on.
+  brew takes 20 seconds (400 ticks) and changes every bottle the
+  ingredient works on; changing the ingredient or emptying the bottles
+  stops it.
   Nether wart turns water bottles awkward; sugar, glistering melon slices
   (a melon slice in eight gold nuggets), spider eyes (one in three spiders
   drops one; eating it poisons you for 5 s) and blaze powder turn awkward

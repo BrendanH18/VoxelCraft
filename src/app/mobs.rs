@@ -479,6 +479,15 @@ impl Game {
                 EntityEvent::Explosion { center, power, cause, credit_player } => {
                     self.explosion_event(center, power, cause, credit_player)
                 }
+                EntityEvent::CartExplosion { center, power, spares_rails } => {
+                    self.world.emit_game_event(
+                        center,
+                        crate::world::vibration::GameEvent::Explode,
+                        crate::world::vibration::EventSource::NONE,
+                        None,
+                    );
+                    self.explode_blocks(center, power, Cause::TNT, false, true, spares_rails);
+                }
                 EntityEvent::WindBurst(burst) => self.wind_burst(&burst),
                 // v0.16 Track C: the Wither's blasts, broken blocks and roses.
                 EntityEvent::WitherBlast { center, power, dangerous } => self.wither_explode(center, power, dangerous),
@@ -662,11 +671,10 @@ impl Game {
                 | EntityEvent::LaidEgg { .. }
                 | EntityEvent::Hatched { .. }
                 | EntityEvent::ExperienceBurst { .. }
-                | EntityEvent::DropEquipment { .. } => {}
+                | EntityEvent::DropEquipment { .. }
+                | EntityEvent::Vibration { .. } => {}
                 EntityEvent::AnimalBlock { cell, from, to } => {
-                    if self.world.get_block(cell) == Some(from) {
-                        self.world.set_block(cell, to);
-                    }
+                    self.world.animal_block(cell, from, to);
                 }
                 EntityEvent::VillagerDoor { cell } => {
                     if self.world.get_block(cell).is_some_and(|b| {
@@ -682,6 +690,13 @@ impl Game {
                     {
                         self.world.spill_block(cell, block);
                         self.world.set_block(cell, crate::world::block::Block::crop(crop, 0));
+                        // `HarvestFarmland`: `destroyBlock` then the replanting's `block_place`.
+                        let none = crate::world::vibration::EventSource::NONE;
+                        let destroy = crate::world::vibration::GameEvent::BlockDestroy;
+                        self.world.emit_block_event(cell, destroy, none, Some(block));
+                        let replanted = self.world.get_block(cell);
+                        let place = crate::world::vibration::GameEvent::BlockPlace;
+                        self.world.emit_block_event(cell, place, none, replanted);
                     }
                 }
                 EntityEvent::VillagerDoorClose { cell } => {
@@ -970,13 +985,32 @@ impl Game {
         credit_player: bool,
         breaks_blocks: bool,
     ) {
+        self.explode_blocks(center, power, cause, credit_player, breaks_blocks, false);
+    }
+
+    /// [`Game::explode_with`]; `spares_rails` is a primed TNT minecart's
+    /// blast, which leaves rails and the blocks under them
+    /// (`MinecartTNT.getBlockExplosionResistance`, `shouldBlockExplode`).
+    fn explode_blocks(
+        &mut self,
+        center: DVec3,
+        power: f32,
+        cause: Cause,
+        credit_player: bool,
+        breaks_blocks: bool,
+        spares_rails: bool,
+    ) {
         // `ServerLevel.explode`: the interaction decides whether blocks break
         // and whether their drops decay.
         let mut blast = self.gamerules.explosion(voxelcraft::rules::ExplosionSource::of_cause(cause.text));
         blast.destroys_blocks &= breaks_blocks;
         // `ServerExplosion.explode`: find the cells, hurt entities while the
         // walls about to go still shield them, then break the blocks.
-        let cells = if blast.destroys_blocks { self.world.exploded_cells(center, power) } else { Vec::new() };
+        let cells = match (blast.destroys_blocks, spares_rails) {
+            (false, _) => Vec::new(),
+            (true, false) => self.world.exploded_cells(center, power),
+            (true, true) => self.world.rail_sparing_exploded_cells(center, power),
+        };
         self.mobs.entities.explode_with(&self.world, center, power, credit_player, blast.destroys_blocks);
         if let Some((damage, push)) = self.session.blast(&self.world, center, power) {
             let toward = Some(center - self.session.player.pos);

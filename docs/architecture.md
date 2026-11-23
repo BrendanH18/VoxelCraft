@@ -1243,6 +1243,99 @@ wave 1 already set apart from v0.15. Used IDs: states 30720–30728 (E) and
 used none. Everything else in wave 2's rows and the integrator spare
 31104–31231 stays unregistered. [Integration record](verification/2026-11-21-v0.16-wave-2-integration.md).
 
+### v0.17 Redstone and automation track reservations
+
+Reserved on 2026-11-23 when the owner approved the v0.17 plan (milestone
+M6), for ten parallel tracks after `examples/id_map.rs` at `8d49f02`
+showed states 12800–14335 and items 1770–1849 unregistered. Each track
+allocates only inside its own row, records what it used under its own
+heading below, and leaves unused IDs unregistered. Texture layers are never
+saved and may be repacked at integration. The integrator makes appended
+orderings contiguous in landing order.
+
+| Block states | Item IDs | Texture layers | Track |
+| --- | --- | --- | --- |
+| 12800–12831 | 1770–1774 | — | A. Java update order |
+| 12832–13087 | 1775–1784 | 1164–1199 | B. Pistons |
+| 13088–13343 | 1785–1799 | 1200–1239 | C1. Crafter |
+| 13344–13599 | 1800–1814 | 1240–1269 | D1. Furnace minecart, rail and cart gaps |
+| 13600–13631 | 1815–1819 | — | C2. Dispense table, sided transfers |
+| 13632–13695 | 1820–1824 | 1270–1279 | E1. Sculk game events |
+| 13696–13887 | 1825–1834 | 1280–1289 | E2. Other redstone components |
+| 13888–13951 | 1835–1839 | 1290–1294 | G. Workstations |
+| — | — | — | D2. Storage transactions; F. Reference contraptions |
+| 13952–14335 | 1840–1849 | 1295–1299 | Integrator |
+
+#### Track A allocation
+
+Track A (2026-11-23, [record](verification/2026-11-23-v0.17-update-order.md))
+used no block state, item ID or texture layer, and appended to no saved
+ordering. The saved `redstone` dimension property is now `v2` (adds block
+events `e`, drops the torch burnout deadline `b`; v1 still loads). States
+12800–12831 stay unregistered; they would fit stored repeater locks (4
+facings × 4 delays × 2 powered) if that difference is closed later.
+
+#### Track B allocation
+
+Pistons (2026-11-23, implemented, unverified;
+[record](verification/2026-11-23-v0.17-pistons.md)) used **no** IDs: no block
+state, item or texture layer in 12832–13087, 1775–1784 or 1164–1199 is
+registered, and they stay free for the integrator. Java's `moving_piston`
+is the existing state 1470 (`redstone_blocks::MOVING`); its `facing` and
+`type` properties are read from the saved block entity, which always
+matches them. Saved formats: the `automation` dimension property is now
+`v2` (moving-cell `M` records; `v1` `m` records migrate on load); queued
+piston events are Track A's block events in the `redstone` property. No
+append-only ordering was extended.
+
+#### Track D1 allocation
+
+2026-11-23, implemented, unverified
+([record](verification/2026-11-23-v0.17-d1-carts.md)): item **1800**, the
+furnace minecart (`Item::FURNACE_MINECART`). No block state or texture
+layer: every rail kind already had its waterlogged partner among the
+BLD-04f states (rails 500–509 and special rails 1471–1506, partners from
+8192), so 13344–13599, items 1801–1814 and layers 1240–1269 stay
+unregistered. Appended orderings: `CartKind::Furnace` saves as cart code
+**42**, after the poplar boats' 40 and 41; the furnace minecart's item icon
+follows v0.16 Track D's (`GEN5_ICONS`); `Sound::Minecart` (rolling, inside,
+inside underwater) follows `Sound::Geyser` (`GEYSER_END`). A furnace cart's
+saved and LAN cart string appends `fuel,push_x,push_z`; every other cart
+keeps its fifteen fields. New `EntityEvent::CartExplosion` and the
+`EntityShot.arrow` field are internal and unsaved.
+
+#### Track C1 allocation
+
+The crafter (2026-11-23, implemented, unverified;
+[record](verification/2026-11-23-v0.17-crafter.md)):
+
+| Kind | Used | Meaning |
+| --- | --- | --- |
+| Block states | 13088–13135 | `world::crafter`: `13088 + orientation * 4 + triggered * 2 + crafting`, `orientation` in Java's `FrontAndTop` order (`down_east` 0 … `south_up` 11); the item is 13128, `north_up` and idle. 13136–13343 stay unregistered |
+| Items | none | The crafter is a block item; 1785–1799 stay free |
+| Texture layers | 1200–1210 | Front, front crafting, back, back triggered, side, side triggered, side crafting, top, top triggered, top crafting, bottom; 1211–1239 stay unused. A census of `render::textures::pixel` before the change found nothing painting 1200–1239 |
+
+Appended orderings: `Sound::Crafter` (`Craft`, `Fail`) after
+`Sound::Geyser`, and the `crafters` dimension property key after
+`end_crystals`. The LAN chest snapshot gains an optional `crafter_disabled`
+bit mask, which older guests ignore. No `MobKind`, `Effect`, item icon,
+thrown kind, particle kind, entity property key or LAN slot number is
+added.
+
+#### Integrator allocation: sugar cane age
+
+The farms follow-up (2026-11-23, implemented, unverified;
+[record](verification/2026-11-23-v0.17-reference-contraptions.md#farms-follow-up-2026-11-23)),
+from the integrator's row after a search of every pushed branch found
+nothing using 13952 or above:
+
+| Kind | Used | Meaning |
+| --- | --- | --- |
+| Block states | 13953–13967 | `world::sugar_cane`: sugar cane `AGE` 1–15 at `13952 + age`; age 0 stays state 92. 13952 and 13968–14335 stay unregistered |
+
+No item, texture layer or appended ordering: every age is named, drawn,
+dropped and picked as sugar cane.
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating

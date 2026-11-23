@@ -316,6 +316,7 @@ impl Arrow {
                             pos: from + step * t,
                             damage,
                             burning: self.enchants.has(crate::enchant::Enchantment::Flame),
+                            arrow: true,
                             owner: if self.from_player { self.owner } else { None },
                             motion: self.vel,
                         });

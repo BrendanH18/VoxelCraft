@@ -22,7 +22,9 @@ pub fn result(left: Option<Stack>, right: Option<Stack>) -> Option<AnvilResult> 
                 + u32::from(max) * 5 / 100;
             out.damage = u32::from(max).saturating_sub(remaining) as u16;
         } else {
-            if a != b {
+            // `mergeItems`: two of an item that doesn't wear out merge only
+            // if they're identical and it stacks (so never enchanted books).
+            if a != b || a.item.max_stack() < 2 {
                 return None;
             }
             out.count = 2;
@@ -43,6 +45,9 @@ pub fn result(left: Option<Stack>, right: Option<Stack>) -> Option<AnvilResult> 
     }
     Some(AnvilResult { output: out, cost: 0, uses: None })
 }
+/// The experience taking the result pays (`getExperienceAmount`): half
+/// the non-curse enchantments' minimum costs, rounded up, plus up to that
+/// again less one (`nextInt(half)`; `roll` is uniform in 0..1).
 pub fn xp(left: Option<Stack>, right: Option<Stack>, roll: f32) -> u32 {
     let sum: u32 = left
         .into_iter()
@@ -87,5 +92,6 @@ mod tests {
         assert_eq!(result(Some(cursed), None).unwrap().output.item, Item::ENCHANTED_BOOK);
         assert_eq!(xp(Some(cursed), None, 0.5), 0);
         assert!(result(Some(Stack::new(Item::tool(ToolKind::Axe, Tier::Iron), 1)), None).is_none());
+        assert!(result(Some(book), Some(book)).is_none(), "enchanted books don't stack, so they don't merge");
     }
 }
