@@ -25,7 +25,9 @@
 # VC_BOAT_TYPE (default large for every mode, owner, 2026-11-21: measured from the same warm
 # state, xlarge took 450 s to large's 197 s for the test build and 1543 s to 1006 s for the
 # full chain, at about 2.8 times the price), VC_BOAT_IDLE (seconds to keep the sandbox up after
-# a check, through auto-stop, instead of stopping it; default 0), VC_BOAT_SNAPSHOT.
+# a check, through auto-stop, instead of stopping it; default 0), VC_BOAT_WAIT (seconds to wait
+# for a machine once a minute of fail-fast tries found none; default 900, 0 gives up instead),
+# VC_BOAT_SNAPSHOT.
 # See docs/development.md#boat-checks.
 main() {
 set -euo pipefail
@@ -38,6 +40,10 @@ type=${VC_BOAT_TYPE:-large}
 # leaves the sandbox up that many seconds, through auto-stop.
 idle=${VC_BOAT_IDLE:-0}
 slot=${VC_BOAT_SLOT:-}
+# When a minute of fail-fast tries finds no machine, one start waits for Boat to free one, for at
+# most this many seconds (2026-11-23: busy moments outlasted the minute while machines freed
+# within a few).
+wait_for=${VC_BOAT_WAIT:-900}
 # While a check runs, auto-stop is kept $budget seconds ahead and renewed every $renew seconds
 # by a loop that ends with this script (owner, 2026-11-22; it was two hours, renewed every 30
 # minutes, and outlived a killed script), so a killed run stops within $budget seconds.
@@ -63,6 +69,7 @@ done
 [ "$action" = run ] || [ "$mode" = checks ] || { echo "boat-check: --$action takes no --full or command" >&2; exit 2; }
 case "$slot" in *[!A-Za-z0-9_-]*) echo "boat-check: VC_BOAT_SLOT may use letters, digits, - and _" >&2; exit 2 ;; esac
 case "$idle" in ''|*[!0-9]*) echo "boat-check: VC_BOAT_IDLE is a number of seconds" >&2; exit 2 ;; esac
+case "$wait_for" in ''|*[!0-9]*) echo "boat-check: VC_BOAT_WAIT is a number of seconds" >&2; exit 2 ;; esac
 for tool in boat jq git; do
     command -v "$tool" >/dev/null || { echo "boat-check: $tool is not installed" >&2; exit 2; }
 done
@@ -85,7 +92,7 @@ run_name() {
 }
 id="" new_id=""
 out_file=$state_dir/out${slot:+-$slot}-$$
-extended=0 keepalive="" job="" creating="" build="" saving=0 locked=0 tree=""
+extended=0 keepalive="" job="" watchdog="" creating="" build="" saving=0 locked=0 tree=""
 end_job() {   # end_job PID: a background job and its children
     [ -n "$1" ] || return 0
     pkill -P "$1" 2>/dev/null || true
@@ -127,6 +134,7 @@ cleanup() {
     set +e
     trap '' INT TERM HUP   # a second Ctrl-C must not cut the cleanup short
     stop_keepalive
+    end_job "$watchdog"
     in_flight=0; [ -z "$job" ] || in_flight=1
     end_job "$job"
     rm -f "$out_file"
@@ -218,7 +226,7 @@ sandbox_state() { local info; info=$(sandbox_info "$1") || return 1; echo "${inf
 # Each create or resume uses one of the account's daily starts; reusing a running sandbox uses none.
 start_failed() {
     case "$2" in *no_ready_machine*)
-        echo "boat-check: $1: Boat had no machine ready after a minute of tries; nothing started and no start was counted. Try again later." >&2
+        echo "boat-check: $1: Boat had no machine ready after a minute of tries and ${wait_for} s of waiting; try again later (VC_BOAT_WAIT sets the wait)." >&2
         exit 3 ;;
     esac
     local why
@@ -251,6 +259,21 @@ fast_start() {   # fast_start WHAT boat ARGS...; leaves the output in $out
         esac
         [ "$attempt" = 6 ] || sleep 10
     done
+    case "$out" in *no_ready_machine*) ;; *) return 1 ;; esac
+    [ "$wait_for" -gt 0 ] || return 1
+    # Still none: one start without --fail-fast, which Boat holds until a machine frees up, cut
+    # off after $wait_for seconds. A create cut off may still land, so job stays set on failure
+    # and the cleanup looks for the sandbox by name; a resume cut off is stopped as usual.
+    echo "boat-check: still no machine ready for $what; waiting up to ${wait_for} s for one" >&2
+    "$@" --json >"$out_file" 2>&1 </dev/null &
+    job=$!
+    (sleep "$wait_for"; end_job "$job") >/dev/null 2>&1 </dev/null &
+    watchdog=$!
+    rc=0; wait "$job" || rc=$?
+    end_job "$watchdog"; watchdog=""
+    out=$(cat "$out_file" 2>/dev/null || true)
+    if [ "$rc" = 0 ]; then job=""; return 0; fi
+    case "$out" in *'"event"'*error*|*'"code"'*) ;; *) out="no_ready_machine: no machine within ${wait_for} s" ;; esac
     return 1
 }
 # new_sandbox NAME [boat new ARGS...]: sets new_id to the new sandbox's id. Set creating=NAME

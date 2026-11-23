@@ -122,8 +122,12 @@ terminal) stops it at once, even while Boat is still creating it.
 work. Agents sharing a worktree each set
 `VC_BOAT_SLOT`, so no two share a sandbox; a lock in the git directory stops
 two checks in one slot from racing. Starts use `--fail-fast` and retry, so a
-busy moment costs nothing; when Boat refuses a start (no starts left today),
-the script stops and says so.
+busy moment costs nothing. When a minute of those tries finds no machine, one
+start waits for Boat to free one, for up to `VC_BOAT_WAIT` seconds (default
+900; 0 gives up at once). An interrupted or timed-out wait cleans up like any
+start (2026-11-23: busy spells outlasted the minute while machines freed
+within a few). When Boat refuses a start (no starts left today), the script
+stops and says so.
 
 Sandboxes are `large` (8 vCPU, 16 GB; `VC_BOAT_TYPE` to change it) for every
 mode (owner, 2026-11-21). The test build runs out of memory on 8 GB, and
