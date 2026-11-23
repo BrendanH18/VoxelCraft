@@ -1280,6 +1280,8 @@ impl Block {
         let c = super::wood::alias(c.0).map_or(c, Block);
         // A chest's double half answers as the single chest.
         let c = super::double_chest::plain_single(c.0).unwrap_or(c);
+        // Aged sugar cane answers as the age-0 state.
+        let c = if super::sugar_cane::owns(c.0) { Block::SUGAR_CANE } else { c };
         (c != self).then_some(c)
     }
 
@@ -1367,6 +1369,9 @@ impl Block {
         }
         if super::frosted_ice::owns(self.0) {
             return super::frosted_ice::FIRST;
+        }
+        if super::sugar_cane::owns(self.0) {
+            return Block::SUGAR_CANE;
         }
         if super::heavy_core::owns(self.0) {
             return super::heavy_core::HEAVY_CORE;
@@ -3333,6 +3338,8 @@ pub(super) const fn make(id: u16) -> BlockInfo {
         super::sniffer_plants::FIRST..=super::sniffer_plants::LAST => super::sniffer_plants::registry(id),
         15120..=super::sniffer_egg::LAST => super::sniffer_egg::registry(id),
         12256..=super::frosted_ice::LAST => super::frosted_ice::registry(id),
+        // Sugar cane ages 1-15 (13952 itself stays unregistered).
+        13953..=super::sugar_cane::LAST => super::sugar_cane::registry(id),
         super::heavy_core::FIRST..=super::heavy_core::LAST => super::heavy_core::registry(id),
         super::conduit::FIRST..=super::conduit::LAST => super::conduit::registry(id),
         super::shulker_box::FIRST..=super::shulker_box::LAST => super::shulker_box::registry(id),

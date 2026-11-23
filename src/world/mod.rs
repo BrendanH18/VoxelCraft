@@ -133,6 +133,7 @@ pub mod stone_blocks;
 pub mod storage;
 pub mod stronghold;
 pub mod structure;
+pub mod sugar_cane;
 pub mod sulfur_springs;
 pub mod temples;
 pub mod terrain;

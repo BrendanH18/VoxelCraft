@@ -195,6 +195,22 @@ impl Rig {
         for &c in &self.columns {
             self.world.load_test_column(c, GROUND);
         }
+        // Skylight is exact only where a column and its eight neighbours are
+        // loaded (`World::sky_light`); elsewhere growth sees block light
+        // alone, and a crop or stem under open sky never grows. A player's
+        // surroundings are always loaded, so the ring around the build is
+        // loaded too, as empty air (uniform chunks get no random ticks),
+        // and stays loaded while the build's own columns unload.
+        for &c in &self.columns {
+            for dx in -1..=1 {
+                for dz in -1..=1 {
+                    let n = c + IVec2::new(dx, dz);
+                    if !self.columns.contains(&n) && self.world.get_block(IVec3::new(n.x * 32, 0, n.y * 32)).is_none() {
+                        self.world.load_test_column(n, i32::MIN);
+                    }
+                }
+            }
+        }
         self.world.update_block_light();
         self.entities.sync_chunk_entities(&mut self.world);
     }

@@ -1322,6 +1322,20 @@ bit mask, which older guests ignore. No `MobKind`, `Effect`, item icon,
 thrown kind, particle kind, entity property key or LAN slot number is
 added.
 
+#### Integrator allocation: sugar cane age
+
+The farms follow-up (2026-11-23, implemented, unverified;
+[record](verification/2026-11-23-v0.17-reference-contraptions.md#farms-follow-up-2026-11-23)),
+from the integrator's row after a search of every pushed branch found
+nothing using 13952 or above:
+
+| Kind | Used | Meaning |
+| --- | --- | --- |
+| Block states | 13953–13967 | `world::sugar_cane`: sugar cane `AGE` 1–15 at `13952 + age`; age 0 stays state 92. 13952 and 13968–14335 stay unregistered |
+
+No item, texture layer or appended ordering: every age is named, drawn,
+dropped and picked as sugar cane.
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating

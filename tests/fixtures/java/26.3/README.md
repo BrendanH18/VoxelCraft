@@ -1592,3 +1592,24 @@ scripts/boat-check.sh -- 'cargo test --profile ci --locked --test storage_transa
 
 `tests/storage_transactions.rs` checks `session::storage` against it
 ([record](../../../../docs/verification/2026-11-23-v0.17-storage-fuzz.md)).
+
+## Random-tick growth (v0.17 farms follow-up)
+
+`growth.json` holds the numbers in `SugarCaneBlock.randomTick`,
+`CactusBlock.randomTick`, `StemBlock.randomTick`, `CropBlock.getGrowthSpeed`,
+`BambooStalkBlock.randomTick` and `BambooStalkBlock.growBamboo`, and the
+`AGE` properties of sugar cane, cactus and stems. The extractor reads each
+method's numeric constants in bytecode order and fails unless they have the
+expected shape. It needs `javap`:
+
+```sh
+python3 tools/extract_java_growth_fixtures.py /path/to/server.jar --output target/java-growth.json
+diff tests/fixtures/java/26.3/growth.json target/java-growth.json
+scripts/boat-check.sh -- 'cargo test --profile ci --locked --lib world::sugar_cane'
+```
+
+`world::sugar_cane`'s `growth_constants_match_java` pins sugar cane's age
+and height and the crop and stem light and growth constants to it
+([record](../../../../docs/verification/2026-11-23-v0.17-reference-contraptions.md#farms-follow-up-2026-11-23)).
+VoxelCraft's cactus doesn't grow, and its bamboo lacks Java's `STAGE`; those
+facts wait in the fixture.
