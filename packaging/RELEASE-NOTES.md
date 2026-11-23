@@ -1,17 +1,15 @@
-VoxelCraft 0.15.0 brings villages to life and lets illagers fight back.
-**Raids:** pillager patrols and captains, Bad Omen and Raid Omen, Java's
-waves with vindicators, evokers, vexes, ravagers and witches, the raid bar,
-and Hero of the Village. **Villages:** profession buildings with their job
-sites, animal pens and abandoned villages, every Java trade, schedules,
-gossip and the wandering trader. **Woodland mansions** and five new explorer
-maps. **Workstations:** stonecutters, looms with banner patterns,
-cartography tables, books and lecterns, and the spyglass. **New mobs:**
-happy ghasts, nautiluses, camel husks and the parched. **And more:** armor
-trims, spectral arrows, Frost Walker, four new potions and new trial
-chamber and ancient city rooms. If you have 0.10.0 or later, the title
-screen offers this update; choose **Update and Restart**. If you're coming
-from 0.9.0 or earlier, install it by hand once, as below, and it updates
-itself from then on.
+VoxelCraft 0.16.0 opens the End and brings the Wither. **The outer End:**
+End cities and End ships, shulkers and shulker boxes, chorus plants and
+purpur, elytra and firework rockets, and a dragon you can summon again with
+End crystals. **The Wither and beacons:** every mob head, the Wither and its
+Nether star, wither roses and beacons with their powers. **New worlds:**
+poplar forests, sulfur caves with geysers, cinnabar, abandoned camps, and
+strongholds, mineshafts, fortresses, shipwrecks and ocean monuments rebuilt
+piece by piece. **And more:** the conduit, infested blocks, nether gold ore
+and the sulfur cube. If you have 0.10.0 or later, the title screen offers
+this update; choose **Update and Restart**. If you're coming from 0.9.0 or
+earlier, install it by hand once, as below, and it updates itself from then
+on.
 
 VoxelCraft is an unofficial fan project, inspired by Minecraft Java Edition. It
 is not affiliated with or endorsed by Mojang Studios or Microsoft, and it
@@ -19,10 +17,81 @@ contains no Minecraft code or assets.
 
 Choose your download:
 
-- **Windows 10/11 x64:** `VoxelCraft-0.15.0-windows-x64-Setup.exe`
-- **Mac with Apple Silicon (M-series), macOS 13+:** `VoxelCraft-0.15.0-macos-apple-silicon.dmg`
+- **Windows 10/11 x64:** `VoxelCraft-0.16.0-windows-x64-Setup.exe`
+- **Mac with Apple Silicon (M-series), macOS 13+:** `VoxelCraft-0.16.0-macos-apple-silicon.dmg`
 
-## What's new in 0.15.0
+## What's new in 0.16.0
+
+### The outer End (new worlds only)
+
+- End cities and End ships on the outer islands, laid out by Java's rules,
+  with their treasure chests, shulkers and `/locate`. Each ship carries an
+  elytra in an item frame and a dragon head on its bow.
+- Chorus plants and flowers grow in the highlands; chorus fruit teleports
+  you, and popped chorus fruit makes purpur blocks, pillars, stairs and
+  slabs. End rods.
+- Shulkers peek, shoot Levitation bullets, teleport, and multiply when hit
+  by their own bullets. They drop shulker shells.
+
+### Flight and storage
+
+- All 17 shulker boxes keep their contents when broken, can be dyed and
+  washed in a cauldron, give comparator output and can't be nested.
+- Elytra glide with Java's flight physics, wear out, are mended with
+  phantom membrane, and hurt you if you fly into a wall.
+- Firework stars and rockets in every shape, colour and fade, with trails
+  and twinkles. Rockets boost elytra flight and can be fired from a
+  crossbow.
+
+### The Ender Dragon, again
+
+- Place four End crystals on the exit portal to summon the dragon again,
+  through every stage of Java's ritual. Later kills give 500 experience
+  and open a new End gateway. The ritual survives saving mid-way.
+- The dragon now appears at Java's height, and new worlds' End uses Java's
+  spikes, gateways and exit podium.
+
+### The Wither and beacons
+
+- Every mob head and skull, on the floor or on a wall. Wear one to make
+  its mob notice you later. Charged creepers blow heads off, wither
+  skeletons drop their skulls, and note blocks play the head's mob.
+- Build the Wither in any orientation. It charges up, fires skulls,
+  armours itself at half health, breaks blocks and drops a Nether star.
+  Mobs it kills leave wither roses.
+- Beacons with pyramids of every size, coloured beams, primary and
+  secondary powers and their own screen. Dispensers place wither skeleton
+  skulls where they complete a Wither.
+
+### New worlds: generation 5
+
+- Poplar forests with poplar wood, boats and three colours of leaves;
+  shrubs, golden dandelions and shelf mushrooms.
+- Sulfur caves with cinnabar, sulfur, sulfur spikes and potent sulfur,
+  whose geysers throw you into the air and whose gas causes Nausea. Sulfur
+  springs. The sulfur cube, which can be caught in a bucket and eats the
+  blocks you feed it.
+- Abandoned camps with their loot and the abandoned camp map.
+- Strongholds, mineshafts and fortresses built piece by piece the way Java
+  builds them, with infested blocks in strongholds and mountains;
+  silverfish hide in stone and wake their friends.
+- Shipwrecks and ocean monuments rebuilt from Java's rules, with three
+  elder guardians in every monument.
+- Nether gold ore.
+
+### The conduit
+
+- Build a conduit frame from prismarine to get Conduit Power underwater:
+  water breathing, faster mining and clear sight. A full frame attacks
+  hostile mobs nearby.
+
+### Fixes
+
+- LAN guests can save long books without being disconnected, and each LAN
+  guest hears its own raid horn.
+- A dragon ritual started just before saving carries on after reloading.
+
+## What's new in 0.15.0 (if you're coming from 0.14.0 or earlier)
 
 ### Raids and illagers
 
@@ -475,10 +544,7 @@ new giant trees.
   ancient city.
 - On steep ground some villages and outposts are smaller or don't appear,
   because a building is left out rather than stood on a pillar.
-- Abandoned camps, End cities and strongholds, mineshafts and dungeons
-  piece by piece aren't in the new generator yet. Of the five new explorer
-  maps, only the woodland mansion map can be found in survival until
-  abandoned camps arrive.
+- Mineshaft chest minecarts and the stronghold biome search aren't in yet.
 - Archaeology covers suspicious sand and gravel in ocean ruins only; trail
   ruins have no suspicious blocks yet, and decorated pots can't carry
   sherd patterns.
@@ -488,10 +554,10 @@ new giant trees.
   raiders, and raids add nothing to statistics.
 - The new mobs and villagers use simpler brains than Java's, and many of
   them borrow other mobs' sounds. Item frames don't show map images.
-- Conduits and the effects of Conduit Power are planned for 0.16.
-- The Host, Raiser, Shaper, Wayfinder and Spire armor trim templates have
-  no survival source yet: trail ruins have no suspicious gravel loot and
-  End cities aren't generated.
+- The Host, Raiser, Shaper and Wayfinder armor trim templates have no
+  survival source yet: trail ruins have no suspicious gravel loot.
+- The Wither's flight and attack timing are simpler than Java's. Dispensers
+  can't put armour or heads on players or mobs.
 - Music discs can be heard 24 blocks away (Java: 64), and other music
   doesn't fade while a disc plays.
 - Some Java options aren't in yet because nothing in the game uses them:
@@ -521,11 +587,9 @@ new giant trees.
   changes.
 - The off-hand item isn't drawn in your hand, and bows can't be drawn from
   the off-hand.
-- There is no Soul Speed and no wither skeleton skull block.
+- There is no Soul Speed.
 - Complex redstone contraptions that depend on Java's exact update order may
   behave differently.
-- The Ender Dragon can't be respawned, and the End has no chorus trees, cities,
-  shulkers or elytra. The Wither can't be summoned yet.
 - Commands accept `@s` and `@p` only.
 - Bells don't swing, strider jockeys don't spawn,
   boats ignore currents, and minecarts can't carry mobs across a save.
@@ -538,15 +602,16 @@ new giant trees.
 
 Players on 0.10.0 or later get this version from the title screen. Install
 it by hand if you're on 0.9.0 or earlier; later versions then arrive in game.
-Worlds and options from 0.14.0 and earlier load in 0.15.0 and keep the
-terrain and structures they were created with; woodland mansions and the
-new village buildings, trial chamber rooms and ancient city rooms appear
-only in worlds created in 0.15.0. Raids, patrols, the new mobs, trades,
-workstations and items work in every world. Once 0.15.0 has saved a world,
-don't open it in an older version: older versions can't read chunks
-holding the new blocks and lose the new mobs and items. Back up your
-worlds before upgrading from 0.8.0, and don't open a world saved by 0.9.0
-or later in 0.8.0. LAN players all need the same version.
+Worlds and options from 0.15.0 and earlier load in 0.16.0 and keep the
+terrain and structures they were created with; End cities and ships,
+poplar forests, sulfur caves, abandoned camps and the rebuilt strongholds,
+mineshafts, fortresses, shipwrecks and monuments appear only in worlds
+created in 0.16.0. The Wither, beacons, mob heads, fireworks, the conduit
+and summoning the dragon again work in every world. Once 0.16.0 has saved a world, don't
+open it in an older version: older versions can't read chunks holding the
+new blocks and lose the new mobs and items. Back up your worlds before
+upgrading from 0.8.0, and don't open a world saved by 0.9.0 or later in
+0.8.0. LAN players all need the same version.
 
 ## Installing
 
