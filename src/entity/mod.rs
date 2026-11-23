@@ -309,6 +309,14 @@ pub enum EntityEvent {
         cause: crate::simulation::damage::Cause,
         credit_player: bool,
     },
+    /// v0.17 Track D1: a TNT minecart's blast (`MinecartTNT.explode`, a TNT
+    /// explosion). A cart that had been primed spares rails and the blocks
+    /// under them (`getBlockExplosionResistance`, `shouldBlockExplode`).
+    CartExplosion {
+        center: DVec3,
+        power: f32,
+        spares_rails: bool,
+    },
     Sound {
         sound: MobSound,
         pos: DVec3,
@@ -379,6 +387,8 @@ pub enum EntityEvent {
         pos: DVec3,
         damage: f32,
         burning: bool,
+        /// An arrow (`AbstractArrow`); `false` for a fireball.
+        arrow: bool,
         owner: Option<PlayerId>,
         motion: DVec3,
     },

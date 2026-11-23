@@ -1576,6 +1576,8 @@ fn add_redstone_recipes(recipes: &mut Vec<Recipe>) {
         shapeless(&[CHEST, CART], Item::CHEST_MINECART, 1),
         shapeless(&[HOPPER, CART], Item::HOPPER_MINECART, 1),
         shapeless(&[TNT_BLOCK, CART], Item::TNT_MINECART, 1),
+        // v0.17 Track D1: `furnace_minecart` (shapeless furnace and minecart).
+        shapeless(&[FURNACE, CART], Item::FURNACE_MINECART, 1),
         shaped(&["PPP", "PRP", "PPP"], &[('P', PLANKS), ('R', DUST)], b(crate::world::gadgets::NOTE), 1),
         shaped(&["I", "S", "P"], &[('I', IRON), ('S', STICK), ('P', PLANKS)], b(crate::world::gadgets::HOOK), 2),
         shaped(&["#I#", "~H~", " # "], &[('#', STICK), ('I', IRON), ('~', STRING), ('H', HOOK)], Item::CROSSBOW, 1),

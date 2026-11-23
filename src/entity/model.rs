@@ -1699,6 +1699,9 @@ pub(super) fn build_minecarts(carts: &[super::minecart::Minecart], camera: DVec3
                 [-6.0, 7.0, -6.0],
                 [6.0, 16.0, 6.0],
             )),
+            // v0.17 Track D1: a furnace (`getDefaultDisplayBlockState`,
+            // facing north) with its mouth glowing while it has fuel.
+            super::minecart::CartKind::Furnace => Some(([104, 104, 104], [-6.0, 7.0, -6.0], [6.0, 16.0, 6.0])),
             super::minecart::CartKind::Rideable
             | super::minecart::CartKind::Boat { .. }
             | super::minecart::CartKind::Cushion { .. } => None,
@@ -1706,6 +1709,12 @@ pub(super) fn build_minecarts(carts: &[super::minecart::Minecart], camera: DVec3
         if let Some((color, min, max)) = cargo {
             let box_ = cube(min, max, color, 16);
             push_cuboid(out, &box_, &xf, rot, light, ([0.0; 3], 0.0), cart.id as f32 + 1.0);
+        }
+        if cart.kind == super::minecart::CartKind::Furnace {
+            let mouth = if cart.has_fuel() { [255, 150, 40] } else { [40, 40, 40] };
+            let lit = if cart.has_fuel() { (light.0, 15) } else { light };
+            let box_ = cube([-4.0, 8.0, -6.5], [4.0, 12.0, -6.0], mouth, 8);
+            push_cuboid(out, &box_, &xf, rot, lit, ([0.0; 3], 0.0), cart.id as f32 + 2.0);
         }
     }
 }

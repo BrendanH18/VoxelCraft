@@ -168,6 +168,7 @@ impl Game {
         self.tick_agents();
         self.explode_anchors();
         self.ride_minecarts(input);
+        self.minecart_sounds();
         // Detectors share Java's skyDarken with spawning, then apply the sun
         // angle themselves (DaylightDetectorBlock.updateSignalStrength).
         let ticks = (self.day_time.rem_euclid(1.) * 24000.).floor() as u32;

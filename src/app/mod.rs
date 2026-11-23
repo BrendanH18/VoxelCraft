@@ -256,7 +256,9 @@ struct Game {
     place: Vec<(glam::IVec3, Block)>,
     /// `--sign` front texts, written after `--place`.
     signs: Vec<(glam::IVec3, [String; 4])>,
-    carts: Vec<(crate::entity::minecart::CartKind, glam::IVec3)>,
+    carts: Vec<(crate::entity::minecart::CartKind, glam::IVec3, bool)>,
+    /// v0.17 Track D1: ticks counted for the minecart sound stretches.
+    cart_sound_tick: u32,
     decor_scene: Vec<(IVec3, IVec3, Item, Option<Item>)>,
     /// `--brush`: strokes on suspicious blocks, after `--place`.
     brush_scene: Vec<(IVec3, IVec3, u8)>,
@@ -1462,12 +1464,14 @@ impl Game {
         );
         let mut wish = Vec::new();
         if self.session.player.vehicle.is_none() && self.session.mode != GameMode::Spectator {
-            self.mobs.entities.push_carts(self.session.player.pos, self.session.player.collision_shape().half_width);
+            // `AbstractMinecart.push`: the player gets a quarter of its push back.
+            let back = self.mobs.entities.push_carts(self.session.player.pos, self.session.player.collision_shape());
+            self.session.player.vel += back * 20.0;
         }
-        for bot in self.agents.players.values().filter(|b| b.active && b.agent.session.player.vehicle.is_none()) {
-            self.mobs
-                .entities
-                .push_carts(bot.agent.session.player.pos, bot.agent.session.player.collision_shape().half_width);
+        for bot in self.agents.players.values_mut().filter(|b| b.active && b.agent.session.player.vehicle.is_none()) {
+            let player = &mut bot.agent.session.player;
+            let back = self.mobs.entities.push_carts(player.pos, player.collision_shape());
+            player.vel += back * 20.0;
         }
         if self.session.player.vehicle.is_some() {
             wish.push((crate::entity::PlayerId::HOST, self.session.player.ride_push(input)));
@@ -1680,7 +1684,7 @@ impl Game {
                 log::warn!("--sign {pos}: {e}");
             }
         }
-        for (kind, pos) in std::mem::take(&mut self.carts) {
+        for (kind, pos, lit) in std::mem::take(&mut self.carts) {
             // A cushion sits on the floor of its cell.
             if let Some(colour) = kind.cushion() {
                 let at = pos.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
@@ -1691,8 +1695,15 @@ impl Game {
                 }
                 continue;
             }
-            if self.mobs.entities.place_cart(&self.world, kind, pos).is_none() {
-                log::warn!("--cart {pos}: no rail");
+            match self.mobs.entities.place_cart(&self.world, kind, pos) {
+                // One coal's fuel, with no push, so the lit cart stays put.
+                Some(id) if lit => {
+                    if let Some(cart) = self.mobs.entities.cart_mut(id) {
+                        cart.fuel = crate::entity::minecart::FUEL_PER_ITEM;
+                    }
+                }
+                Some(_) => {}
+                None => log::warn!("--cart {pos}: no rail"),
             }
         }
         for (pos, face, item, held) in std::mem::take(&mut self.decor_scene) {

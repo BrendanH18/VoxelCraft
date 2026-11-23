@@ -437,6 +437,19 @@ impl System {
                 self.burst(b, setting);
             }
         }
+        // v0.17 Track D1: a lit furnace cart smokes one tick in four
+        // (`MinecartFurnace.tick`, `LARGE_SMOKE` 0.8 above its feet); a
+        // primed TNT cart smokes every tick (`MinecartTNT.tick`, 0.5 above).
+        for cart in &entities.minecarts {
+            if !near(cart.pos) {
+                continue;
+            }
+            if cart.has_fuel() && self.rng.next_int(4) == 0 {
+                self.burst(Burst::new(Kind::LargeSmoke, cart.pos + DVec3::Y * 0.8, 1), setting);
+            } else if cart.kind == crate::entity::minecart::CartKind::Tnt && cart.fuse.is_some_and(|f| f > 0) {
+                self.burst(Burst::new(Kind::Smoke, cart.pos + DVec3::Y * 0.5, 1), setting);
+            }
+        }
         for eye in &entities.eyes {
             if !near(eye.pos) {
                 continue;

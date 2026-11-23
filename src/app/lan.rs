@@ -1368,6 +1368,11 @@ impl Game {
                     if refresh || !peer.looked.contains(&m.uid) {
                         v["look"] = m.look();
                     }
+                    // v0.17 Track D1: the vehicle a mob sits in, so a guest
+                    // keeps the cart-passenger link.
+                    if let Some(vehicle) = m.riding {
+                        v["r"] = json!(vehicle);
+                    }
                     // The charge bar changes every tick, so it rides with the pose.
                     if let Some(mount) = m.mount.as_ref().filter(|s| s.jump_charge > 0.0) {
                         v["jump"] = json!(mount.jump_charge);
@@ -1860,6 +1865,7 @@ impl Game {
                 if let Some(mount) = mob.mount.as_mut() {
                     mount.jump_charge = m["jump"].as_f64().map_or(0.0, |j| j.clamp(0.0, 1.0) as f32);
                 }
+                mob.riding = m["r"].as_u64().and_then(|r| u32::try_from(r).ok());
                 mob.animate_replica(voxelcraft::simulation::TICK_SECONDS as f32);
                 self.mobs.entities.mobs.push(mob);
             }

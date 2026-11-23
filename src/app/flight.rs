@@ -65,6 +65,53 @@ impl Game {
         self.audio.play(Sound::Flight(Cue::ElytraFlying), Some(at), volume, (pitch, pitch));
     }
 
+    /// v0.17 Track D1: minecart sounds, as overlapping stretches rather than
+    /// tickable loops. Every moving minecart near the player rolls
+    /// (`MinecartSoundInstance`: volume `0.7 * clamp(speed, 0, 0.5)`, pitch
+    /// 1), and the local player's own cart plays its inside sound with no
+    /// distance falloff (`RidingMinecartSoundInstance`: `0.75 * min(speed,
+    /// 1)`, the underwater variant while their head is under water). Speed
+    /// is the cart's horizontal blocks per tick.
+    pub(super) fn minecart_sounds(&mut self) {
+        use crate::entity::minecart::{Cue as CartCue, inside_volume, rolling_volume};
+        // A stretch lasts ten ticks; one starts every five.
+        const EVERY: u32 = 5;
+        /// Carts heard at once, nearest first, and how far.
+        const MOST: usize = 8;
+        const RANGE: f64 = 32.0;
+        self.cart_sound_tick = self.cart_sound_tick.wrapping_add(1);
+        if !self.cart_sound_tick.is_multiple_of(EVERY) {
+            return;
+        }
+        let ear = self.session.player.pos;
+        let riding = self.session.player.vehicle;
+        let mut rolling: Vec<(f64, DVec3, f32)> = self
+            .mobs
+            .entities
+            .minecarts
+            .iter()
+            .filter(|c| c.kind.is_minecart() && c.pos.distance_squared(ear) < RANGE * RANGE)
+            .map(|c| (c.pos.distance_squared(ear), c.pos, rolling_volume(c.vel.with_y(0.0).length())))
+            .filter(|&(_, _, volume)| volume > 0.0)
+            .collect();
+        rolling.sort_by(|a, b| a.0.total_cmp(&b.0));
+        for (_, at, volume) in rolling.into_iter().take(MOST) {
+            self.audio.play(Sound::Minecart(CartCue::Rolling), Some(at), volume, (1.0, 1.0));
+        }
+        let Some(cart) = riding.and_then(|id| self.mobs.entities.cart(id)).filter(|c| c.kind.is_minecart()) else {
+            return;
+        };
+        let volume = inside_volume(cart.vel.with_y(0.0).length());
+        if volume > 0.0 {
+            let cue = if self.session.player.head_in_water(&self.world) {
+                CartCue::InsideUnderwater
+            } else {
+                CartCue::Inside
+            };
+            self.audio.play(Sound::Minecart(cue), None, volume, (1.0, 1.0));
+        }
+    }
+
     /// Plays the shulker boxes' lid sounds since the last tick
     /// (`SHULKER_BOX_OPEN`/`CLOSE`: volume 0.5, pitch 0.9 to 1.0).
     pub(super) fn play_shulker_sounds(&mut self) {

@@ -1245,18 +1245,26 @@ used none. Everything else in wave 2's rows and the integrator spare
 
 ### v0.17 Redstone and automation track reservations
 
-Reserved by the owner's v0.17 plan on 2026-11-23 for four parallel tracks.
-Each track allocates only inside its own rows, records what it used under
-its own heading below, and leaves unused IDs unregistered. Texture layers
-are never saved and may be repacked at integration.
+Reserved on 2026-11-23 when the owner approved the v0.17 plan (milestone
+M6), for ten parallel tracks after `examples/id_map.rs` at `8d49f02`
+showed states 12800–14335 and items 1770–1849 unregistered. Each track
+allocates only inside its own row, records what it used under its own
+heading below, and leaves unused IDs unregistered. Texture layers are never
+saved and may be repacked at integration. The integrator makes appended
+orderings contiguous in landing order.
 
 | Block states | Item IDs | Texture layers | Track |
 | --- | --- | --- | --- |
 | 12800–12831 | 1770–1774 | — | A. Java update order |
 | 12832–13087 | 1775–1784 | 1164–1199 | B. Pistons |
-| 13088–13343 | 1785–1799 | 1200–1239 | C. Crafter and dispensing |
-| 13344–13599 | 1800–1814 | 1240–1269 | D. Rails and storage |
-| 13600–14335 | 1815–1849 | 1270–1299 | Later tracks and the integrator |
+| 13088–13343 | 1785–1799 | 1200–1239 | C1. Crafter |
+| 13344–13599 | 1800–1814 | 1240–1269 | D1. Furnace minecart, rail and cart gaps |
+| 13600–13631 | 1815–1819 | — | C2. Dispense table, sided transfers |
+| 13632–13695 | 1820–1824 | 1270–1279 | E1. Sculk game events |
+| 13696–13887 | 1825–1834 | 1280–1289 | E2. Other redstone components |
+| 13888–13951 | 1835–1839 | 1290–1294 | G. Workstations |
+| — | — | — | D2. Storage transactions; F. Reference contraptions |
+| 13952–14335 | 1840–1849 | 1295–1299 | Integrator |
 
 #### Track A allocation
 
@@ -1266,6 +1274,22 @@ ordering. The saved `redstone` dimension property is now `v2` (adds block
 events `e`, drops the torch burnout deadline `b`; v1 still loads). States
 12800–12831 stay unregistered; they would fit stored repeater locks (4
 facings × 4 delays × 2 powered) if that difference is closed later.
+
+#### Track D1 allocation
+
+2026-11-23, implemented, unverified
+([record](verification/2026-11-23-v0.17-d1-carts.md)): item **1800**, the
+furnace minecart (`Item::FURNACE_MINECART`). No block state or texture
+layer: every rail kind already had its waterlogged partner among the
+BLD-04f states (rails 500–509 and special rails 1471–1506, partners from
+8192), so 13344–13599, items 1801–1814 and layers 1240–1269 stay
+unregistered. Appended orderings: `CartKind::Furnace` saves as cart code
+**42**, after the poplar boats' 40 and 41; the furnace minecart's item icon
+follows v0.16 Track D's (`GEN5_ICONS`); `Sound::Minecart` (rolling, inside,
+inside underwater) follows `Sound::Geyser` (`GEYSER_END`). A furnace cart's
+saved and LAN cart string appends `fuel,push_x,push_z`; every other cart
+keeps its fifteen fields. New `EntityEvent::CartExplosion` and the
+`EntityShot.arrow` field are internal and unsaved.
 
 ## Assessment branch ID reservations
 

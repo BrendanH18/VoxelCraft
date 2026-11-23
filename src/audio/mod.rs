@@ -11,6 +11,7 @@ mod dsp;
 mod export;
 mod flight;
 mod illager;
+mod minecart;
 pub mod mixer;
 mod raid;
 mod sniffer;

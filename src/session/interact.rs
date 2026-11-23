@@ -37,6 +37,11 @@ pub enum Used {
     /// The player now rides this vehicle.
     Mounted(u32),
     CartPlaced,
+    /// v0.17 Track D1: a furnace minecart was right-clicked; `fuelled` when
+    /// it took the held coal or charcoal (`MinecartFurnace.interact`).
+    FurnaceCart {
+        fuelled: bool,
+    },
     MapCreated,
     /// A cushion was set down at this position (`CushionItem.useOn`).
     CushionPlaced {
@@ -425,6 +430,18 @@ impl PlayerSession {
             && (ctx.sneaking || entities.cart(id).is_some_and(|c| c.kind.boat().is_none()))
         {
             return Ok(Some(Used::OpenVehicle(id)));
+        }
+        // `MinecartFurnace.interact` always succeeds: coal or charcoal fuels
+        // it and pushes it away from the player's feet.
+        if let Some(i) = entities.cart_ray(eye, dir, reach)
+            && entities.minecarts[i].kind == crate::entity::minecart::CartKind::Furnace
+        {
+            let held = self.inventory.get(slot).map(|s| s.item);
+            let fuelled = held.is_some_and(|item| entities.minecarts[i].add_fuel(self.player.pos, item));
+            if fuelled && !creative {
+                self.inventory.take_one(slot);
+            }
+            return Ok(Some(Used::FurnaceCart { fuelled }));
         }
         // Leads, name tags, food and taming come before mounting.
         if survival_items::use_animal_target(

@@ -322,19 +322,48 @@ All rails render as alpha-tested detail planes, raised 1/16 block, with actual
 one-block slopes and separate off/on textures. Vanilla rail and cart recipes
 and base-state drops are registered.
 
-Minecart items 761–764 place only on rails. Cart motion runs at 20 Hz with
+Minecart items 761–764 and 1800 place only on rails. Cart motion runs at 20 Hz with
 Java's 0.4-block/tick movement cap, track projection, curve direction changes,
 slope gravity, occupied/empty/container friction, powered acceleration and
-unpowered braking. Walking players and mobs push carts; nearby moving empty
-rideable carts collect mobs; carts exchange momentum on contact. Right-click
+unpowered braking. Contacts follow `AbstractMinecart.push` and
+`OldMinecartBehavior.pushAndPickupEntities` (v0.17 Track D1): a player or
+mob whose box touches a minecart pushes it away and gets a quarter of that
+push back; a rideable cart moving at least 0.1 blocks a tick takes in the
+first mob its reach (its box grown 0.2 sideways) touches while it carries
+nothing, never an iron golem or a bat, with no size limit, and shoves the
+rest, players included (`Entity.push`); every minecart pushes the minecarts
+its reach touches, but only when the line between them lies within the
+pushed cart's facing (`pushOtherMinecart`'s 0.8 cosine of its yaw, which is
+0 for a cart that has not moved yet). Both then keep a fifth of their speed
+and share the average; a furnace cart keeps 95% of its own and hands the
+other its speed. Boats keep the earlier contact push. Right-click
 enters a rideable cart, the camera follows its seat, and sneak dismounts using
 Java's `getDismountLocationForPassenger`: the eight cells around the cart in
 `DismountHelper.offsetsForDirection` order (sideways first, relative to the rail
 axis), at the heights 0, +1 and -1 for standing, crouching and swimming poses,
 taking the first valid floor with a free player box. A cart in water (`isInWater`)
-is capped at 0.2 blocks per tick, climbs slopes at one fifth of the pull and
-loses a further 5% of its speed per tick (`OldMinecartBehavior`). Survival punches break carts into their variant
+is capped at 0.2 blocks per tick, climbs slopes at one fifth of the pull,
+loses a further 5% of its speed per tick and falls with gravity 0.005 instead
+of 0.04 (`OldMinecartBehavior`, `getDefaultGravity`). A waterlogged block's
+water counts, so a cart on a wet rail is in water. Every rail kind takes
+the `waterlogged` state through the BLD-04f partners; shape and power changes
+keep the water. Survival punches break carts into their variant
 item and spill contents; creative removes the cart without dropping its item.
+
+The furnace minecart (item 1800, `MinecartFurnace`, v0.17 Track D1) is
+crafted from a furnace and a minecart, drops itself and carries nobody.
+Right-clicking it with coal or charcoal (`#furnace_minecart_fuel`) adds 3600
+ticks of fuel unless that would pass 32000, uses the item outside creative,
+and sets its push to the horizontal line from the player's feet to the cart;
+any other click is used and does nothing. Each tick on the rails its push
+turns to its line of motion (`calculateNewPushAlong`) and its speed becomes
+`0.8 × speed + push` (a tenth of that in water), then `0.98 × speed` without
+a push, before the normal 0.96 slowdown; it moves at most half the normal
+cap (0.2 blocks a tick, three quarters in water). It burns a tick of fuel
+after each move and loses its push when the fuel runs out. While it has fuel
+it shows a lit furnace mouth and puffs large smoke 0.8 above its feet one
+tick in four. Its fuel and push are saved with it (Java `Fuel`, `PushX`,
+`PushZ`) and sent to LAN guests, who see it lit.
 
 Chest carts expose 27 slots and hopper carts five slots through the existing
 container screen, including normal click and quick-move operations. Hoppers
@@ -348,18 +377,41 @@ the existing explosion event path with speed-dependent power.
 
 A per-dimension `minecarts` property saves ids, variant, full-precision position
 and velocity, yaw, contents with stack components, hopper enabled state, TNT
-fuse and player rider. Loading older worlds without it works. `--cart
-x,y,z,rideable|chest|hopper|tnt` places a test cart after `--place` edits, for
-visual verification; a boat or cushion item name (`red_cushion`) places that
+fuse, player rider and a furnace cart's fuel and push. Mobs keep the cart they
+sit in through the mob saves (villagers, wandering traders and golems too,
+since v0.17 Track D1), and LAN guests receive each mob's vehicle. Loading
+older worlds without these works. `--cart
+x,y,z,rideable|chest|hopper|tnt|furnace|furnace_lit` places a test cart after
+`--place` edits, for visual verification (`furnace_lit` with one coal's fuel
+and no push); a boat or cushion item name (`red_cushion`) places that
 vehicle instead, a cushion on the floor of the given cell.
 
-A TNT cart lit by fire or lava gets Java's `nextInt(20) + nextInt(20)` fuse.
+A TNT cart lit by fire or lava gets Java's `nextInt(20) + nextInt(20)` fuse,
+and smokes each tick while primed. Any burning projectile that breaks a TNT
+cart primes it the same way instead of dropping it
+(`shouldSourceDestroy`, `destroy`); a burning arrow still sets it off at once.
+Blaze fireballs hit carts and boats for their 5 damage, breaking them; ghast
+fireballs explode against them. A TNT cart's blast is centred on its feet and
+is a TNT explosion; once the cart had been primed (an activator rail, fire, a
+blast or a fuse already lit), it spares rails and the blocks under them: they
+cost the blast's rays nothing and are never destroyed
+(`getBlockExplosionResistance`, `shouldBlockExplode`). A cart that goes off
+at once from an impact, a fall or a burning arrow without a lit fuse breaks
+rails like any blast.
 
-Known gaps: waterlogged rails, exact Java cart collision
-alignment, saved mob passengers, rolling
-cart audio, textured cargo models and TNT's special rail/support blast
-protection are not implemented. Burning projectiles do not yet hit carts.
-The existing explosion system determines visibility and block destruction.
+Moving minecarts roll (`entity.minecart.riding`, volume `0.7 × clamp(speed,
+0, 0.5)`, pitch 1, since `MinecartSoundInstance`'s own `pitch` field shadows
+the played one) and the local player's own cart plays its inside sound with
+no distance falloff (`0.75 × min(speed, 1)`, the underwater variant while
+their head is under water), both silent below 0.01 blocks a tick. They are
+original procedural sounds played as overlapping half-second stretches.
+
+Known gaps: textured cargo models (cargo is a coloured box). Arrows only burn
+with Flame, not after flying through fire or lava. A LAN guest hears the
+rolling sound the host plays but not its own inside sound. Mobs other than
+bats and ridden mounts count as pushable; Java's other `isPushable`
+exceptions (climbing, a digging warden, team rules) are not modelled. The
+existing explosion system determines visibility and block destruction.
 No experimental minecart-improvements behaviour is enabled.
 
 Controller seats and CLI agents are agents: they mount a rideable cart through the
@@ -377,7 +429,13 @@ Research used the Java implementations
 [MinecartHopper](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/vehicle/MinecartHopper.java)
 and [MinecartTNT](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/entity/vehicle/MinecartTNT.java).
 This mirror is not pinned to Java 1.21; stable legacy rules were used and the
-gaps above prevent a claim of complete Java parity.
+gaps above prevent a claim of complete Java parity. v0.17 Track D1 read the
+pinned 26.3 server and client jars instead (`MinecartFurnace`,
+`AbstractMinecart`, `OldMinecartBehavior`, `AbstractMinecartContainer`,
+`MinecartTNT`, `VehicleEntity`, `MinecartSoundInstance`,
+`RidingEntitySoundInstance`, `LocalPlayer.startRiding`), with the constants in
+`tests/fixtures/java/26.3/minecarts.json`
+([record](verification/2026-11-23-v0.17-d1-carts.md)).
 
 
 ## Note blocks and tripwire (round 2)

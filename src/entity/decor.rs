@@ -628,11 +628,13 @@ impl Entities {
         use super::projectile::Struck;
         let mut decor = Vec::new();
         for e in events {
-            let super::EntityEvent::EntityShot { struck, damage, burning, owner, motion, .. } = *e else { continue };
+            let super::EntityEvent::EntityShot { struck, damage, burning, arrow, owner, motion, .. } = *e else {
+                continue;
+            };
             // A creative shooter: alive but not a target for mobs.
             let creative = owner.is_some_and(|id| ctx.players.iter().any(|p| p.id == id && p.alive && !p.targetable));
             match struck {
-                Struck::Cart(id) => self.shoot_cart(id, damage, burning, creative, motion),
+                Struck::Cart(id) => self.shoot_cart(id, damage, burning, arrow, creative, motion),
                 Struck::Decor(i) => decor.push((i, creative)),
             }
         }

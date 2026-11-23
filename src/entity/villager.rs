@@ -975,6 +975,10 @@ impl Entities {
                     if m.attributes() != super::zombie::Attrs::default() {
                         saved["attributes"] = m.attrs.save();
                     }
+                    // v0.17 Track D1: the vehicle it sits in; written only when set.
+                    if let Some(vehicle) = m.riding {
+                        saved["riding"] = json!(vehicle);
+                    }
                     Some(saved)
                 }
                 MobKind::Villager | MobKind::ZombieVillager | MobKind::WanderingTrader => {
@@ -992,6 +996,10 @@ impl Entities {
                     // A zombie villager's spawn attributes (leaders' health and reinforcements).
                     if m.attributes() != super::zombie::Attrs::default() {
                         saved["attributes"] = m.attrs.save();
+                    }
+                    // v0.17 Track D1: the vehicle it sits in; written only when set.
+                    if let Some(vehicle) = m.riding {
+                        saved["riding"] = json!(vehicle);
                     }
                     Some(saved)
                 }
@@ -1141,6 +1149,7 @@ impl Entities {
             if let Some(mut m) = load() {
                 m.effects = crate::simulation::effects::Effects::deserialize(a["effects"].as_str().unwrap_or(""));
                 super::leash::load(&mut m, &a["identity"]);
+                m.riding = a["riding"].as_u64().and_then(|u| u32::try_from(u).ok());
                 if let Some(v) = m.villager.as_ref() {
                     self.next_villager_id = self.next_villager_id.max(v.id.saturating_add(1));
                 }

@@ -1454,3 +1454,30 @@ scripts/boat-check.sh -- 'cargo test --profile ci --locked --test dispensing --t
 `tests/dispensing.rs` checks the game's table against it both ways, and
 `tests/hopper_sides.rs` every container's faces
 ([record](../../../../docs/verification/2026-11-23-v0.17-dispensing.md)).
+
+## Minecarts (v0.17 Track D1)
+
+`minecarts.json` holds Java 26.3's default (non-experimental) minecart
+constants, read with `javap` by `tools/extract_java_minecart_fixtures.py`
+from the pinned server artifact and the pinned client
+(SHA-1 `e877b6a07acd633fb3bb475002175cec036e7b87`): the furnace minecart's
+fuel per coal and cap, its `#furnace_minecart_fuel` tag and shapeless
+recipe, its speed share, push and friction (`MinecartFurnace`);
+`OldMinecartBehavior`'s rail speeds, slope, boost, halt and slowdowns;
+`AbstractMinecart`'s gravity, air drag, contact push and the 0.8 facing
+alignment of `pushOtherMinecart`; the pickup reach and its excluded classes;
+`AbstractMinecartContainer`'s float slowdown; the TNT minecart's fuse, blast
+power, fall rule and rail protection (`#rails`, primed only); and the
+client's rolling (`MinecartSoundInstance`) and riding
+(`LocalPlayer.startRiding`) sound volumes. Float constants are written as
+Java widens them to double. The extractor matches each method's numeric
+literals in bytecode order and fails when they change.
+
+```sh
+python3 tools/extract_java_minecart_fixtures.py /path/to/server.jar /path/to/client.jar --output target/java-minecarts.json
+diff tests/fixtures/java/26.3/minecarts.json target/java-minecarts.json
+scripts/boat-check.sh -- 'cargo test --profile ci --locked --test minecarts'
+```
+
+`tests/minecarts.rs` checks the game against it
+([record](../../../../docs/verification/2026-11-23-v0.17-d1-carts.md)).
