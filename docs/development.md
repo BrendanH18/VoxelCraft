@@ -144,6 +144,17 @@ still be running; a killed `--save` leaves it to stop within 30 minutes. New che
 sandboxes start from a copy of it with every dependency built. Re-run it
 after dependency or toolchain changes.
 
+Earlier rules, kept for reading old records: builds ran on the Mac with
+every worktree sharing one cargo target directory (2026-10-17; replaced on
+2026-11-22, since a shared target could hand one worktree another's build
+and its workaround, `touch build.rs` and `cargo clean --release -p
+voxelcraft`, forced rebuilds before benchmarks), with at most four agents
+in parallel (2026-10-17, set for the owner's 16 GB machine; lifted on
+2026-11-21). Builds moved to Namespace on 2026-11-05, agents iterated on the
+Mac again from 2026-11-20, and Boat took over the same day; each check then
+used its own `boat run` and a daily start until the long-lived sandbox of
+2026-11-21.
+
 Sandboxes run Linux, like the Linux CI job: they check the code and tests
 but not macOS- or Windows-only code, the GPU or performance. Run the game,
 screenshots, scripted scenes and benchmarks locally; frame-time gates are
