@@ -10,6 +10,7 @@ use super::{
     container_sides as sides,
     dispensing::{self, Behaviour},
     redstone_blocks::{self as r, Component},
+    vibration::{EventSource, GameEvent},
 };
 
 const SIDES: [IVec3; 6] = [IVec3::Z, IVec3::NEG_Z, IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y];
@@ -341,6 +342,8 @@ impl World {
         if let Some(b) = destroy {
             self.spill_block(end, b);
             self.edit(end, Block::AIR, false);
+            // `PistonBaseBlock.moveBlocks`: the destroyed block is the context.
+            self.emit_block_event(end, GameEvent::BlockDestroy, EventSource::NONE, Some(b));
         }
         for &(from, block) in push[..count].iter().rev() {
             // `PistonBaseBlock.moveBlocks` leaves air, not the moved block's water.
@@ -349,6 +352,8 @@ impl World {
         }
         self.edit(p, r::piston(facing, sticky, true), false);
         self.start_piston_move(p, p + d, r::piston_head(facing, sticky), p, true);
+        // `PistonBaseBlock.triggerEvent` (extend): the extended base is the context.
+        self.emit_block_event(p, GameEvent::BlockActivate, EventSource::NONE, Some(r::piston(facing, sticky, true)));
     }
 
     fn retract_piston(&mut self, p: IVec3, facing: u8, sticky: bool) {
@@ -365,6 +370,8 @@ impl World {
                 self.start_piston_move(from, p + d, block, p, true);
             }
         }
+        // `PistonBaseBlock.triggerEvent` (retract): the moving piston is the context.
+        self.emit_block_event(p, GameEvent::BlockDeactivate, EventSource::NONE, Some(r::MOVING));
     }
 
     pub(super) fn finish_piston_moves(&mut self) {
@@ -704,6 +711,11 @@ impl World {
             }
         }
         if count == 0 {
+            // `DispenserBlock.dispenseFrom` with nothing to dispense (the
+            // dropper's override posts nothing).
+            if !dropper {
+                self.emit_block_event(p, GameEvent::BlockActivate, EventSource::NONE, self.get_block(p));
+            }
             return;
         }
         // Select a nonempty SLOT uniformly; stack sizes do not bias the choice.
@@ -860,26 +872,46 @@ impl World {
                 if self.generator.dimension != super::terrain::Dimension::Nether && !block.holds_water() {
                     self.set_block(front, Block::WATER);
                 }
+                // `BucketItem.playEmptySound`, then `MobBucketItem.checkExtraContent`.
+                self.emit_block_event(front, GameEvent::FluidPlace, EventSource::NONE, None);
+                self.emit_block_event(front, GameEvent::EntityPlace, EventSource::NONE, None);
                 self.automation.creatures.push((front, one));
                 Some(Item::BUCKET)
             }
             // v0.16 Track D: a sulfur cube bucket has no fluid to pour;
             // `MobBucketItem.checkExtraContent` lets the cube out.
             crate::entity::sulfur_cube::BUCKET => {
+                self.emit_block_event(front, GameEvent::EntityPlace, EventSource::NONE, None);
                 self.automation.creatures.push((front, one));
                 Some(Item::BUCKET)
             }
             // `DispensibleContainerItem.emptyContents(null, level, target, null)`:
             // water fills a waterloggable block and evaporates in the Nether.
-            Item::POWDER_SNOW_BUCKET => (self.get_block(front) == Some(Block::AIR)
-                && self.set_block(front, super::scaffolding::POWDER_SNOW))
-            .then_some(Item::BUCKET),
+            Item::POWDER_SNOW_BUCKET => {
+                let placed = self.get_block(front) == Some(Block::AIR)
+                    && self.set_block(front, super::scaffolding::POWDER_SNOW);
+                // `SolidBucketItem.emptyContents`.
+                if placed {
+                    self.emit_block_event(front, GameEvent::FluidPlace, EventSource::NONE, None);
+                }
+                placed.then_some(Item::BUCKET)
+            }
             Item::WATER_BUCKET | Item::LAVA_BUCKET => {
                 let fluid = if stack.item == Item::WATER_BUCKET { Block::WATER } else { Block::LAVA };
-                crate::survival_items::bucket::empty_at(self, front, fluid, None).map(|_| Item::BUCKET)
+                let poured = crate::survival_items::bucket::empty_at(self, front, fluid, None).map(|_| Item::BUCKET);
+                if poured.is_some() {
+                    self.emit_block_event(front, GameEvent::FluidPlace, EventSource::NONE, None);
+                }
+                poured
             }
             // `BucketPickup.pickupBlock`, waterlogged blocks included.
-            Item::BUCKET => crate::survival_items::bucket::pick_up(self, front).map(|(item, _)| item),
+            Item::BUCKET => {
+                let taken = crate::survival_items::bucket::pick_up(self, front).map(|(item, _)| item);
+                if taken.is_some() {
+                    self.emit_block_event(front, GameEvent::FluidPickup, EventSource::NONE, None);
+                }
+                taken
+            }
             _ => None,
         };
         if let Some(item) = replacement {
@@ -894,6 +926,11 @@ impl World {
         }
         if behaviour == Behaviour::Tnt {
             self.primed_tnt.push((front, false));
+            // The TNT behaviour spawns it as an entity (no `prime_fuse`);
+            // a sulfur cube that swallows it instead posts nothing.
+            if !self.automation.cube_feeds.iter().any(|&(q, f, _)| q == p && f == facing) {
+                self.emit_block_event(front, GameEvent::EntityPlace, EventSource::NONE, None);
+            }
             return;
         }
         self.queue_dispensed(p, facing, Output::Item, one);
@@ -912,7 +949,7 @@ impl World {
     /// Queues `stack` to leave `p` like a dropped item (`DefaultDispenseItemBehavior.spawnItem`,
     /// speed 6, 0.7 out of the face `facing`); saved with the other pending ejections.
     pub(super) fn queue_dispensed_item(&mut self, p: IVec3, facing: u8, stack: Stack) {
-        self.automation.output.push((p, facing, false, stack));
+        self.queue_dispensed(p, facing, Output::Item, stack);
     }
 
     /// Consume entity work after shared world rules and before entity physics.
@@ -945,6 +982,9 @@ impl World {
         for (p, facing, stack) in std::mem::take(&mut self.automation.cube_feeds) {
             let front = p + r::direction(facing);
             if !entities.feed_sulfur_cube(front, stack) {
+                if stack.item.block() == Some(Block::TNT) && self.primed_tnt.contains(&(front, false)) {
+                    self.emit_block_event(front, GameEvent::EntityPlace, EventSource::NONE, None);
+                }
                 continue;
             }
             // The cube took it: no primed TNT, no dispensed item.

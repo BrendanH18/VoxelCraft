@@ -671,11 +671,10 @@ impl Game {
                 | EntityEvent::LaidEgg { .. }
                 | EntityEvent::Hatched { .. }
                 | EntityEvent::ExperienceBurst { .. }
-                | EntityEvent::DropEquipment { .. } => {}
+                | EntityEvent::DropEquipment { .. }
+                | EntityEvent::Vibration { .. } => {}
                 EntityEvent::AnimalBlock { cell, from, to } => {
-                    if self.world.get_block(cell) == Some(from) {
-                        self.world.set_block(cell, to);
-                    }
+                    self.world.animal_block(cell, from, to);
                 }
                 EntityEvent::VillagerDoor { cell } => {
                     if self.world.get_block(cell).is_some_and(|b| {
@@ -691,6 +690,13 @@ impl Game {
                     {
                         self.world.spill_block(cell, block);
                         self.world.set_block(cell, crate::world::block::Block::crop(crop, 0));
+                        // `HarvestFarmland`: `destroyBlock` then the replanting's `block_place`.
+                        let none = crate::world::vibration::EventSource::NONE;
+                        let destroy = crate::world::vibration::GameEvent::BlockDestroy;
+                        self.world.emit_block_event(cell, destroy, none, Some(block));
+                        let replanted = self.world.get_block(cell);
+                        let place = crate::world::vibration::GameEvent::BlockPlace;
+                        self.world.emit_block_event(cell, place, none, replanted);
                     }
                 }
                 EntityEvent::VillagerDoorClose { cell } => {

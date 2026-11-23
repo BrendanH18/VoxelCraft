@@ -1540,3 +1540,31 @@ scripts/boat-check.sh -- 'cargo test --profile ci --locked --test crafter'
 and drops against it, lists every special recipe type with whether the
 shared matcher makes it, and runs the crafter in a headless world
 ([record](../../../../docs/verification/2026-11-23-v0.17-crafter.md)).
+
+## Game events (v0.17 Track E1)
+
+`game_events.json` holds Java's game events as sculk sensors hear them, read
+from the pinned server artifact by `tools/extract_java_game_event_fixtures.py`
+with `javap`: the `GameEvent` registry in order with each notification radius
+(16, the jukebox's 10, the shriek's 32), `VibrationSystem`'s
+`VIBRATION_FREQUENCY_FOR_EVENT` and `RESONANCE_EVENTS`, the `vibrations`,
+`warden_can_listen`, `shrieker_can_listen`, `ignore_vibrations_sneaking` and
+`allay_can_listen` tags (nested tags resolved) and the vibration block tags,
+the listener radii and timings (`getListenerRadius`, `getActiveTicks`,
+`COOLDOWN_TICKS`, `SHRIEKING_TICKS`, `RESONANCE_PITCH_BEND`'s tone map), and
+every method that posts an event: a method naming a `GameEvent` field and
+calling `gameEvent`, `causeUseVibration`, `forceScheduleVibration` or
+`ShelfBlockEntity.setChanged(Holder)`, lambdas folded into their method, plus
+the two enchantment effects that carry an event. Methods that only compare
+events (listeners) are left out. Regenerate and compare with:
+
+```sh
+python3 tools/extract_java_game_event_fixtures.py /path/to/server.jar --output target/java-game-events.json
+diff tests/fixtures/java/26.3/game_events.json target/java-game-events.json
+scripts/boat-check.sh -- 'cargo test --profile ci --locked --test game_events'
+```
+
+`tests/game_events.rs` compares the game's table with the fixture both ways,
+keeps a row for every call site (posted, absent from the game, or a gap) that
+fails when the fixture gains or loses one, and runs small scenarios for the
+events the game posts ([record](../../../../docs/verification/2026-11-23-v0.17-sculk-game-events.md)).

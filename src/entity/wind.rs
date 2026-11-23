@@ -11,6 +11,7 @@ use glam::{DVec3, IVec3};
 use super::{Entities, PlayerId};
 use crate::physics::BlockSource;
 use crate::world::World;
+use crate::world::vibration::{EventSource, GameEvent};
 
 /// `WindCharge.RADIUS` and its calculator's knockback multiplier.
 pub const CHARGE_RADIUS: f32 = 1.2;
@@ -155,8 +156,11 @@ impl World {
                 }
                 doors_done.push(lower);
                 let forward = (p.as_dvec3() + DVec3::splat(0.5) - burst.center).as_vec3();
-                if crate::session::interact::toggle_door(self, p, forward).is_some() {
+                if let Some(open) = crate::session::interact::toggle_door(self, p, forward) {
                     triggered += 1;
+                    // `DoorBlock` / `FenceGateBlock.onExplosionHit`: no source.
+                    let event = if open { GameEvent::BlockOpen } else { GameEvent::BlockClose };
+                    self.emit_block_event(lower, event, EventSource::NONE, None);
                 }
             }
         }

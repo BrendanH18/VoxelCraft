@@ -1230,7 +1230,13 @@ mod tests {
         events.clear();
         e.tick_animal_lifecycle(0.05, &w, &ctx(), &mut events);
         assert!(!e.mobs[0].sheared);
-        assert!(events.is_empty());
+        // No block change, but `Mob.ate` still posts `eat` (v0.17 Track E1).
+        assert!(!events.iter().any(|e| matches!(e, EntityEvent::AnimalBlock { .. })));
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, EntityEvent::Vibration { event: crate::world::vibration::GameEvent::Eat, .. }))
+        );
     }
     #[test]
     fn turtle_egg_stages_keep_count() {

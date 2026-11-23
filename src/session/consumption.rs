@@ -44,6 +44,9 @@ impl PlayerSession {
         self.player.pos = to;
         self.player.vel = glam::DVec3::ZERO;
         self.vitals.reset_fall();
+        // `TeleportRandomlyConsumeEffect.apply`: `teleport` where they left.
+        let source = crate::world::vibration::EventSource::player(self.id, self.player.sneaking);
+        entities.sculk.post(from, crate::world::vibration::GameEvent::Teleport, source, None);
         Some(from)
     }
 

@@ -450,6 +450,8 @@ impl Entities {
             let mut snow =
                 Thrown::launch(thrown::Kind::Snowball, PlayerId::HOST, eye, at - eye, DVec3::ZERO, &mut self.rng);
             snow.owner = None;
+            snow.shooter = Some(self.mobs[i].uid);
+            self.sculk.shot(eye, crate::world::vibration::EventSource::mob(self.mobs[i].uid));
             self.thrown.push(snow);
         }
     }

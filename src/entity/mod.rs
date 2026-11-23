@@ -202,6 +202,14 @@ pub enum MobSound {
 /// Something an entity did that the game needs to react to.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum EntityEvent {
+    /// v0.17 Track E1: a game event a mob posted where only the event list
+    /// is at hand (`Entity.gameEvent`); the entity update queues it for the
+    /// world and doesn't return it.
+    Vibration {
+        pos: DVec3,
+        event: crate::world::vibration::GameEvent,
+        source: crate::world::vibration::EventSource,
+    },
     /// Shared block impact for target blocks, touched redstone ore and
     /// candles a burning arrow lights.
     ProjectileBlockHit {
@@ -1940,6 +1948,8 @@ impl Entities {
         arrow.tipped = stack.item == crate::item::Item::TIPPED_ARROW;
         arrow.potion = stack.arrow_potion();
         self.arrows.push(arrow);
+        // `Projectile.tick`'s first tick; a dispenser is no owner.
+        self.sculk.shot(pos, crate::world::vibration::EventSource::NONE);
     }
 
     /// Java 26.3 `FireChargeItem.asProjectile`: a small fireball one block out whose
@@ -1948,6 +1958,7 @@ impl Entities {
         let heading = self.dispense_heading(step, 6.6666665);
         let pos = block.as_dvec3() + DVec3::splat(0.5) + step.as_dvec3();
         self.fireballs.push(fireball::Fireball::new(pos, heading));
+        self.sculk.shot(pos, crate::world::vibration::EventSource::NONE);
     }
 
     fn dispense_heading(&mut self, step: IVec3, uncertainty: f64) -> DVec3 {
@@ -1994,6 +2005,7 @@ impl Entities {
         };
         let pos = block.as_dvec3() + DVec3::splat(0.5) + step.as_dvec3() * 0.7 + DVec3::Y * 0.1;
         self.thrown.push(thrown::Thrown::dispensed(kind, pos, step.as_dvec3(), power, uncertainty, &mut self.rng));
+        self.sculk.shot(pos, crate::world::vibration::EventSource::NONE);
         true
     }
 

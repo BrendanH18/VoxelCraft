@@ -18,6 +18,11 @@ use crate::world::vibration::{EntityRef, EventSource, GameEvent};
 #[derive(Clone, Copy, Debug, Default)]
 struct Watch {
     dying: bool,
+    /// `wasTouchingWater`, for `doWaterSplashEffect`.
+    in_water: bool,
+    /// A creeper's fuse was lit, or a witch was drinking.
+    fusing: bool,
+    drinking: bool,
     hurt: f32,
     move_dist: f32,
     next_step: f32,
@@ -47,6 +52,35 @@ impl Sculk {
     /// The source of a projectile shot by a player or mob.
     pub fn projectile_source(owner: Option<super::PlayerId>, shooter: Option<u32>) -> EventSource {
         EventSource::projectile(owner.map(EntityRef::Player).or(shooter.map(EntityRef::Mob)))
+    }
+
+    /// `Projectile.tick`'s first tick: `projectile_shoot` where it starts,
+    /// from its owner.
+    pub fn shot(&mut self, pos: DVec3, source: EventSource) {
+        self.post(pos, GameEvent::ProjectileShoot, source, None);
+    }
+
+    /// `Projectile.onHit`'s `projectile_land`: a block hit posts at the
+    /// struck block's centre naming it (wool dampens it); anything else
+    /// (an entity) at the projectile. `heading` is the way it was flying.
+    pub fn land<W: crate::physics::BlockSource + ?Sized>(
+        &mut self,
+        world: &W,
+        pos: DVec3,
+        heading: DVec3,
+        source: EventSource,
+    ) {
+        let ahead = (pos + heading.normalize_or_zero() * 0.05).floor().as_ivec3();
+        let struck = [ahead, pos.floor().as_ivec3()]
+            .into_iter()
+            .find_map(|c| world.block(c).filter(|b| b.is_solid()).map(|b| (c, b)));
+        match struck {
+            Some((cell, block)) => {
+                let center = cell.as_dvec3() + DVec3::splat(0.5);
+                self.post(center, GameEvent::ProjectileLand, source, Some(block));
+            }
+            None => self.post(pos, GameEvent::ProjectileLand, source, None),
+        }
     }
 
     /// A loaded catalyst within its 8-block listener radius of `pos`.
@@ -96,6 +130,9 @@ impl Entities {
             let first = !self.sculk.watch.contains_key(&m.uid);
             let watch = self.sculk.watch.entry(m.uid).or_insert(Watch {
                 dying: m.dying.is_some(),
+                in_water: m.in_water,
+                fusing: m.fuse > 0.0,
+                drinking: m.drinking_potion(),
                 hurt: m.hurt,
                 next_step: 1.0,
                 ..Watch::default()
@@ -109,6 +146,23 @@ impl Entities {
             }
             watch.dying = m.dying.is_some();
             watch.hurt = m.hurt;
+            // `Entity.updateFluidInteraction`: entering water splashes.
+            if !first && m.alive() && m.in_water && !watch.in_water {
+                w.emit_game_event(m.pos, GameEvent::Splash, source, None);
+            }
+            watch.in_water = m.in_water;
+            // `Creeper.tick`: the swell starting posts `prime_fuse`.
+            let fusing = m.fuse > 0.0;
+            if !first && m.alive() && fusing && !watch.fusing {
+                w.emit_game_event(m.pos, GameEvent::PrimeFuse, source, None);
+            }
+            watch.fusing = fusing;
+            // `Witch.aiStep`: finishing a potion posts `drink`.
+            let drinking = m.drinking_potion();
+            if !first && m.alive() && watch.drinking && !drinking {
+                w.emit_game_event(m.pos, GameEvent::Drink, source, None);
+            }
+            watch.drinking = drinking;
             if !m.alive() || !m.simulation_active || m.riding.is_some() {
                 continue;
             }

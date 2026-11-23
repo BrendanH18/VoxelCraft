@@ -51,6 +51,12 @@ impl Entities {
                             if self.villager_griefing {
                                 events.push(EntityEvent::AnimalBlock { cell, from, to });
                             }
+                            // `Mob.ate` from `EatBlockGoal`, griefing or not.
+                            events.push(EntityEvent::Vibration {
+                                pos: m.pos,
+                                event: crate::world::vibration::GameEvent::Eat,
+                                source: crate::world::vibration::EventSource::mob(m.uid),
+                            });
                             m.sheared = false;
                             if m.age < 0 {
                                 m.age = (m.age + 1200).min(0);

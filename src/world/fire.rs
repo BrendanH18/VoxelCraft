@@ -286,6 +286,13 @@ impl World {
             if self.edit(q, new, false) {
                 if b == Block::TNT && self.rules.tnt_explodes {
                     self.primed_tnt.push((q, false));
+                    // `TntBlock.prime` from `FireBlock.checkBurnOut`: no igniter.
+                    self.emit_block_event(
+                        q,
+                        super::vibration::GameEvent::PrimeFuse,
+                        super::vibration::EventSource::NONE,
+                        None,
+                    );
                 }
                 self.settle(q);
             }

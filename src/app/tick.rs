@@ -82,6 +82,14 @@ impl Game {
         }
         let nausea = self.session.vitals.effects.get(voxelcraft::simulation::effects::Effect::Nausea).map(|e| e.ticks);
         self.distortion.tick(nausea, self.portal_time > portal_before);
+        // Damage, death and armor changes as game events.
+        self.world.player_vitals(
+            self.session.id,
+            self.session.player.pos,
+            self.session.vitals.health,
+            self.session.inventory.armor.map(|s| s.map(|s| s.item)),
+            self.session.event_source(),
+        );
         let moved = (self.session.player.pos - before).with_y(0.0).length();
         self.session.tick_lodestones(&self.world);
         for stack in [self.session.inventory.get(self.body.actions.selected), self.session.inventory.offhand]
@@ -185,18 +193,32 @@ impl Game {
             0.0
         };
         self.world.set_redstone_daylight(self.day_time, darken, sun_angle);
-        let players = std::iter::once((self.session.player.pos, self.session.player.collision_shape()))
-            .filter(|_| self.session.mode != GameMode::Spectator && self.session.vitals.health > 0.0)
-            .chain(
-                self.agents
-                    .players
-                    .values()
-                    .filter(|b| {
-                        b.active && b.agent.session.mode != GameMode::Spectator && b.agent.session.vitals.health > 0.0
-                    })
-                    .map(|b| (b.agent.session.player.pos, b.agent.session.player.collision_shape())),
-            );
-        self.world.redstone_contacts(players, &self.mobs.entities);
+        // Plates name whoever pressed them as their game event's source.
+        let source = |s: &voxelcraft::session::PlayerSession| crate::world::vibration::EventSource {
+            untargetable: s.mode.is_creative(),
+            ..crate::world::vibration::EventSource::player(s.id, s.player.sneaking)
+        };
+        let players =
+            std::iter::once((self.session.player.pos, self.session.player.collision_shape(), source(&self.session)))
+                .filter(|_| self.session.mode != GameMode::Spectator && self.session.vitals.health > 0.0)
+                .chain(
+                    self.agents
+                        .players
+                        .values()
+                        .filter(|b| {
+                            b.active
+                                && b.agent.session.mode != GameMode::Spectator
+                                && b.agent.session.vitals.health > 0.0
+                        })
+                        .map(|b| {
+                            (
+                                b.agent.session.player.pos,
+                                b.agent.session.player.collision_shape(),
+                                source(&b.agent.session),
+                            )
+                        }),
+                );
+        self.world.redstone_contacts_from(players, &self.mobs.entities);
         // Every chest a player has open, whichever input path opened it.
         let keyboard = match self.body.container {
             super::Container::Chest(p) if self.inventory_open => Some(p),

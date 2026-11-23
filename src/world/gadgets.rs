@@ -8,6 +8,7 @@ use glam::{DVec3, IVec3, Vec3};
 
 use super::World;
 use super::block::{Block, Facing, RenderKind};
+use super::vibration::{EventSource, GameEvent};
 use crate::particles::{Burst, Kind, Request};
 
 pub const NOTE: Block = Block(1507);
@@ -157,6 +158,16 @@ pub enum TripSound {
 }
 
 impl TripSound {
+    /// The game event `TripWireHookBlock.emitState` posts with this sound.
+    pub const fn game_event(self) -> GameEvent {
+        match self {
+            TripSound::ClickOn => GameEvent::BlockActivate,
+            TripSound::ClickOff => GameEvent::BlockDeactivate,
+            TripSound::Attach => GameEvent::BlockAttach,
+            TripSound::Detach => GameEvent::BlockDetach,
+        }
+    }
+
     /// The first change that applies, in Java's order: power edges before attach edges.
     pub fn of_change(attached: bool, powered: bool, was_attached: bool, was_powered: bool) -> Option<Self> {
         if powered && !was_powered {
@@ -300,18 +311,29 @@ pub fn placed_hook(normal: IVec3, look: Vec3) -> Block {
 
 impl World {
     pub fn strike_note(&mut self, p: IVec3) -> bool {
+        self.strike_note_by(p, EventSource::NONE)
+    }
+
+    /// `NoteBlock.attack`: the player who struck it is the event's source.
+    pub fn strike_note_by(&mut self, p: IVec3, source: EventSource) -> bool {
         let Some(pitch) = self.get_block(p).and_then(pitch) else {
             return false;
         };
-        self.play_note(p, pitch);
+        self.play_note(p, pitch, source);
         true
     }
 
+    #[cfg(test)]
     pub(super) fn cycle_note(&mut self, p: IVec3, b: Block) {
+        self.cycle_note_by(p, b, EventSource::NONE);
+    }
+
+    /// `NoteBlock.useWithoutItem`: tune up and play for `source`.
+    pub(super) fn cycle_note_by(&mut self, p: IVec3, b: Block, source: EventSource) {
         let Some(pitch) = pitch(b) else { return };
         let next = (pitch + 1) % 25;
         self.edit(p, note(next, note_powered(b)), false);
-        self.play_note(p, next);
+        self.play_note(p, next, source);
     }
 
     pub(super) fn note_neighbour(&mut self, p: IVec3, b: Block) {
@@ -321,12 +343,12 @@ impl World {
         if powered != was {
             self.edit(p, note(pitch, powered), false);
             if powered {
-                self.play_note(p, pitch);
+                self.play_note(p, pitch, EventSource::NONE);
             }
         }
     }
 
-    fn play_note(&mut self, p: IVec3, pitch: u8) {
+    fn play_note(&mut self, p: IVec3, pitch: u8, source: EventSource) {
         let below = self.get_block(p - IVec3::Y).unwrap_or(Block::AIR);
         let above = self.get_block(p + IVec3::Y).unwrap_or(Block::AIR);
         // `NoteBlock.setInstrument`: a head above sets the instrument and,
@@ -343,25 +365,15 @@ impl World {
                 self.notes.push((p, 12, i as u8));
             }
             self.allay_notes.push(p);
-            self.emit_game_event(
-                p.as_dvec3() + DVec3::splat(0.5),
-                super::vibration::GameEvent::NoteBlockPlay,
-                super::vibration::EventSource::NONE,
-                None,
-            );
+            self.emit_block_event(p, GameEvent::NoteBlockPlay, source, None);
             return;
         }
         let instrument = instrument(below) as u8;
         self.notes.push((p, pitch, instrument));
         self.allay_notes.push(p);
-        // `NoteBlock.playNote`. The player who struck it isn't passed down,
-        // so the event has no source entity.
-        self.emit_game_event(
-            p.as_dvec3() + DVec3::splat(0.5),
-            super::vibration::GameEvent::NoteBlockPlay,
-            super::vibration::EventSource::NONE,
-            None,
-        );
+        // `NoteBlock.playNote(source, ...)`: the player who tuned or struck
+        // it, none for redstone.
+        self.emit_block_event(p, GameEvent::NoteBlockPlay, source, None);
         // Java `NoteBlock.triggerEvent`: a note particle 1.2 blocks up, tinted by `note / 24`.
         let mut burst = Burst::new(Kind::Note, p.as_dvec3() + DVec3::new(0.5, 1.2, 0.5), 1);
         burst.color = Some(note_color(pitch));
@@ -399,6 +411,13 @@ impl World {
             && let Some(sound) = TripSound::of_change(attached, on, was_attached, was_on)
         {
             self.trip_sounds.push((p, sound));
+            // `emitState` runs for the far hook first, with this hook's old
+            // state, then for this one; neither names a source.
+            let source = EventSource::NONE;
+            if let Some(end) = end {
+                self.emit_block_event(end, sound.game_event(), source, None);
+            }
+            self.emit_block_event(p, sound.game_event(), source, None);
         }
         let next = hook(facing, attached, on);
         if self.get_block(p) != Some(next) {

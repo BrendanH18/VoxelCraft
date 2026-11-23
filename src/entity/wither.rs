@@ -602,7 +602,9 @@ impl Entities {
         let from = head_pos(w.pos, w.yrot(), head);
         let dir = (target - from).normalize_or(DVec3::Y);
         events.push(EntityEvent::Sound { sound: MobSound::Wither(Cue::Shoot), pos: w.pos });
-        self.wither_skulls.push(Skull::new(from, dir, dangerous, Some(w.uid)));
+        let uid = w.uid;
+        self.wither_skulls.push(Skull::new(from, dir, dangerous, Some(uid)));
+        self.sculk.shot(from, crate::world::vibration::EventSource::mob(uid));
     }
 
     /// The Wither's smoke at each head, its armor's motes and the charge's
@@ -776,6 +778,9 @@ impl Entities {
             match k.tick(world, ctx, &self.mobs) {
                 None => true,
                 Some(hit) => {
+                    let source = super::sculk_events::Sculk::projectile_source(None, k.owner);
+                    let heading = k.pos - k.previous_pos;
+                    self.sculk.land(world, k.pos, heading, source);
                     self.wither_skull_hit(k, hit, difficulty, events);
                     events.push(EntityEvent::WitherBlast { center: k.pos, power: SKULL_POWER, dangerous: k.dangerous });
                     false

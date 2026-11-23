@@ -3,6 +3,7 @@
 use super::{
     World,
     redstone_blocks::{self as r, Component},
+    vibration::{EventSource, GameEvent},
 };
 use crate::entity::Entities;
 use glam::{DVec3, IVec3};
@@ -14,6 +15,9 @@ pub(super) struct Contacts {
     pub arrows: bool,
     /// Minecarts touching a detector rail's search box.
     pub carts: u32,
+    /// The first entity found touching it, which a pressed plate or button
+    /// names as its game event's source (`checkPressed(entity, ...)`).
+    pub source: Option<EventSource>,
 }
 
 impl World {
@@ -24,21 +28,37 @@ impl World {
         players: impl IntoIterator<Item = (DVec3, crate::physics::Shape)>,
         entities: &Entities,
     ) {
+        self.redstone_contacts_from(players.into_iter().map(|(pos, shape)| (pos, shape, EventSource::NONE)), entities);
+    }
+
+    /// [`World::redstone_contacts`] naming each player as a game event
+    /// source, so a plate a player presses posts `block_activate` from them.
+    pub fn redstone_contacts_from(
+        &mut self,
+        players: impl IntoIterator<Item = (DVec3, crate::physics::Shape, EventSource)>,
+        entities: &Entities,
+    ) {
         self.redstone.contacts.clear();
-        for (pos, shape) in players {
+        for (pos, shape, source) in players {
+            self.contact_source = Some(source);
             self.redstone_contact_box(shape.aabb(pos), true, false, false);
         }
         for mob in &entities.mobs {
             if mob.alive() {
+                self.contact_source = Some(crate::entity::warden::mob_source(mob));
                 self.redstone_contact_box(mob.aabb(), true, false, false);
             }
         }
+        self.contact_source = None;
         for item in &entities.items {
             self.redstone_contact_box(crate::physics::Shape::new(0.125, 0.25).aabb(item.pos), false, false, false);
         }
         for arrow in &entities.arrows {
+            self.contact_source =
+                Some(crate::entity::sculk_events::Sculk::projectile_source(arrow.owner, arrow.shooter));
             self.redstone_contact_box(crate::physics::Shape::new(0.25, 0.5).aabb(arrow.pos), false, true, false);
         }
+        self.contact_source = None;
         for orb in &entities.orbs {
             self.redstone_contact_box(orb.aabb(), false, false, false);
         }
@@ -88,10 +108,14 @@ impl World {
                         let b = self.get_block(p).unwrap_or_default();
                         self.set_plate(p, b, kind, power);
                         self.schedule_redstone(p, if kind < 2 { 20 } else { 10 }, 0);
+                        // `BasePressurePlateBlock.checkPressed(entity, ...)`.
+                        let source = c.source.unwrap_or(EventSource::NONE);
+                        self.emit_block_event(p, GameEvent::BlockActivate, source, None);
                     }
                 }
                 Some(Component::Button { on: false, wood: true, .. }) if c.arrows => {
-                    self.use_redstone(p);
+                    // `ButtonBlock.checkPressed`: the first arrow is the source.
+                    self.use_redstone_by(p, c.source.unwrap_or(EventSource::NONE));
                 }
                 _ => {}
             }
@@ -161,6 +185,9 @@ impl World {
                             c.all += 1;
                             c.arrows |= arrow;
                             c.carts += u32::from(cart);
+                            if c.source.is_none() {
+                                c.source = self.contact_source;
+                            }
                         }
                     }
                     if living
