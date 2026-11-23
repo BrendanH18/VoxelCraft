@@ -298,29 +298,46 @@ fast_start() {   # fast_start WHAT boat ARGS...; leaves the output in $out
         esac
         [ "$attempt" = 6 ] || sleep 10
     done
-    case "$out" in *no_ready_machine*) ;; *) return 1 ;; esac
+    case "$out" in *no_ready_machine*|*"already in progress"*|*sandbox_stopping*) ;; *) return 1 ;; esac
     [ "$wait_for" -gt 0 ] || return 1
-    # Still none: one start without --fail-fast, which Boat holds until a machine frees up, cut
-    # off after $wait_for seconds. A create cut off may still land, so job stays set on failure
-    # and the cleanup looks for the sandbox by name; a resume cut off is stopped as usual.
+    # Still none: starts without --fail-fast, which Boat holds until a machine frees up, until
+    # $wait_for seconds have passed. A busy answer (a resume an earlier try left in progress, a
+    # stop not yet matched) is tried again 10 s later. A create cut off may still land, so job
+    # stays set then and the cleanup looks for the sandbox by name; a resume cut off is stopped.
     echo "boat-check: still no machine ready for $what; waiting up to ${wait_for} s for one" >&2
-    rm -f "$out_file.timeout"
-    "$@" --json >"$out_file" 2>&1 </dev/null &
-    job=$!
-    # The marker is written only when the sleep ran out: ending the watchdog kills the sleep
-    # first, and the && then skips the rest.
-    (sleep "$wait_for" && : >"$out_file.timeout" && end_job "$job") >/dev/null 2>&1 </dev/null &
-    watchdog=$!
-    rc=0; wait "$job" || rc=$?
-    end_job "$watchdog"; watchdog=""
-    out=$(cat "$out_file" 2>/dev/null || true)
-    # A start that succeeded counts even if the deadline passed as it finished.
-    if [ "$rc" = 0 ]; then rm -f "$out_file.timeout"; job=""; return 0; fi
-    if [ -e "$out_file.timeout" ]; then
+    local deadline left
+    deadline=$(($(date +%s) + wait_for))
+    while :; do
+        left=$((deadline - $(date +%s)))
+        if [ "$left" -le 0 ]; then
+            out="no_ready_machine: no machine within ${wait_for} s"
+            return 1
+        fi
         rm -f "$out_file.timeout"
-        out="no_ready_machine: no machine within ${wait_for} s"
-    fi
-    return 1
+        "$@" --json >"$out_file" 2>&1 </dev/null &
+        job=$!
+        # The marker is written only when the sleep ran out: ending the watchdog kills the
+        # sleep first, and the && then skips the rest.
+        (sleep "$left" && : >"$out_file.timeout" && end_job "$job") >/dev/null 2>&1 </dev/null &
+        watchdog=$!
+        rc=0; wait "$job" || rc=$?
+        end_job "$watchdog"; watchdog=""
+        out=$(cat "$out_file" 2>/dev/null || true)
+        # A start that succeeded counts even if the deadline passed as it finished.
+        if [ "$rc" = 0 ]; then rm -f "$out_file.timeout"; job=""; return 0; fi
+        if [ -e "$out_file.timeout" ]; then
+            rm -f "$out_file.timeout"
+            out="no_ready_machine: no machine within ${wait_for} s"
+            return 1
+        fi
+        case "$out" in
+            *no_ready_machine*|*"already in progress"*|*sandbox_stopping*)
+                job=""
+                echo "boat-check: Boat is still busy with $what; trying again in 10 s" >&2
+                sleep 10 ;;
+            *) return 1 ;;
+        esac
+    done
 }
 # new_sandbox NAME [boat new ARGS...]: sets new_id to the new sandbox's id. Set creating=NAME
 # around it, so a run interrupted before the id comes back still finds the sandbox and cleans
