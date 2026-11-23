@@ -332,6 +332,7 @@ impl Game {
             place: args.place.clone(),
             signs: args.signs.clone(),
             carts: args.carts.clone(),
+            cart_sound_tick: 0,
             decor_scene: args.decor.clone(),
             brush_scene: args.brush.clone(),
             open_block: args.open_block,

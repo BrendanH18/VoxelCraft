@@ -411,8 +411,13 @@ impl Entities {
         self.update_wither_skulls(world, ctx, &mut events);
         {
             let mobs = &self.mobs;
+            let carts: Vec<(u32, DVec3, DVec3)> = if self.fireballs.is_empty() {
+                Vec::new()
+            } else {
+                self.minecarts.iter().map(|c| (c.id, c.aabb().0, c.aabb().1)).collect()
+            };
             self.fireballs.retain_mut(|f| {
-                !world.entity_ticking(f.pos.floor().as_ivec3()) || f.update(dt, world, ctx, mobs, &mut events)
+                !world.entity_ticking(f.pos.floor().as_ivec3()) || f.update(dt, world, ctx, mobs, &carts, &mut events)
             });
         }
         if self.arrows.iter().any(|a| a.piercing()) {

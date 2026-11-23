@@ -1,0 +1,108 @@
+{
+  "reference": "Minecraft Java Edition 26.3",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "client_sha1": "e877b6a07acd633fb3bb475002175cec036e7b87",
+  "sources": [
+    "MinecartFurnace (tick, getMaxSpeed, applyNaturalSlowdown, calculateNewPushAlong, addFuel)",
+    "data/minecraft/tags/item/furnace_minecart_fuel.json, recipe/furnace_minecart.json",
+    "AbstractMinecart (getDefaultGravity, getAirDrag, applyNaturalSlowdown, push, pushOtherMinecart)",
+    "OldMinecartBehavior (moveAlongTrack, pushAndPickupEntities, getMaxSpeed, getSlowdownFactor)",
+    "AbstractMinecartContainer.applyNaturalSlowdown",
+    "MinecartTNT (tick, destroy, explode, causeFallDamage, primeFuse, getBlockExplosionResistance, shouldBlockExplode, hurtServer, damageSourceIgnitesTnt); data/minecraft/tags/block/rails.json",
+    "client MinecartSoundInstance.tick, LocalPlayer.startRiding (RidingMinecartSoundInstance)"
+  ],
+  "furnace": {
+    "fuel_ticks_per_item": 3600,
+    "max_fuel_ticks": 32000,
+    "fuel_items": [
+      "coal",
+      "charcoal"
+    ],
+    "recipe": [
+      "furnace",
+      "minecart"
+    ],
+    "max_speed_factor_water": 0.75,
+    "max_speed_factor_land": 0.5,
+    "push_epsilon": 1e-07,
+    "push_friction": 0.8,
+    "water_push_scale": 0.1,
+    "idle_friction": 0.98,
+    "push_along_epsilon": 0.0001,
+    "movement_epsilon": 0.001,
+    "smoke_chance_bound": 4,
+    "smoke_height": 0.8
+  },
+  "motion": {
+    "max_speed_water": 0.2,
+    "max_speed_land": 0.4,
+    "slope": 0.0078125,
+    "water_slope_factor": 0.2,
+    "powered_boost": 0.06,
+    "halt_speed": 0.03,
+    "slowdown_ridden": 0.997,
+    "slowdown_empty": 0.96,
+    "water_slowdown": 0.949999988079071,
+    "container_base": 0.9800000190734863,
+    "container_step": 0.0010000000474974513,
+    "water_gravity": 0.005,
+    "gravity": 0.04,
+    "air_drag": 0.949999988079071
+  },
+  "push": {
+    "min_distance_sq": 9.999999747378752e-05,
+    "entity_scale": 0.10000000149011612,
+    "half": 0.5,
+    "reaction_divisor": 4.0,
+    "alignment_dot": 0.800000011920929,
+    "keep": 0.2,
+    "furnace_keep": 0.95,
+    "pickup_inflate": 0.20000000298023224,
+    "pickup_speed_sq": 0.01,
+    "pickup_excludes": [
+      "Player",
+      "IronGolem",
+      "AbstractMinecart"
+    ]
+  },
+  "tnt": {
+    "activator_fuse": 80,
+    "random_fuse_bound": 20,
+    "power_base": 4.0,
+    "speed_factor": 1.5,
+    "speed_cap": 5.0,
+    "fall_threshold": 3.0,
+    "fall_divisor": 10.0,
+    "impact_speed_sq": 0.009999999776482582,
+    "protected_rails": [
+      "rail",
+      "powered_rail",
+      "detector_rail",
+      "activator_rail"
+    ],
+    "protects_block_below_rail": true,
+    "only_when_primed": true
+  },
+  "sound": {
+    "rolling": {
+      "event": "entity.minecart.riding",
+      "source": "neutral",
+      "min_speed": 0.009999999776482582,
+      "speed_clamp": 0.5,
+      "volume_max": 0.699999988079071,
+      "pitch": 1.0
+    },
+    "inside": {
+      "events": [
+        "entity.minecart.inside",
+        "entity.minecart.inside.underwater"
+      ],
+      "source": "neutral",
+      "min_speed": 0.009999999776482582,
+      "volume_min": 0.0,
+      "volume_max": 0.75,
+      "amplifier": 1.0,
+      "attenuation": "none"
+    }
+  }
+}

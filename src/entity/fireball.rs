@@ -75,6 +75,7 @@ impl Fireball {
         world: &W,
         ctx: &Ctx,
         mobs: &[super::Mob],
+        carts: &[(u32, DVec3, DVec3)],
         events: &mut Vec<EntityEvent>,
     ) -> bool {
         self.age += dt as f32;
@@ -92,6 +93,27 @@ impl Fireball {
             self.pos = next;
             if let Some(hit) = ctx.players.iter().find(|t| t.targetable && t.contains(next)) {
                 self.impact(Some(hit), events);
+                return false;
+            }
+            // v0.17 Track D1: a burning fireball hits vehicles too. A blaze's
+            // deals its 5 damage (`SmallFireball.onHitEntity`), which breaks a
+            // cart or boat and primes a TNT cart (`MinecartTNT.destroy`); a
+            // ghast's explodes against it.
+            if let Some(&(id, ..)) = carts.iter().find(|(_, min, max)| next.cmpge(*min).all() && next.cmple(*max).all())
+            {
+                if self.large {
+                    self.impact(None, events);
+                } else {
+                    events.push(EntityEvent::EntityShot {
+                        struck: super::projectile::Struck::Cart(id),
+                        pos: next,
+                        damage: DAMAGE,
+                        burning: true,
+                        arrow: false,
+                        owner: None,
+                        motion: self.vel / 20.0,
+                    });
+                }
                 return false;
             }
             if self.large
@@ -167,7 +189,7 @@ mod tests {
         let mut f = Fireball::new(DVec3::new(0.5, 11.0, 0.5), DVec3::X);
         let mut events = Vec::new();
         let mut ticks = 0;
-        while f.update(0.05, &world, &c, &[], &mut events) {
+        while f.update(0.05, &world, &c, &[], &[], &mut events) {
             ticks += 1;
             assert!(ticks < 100);
         }
@@ -179,8 +201,38 @@ mod tests {
         let c = ctx(vec![Target::new(PlayerId(2), DVec3::new(20.5, 10.0, 0.5), false)]);
         let mut f = Fireball::new(DVec3::new(0.5, 11.0, 0.5), DVec3::X);
         let mut events = Vec::new();
-        while f.update(0.05, &world, &c, &[], &mut events) {}
+        while f.update(0.05, &world, &c, &[], &[], &mut events) {}
         assert!(events.is_empty());
+    }
+
+    #[test]
+    fn burning_fireballs_hit_carts() {
+        let world = Grid::flat(0);
+        let cart = (7, DVec3::new(9.5, 10.0, 0.0), DVec3::new(10.5, 12.0, 1.0));
+        for large in [false, true] {
+            let from = DVec3::new(0.5, 11.0, 0.5);
+            let mut f = if large { Fireball::large(from, DVec3::X) } else { Fireball::new(from, DVec3::X) };
+            let mut events = Vec::new();
+            while f.update(0.05, &world, &ctx(vec![]), &[], &[cart], &mut events) {}
+            assert!(f.pos.x < 10.6, "stopped at the cart");
+            if large {
+                assert!(matches!(events.as_slice(), [EntityEvent::Explosion { .. }]), "{events:?}");
+            } else {
+                assert!(
+                    matches!(
+                        events.as_slice(),
+                        [EntityEvent::EntityShot {
+                            struck: crate::entity::projectile::Struck::Cart(7),
+                            damage: DAMAGE,
+                            burning: true,
+                            arrow: false,
+                            ..
+                        }]
+                    ),
+                    "{events:?}"
+                );
+            }
+        }
     }
 
     #[test]
@@ -188,7 +240,7 @@ mod tests {
         let world = Grid::flat(10);
         let mut f = Fireball::new(DVec3::new(0.5, 12.5, 0.5), DVec3::new(1.0, -1.0, 0.0));
         let mut events = Vec::new();
-        while f.update(0.05, &world, &ctx(vec![]), &[], &mut events) {}
+        while f.update(0.05, &world, &ctx(vec![]), &[], &[], &mut events) {}
         let Some(EntityEvent::IgniteBlock { cell }) = events.first().copied() else { panic!("{events:?}") };
         assert_eq!(cell.y, 10, "the air cell above the floor");
         assert!(cell.x >= 2 && cell.x <= 3, "{cell}");
@@ -201,7 +253,7 @@ mod tests {
         f.deflect(DVec3::NEG_Y);
         assert!(f.heading().y < 0.0);
         let mut events = Vec::new();
-        while f.update(0.05, &world, &ctx(vec![]), &[], &mut events) {}
+        while f.update(0.05, &world, &ctx(vec![]), &[], &[], &mut events) {}
         assert!(events.iter().any(|e| matches!(
             e,
             EntityEvent::Explosion {

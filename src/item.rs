@@ -892,6 +892,8 @@ impl Item {
     pub const CHEST_MINECART: Item = Item(762);
     pub const HOPPER_MINECART: Item = Item(763);
     pub const TNT_MINECART: Item = Item(764);
+    /// v0.17 Track D1: the furnace minecart (`MinecartFurnace`).
+    pub const FURNACE_MINECART: Item = Item(1800);
     pub const PUMPKIN_SEEDS: Item = Item(680);
     pub const GOLDEN_APPLE: Item = Item(681);
     pub const BEETROOT: Item = Item(682);
@@ -1401,6 +1403,14 @@ impl Item {
                     sprite: Sprite::Minecart([180, 48, 40]),
                 };
             }
+            Self::FURNACE_MINECART => {
+                return ItemInfo {
+                    name: "minecart with furnace",
+                    kind: ItemKind::Material,
+                    max_stack: 1,
+                    sprite: Sprite::Minecart([96, 96, 96]),
+                };
+            }
             Self::MAGMA_CREAM => return item("magma cream", Sprite::Lump([242, 115, 30])),
             Self::IRON_NUGGET => return item("iron nugget", Sprite::Nugget([202, 206, 212])),
             Self::SLIME_BALL => return item("slimeball", Sprite::Lump([104, 180, 83])),
@@ -1858,6 +1868,8 @@ impl Item {
             .chain(gen5_items())
             // v0.16 Track D: the abandoned camp map, which draws its own layers.
             .chain([crate::world::camp_maps::CAMP_MAP])
+            // v0.17 Track D1: the furnace minecart (its icon follows Track D's).
+            .chain([Self::FURNACE_MINECART])
             // v0.16 Track G: the End crystal, which draws its own layer.
             .chain([crate::entity::crystal::END_CRYSTAL])
     }
@@ -1946,6 +1958,10 @@ fn sprite_index(item: Item) -> Option<u16> {
         // v0.16 Track D: its items follow the Nether star.
         i if let Some(k) = gen5_items().position(|t| t.0 == i) => {
             Some(track_d_icon_base() + TRACK_D_ICONS as u16 + TRACK_B16_ICONS as u16 + 1 + k as u16)
+        }
+        // v0.17 Track D1: the furnace minecart follows v0.16 Track D's items.
+        i if i == Item::FURNACE_MINECART.0 => {
+            Some(track_d_icon_base() + TRACK_D_ICONS as u16 + TRACK_B16_ICONS as u16 + 1 + GEN5_ICONS as u16)
         }
         // v0.17 build-5000 ITEM-08: the bundles follow the experience bottle.
         i if (crate::content::bundle::ITEM_FIRST..crate::content::bundle::ITEM_END).contains(&i) => Some(
@@ -2092,6 +2108,7 @@ pub const fn icon_count() -> u32 {
         + TRACK_B16_ICONS
         + 1 // v0.16 Track C: the Nether star.
         + GEN5_ICONS
+        + 1 // v0.17 Track D1: the furnace minecart.
 }
 
 /// v0.16 Track B's items, in icon order (after v0.15 Track D's).
