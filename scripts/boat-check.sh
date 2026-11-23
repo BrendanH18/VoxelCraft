@@ -234,7 +234,9 @@ if [ -s "$pending_file" ]; then
                 [ $((now - since)) -gt 86400 ] || keep="$keep$line"
             elif [ -z "$id" ] && [ "${kind:-check}" = check ]; then
                 echo "boat-check: adopting $late ($pending), which a cut-off start made late" >&2
-                id=$late; echo "$id" > "$id_file"
+                # Marked like any sandbox this run started, so the exit stops it even when this
+                # run (a --save, say) never uses it.
+                id=$late extended=1; echo "$id" > "$id_file"
             elif [ "$late" != "$id" ]; then
                 echo "boat-check: deleting $late ($pending), which a cut-off start made late" >&2
                 boat delete "$late" --yes --json </dev/null >/dev/null 2>&1 || keep="$keep$line"
