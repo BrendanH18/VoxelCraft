@@ -475,8 +475,15 @@ tick in four. Its fuel and push are saved with it (Java `Fuel`, `PushX`,
 `PushZ`) and sent to LAN guests, who see it lit.
 
 Chest carts expose 27 slots and hopper carts five slots through the existing
-container screen, including normal click and quick-move operations. Hoppers
-feeding or draining carts respect their eight-tick block-hopper cooldown.
+container screen, including normal click and quick-move operations. A
+hopper moves items to and from a chest or hopper minecart (or a chest boat)
+in its own transfer, like any container (`HopperBlockEntity.getEntityContainer`,
+v0.17 Track D1): it ejects into a cart whose box reaches the cell it faces,
+then sucks from a cart whose box reaches the cell above it (before any
+loose item, and nothing at all from an empty cart), all on the one 8-tick
+cooldown, so an unloader under a track empties a cart one item every 8
+ticks. Rails stand on any block whose top can carry a rigid block
+(`canSupportRigidBlock`), hoppers included.
 Hopper carts pull from above or collect nearby dropped stacks each tick; a
 powered activator disables collection until an unpowered activator rail is encountered.
 As in Java, a hopper below drains the cart; the cart does not push into an

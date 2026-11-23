@@ -2788,7 +2788,9 @@ impl Block {
             }
             // `TorchBlock.canSurvive`: `Block.canSupportCenter(below, UP)`.
             Block::TORCH => super::mount_states::supports_center(below, glam::IVec3::Y),
-            b if b.is_rail() => below.supports_fire(),
+            // `BaseRailBlock.canSurvive`: `canSupportRigidBlock` below, which
+            // a hopper's rim is (v0.17 Track D1).
+            b if b.is_rail() => super::mount_states::supports_rigid(below),
             b if b.is_door() => {
                 if b.is_door_upper() {
                     below.is_door() && !below.is_door_upper()
