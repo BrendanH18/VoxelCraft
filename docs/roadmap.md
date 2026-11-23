@@ -598,7 +598,7 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 | — | Stabilisation | Gate before the v0.14 tag | No new content: the entity frame-time fix and a full scene run, terrain blending for generation 3 structures, the audit's data fixes, the owner's play, and one tag for v0.14. See the [stabilisation gate](#stabilisation-gate-before-v017) | In progress (2026-11-09). The owner lifted its content freeze on 2026-11-12; the frame-time gate passed and v0.14 was tagged on 2026-11-16 ([record](verification/2026-11-16-tag-gate-run.md)). Done (owner, 2026-11-23): the owner played the v0.16 build, which carries generation 3's structures, and asked for v0.16 to be released |
 | v0.15 | Villages and raids | Close M4 | Working lecterns, looms, cartography tables and stonecutters; illagers, woodland mansions, raids; remaining villager behaviour; the M4 exit checks. Added by the 2026-11-09 audit ([list](#content-assigned-by-the-2026-11-09-audit)): the remaining Java 26.3 mobs (happy ghasts, nautiluses, camel husks, parched), mobs holding and picking up equipment, chainmail, books, bundles, spyglasses, armor trims, the remaining status effects and potions, and the village template catalogue | Implemented, unverified (2026-11-18): scope approved by the owner, all eight tracks merged and checked together ([v0.15 scope](#v015-scope-villages-and-raids), [integration](verification/2026-11-18-v0.15-integration.md)); the offscreen frame-time suite passes ([run](verification/2026-11-18-v0.15-frame-time.md)); the owner played it in the v0.16 build on 2026-11-23, and it reaches players in the v0.16 release. Tagged `v0.15` at `b16fe0b5` on 2026-11-18, but its release build stopped at the version check because `Cargo.toml` still said 0.14.0, so no draft release exists. Version 0.15.0 and its release notes were added on 2026-11-19; the tag moves to that commit to build the draft. Part of its list was built early by [build-5000 wave 1](verification/2026-11-12-build-5000/wave-1.md) and ships in v0.14 (see the [assigned content](#content-assigned-by-the-2026-11-09-audit)) |
 | v0.16 | The End and the Wither | Close M3; M5 | End cities and ships (the last GEN-05 structures, then the M3 exit checks), shulkers and shulker boxes, elytra and fireworks, dragon respawn; Wither summoning, Nether stars and beacons; the no-cheat progression playthrough. Added by the 2026-11-09 audit ([list](#content-assigned-by-the-2026-11-09-audit)): poplar, cinnabar and sulfur with their terrain and the sulfur cube, abandoned camps, mob heads, infested blocks, nether gold ore, conduits, and the reassessment of dungeons, mineshafts, strongholds, shipwrecks and monuments | Released (owner, 2026-11-23): played by the owner, tagged `v0.16` at `0848508` ([#113](https://github.com/BrendanH18/VoxelCraft/pull/113)) and published as the latest release, without its offscreen frame-time run (owner exception above). Rows stay Implemented, unverified. Implemented (2026-11-21): scope approved by the owner, eight tracks in two waves, all merged and integrated: wave 1 (Outer End, flight and storage, Wither and beacons, generation 5 Overworld) on 2026-11-20, wave 2 (classic and ocean structures, dragon respawn and the M5 audit, wave 1 leftovers, the M3 exit audit) on 2026-11-21. The offscreen frame-time run remains. See the [v0.16 scope](#v016-scope-the-end-and-the-wither) |
-| v0.17 | Redstone and automation | M6 | Java update order, pistons with entity push and slime/honey, the crafter, remaining sensors and workstations; reference farms, clocks and sorters across save/reload. Added by the 2026-11-09 audit: the furnace minecart | Implemented, unverified (2026-11-23): scope approved by the owner; all ten tracks merged and integrated. AUT-06's corpus has three builds left (T flip-flop, cane growth rate, pumpkin farm); the owner's play and a frame-time run remain. See the [v0.17 scope](#v017-scope-redstone-and-automation) |
+| v0.17 | Redstone and automation | M6 | Java update order, pistons with entity push and slime/honey, the crafter, remaining sensors and workstations; reference farms, clocks and sorters across save/reload. Added by the 2026-11-09 audit: the furnace minecart | Implemented, unverified (2026-11-23): scope approved by the owner; all ten tracks merged and integrated. every reference contraption matches Java; the owner's play and a frame-time run remain. See the [v0.17 scope](#v017-scope-redstone-and-automation) |
 | v0.18 | Polish and performance | M7: UX, §6 | Typography/contrast, material and mob art, inventory/recipe navigation, HUD/workstations, title/world identity, atmosphere and accessibility ([scope](#v020-scope-presentation-and-performance)); subtitles, asset and sound review in play (including the v0.12 blocks' own sounds), and menu fixes found since v0.11; the 120 FPS gate in every scene, including v0.8's streaming budget (PERF-03), and the performance check for the v0.8 and v0.9 rows, v0.11's menu and title frame-time run and v0.12's `materials` runs, which moved here unverified ([v0.12 profile](verification/2026-10-29-v0.12-finish.md#frame-time)). The per-frame entity model rebuild that profile found was removed on 2026-11-09 ([record](verification/2026-11-09-entity-frame-time.md)); the streaming route's main-thread terrain column rebuilds from mob biome queries were addressed in the [streaming follow-up](verification/2026-11-09-streaming-biomes-and-gen07.md); the remaining tick work and per-frame sign text are still owed, and the gate is measured again here (v0.14 passed it on 2026-11-16, [record](verification/2026-11-16-tag-gate-run.md)) | Planned; presentation scope expanded by the owner on 2026-11-05. Each release now records its own frame-time run ([§6.1](#61-reference-configuration-and-frame-time-gate)), so what stays here is the final gate, not every release's first measurement |
 | v1.0 | Acceptance | M7 exit, §8 | Every mandatory row Verified; fresh-world and long-session playthroughs; save-compatibility policy; installer and update checks; current stable Java scope reconciled | Planned |
 
@@ -1633,12 +1633,13 @@ and a frame-time run is recorded.
    (2026-11-23):* all 237 Java components compared with the game's roles
    both ways; comparator outputs and fire-age observers fixed
    ([record](verification/2026-11-23-v0.17-components.md)).
-9. **F. Reference contraptions** (AUT-06, the M6 exit). *Partial
-   (2026-11-23):* sixteen builds run headless through unload, save and
-   restart, and mid-motion interruptions. Thirteen match Java, several
-   checked tick by tick against the vanilla 26.3 server run headless; the
-   T flip-flop (the original design doesn't toggle in Java either), the
-   sugar cane growth rate and the pumpkin farm remain
+9. **F. Reference contraptions** (AUT-06, the M6 exit). *Implemented,
+   unverified (2026-11-23):* sixteen builds run headless through unload,
+   save and restart, and mid-motion interruptions, and all match Java,
+   several checked tick by tick against the vanilla 26.3 server run
+   headless. The T flip-flop was redesigned (the first design doesn't
+   toggle in Java either), and the farms exposed a sugar cane growth bug,
+   now fixed with Java's age states
    ([record](verification/2026-11-23-v0.17-reference-contraptions.md)).
 10. **G. Workstations** (AUT-04a/b). *Implemented, unverified
     (2026-11-23):* furnaces, brewing stands, enchanting tables, anvils,
@@ -1657,8 +1658,10 @@ redstone components are no longer re-checked on chunk load (A), the
 autocrafter build faced the wrong way (C1), rails stand on hoppers and
 hoppers drain carts every 8 ticks (D1), and hoppers tick as block entities
 with Java's cooldown counter, moving items with carts in their own tick
-(C2). Clippy passes on every target with and without default features, and
-the full suite passes.
+(C2), sugar cane ages as in Java and the rig loads the columns a farm
+needs for sky light, and the T flip-flop was redesigned to one that toggles
+in Java. Clippy passes on every target with and without default features,
+the full suite passes, and all 29 contraption checks pass.
 
 ### M4 — A complete living world
 

@@ -39,15 +39,16 @@ from the rows: the table had fallen behind rows updated since 2026-11-14.
 **Refreshed 2026-11-23** on the v0.17 integration branch
 (`v017-redstone-automation`): the ten v0.17 tracks moved AUT-01a, AUT-02,
 AUT-03, AUT-04a, AUT-04b, AUT-05 and FOO-04b to Implemented, unverified,
-and AUT-06 from Missing to Partial. AUT-01b stays Partial, because some
-Java game events are still not posted. No row became Verified. The counts
+and AUT-06 from Missing to Implemented, unverified, once every reference
+contraption matched Java. AUT-01b stays Partial, because some Java game
+events are still not posted. No row became Verified. The counts
 below are recounted from the rows.
 
 | State | Rows |
 |---|---|
 | Verified | 3 |
-| Implemented, unverified | 80 |
-| Partial | 41 |
+| Implemented, unverified | 81 |
+| Partial | 40 |
 | Missing | 1 |
 | Unassessed | 0 |
 | Deferred | 6 |
@@ -231,7 +232,7 @@ cost.
 | AUT-04b | Enchanting tables, anvils, smithing, grindstones | Implemented, unverified | v0.15 | [enchant.rs](../src/enchant.rs), [v0.17 workstations](verification/2026-11-23-v0.17-workstations.md) | See PRO-03 | 2026-11-23 (v0.17 Track G): enchanting offers (costs, clues and rolls) match 640 jar-derived vectors (seed, bookshelves and item), with Java's 32 bookshelf places and power transmitters; anvil results and costs match 24 cases (repair, merging, books, clashes, the prior-work penalty, renaming, "Too Expensive!"); grindstone results and experience 11 cases; anvil wear and falling-anvil wear; the smithing slots both ways. Gaps: no anvil name box on the desktop and controller screens (renaming works in the core and the CLI), falling anvils don't hurt entities yet, and no dedicated enchanting or anvil sounds |
 | AUT-04c | Stonecutters, looms, cartography tables, lecterns | Implemented, unverified | v0.15 | [villages](villages.md), [v0.15 workstations](verification/2026-11-18-v0.15-workstations.md) | Each screen works in survival | 2026-11-18: the stonecutter (Java's recipe order, shift-click), loom (all 43 patterns, six layers), cartography table (copy, zoom out, lock) and lectern (book, reading, page turns, comparator output, pulse) on desktop, controller (workstations), LAN and CLI; lecterns and books aren't on controller menus; no dedicated sounds |
 | AUT-05 | Storage and vehicle transactions without loss or duplication | Implemented, unverified | v0.17 | [storage fuzz record](verification/2026-11-23-v0.17-storage-fuzz.md), [storage fuzz](../tests/storage_transactions.rs), [process persistence](../tests/process_persistence.rs) | Container and cart storage fuzz cases across reloads | Drag (quick craft), double-click collect and LAN/controller number keys are not modelled; rails can't sit on hoppers, so no hopper drains a cart |
-| AUT-06 | Representative farms, clocks, sorters across unload and restart | Partial | v0.17 | [reference contraptions](verification/2026-11-23-v0.17-reference-contraptions.md), [corpus](../tests/contraptions/builds.rs) | Recorded reference builds working after reload | 2026-11-23 (v0.17 Track F): sixteen builds with their Java 26.3 behaviour; every build that can be built today repeats its trace exactly after unload, save/restart and restart mid-motion, conserving items; Java timing passes for the comparator clock, both piston doors, the auto-smelter and the repeater loop's period. The other Java checks are ignored, waiting on Tracks A (update order), B (slime, piston-destroyed neighbours, popped pumpkins), C1 (crafter), C2 (hopper hop 7 ticks) and D1 (rails on hoppers, cart unloading). 2026-11-23 farms follow-up: sugar cane grows at Java's rate (AGE 0–15) and the pumpkin farm grows pumpkins (the rig now loads the columns around a build, so skylight is exact); both checks pass |
+| AUT-06 | Representative farms, clocks, sorters across unload and restart | Implemented, unverified | v0.17 | [reference contraptions](verification/2026-11-23-v0.17-reference-contraptions.md), [corpus](../tests/contraptions/builds.rs) | Recorded reference builds working after reload | 2026-11-23 (v0.17 Track F and its follow-ups, [record](verification/2026-11-23-v0.17-reference-contraptions.md)): sixteen reference builds (clocks, piston doors, a flying machine, an item sorter, an auto-smelter, cane and pumpkin farms, a cart storage line, an autocrafter, a BUD switch, a T flip-flop) match their Java 26.3 behaviour, several tick by tick against the vanilla server run headless, and repeat their traces exactly after unload, save/restart and restart mid-motion, conserving items; all 29 checks pass, with none ignored but the soak run. Not yet played by the owner |
 
 ## UX — Presentation, usability and distribution
 
