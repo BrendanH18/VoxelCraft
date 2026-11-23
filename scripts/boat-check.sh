@@ -314,12 +314,12 @@ fast_start() {   # fast_start WHAT boat ARGS...; leaves the output in $out
     rc=0; wait "$job" || rc=$?
     end_job "$watchdog"; watchdog=""
     out=$(cat "$out_file" 2>/dev/null || true)
+    # A start that succeeded counts even if the deadline passed as it finished.
+    if [ "$rc" = 0 ]; then rm -f "$out_file.timeout"; job=""; return 0; fi
     if [ -e "$out_file.timeout" ]; then
         rm -f "$out_file.timeout"
         out="no_ready_machine: no machine within ${wait_for} s"
-        return 1
     fi
-    if [ "$rc" = 0 ]; then job=""; return 0; fi
     return 1
 }
 # new_sandbox NAME [boat new ARGS...]: sets new_id to the new sandbox's id. Set creating=NAME
