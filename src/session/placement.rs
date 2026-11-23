@@ -373,7 +373,9 @@ impl PlayerSession {
                         .chorus_placement_ok(at, block)
                         .or_else(|| world.overworld_placement_ok(at, block))
                         .unwrap_or_else(|| below.is_some_and(|b| block.can_stay_on(b)))
-                        && (block != Block::SUGAR_CANE || below == Some(Block::SUGAR_CANE) || world.cane_has_water(at))
+                        && (block != Block::SUGAR_CANE
+                            || below.is_some_and(crate::world::sugar_cane::is_cane)
+                            || world.cane_has_water(at))
                         && (!block.is_mushroom() || world.mushroom_survives(at));
                     if !support || !world.redstone_supported(at, block) {
                         return Err("block cannot survive here");

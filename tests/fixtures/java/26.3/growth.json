@@ -1,0 +1,49 @@
+{
+  "reference": "Minecraft Java Edition 26.3",
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "sources": [
+    "net.minecraft.world.level.block.SugarCaneBlock.randomTick",
+    "net.minecraft.world.level.block.CactusBlock.randomTick",
+    "net.minecraft.world.level.block.StemBlock.randomTick",
+    "net.minecraft.world.level.block.CropBlock.getGrowthSpeed",
+    "net.minecraft.world.level.block.BambooStalkBlock.randomTick",
+    "net.minecraft.world.level.block.BambooStalkBlock.growBamboo"
+  ],
+  "sugar_cane": {
+    "age_max": 15,
+    "max_height": 3,
+    "grows_at_age": 15,
+    "age_set_block_flags": 260,
+    "checks_water": false
+  },
+  "cactus": {
+    "age_max": 15,
+    "max_height": 3,
+    "flower_at_age": 8,
+    "flower_chance_full_height": 0.25,
+    "flower_chance": 0.1,
+    "grows_at_age": 15,
+    "age_set_block_flags": 260
+  },
+  "stem": {
+    "age_max": 7,
+    "min_raw_brightness": 9,
+    "growth_numerator": 25.0,
+    "fruits_at_age": 7
+  },
+  "crop_growth_speed": {
+    "base": 1.0,
+    "soil": 1.0,
+    "moist_soil": 3.0,
+    "neighbour_divisor": 4.0,
+    "crowded_divisor": 2.0
+  },
+  "bamboo": {
+    "one_in": 3,
+    "min_raw_brightness_above": 9,
+    "max_height": 16,
+    "matures_from_height": 11,
+    "matures_chance": 0.25,
+    "matures_at_height": 15
+  }
+}

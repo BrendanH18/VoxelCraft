@@ -104,8 +104,9 @@ full performance display instead of duplicating the compact counter.
   planted on grass or dirt, saplings grow into trees.
   Nether wart planted on soul sand ages through 4 stages (1 in 10 random
   ticks, in any light, ignoring bone meal); ripe wart drops 2-4, unripe 1.
-  Sugar cane grows next to water up to 3 blocks tall, and must be planted
-  on grass, dirt or sand beside water. Leaves that can't reach a log
+  Sugar cane grows up to 3 blocks tall, and must be planted on grass, dirt
+  or sand beside water. Like Java's, its top block ages one step per
+  random tick and grows a new block on the 16th (2026-11-23). Leaves that can't reach a log
   within 6 blocks decay a few seconds after a tree is felled. Grass spreads
   to lit dirt nearby and dies under blocks. Bone meal advances a crop 2-5
   stages, sometimes grows a sapling at once, and sprouts grass and flowers

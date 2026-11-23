@@ -16,6 +16,7 @@ use voxelcraft::{
         rails::{self, RailKind},
         redstone_blocks::{self as r, Component},
         stone_blocks::SLIME_BLOCK,
+        sugar_cane,
     },
 };
 
@@ -808,7 +809,7 @@ fn sugar_cane_farm() -> Spec {
             Probe::LooseItems,
             Probe::Moving,
         ],
-        counted: |b| b == Block::SUGAR_CANE,
+        counted: sugar_cane::is_cane,
         deterministic: false,
         random_tick_speed: 1024,
         ticks: 1200,
@@ -824,12 +825,19 @@ fn appeared(col: &[i64], block: Block) -> Vec<usize> {
     (1..col.len()).filter(|&t| col[t - 1] != block.0 as i64 && col[t] == block.0 as i64).collect()
 }
 
+/// A probed cell's column with every sugar cane age read as age 0: the
+/// age changes every random tick (`world::sugar_cane`), the block doesn't.
+fn cane_column(run: &Run, probe: usize) -> Vec<i64> {
+    let cane = |b: i64| u16::try_from(b).is_ok_and(|b| sugar_cane::is_cane(Block(b)));
+    run.column(probe).into_iter().map(|b| if cane(b) { Block::SUGAR_CANE.0 as i64 } else { b }).collect()
+}
+
 /// Every grown block is standing or an item: the total changes by exactly
-/// the blocks that appeared. Holds whatever the timing.
-fn grown_accounting(run: &Run, cells: &[usize], block: Block) -> Result<usize, String> {
+/// the blocks that appeared in `cols`. Holds whatever the timing.
+fn grown_accounting(run: &Run, cols: &[Vec<i64>], block: Block) -> Result<usize, String> {
     let mut grown = vec![0i64; run.lines.len()];
-    for &c in cells {
-        for t in appeared(&run.column(c), block) {
+    for col in cols {
+        for t in appeared(col, block) {
             grown[t] += 1;
         }
     }
@@ -842,19 +850,19 @@ fn grown_accounting(run: &Run, cells: &[usize], block: Block) -> Result<usize, S
 }
 
 fn sugar_cane_accounting(run: &Run) -> Result<(), String> {
-    ensure(run.column(0).iter().all(|&b| b == Block::SUGAR_CANE.0 as i64), || "the bottom cane went".into())?;
-    grown_accounting(run, &[1, 2], Block::SUGAR_CANE).map(|_| ())
+    ensure(cane_column(run, 0).iter().all(|&b| b == Block::SUGAR_CANE.0 as i64), || "the bottom cane went".into())?;
+    grown_accounting(run, &[cane_column(run, 1), cane_column(run, 2)], Block::SUGAR_CANE).map(|_| ())
 }
 
 fn verify_sugar_cane_farm(run: &Run) -> Result<(), String> {
     sugar_cane_accounting(run)?;
-    let third = run.column(2);
+    let third = cane_column(run, 2);
     let mut standing = 0;
     for (t, &b) in third.iter().enumerate() {
         standing = if b == Block::SUGAR_CANE.0 as i64 { standing + 1 } else { 0 };
         ensure(standing <= 6, || format!("tick {}: a third cane stood {standing} ticks unharvested", t + 1))?;
     }
-    let harvests = appeared(&run.column(1), Block::AIR).len();
+    let harvests = appeared(&cane_column(run, 1), Block::AIR).len();
     ensure(harvests >= 4, || format!("only {harvests} harvests"))
 }
 
@@ -872,15 +880,15 @@ fn sugar_cane_farm_survives_unload_and_restart() {
 /// AGE 0..15; the age-15 tick grows the block above and resets the age).
 /// In the farm each harvest needs two growths, so at random tick speed 1024
 /// (0.25 random ticks per block per tick) a block grows about every 64
-/// ticks: about 62 in 4000 ticks.
+/// ticks: about 62 in 4000 ticks. VoxelCraft grew cane with chance 1/4 per
+/// random tick, four times as fast (228 here), until `world::sugar_cane`
+/// added the age (2026-11-23 farms follow-up).
 #[test]
-#[ignore = "needs a sugar cane fix outside the v0.17 tracks: Java grows a block after 16 random ticks (AGE 0..15), \
-            VoxelCraft with chance 1/4 per random tick (world::growth tick_cane), four times as fast (228 grew \
-            here with the v0.17 pistons harvesting)"]
 fn sugar_cane_grows_at_java_rate() {
     let spec = Spec { ticks: 4000, ..sugar_cane_farm() };
     let run = run(&spec, Cut::None);
-    let grown = appeared(&run.column(1), Block::SUGAR_CANE).len() + appeared(&run.column(2), Block::SUGAR_CANE).len();
+    let grown = appeared(&cane_column(&run, 1), Block::SUGAR_CANE).len()
+        + appeared(&cane_column(&run, 2), Block::SUGAR_CANE).len();
     assert!((45..=85).contains(&grown), "{grown} cane grew in 4000 ticks; Java about 62");
 }
 
@@ -894,6 +902,9 @@ fn sugar_cane_grows_at_java_rate() {
 /// `AttachedStemBlock` reverts to a plain stem): pumpkins grow at random,
 /// so the check is accounting: every pumpkin grown is an item or still
 /// standing, the stem survives, and no pumpkin stands more than a few ticks.
+/// The yield: dry farmland gives growth speed 2, so one in 13 per random
+/// tick, and one side in four is free; at speed 1024 (0.25 random ticks per
+/// block per tick) a pumpkin every 208 ticks, about 9.6 in 2000.
 fn pumpkin_farm() -> Spec {
     Spec {
         name: "pumpkin_farm",
@@ -927,7 +938,7 @@ fn pumpkin_farm() -> Spec {
 }
 
 fn pumpkin_accounting(run: &Run) -> Result<(), String> {
-    grown_accounting(run, &[1], Block::PUMPKIN).map(|_| ())
+    grown_accounting(run, &[run.column(1)], Block::PUMPKIN).map(|_| ())
 }
 
 fn verify_pumpkin_farm(run: &Run) -> Result<(), String> {
@@ -935,7 +946,7 @@ fn verify_pumpkin_farm(run: &Run) -> Result<(), String> {
     if let Some(t) = stem.iter().position(|&b| crops::stem(Block(b as u16)).is_none()) {
         return Err(format!("tick {}: the stem is gone ({})", t + 1, stem[t]));
     }
-    let grown = grown_accounting(run, &[1], Block::PUMPKIN)?;
+    let grown = grown_accounting(run, &[run.column(1)], Block::PUMPKIN)?;
     let mut standing = 0;
     for (t, &b) in spot.iter().enumerate() {
         standing = if b == Block::PUMPKIN.0 as i64 { standing + 1 } else { 0 };
@@ -944,10 +955,10 @@ fn verify_pumpkin_farm(run: &Run) -> Result<(), String> {
     ensure(grown >= 2, || format!("only {grown} pumpkins grew"))
 }
 
+/// No pumpkin grew here until the rig loaded the columns around the build
+/// (2026-11-23 farms follow-up): skylight is exact only with a column's
+/// eight neighbours loaded, so the stem saw light 0 and never grew.
 #[test]
-#[ignore = "undiagnosed: no pumpkin grew in 2000 ticks at speed 1024 here (Java about ten); check the stem's \
-            growth light in the headless world first. Pistons now pop pumpkins (PushReaction.POPPED, v0.17 \
-            Track B, tests/pistons.rs)"]
 fn pumpkin_farm_harvests() {
     check(&pumpkin_farm(), verify_pumpkin_farm);
 }
