@@ -3,6 +3,7 @@
 //! they make. Behaviour and differences: docs/redstone.md#pistons-and-observers.
 mod entities;
 mod events;
+mod java_table;
 mod moving;
 mod reaction;
 mod resolver;

@@ -1243,6 +1243,27 @@ wave 1 already set apart from v0.15. Used IDs: states 30720–30728 (E) and
 used none. Everything else in wave 2's rows and the integrator spare
 31104–31231 stays unregistered. [Integration record](verification/2026-11-21-v0.16-wave-2-integration.md).
 
+### v0.17 Redstone and automation track reservations
+
+Reserved on 2026-11-23 for the v0.17 tracks (owner-approved plan): A, Java
+update order, 12800–12831 / items 1770–1774; B, pistons, 12832–13087 /
+1775–1784 / layers 1164–1199; C, crafter and dispensing, 13088–13343 /
+1785–1799 / 1200–1239; D, rails and storage, 13344–13599 / 1800–1814 /
+1240–1269; later tracks and the integrator keep 13600–14335 / 1815–1849 /
+1270–1299. Each track records what it used under its own heading.
+
+#### Track B allocation
+
+Pistons (2026-11-23, implemented, unverified;
+[record](verification/2026-11-23-v0.17-pistons.md)) used **no** IDs: no block
+state, item or texture layer in 12832–13087, 1775–1784 or 1164–1199 is
+registered, and they stay free for the integrator. Java's `moving_piston`
+is the existing state 1470 (`redstone_blocks::MOVING`); its `facing` and
+`type` properties are read from the saved block entity, which always
+matches them. Saved formats: the `automation` dimension property is now
+`v2` (moving-cell `M` records and piston-event `B` records; `v1` `m`
+records migrate on load). No append-only ordering was extended.
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating

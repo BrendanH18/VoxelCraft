@@ -6,7 +6,7 @@ use glam::IVec3;
 
 use super::super::{
     World,
-    block::{Block, RenderKind},
+    block::Block,
     redstone_blocks::{self as r, Component},
 };
 
@@ -79,94 +79,55 @@ pub fn is_piston(b: Block) -> bool {
     matches!(r::component(b), Some(Component::Piston { .. }))
 }
 
-/// The block's Java `PushReaction`.
+const REACTION: u8 = 3;
+const BLOCK_ENTITY: u8 = 4;
+const UNBREAKABLE: u8 = 8;
+
+/// Java flags per VoxelCraft state (see [`super::java_table`]), built once.
+/// A Java block maps to the states sharing its VoxelCraft name, resolved as
+/// `java_registry::block` does: the registry ID (or its alias) first, then
+/// the English name.
+fn flags(b: Block) -> u8 {
+    use crate::world::block::STATE_CAPACITY;
+    static TABLE: std::sync::OnceLock<Box<[u8]>> = std::sync::OnceLock::new();
+    let table = TABLE.get_or_init(|| {
+        let names: rustc_hash::FxHashSet<&'static str> = (0..STATE_CAPACITY).map(|i| Block(i as u16).name()).collect();
+        let mut by_name: rustc_hash::FxHashMap<&'static str, u8> = Default::default();
+        for &(id, english, flags) in super::java_table::JAVA_BLOCKS {
+            let primary = crate::java_registry::block_alias(id).map_or_else(|| id.replace('_', " "), str::to_string);
+            if let Some(&name) = names.get(primary.as_str()).or_else(|| names.get(english)) {
+                by_name.insert(name, flags);
+            }
+        }
+        (0..STATE_CAPACITY)
+            .map(|i| {
+                let b = Block(i as u16).canonical();
+                // Beds are named by their halves.
+                if b.is_bed() { 2 } else { by_name.get(b.name()).copied().unwrap_or(0) }
+            })
+            .collect()
+    });
+    table.get(b.0 as usize).copied().unwrap_or(0)
+}
+
+/// The block's Java `PushReaction` (`PUSH_PULL` for blocks Java doesn't have).
 pub fn push_reaction(b: Block) -> PushReaction {
-    use super::super::*;
-    let b = b.canonical();
-    if b == Block::AIR {
-        return PushReaction::PushPull;
+    match flags(b) & REACTION {
+        0 => PushReaction::PushPull,
+        1 => PushReaction::Push,
+        2 => PushReaction::Popped,
+        _ => PushReaction::Immoveable,
     }
-    // Fluids are `POPPED` (`LiquidBlock` properties).
-    if b.is_fluid() {
-        return PushReaction::Popped;
-    }
-    if matches!(
-        b,
-        Block::OBSIDIAN
-            | Block::CRYING_OBSIDIAN
-            | Block::NETHERITE_BLOCK
-            | Block::END_PORTAL_FRAME
-            | Block::NETHER_PORTAL
-            | Block::END_PORTAL
-            | Block::END_GATEWAY
-    ) || jukebox::piston_immovable(b)
-        || matches!(r::component(b), Some(Component::PistonHead { .. } | Component::Moving))
-    {
-        return PushReaction::Immoveable;
-    }
-    // Glazed terracotta can only be pushed.
-    if b.glazed_color().is_some() {
-        return PushReaction::Push;
-    }
-    if shulker_box::owns(b.0)
-        || b.kind() == RenderKind::Cross
-        || b.is_door()
-        || mount_states::is_lantern(b.0)
-        || copper::pops_when_pushed(b)
-        || copper_golem_statue::owns(b.0)
-        || b == frog_blocks::FROGSPAWN
-        || b == utilities::FLOWER_POT
-        || utilities::potted_plant(b).is_some()
-        || utilities::decorated_pot_of(b).is_some()
-        || scaffolding::is_scaffolding(b)
-        || colour_blocks::pops_on_push(b)
-        || skulls::owns(b.0)
-        || b.is_fire()
-        || matches!(
-            r::component(b),
-            Some(
-                Component::Wire(_)
-                    | Component::Lever { .. }
-                    | Component::Button { .. }
-                    | Component::Torch { .. }
-                    | Component::Repeater { .. }
-                    | Component::Comparator { .. }
-                    | Component::Plate { .. }
-                    | Component::IronDoor { .. }
-            )
-        )
-    {
-        return PushReaction::Popped;
-    }
-    PushReaction::PushPull
 }
 
 /// Whether the block is an `EntityBlock` in Java (`hasBlockEntity`).
 pub fn has_block_entity(b: Block) -> bool {
-    use super::super::*;
-    let b = b.canonical();
-    chest::is_chest(b)
-        || furnace::is_furnace(b)
-        || b.base() == Block::BREWING_STAND
-        || b == Block::SPAWNER
-        || b == Block::ENCHANTING_TABLE
-        || colour_blocks::banner::decode(b.0).is_some()
-        || wood::has_entity(b)
-        || utilities::ender_chest_of(b).is_some()
-        || utilities::campfire_of(b).is_some()
-        || b == beacon::BEACON
-        || conduit::owns(b.0)
-        || shulker_box::owns(b.0)
-        || matches!(
-            r::component(b),
-            Some(
-                Component::Daylight { .. }
-                    | Component::Dispenser { .. }
-                    | Component::Hopper { .. }
-                    | Component::Comparator { .. }
-                    | Component::Moving
-            )
-        )
+    flags(b) & BLOCK_ENTITY != 0
+}
+
+/// Java destroy time -1, or a VoxelCraft block that can't be broken.
+fn unbreakable(b: Block) -> bool {
+    flags(b) & UNBREAKABLE != 0 || (!b.is_fluid() && !b.hardness().is_finite())
 }
 
 /// The class `PistonBaseBlock.isPushable` gives a block (ignoring position
@@ -175,7 +136,7 @@ pub fn piston_class(b: Block) -> PistonClass {
     if let Some(Component::Piston { extended, .. }) = r::component(b) {
         return if extended { PistonClass::Immovable } else { PistonClass::Move };
     }
-    if !b.hardness().is_finite() {
+    if unbreakable(b) {
         return PistonClass::Immovable;
     }
     match push_reaction(b) {

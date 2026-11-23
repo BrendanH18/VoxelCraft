@@ -812,15 +812,10 @@ mod tests {
             assert_eq!(w.get_block(P + IVec3::X), Some(if blocked { Block::STONE } else { r::piston_head(2, false) }));
             assert_eq!(w.get_block(P + IVec3::X * (count + 1)), Some(if blocked { Block::AIR } else { Block::STONE }));
         }
-        for block in [
-            Block::OBSIDIAN,
-            Block::BEDROCK,
-            Block::NETHERITE_BLOCK,
-            Block::CHEST,
-            Block::FURNACE,
-            Block::BREWING_STAND,
-            Block::END_PORTAL,
-        ] {
+        // Netherite blocks are `PUSH_PULL` in Java 26.3 (`tests/pistons.rs`).
+        for block in
+            [Block::OBSIDIAN, Block::BEDROCK, Block::CHEST, Block::FURNACE, Block::BREWING_STAND, Block::END_PORTAL]
+        {
             let mut w = world();
             put(&mut w, P, r::PISTON);
             put(&mut w, P + IVec3::Z, block);
