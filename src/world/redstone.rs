@@ -1,5 +1,6 @@
-//! Changed-block redstone propagation and scheduled component ticks at 20 Hz.
-//! Java references and intentional ordering differences: docs/redstone.md.
+//! Redstone signals, neighbour reactions and scheduled component ticks at 20 Hz.
+//! Java's update order lives in `redstone_order`; references and the
+//! remaining differences: docs/redstone.md.
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, VecDeque};
 
@@ -12,10 +13,11 @@ use super::chunk::CHUNK_SIZE_I;
 use super::nether_biome_blocks::keep_wood;
 use super::rails;
 use super::redstone_blocks::{self as r, Component, conductor};
+use super::redstone_order::{self as order, DIRECTIONS, HORIZONTAL, VERTICAL, flags, priority};
 
 /// The block a scheduled tick is keyed by: the redstone, rail or gadget
 /// family, or the plain base block (bells, composters).
-fn family(b: Block) -> Block {
+pub(super) fn family(b: Block) -> Block {
     if let Some(copper) = super::copper::unstaged(b) {
         return copper;
     }
@@ -27,9 +29,56 @@ fn family(b: Block) -> Block {
         .unwrap_or(b.base())
 }
 
+/// Blocks with a redstone `neighborChanged` reaction.
+pub(super) fn participates(b: Block) -> bool {
+    r::component(b).is_some()
+        || b.is_door()
+        || b.is_gate()
+        || b.is_rail()
+        || super::gadgets::participates(b)
+        || b == Block::TNT
+        || b.base() == Block::BELL
+        || super::copper::bulb(b).is_some()
+        || super::wood::redstone_participant(b)
+        || super::utilities::dripleaf_of(b).is_some()
+}
+
+pub(super) fn is_wire(b: Block) -> bool {
+    matches!(r::component(b), Some(Component::Wire(_)))
+}
+
+pub(super) fn is_comparator(b: Block) -> bool {
+    matches!(r::component(b), Some(Component::Comparator { .. }))
+}
+
+fn is_diode(b: Block) -> bool {
+    matches!(r::component(b), Some(Component::Repeater { .. } | Component::Comparator { .. }))
+}
+
+/// Java's `hasAnalogOutputSignal`: blocks a comparator reads.
+pub(super) fn has_analog_output(w: &World, p: IVec3, b: Block) -> bool {
+    b != Block::AIR && w.container_signal(p).is_some()
+}
+
+/// The six sides, in the order signal reads take them (any order gives
+/// the same maximum).
 const SIDES: [IVec3; 6] = [IVec3::Y, IVec3::NEG_Y, IVec3::NEG_Z, IVec3::Z, IVec3::NEG_X, IVec3::X];
-/// A pathological oscillator cannot monopolize a game tick. Work carries over.
-const MAX_UPDATES: usize = 65_536;
+
+/// The neighbour a strong source attached to a block powers through it, for
+/// sources whose own Java update calls are not ported (`flags::COMPAT`).
+fn compat_strong_side(b: Block) -> Option<IVec3> {
+    if let Some((facing, _, _)) = super::gadgets::hook_state(b) {
+        return Some(-facing.offset());
+    }
+    if let Some(c) = super::lightning::rod(b) {
+        return Some(-super::copper::rod_direction(c.local));
+    }
+    (rails::kind(b) == Some(rails::RailKind::Detector)
+        || super::workstations::lectern(b.0).is_some()
+        || super::utilities::trapped_chest_of(b).is_some()
+        || super::cave_blocks::any_sensor(b).is_some())
+    .then_some(IVec3::NEG_Y)
+}
 
 type ScheduledTick = Reverse<(u64, i8, u64, [i32; 3], u16)>;
 
@@ -38,6 +87,7 @@ pub(super) struct RedstoneState {
     pub(super) contacts: FxHashMap<IVec3, super::redstone_contacts::Contacts>,
     pub(super) tick: u64,
     sequence: u64,
+    /// Components to re-evaluate once: chunk-load refreshes and saved queues.
     updates: VecDeque<IVec3>,
     queued: FxHashSet<IVec3>,
     pending: FxHashMap<IVec3, (u64, u16, u64)>,
@@ -53,8 +103,8 @@ pub(super) struct RedstoneState {
     /// by the entity tick.
     frame_signal: FxHashMap<(IVec3, IVec3), u8>,
     pub(super) trip_pulse: FxHashMap<IVec3, u64>,
+    /// `RedstoneTorchBlock.RECENT_TOGGLES`, by torch.
     toggles: FxHashMap<IVec3, VecDeque<u64>>,
-    burnout: FxHashMap<IVec3, u64>,
     comparator: FxHashMap<IVec3, u8>,
     /// Tracks powered edges for manually operable doors and gates.
     powered: FxHashSet<IVec3>,
@@ -64,36 +114,60 @@ pub(super) struct RedstoneState {
     sky_darken: u8,
     /// Java's `visual/sun_angle` in degrees.
     sun_angle: f32,
+    /// Java's neighbour update stack, tick collection and block events.
+    pub(super) order: order::UpdateOrder,
+    /// Deferred `redstone_changed` notifications, in arrival order.
+    changed: Vec<IVec3>,
+    changed_set: FxHashSet<IVec3>,
 }
 
 impl World {
-    fn queue_redstone(&mut self, p: IVec3) {
-        if self.get_block(p).is_some_and(|b| {
-            r::component(b).is_some()
-                || b.is_door()
-                || b.is_gate()
-                || b.is_rail()
-                || super::gadgets::participates(b)
-                || b == Block::TNT
-                || b.base() == Block::BELL
-                || super::copper::bulb(b).is_some()
-                || super::wood::redstone_participant(b)
-                || super::utilities::dripleaf_of(b).is_some()
-        }) && self.redstone.queued.insert(p)
-        {
+    /// Re-evaluate a component once on the next tick (chunk loads, saved queues).
+    fn queue_refresh(&mut self, p: IVec3) {
+        if self.get_block(p).is_some_and(participates) && self.redstone.queued.insert(p) {
             self.redstone.updates.push_back(p);
         }
     }
 
-    /// Includes neighbours of a potentially conducting block, and stair-step
-    /// wire neighbours. Fixed fanout, no recursive neighbour notifications.
+    pub(super) fn park_redstone_update(&mut self, p: IVec3) {
+        self.redstone.sleeping_updates.entry(super::chunk::chunk_of(p)).or_default().push(p);
+    }
+
+    /// Something at `p` changed its signal or analog output outside a ported
+    /// Java block behaviour (containers, sensors, finished piston moves): the
+    /// block re-evaluates itself, its neighbours hear `neighborChanged`, the
+    /// neighbours of the block it strongly powers too, and comparators read
+    /// its output (`updateNeighbourForOutputSignal`).
+    ///
+    /// Callers notify before they finish mutating (`chest_mut` hands out the
+    /// contents after notifying), so the notification runs at the start of
+    /// the next tick, before the clock advances: comparators still schedule
+    /// their tick for the same game tick as a synchronous Java notification.
     pub fn redstone_changed(&mut self, p: IVec3) {
-        self.queue_redstone(p);
-        for d in SIDES {
-            self.queue_redstone(p + d);
-            for e in SIDES {
-                self.queue_redstone(p + d + e);
+        if self.redstone.changed_set.insert(p) {
+            self.redstone.changed.push(p);
+        }
+    }
+
+    /// Run the notifications `redstone_changed` deferred.
+    fn drain_redstone_changes(&mut self) {
+        if self.redstone.changed.is_empty() {
+            return;
+        }
+        let changed = std::mem::take(&mut self.redstone.changed);
+        self.redstone.changed_set.clear();
+        for &p in &changed {
+            self.neighbor_changed_at(p);
+            self.update_neighbors_at(p);
+            if let Some(d) = self.get_block(p).and_then(compat_strong_side) {
+                self.update_neighbors_at(p + d);
             }
+            self.update_neighbour_for_output_signal(p);
+        }
+        let mut changed = changed;
+        changed.clear();
+        if self.redstone.changed.is_empty() {
+            self.redstone.changed = changed;
         }
     }
 
@@ -102,14 +176,13 @@ impl World {
             return;
         }
         if family(old) != family(new) {
-            self.redstone.pending.remove(&p);
+            // The observer's `affectNeighborsAfterRemoval` asks whether a tick was pending.
+            self.redstone.order.removed_tick = self.redstone.pending.remove(&p).map(|_| p);
             self.redstone.comparator.remove(&p);
-            self.redstone.burnout.remove(&p);
             self.redstone.toggles.remove(&p);
             self.redstone.powered.remove(&p);
         }
         self.track_tripwire(p, old, new);
-        self.redstone_changed(p);
     }
 
     pub(super) fn load_redstone_chunk(&mut self, c: IVec3) {
@@ -162,9 +235,15 @@ impl World {
                 || b.base() == Block::BELL
                 || super::copper::bulb(b).is_some()
             {
-                let local =
-                    IVec3::new(i % CHUNK_SIZE_I, i / (CHUNK_SIZE_I * CHUNK_SIZE_I), i / CHUNK_SIZE_I % CHUNK_SIZE_I);
-                self.redstone_changed(c * CHUNK_SIZE_I + local);
+                let p = c * CHUNK_SIZE_I + local;
+                self.queue_refresh(p);
+                // A powered observer needs its falling edge even if an old
+                // save did not carry the scheduled tick.
+                if matches!(r::component(b), Some(Component::Observer { on: true, .. }))
+                    && !self.redstone.pending.contains_key(&p)
+                {
+                    self.schedule_redstone(p, 2, priority::NORMAL);
+                }
             }
             if super::sniffer_egg::owns(b.0) {
                 let p = c * CHUNK_SIZE_I + local;
@@ -353,16 +432,18 @@ impl World {
         [side, -side]
             .into_iter()
             .map(|d| {
+                // `SignalGetter.getControlInputSignal`: diodes only for a
+                // repeater; otherwise a redstone block gives 15, wire its
+                // power, and other sources their direct signal.
                 let q = p + d;
-                if repeaters_only
-                    && !matches!(
-                        self.get_block(q).and_then(r::component),
-                        Some(Component::Repeater { .. } | Component::Comparator { .. })
-                    )
-                {
-                    0
-                } else {
-                    self.emitted_signal(q, -d, true, true)
+                match self.get_block(q).and_then(r::component) {
+                    Some(Component::Repeater { .. } | Component::Comparator { .. }) => {
+                        self.emitted_signal(q, -d, true, true)
+                    }
+                    _ if repeaters_only => 0,
+                    Some(Component::Source) => 15,
+                    Some(Component::Wire(power)) => power,
+                    _ => self.emitted_signal(q, -d, true, true),
                 }
             })
             .max()
@@ -373,7 +454,28 @@ impl World {
         matches!(self.get_block(p).and_then(r::component), Some(Component::Repeater { facing, .. }) if self.diode_side(p, facing, true) > 0)
     }
 
+    /// `ComparatorBlock.calculateOutputSignal`.
     fn comparator_target(&self, p: IVec3, facing: Facing, subtract: bool) -> u8 {
+        let input = self.comparator_input(p, facing);
+        let side = self.diode_side(p, facing, false);
+        if subtract {
+            input.saturating_sub(side)
+        } else if input >= side {
+            input
+        } else {
+            0
+        }
+    }
+
+    /// `ComparatorBlock.shouldTurnOn`.
+    fn comparator_turns_on(&self, p: IVec3, facing: Facing, subtract: bool) -> bool {
+        let input = self.comparator_input(p, facing);
+        let side = self.diode_side(p, facing, false);
+        input > 0 && (input > side || (input == side && !subtract))
+    }
+
+    /// `ComparatorBlock.getInputSignal`.
+    fn comparator_input(&self, p: IVec3, facing: Facing) -> u8 {
         let mut input = self.diode_input(p, facing);
         let rear = p - facing.offset();
         // Shelves and chiseled bookshelves read by side (`world::wood`).
@@ -390,14 +492,7 @@ impl World {
                 input = value;
             }
         }
-        let side = self.diode_side(p, facing, false);
-        if subtract {
-            input.saturating_sub(side)
-        } else if input >= side {
-            input
-        } else {
-            0
-        }
+        input
     }
 
     /// Refresh comparator readings, waking the circuit only when contents or occupancy change.
@@ -505,7 +600,7 @@ impl World {
         None
     }
 
-    fn redstone_update(&mut self, p: IVec3) {
+    pub(super) fn redstone_update(&mut self, p: IVec3) {
         let Some(b) = self.get_block(p) else { return };
         if b.is_rail() {
             return self.rail_update(p, b);
@@ -549,28 +644,14 @@ impl World {
             }
             return;
         }
-        // `updateShape`: a lever, button or torch whose attached block no
-        // longer has a sturdy face pops off; so does a diode or plate whose
-        // support no longer holds it (`canSurvive`, as placement checks).
-        let support = match r::component(b) {
-            Some(Component::Lever { mount, .. } | Component::Button { mount, .. } | Component::Torch { mount, .. }) => {
-                Some((r::support(mount), true))
-            }
-            Some(Component::Repeater { .. } | Component::Comparator { .. } | Component::Plate { .. }) => {
-                Some((IVec3::NEG_Y, false))
-            }
-            _ => None,
-        };
-        if support.is_some_and(|(d, sturdy)| {
-            self.get_block(p + d).is_some()
-                && if sturdy {
-                    !self.redstone_supported(p, b)
-                } else {
-                    self.get_block(p + d).is_some_and(|below| !b.can_stay_on(below))
-                }
-        }) {
+        // `DiodeBlock.neighborChanged`: an unsupported diode drops and
+        // notifies all its neighbours' neighbours.
+        if is_diode(b) && self.get_block(p - IVec3::Y).is_some_and(|below| !b.can_stay_on(below)) {
             self.spill_block(p, b);
-            self.edit(p, Block::AIR, false);
+            self.set_block_flags(p, Block::AIR, flags::UPDATE_ALL);
+            for d in DIRECTIONS {
+                self.update_neighbors_at(p + d);
+            }
             return;
         }
         match r::component(b) {
@@ -580,35 +661,45 @@ impl World {
                 | Component::Dispenser { .. }
                 | Component::Hopper { .. },
             ) => self.automation_update(p, b),
-            Some(Component::Wire(power)) => {
+            Some(Component::Wire(_)) => {
+                // `RedStoneWireBlock.neighborChanged`: survive or drop.
                 if self.get_block(p - IVec3::Y).is_some_and(|below| !b.can_stay_on(below)) {
                     self.spill_block(p, b);
-                    self.edit(p, Block::AIR, false);
+                    self.set_block_flags(p, Block::AIR, flags::UPDATE_ALL);
                 } else {
-                    let target = self.wire_target(p);
-                    if power != target {
-                        self.edit(p, if b.0 >= 1453 { r::dot(target) } else { r::wire(target) }, false);
-                    }
+                    self.wire_update_power(p, b);
                 }
             }
             Some(Component::Torch { mount, lit }) => {
-                if self.redstone.burnout.get(&p).is_some_and(|&end| end > self.redstone.tick) {
-                    return;
-                }
-                if lit == (self.signal_from(p + r::support(mount), -r::support(mount), true) > 0) {
-                    self.schedule_redstone(p, 2, 0);
+                if lit == (self.signal_from(p + r::support(mount), -r::support(mount), true) > 0)
+                    && !self.will_tick_this_tick(p)
+                {
+                    self.schedule_redstone(p, 2, priority::NORMAL);
                 }
             }
             Some(Component::Repeater { facing, delay, on }) => {
-                if !self.repeater_locked(p) && on != (self.diode_input(p, facing) > 0) {
-                    let priority = if on { -2 } else { -1 };
+                // `DiodeBlock.checkTickOnNeighbor`.
+                if !self.repeater_locked(p) && on != (self.diode_input(p, facing) > 0) && !self.will_tick_this_tick(p) {
+                    let priority = if self.diode_prioritized(p, facing) {
+                        priority::EXTREMELY_HIGH
+                    } else if on {
+                        priority::VERY_HIGH
+                    } else {
+                        priority::HIGH
+                    };
                     self.schedule_redstone(p, delay as u64 * 2, priority);
                 }
             }
-            Some(Component::Comparator { facing, subtract, .. }) => {
-                if self.redstone.comparator.get(&p).copied().unwrap_or(0) != self.comparator_target(p, facing, subtract)
-                {
-                    self.schedule_redstone(p, 2, 0);
+            Some(Component::Comparator { facing, subtract, on }) => {
+                // `ComparatorBlock.checkTickOnNeighbor`.
+                if !self.will_tick_this_tick(p) {
+                    let output = self.comparator_target(p, facing, subtract);
+                    let stored = self.redstone.comparator.get(&p).copied().unwrap_or(0);
+                    if output != stored || on != self.comparator_turns_on(p, facing, subtract) {
+                        let priority =
+                            if self.diode_prioritized(p, facing) { priority::HIGH } else { priority::NORMAL };
+                        self.schedule_redstone(p, 2, priority);
+                    }
                 }
             }
             Some(Component::Daylight { .. }) => {
@@ -621,11 +712,12 @@ impl World {
                 self.redstone_open(p, b);
             }
             Some(Component::Lamp(on)) => {
+                // `RedstoneLampBlock.neighborChanged`.
                 let powered = self.redstone_power(p) > 0;
                 if !on && powered {
-                    self.edit(p, Block(1211), false);
+                    self.set_block_flags(p, Block(1211), flags::UPDATE_CLIENTS);
                 } else if on && !powered {
-                    self.schedule_redstone(p, 4, 0);
+                    self.schedule_redstone(p, 4, priority::NORMAL);
                 }
             }
             _ if b.is_door() || b.is_gate() => {
@@ -646,14 +738,16 @@ impl World {
                             }
                             _ => None,
                         };
+                        // `DoorBlock`/`FenceGateBlock.neighborChanged` set with
+                        // `UPDATE_CLIENTS`; the other half follows its shape update.
                         if let Some((facing, open)) = state
                             && open != powered
                         {
-                            self.edit(lower, block.toggled(facing), false);
+                            self.set_block_flags(lower, block.toggled(facing), flags::UPDATE_CLIENTS);
                             if b.is_door()
                                 && let Some(upper) = self.get_block(lower + IVec3::Y).filter(|b| b.is_door_upper())
                             {
-                                self.edit(lower + IVec3::Y, upper.toggled(facing), false);
+                                self.set_block_flags(lower + IVec3::Y, upper.toggled(facing), flags::UPDATE_CLIENTS);
                             }
                         }
                     }
@@ -668,8 +762,29 @@ impl World {
         }
     }
 
-    fn redstone_scheduled_tick(&mut self, p: IVec3) {
+    /// A scheduled tick. Ported Java ticks run as Java's do, each of their
+    /// updates a complete run; the other blocks' ticks run as one batch.
+    pub(super) fn redstone_scheduled_tick(&mut self, p: IVec3) {
         let Some(b) = self.get_block(p) else { return };
+        if matches!(
+            r::component(b),
+            Some(
+                Component::Torch { .. }
+                    | Component::Repeater { .. }
+                    | Component::Comparator { .. }
+                    | Component::Button { .. }
+                    | Component::Plate { .. }
+                    | Component::Lamp(_)
+                    | Component::Observer { .. }
+            )
+        ) {
+            self.scheduled_tick_dispatch(p, b);
+        } else {
+            self.batched(|w| w.scheduled_tick_dispatch(p, b));
+        }
+    }
+
+    fn scheduled_tick_dispatch(&mut self, p: IVec3, b: Block) {
         if self.sculk_scheduled_tick(p, b) {
             return;
         }
@@ -728,45 +843,50 @@ impl World {
                 | Component::Hopper { .. },
             ) => self.automation_tick(p, b),
             Some(Component::Torch { mount, lit }) => {
+                // `RedstoneTorchBlock.tick` with its `RECENT_TOGGLES` window.
                 let powered = self.signal_from(p + r::support(mount), -r::support(mount), true) > 0;
-                let burned = self.redstone.burnout.get(&p).is_some_and(|&end| end > self.redstone.tick);
-                if lit && powered {
-                    self.edit(p, r::torch(mount, false), false);
-                    let history = self.redstone.toggles.entry(p).or_default();
-                    while history.front().is_some_and(|&t| self.redstone.tick - t > 60) {
-                        history.pop_front();
+                let now = self.redstone.tick;
+                let history = self.redstone.toggles.entry(p).or_default();
+                while history.front().is_some_and(|&t| now - t > 60) {
+                    history.pop_front();
+                }
+                if lit {
+                    if powered {
+                        self.set_block_flags(p, r::torch(mount, false), flags::UPDATE_ALL);
+                        let history = self.redstone.toggles.entry(p).or_default();
+                        history.push_back(now);
+                        if history.len() >= 8 {
+                            self.schedule_redstone(p, 160, priority::NORMAL);
+                        }
                     }
-                    history.push_back(self.redstone.tick);
-                    if history.len() >= 8 {
-                        self.redstone.burnout.insert(p, self.redstone.tick + 160);
-                        self.schedule_redstone(p, 160, 0);
-                    }
-                } else if !lit && !powered && !burned {
-                    self.edit(p, r::torch(mount, true), false);
+                } else if !powered && self.redstone.toggles.get(&p).is_none_or(|h| h.len() < 8) {
+                    self.set_block_flags(p, r::torch(mount, true), flags::UPDATE_ALL);
+                }
+                if self.redstone.toggles.get(&p).is_some_and(VecDeque::is_empty) {
+                    self.redstone.toggles.remove(&p);
                 }
             }
             Some(Component::Repeater { facing, delay, on }) if !self.repeater_locked(p) => {
+                // `DiodeBlock.tick`.
                 let input = self.diode_input(p, facing) > 0;
                 if on && !input {
-                    self.edit(p, r::repeater(facing, delay, false), false);
+                    self.set_block_flags(p, r::repeater(facing, delay, false), flags::UPDATE_CLIENTS);
                 } else if !on {
-                    self.edit(p, r::repeater(facing, delay, true), false);
+                    self.set_block_flags(p, r::repeater(facing, delay, true), flags::UPDATE_CLIENTS);
                     if !input {
-                        self.schedule_redstone(p, delay as u64 * 2, -2);
+                        self.schedule_redstone(p, delay as u64 * 2, priority::VERY_HIGH);
                     }
                 }
             }
-            Some(Component::Comparator { facing, subtract, .. }) => {
-                let output = self.comparator_target(p, facing, subtract);
-                self.redstone.comparator.insert(p, output);
-                self.edit(p, r::comparator(facing, subtract, output > 0), false);
-                self.redstone_changed(p);
-            }
+            Some(Component::Comparator { facing, subtract, on }) => self.comparator_refresh(p, facing, subtract, on),
             Some(Component::Button { mount, wood, on: true }) => {
-                if wood && self.redstone.contacts.get(&p).is_some_and(|c| c.arrows) {
-                    self.schedule_redstone(p, 30, 0);
+                // `ButtonBlock.checkPressed`.
+                let pressed = wood && self.redstone.contacts.get(&p).is_some_and(|c| c.arrows);
+                if !pressed {
+                    self.set_block_flags(p, keep_wood(b, r::button(mount, false, wood)), flags::UPDATE_ALL);
+                    self.update_attached_neighbours(p, mount);
                 } else {
-                    self.edit(p, keep_wood(b, r::button(mount, false, wood)), false);
+                    self.schedule_redstone(p, 30, priority::NORMAL);
                 }
             }
             Some(Component::Plate { kind, .. }) => {
@@ -774,11 +894,9 @@ impl World {
                     kind,
                     self.redstone.contacts.get(&p).copied().unwrap_or_default(),
                 );
-                if b != keep_wood(b, r::plate(kind, power)) {
-                    self.edit(p, keep_wood(b, r::plate(kind, power)), false);
-                }
+                self.set_plate(p, b, kind, power);
                 if power > 0 {
-                    self.schedule_redstone(p, if kind < 2 { 20 } else { 10 }, 0);
+                    self.schedule_redstone(p, if kind < 2 { 20 } else { 10 }, priority::NORMAL);
                 }
             }
             Some(Component::Target(_)) => {
@@ -798,7 +916,7 @@ impl World {
                 self.schedule_redstone(p, 20, 0);
             }
             Some(Component::Lamp(true)) if self.redstone_power(p) == 0 => {
-                self.edit(p, r::LAMP, false);
+                self.set_block_flags(p, r::LAMP, flags::UPDATE_CLIENTS);
             }
             _ => {}
         }
@@ -840,20 +958,34 @@ impl World {
         self.redstone.sleeping_updates = sleeping;
     }
 
-    /// One authoritative 50 ms game step. Neighbour work settles before and
-    /// after due scheduled ticks, with stable insertion order for equal priority.
-    /// No scanning of loaded blocks or allocation on an idle tick.
+    /// One authoritative 50 ms game step: the scheduled block ticks, then the
+    /// block events. `simulation::tick_world_rules` runs the two parts apart,
+    /// with the block events after the random ticks as in `ServerLevel.tick`.
     pub fn tick_redstone(&mut self) {
+        self.tick_block_ticks();
+        self.run_block_events();
+    }
+
+    /// `ServerLevel.tick`'s `blockTicks.tick(time, 65536, tickBlock)`: advance
+    /// the clock, collect every due tick (up to the cap) in Java's order, then
+    /// run them; ticks scheduled while they run wait for a later tick.
+    /// Neighbour updates run synchronously inside each tick. No scanning of
+    /// loaded blocks or allocation on an idle tick.
+    pub fn tick_block_ticks(&mut self) {
+        self.redstone.order.executed = 0;
+        // Deferred notifications and refreshes belong to the time they were
+        // made: they run before the clock advances.
+        self.drain_redstone_changes();
+        self.drain_redstone_refreshes();
         self.redstone.tick += 1;
         for (&p, due) in &mut self.automation.cooldown {
             if !self.activity.contains(p, true) || !self.chunks.contains_key(&super::chunk::chunk_of(p)) {
                 *due = due.saturating_add(1);
             }
         }
-        self.finish_piston_moves();
-        self.redstone.last_updates = 0;
-        self.drain_redstone_updates();
-        while self.redstone.last_updates < MAX_UPDATES {
+        self.batched(World::finish_piston_moves);
+        let mut due_ticks = Vec::new();
+        while due_ticks.len() < order::MAX_SCHEDULED_TICKS {
             let Some(&Reverse((due, priority, sequence, xyz, family))) = self.redstone.scheduled.peek() else { break };
             if due > self.redstone.tick {
                 break;
@@ -863,7 +995,6 @@ impl World {
             if self.redstone.pending.get(&p) != Some(&(due, family, sequence)) {
                 continue;
             }
-            self.redstone.last_updates += 1;
             if !self.is_block_ticking(p) {
                 self.redstone
                     .suspended
@@ -872,12 +1003,20 @@ impl World {
                     .push(Reverse((due, priority, sequence, xyz, family)));
                 continue;
             }
+            // `LevelChunkTicks.poll`: a collected tick no longer counts as scheduled.
             self.redstone.pending.remove(&p);
-            if self.get_block(p).map(self::family) == Some(Block(family)) {
-                self.redstone_scheduled_tick(p);
-                self.drain_redstone_updates();
-            }
+            due_ticks.push((due, priority, sequence, p, family));
         }
+        if !due_ticks.is_empty() {
+            let mut collected = std::mem::take(&mut self.redstone.order.collected);
+            World::order_collected(&mut due_ticks, &mut collected);
+            for &(p, family) in &collected {
+                self.redstone.order.this_tick.insert(p, family);
+            }
+            self.redstone.order.collected = collected;
+            self.run_collected_ticks();
+        }
+        self.redstone.last_updates = self.redstone.order.executed;
     }
 
     pub(super) fn turtle_hatching_time(&self) -> bool {
@@ -914,7 +1053,7 @@ impl World {
                         && open != on
                     {
                         let door = super::mount_states::keep_hinge(block, r::iron_door(facing, on, upper));
-                        self.edit(q, door, false);
+                        self.set_block_flags(q, door, flags::UPDATE_CLIENTS);
                     }
                 }
             }
@@ -927,7 +1066,7 @@ impl World {
                     self.redstone.powered.remove(&p);
                 }
                 if (iron || was != on) && open != on {
-                    self.edit(p, keep_wood(b, r::trapdoor(facing, on, top, iron)), false);
+                    self.set_block_flags(p, keep_wood(b, r::trapdoor(facing, on, top, iron)), flags::UPDATE_CLIENTS);
                 }
             }
             _ => {}
@@ -1030,16 +1169,16 @@ impl World {
         placed
     }
 
-    fn drain_redstone_updates(&mut self) {
-        while self.redstone.last_updates < MAX_UPDATES {
-            let Some(p) = self.redstone.updates.pop_front() else { break };
-            self.redstone.last_updates += 1;
+    /// Chunk-load refreshes and saved queues: each component hears one
+    /// `neighborChanged`.
+    fn drain_redstone_refreshes(&mut self) {
+        while let Some(p) = self.redstone.updates.pop_front() {
             if !self.is_block_ticking(p) {
-                self.redstone.sleeping_updates.entry(super::chunk::chunk_of(p)).or_default().push(p);
+                self.park_redstone_update(p);
                 continue;
             }
             self.redstone.queued.remove(&p);
-            self.redstone_update(p);
+            self.neighbor_changed_at(p);
         }
     }
 
@@ -1093,23 +1232,42 @@ impl World {
             }
             Some(Component::Trapdoor { iron: true, .. } | Component::IronDoor { .. }) => return true,
             Some(Component::Daylight { power, inverted }) => r::daylight(power, !inverted),
-            Some(Component::Lever { mount, on }) => r::lever(mount, !on),
+            // `LeverBlock.pull`: set and update, then update around the lever and its support.
+            Some(Component::Lever { mount, on }) => {
+                let changed = self.set_block_flags(p, r::lever(mount, !on), flags::UPDATE_ALL);
+                self.update_attached_neighbours(p, mount);
+                return changed;
+            }
+            // `ButtonBlock.press`.
             Some(Component::Button { mount, on: false, wood }) => {
-                self.schedule_redstone(p, if wood { 30 } else { 20 }, 0);
-                keep_wood(b, r::button(mount, true, wood))
+                let changed = self.set_block_flags(p, keep_wood(b, r::button(mount, true, wood)), flags::UPDATE_ALL);
+                self.update_attached_neighbours(p, mount);
+                self.schedule_redstone(p, if wood { 30 } else { 20 }, priority::NORMAL);
+                return changed;
             }
             Some(Component::Button { on: true, .. }) => return true,
-            Some(Component::Repeater { facing, delay, on }) => r::repeater(facing, delay % 4 + 1, on),
-            Some(Component::Comparator { facing, subtract, on }) => r::comparator(facing, !subtract, on),
+            // `RepeaterBlock.useWithoutItem`: `setBlock(..., UPDATE_ALL)`.
+            Some(Component::Repeater { facing, delay, on }) => {
+                return self.set_block_flags(p, r::repeater(facing, delay % 4 + 1, on), flags::UPDATE_ALL);
+            }
+            // `ComparatorBlock.useWithoutItem`: `UPDATE_CLIENTS`, then `refreshOutputState`.
+            Some(Component::Comparator { facing, subtract, on }) => {
+                let changed = self.set_block_flags(p, r::comparator(facing, !subtract, on), flags::UPDATE_CLIENTS);
+                if matches!(self.get_block(p).and_then(r::component), Some(Component::Comparator { .. })) {
+                    self.comparator_refresh(p, facing, !subtract, on);
+                }
+                return changed;
+            }
             _ => return false,
         };
         self.set_block(p, next)
     }
 
-    /// Versioned dimension property. Pending ticks use relative deadlines;
-    /// block ids already persist wire and device states in VXC2 chunks.
+    /// Versioned dimension property (v2; v1 still loads). Pending ticks use
+    /// relative deadlines; block ids already persist wire and device states
+    /// in VXC2 chunks.
     pub fn redstone_to_string(&self) -> String {
-        let mut entries = vec![format!("v1,{},{}", self.redstone.tick, self.redstone.sequence)];
+        let mut entries = vec![format!("v2,{},{}", self.redstone.tick, self.redstone.sequence)];
         let mut pending: Vec<_> = self
             .redstone
             .scheduled
@@ -1144,11 +1302,6 @@ impl World {
         for (p, power) in &self.redstone.comparator {
             entries.push(format!("c,{},{},{},{}", p.x, p.y, p.z, power));
         }
-        for (p, end) in &self.redstone.burnout {
-            if *end > self.redstone.tick {
-                entries.push(format!("b,{},{},{},{}", p.x, p.y, p.z, end - self.redstone.tick));
-            }
-        }
         for (p, history) in &self.redstone.toggles {
             for t in history {
                 if self.redstone.tick - t <= 60 {
@@ -1164,13 +1317,17 @@ impl World {
                 entries.push(format!("w,{},{},{},{}", p.x, p.y, p.z, due - self.redstone.tick));
             }
         }
+        self.block_events_to_string(&mut entries);
         entries.join("|")
     }
 
     pub fn load_redstone(&mut self, text: &str) {
         let mut entries = text.split('|');
         let Some(header) = entries.next() else { return };
-        let Some(rest) = header.strip_prefix("v1,") else { return };
+        // v2 (2026-11-23, Java update order) adds block events ("e") and
+        // drops the separate torch burnout deadline ("b"): a burned-out torch
+        // is its toggle history plus its pending 160-tick tick.
+        let Some(rest) = header.strip_prefix("v2,").or_else(|| header.strip_prefix("v1,")) else { return };
         let Some((tick, seq)) =
             rest.split_once(',').and_then(|(a, b)| Some((a.parse::<u64>().ok()?, b.parse::<u64>().ok()?)))
         else {
@@ -1224,9 +1381,7 @@ impl World {
                 ("c", &[power]) if (0..=15).contains(&power) => {
                     self.redstone.comparator.insert(p, power as u8);
                 }
-                ("b", &[delay]) if delay > 0 => {
-                    self.redstone.burnout.insert(p, tick.saturating_add(delay as u64));
-                }
+                ("e", values) => self.load_block_event(p, values),
                 ("h", &[age]) if (0..=60).contains(&age) && age as u64 <= tick => {
                     self.redstone.toggles.entry(p).or_default().push_back(tick - age as u64);
                 }
@@ -1249,6 +1404,286 @@ impl World {
             .collect();
         for c in absent {
             self.redstone.unloaded_at.entry(c).or_insert(tick);
+        }
+    }
+}
+
+/// Ported Java block behaviour that runs inside `Level.setBlock`, and the
+/// update calls each redstone block makes when it changes.
+impl World {
+    /// `DefaultRedstoneWireEvaluator.updatePowerStrength`: set the new power
+    /// without neighbour updates, then update around the wire and its six
+    /// neighbours in `HashSet` iteration order.
+    fn wire_update_power(&mut self, p: IVec3, state: Block) {
+        let Some(Component::Wire(power)) = r::component(state) else { return };
+        let target = self.wire_target(p);
+        if power == target {
+            return;
+        }
+        if self.get_block(p) == Some(state) {
+            let next = if state.0 >= 1453 { r::dot(target) } else { r::wire(target) };
+            self.set_block_flags(p, next, flags::UPDATE_CLIENTS);
+        }
+        let cells = order::java_hash_set_order([
+            p,
+            p + DIRECTIONS[0],
+            p + DIRECTIONS[1],
+            p + DIRECTIONS[2],
+            p + DIRECTIONS[3],
+            p + DIRECTIONS[4],
+            p + DIRECTIONS[5],
+        ]);
+        for q in cells {
+            self.update_neighbors_at(q);
+        }
+    }
+
+    /// `RedStoneWireBlock.updateNeighborsOfNeighboringWires`.
+    fn update_neighbors_of_neighboring_wires(&mut self, p: IVec3) {
+        for d in HORIZONTAL {
+            self.check_corner_change_at(p + d);
+        }
+        for d in HORIZONTAL {
+            let target = p + d;
+            if self.get_block(target).is_some_and(conductor) {
+                self.check_corner_change_at(target + IVec3::Y);
+            } else {
+                self.check_corner_change_at(target - IVec3::Y);
+            }
+        }
+    }
+
+    /// `RedStoneWireBlock.checkCornerChangeAt`.
+    fn check_corner_change_at(&mut self, p: IVec3) {
+        if self.get_block(p).is_some_and(is_wire) {
+            self.update_neighbors_at(p);
+            for d in DIRECTIONS {
+                self.update_neighbors_at(p + d);
+            }
+        }
+    }
+
+    /// `DiodeBlock.shouldPrioritize`: the block in front is a diode that
+    /// does not face back into this one.
+    fn diode_prioritized(&self, p: IVec3, facing: Facing) -> bool {
+        match self.get_block(p + facing.offset()).and_then(r::component) {
+            Some(Component::Repeater { facing: front, .. } | Component::Comparator { facing: front, .. }) => {
+                front != facing.opposite()
+            }
+            _ => false,
+        }
+    }
+
+    /// `DiodeBlock`/`ObserverBlock.updateNeighborsInFront` for output toward `out`.
+    fn update_neighbors_in_front(&mut self, p: IVec3, out: IVec3) {
+        let front = p + out;
+        self.neighbor_changed_at(front);
+        self.update_neighbors_at_except(front, -out);
+    }
+
+    /// `ObserverBlock.updateNeighborsInFront`: output leaves the back face.
+    pub(super) fn update_observer_front(&mut self, p: IVec3, facing: u8) {
+        self.update_neighbors_in_front(p, -r::direction(facing));
+    }
+
+    /// `LeverBlock`/`ButtonBlock.updateNeighbours`.
+    fn update_attached_neighbours(&mut self, p: IVec3, mount: u8) {
+        self.update_neighbors_at(p);
+        self.update_neighbors_at(p + r::support(mount));
+    }
+
+    /// `BasePressurePlateBlock.checkPressed`'s state change: set without
+    /// neighbour updates, then update around the plate and below it.
+    pub(super) fn set_plate(&mut self, p: IVec3, b: Block, kind: u8, power: u8) {
+        let next = keep_wood(b, r::plate(kind, power));
+        if next != b {
+            self.set_block_flags(p, next, flags::UPDATE_CLIENTS);
+            self.update_neighbors_at(p);
+            self.update_neighbors_at(p - IVec3::Y);
+        }
+    }
+
+    /// `ComparatorBlock.refreshOutputState`.
+    fn comparator_refresh(&mut self, p: IVec3, facing: Facing, subtract: bool, on: bool) {
+        let output = self.comparator_target(p, facing, subtract);
+        let old = self.redstone.comparator.insert(p, output).unwrap_or(0);
+        if old != output || !subtract {
+            let should = self.comparator_turns_on(p, facing, subtract);
+            if on != should {
+                self.set_block_flags(p, r::comparator(facing, subtract, should), flags::UPDATE_CLIENTS);
+            }
+            self.update_neighbors_in_front(p, facing.offset());
+        }
+    }
+
+    /// `updateShape` reactions: observers start a pulse when their watched
+    /// neighbour changes; attached switches, torches and plates break when
+    /// the change came from their support and it no longer holds them.
+    pub(super) fn redstone_shape_update(&mut self, p: IVec3, b: Block, toward: IVec3) {
+        match r::component(b) {
+            Some(Component::Observer { facing, on: false }) if r::direction(facing) == toward => {
+                // `ObserverBlock.startSignal`.
+                if !self.redstone.pending.contains_key(&p) {
+                    self.schedule_redstone(p, 2, priority::NORMAL);
+                }
+            }
+            Some(Component::Lever { mount, .. } | Component::Button { mount, .. } | Component::Torch { mount, .. })
+                if r::support(mount) == toward
+                    && self.get_block(p + toward).is_some()
+                    && !self.redstone_supported(p, b) =>
+            {
+                self.destroy_redstone_block(p, b);
+            }
+            // `BasePressurePlateBlock`/`RedStoneWireBlock.updateShape` toward `DOWN`.
+            Some(Component::Plate { .. } | Component::Wire(_))
+                if toward == IVec3::NEG_Y
+                    && self.get_block(p - IVec3::Y).is_some_and(|below| !b.can_stay_on(below)) =>
+            {
+                self.destroy_redstone_block(p, b);
+            }
+            _ => {}
+        }
+    }
+
+    /// `Level.destroyBlock` with drops.
+    fn destroy_redstone_block(&mut self, p: IVec3, b: Block) {
+        self.spill_block(p, b);
+        self.set_block_flags(p, Block::AIR, flags::UPDATE_ALL);
+    }
+
+    /// `BlockBehaviour.affectNeighborsAfterRemoval` for `old`.
+    pub(super) fn affect_neighbors_after_removal(&mut self, p: IVec3, old: Block, moved: bool) {
+        let removed_tick = self.redstone.order.removed_tick.take() == Some(p);
+        match r::component(old) {
+            Some(Component::Wire(_)) if !moved => {
+                for d in DIRECTIONS {
+                    self.update_neighbors_at(p + d);
+                }
+                self.wire_update_power(p, old);
+                self.update_neighbors_of_neighboring_wires(p);
+            }
+            Some(Component::Torch { .. }) if !moved => {
+                for d in DIRECTIONS {
+                    self.update_neighbors_at(p + d);
+                }
+            }
+            Some(Component::Repeater { facing, .. } | Component::Comparator { facing, .. }) if !moved => {
+                self.update_neighbors_in_front(p, facing.offset());
+            }
+            Some(Component::Observer { facing, on: true }) if removed_tick => {
+                self.update_neighbors_in_front(p, -r::direction(facing));
+            }
+            Some(Component::Lever { mount, on: true } | Component::Button { mount, on: true, .. }) if !moved => {
+                self.update_attached_neighbours(p, mount);
+            }
+            Some(Component::Plate { power, .. }) if !moved && power > 0 => {
+                self.update_neighbors_at(p);
+                self.update_neighbors_at(p - IVec3::Y);
+            }
+            _ => {}
+        }
+    }
+
+    /// `BlockBehaviour.onPlace` for `new`, called for every state change.
+    pub(super) fn redstone_on_place(&mut self, p: IVec3, old: Block, new: Block) {
+        let changed_block = family(old) != family(new);
+        match r::component(new) {
+            Some(Component::Wire(_)) if changed_block => {
+                self.wire_update_power(p, new);
+                for d in VERTICAL {
+                    self.update_neighbors_at(p + d);
+                }
+                self.update_neighbors_of_neighboring_wires(p);
+            }
+            Some(Component::Torch { .. }) => {
+                for d in DIRECTIONS {
+                    self.update_neighbors_at(p + d);
+                }
+            }
+            Some(Component::Repeater { facing, .. } | Component::Comparator { facing, .. }) => {
+                self.update_neighbors_in_front(p, facing.offset());
+            }
+            Some(Component::Observer { facing, on: true })
+                if changed_block && !self.redstone.pending.contains_key(&p) =>
+            {
+                self.set_block_flags(p, r::observer(facing, false), flags::UPDATE_CLIENTS | flags::UPDATE_KNOWN_SHAPE);
+                self.update_neighbors_in_front(p, -r::direction(facing));
+            }
+            // `PistonBaseBlock.onPlace`: `checkIfExtend`.
+            Some(Component::Piston { .. }) if changed_block => self.automation_update(p, new),
+            _ => {}
+        }
+    }
+
+    /// Notifications `World::edit` adds for strong sources changed outside
+    /// their ported Java behaviour: a switch or plate written directly in a
+    /// new powered state updates like its own toggle, and sensors whose
+    /// update calls are not ported update the block they strongly power.
+    pub(super) fn compat_strong_updates(&mut self, p: IVec3, old: Block, new: Block) {
+        let same = family(old) == family(new);
+        // A newly placed block checks itself once at the start of the next
+        // tick (before the clock advances), as the onPlace,
+        // setPlacedBy and getStateForPlacement checks of blocks without a
+        // ported Java behaviour do (hoppers, rails, TNT, detectors, lamps).
+        // Diodes follow `DiodeBlock.setPlacedBy`; wire, torches, observers
+        // and pistons have their own `onPlace`.
+        if !same {
+            match r::component(new) {
+                Some(Component::Repeater { facing, on, .. }) if !on && self.diode_input(p, facing) > 0 => {
+                    self.schedule_redstone(p, 1, priority::NORMAL);
+                }
+                Some(Component::Comparator { facing, subtract, on })
+                    if !on && self.comparator_turns_on(p, facing, subtract) =>
+                {
+                    self.schedule_redstone(p, 1, priority::NORMAL);
+                }
+                // Own `onPlace`, or no placement check in Java.
+                Some(
+                    Component::Wire(_)
+                    | Component::Torch { .. }
+                    | Component::Observer { .. }
+                    | Component::Piston { .. }
+                    | Component::Repeater { .. }
+                    | Component::Comparator { .. }
+                    | Component::Source
+                    | Component::Lever { .. }
+                    | Component::Button { .. }
+                    | Component::Plate { .. }
+                    | Component::Target(_)
+                    | Component::GlowingOre(_)
+                    | Component::PistonHead { .. }
+                    | Component::Moving,
+                ) => {}
+                _ if participates(new) => self.queue_refresh(p),
+                _ => {}
+            }
+        }
+        match (r::component(old), r::component(new)) {
+            (_, Some(Component::Lever { mount, on } | Component::Button { mount, on, .. })) => {
+                let was = same
+                    && matches!(
+                        r::component(old),
+                        Some(Component::Lever { on: true, .. } | Component::Button { on: true, .. })
+                    );
+                if on != was {
+                    self.update_attached_neighbours(p, mount);
+                }
+            }
+            (_, Some(Component::Plate { power, .. })) => {
+                let was = match r::component(old) {
+                    Some(Component::Plate { power, .. }) if same => power,
+                    _ => 0,
+                };
+                if (power > 0) != (was > 0) || (power != was && power > 0) {
+                    self.update_neighbors_at(p);
+                    self.update_neighbors_at(p - IVec3::Y);
+                }
+            }
+            _ => {
+                if let Some(d) = compat_strong_side(new).or_else(|| compat_strong_side(old)) {
+                    self.update_neighbors_at(p + d);
+                }
+            }
         }
     }
 }
@@ -1344,7 +1779,13 @@ mod tests {
     #[test]
     fn powered_wire_strongly_powers_its_support_and_pointed_solid() {
         let mut w = world();
-        supported(&mut w, AT, r::wire(9));
+        // A placed wire takes its power at once (`RedStoneWireBlock.onPlace`),
+        // so feed it 9 through six wires from a redstone block.
+        for i in 0..7 {
+            supported(&mut w, AT - IVec3::X * i, r::WIRE);
+        }
+        put(&mut w, AT - IVec3::X * 7, r::REDSTONE_BLOCK);
+        assert_eq!(w.get_block(AT), Some(r::wire(9)));
         put(&mut w, AT + IVec3::X, Block::STONE);
         assert_eq!(w.redstone_power(AT - IVec3::Y + IVec3::Z), 9);
         assert_eq!(w.redstone_power(AT + IVec3::X * 2), 9);
@@ -1355,18 +1796,22 @@ mod tests {
     fn torch_inverts_after_two_game_ticks_and_burns_out_after_eight_toggles() {
         let mut w = world();
         supported(&mut w, AT, r::TORCH);
+        // Edits between ticks update synchronously, so a torch inverts on
+        // the second tick after its input changes, as in Java.
         for n in 0..8 {
             put(&mut w, AT - IVec3::Y + IVec3::X, r::lever(3, true));
-            ticks(&mut w, 2);
+            ticks(&mut w, 1);
             assert!(on(&w, AT));
             ticks(&mut w, 1);
             assert!(!on(&w, AT));
             put(&mut w, AT - IVec3::Y + IVec3::X, r::lever(3, false));
-            ticks(&mut w, 3);
+            ticks(&mut w, 2);
             assert_eq!(on(&w, AT), n < 7);
         }
-        assert!(w.redstone.burnout.contains_key(&AT));
-        ticks(&mut w, 156);
+        // `RedstoneTorchBlock.tick`: the eighth toggle in 60 ticks schedules
+        // a 160-tick tick, which relights it once the toggles age out.
+        assert_eq!(w.redstone.toggles[&AT].len(), 8);
+        ticks(&mut w, 157);
         assert!(!on(&w, AT));
         ticks(&mut w, 1);
         assert!(on(&w, AT));
@@ -1377,7 +1822,8 @@ mod tests {
         let mut w = world();
         supported(&mut w, AT, r::repeater(Facing::East, 3, false));
         put(&mut w, AT - IVec3::X, r::REDSTONE_BLOCK);
-        ticks(&mut w, 6);
+        // Edits update synchronously: the 6-tick delay counts from the edit.
+        ticks(&mut w, 5);
         assert!(!on(&w, AT));
         ticks(&mut w, 1);
         assert!(on(&w, AT));
@@ -1447,9 +1893,12 @@ mod tests {
         assert_eq!(w.container_signal(AT - IVec3::X), Some(1));
         ticks(&mut w, 3);
         assert_eq!(w.redstone_power(AT + IVec3::X), 1);
-        put(&mut w, AT + IVec3::Z, r::wire(1));
-        assert_eq!(w.comparator_target(AT, Facing::East, false), 1);
+        // A redstone block on the side reads 15 (`getControlInputSignal`).
+        put(&mut w, AT + IVec3::Z, r::REDSTONE_BLOCK);
+        assert_eq!(w.comparator_target(AT, Facing::East, false), 0);
         assert_eq!(w.comparator_target(AT, Facing::East, true), 0);
+        put(&mut w, AT + IVec3::Z, Block::AIR);
+        assert_eq!(w.comparator_target(AT, Facing::East, false), 1);
         w.chest_mut(AT - IVec3::X).unwrap().slots.fill(Some(Stack::new(Item::DIAMOND, 64)));
         assert_eq!(w.container_signal(AT - IVec3::X), Some(15));
     }
@@ -1487,7 +1936,8 @@ mod tests {
         ticks(&mut w, 1);
         assert!(on(&w, AT));
         put(&mut w, AT - IVec3::X, Block::AIR);
-        ticks(&mut w, 4);
+        // `RedstoneLampBlock`: off four ticks after the edit.
+        ticks(&mut w, 3);
         assert!(on(&w, AT));
         ticks(&mut w, 1);
         assert!(!on(&w, AT));
@@ -1509,7 +1959,7 @@ mod tests {
     }
 
     #[test]
-    fn ticks_cancel_on_replacement_and_round_trip_with_burnout_and_queues() {
+    fn ticks_cancel_on_replacement_and_round_trip_with_toggles_and_queues() {
         let mut w = world();
         supported(&mut w, AT, r::repeater(Facing::East, 4, false));
         put(&mut w, AT - IVec3::X, r::REDSTONE_BLOCK);
@@ -1520,7 +1970,7 @@ mod tests {
             restored.insert_chunk(*pos, slot.data.clone(), true);
         }
         restored.load_redstone(&save);
-        ticks(&mut restored, 6);
+        ticks(&mut restored, 5);
         assert!(!on(&restored, AT));
         ticks(&mut restored, 1);
         assert!(on(&restored, AT));
@@ -1528,14 +1978,17 @@ mod tests {
         ticks(&mut w, 10);
         assert_eq!(w.get_block(AT), Some(Block(1211)));
         assert!(!w.redstone.pending.contains_key(&AT));
-        w.redstone.burnout.insert(AT, w.redstone.tick + 120);
         w.redstone.toggles.entry(AT).or_default().push_back(w.redstone.tick - 2);
         let save = w.redstone_to_string();
+        assert!(save.starts_with("v2,"), "{save}");
         restored.load_redstone(&save);
-        assert_eq!(restored.redstone.burnout, w.redstone.burnout);
         assert_eq!(restored.redstone.toggles, w.redstone.toggles);
         restored.load_redstone("broken");
-        assert_eq!(restored.redstone.burnout, w.redstone.burnout);
+        assert_eq!(restored.redstone.toggles, w.redstone.toggles);
+        // A v1 save's burnout deadline is dropped; its history and pending tick carry it.
+        restored.load_redstone("v1,40,3|b,8,145,8,120|h,8,145,8,2");
+        assert_eq!(restored.redstone.tick, 40);
+        assert_eq!(restored.redstone.toggles[&AT], VecDeque::from([38]));
     }
 
     #[test]
@@ -1840,18 +2293,42 @@ mod tests {
                 supported(&mut w, IVec3::new(x, 145, z), r::WIRE);
             }
         }
-        put(&mut w, IVec3::new(64, 146, 64), r::REDSTONE_BLOCK);
-        let start = std::time::Instant::now();
-        ticks(&mut w, 1);
-        eprintln!("16384-wire grid settle: {:?}, {} updates", start.elapsed(), w.redstone_updates_last_tick());
+        ticks(&mut w, 2);
+        // Neighbour updates run synchronously inside the edit, as in Java.
+        let source = IVec3::new(64, 146, 64);
+        for round in 0..3 {
+            w.redstone.order.executed = 0;
+            let start = std::time::Instant::now();
+            put(&mut w, source, r::REDSTONE_BLOCK);
+            eprintln!(
+                "round {round}: 16384-wire grid power-up: {:?}, {} updates",
+                start.elapsed(),
+                w.redstone.order.executed
+            );
+            w.redstone.order.executed = 0;
+            let start = std::time::Instant::now();
+            put(&mut w, source, Block::AIR);
+            eprintln!(
+                "round {round}: 16384-wire grid power-down: {:?}, {} updates",
+                start.elapsed(),
+                w.redstone.order.executed
+            );
+        }
         let start = std::time::Instant::now();
         for _ in 0..1000 {
             std::hint::black_box(&mut w).tick_redstone();
         }
-        eprintln!("idle grid: {:?}/tick", start.elapsed() / 1000);
-        put(&mut w, IVec3::new(64, 146, 64), Block::AIR);
+        eprintln!("idle grid: {:?}/tick, {} updates", start.elapsed() / 1000, w.redstone_updates_last_tick());
+        // A 16-wire line, the common case.
+        let mut w = world();
+        for x in 0..16 {
+            supported(&mut w, AT + IVec3::X * x, r::WIRE);
+        }
         let start = std::time::Instant::now();
-        ticks(&mut w, 1);
-        eprintln!("source removal: {:?}, {} updates", start.elapsed(), w.redstone_updates_last_tick());
+        for _ in 0..100 {
+            put(&mut w, AT - IVec3::X, r::REDSTONE_BLOCK);
+            put(&mut w, AT - IVec3::X, Block::AIR);
+        }
+        eprintln!("16-wire line on/off: {:?} per toggle pair", start.elapsed() / 100);
     }
 }

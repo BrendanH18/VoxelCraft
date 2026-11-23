@@ -1243,6 +1243,30 @@ wave 1 already set apart from v0.15. Used IDs: states 30720–30728 (E) and
 used none. Everything else in wave 2's rows and the integrator spare
 31104–31231 stays unregistered. [Integration record](verification/2026-11-21-v0.16-wave-2-integration.md).
 
+### v0.17 Redstone and automation track reservations
+
+Reserved by the owner's v0.17 plan on 2026-11-23 for four parallel tracks.
+Each track allocates only inside its own rows, records what it used under
+its own heading below, and leaves unused IDs unregistered. Texture layers
+are never saved and may be repacked at integration.
+
+| Block states | Item IDs | Texture layers | Track |
+| --- | --- | --- | --- |
+| 12800–12831 | 1770–1774 | — | A. Java update order |
+| 12832–13087 | 1775–1784 | 1164–1199 | B. Pistons |
+| 13088–13343 | 1785–1799 | 1200–1239 | C. Crafter and dispensing |
+| 13344–13599 | 1800–1814 | 1240–1269 | D. Rails and storage |
+| 13600–14335 | 1815–1849 | 1270–1299 | Later tracks and the integrator |
+
+#### Track A allocation
+
+Track A (2026-11-23, [record](verification/2026-11-23-v0.17-update-order.md))
+used no block state, item ID or texture layer, and appended to no saved
+ordering. The saved `redstone` dimension property is now `v2` (adds block
+events `e`, drops the torch burnout deadline `b`; v1 still loads). States
+12800–12831 stay unregistered; they would fit stored repeater locks (4
+facings × 4 delays × 2 powered) if that difference is closed later.
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating

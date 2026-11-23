@@ -148,8 +148,10 @@ fn new_states_survive_a_file_save_and_reload() {
         p.x += 2;
         if p.x > 30 {
             p = IVec3::new(1, p.y, p.z + 2);
+            // Layers three apart: a powered switch's support would otherwise
+            // sit on the block below and power it (edits update at once).
             if p.z > 30 {
-                p = IVec3::new(1, p.y + 2, 1);
+                p = IVec3::new(1, p.y + 3, 1);
             }
         }
     };

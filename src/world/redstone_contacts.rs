@@ -84,8 +84,9 @@ impl World {
                 Some(Component::Plate { kind, power: 0 }) => {
                     let power = plate_power(kind, *c);
                     if power > 0 {
+                        // `BasePressurePlateBlock.entityInside` -> `checkPressed`.
                         let b = self.get_block(p).unwrap_or_default();
-                        self.edit(p, super::nether_biome_blocks::keep_wood(b, r::plate(kind, power)), false);
+                        self.set_plate(p, b, kind, power);
                         self.schedule_redstone(p, if kind < 2 { 20 } else { 10 }, 0);
                     }
                 }
@@ -96,8 +97,10 @@ impl World {
             }
         }
         self.redstone.contacts = contacts;
-        self.refresh_tripwires();
-        self.power_detectors();
+        self.batched(|w| {
+            w.refresh_tripwires();
+            w.power_detectors();
+        });
     }
 
     fn power_detectors(&mut self) {

@@ -14,26 +14,51 @@ block when their own ceiling is clear, and down beside nonconductors. Wire
 strongly powers its supporting block and the horizontal solids it points at.
 A redstone block is a weak source; a torch strongly powers the block above it.
 
-An iterative, deduplicated FIFO handles neighbour notifications. An edit wakes
-only a fixed two-block neighbourhood. A heap ordered by deadline, priority and
-insertion sequence handles scheduled ticks. Idle circuits perform no block
-scans, allocate no memory and produce no work. A 65,536-update budget carries
-pathological feedback work to the next tick instead of recursing or hanging.
+Updates follow Java 26.3's order (`world::redstone_order`, v0.17 Track A,
+[record](verification/2026-11-23-v0.17-update-order.md)). Every edit is
+`Level.setBlock`: the old block's `affectNeighborsAfterRemoval`, the new
+block's `onPlace`, `updateNeighborsAt` (west, east, down, up, north, south),
+the comparator notification, then shape updates (west, east, north, south,
+down, up). Neighbour updates run on Java's depth-first
+`CollectingNeighborUpdater` stack, synchronously, with Java's limit of
+1,000,000 chained updates per run (later ones are dropped). Wire follows
+`DefaultRedstoneWireEvaluator`: power set without neighbour updates, then
+updates around the wire and its six neighbours in Java `HashSet` order.
+Diodes, comparators, torches, levers, buttons, plates, lamps and observers
+make Java's update calls with Java's flags. Doors, trapdoors, gates, lamps
+and hoppers change without neighbour updates. Observers react to shape
+updates from their watched face; attached switches, torches, plates and
+wire break on the shape update from their support.
 
-Each tick increments the redstone clock, drains queued notifications, processes
-due scheduled ticks in priority order and drains notifications after each tick.
-Repeaters turn off at very high priority and on at high priority. This differs
-from Java's synchronous neighbour callback stack and its directional diode
-priority heuristic; update-order-sensitive contraptions are not guaranteed.
-Timing otherwise uses Java game ticks: torch inversion 2, repeater delay
-2/4/6/8, comparator 2, lamp off 4, stone button 20, wooden button 30. Scheduled
-repeater rising edges stretch short input pulses. Only side-facing repeaters
-and comparators lock repeaters. Eight torch off transitions within 60 ticks
-cause a 160-tick restart delay. Burnout history is bounded per torch.
+Each tick collects every due scheduled tick (at most 65,536), ordered by
+trigger tick, priority and sub-tick order, then runs them; ticks scheduled
+meanwhile wait for a later tick. Repeaters schedule EXTREMELY_HIGH when
+the block in front is a diode not facing back, else VERY_HIGH turning off
+and HIGH turning on, and skip if already collected (`willTickThisTick`).
+Comparators schedule HIGH or NORMAL; torches, lamps and observers NORMAL.
+Block events (`World::queue_block_event`) are deduplicated and run at the
+end of the tick, after the random ticks, as in `ServerLevel.tick`. Idle
+circuits perform no block scans, allocate no memory and produce no work.
+
+Changes from outside a ported Java behaviour keep a few compatibility
+notifications (`flags::COMPAT`): container, sensor and cart notifications
+run at the start of the next tick, before the clock advances; newly placed
+blocks without a ported placement check check themselves then; and
+unported strong sources update around the block they power. The
+[record](verification/2026-11-23-v0.17-update-order.md#differences-from-java)
+lists these and the other differences: derived repeater locks and wire
+connections, and non-ticking cells parking their updates. Timing uses Java
+game ticks: torch inversion 2, repeater delay 2/4/6/8, comparator 2, lamp
+off 4, stone button 20, wooden button 30. Scheduled repeater rising edges
+stretch short input pulses. Only side-facing repeaters and comparators lock
+repeaters. Eight torch off-toggles within 60 ticks schedule a 160-tick tick,
+and the torch relights on it once fewer than eight toggles remain in the
+window.
 
 Wire power, facing, delay and on/off states are in the chunk block data (`VXC2`, or `VXC3` once a saved state ID is 4096 or above; see [architecture](architecture.md#block-and-texture-ids)). A versioned
-`redstone` dimension property preserves queued work, pending deadlines,
-comparator output, torch history/burnout, and powered door/gate edges. Replaced
+`redstone` dimension property (v2; v1 still loads) preserves queued work,
+pending deadlines, block events, comparator output, torch toggle history,
+and powered door/gate edges. Replaced
 blocks invalidate their old ticks. Due ticks for unloaded blocks are parked by
 chunk and resume on its load, retaining deadline, priority and insertion order
 without a per-tick retry. Parked ticks still use the existing v1 relative-deadline
@@ -64,8 +89,11 @@ Behaviour is checked against the Minecraft Java block implementations:
 - [RepeaterBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/RepeaterBlock.java)
 - [ComparatorBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/ComparatorBlock.java)
 
-The decompiled source mirror has no pinned 1.21 revision; core rules above are
-stable Java rules, not a claim of exact 1.21 update-order parity.
+The decompiled source mirror has no pinned revision. The update order is
+checked against the pinned 26.3 server jar instead:
+`tools/extract_java_redstone_order_fixtures.py` extracts its orders and
+constants and models seven contraptions, and `tests/redstone_order.rs`
+compares the game's per-tick states and update logs with them.
 
 ## Inputs, models and recipes
 
@@ -136,7 +164,10 @@ unbreakable blocks, obsidian, netherite blocks, portals, spawners, all container
 and extended/moving pistons. Fragile controls/plants break and drop normally.
 Sticky retraction pulls one eligible block; normal retraction leaves it behind.
 Power excludes the front and includes Java quasi-connectivity above the base.
-Block events share the scheduled queue after neighbour propagation.
+A powered or unpowered piston queues Java's extend or contract block event
+on a neighbour update or placement (`checkIfExtend`), so a piston powered
+only through quasi-connectivity waits for a block update; the event runs at
+the end of the tick and rechecks power.
 
 Motion lasts two game ticks. A saved `automation` dimension property records
 moving states and their age; chunk meshes omit moving placeholders and the
@@ -146,7 +177,7 @@ entity displacement, slime/honey assemblies, short-pulse sticky block spitting,
 and exact piston block-event arbitration are not implemented. Directional devices use the nearest look direction, including vertical
 placement, through the same host/pad/CLI placement path.
 
-Observers watch state changes on their front face, delay two game ticks, then
+Observers watch shape updates from their front face, delay two game ticks, then
 emit strength 15 from their rear for two ticks. Repeated changes during a
 pending/on pulse do not retrigger it. Container-only mutations do not count as
 block state changes.

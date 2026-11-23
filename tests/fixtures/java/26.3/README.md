@@ -1360,3 +1360,31 @@ scripts/boat-check.sh -- 'cargo test --release --lib m3_corpus'
 frequency reducers, the outposts' exclusion zone, the stronghold rings) from
 this file and checks a located instance of every family on two seeds
 ([record](../../../../docs/verification/2026-11-21-v0.16-m3-exit.md)).
+
+## Redstone update order (v0.17)
+
+`redstone_order.json` holds Java 26.3's update-order facts, read from the
+pinned server artifact's bytecode by
+`tools/extract_java_redstone_order_fixtures.py`:
+
+- `NeighborUpdater.UPDATE_ORDER`, `BlockBehaviour.UPDATE_SHAPE_ORDER`, and
+  the `Direction` and `Direction.Plane` orders;
+- `TickPriority`, the chained-update and scheduled-tick caps;
+- the call order of `Level.setBlock` and `LevelChunk.setBlockState`;
+- the wire evaluator's update set and `Vec3i.hashCode`;
+- the diode, comparator, torch, lamp and observer delays and priorities;
+- the `ServerLevel.tick` phases.
+
+It also holds seven contraptions' per-tick states and update logs, from an
+independent model of the Java classes that never reads VoxelCraft code.
+Regenerate and compare with:
+
+```sh
+python3 tools/extract_java_redstone_order_fixtures.py /path/to/server.jar --output target/java-redstone-order.json
+diff tests/fixtures/java/26.3/redstone_order.json target/java-redstone-order.json
+scripts/boat-check.sh -- 'cargo test --profile ci --locked --test redstone_order'
+```
+
+`tests/redstone_order.rs` rebuilds each contraption through the game's
+placement, use and tick entry points
+([record](../../../../docs/verification/2026-11-23-v0.17-update-order.md)).
