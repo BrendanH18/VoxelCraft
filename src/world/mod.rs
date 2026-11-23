@@ -105,6 +105,7 @@ pub mod rails;
 pub mod redstone;
 pub mod redstone_blocks;
 mod redstone_contacts;
+pub mod redstone_order;
 pub mod relics;
 pub mod ruined_portal;
 #[cfg(test)]
@@ -1042,12 +1043,22 @@ impl World {
     /// drop a cell's water: bucket pickup and sponges drying a waterlogged
     /// block, sponges clearing kelp and seagrass, pistons moving blocks.
     pub(crate) fn edit_exact(&mut self, p: IVec3, block: Block, sync: bool) -> bool {
-        self.edit_exact_inner(p, block, sync, true)
+        self.edit_exact_inner(p, block, sync, true, redstone_order::flags::UPDATE_ALL | redstone_order::flags::COMPAT)
+    }
+
+    /// [`World::edit`] with Java's `Level.setBlock` flags, for ported block
+    /// behaviour ([`redstone_order::flags`]); `edit` uses `UPDATE_ALL`.
+    pub(crate) fn edit_flags(&mut self, p: IVec3, block: Block, flags: u16) -> bool {
+        let block = match self.get_block(p) {
+            Some(old) => waterlog::carried(old, block),
+            None => block,
+        };
+        self.edit_exact_inner(p, block, false, true, flags)
     }
 
     /// The wall-post walk owns its downward notifications; other edits
     /// notify surrounding walls after recording the normal edit effects.
-    fn edit_exact_inner(&mut self, p: IVec3, block: Block, sync: bool, update_walls: bool) -> bool {
+    fn edit_exact_inner(&mut self, p: IVec3, block: Block, sync: bool, update_walls: bool, flags: u16) -> bool {
         if !self.contains_y(p.y) {
             return false;
         }
@@ -1140,6 +1151,11 @@ impl World {
                     self.schedule_coral_death(p + d);
                 }
             }
+        }
+        // `Level.setBlock`'s neighbour and shape updates, after every other
+        // effect of the edit is in place.
+        if old != block {
+            self.redstone_block_changed(p, old, block, flags);
         }
         true
     }

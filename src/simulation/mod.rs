@@ -103,7 +103,10 @@ pub fn tick_world_rules(world: &mut World, player: DVec3, fire_tick: bool, rando
     world.clear_removed_banners();
     world.clear_removed_shulker_boxes();
     world.tick_shulker_boxes();
-    world.tick_redstone();
+    // `ServerLevel.tick`: scheduled block ticks, fluid ticks, then the
+    // chunk tick (random ticks), then block events; entities and block
+    // entities follow in the caller (docs/redstone.md "Tick phases").
+    world.tick_block_ticks();
     world.tick_sculk();
     world.tick_fluids(TICK_SECONDS);
     world.tick_falling(TICK_SECONDS);
@@ -118,6 +121,7 @@ pub fn tick_world_rules(world: &mut World, player: DVec3, fire_tick: bool, rando
     world.tick_precipitation(random_tick_speed);
     world.tick_random_rules(TICK_SECONDS, player, random_tick_speed, fire_tick);
     world.tick_leaf_decay(TICK_SECONDS);
+    world.run_block_events();
     world.update_block_light_within(LIGHT_TICK_BUDGET);
 }
 

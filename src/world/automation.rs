@@ -36,6 +36,13 @@ pub(super) struct AutomationState {
     cube_feeds: Vec<(IVec3, u8, Stack)>,
 }
 
+/// `PistonBaseBlock.TRIGGER_EXTEND`, `TRIGGER_CONTRACT` and `TRIGGER_DROP`,
+/// the first block event parameter; the second is the facing's
+/// `Direction.get3DDataValue`.
+pub const PISTON_EXTEND: i32 = 0;
+pub const PISTON_RETRACT: i32 = 1;
+pub const PISTON_RETRACT_SHORT: i32 = 2;
+
 #[derive(PartialEq)]
 enum Reaction {
     Move,
@@ -54,14 +61,8 @@ impl World {
             self.automation.cooldown.remove(&p);
             self.automation.hopper_ticked.remove(&p);
         }
-        // An observer watches state changes on precisely its front face.
-        for d in SIDES {
-            let q = p - d;
-            if matches!(self.get_block(q).and_then(r::component), Some(Component::Observer { facing, on: false }) if r::direction(facing)==d)
-            {
-                self.schedule_redstone(q, 2, 0);
-            }
-        }
+        // Observers watch their front face through shape updates
+        // (`World::redstone_shape_update`).
         if new != r::MOVING {
             self.automation.moving.remove(&p);
         }
@@ -102,21 +103,48 @@ impl World {
                 }
             }
             Some(Component::Hopper { facing, disabled }) => {
+                // `HopperBlock.checkPoweredState`: `UPDATE_CLIENTS`.
                 let powered = self.redstone_power(p) > 0;
                 if disabled != powered {
-                    self.edit(p, r::hopper(facing, powered), false);
+                    self.set_block_flags(p, r::hopper(facing, powered), super::redstone_order::flags::UPDATE_CLIENTS);
                 }
                 if !powered {
                     self.schedule_redstone(p, 1, 0);
                 }
             }
-            Some(Component::Piston { facing, extended, .. }) if self.piston_powered(p, facing) != extended => {
-                self.schedule_redstone(p, 0, 0)
+            // `PistonBaseBlock.checkIfExtend`: a block event, run at the end of the tick.
+            Some(Component::Piston { facing, extended, .. }) => {
+                let powered = self.piston_powered(p, facing);
+                if powered != extended {
+                    let event = if powered { PISTON_EXTEND } else { PISTON_RETRACT };
+                    let d = super::redstone_order::java_direction_value(r::direction(facing));
+                    self.queue_block_event(p, b, event, d);
+                }
             }
-            // A loaded powered observer needs its falling edge even if an old
-            // save did not carry the scheduled tick.
-            Some(Component::Observer { on: true, .. }) => self.schedule_redstone(p, 2, 0),
             _ => {}
+        }
+    }
+
+    /// `PistonBaseBlock.triggerEvent` for a queued piston event: it
+    /// rechecks power when it runs. A piston whose blocks are still moving
+    /// retries two ticks later.
+    pub(super) fn piston_trigger_event(&mut self, p: IVec3, b: Block, event: i32, _direction: i32) -> bool {
+        let Some(Component::Piston { facing, sticky, extended }) = r::component(b) else { return false };
+        if self.automation.moving.values().any(|m| m.base == p) {
+            self.schedule_redstone(p, 2, 0);
+            return false;
+        }
+        let powered = self.piston_powered(p, facing);
+        match event {
+            PISTON_EXTEND if powered && !extended => {
+                self.extend_piston(p, facing, sticky);
+                true
+            }
+            PISTON_RETRACT | PISTON_RETRACT_SHORT if !powered && extended => {
+                self.retract_piston(p, facing, sticky);
+                true
+            }
+            _ => false,
         }
     }
 
@@ -124,24 +152,16 @@ impl World {
         match r::component(b) {
             Some(Component::Dispenser { facing, dropper }) => self.dispense(p, facing, dropper),
             Some(Component::Hopper { facing, disabled: false }) => self.hopper_tick(p, facing),
+            // `ObserverBlock.tick`.
             Some(Component::Observer { facing, on }) => {
-                self.edit(p, r::observer(facing, !on), false);
+                self.set_block_flags(p, r::observer(facing, !on), super::redstone_order::flags::UPDATE_CLIENTS);
                 if !on {
                     self.schedule_redstone(p, 2, 0);
                 }
+                self.update_observer_front(p, facing);
             }
-            Some(Component::Piston { facing, sticky, extended }) => {
-                if self.automation.moving.values().any(|m| m.base == p) {
-                    self.schedule_redstone(p, 2, 0);
-                    return;
-                }
-                let powered = self.piston_powered(p, facing);
-                if powered && !extended {
-                    self.extend_piston(p, facing, sticky);
-                } else if !powered && extended {
-                    self.retract_piston(p, facing, sticky);
-                }
-            }
+            // A piston that waited for its moving blocks checks again.
+            Some(Component::Piston { .. }) => self.automation_update(p, b),
             _ => {}
         }
     }
@@ -1237,7 +1257,8 @@ mod tests {
         put(&mut w, P + IVec3::Y, Block::CHEST);
         put(&mut w, P - IVec3::Y, Block::CHEST);
         w.chest_mut(P + IVec3::Y).unwrap().slots[0] = Some(Stack::new(Item::DIAMOND, 3));
-        ticks(&mut w, 2);
+        // A new hopper transfers on its first tick, as Java's (cooldown -1).
+        ticks(&mut w, 1);
         assert_eq!(w.chest(P).unwrap().slots[0].unwrap().count, 1);
         assert!(w.chest(P - IVec3::Y).unwrap().slots[0].is_none());
         ticks(&mut w, 7);
@@ -1317,7 +1338,8 @@ mod tests {
         put(&mut w, P + IVec3::X, Block::CHEST);
         w.chest_mut(P).unwrap().slots[0] = Some(Stack::new(Item::DIAMOND, 3));
         put(&mut w, P - IVec3::X, r::REDSTONE_BLOCK);
-        ticks(&mut w, 4);
+        // `DispenserBlock.neighborChanged`: fires four ticks after the edge.
+        ticks(&mut w, 3);
         assert!(w.chest(P + IVec3::X).unwrap().slots[0].is_none());
         ticks(&mut w, 1);
         assert_eq!(w.chest(P + IVec3::X).unwrap().slots[0], Some(Stack::new(Item::DIAMOND, 1)));
@@ -1589,6 +1611,8 @@ mod tests {
         put(&mut w, P + IVec3::X, r::hopper(4, false));
         w.chest_mut(P).unwrap().slots[0] = Some(Stack::new(Item::DIAMOND, 4));
         ticks(&mut w, 1);
+        // Both hoppers ran their first transfer on tick 1; start from an empty destination.
+        w.chest_mut(P + IVec3::X).unwrap().slots.fill(None);
         let now = w.redstone.tick;
         w.automation.cooldown.remove(&(P + IVec3::X));
         w.automation.hopper_ticked.insert(P + IVec3::X, now - 1);
