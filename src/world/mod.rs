@@ -96,6 +96,7 @@ pub mod ore;
 pub mod overworld_blocks;
 mod overworld_flora;
 pub mod pale_garden;
+pub mod piston;
 pub mod poplar_trees;
 pub mod portal;
 pub mod potent_sulfur;
@@ -325,6 +326,8 @@ pub struct World {
     snow_pushes: Vec<(IVec3, f64)>,
     redstone: redstone::RedstoneState,
     automation: automation::AutomationState,
+    /// v0.17 Track B: moving pistons and piston block events.
+    pistons: piston::PistonState,
     falling: Vec<falling::FallingBlock>,
     /// Falling blocks of unloaded chunks, held until their chunk loads again
     /// (Java stores falling block entities with the chunk's other entities).
@@ -678,6 +681,7 @@ impl World {
             snow_pushes: Vec::new(),
             redstone: Default::default(),
             automation: Default::default(),
+            pistons: Default::default(),
             falling: Vec::new(),
             stored_falling: FxHashMap::default(),
             entity_loads: FxHashSet::default(),

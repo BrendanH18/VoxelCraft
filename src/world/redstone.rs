@@ -199,6 +199,11 @@ impl World {
         });
     }
 
+    /// Java `hasScheduledTick` for the block at `p`.
+    pub(super) fn has_scheduled_redstone(&self, p: IVec3) -> bool {
+        self.redstone.pending.contains_key(&p)
+    }
+
     pub(super) fn schedule_redstone(&mut self, p: IVec3, delay: u64, priority: i8) {
         if self.redstone.pending.contains_key(&p) {
             return;
@@ -850,7 +855,8 @@ impl World {
                 *due = due.saturating_add(1);
             }
         }
-        self.finish_piston_moves();
+        // Java's `handlingTick` spans block ticks and block events.
+        self.pistons.handling_tick = true;
         self.redstone.last_updates = 0;
         self.drain_redstone_updates();
         while self.redstone.last_updates < MAX_UPDATES {
@@ -878,6 +884,11 @@ impl World {
                 self.drain_redstone_updates();
             }
         }
+        // v0.17 Track B: `runBlockEvents`, then the moving-piston block
+        // entities (`tickBlockEntities`; entities move between in Java).
+        self.run_piston_block_events();
+        self.pistons.handling_tick = false;
+        self.tick_moving_pistons();
     }
 
     pub(super) fn turtle_hatching_time(&self) -> bool {
@@ -1030,7 +1041,7 @@ impl World {
         placed
     }
 
-    fn drain_redstone_updates(&mut self) {
+    pub(super) fn drain_redstone_updates(&mut self) {
         while self.redstone.last_updates < MAX_UPDATES {
             let Some(p) = self.redstone.updates.pop_front() else { break };
             self.redstone.last_updates += 1;

@@ -29,10 +29,6 @@
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
     },
-    "moving_piston": {
-      "release": "v0.17",
-      "reason": "Redstone and automation completion."
-    },
     "petrified_oak_slab": {
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."

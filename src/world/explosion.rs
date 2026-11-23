@@ -856,6 +856,11 @@ impl World {
     /// break's loot, thinned by its table's explosion rules when `radius` is
     /// given (`DESTROY_WITH_DECAY`). Pushed to [`World::drops`] unmerged.
     pub fn spill_exploded(&mut self, p: IVec3, block: Block, radius: Option<f32>) {
+        // v0.17 Track B: a moving cell drops (and decays) as its moved block.
+        let block = match block {
+            super::redstone_blocks::MOVING => self.moving_piston_drop(p).unwrap_or(block),
+            _ => block,
+        };
         let start = self.drops.len();
         self.spill_with_item(p, block, None);
         let Some(radius) = radius else { return };

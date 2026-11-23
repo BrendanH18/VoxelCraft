@@ -189,6 +189,15 @@ impl World {
         if !self.tile_drops {
             return;
         }
+        // v0.17 Track B: `MovingPistonBlock.getDrops` are its moved block's.
+        let block = if block == super::redstone_blocks::MOVING {
+            match self.moving_piston_drop(p) {
+                Some(moved) => moved,
+                None => return,
+            }
+        } else {
+            block
+        };
         if let Some(statue) = super::copper_golem_statue::decode(block) {
             self.drops.push((p, statue.item_stack(self.copper_golem_statue_name(p))));
             return;
