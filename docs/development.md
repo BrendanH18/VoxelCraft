@@ -125,7 +125,8 @@ two checks in one slot from racing. Starts use `--fail-fast` and retry, so a
 busy moment costs nothing. When a minute of those tries finds no machine, one
 start waits for Boat to free one, for up to `VC_BOAT_WAIT` seconds (default
 900; 0 gives up at once). An interrupted or timed-out wait cleans up like any
-start (2026-11-23: busy spells outlasted the minute while machines freed
+start, and a sandbox Boat finishes after the script stopped looking is adopted
+or deleted by the slot's next run (2026-11-23: busy spells outlasted the minute while machines freed
 within a few). When Boat refuses a start (no starts left today), the script
 stops and says so.
 

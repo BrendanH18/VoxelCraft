@@ -77,6 +77,8 @@ cd "$(git rev-parse --show-toplevel)"
 state_dir=$(git rev-parse --path-format=absolute --git-path boat-check)
 mkdir -p "$state_dir"
 id_file=$state_dir/sandbox${slot:+-$slot}
+# The name of a create that was cut off and not yet found, for the next run to settle.
+pending_file=$state_dir/pending${slot:+-$slot}
 lock=$state_dir/lock${slot:+-$slot}
 # Every sandbox says which project it belongs to (owner, 2026-11-21). Each creation adds the
 # time and this run's pid, so an interrupted create finds only the sandbox it made, never one
@@ -153,7 +155,10 @@ cleanup() {
             [ "$tries" = 0 ] || sleep 2
         done
         if [ -z "$made" ]; then
-            [ "$in_flight" = 0 ] || echo "boat-check: found no sandbox named $creating; if one shows up in boat list, delete it: boat delete <id> --yes" >&2
+            if [ "$in_flight" = 1 ]; then
+                [ "$action" = save ] || echo "$creating" > "$pending_file"
+                echo "boat-check: found no sandbox named $creating yet; the next run adopts or deletes it if it lands (it stops by itself within $budget s)" >&2
+            fi
         elif [ "$action" = save ]; then build=$made
         else id=$made extended=1; echo "$id" > "$id_file"
         fi
@@ -207,6 +212,22 @@ locked=1
 echo $$ > "$lock/pid"
 # Read under the lock, so a run that waited never misses the sandbox another run just made.
 id=$(cat "$id_file" 2>/dev/null || true)
+# A create cut off by an earlier run may have landed after that run gave up looking: adopt it
+# as this slot's sandbox, or delete it if the slot has another one. Give up on it after a day.
+if [ -f "$pending_file" ]; then
+    pending=$(cat "$pending_file" 2>/dev/null || true)
+    late=$(boat list --all --json 2>/dev/null | jq -r --arg n "$pending" \
+        '[.sandboxes[]? | select(.name == $n)] | sort_by(.createdAt // "") | last | .id // empty' 2>/dev/null || true)
+    if [ -n "$late" ] && [ -z "$id" ]; then
+        echo "boat-check: adopting $late ($pending), which a cut-off start made late" >&2
+        id=$late; echo "$id" > "$id_file"; rm -f "$pending_file"
+    elif [ -n "$late" ] && [ "$late" != "$id" ]; then
+        echo "boat-check: deleting $late ($pending), which a cut-off start made late" >&2
+        boat delete "$late" --yes --json >/dev/null 2>&1 && rm -f "$pending_file"
+    elif [ -n "$late" ] || [ -n "$(find "$pending_file" -mmin +1440 2>/dev/null)" ]; then
+        rm -f "$pending_file"
+    fi
+fi
 
 # The sandbox's state and size ("stopped large"), or "gone" when Boat no longer knows it. Any
 # other failure (network, auth, rate limit) is an error, so a passing hiccup never orphans a
