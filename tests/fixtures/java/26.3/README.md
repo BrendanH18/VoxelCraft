@@ -1360,3 +1360,30 @@ scripts/boat-check.sh -- 'cargo test --release --lib m3_corpus'
 frequency reducers, the outposts' exclusion zone, the stronghold rings) from
 this file and checks a located instance of every family on two seeds
 ([record](../../../../docs/verification/2026-11-21-v0.16-m3-exit.md)).
+
+## Dispensing and hopper sides (v0.17 Track C2)
+
+`dispensing.json` holds Java 26.3's dispense table and container faces,
+read from the pinned server artifact by
+`tools/extract_java_dispense_fixtures.py`. It compiles the original JDK
+oracle `tools/JavaDispenseVectors.java` against the jar and its bundled
+libraries and runs it after `Bootstrap.bootStrap()` (binding the default
+item components and the jar's tags): every item whose
+`DispenserBlock.getDispenseMethod` isn't the plain drop, with its behaviour
+and any `Equippable` slot, `dispensable` flag and allowed wearers; each
+projectile's `DispenseConfig` (power, uncertainty, level event, spawn
+offset per facing); the boat width; `Hopper.SUCK_AABB`; and every container
+block's slots per face with the probe items each slot accepts and gives up
+through each face of an empty container. It adds the item, block and
+entity tags those behaviours read. Needs `javac` and `java` (JDK 25).
+Regenerate and compare with:
+
+```sh
+python3 tools/extract_java_dispense_fixtures.py /path/to/server.jar --output target/java-dispensing.json
+diff tests/fixtures/java/26.3/dispensing.json target/java-dispensing.json
+scripts/boat-check.sh -- 'cargo test --profile ci --locked --test dispensing --test hopper_sides'
+```
+
+`tests/dispensing.rs` checks the game's table against it both ways, and
+`tests/hopper_sides.rs` every container's faces
+([record](../../../../docs/verification/2026-11-23-v0.17-dispensing.md)).

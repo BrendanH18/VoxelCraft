@@ -16,6 +16,8 @@ pub mod activity;
 pub mod ancient_city;
 pub mod archaeology;
 mod automation;
+pub mod container_sides;
+pub mod dispensing;
 pub mod bastion;
 pub mod beacon;
 pub mod bees;

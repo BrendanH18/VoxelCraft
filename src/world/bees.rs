@@ -372,6 +372,17 @@ impl World {
         self.set_block(p, block(nest, f, 0));
         true
     }
+    /// v0.17 Track C2: `BeehiveBlockEntity.emptyAllLivingFromHive` with
+    /// no player and `BEE_RELEASED`, for a dispenser's shears or glass
+    /// bottle: every bee comes out, nobody is blamed. Java keeps bees in
+    /// at night or in rain for this status; here they always come out.
+    pub fn release_hive_bees(&mut self, entities: &mut Entities, p: IVec3) {
+        let mut h = self.beehives.hives.remove(&p.to_array()).unwrap_or_default();
+        for o in h.bees.iter_mut().filter_map(Option::take) {
+            self.release_bee(entities, p, o, false);
+        }
+        self.beehives.hives.insert(p.to_array(), h);
+    }
     pub fn mine_beehive(
         &mut self,
         entities: &mut Entities,

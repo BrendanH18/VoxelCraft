@@ -151,6 +151,14 @@ pub struct Decor {
 }
 
 impl Decor {
+    /// v0.17 Track C2: an armour stand a dispenser sets in `cell`
+    /// (`EntityType.spawn` without a vertical offset) facing `yaw`.
+    pub fn dispensed_stand(cell: IVec3, yaw: f32) -> Self {
+        let mut d = Decor::new(Kind::Stand, cell, IVec3::Y);
+        d.yaw = yaw;
+        d
+    }
+
     fn new(kind: Kind, cell: IVec3, facing: IVec3) -> Self {
         let pos = cell.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
         Decor {

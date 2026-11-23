@@ -92,9 +92,10 @@ pub fn hit_slot(facing: Facing, cell: IVec3, face: IVec3, point: DVec3) -> Optio
     Some(section(x, 3.0) + section(1.0 - local.y, 2.0) * 3)
 }
 
-/// Java's `#bookshelf_books` among VoxelCraft's items.
+/// Java's `#bookshelf_books` among VoxelCraft's items (the knowledge book
+/// isn't one).
 pub fn is_book(item: Item) -> bool {
-    matches!(item, Item::BOOK | Item::ENCHANTED_BOOK)
+    matches!(item, Item::BOOK | Item::ENCHANTED_BOOK | Item::WRITABLE_BOOK | Item::WRITTEN_BOOK)
 }
 
 pub fn palette_ids() -> impl Iterator<Item = u16> {
