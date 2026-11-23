@@ -60,12 +60,12 @@ fn new_fuels_finish_smelt_after_an_interrupted_save() {
         furnace.tick(4.0);
         assert!(furnace.is_lit(), "{name} must actually start cooking");
         let mut restored = Furnace::deserialize(&furnace.serialize()).unwrap();
-        assert_eq!(restored.cook, 4.0);
+        assert_eq!(restored.cook, 80);
         assert!(restored.fuel.is_none(), "the fuel was consumed before saving");
         restored.tick(6.0);
         assert_eq!(restored.output, Some(Stack::new(Item::IRON_INGOT, 1)));
         assert_eq!(restored.input.unwrap().count, 1);
-        assert!(restored.burn_left > 0.0);
+        assert!(restored.lit > 0);
     }
 }
 
@@ -100,8 +100,7 @@ fn fast_furnaces_apply_java_integer_fuel_reduction() {
             burning_ticks += 1;
             assert!(burning_ticks <= 5000, "{kind:?} never went out");
         }
-        // The tick that burns the last remainder also extinguishes the fire.
-        burning_ticks += 1;
+        // `serverTick`: a fuel of N ticks keeps the furnace lit for N ticks.
         assert_eq!(burning_ticks, expected_ticks, "{kind:?}");
         assert!(furnace.fuel.is_none());
     }
@@ -113,7 +112,8 @@ fn pufferfish_brewing_resumes_after_save_without_consuming_twice() {
     stand.bottles = [Some(Stack::new(Item::potion(Potion::from_id("awkward").unwrap()), 1)); 3];
     stand.ingredient = Some(Stack::new(Item::PUFFERFISH, 2));
     stand.fuel = Some(Stack::new(Item::BLAZE_POWDER, 1));
-    stand.tick(0.0);
+    // The start tick, then 400 ticks of brewing across the save.
+    stand.tick(0.05);
     for _ in 0..200 {
         stand.tick(0.05);
     }

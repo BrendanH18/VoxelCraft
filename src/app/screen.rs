@@ -157,6 +157,9 @@ impl Screen<'_> {
                 let left = self.move_to_player(stack);
                 if let Some(f) = self.world.furnace_mut(p) {
                     match slot {
+                        // `quickMoveStack` empties the slot through `setItem`,
+                        // which restarts cooking; a partial move doesn't.
+                        SlotRef::FurnaceInput if left.is_none() => f.set_input(None),
                         SlotRef::FurnaceInput => f.input = left,
                         SlotRef::FurnaceFuel => f.fuel = left,
                         _ => f.output = left,
@@ -276,8 +279,19 @@ impl Screen<'_> {
                 if let Some(f) = self.world.furnace_mut(p)
                     && (smeltable || fuel)
                 {
-                    let cell = if smeltable { &mut f.input } else { &mut f.fuel };
-                    return move_into(stack, std::slice::from_mut(cell), &[0]);
+                    if !smeltable {
+                        return move_into(stack, std::slice::from_mut(&mut f.fuel), &[0]);
+                    }
+                    // Into an empty input slot Java calls `setItem` (a fresh
+                    // cook); merging into the same item keeps progress.
+                    let mut cell = f.input;
+                    let left = move_into(stack, std::slice::from_mut(&mut cell), &[0]);
+                    if f.input.is_none() {
+                        f.set_input(cell);
+                    } else {
+                        f.input = cell;
+                    }
+                    return left;
                 }
             }
             Container::Brewing(p) => {
@@ -371,7 +385,8 @@ impl Screen<'_> {
                     None => *cursor = cell.take(),
                     Some(c) if !brewing::fits_bottle_slot(c.item) => {}
                     Some(c) if cell.is_none() => {
-                        *cell = Some(Stack::new(c.item, 1));
+                        // One bottle, components (lingering contents) and all.
+                        *cell = Some(Stack { count: 1, ..*c });
                         c.count -= 1;
                         if c.count == 0 {
                             *cursor = None;
@@ -424,8 +439,10 @@ impl Screen<'_> {
     /// all the experience the furnace stored, as orbs at the player, like
     /// Java's result slot.
     pub(super) fn award_furnace_xp(&mut self, pos: IVec3, before: u8) {
-        let roll = self.entities.roll();
-        let Some(xp) = self.world.furnace_mut(pos).and_then(|f| f.take_output_xp(before, roll)) else { return };
+        let entities = &mut *self.entities;
+        let Some(xp) = self.world.furnace_mut(pos).and_then(|f| f.take_output_xp(before, || entities.roll())) else {
+            return;
+        };
         self.entities.spawn_xp(self.session.player.pos, xp);
     }
 
@@ -598,16 +615,18 @@ impl Screen<'_> {
             stack.enchants.set(e, level);
         }
         self.session.work[0] = Some(stack);
-        if self.session.mode.is_survival() {
-            self.session.vitals.xp.add_levels(-(i as i64 + 1));
-            if let Some(lapis) = &mut self.session.work[1] {
-                lapis.count -= i as u8 + 1;
-                if lapis.count == 0 {
-                    self.session.work[1] = None;
-                }
+        // `onEnchantmentPerformed` takes the levels in every game mode;
+        // `consume` spares a creative player's lapis.
+        self.session.vitals.xp.add_levels(-(i as i64 + 1));
+        if !self.session.mode.is_creative()
+            && let Some(lapis) = &mut self.session.work[1]
+        {
+            lapis.count -= i as u8 + 1;
+            if lapis.count == 0 {
+                self.session.work[1] = None;
             }
         }
-        self.session.vitals.xp.seed = (enchant::roll() * u32::MAX as f32) as u32 as i32;
+        self.session.vitals.xp.seed = enchant::new_seed();
         let at = pos.as_dvec3() + DVec3::splat(0.5);
         // `ENCHANTMENT_TABLE_USE` is `BLOCKS`.
         self.audio.play_in(SoundSource::Blocks, Sound::LevelUp, Some(at), 0.6, (1.5, 1.7));
