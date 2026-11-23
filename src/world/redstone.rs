@@ -993,6 +993,8 @@ impl World {
     pub fn tick_redstone(&mut self) {
         self.tick_block_ticks();
         self.run_block_events();
+        // v0.17 Track B: the moving-piston block entities.
+        self.tick_moving_pistons();
     }
 
     /// `ServerLevel.tick`'s `blockTicks.tick(time, 65536, tickBlock)`: advance
@@ -1012,7 +1014,8 @@ impl World {
                 *due = due.saturating_add(1);
             }
         }
-        self.batched(World::finish_piston_moves);
+        // Java's `handlingTick` spans block ticks and block events.
+        self.pistons.handling_tick = true;
         let mut due_ticks = Vec::new();
         while due_ticks.len() < order::MAX_SCHEDULED_TICKS {
             let Some(&Reverse((due, priority, sequence, xyz, family))) = self.redstone.scheduled.peek() else { break };
@@ -1599,6 +1602,13 @@ impl World {
             {
                 self.destroy_redstone_block(p, b);
             }
+            // `PistonHeadBlock.updateShape`: from its base's side, a head
+            // that can't survive breaks (v0.17 Track B).
+            Some(Component::PistonHead { facing, sticky })
+                if toward == -r::direction(facing) && !self.head_survives(p, facing, sticky) =>
+            {
+                self.destroy_redstone_block(p, b);
+            }
             // `BasePressurePlateBlock`/`RedStoneWireBlock.updateShape` toward `DOWN`.
             Some(Component::Plate { .. } | Component::Wire(_))
                 if toward == IVec3::NEG_Y
@@ -1644,6 +1654,15 @@ impl World {
             Some(Component::Plate { power, .. }) if !moved && power > 0 => {
                 self.update_neighbors_at(p);
                 self.update_neighbors_at(p - IVec3::Y);
+            }
+            // `PistonHeadBlock.affectNeighborsAfterRemoval`: a removed head
+            // destroys the extended piston of its kind behind it, with drops.
+            Some(Component::PistonHead { facing, sticky }) => {
+                let base = p - r::direction(facing);
+                let fitting = r::piston(facing, sticky, true);
+                if self.get_block(base) == Some(fitting) {
+                    self.destroy_redstone_block(base, fitting);
+                }
             }
             _ => {}
         }

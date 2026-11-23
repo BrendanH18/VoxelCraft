@@ -17,7 +17,7 @@ pub const PICKUP_DELAY: f32 = 0.5;
 pub const THROWN_PICKUP_DELAY: f32 = 2.0;
 /// Blocks per second squared (Minecraft's 0.04 per tick²).
 const GRAVITY: f64 = 16.0;
-const SHAPE: Shape = Shape::new(0.125, 0.25);
+pub(crate) const SHAPE: Shape = Shape::new(0.125, 0.25);
 /// Matching stacks closer than this merge.
 const MERGE_DIST: f64 = 0.75;
 

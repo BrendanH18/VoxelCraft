@@ -178,35 +178,102 @@ Additional sources: [ButtonBlock](https://raw.githubusercontent.com/mahtomedi/mi
 
 ## Pistons and observers
 
-Pistons and sticky pistons support six directions, enforce the twelve-block
-push limit before editing, and reject unloaded destinations, world boundaries,
-unbreakable blocks, obsidian, netherite blocks, portals, spawners, all containers,
-and extended/moving pistons. Fragile controls/plants break and drop normally.
-Sticky retraction pulls one eligible block; normal retraction leaves it behind.
-Power excludes the front and includes Java quasi-connectivity above the base.
-A powered or unpowered piston queues Java's extend or contract block event
-on a neighbour update or placement (`checkIfExtend`), so a piston powered
-only through quasi-connectivity waits for a block update; the event runs at
-the end of the tick and rechecks power.
+Pistons follow Java 26.3's `PistonBaseBlock`, `PistonStructureResolver`,
+`MovingPistonBlock` and `PistonMovingBlockEntity` (v0.17 Track B, code in
+`world::piston`; [record](verification/2026-11-23-v0.17-pistons.md)).
 
-Motion lasts two game ticks. A saved `automation` dimension property records
-moving states and their age; chunk meshes omit moving placeholders and the
-existing free-block renderer interpolates them without a new frame collection.
-Collision currently uses the destination block's full cell while moving. Java
-entity displacement, slime/honey assemblies, short-pulse sticky block spitting,
-and exact piston block-event arbitration are not implemented. Directional devices use the nearest look direction, including vertical
-placement, through the same host/pad/CLI placement path.
+**Structures.** A neighbour change or placement runs `checkIfExtend`: power
+from any side but the front, or quasi-connectivity through the cell above,
+queues an extend event when the resolver can move the structure; losing
+power queues a retract event. The resolver moves at most twelve blocks over
+the whole assembly. Slime and honey drag the sticky-to-each-other blocks
+beside them (honey never holds slime), and the moved list keeps Java's
+order, including the reordering when a dragged line runs into blocks
+already listed. Each block's reaction is its Java `PushReaction` with
+`isPushable`'s checks: unbreakable blocks, `IMMOVEABLE` blocks (obsidian,
+anvils, respawn anchors, ...), extended pistons and every block-entity block
+stay put; `POPPED` blocks break and drop; glazed terracotta is `PUSH` (pushed,
+never pulled or dragged). `tests/pistons.rs` compares the class of every Java
+block VoxelCraft registers against `tests/fixtures/java/26.3/pistons.json`.
+Unloaded cells and the build limits stop a push.
 
-Observers watch shape updates from their front face, delay two game ticks, then
-emit strength 15 from their rear for two ticks. Repeated changes during a
-pending/on pulse do not retrigger it. Container-only mutations do not count as
+**Block events.** Piston events go on the level's Java block-event queue
+(`Level.blockEvent`; see [Signal engine](#signal-engine)): equal events merge,
+they run at the end of the tick after scheduled and random ticks
+(`runBlockEvents`), events queued while it runs included, wait in unloaded
+chunks, and are saved with the `redstone` property. Each runs only if its
+cell still holds that kind of piston (`doBlockEvent`). A move edits cells
+with Java's `setBlock` flags and sends `moveBlocks`' neighbour and shape
+updates in Java's order (the vacated cells in `HashMap` order), so contraptions
+see Java's update order. `triggerEvent` cancels an extension that lost power, turns a
+retraction that found power again into a plain state change, completes an
+arm still extending at once (`finalTick`), and pulls with a sticky piston only
+when the block two ahead is a `PUSH_PULL` block or a piston. A falling edge
+while the block ahead is still extending with progress below 0.5, in the
+tick it last moved, or during block ticks and events, is a drop event: the
+sticky piston leaves its block behind (short-pulse spitting).
+
+**Moving cells.** A moving cell is the `moving_piston` block (state 1470)
+with a block entity holding the moved state, direction, extending and
+source flags and progress. Java's `facing` and `type` properties of that
+block are read from the block entity, which always matches them. Block
+entities tick after block events in creation order, gaining 0.5 progress a
+tick and landing the tick after they reach 1, with `updateFromNeighbourShapes`
+(stairs and walls reshape; a waterlogged block lands dry; a head whose base
+is gone lands as air), then run their own `updateShape` from each side, so
+a moved observer fires on landing. Cells a move destroys, vacates or fills,
+and landed cells, run VoxelCraft's support checks (cane, sand, plants). Their collision shape is the moved block's (a head for
+the arm, plus the extended base while a base retracts) offset by progress,
+so it crosses into the neighbouring cell. An explosion that catches a moving
+cell drops its moved block. Block entities tick right after the block events
+(`World::tick_moving_pistons`), which ends Java's `handlingTick`. The free-block renderer interpolates moving
+blocks and draws retracting bases in place.
+
+**Entities.** Each moving-block tick records what its shape sweeps. After
+the world tick, players (host, controllers and CLI agents), mobs, items,
+experience orbs, minecarts and boats, and primed TNT are moved by that sweep plus 0.01
+through the shared collision path, with moving blocks going the same way
+ignored (`NOCLIP`) and Java's limit of 0.51 blocks per axis per tick, so
+entities pushed into walls stop against them. Slime sets the movement axis
+of the velocity of every entity in its swept area to one block per tick;
+honey moving sideways carries grounded entities standing on it by the
+progress step; an entity left inside a retracting base's cell is moved out of
+its front. Riders move with their vehicle.
+
+**Saves.** The `automation` dimension property (v2) stores each moving cell's
+block entity, its progress and the previous tick's progress, so a world
+saved mid-motion continues exactly. Older v1
+two-tick motion records migrate on load.
+
+**Observers** watch shape updates from their front face, delay two game
+ticks, then emit strength 15 from their rear for two ticks. Repeated changes
+during a pending/on pulse do not retrigger it. Cells turning into moving
+pistons and landing send those shape updates, and a powered observer that
+arrives with no pending tick (pushed by a piston, or placed) turns off at
+once (`ObserverBlock.onPlace`). Container-only mutations do not count as
 block state changes. Fire ageing does: `FireBlock.tick` writes the new age
 with flags 260, which still update neighbour shapes, so an observer facing
 fire sees it age (v0.17 Track E2).
 
+Known differences from Java: entity pushes run once per
+tick after the world tick instead of inside each block entity's tick, so an
+entity's later pushes in a tick see every moving block already advanced;
+pushed entities don't step up; the short piston-head shape is not modelled;
+honey's `isSupportedBy` is approximated by standing on the moving cell's top;
+projectiles, falling blocks, End crystals and decorations (item frames,
+paintings, armor stands) are not pushed (Java pushes them, and breaks
+hanging entities); Java saves the previous progress and
+replays one step after a reload, VoxelCraft resumes exactly; Java
+loads chunks a push reaches, VoxelCraft stops at unloaded ones; and LAN
+clients don't receive moving-block entities, so they see moving cells empty. Directional
+devices use the nearest look direction, including vertical placement,
+through the same host/pad/CLI placement path.
+
 Sources: [PistonStructureResolver](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/piston/PistonStructureResolver.java),
 [PistonBaseBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/piston/PistonBaseBlock.java),
-[ObserverBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/ObserverBlock.java).
+[ObserverBlock](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/world/level/block/ObserverBlock.java),
+and the pinned Java 26.3 server jar's `PistonMovingBlockEntity`,
+`MovingPistonBlock`, `PistonHeadBlock` and `Entity.limitPistonMovement`.
 
 ## Inventory automation
 
@@ -681,7 +748,7 @@ Redstone posts what Java posts, at the block's centre:
 | Dispensed projectile | `projectile_shoot`, no owner | `Projectile.tick` |
 
 The dispenser posts live in Track C2's `dispense` and the piston posts in
-`extend_piston` and `retract_piston`. Sensor timing is unchanged and matches Java: a candidate
+`piston_trigger_event` and `move_piston_blocks` (`world::piston::events`). Sensor timing is unchanged and matches Java: a candidate
 is chosen a tick after it is heard (nearest, then highest frequency),
 travels `floor(distance)` ticks, activates the sensor for 30 ticks (the
 calibrated sensor 10) with power `max(1, 15 - floor(15 / radius * distance))`,

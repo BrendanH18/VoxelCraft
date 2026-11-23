@@ -20,7 +20,7 @@ const GRAVITY: f64 = 12.0;
 /// second squared (Java's 0.1 per tick²).
 const PULL: f64 = 40.0;
 /// Java's 0.5 x 0.5 box.
-const SHAPE: Shape = Shape::new(0.25, 0.5);
+pub(crate) const SHAPE: Shape = Shape::new(0.25, 0.5);
 /// Same-sized orbs whose boxes come within this of each other merge.
 const MERGE_DIST: f64 = 0.5;
 

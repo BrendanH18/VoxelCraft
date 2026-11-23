@@ -2836,6 +2836,10 @@ impl Block {
         if name == "ominous vault" {
             return Some(super::trial::OMINOUS_VAULT);
         }
+        // The invisible `moving_piston` (v0.17 Track B).
+        if name == "moving piston" {
+            return Some(super::redstone_blocks::MOVING);
+        }
         if name == "white wool" {
             return Some(Block::WOOL);
         }

@@ -592,9 +592,6 @@ fn verify_flying_machine(run: &Run) -> Result<(), String> {
 }
 
 #[test]
-#[ignore = "needs Track B: pistons must move slime assemblies (slime sticks to every movable neighbour, \
-            PistonStructureResolver) and moved observers must fire on landing (PistonMovingBlockEntity.finalTick \
-            -> updateFromNeighbourShapes); today the pistons move only the block in front"]
 fn flying_machine_travels() {
     check(&flying_machine(), verify_flying_machine);
 }
@@ -862,9 +859,6 @@ fn verify_sugar_cane_farm(run: &Run) -> Result<(), String> {
 }
 
 #[test]
-#[ignore = "needs Track B: a block a piston destroys must update its neighbours (PistonBaseBlock.moveBlocks \
-            drops it and sets air with neighbour updates), so the cane above loses its support and pops; \
-            VoxelCraft leaves it floating and the farm jams after one harvest"]
 fn sugar_cane_farm_harvests() {
     check(&sugar_cane_farm(), verify_sugar_cane_farm);
 }
@@ -881,8 +875,8 @@ fn sugar_cane_farm_survives_unload_and_restart() {
 /// ticks: about 62 in 4000 ticks.
 #[test]
 #[ignore = "needs a sugar cane fix outside the v0.17 tracks: Java grows a block after 16 random ticks (AGE 0..15), \
-            VoxelCraft with chance 1/4 per random tick (world::growth tick_cane), four times as fast; and Track B's \
-            piston fix, without which this farm jams after its first harvest"]
+            VoxelCraft with chance 1/4 per random tick (world::growth tick_cane), four times as fast (228 grew \
+            here with the v0.17 pistons harvesting)"]
 fn sugar_cane_grows_at_java_rate() {
     let spec = Spec { ticks: 4000, ..sugar_cane_farm() };
     let run = run(&spec, Cut::None);
@@ -951,10 +945,9 @@ fn verify_pumpkin_farm(run: &Run) -> Result<(), String> {
 }
 
 #[test]
-#[ignore = "needs Track B: Java 26.3 registers pumpkins (and melons and carved pumpkins) with PushReaction.POPPED, \
-            so the piston breaks the pumpkin in place; VoxelCraft moves pumpkins (automation::piston_reaction). \
-            Also undiagnosed: no pumpkin grew in 2000 ticks at speed 1024 here (Java about ten); check the stem's \
-            growth light in the headless world first"]
+#[ignore = "undiagnosed: no pumpkin grew in 2000 ticks at speed 1024 here (Java about ten); check the stem's \
+            growth light in the headless world first. Pistons now pop pumpkins (PushReaction.POPPED, v0.17 \
+            Track B, tests/pistons.rs)"]
 fn pumpkin_farm_harvests() {
     check(&pumpkin_farm(), verify_pumpkin_farm);
 }
