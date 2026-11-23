@@ -347,7 +347,7 @@ v0.16, and its release notes keep the 0.14.0 and 0.15.0 sections for them.
   ([record](verification/2026-11-16-tag-gate-run.md)) and v0.15's offscreen
   run ([record](verification/2026-11-18-v0.15-frame-time.md)) pass; v0.16
   has no frame-time run yet.
-- **Exception (owner, 2026-11-23):** tagged and released without v0.16's
+- **Exception (owner, 2026-11-23):** to be tagged and released without v0.16's
   offscreen frame-time run, which needs the reference Mac. It is still
   owed, and no row moved to **Verified**.
 - **Known gaps** ship as the release notes' known limitations, from the
