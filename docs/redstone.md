@@ -54,6 +54,16 @@ wakes adjacent comparators (both halves of a double chest).
 Wooden doors and fence gates respond to rising/falling power edges, preserving
 manual operation while power stays unchanged. Powered TNT primes once.
 
+## Reference contraptions
+
+`tests/contraptions` builds sixteen reference machines (clocks, piston
+doors, a flying machine, a sorter, a smelter, farms, a minecart storage
+line, an autocrafter, a BUD switch and a T flip-flop) in a headless world,
+records a per-tick trace, and repeats it after unloading the chunks, after
+a save and fresh load, and after a restart mid-motion. Each build's Java
+26.3 behaviour, the differences found and the tracks the ignored checks
+wait for are in the [Track F record](verification/2026-11-23-v0.17-reference-contraptions.md).
+
 ## Java sources
 
 Behaviour is checked against the Minecraft Java block implementations:

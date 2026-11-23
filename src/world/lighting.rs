@@ -744,10 +744,13 @@ pub(crate) fn flat_test_world(columns: impl IntoIterator<Item = IVec2>, ground: 
     world
 }
 
-#[cfg(test)]
+/// Flat test columns streamed in and out through the real chunk load and
+/// unload paths. Unit tests and headless harnesses (the reference
+/// contraption corpus in `tests/contraptions`) use them to unload and
+/// reload chunks without terrain generation.
 impl World {
     /// One chunk of a flat test column: stone up to `ground`, air above.
-    pub(crate) fn flat_test_chunk(cy: i32, ground: i32) -> std::sync::Arc<ChunkData> {
+    pub fn flat_test_chunk(cy: i32, ground: i32) -> std::sync::Arc<ChunkData> {
         let lo = cy * CHUNK_SIZE_I;
         std::sync::Arc::new(if lo + CHUNK_SIZE_I - 1 <= ground {
             ChunkData::Uniform(Block::STONE)
@@ -765,7 +768,7 @@ impl World {
     }
 
     /// Stream a column back in, preferring its saved edits over flat terrain.
-    pub(crate) fn load_test_column(&mut self, c: IVec2, ground: i32) {
+    pub fn load_test_column(&mut self, c: IVec2, ground: i32) {
         for cy in self.generator.dimension.chunk_rows() {
             let pos = IVec3::new(c.x, cy, c.y);
             let data = self.saved.remove(&pos).unwrap_or_else(|| Self::flat_test_chunk(cy, ground));
@@ -774,7 +777,7 @@ impl World {
     }
 
     /// Unload every chunk of a column, keeping its edits like streaming does.
-    pub(crate) fn unload_test_column(&mut self, c: IVec2) {
+    pub fn unload_test_column(&mut self, c: IVec2) {
         for cy in self.generator.dimension.chunk_rows() {
             self.remove_chunk(IVec3::new(c.x, cy, c.y));
         }
