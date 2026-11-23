@@ -179,13 +179,21 @@ impl HeadlessHost {
         self.entities.apply_piston_pushes(&self.world);
         // The automation entity pass (hoppers, carts, deferred dispenses)
         // with the harness's own entities. It simulates no item or projectile
-        // entities, so those the pass spawns are discarded, as block drops
-        // are below; carts and stands stay, with what they hold.
+        // entities, so the ones this pass spawns (and their launch sounds)
+        // are discarded, as block drops are below; carts and stands stay,
+        // with what they hold, and earlier items are left alone.
+        let e = &self.entities;
+        let before =
+            (e.items.len(), e.thrown.len(), e.potions.len(), e.arrows.len(), e.fireballs.len(), e.fireworks.len());
         self.world.tick_automation_entities(&mut self.entities);
-        self.entities.items.clear();
-        self.entities.thrown.clear();
-        self.entities.potions.clear();
-        self.entities.arrows.clear();
+        let e = &mut self.entities;
+        e.items.truncate(before.0);
+        e.thrown.truncate(before.1);
+        e.potions.truncate(before.2);
+        e.arrows.truncate(before.3);
+        e.fireballs.truncate(before.4);
+        e.fireworks.truncate(before.5);
+        e.clear_pending_sounds();
         // As `Game::tick` does: players in a stalactite's cell as it lands
         // are hit on their next tick, and anchors used outside the Nether
         // explode (`RespawnAnchorBlock.explode`, power 5).

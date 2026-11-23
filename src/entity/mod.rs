@@ -1258,6 +1258,11 @@ pub struct Entities {
 
 impl Entities {
     /// Creates an empty entity simulation with deterministic randomness from `seed`.
+    /// Drops sounds no frame will play (the headless harness has no audio).
+    pub(crate) fn clear_pending_sounds(&mut self) {
+        self.pending_sounds.clear();
+    }
+
     pub fn new(seed: u64) -> Self {
         Self {
             mobs: Vec::new(),
