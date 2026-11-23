@@ -77,7 +77,7 @@ cd "$(git rev-parse --show-toplevel)"
 state_dir=$(git rev-parse --path-format=absolute --git-path boat-check)
 mkdir -p "$state_dir"
 id_file=$state_dir/sandbox${slot:+-$slot}
-# The name of a create that was cut off and not yet found, for the next run to settle.
+# Names of creates that were cut off and not yet found, one per line, for later runs to settle.
 pending_file=$state_dir/pending${slot:+-$slot}
 lock=$state_dir/lock${slot:+-$slot}
 # Every sandbox says which project it belongs to (owner, 2026-11-21). Each creation adds the
@@ -156,7 +156,7 @@ cleanup() {
         done
         if [ -z "$made" ]; then
             if [ "$in_flight" = 1 ]; then
-                [ "$action" = save ] || echo "$creating" > "$pending_file"
+                [ "$action" = save ] || echo "$creating" >> "$pending_file"
                 echo "boat-check: found no sandbox named $creating yet; the next run adopts or deletes it if it lands (it stops by itself within $budget s)" >&2
             fi
         elif [ "$action" = save ]; then build=$made
@@ -212,21 +212,28 @@ locked=1
 echo $$ > "$lock/pid"
 # Read under the lock, so a run that waited never misses the sandbox another run just made.
 id=$(cat "$id_file" 2>/dev/null || true)
-# A create cut off by an earlier run may have landed after that run gave up looking: adopt it
-# as this slot's sandbox, or delete it if the slot has another one. Give up on it after a day.
-if [ -f "$pending_file" ]; then
-    pending=$(cat "$pending_file" 2>/dev/null || true)
-    late=$(boat list --all --json 2>/dev/null | jq -r --arg n "$pending" \
-        '[.sandboxes[]? | select(.name == $n)] | sort_by(.createdAt // "") | last | .id // empty' 2>/dev/null || true)
-    if [ -n "$late" ] && [ -z "$id" ]; then
-        echo "boat-check: adopting $late ($pending), which a cut-off start made late" >&2
-        id=$late; echo "$id" > "$id_file"; rm -f "$pending_file"
-    elif [ -n "$late" ] && [ "$late" != "$id" ]; then
-        echo "boat-check: deleting $late ($pending), which a cut-off start made late" >&2
-        boat delete "$late" --yes --json >/dev/null 2>&1 && rm -f "$pending_file"
-    elif [ -n "$late" ] || [ -n "$(find "$pending_file" -mmin +1440 2>/dev/null)" ]; then
-        rm -f "$pending_file"
-    fi
+# Creates cut off by earlier runs may have landed after those runs gave up looking: adopt the
+# first as this slot's sandbox if it has none, and delete the rest. A name not found is kept
+# for a day.
+if [ -s "$pending_file" ]; then
+    listing=$(boat list --all --json 2>/dev/null || true)
+    keep=""
+    while IFS= read -r pending; do
+        [ -n "$pending" ] || continue
+        late=$(printf '%s\n' "$listing" | jq -r --arg n "$pending" \
+            '[.sandboxes[]? | select(.name == $n)] | sort_by(.createdAt // "") | last | .id // empty' 2>/dev/null || true)
+        if [ -z "$late" ]; then
+            [ -n "$listing" ] && [ -n "$(find "$pending_file" -mmin +1440 2>/dev/null)" ] || keep="$keep$pending"$'\n'
+        elif [ -z "$id" ]; then
+            echo "boat-check: adopting $late ($pending), which a cut-off start made late" >&2
+            id=$late; echo "$id" > "$id_file"
+        elif [ "$late" != "$id" ]; then
+            echo "boat-check: deleting $late ($pending), which a cut-off start made late" >&2
+            boat delete "$late" --yes --json </dev/null >/dev/null 2>&1 || keep="$keep$pending"$'\n'
+        fi
+    done < "$pending_file"
+    if [ -n "$keep" ]; then printf '%s' "$keep" > "$pending_file.new" && mv "$pending_file.new" "$pending_file"
+    else rm -f "$pending_file"; fi
 fi
 
 # The sandbox's state and size ("stopped large"), or "gone" when Boat no longer knows it. Any
