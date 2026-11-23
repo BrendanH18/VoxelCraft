@@ -1275,6 +1275,19 @@ events `e`, drops the torch burnout deadline `b`; v1 still loads). States
 12800–12831 stay unregistered; they would fit stored repeater locks (4
 facings × 4 delays × 2 powered) if that difference is closed later.
 
+#### Track B allocation
+
+Pistons (2026-11-23, implemented, unverified;
+[record](verification/2026-11-23-v0.17-pistons.md)) used **no** IDs: no block
+state, item or texture layer in 12832–13087, 1775–1784 or 1164–1199 is
+registered, and they stay free for the integrator. Java's `moving_piston`
+is the existing state 1470 (`redstone_blocks::MOVING`); its `facing` and
+`type` properties are read from the saved block entity, which always
+matches them. Saved formats: the `automation` dimension property is now
+`v2` (moving-cell `M` records; `v1` `m` records migrate on load); queued
+piston events are Track A's block events in the `redstone` property. No
+append-only ordering was extended.
+
 #### Track D1 allocation
 
 2026-11-23, implemented, unverified

@@ -2357,19 +2357,21 @@ impl Game {
                     tint: [255; 4],
                 }
             }))
-            .chain(self.world.moving_piston_blocks(alpha).map(|(block, min)| crate::render::BlockModel {
-                patterns: None,
-                lid: None,
-                min,
-                size: 1.0,
-                block,
-                sky_light: crate::entity::sky_light(&self.world, min + glam::DVec3::splat(0.5)),
-                block_light: self.torch_light(min + glam::DVec3::splat(0.5)),
-                yaw: 0.0,
-                icon: None,
-                orient: None,
-                tint: [255; 4],
-            }))
+            .chain(self.world.moving_piston_blocks(alpha).chain(self.world.moving_piston_heads(alpha)).map(
+                |(block, min)| crate::render::BlockModel {
+                    patterns: None,
+                    lid: None,
+                    min,
+                    size: 1.0,
+                    block,
+                    sky_light: crate::entity::sky_light(&self.world, min + glam::DVec3::splat(0.5)),
+                    block_light: self.torch_light(min + glam::DVec3::splat(0.5)),
+                    yaw: 0.0,
+                    icon: None,
+                    orient: None,
+                    tint: [255; 4],
+                },
+            ))
             .chain(self.item_models(alpha))
             .chain(self.banner_models(camera))
             .chain(self.shulker_models(camera, alpha))

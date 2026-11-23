@@ -128,14 +128,18 @@ fn java_hash(p: IVec3) -> i32 {
 /// the spread hash, then insertion order within a bucket.
 pub fn java_hash_set_order<const N: usize>(cells: [IVec3; N]) -> [IVec3; N] {
     debug_assert!(N <= 12);
-    let bucket = |p: IVec3| {
-        let h = java_hash(p) as u32;
-        (h ^ (h >> 16)) & 15
-    };
     let mut out = cells;
     // A stable sort keeps insertion order within one bucket.
-    out.sort_by_key(|&p| bucket(p));
+    out.sort_by_key(|&p| java_hash_bucket(p));
     out
+}
+
+/// The bucket of `p` in a 16-bucket `java.util.HashMap` or `HashSet` (at
+/// most 12 entries): `Vec3i.hashCode` spread by `HashMap.hash`. A stable
+/// sort by it, from insertion order, is the iteration order.
+pub fn java_hash_bucket(p: IVec3) -> u32 {
+    let h = java_hash(p) as u32;
+    (h ^ (h >> 16)) & 15
 }
 
 /// Java's `Direction.get3DDataValue` for a unit offset.
@@ -355,7 +359,7 @@ impl World {
     }
 
     /// `RedStoneWireBlock.updateIndirectNeighbourShapes` for `state` at `p`.
-    fn wire_indirect_shapes(&mut self, p: IVec3, state: Block) {
+    pub(super) fn wire_indirect_shapes(&mut self, p: IVec3, state: Block) {
         if !super::redstone::is_wire(state) {
             return;
         }
@@ -408,10 +412,9 @@ impl World {
             {
                 self.record(|_| Traced::Event(event.pos, b));
                 self.redstone.order.executed += 1;
-                // The piston's moves are not ported Java behaviour yet: one batch.
-                self.batched(|w| {
-                    w.trigger_block_event(event);
-                });
+                // Pistons are the only answer, and `world::piston` ports
+                // `triggerEvent` with Java's flags and updates: no batch.
+                self.trigger_block_event(event);
             }
         }
         for event in waiting {

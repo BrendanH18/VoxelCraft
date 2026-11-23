@@ -272,6 +272,15 @@ impl Game {
                 crate::world::precipitation::push_entity(&mut m.pos, shape, cell, height);
             }
         }
+        // v0.17 Track B: blocks pistons moved this tick push and launch
+        // players and entities (`PistonMovingBlockEntity.moveCollidedEntities`).
+        if !self.world.piston_pushes().is_empty() {
+            crate::world::piston::push_player(&self.world, &mut self.session.player);
+            for bot in self.agents.players.values_mut().filter(|b| b.active) {
+                crate::world::piston::push_player(&self.world, &mut bot.agent.session.player);
+            }
+            self.mobs.entities.apply_piston_pushes(&self.world);
+        }
         self.play_notes();
         self.mobs.entities.stalactite_hits(self.world.stalactite_hits());
         // Players in a stalactite's cell as it lands are hit too, wherever

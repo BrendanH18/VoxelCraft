@@ -71,6 +71,7 @@ pub mod orb;
 pub mod panda;
 pub mod pearl;
 pub mod phantom;
+mod piston_push;
 pub mod player_model;
 mod player_pose;
 pub mod polar_bear;

@@ -1,4 +1,5 @@
-//! Piston block events, saved moving blocks, and observer pulses.
+//! Observer pulses, hoppers, dispensers and droppers. Pistons live in
+//! `world::piston`; this module routes their neighbour updates and saves.
 use crate::inventory::Stack;
 use crate::item::Item;
 use glam::{DVec3, IVec3};
@@ -13,21 +14,8 @@ use super::{
     vibration::{EventSource, GameEvent},
 };
 
-const SIDES: [IVec3; 6] = [IVec3::Z, IVec3::NEG_Z, IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y];
-
-#[derive(Clone, Copy)]
-struct MovingBlock {
-    block: Block,
-    from: IVec3,
-    base: IVec3,
-    started: u64,
-    install: bool,
-}
-
 #[derive(Default)]
 pub(super) struct AutomationState {
-    moving: FxHashMap<IVec3, MovingBlock>,
-    finished: Vec<IVec3>,
     powered: FxHashSet<IVec3>,
     pub(super) cooldown: FxHashMap<IVec3, u64>,
     /// Redstone tick on which each hopper last ran its transfer tick (Java `tickedGameTime`).
@@ -76,14 +64,6 @@ pub const PISTON_EXTEND: i32 = 0;
 pub const PISTON_RETRACT: i32 = 1;
 pub const PISTON_RETRACT_SHORT: i32 = 2;
 
-#[derive(PartialEq)]
-enum Reaction {
-    Move,
-    Destroy,
-    Block,
-    Empty,
-}
-
 impl World {
     pub(super) fn track_automation(&mut self, p: IVec3, old: Block, new: Block) {
         if old == new {
@@ -96,31 +76,7 @@ impl World {
         }
         // Observers watch their front face through shape updates
         // (`World::redstone_shape_update`).
-        if new != r::MOVING {
-            self.automation.moving.remove(&p);
-        }
-        if let Some(Component::PistonHead { facing, .. }) = r::component(old)
-            && !matches!(r::component(new), Some(Component::PistonHead { .. }))
-        {
-            let base = p - r::direction(facing);
-            if let Some(block) = self
-                .get_block(base)
-                .filter(|b| matches!(r::component(*b), Some(Component::Piston { extended: true, .. })))
-            {
-                self.spill_block(base, block);
-                self.edit(base, Block::AIR, false);
-            }
-        }
-        // Remove abandoned heads when their base is broken. Retracting a piston
-        // keeps its family, so this does not interfere with the moving head.
-        if let Some(Component::Piston { facing, extended: true, .. }) = r::component(old)
-            && r::base(old) != r::base(new)
-        {
-            let front = p + r::direction(facing);
-            if matches!(self.get_block(front).and_then(r::component), Some(Component::PistonHead { .. })) {
-                self.edit(front, Block::AIR, false);
-            }
-        }
+        self.track_piston(p, old, new);
     }
 
     /// An observer watches state changes on precisely its front face
@@ -155,39 +111,10 @@ impl World {
                     self.schedule_redstone(p, 1, 0);
                 }
             }
-            // `PistonBaseBlock.checkIfExtend`: a block event, run at the end of the tick.
-            Some(Component::Piston { facing, extended, .. }) => {
-                let powered = self.piston_powered(p, facing);
-                if powered != extended {
-                    let event = if powered { PISTON_EXTEND } else { PISTON_RETRACT };
-                    let d = super::redstone_order::java_direction_value(r::direction(facing));
-                    self.queue_block_event(p, b, event, d);
-                }
-            }
+            // `PistonBaseBlock.checkIfExtend` (`neighborChanged`, `onPlace`): a
+            // block event, run at the end of the tick (`world::piston`).
+            Some(Component::Piston { .. }) => self.check_piston(p),
             _ => {}
-        }
-    }
-
-    /// `PistonBaseBlock.triggerEvent` for a queued piston event: it
-    /// rechecks power when it runs. A piston whose blocks are still moving
-    /// retries two ticks later.
-    pub(super) fn piston_trigger_event(&mut self, p: IVec3, b: Block, event: i32, _direction: i32) -> bool {
-        let Some(Component::Piston { facing, sticky, extended }) = r::component(b) else { return false };
-        if self.automation.moving.values().any(|m| m.base == p) {
-            self.schedule_redstone(p, 2, 0);
-            return false;
-        }
-        let powered = self.piston_powered(p, facing);
-        match event {
-            PISTON_EXTEND if powered && !extended => {
-                self.extend_piston(p, facing, sticky);
-                true
-            }
-            PISTON_RETRACT | PISTON_RETRACT_SHORT if !powered && extended => {
-                self.retract_piston(p, facing, sticky);
-                true
-            }
-            _ => false,
         }
     }
 
@@ -203,238 +130,17 @@ impl World {
                 }
                 self.update_observer_front(p, facing);
             }
-            // A piston that waited for its moving blocks checks again.
-            Some(Component::Piston { .. }) => self.automation_update(p, b),
+            // Ticks older saves scheduled for pistons only recheck them.
+            Some(Component::Piston { .. }) => self.check_piston(p),
             _ => {}
         }
     }
 
-    fn piston_powered(&self, p: IVec3, facing: u8) -> bool {
-        let front = r::direction(facing);
-        SIDES.into_iter().any(|d|d!=front&&self.signal_from(p+d,-d,true)>0)
-            // Java quasi-connectivity: a piston also checks the block above,
-            // except the downward face. A block update still triggers its event.
-            || SIDES.into_iter().any(|d| d!=IVec3::NEG_Y&&self.signal_from(p+IVec3::Y+d,-d,true)>0)
-    }
-
-    fn piston_reaction(&self, p: IVec3, b: Block) -> Reaction {
-        if !self.contains_y(p.y) {
-            return Reaction::Block;
-        }
-        if b == Block::AIR || b.is_fluid() {
-            return Reaction::Empty;
-        }
-        // v0.16 Track B: shulker boxes pop (`PushReaction.POPPED`), dropping
-        // themselves with their contents.
-        if super::shulker_box::owns(b.0) {
-            return Reaction::Destroy;
-        }
-        if !b.hardness().is_finite()
-            || matches!(
-                b,
-                Block::OBSIDIAN
-                    | Block::CRYING_OBSIDIAN
-                    | Block::NETHERITE_BLOCK
-                    | Block::SPAWNER
-                    | Block::ENCHANTING_TABLE
-                    | Block::END_PORTAL_FRAME
-                    | Block::NETHER_PORTAL
-                    | Block::END_PORTAL
-                    | Block::END_GATEWAY
-            )
-            || self.chest(p).is_some()
-            // Banners are block entities, which pistons don't move.
-            || super::colour_blocks::banner::decode(b.0).is_some()
-            || self.furnace(p).is_some()
-            || self.brewing_stand(p).is_some()
-            // Signs, shelves and chiseled bookshelves have block entities
-            // (`PistonBaseBlock.isPushable`: `!hasBlockEntity()`).
-            || super::wood::has_entity(b)
-            // So do ender chests and campfires.
-            || super::utilities::ender_chest_of(b).is_some()
-            // Jukeboxes (a block entity) and reinforced deepslate
-            // (`PushReaction.IMMOVEABLE`).
-            || super::jukebox::piston_immovable(b)
-            // v0.16 Track C: the beacon's block entity.
-            || b == super::beacon::BEACON
-            // v0.16 Track F: and the conduit's.
-            || super::conduit::owns(b.0)
-            || super::utilities::campfire_of(b).is_some()
-            || matches!(
-                r::component(b),
-                Some(
-                    Component::Piston { extended: true, .. }
-                        | Component::PistonHead { .. }
-                        | Component::Moving
-                        | Component::Daylight { .. }
-                )
-            )
-        {
-            return Reaction::Block;
-        }
-        if b.kind() == super::block::RenderKind::Cross
-            || b.is_door()
-            // `PushReaction.POPPED`.
-            || super::mount_states::is_lantern(b.0)
-            || super::copper::pops_when_pushed(b)
-            || super::copper_golem_statue::owns(b.0)
-            || b==super::frog_blocks::FROGSPAWN
-            // `PushReaction.DESTROY` for flower pots and decorated pots.
-            || b == super::utilities::FLOWER_POT
-            || super::utilities::potted_plant(b).is_some()
-            || super::utilities::decorated_pot_of(b).is_some()
-            || super::scaffolding::is_scaffolding(b)
-            || super::colour_blocks::pops_on_push(b)
-            // v0.16 Track C: heads are `PushReaction.POPPED`.
-            || super::skulls::owns(b.0)
-            || b.is_fire()
-            || matches!(
-                r::component(b),
-                Some(
-                    Component::Wire(_)
-                        | Component::Lever { .. }
-                        | Component::Button { .. }
-                        | Component::Torch { .. }
-                        | Component::Repeater { .. }
-                        | Component::Comparator { .. }
-                        | Component::Plate { .. }
-                        | Component::IronDoor { .. }
-                )
-            )
-        {
-            return Reaction::Destroy;
-        }
-        Reaction::Move
-    }
-
-    fn start_piston_move(&mut self, from: IVec3, to: IVec3, block: Block, base: IVec3, install: bool) {
-        // `PistonMovingBlockEntity.tick` lands a waterlogged block dry.
-        let block = block.with_water(false);
-        if install {
-            self.edit(to, r::MOVING, false);
-        }
-        self.automation.moving.insert(to, MovingBlock { block, from, base, started: self.redstone.tick, install });
-    }
-
-    fn extend_piston(&mut self, p: IVec3, facing: u8, sticky: bool) {
-        let d = r::direction(facing);
-        let mut push = [(IVec3::ZERO, Block::AIR); 12];
-        let mut count = 0;
-        let mut end = p + d;
-        let destroy = loop {
-            let Some(b) = self.get_block(end) else {
-                return;
-            };
-            match self.piston_reaction(end, b) {
-                Reaction::Empty => break None,
-                Reaction::Destroy => break Some(b),
-                Reaction::Block => return,
-                Reaction::Move => {
-                    if count == 12 {
-                        return;
-                    }
-                    push[count] = (end, b);
-                    count += 1;
-                    end += d;
-                }
-            }
-        };
-        if let Some(b) = destroy {
-            self.spill_block(end, b);
-            self.edit(end, Block::AIR, false);
-            // `PistonBaseBlock.moveBlocks`: the destroyed block is the context.
-            self.emit_block_event(end, GameEvent::BlockDestroy, EventSource::NONE, Some(b));
-        }
-        for &(from, block) in push[..count].iter().rev() {
-            // `PistonBaseBlock.moveBlocks` leaves air, not the moved block's water.
-            self.edit_exact(from, Block::AIR, false);
-            self.start_piston_move(from, from + d, block, p, true);
-        }
-        self.edit(p, r::piston(facing, sticky, true), false);
-        self.start_piston_move(p, p + d, r::piston_head(facing, sticky), p, true);
-        // `PistonBaseBlock.triggerEvent` (extend): the extended base is the context.
-        self.emit_block_event(p, GameEvent::BlockActivate, EventSource::NONE, Some(r::piston(facing, sticky, true)));
-    }
-
-    fn retract_piston(&mut self, p: IVec3, facing: u8, sticky: bool) {
-        let d = r::direction(facing);
-        self.edit(p, r::piston(facing, sticky, false), false);
-        self.edit(p + d, Block::AIR, false);
-        self.start_piston_move(p + d, p, r::piston_head(facing, sticky), p, false);
-        if sticky {
-            let from = p + d * 2;
-            if let Some(block) = self.get_block(from)
-                && self.piston_reaction(from, block) == Reaction::Move
-            {
-                self.edit_exact(from, Block::AIR, false);
-                self.start_piston_move(from, p + d, block, p, true);
-            }
-        }
-        // `PistonBaseBlock.triggerEvent` (retract): the moving piston is the context.
-        self.emit_block_event(p, GameEvent::BlockDeactivate, EventSource::NONE, Some(r::MOVING));
-    }
-
-    pub(super) fn finish_piston_moves(&mut self) {
-        if self.automation.moving.is_empty() {
-            return;
-        }
-        for (&p, m) in &mut self.automation.moving {
-            if !self.activity.contains(p, true) || !self.chunks.contains_key(&super::chunk::chunk_of(p)) {
-                m.started = m.started.saturating_add(1);
-            }
-        }
-        let mut finished = std::mem::take(&mut self.automation.finished);
-        finished.extend(self.automation.moving.iter().filter_map(|(&p, m)| {
-            (self.redstone.tick.saturating_sub(m.started) >= 2 && self.is_block_ticking(p)).then_some(p)
-        }));
-        for &p in &finished {
-            let Some(m) = self.automation.moving.remove(&p) else {
-                continue;
-            };
-            if m.install && self.get_block(p) == Some(r::MOVING) {
-                // Broken bases must not leave floating piston heads behind.
-                let head = matches!(r::component(m.block), Some(Component::PistonHead { .. }));
-                let valid = matches!(
-                    self.get_block(m.base).and_then(r::component),
-                    Some(Component::Piston { extended: true, .. })
-                );
-                let landed = if head && !valid { Block::AIR } else { self.shaped_by_neighbours(p, m.block) };
-                self.edit(p, landed, false);
-            }
-            self.redstone_changed(m.base);
-        }
-        finished.clear();
-        self.automation.finished = finished;
-    }
-
-    /// Interpolates the two-tick motion without a separate per-frame collection.
-    pub fn moving_piston_blocks(&self, alpha: f64) -> impl Iterator<Item = (Block, DVec3)> + '_ {
-        self.automation.moving.iter().map(move |(&to, m)| {
-            let elapsed = self.redstone.tick.saturating_sub(m.started) as f64;
-            let progress = ((elapsed + alpha) / 2.0).clamp(0.0, 1.0);
-            (m.block, m.from.as_dvec3().lerp(to.as_dvec3(), progress))
-        })
-    }
-
     pub fn automation_to_string(&self) -> String {
-        let mut entries = vec!["v1".to_string()];
-        for (to, m) in &self.automation.moving {
-            entries.push(format!(
-                "m,{},{},{},{},{},{},{},{},{},{},{},{}",
-                to.x,
-                to.y,
-                to.z,
-                m.block.0,
-                m.from.x,
-                m.from.y,
-                m.from.z,
-                m.base.x,
-                m.base.y,
-                m.base.z,
-                self.redstone.tick.saturating_sub(m.started),
-                m.install as u8
-            ));
-        }
+        // v2 replaced v1's two-tick `m` motion records with piston block
+        // entities and events (`world::piston`); v1 still loads.
+        let mut entries = vec!["v2".to_string()];
+        self.piston_save_entries(&mut entries);
         for p in &self.automation.powered {
             entries.push(format!("p,{},{},{}", p.x, p.y, p.z));
         }
@@ -472,11 +178,15 @@ impl World {
 
     pub fn load_automation(&mut self, text: &str) {
         let mut entries = text.split('|');
-        if entries.next() != Some("v1") {
+        if !matches!(entries.next(), Some("v1" | "v2")) {
             return;
         }
         self.automation = AutomationState::default();
+        self.pistons = Default::default();
         for entry in entries {
+            if self.load_piston_entry(entry) {
+                continue;
+            }
             if let Some((tag, rest)) = entry.split_once(',').filter(|(tag, _)| matches!(*tag, "e" | "d")) {
                 let fields: Vec<&str> = rest.split(',').collect();
                 if let &[x, y, z, facing, code, stack] = fields.as_slice() {
@@ -529,35 +239,6 @@ impl World {
                 }
                 continue;
             }
-            let Some(rest) = entry.strip_prefix("m,") else {
-                continue;
-            };
-            let Ok(fields) = rest.split(',').map(str::parse::<i64>).collect::<Result<Vec<_>, _>>() else {
-                continue;
-            };
-            let &[x, y, z, block, fx, fy, fz, bx, by, bz, age, install] = fields.as_slice() else {
-                continue;
-            };
-            if !(0..crate::world::block::STATE_CAPACITY as i64).contains(&block)
-                || !(0..=2).contains(&age)
-                || !(0..=1).contains(&install)
-            {
-                continue;
-            }
-            let xyz = [x, y, z, fx, fy, fz, bx, by, bz];
-            if xyz.into_iter().any(|n| i32::try_from(n).is_err()) {
-                continue;
-            }
-            self.automation.moving.insert(
-                IVec3::new(x as i32, y as i32, z as i32),
-                MovingBlock {
-                    block: Block(block as u16),
-                    from: IVec3::new(fx as i32, fy as i32, fz as i32),
-                    base: IVec3::new(bx as i32, by as i32, bz as i32),
-                    started: self.redstone.tick.saturating_sub(age as u64),
-                    install: install == 1,
-                },
-            );
         }
     }
 }
@@ -1253,15 +934,10 @@ mod tests {
             assert_eq!(w.get_block(P + IVec3::X), Some(if blocked { Block::STONE } else { r::piston_head(2, false) }));
             assert_eq!(w.get_block(P + IVec3::X * (count + 1)), Some(if blocked { Block::AIR } else { Block::STONE }));
         }
-        for block in [
-            Block::OBSIDIAN,
-            Block::BEDROCK,
-            Block::NETHERITE_BLOCK,
-            Block::CHEST,
-            Block::FURNACE,
-            Block::BREWING_STAND,
-            Block::END_PORTAL,
-        ] {
+        // Netherite blocks are `PUSH_PULL` in Java 26.3 (`tests/pistons.rs`).
+        for block in
+            [Block::OBSIDIAN, Block::BEDROCK, Block::CHEST, Block::FURNACE, Block::BREWING_STAND, Block::END_PORTAL]
+        {
             let mut w = world();
             put(&mut w, P, r::PISTON);
             put(&mut w, P + IVec3::Z, block);

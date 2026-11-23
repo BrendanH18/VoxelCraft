@@ -14,6 +14,12 @@ use crate::world::shape;
 pub trait BlockSource {
     /// Block at a position; `None` if it isn't loaded.
     fn block(&self, p: IVec3) -> Option<Block>;
+
+    /// Java `MovingPistonBlock.getCollisionShape`: the collision boxes of
+    /// piston-moved blocks that may reach into `min..max`, with the cell
+    /// each belongs to. They follow their progress, so a box can lie
+    /// partly in a neighbouring cell. Only worlds have moving blocks.
+    fn moving_boxes(&self, _min: DVec3, _max: DVec3, _f: &mut dyn FnMut(IVec3, DVec3, DVec3)) {}
 }
 
 impl BlockSource for World {
@@ -21,6 +27,43 @@ impl BlockSource for World {
     fn block(&self, p: IVec3) -> Option<Block> {
         self.get_block(p)
     }
+
+    fn moving_boxes(&self, min: DVec3, max: DVec3, f: &mut dyn FnMut(IVec3, DVec3, DVec3)) {
+        self.piston_collision_boxes(min, max, None, f);
+    }
+}
+
+/// A block alone in an empty world, for its standalone collision shape.
+struct Lone(Block);
+
+impl BlockSource for Lone {
+    fn block(&self, p: IVec3) -> Option<Block> {
+        Some(if p == IVec3::ZERO { self.0 } else { Block::AIR })
+    }
+}
+
+/// The collision boxes of `b` on its own, relative to its cell (a moving
+/// piston's moved state carries no neighbour connections).
+pub fn block_collision_boxes(b: Block, f: impl FnMut(DVec3, DVec3)) {
+    cell_boxes(&Lone(b), IVec3::ZERO, f);
+}
+
+/// Moving-block boxes whose cell lies outside the scanned cells `lo..=hi`
+/// (those inside came from the cell scan) and that overlap `min..max`.
+fn moving_outside<W: BlockSource + ?Sized>(
+    world: &W,
+    min: DVec3,
+    max: DVec3,
+    lo: IVec3,
+    hi: IVec3,
+    f: &mut dyn FnMut(IVec3, DVec3, DVec3),
+) {
+    world.moving_boxes(min, max, &mut |cell, bmin, bmax| {
+        let scanned = cell.cmpge(lo).all() && cell.cmple(hi).all();
+        if !scanned && bmin.cmplt(max).all() && bmax.cmpgt(min).all() {
+            f(cell, bmin, bmax);
+        }
+    });
 }
 
 /// Axis-aligned box size: half width on X/Z, full height on Y.
@@ -129,6 +172,13 @@ fn cell_boxes_context<W: BlockSource + ?Sized>(
     }
     match b {
         None => f(lo, lo + DVec3::ONE),
+        Some(crate::world::redstone_blocks::MOVING) => {
+            world.moving_boxes(lo, lo + DVec3::ONE, &mut |cell, bmin, bmax| {
+                if cell == p {
+                    f(bmin, bmax);
+                }
+            });
+        }
         Some(b) if !b.is_solid() => {}
         Some(Block::HONEY_BLOCK) => f(lo + DVec3::new(1.0, 0.0, 1.0) / 16.0, lo + DVec3::splat(15.0 / 16.0)),
         Some(b) if b.kind() == RenderKind::Shaped => {
@@ -169,6 +219,8 @@ fn boxes_near<W: BlockSource + ?Sized>(world: &W, min: DVec3, max: DVec3, mut f:
             }
         }
     }
+    let (inner_min, inner_max) = (min + DVec3::splat(EPS), max - DVec3::splat(EPS));
+    moving_outside(world, inner_min, inner_max, lo - IVec3::Y, hi, &mut |_, bmin, bmax| f(bmin, bmax));
 }
 
 /// Java's `BlockState.isCollisionShapeFullBlock`: the block at `p` has one
@@ -357,6 +409,10 @@ pub fn colliders_context<W: BlockSource + ?Sized>(
             }
         }
     }
+    let scanned_lo = lo - IVec3::Y;
+    moving_outside(world, min, max, scanned_lo, hi, &mut |cell, bmin, bmax| {
+        out.push(Collider { min: bmin, max: bmax, cell })
+    });
 }
 
 /// Java's `level.noCollision` for a box: no block shape overlaps it.
@@ -384,7 +440,8 @@ pub fn no_collision_context<W: BlockSource + ?Sized>(
             }
         }
     }
-    true
+    moving_outside(world, min, max, lo - IVec3::Y, hi, &mut |_, _, _| hit = true);
+    !hit
 }
 
 /// Java's `Shapes.collide(axis, box, shapes, distance)`: how far the box

@@ -99,6 +99,7 @@ pub mod ore;
 pub mod overworld_blocks;
 mod overworld_flora;
 pub mod pale_garden;
+pub mod piston;
 pub mod poplar_trees;
 pub mod portal;
 pub mod potent_sulfur;
@@ -330,6 +331,8 @@ pub struct World {
     snow_pushes: Vec<(IVec3, f64)>,
     redstone: redstone::RedstoneState,
     automation: automation::AutomationState,
+    /// v0.17 Track B: moving pistons and piston block events.
+    pistons: piston::PistonState,
     falling: Vec<falling::FallingBlock>,
     /// Falling blocks of unloaded chunks, held until their chunk loads again
     /// (Java stores falling block entities with the chunk's other entities).
@@ -687,6 +690,7 @@ impl World {
             snow_pushes: Vec::new(),
             redstone: Default::default(),
             automation: Default::default(),
+            pistons: Default::default(),
             falling: Vec::new(),
             stored_falling: FxHashMap::default(),
             entity_loads: FxHashSet::default(),
@@ -1063,6 +1067,12 @@ impl World {
             Some(old) => waterlog::carried(old, block),
             None => block,
         };
+        self.edit_exact_inner(p, block, false, true, flags)
+    }
+
+    /// [`World::edit_flags`] that writes `block` as given (a cell a piston
+    /// empties or fills drops its water), for `world::piston`.
+    pub(crate) fn edit_exact_flags(&mut self, p: IVec3, block: Block, flags: u16) -> bool {
         self.edit_exact_inner(p, block, false, true, flags)
     }
 
