@@ -1374,6 +1374,10 @@ impl Block {
         if super::conduit::owns(self.0) {
             return super::conduit::CONDUIT;
         }
+        // v0.17 Track C1: every crafter state is the crafter.
+        if super::crafter::owns(self.0) {
+            return super::crafter::CRAFTER;
+        }
         if super::dried_ghast::owns(self.0) {
             return super::dried_ghast::DRIED_GHAST;
         }
@@ -1754,6 +1758,10 @@ impl Block {
         if super::conduit::owns(self.0) {
             return Some(Item::from_block(super::conduit::CONDUIT));
         }
+        // v0.17 Track C1: `blocks/crafter` drops itself.
+        if super::crafter::owns(self.0) {
+            return Some(Item::from_block(super::crafter::CRAFTER));
+        }
         // `blocks/dried_ghast`: itself, when it survives an explosion.
         if super::dried_ghast::owns(self.0) {
             return Some(Item::from_block(super::dried_ghast::DRIED_GHAST));
@@ -1951,6 +1959,9 @@ impl Block {
         }
         if super::conduit::owns(self.0) {
             return super::conduit::HARDNESS;
+        }
+        if super::crafter::owns(self.0) {
+            return super::crafter::HARDNESS;
         }
         // `Blocks.DRIED_GHAST`: `instabreak()`.
         if super::dried_ghast::owns(self.0) {
@@ -2224,7 +2235,11 @@ impl Block {
             return Some(ToolKind::Shovel);
         }
         // `#mineable/pickaxe` lists every shulker box.
-        if super::heavy_core::owns(self.0) || super::shulker_box::owns(self.0) || super::conduit::owns(self.0) {
+        if super::heavy_core::owns(self.0)
+            || super::shulker_box::owns(self.0)
+            || super::conduit::owns(self.0)
+            || super::crafter::owns(self.0)
+        {
             return Some(ToolKind::Pickaxe);
         }
         if super::creaking::heart(self).is_some() {
@@ -2419,6 +2434,10 @@ impl Block {
         if super::jukebox::owns(self.0) {
             return None;
         }
+        // v0.17 Track C1: the crafter doesn't need a tool to drop.
+        if super::crafter::owns(self.0) {
+            return None;
+        }
         if let Some(level) = super::end_blocks::harvest_level(self) {
             return level;
         }
@@ -2583,6 +2602,8 @@ impl Block {
             .chain(super::skulls::palette_ids())
             .chain([super::wither_rose::WITHER_ROSE.0, super::beacon::BEACON.0])
             .chain([super::conduit::CONDUIT.0])
+            // v0.17 Track C1.
+            .chain([super::crafter::CRAFTER.0])
             .chain(super::forms::palette_ids())
             .chain(super::nether_blocks::palette_ids())
             .chain(super::village_blocks::palette_ids())
@@ -2819,11 +2840,17 @@ impl Block {
         (0..STATE_CAPACITY as u16)
             .map(Block)
             .find(|b| b.kind() != RenderKind::Invisible && b.name() == name)
-            .map(
-                |b| {
-                    if super::copper_golem_statue::owns(b.0) || super::end_blocks::is_end_rod(b) { b.base() } else { b }
-                },
-            )
+            .map(|b| {
+                if super::copper_golem_statue::owns(b.0)
+                        || super::end_blocks::is_end_rod(b)
+                        // v0.17 Track C1: the crafter's default state, not its first.
+                        || super::crafter::owns(b.0)
+                {
+                    b.base()
+                } else {
+                    b
+                }
+            })
             .or((name == "air").then_some(Block::AIR))
     }
 
@@ -3307,6 +3334,7 @@ pub(super) const fn make(id: u16) -> BlockInfo {
         super::skulls::FIRST..=super::skulls::LAST => super::skulls::registry(id),
         12724..=12725 => super::wither_rose::registry(id),
         12726 => super::beacon::registry(),
+        super::crafter::FIRST..=super::crafter::LAST => super::crafter::registry(id),
         super::end_blocks::FIRST..=super::end_blocks::LAST => super::end_blocks::registry(id),
         super::jukebox::FIRST..=super::jukebox::LAST => super::jukebox::registry(id),
         super::archaeology::FIRST..=super::archaeology::LAST => super::archaeology::registry(id),

@@ -548,6 +548,8 @@ pub(super) fn container_title(block: Option<crate::world::block::Block>) -> &'st
         Some(b) if b.base() == crate::world::block::Block::BARREL => "Barrel",
         // `container.shulkerBox`.
         Some(b) if crate::world::shulker_box::owns(b.0) => "Shulker Box",
+        // v0.17 Track C1: `container.crafter`.
+        Some(b) if crate::world::crafter::owns(b.0) => "Crafter",
         Some(b) if crate::world::utilities::ender_chest_of(b).is_some() => "Ender Chest",
         Some(b) => match r::component(b) {
             Some(Component::Hopper { .. }) => "Item Hopper",
@@ -893,6 +895,15 @@ impl Game {
                 }
             }
             self.top_h()
+        } else if let Container::Chest(p) = self.body.container
+            && super::crafter::is_crafter(&self.world, p)
+        {
+            // v0.17 Track C1: `CrafterMenu`'s grid (the result is drawn, not a slot).
+            for i in 0..crate::world::crafter::SLOTS {
+                let (x, y) = super::crafter::grid_slot(i);
+                out.push((SlotRef::Chest(i), px + x, py + y));
+            }
+            self.top_h()
         } else if matches!(self.body.container, Container::Chest(_) | Container::Minecart(_)) {
             let count = self.open_container_count();
             let cols = if count == 9 { 3 } else { 9 };
@@ -1052,6 +1063,7 @@ impl Game {
             self.search_ui(ui);
         }
         let py = py + self.search_h();
+        let top_py = py;
         let title = match (self.body.container, self.session.mode) {
             (Container::CraftingTable, _) => "Crafting",
             (Container::Furnace(_), _) => "Furnace",
@@ -1188,6 +1200,14 @@ impl Game {
                 ui.rect(x + 1.0, y + 1.0, SLOT - 2.0, SLOT - 2.0, [1.0, 1.0, 1.0, 0.35]);
             }
         }
+        // v0.17 Track C1: the crafter's slot covers, indicator and preview.
+        let crafter = match self.body.container {
+            Container::Chest(p) if super::crafter::is_crafter(&self.world, p) => Some(p),
+            _ => None,
+        };
+        if let Some(p) = crafter {
+            self.crafter_ui(ui, p, px, top_py);
+        }
         let hovered_stack = match hovered {
             Some(SlotRef::Inventory(i)) => self.session.inventory.get(i),
             Some(SlotRef::Palette(item)) => Some(Stack::new(item, 1)),
@@ -1201,6 +1221,12 @@ impl Game {
         let recipe_hint = if self.recipe_book.open && self.shows_recipes() { self.recipe_book_ui(ui) } else { None };
         if let Some(hint) = recipe_hint {
             self.tooltip(ui, &hint);
+        } else if let (Some(p), Some(SlotRef::Chest(i)), None, None) =
+            (crafter, hovered, hovered_stack, self.session.inventory.cursor)
+            && !self.world.crafter_slot_disabled(p, i)
+        {
+            // `CrafterScreen`: `gui.togglable_slot`.
+            self.tooltip(ui, "Click to disable slot");
         } else if let Some(SlotRef::EnchantOffer(i)) = hovered {
             self.offer_tooltip(ui, i);
         } else if let Some(stack) = hovered_stack {

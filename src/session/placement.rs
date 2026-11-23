@@ -296,6 +296,11 @@ impl PlayerSession {
                     } else if let Some(shulker) = crate::world::shulker_box::placed(raw, normal) {
                         // v0.16 Track B: the lid faces away from the clicked face.
                         shulker
+                    } else if let Some(crafter) =
+                        crate::world::crafter::placed(raw, ctx.look, ctx.facing, world.redstone_power(at) > 0)
+                    {
+                        // v0.17 Track C1: `CrafterBlock.getStateForPlacement`.
+                        crafter
                     } else if let Some(placed) = crate::world::gen5_blocks::placed(raw, &ctx, |c| world.get_block(c)) {
                         // Sulfur spikes and shelf mushrooms (`world::gen5_blocks`).
                         placed.ok_or("block cannot survive here")?

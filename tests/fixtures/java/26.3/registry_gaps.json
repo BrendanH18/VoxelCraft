@@ -17,10 +17,6 @@
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
     },
-    "crafter": {
-      "release": "v0.17",
-      "reason": "Redstone and automation completion."
-    },
     "jigsaw": {
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
@@ -158,10 +154,6 @@
     "cow_spawn_egg": {
       "release": "v0.18",
       "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "crafter": {
-      "release": "v0.17",
-      "reason": "Redstone and automation completion."
     },
     "creaking_spawn_egg": {
       "release": "v0.18",

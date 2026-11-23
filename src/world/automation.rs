@@ -557,12 +557,12 @@ impl World {
 
 impl World {
     /// Slots of the container at `p`, 0 when there is none.
-    fn container_count(&self, p: IVec3) -> usize {
+    pub(super) fn container_count(&self, p: IVec3) -> usize {
         self.container_kind(p).map_or(0, sides::size)
     }
 
     /// Returns the remaining stack; merges components exactly like inventories.
-    fn insert_container(&mut self, p: IVec3, stack: Stack, side: IVec3) -> Option<Stack> {
+    pub(super) fn insert_container(&mut self, p: IVec3, stack: Stack, side: IVec3) -> Option<Stack> {
         self.insert_container_from(p, stack, Some(side), None)
     }
 
@@ -599,7 +599,7 @@ impl World {
         for &slot in slots {
             let slot = slot as usize;
             let old = self.container_stack(p, slot);
-            if !sides::can_place(kind, slot, left.item, old.as_ref(), side) {
+            if !self.can_place_in(p, kind, slot, left.item, old.as_ref(), side) {
                 continue;
             }
             // `tryMoveInItem`: an empty slot takes the stack; a slot holding
@@ -907,6 +907,12 @@ impl World {
     /// Hands `stack` from the dispenser at `p` to the entity pass.
     pub(super) fn queue_dispensed(&mut self, p: IVec3, facing: u8, kind: Output, stack: Stack) {
         self.automation.output.push((p, facing, kind, stack));
+    }
+
+    /// Queues `stack` to leave `p` like a dropped item (`DefaultDispenseItemBehavior.spawnItem`,
+    /// speed 6, 0.7 out of the face `facing`); saved with the other pending ejections.
+    pub(super) fn queue_dispensed_item(&mut self, p: IVec3, facing: u8, stack: Stack) {
+        self.automation.output.push((p, facing, false, stack));
     }
 
     /// Consume entity work after shared world rules and before entity physics.

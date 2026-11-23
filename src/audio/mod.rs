@@ -7,6 +7,7 @@
 //! never blocked. Without an output device the game runs silently.
 
 mod breeze;
+mod crafter;
 mod dsp;
 mod export;
 mod flight;

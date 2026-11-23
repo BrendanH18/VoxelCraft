@@ -46,6 +46,8 @@ pub fn is_chest(b: Block) -> bool {
     matches!(b.base(), Block::CHEST | Block::BARREL | super::utilities::TRAPPED_CHEST)
         || super::copper::is_chest(b)
         || super::shulker_box::owns(b.0)
+        // v0.17 Track C1: the crafter's nine slots.
+        || super::crafter::owns(b.0)
         || matches!(
             super::redstone_blocks::component(b),
             Some(
@@ -60,6 +62,7 @@ impl World {
         match self.get_block(p).and_then(super::redstone_blocks::component) {
             Some(super::redstone_blocks::Component::Hopper { .. }) => 5,
             Some(super::redstone_blocks::Component::Dispenser { .. }) => 9,
+            _ if self.get_block(p).is_some_and(|b| super::crafter::owns(b.0)) => super::crafter::SLOTS,
             _ if self.chest_partner(p).is_some() => 2 * SLOTS,
             _ => SLOTS,
         }

@@ -1291,6 +1291,24 @@ saved and LAN cart string appends `fuel,push_x,push_z`; every other cart
 keeps its fifteen fields. New `EntityEvent::CartExplosion` and the
 `EntityShot.arrow` field are internal and unsaved.
 
+#### Track C1 allocation
+
+The crafter (2026-11-23, implemented, unverified;
+[record](verification/2026-11-23-v0.17-crafter.md)):
+
+| Kind | Used | Meaning |
+| --- | --- | --- |
+| Block states | 13088–13135 | `world::crafter`: `13088 + orientation * 4 + triggered * 2 + crafting`, `orientation` in Java's `FrontAndTop` order (`down_east` 0 … `south_up` 11); the item is 13128, `north_up` and idle. 13136–13343 stay unregistered |
+| Items | none | The crafter is a block item; 1785–1799 stay free |
+| Texture layers | 1200–1210 | Front, front crafting, back, back triggered, side, side triggered, side crafting, top, top triggered, top crafting, bottom; 1211–1239 stay unused. A census of `render::textures::pixel` before the change found nothing painting 1200–1239 |
+
+Appended orderings: `Sound::Crafter` (`Craft`, `Fail`) after
+`Sound::Geyser`, and the `crafters` dimension property key after
+`end_crystals`. The LAN chest snapshot gains an optional `crafter_disabled`
+bit mask, which older guests ignore. No `MobKind`, `Effect`, item icon,
+thrown kind, particle kind, entity property key or LAN slot number is
+added.
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating

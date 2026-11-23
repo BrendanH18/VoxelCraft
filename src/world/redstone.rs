@@ -41,6 +41,7 @@ pub(super) fn participates(b: Block) -> bool {
         || super::copper::bulb(b).is_some()
         || super::wood::redstone_participant(b)
         || super::utilities::dripleaf_of(b).is_some()
+        || super::crafter::owns(b.0)
 }
 
 pub(super) fn is_wire(b: Block) -> bool {
@@ -574,6 +575,10 @@ impl World {
         if let Some(signal) = self.get_block(p).and_then(super::copper::bulb_signal) {
             return Some(signal);
         }
+        // v0.17 Track C1: `CrafterBlockEntity.getRedstoneSignal`.
+        if let Some(signal) = self.crafter_signal(p) {
+            return Some(signal);
+        }
         // v0.17 Track E2: the state-only analog outputs (Java 26.3
         // `getAnalogOutputSignal` of each block; `redstone_components.json`).
         if let Some(signal) = self.get_block(p).and_then(super::redstone_catalogue::state_analog_output) {
@@ -636,6 +641,10 @@ impl World {
         }
         if super::copper::bulb(b).is_some() {
             return self.copper_bulb_update(p, b);
+        }
+        // v0.17 Track C1: `CrafterBlock.neighborChanged`.
+        if super::crafter::owns(b.0) {
+            return self.crafter_update(p, b);
         }
         if super::utilities::dripleaf_of(b).is_some() {
             return self.dripleaf_neighbor_changed(p);
@@ -799,6 +808,10 @@ impl World {
         }
         if super::sniffer_egg::owns(b.0) {
             return self.hatch_sniffer_egg(p);
+        }
+        // v0.17 Track C1: `CrafterBlock.tick` crafts.
+        if super::crafter::owns(b.0) {
+            return self.crafter_tick(p, b);
         }
         if self.end_lectern_pulse(p) {
             return;
@@ -1025,6 +1038,8 @@ impl World {
             self.redstone.order.collected = collected;
             self.run_collected_ticks();
         }
+        // v0.17 Track C1: crafter block entities tick after the scheduled ticks.
+        self.tick_crafters();
         self.redstone.last_updates = self.redstone.order.executed;
     }
 
@@ -1364,6 +1379,8 @@ impl World {
                             || family == i64::from(super::sniffer_egg::EGG.0)
                             || family == i64::from(super::frosted_ice::FIRST.0)
                             || family == i64::from(super::dried_ghast::DRIED_GHAST.0)
+                            // v0.17 Track C1: a crafter's pending craft.
+                            || family == i64::from(super::crafter::CRAFTER.0)
                             // v0.16 Track A: unsupported chorus breaking.
                             || family == i64::from(super::end_blocks::CHORUS_PLANT.0)
                             || family == i64::from(super::end_blocks::CHORUS_FLOWER.0)

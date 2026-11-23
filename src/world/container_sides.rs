@@ -152,8 +152,8 @@ pub fn can_place(kind: Kind, slot: usize, item: Item, current: Option<&Stack>, f
         // `ListBackedContainer.canPlaceItem` with `acceptsItemType`
         // (`#bookshelf_books`) and a stack limit of one.
         Kind::ChiseledBookshelf => current.is_none() && super::wood::bookshelf::is_book(item),
-        // Track C1 seam: `CrafterBlockEntity.canPlaceItem` (disabled slots,
-        // the smallest-stack rule) belongs to the crafter track.
+        // `CrafterBlockEntity.canPlaceItem` reads the block entity's
+        // disabled slots and its other stacks: `World::can_place_in`.
         Kind::Crafter => false,
     }
 }
@@ -195,6 +195,10 @@ impl World {
         if super::jukebox::is_jukebox(b) {
             return Some(Kind::Jukebox);
         }
+        // v0.17 Track C1: the crafter keeps its nine slots in the chest table.
+        if super::crafter::owns(b.0) && self.crafter(p).is_some() {
+            return Some(Kind::Crafter);
+        }
         if self.chest(p).is_some() {
             return Some(if super::shulker_box::owns(b.0) {
                 Kind::ShulkerBox
@@ -214,18 +218,33 @@ impl World {
         if super::wood::shelves::shelf(b).is_some() {
             return Some(Kind::Shelf);
         }
-        // Track C1 seam: the crafter answers `Kind::Crafter` here once it
-        // exists, with its slots read through `container_stack`.
         None
+    }
+
+    /// [`can_place`] for the container at `p`, with the crafter's
+    /// `CrafterBlockEntity.canPlaceItem` (enabled slot, smallest stack first).
+    pub(super) fn can_place_in(
+        &self,
+        p: IVec3,
+        kind: Kind,
+        slot: usize,
+        item: Item,
+        current: Option<&Stack>,
+        face: Option<IVec3>,
+    ) -> bool {
+        if kind == Kind::Crafter {
+            return self.crafter_can_place(p, slot);
+        }
+        can_place(kind, slot, item, current, face)
     }
 
     /// The stack in `slot` of the container at `p`.
     pub fn container_stack(&self, p: IVec3, slot: usize) -> Option<Stack> {
         match self.container_kind(p)? {
             Kind::ComposterOutput => Some(Stack::new(Item::BONE_MEAL, 1)),
-            Kind::ComposterInput | Kind::ComposterFull | Kind::Crafter => None,
+            Kind::ComposterInput | Kind::ComposterFull => None,
             Kind::Jukebox => self.jukebox(p).and_then(|j| j.record),
-            Kind::Plain { .. } | Kind::ShulkerBox => self.chest_slot(p, slot),
+            Kind::Plain { .. } | Kind::ShulkerBox | Kind::Crafter => self.chest_slot(p, slot),
             Kind::Furnace => {
                 let f = self.furnace(p)?;
                 [f.input, f.fuel, f.output].get(slot).copied().flatten()
@@ -250,11 +269,11 @@ impl World {
                     self.take_compost(p);
                 }
             }
-            Kind::ComposterInput | Kind::ComposterFull | Kind::Crafter => {}
+            Kind::ComposterInput | Kind::ComposterFull => {}
             Kind::Jukebox => {
                 self.set_jukebox_record(p, stack);
             }
-            Kind::Plain { .. } | Kind::ShulkerBox => {
+            Kind::Plain { .. } | Kind::ShulkerBox | Kind::Crafter => {
                 self.set_chest_slot(p, slot, stack);
             }
             Kind::Furnace => {

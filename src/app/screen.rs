@@ -270,7 +270,9 @@ impl Screen<'_> {
                 if !self.world.container_accepts(p, &stack) {
                     return Some(stack);
                 }
-                let order: Vec<usize> = (0..self.world.container_slots(p)).collect();
+                // v0.17 Track C1: a crafter's disabled slots take nothing (`CrafterSlot.mayPlace`).
+                let order: Vec<usize> =
+                    (0..self.world.container_slots(p)).filter(|&i| !self.world.crafter_slot_disabled(p, i)).collect();
                 return self.world.with_chest_slots(p, |slots| move_into(stack, slots, &order)).unwrap_or(Some(stack));
             }
             Container::Furnace(p) => {
@@ -514,6 +516,26 @@ impl Screen<'_> {
                     // v0.16 Track B: `ShulkerBoxSlot.mayPlace`.
                     && self.session.inventory.cursor.is_none_or(|c| self.world.container_accepts(pos, &c))
                 {
+                    // v0.17 Track C1: `CrafterScreen.slotClicked` toggles an
+                    // empty slot: a disabled one turns on (and then takes the
+                    // click), an enabled one turns off under an empty cursor.
+                    if self.world.crafter(pos).is_some()
+                        && self.world.chest_slot(pos, i).is_none()
+                        && self.session.mode != voxelcraft::rules::GameMode::Spectator
+                    {
+                        if self.world.crafter_slot_disabled(pos, i) {
+                            self.world.set_crafter_slot_enabled(pos, i, true);
+                            self.audio.play(Sound::Click, None, 0.4, (1.0, 1.0));
+                        } else if self.session.inventory.cursor.is_none() {
+                            self.world.set_crafter_slot_enabled(pos, i, false);
+                            self.audio.play(Sound::Click, None, 0.4, (0.75, 0.75));
+                            return;
+                        }
+                    }
+                    // `CrafterSlot.mayPlace`: nothing goes into a disabled slot.
+                    if self.world.crafter_slot_disabled(pos, i) {
+                        return;
+                    }
                     let cursor = &mut self.session.inventory.cursor;
                     self.world
                         .with_chest_slots(pos, |slots| crate::inventory::click_slot(&mut slots[i], cursor, right));
