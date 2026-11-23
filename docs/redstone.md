@@ -269,13 +269,24 @@ Behaviours that look for entities finish in `tick_automation_entities`
 later in the same game tick, with the slot they came from; the app lends
 its players through `tick_automation_entities_with`.
 
-Hoppers push one item, then pull one from the container above in the same
-eligible cycle, followed by eight game ticks of cooldown. An emptied
-destination hopper receives cooldown `8 - k` as in Java's `tryMoveInItem`: seven
-when a hopper source pushes into a hopper that already ran its tick this game
-tick, otherwise eight. The scheduled-tick order stands in for Java's
-block-entity ticker order, and a destination idling on cooldown is not
-re-ticked, so it counts as not yet ticked. Power disables transfer and pickup.
+Hoppers are block entities, ticked as Java's `HopperBlockEntity.pushItemsTick`
+after each game tick's scheduled ticks and block events (`World::tick_hoppers`,
+called by `tick_world_rules` and `tick_redstone`), in the order the hoppers
+were created (Java's block-entity ticker list); entities follow in the caller.
+Each tick a hopper's cooldown counts down, locked or not; once it runs out an
+enabled hopper pushes one item, then pulls one from the container above (or
+collects items, unless it is full), and a move starts a cooldown of eight. A
+hopper unlocked or fed by this tick's redstone moves items in this same tick.
+An emptied destination hopper receives cooldown `8 - k` as in Java's
+`tryMoveInItem`, k = 1 when it already ran its tick this game tick, so it
+passes the item on seven ticks after it arrived either way; a hopper on a
+custom cooldown (above eight) keeps it. A hopper's container change updates
+its comparators at once (`setChanged`). Cooldowns are saved as the ticks left
+(`c,...` in the automation save) and the ticker order as `h,...` entries; an
+older save's pending hopper ticks just enrol their hoppers. Power disables
+transfer and pickup. Checked on the vanilla 26.3 server
+([record](verification/2026-11-23-v0.17-dispensing.md#follow-up-hopper-timing-2026-11-23)):
+the hopper clock runs at period 11 and the item sorter sorts as Java does.
 
 Hoppers, droppers and hopper minecarts reach containers through Java 26.3's
 faces (`world::container_sides`, checked against the same fixture): each

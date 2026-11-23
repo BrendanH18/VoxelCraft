@@ -29,9 +29,15 @@ pub(super) struct AutomationState {
     moving: FxHashMap<IVec3, MovingBlock>,
     finished: Vec<IVec3>,
     powered: FxHashSet<IVec3>,
+    /// Each hopper's `HopperBlockEntity.cooldownTime`: ticks of its own
+    /// ticker left before it moves items again (absent: 0).
     pub(super) cooldown: FxHashMap<IVec3, u64>,
     /// Redstone tick on which each hopper last ran its transfer tick (Java `tickedGameTime`).
     hopper_ticked: FxHashMap<IVec3, u64>,
+    /// v0.17 Track C2: hopper block-entity tickers in the order they were
+    /// created (Java's `Level.blockEntityTickers`), run after block events.
+    hoppers: Vec<IVec3>,
+    hopper_set: FxHashSet<IVec3>,
     pickups: Vec<IVec3>,
     pub(super) output: Vec<(IVec3, u8, Output, Stack)>,
     creatures: Vec<(IVec3, Stack)>,
@@ -94,6 +100,10 @@ impl World {
             self.automation.cooldown.remove(&p);
             self.automation.hopper_ticked.remove(&p);
         }
+        // A new hopper block entity joins the tickers (`addBlockEntityTicker`).
+        if matches!(r::component(new), Some(Component::Hopper { .. })) {
+            self.register_hopper(p);
+        }
         // Observers watch their front face through shape updates
         // (`World::redstone_shape_update`).
         if new != r::MOVING {
@@ -151,9 +161,7 @@ impl World {
                 if disabled != powered {
                     self.set_block_flags(p, r::hopper(facing, powered), super::redstone_order::flags::UPDATE_CLIENTS);
                 }
-                if !powered {
-                    self.schedule_redstone(p, 1, 0);
-                }
+                self.register_hopper(p);
             }
             // `PistonBaseBlock.checkIfExtend`: a block event, run at the end of the tick.
             Some(Component::Piston { facing, extended, .. }) => {
@@ -194,7 +202,9 @@ impl World {
     pub(super) fn automation_tick(&mut self, p: IVec3, b: Block) {
         match r::component(b) {
             Some(Component::Dispenser { facing, dropper }) => self.dispense(p, facing, dropper),
-            Some(Component::Hopper { facing, disabled: false }) => self.hopper_tick(p, facing),
+            // Hoppers tick as block entities (`tick_hoppers`); a scheduled
+            // tick from an older save only enrols the hopper.
+            Some(Component::Hopper { .. }) => self.register_hopper(p),
             // `ObserverBlock.tick`.
             Some(Component::Observer { facing, on }) => {
                 self.set_block_flags(p, r::observer(facing, !on), super::redstone_order::flags::UPDATE_CLIENTS);
@@ -438,8 +448,12 @@ impl World {
         for p in &self.automation.powered {
             entries.push(format!("p,{},{},{}", p.x, p.y, p.z));
         }
-        for (p, due) in &self.automation.cooldown {
-            entries.push(format!("c,{},{},{},{}", p.x, p.y, p.z, due.saturating_sub(self.redstone.tick)));
+        for (p, cooldown) in &self.automation.cooldown {
+            entries.push(format!("c,{},{},{},{}", p.x, p.y, p.z, cooldown));
+        }
+        // v0.17 Track C2: the hopper tickers, in order.
+        for p in &self.automation.hoppers {
+            entries.push(format!("h,{},{},{}", p.x, p.y, p.z));
         }
         for &(p, facing, kind, stack) in &self.automation.output {
             entries.push(format!(
@@ -513,6 +527,14 @@ impl World {
                 }
                 continue;
             }
+            if let Some(rest) = entry.strip_prefix("h,") {
+                if let &[x, y, z] = rest.split(',').collect::<Vec<_>>().as_slice()
+                    && let (Ok(x), Ok(y), Ok(z)) = (x.parse(), y.parse(), z.parse())
+                {
+                    self.register_hopper(IVec3::new(x, y, z));
+                }
+                continue;
+            }
             if let Some(rest) = entry.strip_prefix("p,").or_else(|| entry.strip_prefix("c,")) {
                 let Ok(fields) = rest.split(',').map(str::parse::<i64>).collect::<Result<Vec<_>, _>>() else {
                     continue;
@@ -524,7 +546,8 @@ impl World {
                     } else if let &[_, _, _, delay] = fields.as_slice()
                         && delay >= 0
                     {
-                        self.automation.cooldown.insert(p, self.redstone.tick.saturating_add(delay as u64));
+                        // The remaining cooldown, as Java's `TransferCooldown`.
+                        self.automation.cooldown.insert(p, delay as u64);
                     }
                 }
                 continue;
@@ -624,10 +647,13 @@ impl World {
             let empty_hopper = matches!(self.get_block(p).and_then(r::component), Some(Component::Hopper { .. }))
                 && (0..count).all(|i| self.container_stack(p, i).is_none());
             self.set_container_stack(p, slot, Some(Stack { count: old.map_or(0, |s| s.count) + n, ..left }));
-            if empty_hopper {
+            // `tryMoveInItem`: an emptied hopper not on a custom cooldown
+            // (above 8) waits `8 - k`, k = 1 when it already ticked this
+            // game tick, so either way it moves the item 7 ticks later.
+            if empty_hopper && self.automation.cooldown.get(&p).is_none_or(|&c| c <= 8) {
                 let ticked = source_hopper.is_some()
                     && self.automation.hopper_ticked.get(&p).is_some_and(|&t| t >= self.redstone.tick);
-                self.automation.cooldown.insert(p, self.redstone.tick + 8 - ticked as u64);
+                self.automation.cooldown.insert(p, 8 - ticked as u64);
             }
             left.count -= n;
             if left.count == 0 {
@@ -666,18 +692,74 @@ impl World {
         false
     }
 
-    fn hopper_tick(&mut self, p: IVec3, facing: u8) {
+    /// Enrols the hopper at `p` as a block-entity ticker (once).
+    fn register_hopper(&mut self, p: IVec3) {
+        if self.automation.hopper_set.insert(p) {
+            self.automation.hoppers.push(p);
+        }
+    }
+
+    /// v0.17 Track C2: Java's block-entity phase for hoppers
+    /// (`ServerLevel.tick` runs `tickBlockEntities` after scheduled ticks and
+    /// block events): each hopper's `pushItemsTick`, in the order the hoppers
+    /// were created. A hopper unlocked or fed by this tick's redstone moves
+    /// items in this same tick. Hoppers in chunks that aren't ticking wait,
+    /// cooldown and all; a removed hopper leaves the list. Nothing is
+    /// allocated.
+    pub fn tick_hoppers(&mut self) {
+        let mut hoppers = std::mem::take(&mut self.automation.hoppers);
+        let mut gone = false;
+        for &p in &hoppers {
+            match self.get_block(p).map(r::component) {
+                // Unloaded: the ticker waits for its chunk.
+                None => {}
+                Some(Some(Component::Hopper { facing, disabled })) => {
+                    if self.is_block_ticking(p) {
+                        self.hopper_tick(p, facing, !disabled);
+                        // `setChanged` updates comparators at once
+                        // (`updateNeighbourForOutputSignal`), not at the
+                        // start of the next tick.
+                        self.drain_redstone_changes();
+                    }
+                }
+                Some(_) => {
+                    self.automation.hopper_set.remove(&p);
+                    gone = true;
+                }
+            }
+        }
+        if gone {
+            let set = &self.automation.hopper_set;
+            hoppers.retain(|p| set.contains(p));
+        }
+        // Hoppers placed while these ran join at the end.
+        hoppers.append(&mut self.automation.hoppers);
+        self.automation.hoppers = hoppers;
+    }
+
+    /// `HopperBlockEntity.pushItemsTick`: the cooldown counts down every
+    /// tick, locked or not; once it runs out an enabled hopper pushes one
+    /// item, then pulls one (or collects items, in the entity pass) unless
+    /// it is full, and a move starts a cooldown of 8 (`tryMoveItems`).
+    fn hopper_tick(&mut self, p: IVec3, facing: u8, enabled: bool) {
         self.automation.hopper_ticked.insert(p, self.redstone.tick);
-        if let Some(&due) = self.automation.cooldown.get(&p)
-            && due > self.redstone.tick
-        {
-            self.schedule_redstone(p, due - self.redstone.tick, 0);
+        if let Some(c) = self.automation.cooldown.get_mut(&p) {
+            *c = c.saturating_sub(1);
+            if *c > 0 {
+                return;
+            }
+            self.automation.cooldown.remove(&p);
+        }
+        if !enabled {
             return;
         }
         let d = r::hopper_direction(facing);
         let pushed = self.transfer_one(p, p + d, d, -d);
+        let full = (0..5).all(|i| self.container_stack(p, i).is_some_and(|s| s.count >= s.max()));
         let above = p + IVec3::Y;
-        let pulled = if self.container_kind(above).is_some() {
+        let pulled = if full {
+            false
+        } else if self.container_kind(above).is_some() {
             self.transfer_one(above, p, IVec3::NEG_Y, IVec3::Y)
         } else {
             // `suckInItems`: a full-cube block above stops collection unless
@@ -689,13 +771,14 @@ impl World {
             }
             false
         };
-        let delay = if pushed || pulled {
-            self.automation.cooldown.insert(p, self.redstone.tick + 8);
-            8
-        } else {
-            1
-        };
-        self.schedule_redstone(p, delay, 0);
+        if pushed || pulled {
+            self.automation.cooldown.insert(p, 8);
+        }
+    }
+
+    /// Whether the hopper at `p` is waiting out a cooldown.
+    fn hopper_cooling(&self, p: IVec3) -> bool {
+        self.automation.cooldown.get(&p).is_some_and(|&c| c > 0)
     }
 
     fn dispense(&mut self, p: IVec3, facing: u8, dropper: bool) {
@@ -1102,7 +1185,7 @@ impl World {
                 let left = self.insert_container_from(p, entity.stack, None, None);
                 entity.stack.count = left.map_or(0, |s| s.count);
                 if left.is_none() {
-                    self.automation.cooldown.insert(p, self.redstone.tick + 8);
+                    self.automation.cooldown.insert(p, 8);
                     break;
                 }
             }
@@ -1130,13 +1213,13 @@ impl World {
             }
             let below = cell - IVec3::Y;
             if matches!(self.get_block(below).and_then(r::component), Some(Component::Hopper { disabled: false, .. }))
-                && self.automation.cooldown.get(&below).is_none_or(|&due| due <= self.redstone.tick)
+                && !self.hopper_cooling(below)
                 && let Some(stack) = take_one(&mut entities.minecarts[i].slots[..slots])
             {
                 if let Some(left) = self.insert_container(below, stack, IVec3::Y) {
                     let _ = insert_slots(&mut entities.minecarts[i].slots[..slots], left);
                 } else {
-                    self.automation.cooldown.insert(below, self.redstone.tick + 8);
+                    self.automation.cooldown.insert(below, 8);
                 }
             }
             for (neighbor, side) in [
@@ -1151,13 +1234,11 @@ impl World {
                 else {
                     continue;
                 };
-                if r::hopper_direction(facing) != side
-                    || self.automation.cooldown.get(&neighbor).is_some_and(|&due| due > self.redstone.tick)
-                {
+                if r::hopper_direction(facing) != side || self.hopper_cooling(neighbor) {
                     continue;
                 }
                 if self.transfer_into_cart(neighbor, &mut entities.minecarts[i].slots[..slots], side) {
-                    self.automation.cooldown.insert(neighbor, self.redstone.tick + 8);
+                    self.automation.cooldown.insert(neighbor, 8);
                 }
             }
             if kind == CartKind::Hopper && !entities.minecarts[i].disabled && entities.minecarts[i].cooldown == 0 {
@@ -1438,10 +1519,10 @@ mod tests {
         w.tick_automation_entities(&mut e);
         assert!(e.items.is_empty());
         assert_eq!(w.chest(P).unwrap().slots[0], Some(stack));
-        assert_eq!(w.automation.cooldown.get(&P), Some(&(w.redstone.tick + 8)));
+        assert_eq!(w.automation.cooldown.get(&P), Some(&8));
         let save = w.automation_to_string();
         w.load_automation(&save);
-        assert_eq!(w.automation.cooldown.get(&P), Some(&(w.redstone.tick + 8)));
+        assert_eq!(w.automation.cooldown.get(&P), Some(&8));
     }
     #[test]
     fn automation_container_capacity_and_fullness_survive_save_and_family_replacement() {
@@ -1745,18 +1826,18 @@ mod tests {
         w.automation.cooldown.remove(&(P + IVec3::X));
         w.automation.hopper_ticked.insert(P + IVec3::X, now - 1);
         assert!(w.transfer_one(P, P + IVec3::X, IVec3::X, IVec3::NEG_X));
-        assert_eq!(w.automation.cooldown.get(&(P + IVec3::X)), Some(&(now + 8)));
+        assert_eq!(w.automation.cooldown.get(&(P + IVec3::X)), Some(&8));
         w.chest_mut(P + IVec3::X).unwrap().slots[0] = None;
         w.automation.hopper_ticked.insert(P + IVec3::X, now);
         assert!(w.transfer_one(P, P + IVec3::X, IVec3::X, IVec3::NEG_X));
-        assert_eq!(w.automation.cooldown.get(&(P + IVec3::X)), Some(&(now + 7)));
+        assert_eq!(w.automation.cooldown.get(&(P + IVec3::X)), Some(&7));
         // A non-hopper source never gets the optimization.
         w.chest_mut(P + IVec3::X).unwrap().slots[0] = None;
         put(&mut w, P - IVec3::X, Block::CHEST);
         w.chest_mut(P - IVec3::X).unwrap().slots[0] = Some(Stack::new(Item::DIAMOND, 1));
         w.automation.hopper_ticked.insert(P + IVec3::X, now);
         assert!(w.insert_container_from(P + IVec3::X, Stack::new(Item::DIAMOND, 1), Some(IVec3::Y), None).is_none());
-        assert_eq!(w.automation.cooldown.get(&(P + IVec3::X)), Some(&(now + 8)));
+        assert_eq!(w.automation.cooldown.get(&(P + IVec3::X)), Some(&8));
     }
     /// Java 26.3 `ExperienceBottleItem.createDispenseConfig` through
     /// `ProjectileDispenseBehavior`: 0.7 out and 0.1 up, power 1.375 and
