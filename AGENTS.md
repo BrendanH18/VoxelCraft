@@ -1,19 +1,12 @@
 # VoxelCraft agent instructions
 
-These instructions are tracked with the project. A fresh checkout needs no
-external agent-notes folder or checkout hook. `CLAUDE.md` imports this file.
-
 ## Project priorities
 
 - Read [the current roadmap](docs/roadmap.md) before choosing work, and take it
   from the earliest unreleased version in its [release plan](docs/roadmap.md#release-plan).
   Build a faithful modern Minecraft Java single-player game; multiplayer follows 1.0.
-- Releases were renumbered (owner, 2026-11-13): v0.14 carries what was
-  planned as v0.14, v0.15 and v0.16 plus build-5000 wave 1, and later
-  versions moved down two (v0.15 villages and raids through v0.18 polish and
-  performance, then 1.0). Records, commits and code comments from before that
-  date use the old numbers. The 5,000-feature target was dropped; wave 1 was
-  the only wave. The [release plan](docs/roadmap.md#release-plan) is current.
+- Releases were renumbered on 2026-11-13, so older records use the old
+  numbers; the [current plan](docs/roadmap.md#current-plan--updated-2026-11-13) explains them.
 - Match the selected Java reference behavior, including generation and structure
   layouts. Record sources and differences; do not substitute approximate behavior
   without an explicit scope decision.
@@ -29,15 +22,18 @@ external agent-notes folder or checkout hook. `CLAUDE.md` imports this file.
 ## Shared instructions and configuration
 
 - This file is the single source of agent rules for every tool: Codex, Claude,
-  Cursor, Grok and delegated agents. `CLAUDE.md` only imports it, and any other
-  tool-specific instruction file must do the same rather than hold its own rules.
+  Cursor, Grok and delegated agents. A fresh checkout needs nothing else.
+  `CLAUDE.md` contains only `@AGENTS.md`, and any other tool-specific
+  instruction file only imports this one too.
 - Whenever the owner states a new rule, preference or configuration choice, or
   an agent changes one, record it in this file (or the tracked document it
-  belongs in) in the same piece of work. Never keep it only in a tool-specific
-  or machine-local place such as Claude memory, `~/.claude`, `~/.codex` or
-  editor settings. Mirror it there only as a convenience.
+  belongs in) in the same piece of work. Never keep rules or project
+  knowledge in agent memory or a machine-local place such as `~/.claude`,
+  `~/.codex` or editor settings.
 - Project configuration (hooks, scripts, CI, tool settings) lives in tracked
-  files too, so a fresh clone from GitHub has every rule and setting.
+  files too, so a fresh clone from GitHub has every rule and setting. Never
+  ignore instruction files or shared settings; ignore only machine-local
+  settings and agent worktrees.
 
 ## Cloud sandboxes (Boat)
 
@@ -87,44 +83,32 @@ Docs: https://docs.boat.dev/llms.txt. Prices and limits: run `boat limits`; neve
   untracked files git would pick up.
 - Delegate only when requested. Give each implementation agent an isolated
   worktree, explicit scope and reserved IDs; delegated agents do not delegate further.
-- There is no fixed cap on parallel agents (owner, 2026-11-21; it replaces
-  the 2026-10-17 limit of four, set when builds ran on the owner's 16 GB
-  machine). Size parallel work to what Boat's daily starts and included
-  hours allow (`boat limits`) and to what the owner can review.
+- There is no fixed cap on parallel agents (owner, 2026-11-21). Size
+  parallel work to what Boat's daily starts and included hours allow
+  (`boat limits`) and to what the owner can review.
 - No step requires an agent to play the game through computer use (owner,
   2026-11-14). The owner's own play is the hands-on evidence, and nothing
   waits for an agent's hands-on pass.
-- Build and test in Boat, not on this Mac (owner, 2026-11-20). This
-  replaces the 2026-11-05 rule that builds ran on Namespace and the
-  2026-11-20 rule that agents iterated on the Mac; Namespace now runs CI
-  only. Each worktree has one long-lived sandbox, reused by every
-  `boat-check.sh` run (owner, 2026-11-21; it replaces one `boat run` per
-  check, which used a daily start each): created from the warm snapshot when
-  one exists, it keeps cargo's target directory between checks, stops as
-  soon as each check ends (owner, 2026-11-22; it replaces the 2026-11-21
-  idle timeouts of 15 minutes, 5 on `xlarge`: a stopped sandbox bills
-  nothing, and a resume within 10 minutes of the stop takes back the same
-  machine without a start; `VC_BOAT_IDLE` to keep it up longer) and is
-  deleted with `--done`. While a check runs, its auto-stop is kept 30
-  minutes ahead by a loop that ends with the script (owner, 2026-11-22), so
-  a killed check stops within 30 minutes. Checks use `large` sandboxes
-  (owner, 2026-11-21): measured, `xlarge` was slower for this build at
-  about 2.8 times the price. Never share
-  a sandbox between agents: agents in one worktree each set `VC_BOAT_SLOT`.
+- Build and test in Boat, not on this Mac (owner, 2026-11-20); Namespace
+  runs CI only. Each worktree has one long-lived `large` sandbox, reused by
+  every `boat-check.sh` run: it starts from the warm snapshot when one
+  exists, keeps cargo's target directory between checks, stops as soon as
+  each check ends (`VC_BOAT_IDLE` keeps it up longer) and is deleted with
+  `--done`. [Boat checks](docs/development.md#boat-checks) explains how it
+  works and the measurements and earlier rules behind it. Never share a
+  sandbox between agents: agents in one worktree each set `VC_BOAT_SLOT`.
   Each agent runs targeted checks on its own worktree, and CI runs the full
-  suite on every pushed commit, the integrator's merged result included. Check `boat limits` before work that
-  starts sandboxes: the account's daily starts are shared by every project. If
-  `boat` isn't installed or signed in, or `boat-check.sh` can't start a
-  sandbox (no starts left today, or the account can't start `large`
-  sandboxes), stop and tell the owner; don't build locally.
-- Local game builds share one cargo target directory (owner, 2026-10-17):
-  put the worktrees under one folder whose `.cargo/config.toml` sets
-  `build.target-dir` (or set `CARGO_TARGET_DIR`), and "Blocking waiting for
-  file lock" means wait, not retry. A shared target can hand one worktree
-  another's build (found 2026-10-20 and 2026-10-26): before running or
-  benchmarking a tree that another tree built last, run `touch build.rs` and
-  `cargo clean --release -p voxelcraft` (it keeps the dependencies), and keep
-  copies of binaries you compare.
+  suite on every commit of a pull request and every push to `main`, the
+  integrator's merged result included.
+  Check `boat limits` before work that starts sandboxes: the account's daily
+  starts are shared by every project. If `boat` isn't installed or signed
+  in, or `boat-check.sh` can't start a sandbox (no starts left today, or the
+  account can't start `large` sandboxes), stop and tell the owner; don't
+  build locally.
+- Each worktree builds into its own `target/` (owner, 2026-11-22). For a
+  before/after benchmark on this Mac, copy each binary out of `target/`
+  before building the other commit, since the second build replaces the
+  first.
 
 ## Before handing work back
 
@@ -147,9 +131,8 @@ cargo fmt --check && cargo clippy --profile ci --all-targets --locked -- -D warn
 ```
 
 Checks and tests use the `ci` profile (owner, 2026-11-21): release's
-optimisations and assertions without its cross-crate link-time optimisation. On a
-`large` sandbox the test build after a source change takes 259 s instead of
-858 s with `--release`. Only shipped builds use `--release`.
+optimisations and assertions without its cross-crate link-time optimisation
+([timings](docs/development.md#checks)). Only shipped builds use `--release`.
 
 1. While working, run targeted checks: `cargo fmt --check` here, and the
    rest on Boat with `scripts/boat-check.sh -- CMD`. VoxelCraft is one
@@ -262,11 +245,3 @@ Keep documentation and test evidence aligned with the delivered behavior.
 - [Documentation index](docs/README.md)
 - [Historical plans and briefs](docs/archive/README.md), which never override
   current instructions or establish current completion claims
-
-## Context maintenance
-
-- Keep project rules and durable project knowledge in tracked `AGENTS.md` and
-  repository docs; do not store them in agent auto-memory or machine-local notes.
-- `CLAUDE.md` contains only `@AGENTS.md`. Shared hooks, scripts and settings
-  belong in tracked files. Do not ignore instruction files or shared settings;
-  ignore only machine-local settings and agent worktrees.
