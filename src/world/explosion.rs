@@ -660,6 +660,8 @@ static TABLES: LazyLock<Tables> = LazyLock::new(|| {
             super::infested::RESISTANCE
         } else if super::heavy_core::owns(b.0) {
             super::heavy_core::BLAST_RESISTANCE
+        } else if super::crafter::owns(b.0) {
+            super::crafter::BLAST_RESISTANCE
         } else if super::dried_ghast::owns(b.0) {
             0.0
         } else if let Some(r) = super::end_blocks::resistance(b) {

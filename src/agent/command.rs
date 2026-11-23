@@ -103,6 +103,9 @@ pub enum Command {
     /// inventory for a primary power and an optional secondary
     /// (`regeneration`, or the primary again for level II).
     Beacon(crate::simulation::effects::Effect, Option<crate::simulation::effects::Effect>),
+    /// v0.17 Track C1: toggles empty slot 0..9 of the targeted crafter
+    /// (`CrafterScreen`'s slot click, `CrafterBlockEntity.setSlotState`).
+    CrafterToggle(usize),
     /// Writes JSON `pages` into the held book and quill, or signs it with a
     /// title. `offhand` edits the off-hand book rather than the selected
     /// hotbar slot (`ServerboundEditBookPacket`'s slot 40).
@@ -170,6 +173,7 @@ const COMMAND_NAMES: &[&str] = &[
     "loom",
     "cartography",
     "beacon",
+    "crafter",
     "book",
     "lectern",
     "grindstone",
@@ -939,6 +943,9 @@ impl Command {
                         .ok_or_else(|| format!("not a beacon power: {name}"))
                 };
                 Self::Beacon(effect(primary)?, rest.first().map(|s| effect(s)).transpose()?)
+            }
+            ["crafter", "toggle", slot] => {
+                Self::CrafterToggle(slot.parse::<usize>().ok().filter(|n| *n < 9).ok_or_else(bad)?)
             }
             ["cartography", what] => Self::Cartography(match *what {
                 "copy" => CartographyAction::Copy,

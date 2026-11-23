@@ -1360,3 +1360,30 @@ scripts/boat-check.sh -- 'cargo test --release --lib m3_corpus'
 frequency reducers, the outposts' exclusion zone, the stronghold rings) from
 this file and checks a located instance of every family on two seeds
 ([record](../../../../docs/verification/2026-11-21-v0.16-m3-exit.md)).
+
+## The crafter (v0.17 Track C1)
+
+`crafter.json` holds the crafter's facts, read by
+`tools/extract_java_crafter_fixtures.py` from the pinned server artifact
+with `javap`: `CrafterBlock`'s constants, state properties, neighbour and
+placement delays, placement `top` rule (its switch over the front),
+crafting ticks, ejection speed and offset, level events and recipe cache;
+`CrafterBlockEntity`'s constants, saved keys, name and slot rules (the
+toggle needs an empty slot, `canPlaceItem` checks later smaller stacks, the
+comparator counts filled or disabled slots); `CrafterMenu`'s slot layout;
+`FrontAndTop`'s twelve values in order; which block entity method the
+server's slot-toggle packet calls; the two sound events; `Blocks.CRAFTER`'s
+strength and map colour; the recipe, the loot table, the tags naming the
+crafter; and every crafting recipe with a special type. Regenerate and
+compare with:
+
+```sh
+python3 tools/extract_java_crafter_fixtures.py /path/to/server.jar --output target/java-crafter.json
+diff tests/fixtures/java/26.3/crafter.json target/java-crafter.json
+scripts/boat-check.sh -- 'cargo test --profile ci --locked --test crafter'
+```
+
+`tests/crafter.rs` checks the game's constants, states, placement, recipe
+and drops against it, lists every special recipe type with whether the
+shared matcher makes it, and runs the crafter in a headless world
+([record](../../../../docs/verification/2026-11-23-v0.17-crafter.md)).

@@ -39,6 +39,7 @@ pub mod composter;
 pub mod conduit;
 pub mod copper;
 pub mod copper_golem_statue;
+pub mod crafter;
 pub mod creaking;
 pub mod crops;
 pub mod deep_dark;
@@ -411,6 +412,8 @@ pub struct World {
     /// game last asked.
     pub(crate) beacons: beacon::State,
     pub(crate) beacon_events: Vec<beacon::Event>,
+    /// v0.17 Track C1: crafter block entities and their events (see [`crafter`]).
+    pub(crate) crafters: crafter::Crafters,
     /// v0.16 Track F: conduits (see [`conduit`]) and what they did since
     /// the game last asked.
     pub(crate) conduits: conduit::State,
@@ -722,6 +725,7 @@ impl World {
             wither_skulls: Vec::new(),
             beacons: Default::default(),
             beacon_events: Vec::new(),
+            crafters: Default::default(),
             conduits: Default::default(),
             conduit_events: Vec::new(),
             potent_sulfur: Default::default(),
@@ -1108,6 +1112,7 @@ impl World {
             self.wither_skulls.push(p);
         }
         self.track_beacon(p, old, block);
+        self.track_crafter(p, old, block);
         self.track_conduit(p, old, block);
         // v0.16 Track H: potent sulfur's block entity and `updateShape`.
         self.track_potent_sulfur(p, old, block);

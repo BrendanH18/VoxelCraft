@@ -477,7 +477,7 @@ impl World {
 }
 
 impl World {
-    fn container_count(&self, p: IVec3) -> usize {
+    pub(super) fn container_count(&self, p: IVec3) -> usize {
         // An ender chest's table entry is a player's inventory lent to an
         // open screen; hoppers and droppers can't reach it.
         if self.lent_chest() == Some(p)
@@ -554,6 +554,10 @@ impl World {
         if self.get_block(p).is_some_and(super::jukebox::is_jukebox) {
             return slot == 0 && super::jukebox::song_of(item).is_some() && self.container_stack(p, 0).is_none();
         }
+        // v0.17 Track C1: `CrafterBlockEntity.canPlaceItem`.
+        if self.get_block(p).is_some_and(|b| super::crafter::owns(b.0)) {
+            return self.crafter_can_place(p, slot);
+        }
         if self.chest(p).is_some() {
             // v0.16 Track B: `ShulkerBoxBlockEntity.canPlaceItemThroughFace`.
             return !(self.get_block(p).is_some_and(|b| super::shulker_box::owns(b.0))
@@ -608,7 +612,7 @@ impl World {
     }
 
     /// Returns the remaining stack; merges components exactly like inventories.
-    fn insert_container(&mut self, p: IVec3, stack: Stack, side: IVec3) -> Option<Stack> {
+    pub(super) fn insert_container(&mut self, p: IVec3, stack: Stack, side: IVec3) -> Option<Stack> {
         self.insert_container_from(p, stack, side, None)
     }
 
@@ -878,6 +882,12 @@ impl World {
                     | crate::content::fireworks::FIREWORK_ROCKET
             );
         self.automation.output.push((p, facing, shot, one));
+    }
+
+    /// Queues `stack` to leave `p` like a dropped item (`DefaultDispenseItemBehavior.spawnItem`,
+    /// speed 6, 0.7 out of the face `facing`); saved with the other pending ejections.
+    pub(super) fn queue_dispensed_item(&mut self, p: IVec3, facing: u8, stack: Stack) {
+        self.automation.output.push((p, facing, false, stack));
     }
 
     /// Consume entity work after shared world rules and before entity physics.

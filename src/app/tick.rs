@@ -264,6 +264,7 @@ impl Game {
         self.world.tick_automation_entities(&mut self.mobs.entities);
         self.tick_trial();
         self.tick_beacons();
+        self.play_crafter_events();
         self.tick_conduits();
         self.tick_potent_sulfur();
         self.tick_raid_omens();

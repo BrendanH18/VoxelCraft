@@ -129,6 +129,10 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     if (crate::world::beacon::GLASS_TEX..crate::world::beacon::TEX_END).contains(&layer) {
         return crate::world::beacon::pixel(layer, x, y);
     }
+    // v0.17 Track C1: the crafter.
+    if (crate::world::crafter::TEX..crate::world::crafter::TEX_END).contains(&layer) {
+        return crate::world::crafter::pixel(layer, x, y);
+    }
     if (crate::world::camp_maps::TEX..crate::world::camp_maps::TEX_END).contains(&layer) {
         return crate::world::camp_maps::pixel(layer, x, y);
     }

@@ -208,6 +208,58 @@ Sources: [HopperBlockEntity](https://raw.githubusercontent.com/mahtomedi/minecra
 [DispenseItemBehavior](https://raw.githubusercontent.com/mahtomedi/minecraft/main/src/main/java/net/minecraft/core/dispenser/DispenseItemBehavior.java).
 
 
+## Crafter
+
+v0.17 Track C1 (implemented, unverified;
+[record](verification/2026-11-23-v0.17-crafter.md)). The crafter has
+Java 26.3's 48 states (twelve `FrontAndTop` orientations, `triggered`,
+`crafting`), its recipe (iron, a crafting table, redstone and a dropper),
+1.5 hardness, 3.5 blast resistance, pickaxe speed without needing a tool,
+and drops itself. Placement faces the front toward the player (the nearest
+looking direction's opposite); a crafter facing up or down takes its top
+from the player's horizontal facing, the others have `up` on top.
+`triggered` comes from `hasNeighborSignal` at the cell, with no
+quasi-connectivity; a crafter placed powered crafts four ticks later.
+
+The nine slots are the chest-table entry dispensers use, so they save with
+the chests, spill when the crafter is broken and reach hoppers, droppers,
+LAN container sync and the CLI's `chest take/put`. Disabled slots and the
+crafting countdown are the crafter's block entity, saved in the `crafters`
+dimension property (Java's `disabled_slots` and
+`crafting_ticks_remaining`); `triggered` is the block state. A slot can be
+turned off or on only while it is empty (`CrafterBlockEntity.setSlotState`);
+nothing goes into a disabled slot.
+
+A rising edge sets `triggered` and schedules a craft four game ticks later
+(`CRAFTING_TICK_DELAY`); a falling edge clears `triggered` and `crafting`.
+The craft runs the game's recipe matcher on the 3×3 grid, including the
+special recipes it knows (dyeing, tipped arrows, bundle and shulker box
+dyeing, map cloning and extending, banner and book copying, shield
+decoration, firework rockets, stars and fades). A result turns `crafting`
+on for six block-entity ticks, leaves out of the front together with each
+remainder (buckets, bottles, a copied book or banner): into the container
+in front (one item at a time into another crafter), or as dropped items
+with the dropper's speed and offset, the craft sound and white smoke. Then
+every filled slot loses one item. No recipe plays the failure sound. Item
+repair and the decorated pot's sherd faces are not in the matcher, so the
+crafter can't make them either.
+
+Hoppers and droppers fill the first enabled slot that is empty or holds a
+stack no smaller than every later enabled slot's stack of the same item
+(`canPlaceItem`), which spreads items smallest stack first. Comparators
+read the number of slots that are filled or disabled. Every face reaches
+all nine slots; `world::crafter::slots_for_face` is the seam for sided
+transfers. The screen (desktop and controller) shows the grid with
+disabled slots covered, the powered indicator and the crafting preview;
+clicking an empty slot with an empty cursor turns it off, clicking a
+disabled slot turns it on (and places the held stack). CLI agents use
+`crafter toggle 0..8`, and `observe` shows a targeted crafter's slots,
+toggles, power and preview.
+
+Sources: `CrafterBlock`, `CrafterBlockEntity`, `CrafterMenu`, `CrafterSlot`
+and `FrontAndTop` in the pinned 26.3 server's bytecode
+([`crafter.json`](../tests/fixtures/java/26.3/crafter.json)).
+
 ## Rails and minecarts (round 2)
 
 Normal rails retain ids 500–509. Powered, detector and activator rail states

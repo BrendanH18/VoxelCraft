@@ -13,6 +13,7 @@ mod bucket;
 mod conduit;
 mod console;
 mod containers;
+mod crafter;
 mod credits;
 mod dimension;
 mod distortion;

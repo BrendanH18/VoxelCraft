@@ -1300,8 +1300,11 @@ impl Game {
                     // A double chest's other half (protocol 3 clients without it see one half).
                     let partner = self.world.chest_partner(p);
                     let partner_state = partner.and_then(|q| self.world.chest(q)).map(|c| c.serialize());
+                    // v0.17 Track C1: a crafter's disabled slots, as a bit mask.
+                    let disabled = self.world.crafter(p).map(|c| c.disabled);
                     json!({"kind":"chest","pos":p.to_array(),"state":self.world.chest(p).map(|c|c.serialize()),
-                        "partner":partner.map(|q|q.to_array()),"partner_state":partner_state})
+                        "partner":partner.map(|q|q.to_array()),"partner_state":partner_state,
+                        "crafter_disabled":disabled})
                 }
                 Container::EnderChest(p) => {
                     json!({"kind":"ender_chest","pos":p.to_array(),"state":bot.agent.session.ender.serialize()})
@@ -1748,6 +1751,9 @@ impl Game {
                     (vector(&c["partner"]).map(|q| q.as_ivec3()), c["partner_state"].as_str())
                 {
                     self.world.load_chests(&format!("{},{},{}={text}", q.x, q.y, q.z));
+                }
+                if let Some(mask) = c["crafter_disabled"].as_u64().and_then(|m| u16::try_from(m).ok()) {
+                    self.world.set_crafter_disabled_mask(p, mask);
                 }
                 Container::Chest(p)
             }

@@ -24,7 +24,7 @@ use crate::world::terrain::{Dimension, Generator};
 use super::Game;
 
 /// Level properties that belong to one dimension rather than the player.
-pub(super) const DIMENSION_KEYS: [&str; 33] = [
+pub(super) const DIMENSION_KEYS: [&str; 34] = [
     "furnaces",
     "chests",
     "items",
@@ -62,6 +62,8 @@ pub(super) const DIMENSION_KEYS: [&str; 33] = [
     "wither_skulls",
     // v0.16 Track G.
     "end_crystals",
+    // v0.17 Track C1.
+    "crafters",
 ];
 /// How far around the arrival point to look for an existing portal.
 const SEARCH_RADIUS: i32 = 16;
@@ -154,6 +156,7 @@ impl Game {
         props.insert("beacons".to_string(), self.world.beacons_to_string());
         props.insert("conduits".to_string(), self.world.conduits_to_string());
         props.insert("potent_sulfur".to_string(), self.world.potent_sulfur_to_string());
+        props.insert("crafters".to_string(), self.world.crafters_to_string());
         self.mobs.entities.save_props(&mut props);
         if let Some(fight) = &self.mobs.entities.fight {
             props.insert("dragon".to_string(), fight.serialize(&self.mobs.entities.crystals));
@@ -223,6 +226,9 @@ impl Game {
         }
         if let Some(c) = props.get("conduits") {
             self.world.load_conduits(c);
+        }
+        if let Some(c) = props.get("crafters") {
+            self.world.load_crafters(c);
         }
         if let Some(g) = props.get("potent_sulfur") {
             self.world.load_potent_sulfur(g);

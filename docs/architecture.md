@@ -1243,6 +1243,42 @@ wave 1 already set apart from v0.15. Used IDs: states 30720–30728 (E) and
 used none. Everything else in wave 2's rows and the integrator spare
 31104–31231 stays unregistered. [Integration record](verification/2026-11-21-v0.16-wave-2-integration.md).
 
+### v0.17 Redstone and automation track reservations
+
+Reserved on 2026-11-23 for the ten parallel v0.17 tracks (owner-approved
+plan). Each track allocates only inside its rows and leaves the rest
+unregistered; texture layers are never saved and may be repacked.
+
+| Block states | Item IDs | Texture layers | Track |
+| --- | --- | --- | --- |
+| 12800–12831 | 1770–1774 | none | A. Java update order |
+| 12832–13087 | 1775–1784 | 1164–1199 | B. Pistons |
+| 13088–13343 | 1785–1799 | 1200–1239 | C1. The crafter |
+| 13344–13599 | 1800–1814 | 1240–1269 | D1. Furnace minecart, rail and cart gaps |
+| 13600–13631 | 1815–1819 | none | C2. Dispense table, sided transfers |
+| 13632–13695 | 1820–1824 | 1270–1279 | E1. Sculk game events |
+| 13696–13887 | 1825–1834 | 1280–1289 | E2. Other redstone components |
+| 13888–13951 | 1835–1839 | 1290–1294 | G. Workstations |
+| 13952–14335 | 1840–1849 | 1295–1299 | Integrator spare (D2 and F reserve none) |
+
+#### Track C1 allocation
+
+The crafter (2026-11-23, implemented, unverified;
+[record](verification/2026-11-23-v0.17-crafter.md)):
+
+| Kind | Used | Meaning |
+| --- | --- | --- |
+| Block states | 13088–13135 | `world::crafter`: `13088 + orientation * 4 + triggered * 2 + crafting`, `orientation` in Java's `FrontAndTop` order (`down_east` 0 … `south_up` 11); the item is 13128, `north_up` and idle. 13136–13343 stay unregistered |
+| Items | none | The crafter is a block item; 1785–1799 stay free |
+| Texture layers | 1200–1210 | Front, front crafting, back, back triggered, side, side triggered, side crafting, top, top triggered, top crafting, bottom; 1211–1239 stay unused. A census of `render::textures::pixel` before the change found nothing painting 1200–1239 |
+
+Appended orderings: `Sound::Crafter` (`Craft`, `Fail`) after
+`Sound::Geyser`, and the `crafters` dimension property key after
+`end_crystals`. The LAN chest snapshot gains an optional `crafter_disabled`
+bit mask, which older guests ignore. No `MobKind`, `Effect`, item icon,
+thrown kind, particle kind, entity property key or LAN slot number is
+added.
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating
