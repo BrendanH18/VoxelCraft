@@ -28,9 +28,9 @@ a `large` Boat sandbox). Its output goes to `target/ci/`. Only shipped builds us
 The Linux CI job also checks the built binary's embedded assets with
 `python3 tools/validate_assets.py --executable target/ci/voxelcraft` and
 runs the benchmark-gate tool tests. The **ruff** job lints and
-format-checks the Python tools with `uvx ruff@0.17.5 check` and
-`uvx ruff@0.17.5 format --check` (settings in `ruff.toml`; run
-`uvx ruff@0.17.5 format` to apply the formatting). The Linux job also runs
+format-checks the Python tools with `uvx ruff@0.17.6 check` and
+`uvx ruff@0.17.6 format --check` (settings in `ruff.toml`; run
+`uvx ruff@0.17.6 format` to apply the formatting). The Linux job also runs
 `python3 tools/check_doc_links.py` (and its tests,
 `python3 -m unittest tools/test_check_doc_links.py`), which checks that every
 relative link and `#anchor` in the tracked Markdown files resolves, using

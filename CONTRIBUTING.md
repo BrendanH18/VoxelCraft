@@ -64,8 +64,8 @@ cargo run --profile ci -- --bench --rd 4
 python3 tools/validate_assets.py --executable target/ci/voxelcraft
 python3 -m unittest discover -s tools -p 'test_*.py'
 python3 tools/check_doc_links.py
-uvx ruff@0.17.5 check
-uvx ruff@0.17.5 format --check
+uvx ruff@0.17.6 check
+uvx ruff@0.17.6 format --check
 ```
 
 On Windows, pass `target/ci/voxelcraft.exe` to `--executable`. The `ci`
@@ -78,7 +78,7 @@ and prints each broken one as `file:line: target`.
 The Python tools in `tools/` and `packaging/` are linted and formatted with
 [Ruff](https://docs.astral.sh/ruff/), run through [uv](https://docs.astral.sh/uv/)'s
 `uvx` at a pinned version rather than installed as a dependency. Its settings
-are in `ruff.toml`; `uvx ruff@0.17.5 format` applies the formatting. Keep the
+are in `ruff.toml`; `uvx ruff@0.17.6 format` applies the formatting. Keep the
 scripts working on Python 3.9, the version macOS ships as `/usr/bin/python3`.
 
 Use `cargo fmt` to apply formatting. The headless benchmark checks generation and
