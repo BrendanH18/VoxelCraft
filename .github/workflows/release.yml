@@ -24,7 +24,9 @@ jobs:
   package:
     name: Package ${{ matrix.platform }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 45
+    # The Windows job's tests alone took 36 minutes for v0.17 (2026-11-23), and
+    # its release build was cut off at 45. CI's clippy + test job allows 90.
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
