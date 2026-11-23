@@ -1245,7 +1245,7 @@ impl Harness {
                 _ if self.random_reloads => self.choose(),
                 // Each costs a second or two of chunk loading: even seeds
                 // unload the platform halfway, odd seeds save and reload.
-                s if s == steps / 2 && self.seed % 2 == 0 => Op::Unload,
+                s if s == steps / 2 && self.seed.is_multiple_of(2) => Op::Unload,
                 s if s == steps / 2 => Op::Reload,
                 _ => self.choose(),
             };
