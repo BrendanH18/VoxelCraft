@@ -254,8 +254,10 @@ fn lamps_light_at_once_and_go_out_four_ticks_later() {
     assert!(w.use_redstone(AT + IVec3::X));
     ticks(&mut w, 1);
     assert_eq!(w.get_block(AT).and_then(r::component), Some(r::Component::Lamp(true)));
+    // Java's update order (Track A): the lever's edit reaches the lamp at
+    // once, so its 4-tick off delay counts from this tick.
     assert!(w.use_redstone(AT + IVec3::X));
-    ticks(&mut w, 4);
+    ticks(&mut w, 3);
     assert_eq!(w.get_block(AT).and_then(r::component), Some(r::Component::Lamp(true)), "still lit");
     ticks(&mut w, 1);
     assert_eq!(w.get_block(AT).and_then(r::component), Some(r::Component::Lamp(false)));

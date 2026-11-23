@@ -126,6 +126,8 @@ fn reads_power(b: Block) -> bool {
         || super::utilities::dripleaf_of(b).is_some()
         || super::skulls::decode(b).is_some()
         || super::wood::redstone_participant(b)
+        // v0.17 Track C1: `CrafterBlock.neighborChanged` reads `hasNeighborSignal`.
+        || super::crafter::owns(b.0)
     {
         return true;
     }
