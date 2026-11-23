@@ -127,7 +127,7 @@ const COVERAGE: &[(&str, &str)] = &[
     ("core.dispenser.FlintAndSteelDispenseItemBehavior.execute", "absent: dispensers don't use flint and steel"),
     ("core.dispenser.ShearsDispenseItemBehavior.tryShearBeehive", "absent: dispensers don't use shears"),
     ("core.dispenser.ShearsDispenseItemBehavior.tryShearEntity", "absent: dispensers don't use shears"),
-    ("core.dispenser.SpawnEggItemBehavior.execute", "absent: dispensers don't use spawn eggs"),
+    ("core.dispenser.SpawnEggItemBehavior.execute", "absent: no spawn eggs"),
     ("server.level.ServerPlayer.die", "posted: sculk player_vitals"),
     ("world.entity.Entity.applyMovementEmissionAndPlaySound", "posted: sculk player_moved, sculk_events (swim)"),
     ("world.entity.Entity.checkFallDamage", "posted: sculk player_moved, sculk_events (hit_ground)"),
@@ -163,12 +163,12 @@ const COVERAGE: &[(&str, &str)] = &[
     ("world.entity.animal.camel.Camel.sitDown", "gap: camel sitting"),
     ("world.entity.animal.camel.Camel.standUp", "gap: camel sitting"),
     ("world.entity.animal.camel.Camel.standUpInstantly", "gap: camel sitting"),
-    ("world.entity.animal.chicken.Chicken.aiStep", "gap: chicken eggs"),
+    ("world.entity.animal.chicken.Chicken.aiStep", "posted: lifecycle LaidEgg"),
     ("world.entity.animal.cow.MushroomCow.mobInteract", "gap: mooshroom shearing (entity_interact is posted)"),
     ("world.entity.animal.equine.AbstractHorse.handleEating", "gap: horse feeding (entity_interact is posted)"),
     ("world.entity.animal.fox.Fox$FoxEatBerriesGoal.pickSweetBerries", "gap: foxes picking berries"),
     ("world.entity.animal.golem.CopperGolem.mobInteract", "gap: copper golem shearing (entity_interact is posted)"),
-    ("world.entity.animal.golem.SnowGolem.aiStep", "gap: snow golem trails"),
+    ("world.entity.animal.golem.SnowGolem.aiStep", "absent: snow golems leave no snow"),
     ("world.entity.animal.golem.SnowGolem.mobInteract", "gap: snow golem shearing"),
     ("world.entity.animal.nautilus.AbstractNautilus.handleStartJump", "gap: nautilus dash"),
     ("world.entity.animal.panda.Panda.handleEating", "gap: panda eating"),
@@ -177,7 +177,7 @@ const COVERAGE: &[(&str, &str)] = &[
     ("world.entity.animal.sniffer.Sniffer.emitDiggingParticles", "gap: sniffer digging"),
     ("world.entity.animal.turtle.Turtle.aiStep", "gap: turtle egg laying digging"),
     ("world.entity.animal.turtle.Turtle$TurtleLayEggGoal.tick", "posted: World::animal_block (turtle eggs)"),
-    ("world.entity.animal.wolf.Wolf.tick", "gap: wolves shaking off water"),
+    ("world.entity.animal.wolf.Wolf.tick", "absent: wolves don't shake off water"),
     ("world.entity.boss.enderdragon.EnderDragon.kill", "gap: dragon removal"),
     ("world.entity.boss.enderdragon.EnderDragon.tickDeath", "gap: dragon death"),
     ("world.entity.decoration.ArmorStand.causeDamage", "gap: armor stand damage"),
@@ -191,8 +191,8 @@ const COVERAGE: &[(&str, &str)] = &[
     ("world.entity.item.ItemEntity.hurtServer", "gap: item entities taking damage"),
     ("world.entity.monster.Creeper.tick", "posted: sculk_events (fuse)"),
     ("world.entity.monster.Enderman.teleport", "posted: Mob::teleport"),
-    ("world.entity.monster.Enderman$EndermanLeaveBlockGoal.tick", "gap: endermen placing blocks"),
-    ("world.entity.monster.Enderman$EndermanTakeBlockGoal.tick", "gap: endermen taking blocks"),
+    ("world.entity.monster.Enderman$EndermanLeaveBlockGoal.tick", "absent: endermen carry no blocks"),
+    ("world.entity.monster.Enderman$EndermanTakeBlockGoal.tick", "absent: endermen carry no blocks"),
     ("world.entity.monster.Ravager.roar", "gap: ravager roar"),
     ("world.entity.monster.Shulker.setRawPeekAmount", "gap: shulker peeking"),
     ("world.entity.monster.Shulker.teleportSomewhere", "posted: shulker_teleport"),
@@ -244,8 +244,8 @@ const COVERAGE: &[(&str, &str)] = &[
     ("world.item.PotionItem.useOn", "gap: water bottles onto dirt"),
     ("world.item.ShearsItem.useOn", "gap: trimming plant tips"),
     ("world.item.SolidBucketItem.emptyContents", "posted: automation dispense; interact item_use_event"),
-    ("world.item.SpawnEggItem.spawnMob", "gap: spawn eggs"),
-    ("world.item.SpawnEggItem.useOn", "gap: spawn eggs on spawners"),
+    ("world.item.SpawnEggItem.spawnMob", "absent: no spawn eggs"),
+    ("world.item.SpawnEggItem.useOn", "absent: no spawn eggs"),
     ("world.item.component.Consumable.onConsume", "posted: consumption"),
     ("world.item.consume_effects.TeleportRandomlyConsumeEffect.apply", "posted: consumption chorus_teleport"),
     ("world.item.enchantment.Enchantments.bootstrap", "gap: frost walker"),
@@ -288,7 +288,7 @@ const COVERAGE: &[(&str, &str)] = &[
     ("world.level.block.FenceGateBlock.useWithoutItem", "posted: interact block_use_event"),
     ("world.level.block.FlowerPotBlock.useItemOn", "posted: interact block_use_event"),
     ("world.level.block.FlowerPotBlock.useWithoutItem", "posted: interact block_use_event"),
-    ("world.level.block.IceBlock.melt", "gap: ice melting"),
+    ("world.level.block.IceBlock.melt", "absent: ice doesn't melt by light"),
     ("world.level.block.LayeredCauldronBlock.handlePrecipitation", "gap: cauldrons filling in snow and rain"),
     ("world.level.block.LayeredCauldronBlock.lowerFillLevel", "posted: interact block_use_event (bottles, washing)"),
     ("world.level.block.LayeredCauldronBlock.receiveStalactiteDrip", "gap: dripstone filling cauldrons"),
@@ -307,7 +307,7 @@ const COVERAGE: &[(&str, &str)] = &[
     ("world.level.block.ShelfBlock.swapSingleItem", "posted: interact block_use_event"),
     ("world.level.block.SignBlock.useItemOn", "posted: interact block_use_event"),
     ("world.level.block.SnifferEggBlock.onPlace", "gap: sniffer eggs"),
-    ("world.level.block.SnowLayerBlock.randomTick", "gap: snow melting"),
+    ("world.level.block.SnowLayerBlock.randomTick", "absent: snow layers don't melt by light"),
     ("world.level.block.SweetBerryBushBlock.randomTick", "gap: berry bushes growing"),
     ("world.level.block.SweetBerryBushBlock.useWithoutItem", "posted: interact block_use_event (harvested)"),
     ("world.level.block.TntBlock.prime", "posted: interact, redstone update, fire"),
@@ -684,4 +684,42 @@ fn mob_block_changes_post_place_and_destroy() {
     w.take_entity_game_events();
     assert!(w.animal_block(grass, Block::GRASS, Block::DIRT));
     assert!(at(&mut w, grass).is_empty());
+}
+
+#[test]
+fn player_uses_post_block_transforms_and_lever_pulls_from_the_player() {
+    use voxelcraft::item::{Tier, ToolKind};
+    use voxelcraft::session::{PlayerSession, interact::UseContext};
+    let mut w = world();
+    let mut e = voxelcraft::entity::Entities::new(1);
+    let under = P - IVec3::Y;
+    w.set_block(under, Block::GRASS);
+    let mut s = PlayerSession::new(PLAYER, P.as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
+    s.player.on_ground = true;
+    s.player.pitch = -1.5;
+    s.inventory.slots[0] = Some(Stack::new(Item::tool(ToolKind::Hoe, Tier::Iron), 1));
+    w.take_entity_game_events();
+    let ctx = UseContext { sneaking: false, others: &[] };
+    assert!(s.use_held(0, &mut w, &mut e, &ctx).unwrap().is_some());
+    // `BlockTransformer.transformBlock`: `block_change` naming the new state.
+    let tilled = at(&mut w, under);
+    assert_eq!(kinds(&tilled), [GameEvent::BlockChange]);
+    assert_eq!(tilled[0].affected, Some(Block::FARMLAND));
+    assert_eq!(tilled[0].source.player, Some(PLAYER));
+    // A lever pulled through the session names the player once.
+    w.set_block(under, Block::STONE);
+    w.set_block(P + IVec3::X, r::lever(0, false));
+    s.inventory.slots[0] = None;
+    s.player.pitch = -0.9;
+    s.player.yaw = 0.0;
+    let mut pulled = Vec::new();
+    for k in 0..40 {
+        s.player.pitch = -0.4 - k as f32 * 0.03;
+        if s.use_held(0, &mut w, &mut e, &ctx).ok().flatten().is_some() {
+            pulled = at(&mut w, P + IVec3::X);
+            break;
+        }
+    }
+    assert_eq!(kinds(&pulled), [GameEvent::BlockActivate]);
+    assert_eq!(pulled[0].source.player, Some(PLAYER));
 }

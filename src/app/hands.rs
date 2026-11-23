@@ -95,10 +95,8 @@ impl Actor<'_> {
         } else {
             if let Some((p, _)) = self.session.block_target(self.world) {
                 // `NoteBlock.attack`: the striking player is the event source.
-                let source = crate::world::vibration::EventSource::player(
-                    self.session.id,
-                    self.session.player.sneaking,
-                );
+                let source =
+                    crate::world::vibration::EventSource::player(self.session.id, self.session.player.sneaking);
                 self.world.strike_note_by(p, source);
             }
             self.body.mine_pressed = true;

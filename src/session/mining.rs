@@ -321,9 +321,7 @@ impl PlayerSession {
         }
         // Neighbor drops use the same gamerule.
         world.set_tile_drops(rules.bool("block_drops"));
-        if held.is_some_and(|s| s.item == Item::SHEARS)
-            && crate::world::gadgets::is_tripwire(block)
-        {
+        if held.is_some_and(|s| s.item == Item::SHEARS) && crate::world::gadgets::is_tripwire(block) {
             world.disarm_tripwire(pos);
             // `TripWireBlock.playerWillDestroy`: shears post `shear` first.
             world.emit_block_event(

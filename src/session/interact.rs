@@ -420,7 +420,9 @@ impl PlayerSession {
             Used::OpenVehicle(id) => {
                 // `AbstractChestBoat.interact` / `MinecartChest.interact`.
                 use crate::entity::minecart::CartKind;
-                if entities.cart(id).is_some_and(|c| matches!(c.kind, CartKind::Chest | CartKind::Boat { chest: true, .. }))
+                if entities
+                    .cart(id)
+                    .is_some_and(|c| matches!(c.kind, CartKind::Chest | CartKind::Boat { chest: true, .. }))
                     && let Some(at) = entities.vehicle_pos(id)
                 {
                     world.emit_game_event(at, E::ContainerOpen, source, None);
@@ -776,7 +778,9 @@ impl PlayerSession {
         let none = EventSource::NONE;
         let state = |w: &World, cell: IVec3| w.get_block(cell);
         let (cell, event, source, affected) = match used {
-            Used::Door { cell, open: Some(open) } => (cell, if open { E::BlockOpen } else { E::BlockClose }, source, None),
+            Used::Door { cell, open: Some(open) } => {
+                (cell, if open { E::BlockOpen } else { E::BlockClose }, source, None)
+            }
             // `TntBlock.prime(level, pos, player, ...)`.
             Used::TntPrimed { cell } => (cell, E::PrimeFuse, source, None),
             Used::CakeBitten { cell } => {
@@ -865,9 +869,13 @@ impl PlayerSession {
                 // `FlowerPotBlock`, `DecoratedPotBlock.useItemOn`,
                 // `CampfireBlockEntity.placeFood`, lighting and dousing,
                 // `RespawnAnchorBlock.charge`.
-                U::PotPlanted | U::PotEmptied | U::PotFilled | U::FoodPlaced | U::Lit | U::Doused | U::AnchorCharged => {
-                    (cell, E::BlockChange, source, state(world, cell))
-                }
+                U::PotPlanted
+                | U::PotEmptied
+                | U::PotFilled
+                | U::FoodPlaced
+                | U::Lit
+                | U::Doused
+                | U::AnchorCharged => (cell, E::BlockChange, source, state(world, cell)),
                 // `CauldronInteractions`: none of them names the player.
                 U::Cauldron { fill: true, .. } => (cell, E::FluidPlace, none, None),
                 U::Cauldron { fill: false, bottle, .. } => {

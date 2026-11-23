@@ -332,3 +332,52 @@ On the Apple M5, three final `--bench --rd 8` runs had median generation
 baseline runs measured 0.227 and 0.727 ms/chunk; timings show no regression.
 Local inspected captures: `target/redstone-review/rails-carts.png`,
 `rails-close.png`, `notes-tripwire.png` and `tripwire-close.png` in that directory.
+
+## Game events and sculk sensors (v0.17)
+
+Sculk sensors and calibrated sculk sensors hear Java 26.3's game events
+(`src/world/vibration.rs`, `src/world/sculk.rs`). The game's event table
+(registry order, notification radii, `VIBRATION_FREQUENCY_FOR_EVENT` and the
+`vibrations`, `warden_can_listen`, `shrieker_can_listen`,
+`ignore_vibrations_sneaking` and `allay_can_listen` tags) is compared both
+ways with `tests/fixtures/java/26.3/game_events.json`, which
+`tools/extract_java_game_event_fixtures.py` reads from the pinned server jar,
+together with the listener radii and timings and every Java method that posts
+a game event.
+
+Redstone posts what Java posts, at the block's centre:
+
+| Source | Event | Java |
+| --- | --- | --- |
+| Lever use, wind charge | `block_activate` / `block_deactivate`, from the user | `LeverBlock.pull` |
+| Button press (use, arrow, wind charge) | `block_activate`, from the user or arrow | `ButtonBlock.press` / `checkPressed` |
+| Button release | `block_deactivate`, no source | `ButtonBlock.checkPressed` |
+| Plate pressed / released | `block_activate` from the first entity found / `block_deactivate` with no source | `BasePressurePlateBlock.checkPressed` |
+| Tripwire hook | `block_activate`, `block_deactivate`, `block_attach` or `block_detach` at both hooks, far hook first | `TripWireHookBlock.emitState` |
+| Shears cutting string | `shear`, then `block_destroy` | `TripWireBlock.playerWillDestroy` |
+| Door, gate or trapdoor opened by power | `block_open` / `block_close`, no source | `neighborChanged` |
+| Trapdoor use | `block_open` / `block_close`, from the user | `TrapDoorBlock.playSound` |
+| Daylight detector use | `block_change` naming its new state | `DaylightDetectorBlock.useWithoutItem` |
+| Repeater or comparator use | nothing | — |
+| Note block | `note_block_play`, from the player who tuned or struck it | `NoteBlock.playNote` |
+| Bell | `block_change`, from whoever rang it | `BellBlock.attemptToRing` |
+| TNT primed by power or fire | `prime_fuse`, no source | `TntBlock.prime` |
+| Piston extends / retracts | `block_activate` naming the extended base / `block_deactivate` naming the moving piston | `PistonBaseBlock.triggerEvent` |
+| Block a piston destroys | `block_destroy` naming it (a carpet dampens it) | `PistonBaseBlock.moveBlocks` |
+| Empty dispenser | `block_activate` (droppers post nothing) | `DispenserBlock.dispenseFrom` |
+| Dispensed bucket | `fluid_place` (and `entity_place` for a mob bucket) or `fluid_pickup` | `BucketItem`, `MobBucketItem` |
+| Dispensed TNT | `entity_place` (no `prime_fuse`) | `DispenseItemBehavior` |
+| Dispensed projectile | `projectile_shoot`, no owner | `Projectile.tick` |
+
+Pistons, dispensers and minecarts are being reworked by tracks B, C2 and D1;
+these posts live in today's `extend_piston`, `retract_piston` and `dispense`
+and move with them. Sensor timing is unchanged and matches Java: a candidate
+is chosen a tick after it is heard (nearest, then highest frequency),
+travels `floor(distance)` ticks, activates the sensor for 30 ticks (the
+calibrated sensor 10) with power `max(1, 15 - floor(15 / radius * distance))`,
+then cools down for 10. The calibrated sensor hears only the frequency its
+back input signals, and doesn't power that side. Wool between event and
+sensor occludes it when all six nudged rays meet wool; wool and carpet as the
+event's block dampen it; sneaking hides the `ignore_vibrations_sneaking`
+events. Details, the player and entity events, and the gaps:
+[v0.17 sculk game events](verification/2026-11-23-v0.17-sculk-game-events.md).

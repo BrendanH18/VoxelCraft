@@ -579,6 +579,9 @@ impl Entities {
                     self.drop_loot_with_fire(kind, pos, looting, burning, player_kill);
                 }
                 EntityEvent::LaidEgg { pos, variant } => {
+                    // `Chicken.aiStep`: `entity_place` at the hen (not named).
+                    let none = crate::world::vibration::EventSource::NONE;
+                    self.sculk.post(pos, crate::world::vibration::GameEvent::EntityPlace, none, None);
                     // `gameplay/chicken_lay`: the variant's egg.
                     self.drop_from_block(crate::inventory::Stack::new(variant.egg(), 1), pos.floor().as_ivec3());
                 }

@@ -54,7 +54,8 @@ impl World {
             self.redstone_contact_box(crate::physics::Shape::new(0.125, 0.25).aabb(item.pos), false, false, false);
         }
         for arrow in &entities.arrows {
-            self.contact_source = Some(crate::entity::sculk_events::Sculk::projectile_source(arrow.owner, arrow.shooter));
+            self.contact_source =
+                Some(crate::entity::sculk_events::Sculk::projectile_source(arrow.owner, arrow.shooter));
             self.redstone_contact_box(crate::physics::Shape::new(0.25, 0.5).aabb(arrow.pos), false, true, false);
         }
         self.contact_source = None;

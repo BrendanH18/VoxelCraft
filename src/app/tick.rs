@@ -197,23 +197,26 @@ impl Game {
             untargetable: s.mode.is_creative(),
             ..crate::world::vibration::EventSource::player(s.id, s.player.sneaking)
         };
-        let players = std::iter::once((
-            self.session.player.pos,
-            self.session.player.collision_shape(),
-            source(&self.session),
-        ))
-        .filter(|_| self.session.mode != GameMode::Spectator && self.session.vitals.health > 0.0)
-        .chain(
-            self.agents
-                .players
-                .values()
-                .filter(|b| {
-                    b.active && b.agent.session.mode != GameMode::Spectator && b.agent.session.vitals.health > 0.0
-                })
-                .map(|b| {
-                    (b.agent.session.player.pos, b.agent.session.player.collision_shape(), source(&b.agent.session))
-                }),
-        );
+        let players =
+            std::iter::once((self.session.player.pos, self.session.player.collision_shape(), source(&self.session)))
+                .filter(|_| self.session.mode != GameMode::Spectator && self.session.vitals.health > 0.0)
+                .chain(
+                    self.agents
+                        .players
+                        .values()
+                        .filter(|b| {
+                            b.active
+                                && b.agent.session.mode != GameMode::Spectator
+                                && b.agent.session.vitals.health > 0.0
+                        })
+                        .map(|b| {
+                            (
+                                b.agent.session.player.pos,
+                                b.agent.session.player.collision_shape(),
+                                source(&b.agent.session),
+                            )
+                        }),
+                );
         self.world.redstone_contacts_from(players, &self.mobs.entities);
         // Every chest a player has open, whichever input path opened it.
         let keyboard = match self.body.container {

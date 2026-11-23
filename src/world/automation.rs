@@ -868,7 +868,8 @@ impl World {
                 }
                 Item::WATER_BUCKET | Item::LAVA_BUCKET => {
                     let fluid = if stack.item == Item::WATER_BUCKET { Block::WATER } else { Block::LAVA };
-                    let poured = crate::survival_items::bucket::empty_at(self, front, fluid, None).map(|_| Item::BUCKET);
+                    let poured =
+                        crate::survival_items::bucket::empty_at(self, front, fluid, None).map(|_| Item::BUCKET);
                     if poured.is_some() {
                         self.emit_block_event(front, GameEvent::FluidPlace, EventSource::NONE, None);
                     }
