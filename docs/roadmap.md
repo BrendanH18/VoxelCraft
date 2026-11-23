@@ -42,14 +42,15 @@ Releases follow the [release plan](#release-plan): small, themed versions from
 v0.8 to v1.0, taken in order with no dates. Work on the earliest unreleased
 version; v1.0 is everything in this roadmap.
 
-**Release (owner, 2026-11-23): v0.16 ships.** The owner played v0.16
+**Release (owner, 2026-11-23): v0.16 is to ship.** The owner played v0.16
 and asked for it to be tagged and released, then for v0.17 to be built.
 That play covers the v0.14 and v0.15 content the v0.16 build carries, so
-the stabilisation gate's owed play is done. v0.16 is tagged without its
-offscreen frame-time run, which needs the reference Mac (an owner
-exception, recorded in the [release plan](#release-plan)), and its
-release brings v0.14, v0.15 and v0.16 to players together; the v0.14
-draft and the v0.15 tag are not published. Rows stay Implemented,
+the stabilisation gate's owed play is done. v0.16 is tagged from the
+merge of its release notes, without its offscreen frame-time run, which
+needs the reference Mac (an owner exception, recorded in the
+[release plan](#release-plan)). Its release, once the tag build's draft
+is published, brings v0.14, v0.15 and v0.16 to players together; the
+v0.14 draft and the v0.15 tag are not published. Rows stay Implemented,
 unverified.
 
 **Versions (owner, 2026-11-13): the next release is v0.14.** The owner
@@ -569,7 +570,7 @@ with the gate, and the rows stay Implemented, unverified until it passes.
 Exception (owner, 2026-10-31): v0.13 is tagged after the owner's play,
 without a frame-time gate: the 240 FPS check stays with v0.18, and the rows
 stay Implemented, unverified until it passes.
-Exception (owner, 2026-11-23): v0.16 is tagged and released after the
+Exception (owner, 2026-11-23): v0.16 is to be tagged and released after the
 owner's play, without its offscreen frame-time run, which needs the
 reference Mac. The run is still owed (with v0.17's, or at the latest the
 v0.18 gate), and the rows stay Implemented, unverified until it passes.
@@ -592,7 +593,7 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 | v0.14 (planned as v0.16) | Deep dark and trials | M3 + M4 + PRO-07 | Ancient cities with sculk and the warden; trial chambers with breezes, trial spawners, vaults and the mace; tridents, spears and the other modern weapon families; a jukebox with music discs. See [v0.14 scope](#v016-scope-deep-dark-and-trials) | Implemented, unverified (2026-11-07): scope approved by the owner on 2026-11-06; four tracks (sculk and the warden, ancient cities and music, trial chambers, weapons) merged and integrated ([integration](verification/2026-11-07-v0.16-integration.md)). Played by the owner in the v0.16 build (2026-11-23); reaches players in the v0.16 release |
 | — | Stabilisation | Gate before the v0.14 tag | No new content: the entity frame-time fix and a full scene run, terrain blending for generation 3 structures, the audit's data fixes, the owner's play, and one tag for v0.14. See the [stabilisation gate](#stabilisation-gate-before-v017) | In progress (2026-11-09). The owner lifted its content freeze on 2026-11-12; the frame-time gate passed and v0.14 was tagged on 2026-11-16 ([record](verification/2026-11-16-tag-gate-run.md)). Done (owner, 2026-11-23): the owner played the v0.16 build, which carries generation 3's structures, and asked for v0.16 to be released |
 | v0.15 | Villages and raids | Close M4 | Working lecterns, looms, cartography tables and stonecutters; illagers, woodland mansions, raids; remaining villager behaviour; the M4 exit checks. Added by the 2026-11-09 audit ([list](#content-assigned-by-the-2026-11-09-audit)): the remaining Java 26.3 mobs (happy ghasts, nautiluses, camel husks, parched), mobs holding and picking up equipment, chainmail, books, bundles, spyglasses, armor trims, the remaining status effects and potions, and the village template catalogue | Implemented, unverified (2026-11-18): scope approved by the owner, all eight tracks merged and checked together ([v0.15 scope](#v015-scope-villages-and-raids), [integration](verification/2026-11-18-v0.15-integration.md)); the offscreen frame-time suite passes ([run](verification/2026-11-18-v0.15-frame-time.md)); the owner played it in the v0.16 build on 2026-11-23, and it reaches players in the v0.16 release. Tagged `v0.15` at `b16fe0b5` on 2026-11-18, but its release build stopped at the version check because `Cargo.toml` still said 0.14.0, so no draft release exists. Version 0.15.0 and its release notes were added on 2026-11-19; the tag moves to that commit to build the draft. Part of its list was built early by [build-5000 wave 1](verification/2026-11-12-build-5000/wave-1.md) and ships in v0.14 (see the [assigned content](#content-assigned-by-the-2026-11-09-audit)) |
-| v0.16 | The End and the Wither | Close M3; M5 | End cities and ships (the last GEN-05 structures, then the M3 exit checks), shulkers and shulker boxes, elytra and fireworks, dragon respawn; Wither summoning, Nether stars and beacons; the no-cheat progression playthrough. Added by the 2026-11-09 audit ([list](#content-assigned-by-the-2026-11-09-audit)): poplar, cinnabar and sulfur with their terrain and the sulfur cube, abandoned camps, mob heads, infested blocks, nether gold ore, conduits, and the reassessment of dungeons, mineshafts, strongholds, shipwrecks and monuments | Done (owner, 2026-11-23): played by the owner, tagged `v0.16` and released without its offscreen frame-time run (owner exception above); rows stay Implemented, unverified. Implemented (2026-11-21): scope approved by the owner, eight tracks in two waves, all merged and integrated: wave 1 (Outer End, flight and storage, Wither and beacons, generation 5 Overworld) on 2026-11-20, wave 2 (classic and ocean structures, dragon respawn and the M5 audit, wave 1 leftovers, the M3 exit audit) on 2026-11-21. The offscreen frame-time run remains. See the [v0.16 scope](#v016-scope-the-end-and-the-wither) |
+| v0.16 | The End and the Wither | Close M3; M5 | End cities and ships (the last GEN-05 structures, then the M3 exit checks), shulkers and shulker boxes, elytra and fireworks, dragon respawn; Wither summoning, Nether stars and beacons; the no-cheat progression playthrough. Added by the 2026-11-09 audit ([list](#content-assigned-by-the-2026-11-09-audit)): poplar, cinnabar and sulfur with their terrain and the sulfur cube, abandoned camps, mob heads, infested blocks, nether gold ore, conduits, and the reassessment of dungeons, mineshafts, strongholds, shipwrecks and monuments | Played by the owner (2026-11-23), who asked for it to be tagged and released without its offscreen frame-time run (owner exception above); the tag and the published release follow this record's merge. Rows stay Implemented, unverified. Implemented (2026-11-21): scope approved by the owner, eight tracks in two waves, all merged and integrated: wave 1 (Outer End, flight and storage, Wither and beacons, generation 5 Overworld) on 2026-11-20, wave 2 (classic and ocean structures, dragon respawn and the M5 audit, wave 1 leftovers, the M3 exit audit) on 2026-11-21. The offscreen frame-time run remains. See the [v0.16 scope](#v016-scope-the-end-and-the-wither) |
 | v0.17 | Redstone and automation | M6 | Java update order, pistons with entity push and slime/honey, the crafter, remaining sensors and workstations; reference farms, clocks and sorters across save/reload. Added by the 2026-11-09 audit: the furnace minecart | Planned |
 | v0.18 | Polish and performance | M7: UX, §6 | Typography/contrast, material and mob art, inventory/recipe navigation, HUD/workstations, title/world identity, atmosphere and accessibility ([scope](#v020-scope-presentation-and-performance)); subtitles, asset and sound review in play (including the v0.12 blocks' own sounds), and menu fixes found since v0.11; the 120 FPS gate in every scene, including v0.8's streaming budget (PERF-03), and the performance check for the v0.8 and v0.9 rows, v0.11's menu and title frame-time run and v0.12's `materials` runs, which moved here unverified ([v0.12 profile](verification/2026-10-29-v0.12-finish.md#frame-time)). The per-frame entity model rebuild that profile found was removed on 2026-11-09 ([record](verification/2026-11-09-entity-frame-time.md)); the streaming route's main-thread terrain column rebuilds from mob biome queries were addressed in the [streaming follow-up](verification/2026-11-09-streaming-biomes-and-gen07.md); the remaining tick work and per-frame sign text are still owed, and the gate is measured again here (v0.14 passed it on 2026-11-16, [record](verification/2026-11-16-tag-gate-run.md)) | Planned; presentation scope expanded by the owner on 2026-11-05. Each release now records its own frame-time run ([§6.1](#61-reference-configuration-and-frame-time-gate)), so what stays here is the final gate, not every release's first measurement |
 | v1.0 | Acceptance | M7 exit, §8 | Every mandatory row Verified; fresh-world and long-session playthroughs; save-compatibility policy; installer and update checks; current stable Java scope reconciled | Planned |
@@ -1561,9 +1562,9 @@ together in Boat; `registry_gaps.json` lists nothing for v0.16 and the
 requirement inventory is refreshed. The offscreen frame-time run, which
 needs the reference Mac, and the owner's play remain
 ([integration](verification/2026-11-21-v0.16-wave-2-integration.md)).
-*Released (owner, 2026-11-23):* the owner played v0.16 and asked for it
-to be tagged and released; the frame-time run is still owed (release
-plan exception).
+*Release approved (owner, 2026-11-23):* the owner played v0.16 and asked
+for it to be tagged and released; the frame-time run is still owed
+(release plan exception).
 
 *Stabilization (owner-approved, 2026-11-21):* the generation 5 [golden
 test](../src/world/terrain/golden_v5.rs) pins block IDs, structure locations

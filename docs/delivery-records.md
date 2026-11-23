@@ -340,7 +340,7 @@ released. The v0.16 build carries everything merged since v0.13: v0.14
 `v0.14`, draft never published), v0.15 (villages and raids; tag `v0.15`,
 no release built) and v0.16 (the End and the Wither; [#99](https://github.com/BrendanH18/VoxelCraft/pull/99),
 [#102](https://github.com/BrendanH18/VoxelCraft/pull/102)), with the LAN
-and generation 5 fixes of #106 to #108. Players on v0.13 update straight to
+and generation 5 fixes of #106 to #108. Once it is published, players on v0.13 update straight to
 v0.16, and its release notes keep the 0.14.0 and 0.15.0 sections for them.
 
 - **Evidence:** the owner's play of the v0.16 build. v0.14's tag gate run
