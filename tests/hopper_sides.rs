@@ -39,8 +39,12 @@ const FACES: [(&str, IVec3); 6] = [
 /// isn't modelled.
 fn kind_of(class: &str, size: u64) -> Result<Kind, &'static str> {
     Ok(match class {
-        "ChestBlockEntity" | "TrappedChestBlockEntity" | "BarrelBlockEntity" | "DispenserBlockEntity"
-        | "DropperBlockEntity" | "HopperBlockEntity" => Kind::Plain { slots: size as u8 },
+        "ChestBlockEntity"
+        | "TrappedChestBlockEntity"
+        | "BarrelBlockEntity"
+        | "DispenserBlockEntity"
+        | "DropperBlockEntity"
+        | "HopperBlockEntity" => Kind::Plain { slots: size as u8 },
         "ShulkerBoxBlockEntity" => Kind::ShulkerBox,
         "FurnaceBlockEntity" | "SmokerBlockEntity" | "BlastFurnaceBlockEntity" => Kind::Furnace,
         "BrewingStandBlockEntity" => Kind::BrewingStand,
@@ -58,9 +62,8 @@ fn kind_of(class: &str, size: u64) -> Result<Kind, &'static str> {
 
 fn probe(name: &str) -> Item {
     static NAMES: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
-    let names = NAMES.get_or_init(|| {
-        serde_json::from_str(include_str!("fixtures/java/26.3/registry_names.json")).unwrap()
-    });
+    let names =
+        NAMES.get_or_init(|| serde_json::from_str(include_str!("fixtures/java/26.3/registry_names.json")).unwrap());
     java_registry::item(name, names["items"][name].as_str().unwrap()).unwrap_or_else(|| panic!("probe {name}"))
 }
 
@@ -166,7 +169,13 @@ fn hopper_suck_box_is_javas() {
         let mut w = world();
         let mut e = Entities::new(1);
         w.set_block(HOPPER, r::hopper(4, false));
-        e.items.push(ItemEntity::new(Stack::new(Item::STICK, 3), pos, DVec3::ZERO, 0.0, &mut voxelcraft::entity::Rng::new(1)));
+        e.items.push(ItemEntity::new(
+            Stack::new(Item::STICK, 3),
+            pos,
+            DVec3::ZERO,
+            0.0,
+            &mut voxelcraft::entity::Rng::new(1),
+        ));
         e.items.last_mut().unwrap().pos = pos;
         for _ in 0..3 {
             w.tick_redstone();
@@ -283,7 +292,13 @@ fn a_full_block_above_stops_collection() {
         w.set_block(HOPPER, r::hopper(4, false));
         w.set_block(HOPPER + IVec3::Y, above);
         let pos = DVec3::new(4.5, 145.8, 8.5);
-        e.items.push(ItemEntity::new(Stack::new(Item::STICK, 1), pos, DVec3::ZERO, 0.0, &mut voxelcraft::entity::Rng::new(1)));
+        e.items.push(ItemEntity::new(
+            Stack::new(Item::STICK, 1),
+            pos,
+            DVec3::ZERO,
+            0.0,
+            &mut voxelcraft::entity::Rng::new(1),
+        ));
         e.items.last_mut().unwrap().pos = pos;
         for _ in 0..3 {
             w.tick_redstone();

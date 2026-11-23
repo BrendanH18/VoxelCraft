@@ -251,8 +251,7 @@ impl Entities {
         let lingering = stack.item == Item::LINGERING_POTION;
         let potion = if lingering { stack.lingering_contents() } else { stack.item.as_splash_potion() };
         let Some(potion) = potion else { return false };
-        let vel =
-            super::thrown::shot_movement(step.as_dvec3(), config.power, config.uncertainty, &mut self.rng) * 20.0;
+        let vel = super::thrown::shot_movement(step.as_dvec3(), config.power, config.uncertainty, &mut self.rng) * 20.0;
         let mut thrown = super::potion::ThrownPotion::new(potion, None, pos, vel);
         thrown.lingering = lingering;
         self.potions.push(thrown);

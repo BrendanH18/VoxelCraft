@@ -234,7 +234,9 @@ impl World {
                 let b = self.brewing_stand(p)?;
                 [b.bottles[0], b.bottles[1], b.bottles[2], b.ingredient, b.fuel].get(slot).copied().flatten()
             }
-            Kind::ChiseledBookshelf => self.wood_entities().bookshelf(p).and_then(|e| e.books.get(slot).copied().flatten()),
+            Kind::ChiseledBookshelf => {
+                self.wood_entities().bookshelf(p).and_then(|e| e.books.get(slot).copied().flatten())
+            }
             Kind::Shelf => self.wood_entities().shelf(p).and_then(|s| s.get(slot).copied().flatten()),
         }
     }

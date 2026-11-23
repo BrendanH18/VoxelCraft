@@ -45,7 +45,12 @@ const ABSENT: &[(&str, &str)] = &[
 
 /// Every Java item's behaviour: the fixture's entry, else the plain drop.
 fn java_behaviours() -> BTreeMap<String, Value> {
-    fixture()["items"].as_array().unwrap().iter().map(|e| (e["item"].as_str().unwrap().to_string(), e.clone())).collect()
+    fixture()["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| (e["item"].as_str().unwrap().to_string(), e.clone()))
+        .collect()
 }
 
 fn allowed_json(a: Allowed) -> Value {

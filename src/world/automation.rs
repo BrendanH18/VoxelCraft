@@ -553,7 +553,9 @@ impl World {
         // `ComposterBlock.InputContainer.setChanged` composts the one item
         // the top face takes.
         if kind == sides::Kind::ComposterInput {
-            if side == Some(IVec3::Y) && sides::can_place(kind, 0, stack.item, None, side) && self.compost(p, stack.item)
+            if side == Some(IVec3::Y)
+                && sides::can_place(kind, 0, stack.item, None, side)
+                && self.compost(p, stack.item)
             {
                 return (stack.count > 1).then_some(Stack { count: stack.count.saturating_sub(1), ..stack });
             }
@@ -953,8 +955,11 @@ impl World {
                 // through the cart API Track D1 owns; if the water or rail
                 // went away since, the item pops out instead.
                 Output::Boat | Output::Cart => {
-                    let pos =
-                        if kind == Output::Boat { self.dispensed_boat_pos(p, step) } else { self.dispensed_cart_pos(p, step) };
+                    let pos = if kind == Output::Boat {
+                        self.dispensed_boat_pos(p, step)
+                    } else {
+                        self.dispensed_cart_pos(p, step)
+                    };
                     match (pos, crate::entity::minecart::CartKind::from_item(stack.item)) {
                         (Some(pos), Some(cart)) => {
                             entities.spawn_cart(cart, pos);
@@ -988,9 +993,7 @@ impl World {
         }
         let mut cells = std::mem::take(&mut self.automation.item_cells);
         cells.clear();
-        cells.extend(
-            entities.items.iter().enumerate().map(|(i, e)| (e.pos.floor().as_ivec3().to_array(), i as u32)),
-        );
+        cells.extend(entities.items.iter().enumerate().map(|(i, e)| (e.pos.floor().as_ivec3().to_array(), i as u32)));
         cells.sort_unstable();
         let mut found = std::mem::take(&mut self.automation.item_found);
         for &p in &pickups {
@@ -999,7 +1002,8 @@ impl World {
             {
                 continue;
             }
-            let (min, max) = (p.as_dvec3() + DVec3::new(0.0, SUCK_MIN_Y, 0.0), p.as_dvec3() + DVec3::new(1.0, 2.0, 1.0));
+            let (min, max) =
+                (p.as_dvec3() + DVec3::new(0.0, SUCK_MIN_Y, 0.0), p.as_dvec3() + DVec3::new(1.0, 2.0, 1.0));
             // An item's feet lie in its own cell; its 0.25-wide, 0.25-tall
             // box reaches the box from the cells around it.
             found.clear();

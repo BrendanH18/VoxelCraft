@@ -526,75 +526,79 @@ impl World {
             }
             let front = p + r::direction(facing);
             let one = Stack { count: 1, ..stack };
-            let outcome = match behaviour(stack.item) {
-                Behaviour::Equipment => {
-                    if entities.equip_dispensed(front, one, players) {
-                        Outcome::Consume
-                    } else {
-                        Outcome::Drop
+            let outcome =
+                match behaviour(stack.item) {
+                    Behaviour::Equipment => {
+                        if entities.equip_dispensed(front, one, players) {
+                            Outcome::Consume
+                        } else {
+                            Outcome::Drop
+                        }
                     }
-                }
-                // The block half already failed in `dispense`.
-                Behaviour::WitherSkull | Behaviour::CarvedPumpkin => {
-                    if entities.equip_dispensed(front, one, players) {
-                        Outcome::Consume
-                    } else {
-                        Outcome::Keep
+                    // The block half already failed in `dispense`.
+                    Behaviour::WitherSkull | Behaviour::CarvedPumpkin => {
+                        if entities.equip_dispensed(front, one, players) { Outcome::Consume } else { Outcome::Keep }
                     }
-                }
-                Behaviour::Shears => {
-                    if self.get_block(front).and_then(super::bees::hive).is_some_and(|(_, _, honey)| honey == 5) {
-                        self.drop_honeycomb(front);
-                        self.harvest_dispensed_hive(entities, front);
-                        Outcome::Wear(1)
-                    } else if entities.shear_dispensed(front) {
-                        Outcome::Wear(1)
-                    } else {
-                        Outcome::Keep
+                    Behaviour::Shears => {
+                        if self.get_block(front).and_then(super::bees::hive).is_some_and(|(_, _, honey)| honey == 5) {
+                            self.drop_honeycomb(front);
+                            self.harvest_dispensed_hive(entities, front);
+                            Outcome::Wear(1)
+                        } else if entities.shear_dispensed(front) {
+                            Outcome::Wear(1)
+                        } else {
+                            Outcome::Keep
+                        }
                     }
-                }
-                Behaviour::Brush => {
-                    if entities.brush_dispensed(front) {
-                        Outcome::Wear(16)
-                    } else {
-                        Outcome::Keep
+                    Behaviour::Brush => {
+                        if entities.brush_dispensed(front) {
+                            Outcome::Wear(16)
+                        } else {
+                            Outcome::Keep
+                        }
                     }
-                }
-                Behaviour::ChestOnMount => {
-                    if entities.chest_onto_mount(front) {
-                        Outcome::Consume
-                    } else {
-                        Outcome::Drop
+                    Behaviour::ChestOnMount => {
+                        if entities.chest_onto_mount(front) {
+                            Outcome::Consume
+                        } else {
+                            Outcome::Drop
+                        }
                     }
-                }
-                Behaviour::FlintAndSteel => {
-                    if entities.ignite_dispensed(front, self.rules.tnt_explodes) || self.ignite_dispensed_block(front)
-                    {
-                        Outcome::Wear(1)
-                    } else {
-                        Outcome::Keep
+                    Behaviour::FlintAndSteel => {
+                        if entities.ignite_dispensed(front, self.rules.tnt_explodes)
+                            || self.ignite_dispensed_block(front)
+                        {
+                            Outcome::Wear(1)
+                        } else {
+                            Outcome::Keep
+                        }
                     }
-                }
-                Behaviour::GlassBottle => {
-                    if self.harvest_dispensed_hive(entities, front) {
-                        Outcome::Remainder(Item::HONEY_BOTTLE)
-                    } else if self.get_block(front).is_some_and(|b| b.holds_water()) {
-                        Outcome::Remainder(Item::potion(crate::potion::Potion::WATER))
-                    } else {
-                        Outcome::Drop
+                    Behaviour::GlassBottle => {
+                        if self.harvest_dispensed_hive(entities, front) {
+                            Outcome::Remainder(Item::HONEY_BOTTLE)
+                        } else if self.get_block(front).is_some_and(|b| b.holds_water()) {
+                            Outcome::Remainder(Item::potion(crate::potion::Potion::WATER))
+                        } else {
+                            Outcome::Drop
+                        }
                     }
-                }
-                _ => Outcome::Drop,
-            };
+                    _ => Outcome::Drop,
+                };
             match outcome {
                 Outcome::Keep => {}
-                Outcome::Consume => {
-                    self.set_container_stack(p, slot, (stack.count > 1).then(|| Stack { count: stack.count - 1, ..stack }))
-                }
+                Outcome::Consume => self.set_container_stack(
+                    p,
+                    slot,
+                    (stack.count > 1).then(|| Stack { count: stack.count - 1, ..stack }),
+                ),
                 Outcome::Remainder(item) => self.consume_with_remainder(p, facing, slot, item),
                 Outcome::Wear(amount) => self.wear_dispensed(p, slot, amount),
                 Outcome::Drop => {
-                    self.set_container_stack(p, slot, (stack.count > 1).then(|| Stack { count: stack.count - 1, ..stack }));
+                    self.set_container_stack(
+                        p,
+                        slot,
+                        (stack.count > 1).then(|| Stack { count: stack.count - 1, ..stack }),
+                    );
                     entities.dispense_item(one, p, r::direction(facing));
                 }
             }
