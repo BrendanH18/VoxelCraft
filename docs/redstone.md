@@ -220,7 +220,9 @@ block are read from the block entity, which always matches them. Block
 entities tick after block events in creation order, gaining 0.5 progress a
 tick and landing the tick after they reach 1, with `updateFromNeighbourShapes`
 (stairs and walls reshape; a waterlogged block lands dry; a head whose base
-is gone lands as air). Their collision shape is the moved block's (a head for
+is gone lands as air), then run their own `updateShape` from each side, so
+a moved observer fires on landing. Cells a move destroys, vacates or fills,
+and landed cells, run VoxelCraft's support checks (cane, sand, plants). Their collision shape is the moved block's (a head for
 the arm, plus the extended base while a base retracts) offset by progress,
 so it crosses into the neighbouring cell. An explosion that catches a moving
 cell drops its moved block. Block entities tick right after the block events
