@@ -9,7 +9,9 @@ JSON line per tick with each probe's reply. Used to check contraption
 expectations against Java itself (v0.17 Track C2; Track A checked the
 observer clock the same way).
 
-A spec is JSON: {"setup": [commands], "probes": [commands], "ticks": N}.
+A spec is JSON: {"setup": [commands], "probes": [commands], "ticks": N},
+with an optional "script": {"m": [commands]} run before tick m is stepped,
+the way a player's action lands between two server ticks (v0.17 Track F).
 Commands are console commands without the slash. Needs `java` (JDK 21 or
 newer) on `PATH`; the server unpacks its bundled libraries and writes its
 world into a scratch folder.
@@ -100,7 +102,10 @@ def trace(jar, spec):
             server.run(["tick freeze", "forceload add -32 -32 32 32", "gamerule doDaylightCycle false"])
             replies = server.run(spec["setup"])
             yield {"tick": 0, "setup": replies}
+            script = spec.get("script", {})
             for tick in range(1, spec["ticks"] + 1):
+                if str(tick) in script:
+                    server.run(script[str(tick)])
                 server.run(["tick step 1"])
                 # The step runs in the next server tick; let it.
                 time.sleep(0.12)

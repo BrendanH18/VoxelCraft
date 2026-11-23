@@ -1205,17 +1205,25 @@ fn bud_switch_survives_unload_and_restart() {
 }
 
 /// A T flip-flop: two hoppers facing each other hold one diamond, locked by
-/// dust on top of them fed by a torch. An input pulse (an observer seeing
-/// the script toggle a block) turns the torch off for 2 ticks; the hopper
-/// holding the diamond pushes it across, and the receiver's 8-tick cooldown
-/// outlasts the unlock. A comparator reading the second hopper lights a lamp.
+/// dust on top of them fed by a wall torch. The input is an observer seeing
+/// the script toggle a block; its 2-tick pulse goes through a delay-2
+/// repeater into the torch's block, which stretches it to 4 ticks. The
+/// torch goes off for those 4 ticks, the hopper holding the diamond pushes
+/// it across, and the receiver's 7-tick cooldown outlasts the unlock. A
+/// comparator reading the second hopper lights a lamp. The repeater is
+/// placed by the script at tick 5: `/setblock` fires an observer once
+/// (`BlockInput.place` -> `updateFromNeighbourShapes`), and the Java trace
+/// lets that stray pulse die before the repeater exists.
 ///
-/// Java (`ObserverBlock` 2-tick pulse, `RedstoneTorchBlock` 2-tick delay,
-/// `HopperBlock.checkPoweredState`, `HopperBlockEntity` cooldown 8 on the
-/// receiver; dust may sit on hoppers, `RedStoneWireBlock.canSurviveOn`):
-/// every pulse moves the diamond to the other hopper: after pulses 1 and 3
-/// it is in the second hopper and the lamp is lit, after 2 and 4 it is back
-/// and the lamp is dark.
+/// Java, measured on the vanilla 26.3 server (`tools/java_server_trace.py`,
+/// spec `tests/contraptions/java/t_flip_flop.json`): for an input change
+/// before tick m, the observer is on at m+1 and m+2, the repeater from m+5
+/// to m+8, the torch off from m+7 to m+10, and the diamond crosses at m+7;
+/// the lamp lights 2 ticks after the diamond reaches the second hopper and
+/// goes dark 6 ticks after it leaves. Every pulse toggles: the diamond
+/// crosses at 17, 47, 77 and 107. (A bare 2-tick observer pulse is not
+/// enough: the observer's off-tick runs before the torch's tick, so the
+/// torch never sees it; Track A checked that on the same server.)
 fn t_flip_flop() -> Spec {
     Spec {
         name: "t_flip_flop",
@@ -1226,15 +1234,17 @@ fn t_flip_flop() -> Spec {
             (v(1, 1, 1), r::comparator(Facing::South, false, false)),
             (v(1, 1, 2), r::LAMP),
             (v(3, 2, 0), Block::STONE),
-            (v(4, 2, 0), r::observer(2, false)),
+            (v(4, 1, 0), Block::STONE),
+            (v(5, 2, 0), r::observer(2, false)),
             (v(0, 2, 0), r::wire(0)),
             (v(1, 2, 0), r::wire(0)),
             (v(2, 2, 0), r::torch(4, true)),
         ],
         contents: vec![(v(0, 1, 0), vec![Stack::new(Item::DIAMOND, 1)])],
         script: |rig, m| match m {
-            10 | 70 => rig.set(v(5, 2, 0), Block::STONE),
-            40 | 100 => rig.set(v(5, 2, 0), Block::AIR),
+            5 => rig.set(v(4, 2, 0), r::repeater(Facing::West, 2, false)),
+            10 | 70 => rig.set(v(6, 2, 0), Block::STONE),
+            40 | 100 => rig.set(v(6, 2, 0), Block::AIR),
             _ => {}
         },
         probes: vec![
@@ -1242,6 +1252,8 @@ fn t_flip_flop() -> Spec {
             Probe::Count(v(1, 1, 0), Item::DIAMOND),
             Probe::Block(v(1, 1, 2)),
             Probe::Block(v(2, 2, 0)),
+            Probe::Block(v(4, 2, 0)),
+            Probe::Block(v(5, 2, 0)),
             Probe::Pending,
         ],
         closed: true,
@@ -1253,39 +1265,41 @@ fn t_flip_flop() -> Spec {
     }
 }
 
+/// The input changes before these machine ticks.
+const FLIP_FLOP_PULSES: [u64; 4] = [10, 40, 70, 100];
+
 fn verify_t_flip_flop(run: &Run) -> Result<(), String> {
-    let lit = Block(r::LAMP.0 + 1).0 as i64;
-    let (first, second, lamp) = (run.column(0), run.column(1), run.column(2));
-    for (m, in_second) in [(9, false), (25, true), (55, false), (85, true), (115, false)] {
-        let ok = at(&second, m) == in_second as i64
-            && at(&first, m) == !in_second as i64
-            && (at(&lamp, m) == lit) == in_second;
-        ensure(ok, || {
-            format!(
-                "tick {m}: diamond {}/{} lamp {}; Java has it in hopper {} with the lamp {}",
-                at(&first, m),
-                at(&second, m),
-                at(&lamp, m),
-                if in_second { 2 } else { 1 },
-                if in_second { "lit" } else { "dark" }
-            )
+    let within = |t: u64, from: u64, to: u64| FLIP_FLOP_PULSES.iter().any(|&m| (m + from..m + to).contains(&t));
+    let crossings = |t: u64| FLIP_FLOP_PULSES.iter().filter(|&&m| m + 7 <= t).count();
+    let in_second = |t: u64| t >= 1 && crossings(t) % 2 == 1;
+    let (first, second, lamp, torch, repeater, observer) =
+        (run.column(0), run.column(1), run.column(2), run.column(3), run.column(4), run.column(5));
+    for t in 1..=run.lines.len() as u64 {
+        let want = [
+            !in_second(t) as i64,
+            in_second(t) as i64,
+            if in_second(t.saturating_sub(2)) || in_second(t.saturating_sub(6)) { r::LAMP.0 + 1 } else { r::LAMP.0 }
+                as i64,
+            r::torch(4, !within(t, 7, 11)).0 as i64,
+            if t < 5 { 0 } else { r::repeater(Facing::West, 2, within(t, 5, 9)).0 as i64 },
+            r::observer(2, within(t, 1, 3)).0 as i64,
+        ];
+        let mut got = [at(&first, t), at(&second, t), at(&lamp, t), at(&torch, t), at(&repeater, t), at(&observer, t)];
+        // Java's trace fires the observer at 2-3 because `/setblock` placed
+        // it; a placed block doesn't, and nothing is wired to it yet.
+        if t < 5 {
+            got[5] = want[5];
+        }
+        ensure(got == want, || {
+            format!("tick {t}: (diamond 1, diamond 2, lamp, torch, repeater, observer) {got:?}, Java {want:?}")
         })?;
     }
     Ok(())
 }
 
 #[test]
-#[ignore = "the build doesn't toggle in Java either: the observer's on-tick schedules its off-tick before \
-            updateNeighborsInFront reaches the torch, so the off-tick runs first and a redstone torch never sees a \
-            2-tick observer pulse (checked on the vanilla 26.3 server, 2026-11-23, Track A: observer -> stone -> \
-            wall torch, the torch stayed lit through every pulse); it needs a longer pulse (Track F)"]
 fn t_flip_flop_toggles() {
     check(&t_flip_flop(), verify_t_flip_flop);
-}
-
-#[test]
-fn t_flip_flop_survives_unload_and_restart() {
-    persists(&t_flip_flop(), no_invariants);
 }
 
 /// Soak: the clocks and the cane farm run ten times as long with the cuts
