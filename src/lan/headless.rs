@@ -177,6 +177,8 @@ impl HeadlessHost {
             crate::world::piston::push_player(&self.world, &mut agent.session.player);
         }
         self.entities.apply_piston_pushes(&self.world);
+        // No entity pass here: hoppers tick against blocks alone.
+        self.world.tick_hoppers();
         // As `Game::tick` does: players in a stalactite's cell as it lands
         // are hit on their next tick, and anchors used outside the Nether
         // explode (`RespawnAnchorBlock.explode`, power 5).

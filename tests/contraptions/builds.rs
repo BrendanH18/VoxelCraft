@@ -225,6 +225,10 @@ fn comparator_subtraction_clock() {
 /// item back at t+7 (cooldown 8 counted down from the tick it arrived); the
 /// comparator turns off at t+9, the repeater at t+11, and hopper 1 pushes
 /// again at once. Period 11: the repeater is on 7 ticks and off 4.
+///
+/// Measured on the vanilla 26.3 server (v0.17 Track C2,
+/// `tools/java_server_trace.py` with `java/hopper_clock.json`): the repeater
+/// turns on at ticks 5, 16, 27 ... and off at 12, 23, 34 ...
 fn hopper_clock() -> Spec {
     Spec {
         name: "hopper_clock",
@@ -262,6 +266,7 @@ fn verify_hopper_clock(run: &Run) -> Result<(), String> {
     let on = bools(run, 3, is(r::repeater(Facing::East, 1, true)));
     let (rs, fs) = (rises(&on), falls(&on));
     ensure(rs.len() >= 6, || format!("the clock stopped: {rs:?}"))?;
+    ensure(rs[0] == 5, || format!("first turned on at {}; Java at 5", rs[0]))?;
     for w in rs[1..].windows(2) {
         ensure(w[1] - w[0] == 11, || format!("period {} at {}, Java 11", w[1] - w[0], w[0]))?;
     }
@@ -274,9 +279,6 @@ fn verify_hopper_clock(run: &Run) -> Result<(), String> {
 }
 
 #[test]
-#[ignore = "needs Track C2 (hopper transfer timing) and Track A: Java's receiving hopper still ticks in the tick \
-            it receives (block-entity tickers after the sender), so it pushes 7 ticks later, and a hopper unlocked \
-            by a scheduled tick pushes in the same tick; VoxelCraft takes 8 and 1, a period of 13 instead of 11"]
 fn hopper_clock_period() {
     check(&hopper_clock(), verify_hopper_clock);
 }
@@ -612,9 +614,18 @@ fn flying_machine_survives_unload_and_restart() {
 ///
 /// Java (`AbstractContainerMenu.getRedstoneSignalFromContainer` = 1 +
 /// floor(14 x fullness): (41 + 4)/64/5 -> 2, (42 + 4)/64/5 -> 3; hoppers
-/// pull only what fits; locked hoppers neither push nor pull): every iron
-/// ends in the output chest, every diamond and gold ingot at the end of the
-/// line, and the filter keeps its 41 iron and fillers.
+/// pull only what fits; locked hoppers neither push nor pull): every
+/// diamond and gold ingot reaches the end of the line, no iron does, and
+/// the filter keeps its 41 iron and fillers. The lock hopper drains only
+/// when a 42nd iron trips the comparator, so the last iron it took waits
+/// there: nine iron reach the output chest and one stays in the lock hopper.
+///
+/// Measured on the vanilla 26.3 server (v0.17 Track C2,
+/// `tools/java_server_trace.py` with `java/item_sorter.json`): iron reaches
+/// the output chest at ticks 22, 30, 38, 46, 134, 142, 150, 158 and 166,
+/// and the run ends with 9 iron there, one in the lock hopper, 10 diamonds
+/// and 10 gold at the end of the line and the filter at 41 iron. (Track F
+/// expected all ten in the output chest; the vanilla server corrects that.)
 fn item_sorter() -> Spec {
     let iron = Stack::new(Item::IRON_INGOT, 5);
     let diamond = Stack::new(Item::DIAMOND, 5);
@@ -684,7 +695,7 @@ fn item_sorter() -> Spec {
 
 fn verify_item_sorter(run: &Run) -> Result<(), String> {
     let last = run.lines.last().unwrap();
-    let want = [10, 10, 10, 10, 0, 45, 0];
+    let want = [9, 9, 10, 10, 0, 45, 1];
     ensure(last[..7] == want, || {
         format!(
             "end state (output iron, output items, diamonds, gold, stray iron, filter, lock hopper) {:?}, Java {want:?}",
@@ -692,15 +703,14 @@ fn verify_item_sorter(run: &Run) -> Result<(), String> {
         )
     })?;
     let stray = run.lines.iter().position(|l| l[0] != l[1] || l[4] != 0);
-    ensure(stray.is_none(), || format!("an item went the wrong way at tick {}", stray.unwrap() + 1))
+    ensure(stray.is_none(), || format!("an item went the wrong way at tick {}", stray.unwrap() + 1))?;
+    let arrivals: Vec<usize> =
+        (1..run.lines.len()).filter(|&i| run.lines[i][0] > run.lines[i - 1][0]).map(|i| i + 1).collect();
+    let java = [22, 30, 38, 46, 134, 142, 150, 158, 166];
+    ensure(arrivals == java, || format!("iron reached the output at {arrivals:?}; Java at {java:?}"))
 }
 
 #[test]
-#[ignore = "needs Track C2 (hopper transfer timing): Java's hopper that receives into an empty inventory \
-            pushes 7 ticks later (HopperBlockEntity: cooldown 8 - k, and it still ticks this tick), so a carrier \
-            hopper fed every 8 ticks is empty when each item arrives and holds it 7 ticks for the filter to pull; \
-            VoxelCraft waits 8, the carrier keeps a buffered item, and each new item leaves the tick it arrives, \
-            passing the filter (4 of 10 iron sorted)"]
 fn item_sorter_filters() {
     check(&item_sorter(), verify_item_sorter);
 }

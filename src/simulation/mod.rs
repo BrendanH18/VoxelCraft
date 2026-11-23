@@ -125,6 +125,8 @@ pub fn tick_world_rules(world: &mut World, player: DVec3, fire_tick: bool, rando
     // v0.17 Track B: `tickBlockEntities` for moving pistons (Java runs the
     // entities between; the caller applies their pushes after this).
     world.tick_moving_pistons();
+    // Entities and block entities (hoppers, in `tick_automation_entities`)
+    // follow in the caller.
     world.update_block_light_within(LIGHT_TICK_BUDGET);
 }
 

@@ -17,10 +17,15 @@ use super::{
 #[derive(Default)]
 pub(super) struct AutomationState {
     powered: FxHashSet<IVec3>,
+    /// Each hopper's `HopperBlockEntity.cooldownTime`: ticks of its own
+    /// ticker left before it moves items again (absent: 0).
     pub(super) cooldown: FxHashMap<IVec3, u64>,
     /// Redstone tick on which each hopper last ran its transfer tick (Java `tickedGameTime`).
     hopper_ticked: FxHashMap<IVec3, u64>,
-    pickups: Vec<IVec3>,
+    /// v0.17 Track C2: hopper block-entity tickers in the order they were
+    /// created (Java's `Level.blockEntityTickers`), run after block events.
+    hoppers: Vec<IVec3>,
+    hopper_set: FxHashSet<IVec3>,
     pub(super) output: Vec<(IVec3, u8, Output, Stack)>,
     creatures: Vec<(IVec3, Stack)>,
     /// v0.16 Track H: blocks a dispenser offers a sulfur cube in front.
@@ -33,12 +38,19 @@ pub(super) struct AutomationState {
     item_cells: Vec<([i32; 3], u32)>,
     item_found: Vec<u32>,
     /// v0.17 Track D1: cells a chest or hopper minecart's box (or a chest
-    /// boat's) reaches, from the last entity pass, so a hopper's block tick
-    /// knows when a container entity is in front of or above it.
+    /// boat's) reaches, from the last entity pass, so a hopper ticking
+    /// without entities knows when a container entity is in front of or
+    /// above it.
     cart_cells: FxHashSet<IVec3>,
-    /// v0.17 Track D1: hoppers facing a container minecart, whose whole
-    /// `tryMoveItems` (eject, then suck) runs in the entity pass.
+    /// v0.17 Tracks C2 and D1: hoppers whose move `tick_hoppers` (run
+    /// without entities) left for this tick's entity pass.
     cart_hoppers: Vec<IVec3>,
+    /// Hoppers whose pull (from a cart or items above) is left the same way.
+    suck_hoppers: Vec<IVec3>,
+    /// The game tick the hopper phase last ran, plus one (0: never).
+    hopper_phase: u64,
+    /// Whether `item_cells` indexes this hopper phase's items.
+    item_index: bool,
 }
 
 /// `Hopper.SUCK_AABB`'s bottom: `Block.column(16, 11, 32)`.
@@ -81,6 +93,10 @@ impl World {
             self.automation.cooldown.remove(&p);
             self.automation.hopper_ticked.remove(&p);
         }
+        // A new hopper block entity joins the tickers (`addBlockEntityTicker`).
+        if matches!(r::component(new), Some(Component::Hopper { .. })) {
+            self.register_hopper(p);
+        }
         // Observers watch their front face through shape updates
         // (`World::redstone_shape_update`).
         self.track_piston(p, old, new);
@@ -114,9 +130,7 @@ impl World {
                 if disabled != powered {
                     self.set_block_flags(p, r::hopper(facing, powered), super::redstone_order::flags::UPDATE_CLIENTS);
                 }
-                if !powered {
-                    self.schedule_redstone(p, 1, 0);
-                }
+                self.register_hopper(p);
             }
             // `PistonBaseBlock.checkIfExtend` (`neighborChanged`, `onPlace`): a
             // block event, run at the end of the tick (`world::piston`).
@@ -128,7 +142,9 @@ impl World {
     pub(super) fn automation_tick(&mut self, p: IVec3, b: Block) {
         match r::component(b) {
             Some(Component::Dispenser { facing, dropper }) => self.dispense(p, facing, dropper),
-            Some(Component::Hopper { facing, disabled: false }) => self.hopper_tick(p, facing),
+            // Hoppers tick as block entities (`tick_hoppers`); a scheduled
+            // tick from an older save only enrols the hopper.
+            Some(Component::Hopper { .. }) => self.register_hopper(p),
             // `ObserverBlock.tick`.
             Some(Component::Observer { facing, on }) => {
                 self.set_block_flags(p, r::observer(facing, !on), super::redstone_order::flags::UPDATE_CLIENTS);
@@ -151,8 +167,12 @@ impl World {
         for p in &self.automation.powered {
             entries.push(format!("p,{},{},{}", p.x, p.y, p.z));
         }
-        for (p, due) in &self.automation.cooldown {
-            entries.push(format!("c,{},{},{},{}", p.x, p.y, p.z, due.saturating_sub(self.redstone.tick)));
+        for (p, cooldown) in &self.automation.cooldown {
+            entries.push(format!("c,{},{},{},{}", p.x, p.y, p.z, cooldown));
+        }
+        // v0.17 Track C2: the hopper tickers, in order.
+        for p in &self.automation.hoppers {
+            entries.push(format!("h,{},{},{}", p.x, p.y, p.z));
         }
         for &(p, facing, kind, stack) in &self.automation.output {
             entries.push(format!(
@@ -230,6 +250,14 @@ impl World {
                 }
                 continue;
             }
+            if let Some(rest) = entry.strip_prefix("h,") {
+                if let &[x, y, z] = rest.split(',').collect::<Vec<_>>().as_slice()
+                    && let (Ok(x), Ok(y), Ok(z)) = (x.parse(), y.parse(), z.parse())
+                {
+                    self.register_hopper(IVec3::new(x, y, z));
+                }
+                continue;
+            }
             if let Some(rest) = entry.strip_prefix("p,").or_else(|| entry.strip_prefix("c,")) {
                 let Ok(fields) = rest.split(',').map(str::parse::<i64>).collect::<Result<Vec<_>, _>>() else {
                     continue;
@@ -241,7 +269,8 @@ impl World {
                     } else if let &[_, _, _, delay] = fields.as_slice()
                         && delay >= 0
                     {
-                        self.automation.cooldown.insert(p, self.redstone.tick.saturating_add(delay as u64));
+                        // The remaining cooldown, as Java's `TransferCooldown`.
+                        self.automation.cooldown.insert(p, delay as u64);
                     }
                 }
                 continue;
@@ -312,10 +341,13 @@ impl World {
             let empty_hopper = matches!(self.get_block(p).and_then(r::component), Some(Component::Hopper { .. }))
                 && (0..count).all(|i| self.container_stack(p, i).is_none());
             self.set_container_stack(p, slot, Some(Stack { count: old.map_or(0, |s| s.count) + n, ..left }));
-            if empty_hopper {
+            // `tryMoveInItem`: an emptied hopper not on a custom cooldown
+            // (above 8) waits `8 - k`, k = 1 when it already ticked this
+            // game tick, so either way it moves the item 7 ticks later.
+            if empty_hopper && self.automation.cooldown.get(&p).is_none_or(|&c| c <= 8) {
                 let ticked = source_hopper.is_some()
                     && self.automation.hopper_ticked.get(&p).is_some_and(|&t| t >= self.redstone.tick);
-                self.automation.cooldown.insert(p, self.redstone.tick + 8 - ticked as u64);
+                self.automation.cooldown.insert(p, 8 - ticked as u64);
             }
             left.count -= n;
             if left.count == 0 {
@@ -354,41 +386,241 @@ impl World {
         false
     }
 
-    fn hopper_tick(&mut self, p: IVec3, facing: u8) {
-        self.automation.hopper_ticked.insert(p, self.redstone.tick);
-        if let Some(&due) = self.automation.cooldown.get(&p)
-            && due > self.redstone.tick
-        {
-            self.schedule_redstone(p, due - self.redstone.tick, 0);
+    /// Enrols the hopper at `p` as a block-entity ticker (once).
+    fn register_hopper(&mut self, p: IVec3) {
+        if self.automation.hopper_set.insert(p) {
+            self.automation.hoppers.push(p);
+        }
+    }
+
+    /// v0.17 Track C2: Java's block-entity phase for hoppers
+    /// (`ServerLevel.tick` runs `tickBlockEntities` after scheduled ticks,
+    /// block events and entities) without entities, for callers that tick
+    /// the world alone (`tick_redstone`, the headless harness). Hoppers that
+    /// meet only blocks move items here; a hopper whose container in front
+    /// or above may be an entity (a chest or hopper minecart, or items to
+    /// collect) has its cooldown counted here and its move finished by
+    /// `tick_automation_entities` in this same game tick, if that runs. The
+    /// game ticks hoppers there instead, with every entity at hand.
+    pub fn tick_hoppers(&mut self) {
+        self.hopper_phase(None);
+    }
+
+    /// Each hopper's `pushItemsTick`, once per game tick, in the order the
+    /// hoppers were created. A hopper unlocked or fed by this tick's
+    /// redstone moves items in this same tick. Hoppers in chunks that aren't
+    /// ticking wait, cooldown and all; a removed hopper leaves the list.
+    /// Nothing is allocated once the buffers have grown.
+    fn hopper_phase(&mut self, mut entities: Option<&mut crate::entity::Entities>) {
+        if self.automation.hopper_phase == self.redstone.tick + 1 {
             return;
         }
+        self.automation.hopper_phase = self.redstone.tick + 1;
+        self.automation.cart_hoppers.clear();
+        self.automation.suck_hoppers.clear();
+        self.automation.item_index = false;
+        let mut hoppers = std::mem::take(&mut self.automation.hoppers);
+        let mut gone = false;
+        for &p in &hoppers {
+            match self.get_block(p).map(r::component) {
+                // Unloaded: the ticker waits for its chunk.
+                None => {}
+                Some(Some(Component::Hopper { facing, disabled })) => {
+                    if self.is_block_ticking(p) {
+                        self.hopper_tick(p, facing, !disabled, entities.as_deref_mut());
+                        // `setChanged` updates comparators at once
+                        // (`updateNeighbourForOutputSignal`), not at the
+                        // start of the next tick.
+                        self.drain_redstone_changes();
+                    }
+                }
+                Some(_) => {
+                    self.automation.hopper_set.remove(&p);
+                    gone = true;
+                }
+            }
+        }
+        if gone {
+            let set = &self.automation.hopper_set;
+            hoppers.retain(|p| set.contains(p));
+        }
+        // Hoppers placed while these ran join at the end.
+        hoppers.append(&mut self.automation.hoppers);
+        self.automation.hoppers = hoppers;
+        if let Some(e) = entities {
+            e.items.retain(|i| i.stack.count > 0);
+        }
+    }
+
+    /// The moves `hopper_phase` left for the entity pass when it ran
+    /// without entities this tick: their cooldowns are already counted.
+    fn finish_hopper_moves(&mut self, entities: &mut crate::entity::Entities) {
+        if self.automation.cart_hoppers.is_empty() && self.automation.suck_hoppers.is_empty() {
+            return;
+        }
+        let hoppers = std::mem::take(&mut self.automation.cart_hoppers);
+        let suckers = std::mem::take(&mut self.automation.suck_hoppers);
+        for (&p, whole) in hoppers.iter().map(|p| (p, true)).chain(suckers.iter().map(|p| (p, false))) {
+            let Some(Component::Hopper { facing, disabled: false }) = self.get_block(p).and_then(r::component) else {
+                continue;
+            };
+            if whole {
+                self.try_move_items(p, facing, entities);
+            } else if !self.hopper_full(p) && self.suck_in(p, entities) {
+                self.automation.cooldown.insert(p, 8);
+            }
+            self.drain_redstone_changes();
+        }
+        entities.items.retain(|i| i.stack.count > 0);
+        self.automation.cart_hoppers = hoppers;
+        self.automation.cart_hoppers.clear();
+        self.automation.suck_hoppers = suckers;
+        self.automation.suck_hoppers.clear();
+    }
+
+    /// `HopperBlockEntity.pushItemsTick`: the cooldown counts down every
+    /// tick, locked or not; once it runs out an enabled hopper moves items
+    /// (`tryMoveItems`).
+    fn hopper_tick(&mut self, p: IVec3, facing: u8, enabled: bool, entities: Option<&mut crate::entity::Entities>) {
+        self.automation.hopper_ticked.insert(p, self.redstone.tick);
+        if let Some(c) = self.automation.cooldown.get_mut(&p) {
+            *c = c.saturating_sub(1);
+            if *c > 0 {
+                return;
+            }
+            self.automation.cooldown.remove(&p);
+        }
+        if !enabled {
+            return;
+        }
+        if let Some(e) = entities {
+            self.try_move_items(p, facing, e);
+            return;
+        }
+        // Without entities: a cart in front leaves the whole move for the
+        // entity pass; a cart or items above leave only the pull.
         let d = r::hopper_direction(facing);
         let above = p + IVec3::Y;
-        // v0.17 Track D1: `getAttachedContainer` falls back to a container
-        // entity (`getEntityContainer`) when no block container is in front.
-        // A hopper facing a chest or hopper minecart runs its whole transfer
-        // in the entity pass, ejecting before it sucks as Java does.
         if self.container_kind(p + d).is_none() && self.automation.cart_cells.contains(&(p + d)) {
             self.automation.cart_hoppers.push(p);
-            self.schedule_redstone(p, 1, 0);
             return;
         }
         let pushed = self.transfer_one(p, p + d, d, -d);
-        let pulled = if self.container_kind(above).is_some() {
+        let pulled = if self.hopper_full(p) {
+            false
+        } else if self.container_kind(above).is_some() {
             self.transfer_one(above, p, IVec3::NEG_Y, IVec3::Y)
         } else {
-            // `suckInItems`: a container minecart above, else the items
-            // (the entity pass decides, `collect_hopper_items`).
-            self.automation.pickups.push(p);
+            if self.automation.cart_cells.contains(&above) || !self.blocks_collection(above) {
+                self.automation.suck_hoppers.push(p);
+            }
             false
         };
-        let delay = if pushed || pulled {
-            self.automation.cooldown.insert(p, self.redstone.tick + 8);
-            8
+        if pushed || pulled {
+            self.automation.cooldown.insert(p, 8);
+        }
+    }
+
+    /// `HopperBlockEntity.tryMoveItems` for the enabled hopper at `p` whose
+    /// cooldown ran out: one item out to the container in front
+    /// (`getAttachedContainer`: a block container, else a chest or hopper
+    /// minecart there, `getEntityContainer`), then, unless the hopper is
+    /// full, one in from above (`getSourceContainer`, the same way), or
+    /// else the item entities it can reach (`suckInItems`). Either move
+    /// starts a cooldown of 8.
+    fn try_move_items(&mut self, p: IVec3, facing: u8, entities: &mut crate::entity::Entities) {
+        let d = r::hopper_direction(facing);
+        let front = p + d;
+        let pushed = if self.container_kind(front).is_some() {
+            self.transfer_one(p, front, d, -d)
         } else {
-            1
+            match pick_container_cart(entities, front, || self.roll()) {
+                Some(i) => self.eject_into_cart(p, entities, i),
+                None => false,
+            }
         };
-        self.schedule_redstone(p, delay, 0);
+        let pulled = !self.hopper_full(p) && self.suck_in(p, entities);
+        if pushed || pulled {
+            self.automation.cooldown.insert(p, 8);
+        }
+    }
+
+    /// `suckInItems`: one item from the block container above, else from a
+    /// chest or hopper minecart there (a random one of several), else the
+    /// item entities in reach.
+    fn suck_in(&mut self, p: IVec3, entities: &mut crate::entity::Entities) -> bool {
+        let above = p + IVec3::Y;
+        if self.container_kind(above).is_some() {
+            self.transfer_one(above, p, IVec3::NEG_Y, IVec3::Y)
+        } else if let Some(i) = pick_container_cart(entities, above, || self.roll()) {
+            self.suck_from_cart(p, entities, i)
+        } else {
+            !self.blocks_collection(above) && self.collect_items(p, entities)
+        }
+    }
+
+    /// `HopperBlockEntity.inventoryFull`: every slot holds a full stack.
+    fn hopper_full(&self, p: IVec3) -> bool {
+        (0..5).all(|i| self.container_stack(p, i).is_some_and(|s| s.count >= s.max()))
+    }
+
+    /// `suckInItems`: a full-cube block above stops item collection unless
+    /// it is `#does_not_block_hoppers` (beehives and bee nests).
+    fn blocks_collection(&self, above: IVec3) -> bool {
+        crate::physics::full_collision(self, above) && self.get_block(above).and_then(super::bees::hive).is_none()
+    }
+
+    /// `suckInItems` from item entities: the ones whose boxes meet
+    /// `Hopper.SUCK_AABB` (the hopper's top from 11/16 up, and the whole
+    /// cell above) go in, ignoring pickup delay, until one goes in whole
+    /// (that counts as a move); a partly taken stack stays with the rest and
+    /// the next is tried. Items are found through a cell index built once
+    /// per hopper phase, not by walking every item for every hopper.
+    fn collect_items(&mut self, p: IVec3, entities: &mut crate::entity::Entities) -> bool {
+        if entities.items.is_empty() {
+            return false;
+        }
+        if !self.automation.item_index {
+            self.automation.item_index = true;
+            let cells = &mut self.automation.item_cells;
+            cells.clear();
+            cells.extend(
+                entities.items.iter().enumerate().map(|(i, e)| (e.pos.floor().as_ivec3().to_array(), i as u32)),
+            );
+            cells.sort_unstable();
+        }
+        let (min, max) = (p.as_dvec3() + DVec3::new(0.0, SUCK_MIN_Y, 0.0), p.as_dvec3() + DVec3::new(1.0, 2.0, 1.0));
+        // An item's feet lie in its own cell; its 0.25-wide, 0.25-tall box
+        // reaches the box from the cells around it.
+        let mut found = std::mem::take(&mut self.automation.item_found);
+        found.clear();
+        let cells = &self.automation.item_cells;
+        for x in p.x - 1..=p.x + 1 {
+            for z in p.z - 1..=p.z + 1 {
+                for y in p.y..=p.y + 1 {
+                    let key = [x, y, z];
+                    let at = cells.partition_point(|c| c.0 < key);
+                    found.extend(cells[at..].iter().take_while(|c| c.0 == key).map(|c| c.1));
+                }
+            }
+        }
+        found.sort_unstable();
+        let mut took = false;
+        for &i in &found {
+            let Some(entity) = entities.items.get_mut(i as usize) else { continue };
+            let (lo, hi) = entity.aabb();
+            if entity.stack.count == 0 || !(lo.cmplt(max).all() && hi.cmpgt(min).all()) {
+                continue;
+            }
+            let left = self.insert_container_from(p, entity.stack, None, None);
+            entity.stack.count = left.map_or(0, |s| s.count);
+            if left.is_none() {
+                took = true;
+                break;
+            }
+        }
+        self.automation.item_found = found;
+        took
     }
 
     fn dispense(&mut self, p: IVec3, facing: u8, dropper: bool) {
@@ -742,46 +974,15 @@ impl World {
         }
         output.clear();
         self.automation.output = output;
-        self.run_cart_hoppers(entities);
-        self.collect_hopper_items(entities);
+        // Java ticks entities, then block entities: the hopper minecarts'
+        // own pickup and where the container carts are, then the hoppers,
+        // which meet carts where they stand now and items where they lie.
         self.exchange_minecarts(entities);
-    }
-
-    /// v0.17 Track D1: `HopperBlockEntity.tryMoveItems` for the hoppers
-    /// facing a container minecart: one item into the cart
-    /// (`ejectItems`, the hopper's slots in order), then the suck, from a
-    /// block container above here or through [`World::collect_hopper_items`]
-    /// (a container minecart above, else items). Either move starts the
-    /// 8-tick cooldown.
-    fn run_cart_hoppers(&mut self, entities: &mut crate::entity::Entities) {
-        let hoppers = std::mem::take(&mut self.automation.cart_hoppers);
-        for &p in &hoppers {
-            let Some(Component::Hopper { facing, disabled: false }) = self.get_block(p).and_then(r::component) else {
-                continue;
-            };
-            if !self.is_block_ticking(p)
-                || self.automation.cooldown.get(&p).is_some_and(|&due| due > self.redstone.tick)
-            {
-                continue;
-            }
-            let d = r::hopper_direction(facing);
-            let pushed = match pick_container_cart(entities, p + d, || self.roll()) {
-                Some(i) => self.eject_into_cart(p, entities, i),
-                None => false,
-            };
-            let above = p + IVec3::Y;
-            let pulled = if self.container_kind(above).is_some() {
-                self.transfer_one(above, p, IVec3::NEG_Y, IVec3::Y)
-            } else {
-                self.automation.pickups.push(p);
-                false
-            };
-            if pushed || pulled {
-                self.automation.cooldown.insert(p, self.redstone.tick + 8);
-            }
+        if self.automation.hopper_phase == self.redstone.tick + 1 {
+            self.finish_hopper_moves(entities);
+        } else {
+            self.hopper_phase(Some(entities));
         }
-        self.automation.cart_hoppers = hoppers;
-        self.automation.cart_hoppers.clear();
     }
 
     /// `ejectItems` into minecart `i`: the first hopper slot whose one item
@@ -827,93 +1028,10 @@ impl World {
         false
     }
 
-    /// v0.17 Track C2: Java's `HopperBlockEntity.suckInItems` for each
-    /// hopper with nothing above it to pull from: the item entities whose
-    /// boxes meet `Hopper.SUCK_AABB` (the hopper's top from 11/16 up, and
-    /// the whole cell above) go in, ignoring pickup delay, until one goes in
-    /// whole; a partly taken stack stays with the rest and the next is
-    /// tried. Items are found through a sorted cell index built once per
-    /// tick, not by walking every item for every hopper.
-    fn collect_hopper_items(&mut self, entities: &mut crate::entity::Entities) {
-        let mut pickups = std::mem::take(&mut self.automation.pickups);
-        // v0.17 Track D1: `getSourceContainer` finds a container entity in
-        // the cell above (a chest or hopper minecart, or a chest boat; a
-        // random one of several) before any item: the hopper pulls from it,
-        // or nothing when it is empty.
-        pickups.retain(|&p| {
-            let above = p + IVec3::Y;
-            if !self.automation.cart_cells.contains(&above) {
-                // A full-cube block above stops item collection unless it
-                // is `#does_not_block_hoppers` (beehives and bee nests).
-                return !(crate::physics::full_collision(self, above)
-                    && self.get_block(above).and_then(super::bees::hive).is_none());
-            }
-            let Some(i) = pick_container_cart(entities, above, || self.roll()) else { return true };
-            if self.is_block_ticking(p)
-                && matches!(self.get_block(p).and_then(r::component), Some(Component::Hopper { disabled: false, .. }))
-                && self.suck_from_cart(p, entities, i)
-            {
-                self.automation.cooldown.insert(p, self.redstone.tick + 8);
-            }
-            false
-        });
-        if pickups.is_empty() || entities.items.is_empty() {
-            pickups.clear();
-            self.automation.pickups = pickups;
-            return;
-        }
-        let mut cells = std::mem::take(&mut self.automation.item_cells);
-        cells.clear();
-        cells.extend(entities.items.iter().enumerate().map(|(i, e)| (e.pos.floor().as_ivec3().to_array(), i as u32)));
-        cells.sort_unstable();
-        let mut found = std::mem::take(&mut self.automation.item_found);
-        for &p in &pickups {
-            if !self.is_block_ticking(p)
-                || !matches!(self.get_block(p).and_then(r::component), Some(Component::Hopper { disabled: false, .. }))
-            {
-                continue;
-            }
-            let (min, max) =
-                (p.as_dvec3() + DVec3::new(0.0, SUCK_MIN_Y, 0.0), p.as_dvec3() + DVec3::new(1.0, 2.0, 1.0));
-            // An item's feet lie in its own cell; its 0.25-wide, 0.25-tall
-            // box reaches the box from the cells around it.
-            found.clear();
-            for x in p.x - 1..=p.x + 1 {
-                for z in p.z - 1..=p.z + 1 {
-                    for y in p.y..=p.y + 1 {
-                        let key = [x, y, z];
-                        let at = cells.partition_point(|c| c.0 < key);
-                        found.extend(cells[at..].iter().take_while(|c| c.0 == key).map(|c| c.1));
-                    }
-                }
-            }
-            found.sort_unstable();
-            for &i in &found {
-                let entity = &mut entities.items[i as usize];
-                let (lo, hi) = entity.aabb();
-                if entity.stack.count == 0 || !(lo.cmplt(max).all() && hi.cmpgt(min).all()) {
-                    continue;
-                }
-                let left = self.insert_container_from(p, entity.stack, None, None);
-                entity.stack.count = left.map_or(0, |s| s.count);
-                if left.is_none() {
-                    self.automation.cooldown.insert(p, self.redstone.tick + 8);
-                    break;
-                }
-            }
-        }
-        entities.items.retain(|e| e.stack.count > 0);
-        found.clear();
-        self.automation.item_found = found;
-        self.automation.item_cells = cells;
-        pickups.clear();
-        self.automation.pickups = pickups;
-    }
-
     fn exchange_minecarts(&mut self, entities: &mut crate::entity::Entities) {
         use crate::entity::minecart::{CartKind, insert_slots};
         // Hoppers above, below and beside container carts move items in
-        // their own ticks (`run_cart_hoppers`, `collect_hopper_items`); this
+        // their own block-entity ticks (`try_move_items`); this
         // pass records where the carts are for them, and runs the hopper
         // minecart's own pickup (`MinecartHopper.suckInItems`).
         self.automation.cart_cells.clear();
@@ -1226,10 +1344,10 @@ mod tests {
         w.tick_automation_entities(&mut e);
         assert!(e.items.is_empty());
         assert_eq!(w.chest(P).unwrap().slots[0], Some(stack));
-        assert_eq!(w.automation.cooldown.get(&P), Some(&(w.redstone.tick + 8)));
+        assert_eq!(w.automation.cooldown.get(&P), Some(&8));
         let save = w.automation_to_string();
         w.load_automation(&save);
-        assert_eq!(w.automation.cooldown.get(&P), Some(&(w.redstone.tick + 8)));
+        assert_eq!(w.automation.cooldown.get(&P), Some(&8));
     }
     #[test]
     fn automation_container_capacity_and_fullness_survive_save_and_family_replacement() {
@@ -1497,11 +1615,15 @@ mod tests {
         let mut e = crate::entity::Entities::new(3);
         let id = e.spawn_cart(CartKind::Hopper, P.as_dvec3() + DVec3::new(0.5, 0.0625, 0.5));
         w.tick_automation_entities(&mut e);
-        assert_eq!(e.cart(id).unwrap().slots[0], Some(Stack::new(Item::DIAMOND, 1)));
-        // v0.17 Track D1: the hopper under the cart sucks in its own tick,
-        // finishing in the entity pass (`getEntityContainer`).
+        // Java ticks entities before block entities: the cart takes a
+        // diamond from the chest, then the hopper under it takes that
+        // diamond from the cart (`getEntityContainer`) in the same tick.
+        assert_eq!(e.cart(id).unwrap().slots[0], None);
+        assert_eq!(w.chest(P - IVec3::Y).unwrap().slots[0], Some(Stack::new(Item::DIAMOND, 1)));
+        // The hopper waits out its cooldown while the cart takes the next.
         ticks(&mut w, 1);
         w.tick_automation_entities(&mut e);
+        assert_eq!(e.cart(id).unwrap().slots[0], Some(Stack::new(Item::DIAMOND, 1)));
         assert_eq!(w.chest(P - IVec3::Y).unwrap().slots[0], Some(Stack::new(Item::DIAMOND, 1)));
         e.cart_mut(id).unwrap().disabled = true;
         w.tick_automation_entities(&mut e);
@@ -1536,18 +1658,18 @@ mod tests {
         w.automation.cooldown.remove(&(P + IVec3::X));
         w.automation.hopper_ticked.insert(P + IVec3::X, now - 1);
         assert!(w.transfer_one(P, P + IVec3::X, IVec3::X, IVec3::NEG_X));
-        assert_eq!(w.automation.cooldown.get(&(P + IVec3::X)), Some(&(now + 8)));
+        assert_eq!(w.automation.cooldown.get(&(P + IVec3::X)), Some(&8));
         w.chest_mut(P + IVec3::X).unwrap().slots[0] = None;
         w.automation.hopper_ticked.insert(P + IVec3::X, now);
         assert!(w.transfer_one(P, P + IVec3::X, IVec3::X, IVec3::NEG_X));
-        assert_eq!(w.automation.cooldown.get(&(P + IVec3::X)), Some(&(now + 7)));
+        assert_eq!(w.automation.cooldown.get(&(P + IVec3::X)), Some(&7));
         // A non-hopper source never gets the optimization.
         w.chest_mut(P + IVec3::X).unwrap().slots[0] = None;
         put(&mut w, P - IVec3::X, Block::CHEST);
         w.chest_mut(P - IVec3::X).unwrap().slots[0] = Some(Stack::new(Item::DIAMOND, 1));
         w.automation.hopper_ticked.insert(P + IVec3::X, now);
         assert!(w.insert_container_from(P + IVec3::X, Stack::new(Item::DIAMOND, 1), Some(IVec3::Y), None).is_none());
-        assert_eq!(w.automation.cooldown.get(&(P + IVec3::X)), Some(&(now + 8)));
+        assert_eq!(w.automation.cooldown.get(&(P + IVec3::X)), Some(&8));
     }
     /// Java 26.3 `ExperienceBottleItem.createDispenseConfig` through
     /// `ProjectileDispenseBehavior`: 0.7 out and 0.1 up, power 1.375 and
