@@ -25,7 +25,9 @@
 # VC_BOAT_TYPE (default large for every mode, owner, 2026-11-21: measured from the same warm
 # state, xlarge took 450 s to large's 197 s for the test build and 1543 s to 1006 s for the
 # full chain, at about 2.8 times the price), VC_BOAT_IDLE (seconds to keep the sandbox up after
-# a check, through auto-stop, instead of stopping it; default 0), VC_BOAT_SNAPSHOT.
+# a check, through auto-stop, instead of stopping it; default 0), VC_BOAT_WAIT (seconds to wait
+# for a machine once a minute of fail-fast tries found none; default 900, 0 gives up instead),
+# VC_BOAT_SNAPSHOT.
 # See docs/development.md#boat-checks.
 main() {
 set -euo pipefail
@@ -38,6 +40,10 @@ type=${VC_BOAT_TYPE:-large}
 # leaves the sandbox up that many seconds, through auto-stop.
 idle=${VC_BOAT_IDLE:-0}
 slot=${VC_BOAT_SLOT:-}
+# When a minute of fail-fast tries finds no machine, one start waits for Boat to free one, for at
+# most this many seconds (2026-11-23: busy moments outlasted the minute while machines freed
+# within a few).
+wait_for=${VC_BOAT_WAIT:-900}
 # While a check runs, auto-stop is kept $budget seconds ahead and renewed every $renew seconds
 # by a loop that ends with this script (owner, 2026-11-22; it was two hours, renewed every 30
 # minutes, and outlived a killed script), so a killed run stops within $budget seconds.
@@ -55,7 +61,7 @@ while [ $# -gt 0 ]; do
             [ -n "$cmd" ] || { echo "boat-check: -- needs a command" >&2; exit 2; }
             mode=cmd
             break ;;
-        -h|--help) sed -n '2,29p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "boat-check: unknown option $1 (try --help)" >&2; exit 2 ;;
     esac
     shift
@@ -63,6 +69,7 @@ done
 [ "$action" = run ] || [ "$mode" = checks ] || { echo "boat-check: --$action takes no --full or command" >&2; exit 2; }
 case "$slot" in *[!A-Za-z0-9_-]*) echo "boat-check: VC_BOAT_SLOT may use letters, digits, - and _" >&2; exit 2 ;; esac
 case "$idle" in ''|*[!0-9]*) echo "boat-check: VC_BOAT_IDLE is a number of seconds" >&2; exit 2 ;; esac
+case "$wait_for" in ''|*[!0-9]*) echo "boat-check: VC_BOAT_WAIT is a number of seconds" >&2; exit 2 ;; esac
 for tool in boat jq git; do
     command -v "$tool" >/dev/null || { echo "boat-check: $tool is not installed" >&2; exit 2; }
 done
@@ -70,6 +77,9 @@ cd "$(git rev-parse --show-toplevel)"
 state_dir=$(git rev-parse --path-format=absolute --git-path boat-check)
 mkdir -p "$state_dir"
 id_file=$state_dir/sandbox${slot:+-$slot}
+# Creates that were cut off and not yet found, one "name<TAB>epoch seconds<TAB>check|build" line
+# each, for later runs to settle.
+pending_file=$state_dir/pending${slot:+-$slot}
 lock=$state_dir/lock${slot:+-$slot}
 # Every sandbox says which project it belongs to (owner, 2026-11-21). Each creation adds the
 # time and this run's pid, so an interrupted create finds only the sandbox it made, never one
@@ -85,7 +95,7 @@ run_name() {
 }
 id="" new_id=""
 out_file=$state_dir/out${slot:+-$slot}-$$
-extended=0 keepalive="" job="" creating="" build="" saving=0 locked=0 tree=""
+extended=0 keepalive="" job="" watchdog="" creating="" build="" saving=0 locked=0 tree=""
 end_job() {   # end_job PID: a background job and its children
     [ -n "$1" ] || return 0
     pkill -P "$1" 2>/dev/null || true
@@ -127,9 +137,10 @@ cleanup() {
     set +e
     trap '' INT TERM HUP   # a second Ctrl-C must not cut the cleanup short
     stop_keepalive
+    end_job "$watchdog"
     in_flight=0; [ -z "$job" ] || in_flight=1
     end_job "$job"
-    rm -f "$out_file"
+    rm -f "$out_file" "$out_file.timeout"
     # Interrupted while Boat made a sandbox: it may exist with no id here yet, so find it by
     # its name, in any state but stopped (Boat's state groups don't name every starting state),
     # taking the newest, so an older stopped sandbox of the name is never picked. A create
@@ -145,7 +156,11 @@ cleanup() {
             [ "$tries" = 0 ] || sleep 2
         done
         if [ -z "$made" ]; then
-            [ "$in_flight" = 0 ] || echo "boat-check: found no sandbox named $creating; if one shows up in boat list, delete it: boat delete <id> --yes" >&2
+            if [ "$in_flight" = 1 ]; then
+                kind=check; [ "$action" != save ] || kind=build
+                printf '%s\t%s\t%s\n' "$creating" "$(date +%s)" "$kind" >> "$pending_file"
+                echo "boat-check: found no sandbox named $creating yet; the next run adopts or deletes it if it lands (it stops by itself within $budget s)" >&2
+            fi
         elif [ "$action" = save ]; then build=$made
         else id=$made extended=1; echo "$id" > "$id_file"
         fi
@@ -199,6 +214,38 @@ locked=1
 echo $$ > "$lock/pid"
 # Read under the lock, so a run that waited never misses the sandbox another run just made.
 id=$(cat "$id_file" 2>/dev/null || true)
+# Creates cut off by earlier runs may have landed after those runs gave up looking: adopt the
+# first check sandbox as this slot's if it has none, and delete the rest, --save build
+# sandboxes included. A name not found is kept for a day, judged only from a listing Boat
+# answered in full; without one, every name is kept for the next run.
+if [ -s "$pending_file" ]; then
+    listing=$(boat list --all --json 2>/dev/null) \
+        && printf '%s\n' "$listing" | jq -e '.sandboxes | type == "array"' >/dev/null 2>&1 \
+        || listing=""
+    if [ -n "$listing" ]; then
+        keep="" now=$(date +%s)
+        while IFS=$'\t' read -r pending since kind; do
+            [ -n "$pending" ] || continue
+            case "$since" in ''|*[!0-9]*) since=$now ;; esac
+            line="$pending"$'\t'"$since"$'\t'"${kind:-check}"$'\n'
+            late=$(printf '%s\n' "$listing" | jq -r --arg n "$pending" \
+                '[.sandboxes[] | select(.name == $n)] | sort_by(.createdAt // "") | last | .id // empty')
+            if [ -z "$late" ]; then
+                [ $((now - since)) -gt 86400 ] || keep="$keep$line"
+            elif [ -z "$id" ] && [ "${kind:-check}" = check ]; then
+                echo "boat-check: adopting $late ($pending), which a cut-off start made late" >&2
+                # Marked like any sandbox this run started, so the exit stops it even when this
+                # run (a --save, say) never uses it.
+                id=$late extended=1; echo "$id" > "$id_file"
+            elif [ "$late" != "$id" ]; then
+                echo "boat-check: deleting $late ($pending), which a cut-off start made late" >&2
+                boat delete "$late" --yes --json </dev/null >/dev/null 2>&1 || keep="$keep$line"
+            fi
+        done < "$pending_file"
+        if [ -n "$keep" ]; then printf '%s' "$keep" > "$pending_file.new" && mv "$pending_file.new" "$pending_file"
+        else rm -f "$pending_file"; fi
+    fi
+fi
 
 # The sandbox's state and size ("stopped large"), or "gone" when Boat no longer knows it. Any
 # other failure (network, auth, rate limit) is an error, so a passing hiccup never orphans a
@@ -218,7 +265,7 @@ sandbox_state() { local info; info=$(sandbox_info "$1") || return 1; echo "${inf
 # Each create or resume uses one of the account's daily starts; reusing a running sandbox uses none.
 start_failed() {
     case "$2" in *no_ready_machine*)
-        echo "boat-check: $1: Boat had no machine ready after a minute of tries; nothing started and no start was counted. Try again later." >&2
+        echo "boat-check: $1: Boat had no machine ready after a minute of tries and ${wait_for} s of waiting; try again later (VC_BOAT_WAIT sets the wait)." >&2
         exit 3 ;;
     esac
     local why
@@ -251,7 +298,49 @@ fast_start() {   # fast_start WHAT boat ARGS...; leaves the output in $out
         esac
         [ "$attempt" = 6 ] || sleep 10
     done
-    return 1
+    case "$out" in *no_ready_machine*|*"already in progress"*|*sandbox_stopping*) ;; *) return 1 ;; esac
+    [ "$wait_for" -gt 0 ] || return 1
+    # Still none: starts without --fail-fast, which Boat holds until a machine frees up, until
+    # $wait_for seconds have passed. A busy answer (a resume an earlier try left in progress, a
+    # stop not yet matched) is tried again 10 s later. A create cut off may still land, so job
+    # stays set then and the cleanup looks for the sandbox by name; a resume cut off is stopped.
+    echo "boat-check: still no machine ready for $what; waiting up to ${wait_for} s for one" >&2
+    local deadline left
+    deadline=$(($(date +%s) + wait_for))
+    while :; do
+        left=$((deadline - $(date +%s)))
+        if [ "$left" -le 0 ]; then
+            out="no_ready_machine: no machine within ${wait_for} s"
+            return 1
+        fi
+        rm -f "$out_file.timeout"
+        "$@" --json >"$out_file" 2>&1 </dev/null &
+        job=$!
+        # The marker is written only when the sleep ran out: ending the watchdog kills the
+        # sleep first, and the && then skips the rest.
+        (sleep "$left" && : >"$out_file.timeout" && end_job "$job") >/dev/null 2>&1 </dev/null &
+        watchdog=$!
+        rc=0; wait "$job" || rc=$?
+        end_job "$watchdog"; watchdog=""
+        out=$(cat "$out_file" 2>/dev/null || true)
+        # A start that succeeded counts even if the deadline passed as it finished.
+        if [ "$rc" = 0 ]; then rm -f "$out_file.timeout"; job=""; return 0; fi
+        if [ -e "$out_file.timeout" ]; then
+            rm -f "$out_file.timeout"
+            out="no_ready_machine: no machine within ${wait_for} s"
+            return 1
+        fi
+        case "$out" in
+            *no_ready_machine*|*"already in progress"*|*sandbox_stopping*)
+                job=""
+                left=$((deadline - $(date +%s)))
+                [ "$left" -le 10 ] || left=10
+                [ "$left" -gt 0 ] || continue
+                echo "boat-check: Boat is still busy with $what; trying again in $left s" >&2
+                sleep "$left" ;;
+            *) return 1 ;;
+        esac
+    done
 }
 # new_sandbox NAME [boat new ARGS...]: sets new_id to the new sandbox's id. Set creating=NAME
 # around it, so a run interrupted before the id comes back still finds the sandbox and cleans
