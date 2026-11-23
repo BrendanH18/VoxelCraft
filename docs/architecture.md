@@ -1243,6 +1243,41 @@ wave 1 already set apart from v0.15. Used IDs: states 30720–30728 (E) and
 used none. Everything else in wave 2's rows and the integrator spare
 31104–31231 stays unregistered. [Integration record](verification/2026-11-21-v0.16-wave-2-integration.md).
 
+### v0.17 Redstone and automation track reservations
+
+Reserved on 2026-11-23 when the owner approved the v0.17 plan (milestone
+M6). Each track allocates only inside its own row; unused IDs stay
+unregistered with their track. The integrator makes appended orderings
+contiguous in landing order.
+
+| Block states | Item IDs | Texture layers | Track |
+| --- | --- | --- | --- |
+| 12800–12831 | 1770–1774 | — | A. Java update order |
+| 12832–13087 | 1775–1784 | 1164–1199 | B. Pistons |
+| 13088–13343 | 1785–1799 | 1200–1239 | C1. Crafter |
+| 13344–13599 | 1800–1814 | 1240–1269 | D1. Furnace minecart, rail and cart gaps |
+| 13600–13631 | 1815–1819 | — | C2. Dispense table, sided transfers |
+| 13632–13695 | 1820–1824 | 1270–1279 | E1. Sculk game events |
+| 13696–13887 | 1825–1834 | 1280–1289 | E2. Other redstone components |
+| 13888–13951 | 1835–1839 | 1290–1294 | G. Workstations |
+| 13952–14335 | 1840–1849 | 1295–1299 | Integrator |
+
+#### Track D1 allocation
+
+2026-11-23, implemented, unverified
+([record](verification/2026-11-23-v0.17-d1-carts.md)): item **1800**, the
+furnace minecart (`Item::FURNACE_MINECART`). No block state or texture
+layer: every rail kind already had its waterlogged partner among the
+BLD-04f states (rails 500–509 and special rails 1471–1506, partners from
+8192), so 13344–13599, items 1801–1814 and layers 1240–1269 stay
+unregistered. Appended orderings: `CartKind::Furnace` saves as cart code
+**42**, after the poplar boats' 40 and 41; the furnace minecart's item icon
+follows v0.16 Track D's (`GEN5_ICONS`); `Sound::Minecart` (rolling, inside,
+inside underwater) follows `Sound::Geyser` (`GEYSER_END`). A furnace cart's
+saved and LAN cart string appends `fuel,push_x,push_z`; every other cart
+keeps its fifteen fields. New `EntityEvent::CartExplosion` and the
+`EntityShot.arrow` field are internal and unsaved.
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating
