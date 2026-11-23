@@ -260,7 +260,7 @@ impl Stack {
         (self.damage > 0).then(|| 1.0 - self.damage as f32 / max as f32)
     }
 
-    fn with_count(self, count: u8) -> Option<Stack> {
+    pub(crate) fn with_count(self, count: u8) -> Option<Stack> {
         (count > 0).then_some(Stack { count, ..self })
     }
 }

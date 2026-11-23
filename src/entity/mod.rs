@@ -1905,6 +1905,23 @@ impl Entities {
         self.items.push(item::block_drop(stack, cell, &mut self.rng));
     }
 
+    /// Item entities a player standing at `player` touches go into
+    /// `inventory`; what doesn't fit stays on the ground. Returns whether
+    /// anything was taken.
+    pub fn pick_up_items(&mut self, player: DVec3, inventory: &mut crate::inventory::Inventory) -> bool {
+        let mut picked = false;
+        self.items.retain_mut(|item| {
+            if item.pickup_delay > 0.0 || !item.touches_player(player) {
+                return true;
+            }
+            let left = inventory.add_stack(item.stack);
+            picked |= left < item.stack.count;
+            item.stack.count = left;
+            left > 0
+        });
+        picked
+    }
+
     /// Throws a stack from `eye` along `dir` (the player dropping items).
     pub fn throw(&mut self, stack: crate::inventory::Stack, eye: DVec3, dir: DVec3) {
         let spread = DVec3::new(self.rng.range(-0.3, 0.3) as f64, 0.0, self.rng.range(-0.3, 0.3) as f64);

@@ -898,6 +898,11 @@ impl Game {
             return;
         }
         if let Some(slot) = action.hotbar() {
+            // v0.17 Track D2: over a slot of an open screen, number keys
+            // swap that slot with the hotbar slot instead.
+            if self.inventory_open && self.lan.client.is_none() && !dead && self.swap_under_cursor(slot) {
+                return;
+            }
             self.select(slot);
             return;
         }

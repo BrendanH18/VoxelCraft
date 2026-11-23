@@ -6,7 +6,6 @@ use glam::DVec3;
 
 use crate::audio::sounds::Sound;
 use crate::audio::{Audio, SoundSource};
-use crate::inventory::Stack;
 use crate::render::BlockModel;
 use crate::world::block::Block;
 
@@ -87,16 +86,7 @@ impl Game {
 
     fn pick_up_items(&mut self) {
         let player = self.session.player.pos;
-        let mut picked = false;
-        self.mobs.entities.items.retain_mut(|item| {
-            if item.pickup_delay > 0.0 || !item.touches_player(player) {
-                return true;
-            }
-            let left = self.session.inventory.add_stack(item.stack);
-            picked |= left < item.stack.count;
-            item.stack.count = left;
-            left > 0
-        });
+        let mut picked = self.mobs.entities.pick_up_items(player, &mut self.session.inventory);
         let (id, shape) = (self.session.id, self.session.player.collision_shape());
         let creative = self.session.mode.is_creative();
         let inventory = &mut self.session.inventory;
@@ -166,20 +156,46 @@ impl Game {
         let slot = if self.inventory_open {
             match self.slot_under_cursor() {
                 Some(super::hud::SlotRef::Inventory(i)) => i,
-                _ => return,
+                // v0.17 Track D2: over a storage slot the drop key throws
+                // from it, with nothing held (`THROW`).
+                Some(s) => {
+                    if let Some(slot) = super::screen::storage_slot(s) {
+                        self.with_screen(|screen| {
+                            if let Some(mut storage) = screen.storage() {
+                                storage.throw(slot, whole_stack);
+                            }
+                        });
+                    }
+                    return;
+                }
+                None => return,
             }
         } else {
             self.body.actions.selected
         };
-        let Some(stack) = self.session.inventory.slots[slot] else { return };
-        let count = if whole_stack { stack.count } else { 1 };
-        self.session.inventory.slots[slot] =
-            (stack.count > count).then_some(Stack { count: stack.count - count, ..stack });
-        if slot == self.body.actions.selected {
+        if voxelcraft::session::storage::drop_slot(&mut self.session, &mut self.mobs.entities, slot, whole_stack)
+            .is_some()
+            && slot == self.body.actions.selected
+        {
             self.body.actions.reset();
             self.session.cancel_consumption();
         }
-        self.throw(Stack { count, ..stack });
+    }
+
+    /// v0.17 Track D2: a number key over a slot of an open storage screen
+    /// swaps that slot with hotbar slot `hotbar` (`SWAP`). Returns whether
+    /// a slot was under the mouse.
+    pub(super) fn swap_under_cursor(&mut self, hotbar: usize) -> bool {
+        let Some(slot) = self.slot_under_cursor().and_then(super::screen::storage_slot) else { return false };
+        self.with_screen(|screen| match screen.storage() {
+            Some(mut storage) => storage.swap(slot, hotbar),
+            None => {
+                if let voxelcraft::session::storage::StorageSlot::Inventory(i) = slot {
+                    voxelcraft::session::storage::swap_in_inventory(&mut screen.session.inventory, i, hotbar);
+                }
+            }
+        });
+        true
     }
 
     /// Clicking off the inventory panel throws the held stack (or one of
@@ -193,15 +209,7 @@ impl Game {
 
     /// Throws the held stack (or one item of it), as a click outside the screen does.
     pub(super) fn toss_cursor(&mut self, one: bool) -> bool {
-        let Some(stack) = self.session.inventory.cursor else { return false };
-        let count = if one { 1 } else { stack.count };
-        self.session.inventory.cursor = (stack.count > count).then_some(Stack { count: stack.count - count, ..stack });
-        self.throw(Stack { count, ..stack });
-        true
-    }
-
-    fn throw(&mut self, stack: Stack) {
-        self.mobs.entities.throw(stack, self.session.player.eye(), self.session.player.forward().as_dvec3());
+        voxelcraft::session::storage::toss_cursor(&mut self.session, &mut self.mobs.entities, one)
     }
 
     /// Spinning, bobbing models for nearby dropped items: a small cube for

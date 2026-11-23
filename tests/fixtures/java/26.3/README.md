@@ -1568,3 +1568,27 @@ scripts/boat-check.sh -- 'cargo test --profile ci --locked --test game_events'
 keeps a row for every call site (posted, absent from the game, or a gap) that
 fails when the fixture gains or loses one, and runs small scenarios for the
 events the game posts ([record](../../../../docs/verification/2026-11-23-v0.17-sculk-game-events.md)).
+
+## Storage transactions (v0.17 Track D2)
+
+`storage_transactions.json` holds the Java facts behind the storage
+transaction fuzz: the `[start, end, backwards]` slot ranges each storage
+menu's `quickMoveStack` passes to `moveItemStackTo` (`ChestMenu`,
+`ShulkerBoxMenu`, `HopperMenu`, `DispenserMenu`, `AbstractFurnaceMenu`,
+`BrewingStandMenu`; bounds computed from the container size are null), the
+potion and furnace-bucket slot limits, `HopperBlockEntity.MOVE_ITEM_SPEED`,
+whether the comparator formula runs in floats, whether
+`BlockEntity.preRemoveSideEffects` spills contents with no game rule, whether
+`BrewingStandBlockEntity.serverTick` calls `setChanged` after loading fuel,
+whether `AbstractFurnaceBlockEntity.setItem` compares components, and the
+explosion conditions of the shulker box and chest loot tables. It needs
+`javap`:
+
+```sh
+python3 tools/extract_java_storage_fixtures.py /path/to/server.jar --output target/java-storage.json
+diff tests/fixtures/java/26.3/storage_transactions.json target/java-storage.json
+scripts/boat-check.sh -- 'cargo test --profile ci --locked --test storage_transactions'
+```
+
+`tests/storage_transactions.rs` checks `session::storage` against it
+([record](../../../../docs/verification/2026-11-23-v0.17-storage-fuzz.md)).

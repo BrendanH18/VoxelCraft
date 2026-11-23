@@ -18,6 +18,7 @@ pub mod placement;
 pub mod raid;
 pub mod ranged;
 mod recovery;
+pub mod storage;
 mod weapons;
 mod wood;
 use glam::{DVec3, IVec3};
