@@ -104,6 +104,7 @@ pub mod pumpkin_blocks;
 pub mod rails;
 pub mod redstone;
 pub mod redstone_blocks;
+pub mod redstone_catalogue;
 mod redstone_contacts;
 pub mod relics;
 pub mod ruined_portal;
@@ -1064,6 +1065,11 @@ impl World {
         // Fire ages are saved state, but all ages have identical geometry
         // and lighting: don't invalidate meshes or copy light snapshots.
         if old.fire_age().is_some() && block.fire_age().is_some() {
+            // `FireBlock.tick` still updates neighbour shapes (flags 260), so
+            // an observer facing the fire sees its age change.
+            if old != block {
+                self.notify_observers(p);
+            }
             return true;
         }
         // Java notifies navigators only when the collision shape changes.

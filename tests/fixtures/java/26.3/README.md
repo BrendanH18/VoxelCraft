@@ -1360,3 +1360,35 @@ scripts/boat-check.sh -- 'cargo test --release --lib m3_corpus'
 frequency reducers, the outposts' exclusion zone, the stronghold rings) from
 this file and checks a located instance of every family on two seeds
 ([record](../../../../docs/verification/2026-11-21-v0.16-m3-exit.md)).
+
+## Redstone components (v0.17 Track E2)
+
+`redstone_components.json` lists every Java 26.3 block that takes part in
+redstone: its hierarchy (below `Block`) overrides `isSignalSource`,
+`getSignal`, `ownSignal`, `getDirectSignal`, `hasAnalogOutputSignal` or
+`getAnalogOutputSignal`, or a method queries power through `SignalGetter`
+(`hasNeighborSignal`, `getBestNeighborSignal` and the rest). Each block
+records the class its `Blocks.<clinit>` factory constructs (the factory
+lambdas are resolved with the `java_block_properties` evaluator), the int
+constructor arguments (button press ticks, weighted plate maxima), and four
+derived columns: `signal_source`, `strong` (`getDirectSignal`), `analog`
+and `reads_power`. Each class records its chain, where each signal method
+is declared, which methods query power, the literal `scheduleTick` delays
+(or the field or method that supplies a computed one; waterlogged fluid
+ticks are left out) and the v0.17 track that owns its behaviour.
+`constants` holds the values checked in code: the daylight detector's
+20-tick sample and 0.2 sun easing, the lightning rod's 8-tick pulse, the
+copper bulb's absence of a scheduled tick, the lamp's 4-tick off delay and
+the trapped chest's clamped viewer count. Regenerate and compare with:
+
+```sh
+python3 tools/extract_java_redstone_component_fixtures.py /path/to/server.jar --output target/java-redstone-components.json
+diff tests/fixtures/java/26.3/redstone_components.json target/java-redstone-components.json
+cargo test --profile ci --test redstone_components
+```
+
+`tests/redstone_components.rs` compares the columns with
+`world::redstone_catalogue::role` both ways (every Java component resolves
+with the same role or is a listed registry gap; every game block state with
+a role is a Java component with that role) and runs a scenario per
+component, using the constructor ints for every button's press length.

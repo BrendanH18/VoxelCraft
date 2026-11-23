@@ -54,14 +54,7 @@ impl World {
             self.automation.cooldown.remove(&p);
             self.automation.hopper_ticked.remove(&p);
         }
-        // An observer watches state changes on precisely its front face.
-        for d in SIDES {
-            let q = p - d;
-            if matches!(self.get_block(q).and_then(r::component), Some(Component::Observer { facing, on: false }) if r::direction(facing)==d)
-            {
-                self.schedule_redstone(q, 2, 0);
-            }
-        }
+        self.notify_observers(p);
         if new != r::MOVING {
             self.automation.moving.remove(&p);
         }
@@ -85,6 +78,18 @@ impl World {
             let front = p + r::direction(facing);
             if matches!(self.get_block(front).and_then(r::component), Some(Component::PistonHead { .. })) {
                 self.edit(front, Block::AIR, false);
+            }
+        }
+    }
+
+    /// An observer watches state changes on precisely its front face
+    /// (`ObserverBlock.updateShape` from its `FACING` side, while unpowered).
+    pub(super) fn notify_observers(&mut self, p: IVec3) {
+        for d in SIDES {
+            let q = p - d;
+            if matches!(self.get_block(q).and_then(r::component), Some(Component::Observer { facing, on: false }) if r::direction(facing)==d)
+            {
+                self.schedule_redstone(q, 2, 0);
             }
         }
     }

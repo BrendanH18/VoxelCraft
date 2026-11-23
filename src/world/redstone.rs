@@ -479,6 +479,11 @@ impl World {
         if let Some(signal) = self.get_block(p).and_then(super::copper::bulb_signal) {
             return Some(signal);
         }
+        // v0.17 Track E2: the state-only analog outputs (Java 26.3
+        // `getAnalogOutputSignal` of each block; `redstone_components.json`).
+        if let Some(signal) = self.get_block(p).and_then(super::redstone_catalogue::state_analog_output) {
+            return Some(signal);
+        }
         fn strength(slots: impl Iterator<Item = Option<crate::inventory::Stack>>, count: usize) -> u8 {
             let mut fullness = 0.0f64;
             let mut nonempty = false;
@@ -501,6 +506,10 @@ impl World {
         }
         if let Some(b) = self.brewing_stand(p) {
             return Some(strength(b.bottles.into_iter().chain([b.ingredient, b.fuel]), 5));
+        }
+        // `DecoratedPotBlock`: its one-slot container's fullness.
+        if self.get_block(p).is_some_and(|b| super::utilities::decorated_pot_of(b).is_some()) {
+            return Some(strength(std::iter::once(self.decorated_pot_item(p)), 1));
         }
         None
     }
