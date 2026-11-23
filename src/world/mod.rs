@@ -2613,10 +2613,11 @@ mod tests {
         other.load_furnaces(&saved);
         assert_eq!(other.furnace(p).unwrap().output, world.furnace(p).unwrap().output);
 
-        assert!((world.furnace(p).unwrap().xp - 0.2).abs() < 1e-4, "glass stores 0.1 each");
+        assert!((world.furnace(p).unwrap().stored_xp() - 0.2).abs() < 1e-4, "glass stores 0.1 each");
 
         // Breaking it spills everything and its experience, and the state is gone.
-        world.furnace_mut(p).unwrap().xp = 3.0;
+        world.furnace_mut(p).unwrap().recipes_used =
+            vec![super::furnace::RecipeUse { recipe: Item::from_block(Block::GLASS), xp: 3.0, count: 1 }];
         world.set_block(p, Block::AIR);
         assert_eq!(world.xp_drops, [(p, 3)]);
         assert!(world.furnace(p).is_none());

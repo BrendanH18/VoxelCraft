@@ -560,7 +560,7 @@ pub(super) fn container_title(block: Option<crate::world::block::Block>) -> &'st
 }
 
 fn brewing_ui(ui: &mut Ui, b: &crate::world::brewing::BrewingStand, px: f32, py: f32, frame: u32) {
-    use crate::world::brewing::{BREW_TIME, FUEL_USES};
+    use crate::world::brewing::FUEL_USES;
     let dark = [0.45, 0.45, 0.45, 1.0];
     // Blaze fuel left, under the fuel slot.
     let (fx, fy) = (px + 16.0, py + 39.0);
@@ -576,7 +576,7 @@ fn brewing_ui(ui: &mut Ui, b: &crate::world::brewing::BrewingStand, px: f32, py:
     let (ax, ay) = (px + 99.0, py + 18.0);
     ui.rect(ax, ay, 6.0, 18.0, dark);
     if b.is_brewing() {
-        let h = (18.0 * (1.0 - b.brew_left / BREW_TIME)).floor();
+        let h = (18.0 * b.brew_progress()).floor();
         ui.rect(ax, ay, 6.0, h, WHITE);
         // Bubbles rising on the left of the ingredient.
         for i in 0..3u32 {
@@ -1098,10 +1098,10 @@ impl Game {
             // and a flame between input and fuel shows the fuel left.
             let (ax, ay) = (px + 7.0 + 4.0 * SLOT + 9.0, py + 18.0 + self.top_mid() + 5.0);
             let furnace = match self.body.container {
-                Container::Furnace(p) => self.world.furnace(p).copied(),
+                Container::Furnace(p) => self.world.furnace(p).cloned(),
                 _ => None,
             };
-            let progress = furnace.map_or(0.0, |f| f.cook / crate::world::furnace::COOK_TIME);
+            let progress = furnace.as_ref().map_or(0.0, |f| f.cook_progress());
             let dark = [0.45, 0.45, 0.45, 1.0];
             let lit = [1.0, 1.0, 1.0, 1.0];
             let filled = |x: f32| if (x - ax) / 17.0 < progress { lit } else { dark };
@@ -1115,7 +1115,7 @@ impl Game {
             }
             if let Some(f) = furnace {
                 let (fx, fy) = (px + 7.0 + 3.0 * SLOT + 4.0, py + 18.0 + SLOT + 2.0);
-                let left = if f.burn_total > 0.0 { f.burn_left / f.burn_total } else { 0.0 };
+                let left = f.burn_progress();
                 ui.rect(fx, fy, 10.0, 13.0, [0.6, 0.6, 0.6, 1.0]);
                 let h = (13.0 * left).ceil();
                 ui.rect(fx + 1.0, fy + 13.0 - h, 8.0, h, [1.0, 0.55, 0.1, 1.0]);

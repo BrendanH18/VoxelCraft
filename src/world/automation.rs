@@ -551,10 +551,8 @@ impl World {
         }
         if let Some(f) = self.furnace_mut(p) {
             match slot {
-                0 => {
-                    f.input = stack;
-                    f.cook = 0.0;
-                }
+                // `setItem`: a different item restarts cooking.
+                0 => f.set_input(stack),
                 1 => f.fuel = stack,
                 _ => f.output = stack,
             }

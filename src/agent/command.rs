@@ -83,6 +83,9 @@ pub enum Command {
     Enchanting(usize),
     /// Combines the held stack with hotbar slot 0..9 on the targeted anvil.
     Anvil(usize),
+    /// Renames the held stack on the targeted anvil (blank clears a custom
+    /// name), for a level plus its prior-work penalty.
+    AnvilName(String),
     Grindstone(Option<usize>),
     Trade(Option<usize>),
     /// Upgrades held diamond gear at the targeted smithing table, consuming
@@ -913,6 +916,9 @@ impl Command {
                     Some(_) => return Err(bad()),
                 };
                 Self::Effect(EffectChange::Give(effect, ticks, amp, !hide))
+            }
+            ["anvil", "name", rest @ ..] => {
+                Self::AnvilName(crate::enchant::valid_anvil_name(&rest.join(" ")).ok_or("name too long")?)
             }
             ["anvil", n] => Self::Anvil(n.parse::<usize>().ok().filter(|n| (1..=9).contains(n)).ok_or_else(bad)? - 1),
             ["trade"] => Self::Trade(None),

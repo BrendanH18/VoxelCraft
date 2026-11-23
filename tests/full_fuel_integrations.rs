@@ -101,7 +101,7 @@ fn every_implemented_fuel_can_finish_an_interrupted_furnace_job() {
             ..Default::default()
         };
         furnace.tick(4.0);
-        assert_eq!(furnace.cook, 4.0, "{name}");
+        assert_eq!(furnace.cook, 80, "{name}");
         let mut restored = Furnace::deserialize(&furnace.serialize()).unwrap();
         restored.tick(6.0);
         assert_eq!(restored.output, Some(Stack::new(Item::IRON_INGOT, 1)), "{name}");
@@ -129,8 +129,9 @@ fn odd_carpet_ticks_round_down_in_fast_cooking_and_nonfuels_remain_untouched() {
             ..Default::default()
         };
         furnace.tick(0.05);
-        let effective = if kind == FurnaceKind::Normal { ticks } else { ticks / 2 * 2 };
-        assert_eq!(furnace.burn_total, effective as f32 / 20.0);
+        // `cooking/time_*` integer-divides by the fast block's factor 2.
+        let effective = if kind == FurnaceKind::Normal { ticks } else { ticks / 2 };
+        assert_eq!(furnace.lit_total, effective);
     }
     for name in f["non_fuels"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()) {
         let Some(item) = registered(name) else { continue };

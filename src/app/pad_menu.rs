@@ -822,10 +822,10 @@ impl Game {
         if let Some(f) = furnace {
             // Flame (fuel left) and arrow (cooking) beside the furnace slots.
             let (x, y) = (px + 6.0 + 18.0 * 3.0 + 6.0, py + 18.0);
-            let burn = if f.burn_total > 0.0 { f.burn_left / f.burn_total } else { 0.0 };
+            let burn = f.burn_progress();
             ui.rect(x, y + 2.0, 40.0, 5.0, [0.0, 0.0, 0.0, 0.7]);
             ui.rect(x + 1.0, y + 3.0, 38.0 * burn.clamp(0.0, 1.0), 3.0, [1.0, 0.55, 0.1, 1.0]);
-            let cook = f.cook / crate::world::furnace::COOK_TIME;
+            let cook = f.cook_progress();
             ui.rect(x, y + 10.0, 40.0, 5.0, [0.0, 0.0, 0.0, 0.7]);
             ui.rect(x + 1.0, y + 11.0, 38.0 * cook.clamp(0.0, 1.0), 3.0, WHITE);
         }

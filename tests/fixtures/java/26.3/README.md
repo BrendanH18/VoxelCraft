@@ -891,6 +891,45 @@ cases and the stonecutter's order with the game. `tests/java_recipes.rs`
 runs the four special grid recipes (banner duplication, shield decoration,
 book cloning, map extending) on example grids.
 
+## Core workstations (v0.17 Track G)
+
+The same extractor adds `furnace`, `brewing`, `comparator`, `enchanting`,
+`anvil`, `grindstone` and `smithing` to `workstations.json` (the v0.15
+keys are unchanged). It reads `AbstractFurnaceBlockEntity`,
+`BrewingStandBlockEntity`, `AnvilMenu`, `AnvilBlock`, `FallingBlockEntity`,
+`EnchantmentHelper`, `EnchantmentMenu`, `EnchantingTableBlock`,
+`GrindstoneMenu`, `LegacyRandomSource`, `BitRandomSource`, `Mth` and
+`AbstractContainerMenu` with javap and fails if the constants their
+arithmetic uses change; the `cooking/*` and `brewing/*` context providers
+and the `#block/fast_cooking` predicate; every cooking fuel (`Items`'
+`cookingFuel` registrations) and brewing fuel; the smelting, smoking,
+blasting and brewing recipes; the enchantment definitions and the
+`#in_enchanting_table` and `#curse` tags in Java's order; the enchanting
+table's block tags; the item durabilities, enchantability and repair items
+the cases use (with the equipment and repair extractors' readers); and the
+smithing recipes' template, base and addition items.
+
+`tools/java_workstation_models.py` then plays furnace, smoker, blast
+furnace and brewing stand scenarios tick by tick, rounds furnace
+experience (`createExperience`), computes enchanting offers for 8 seeds, 5
+bookshelf counts and 16 items (`getEnchantmentCost`, `selectEnchantment`
+and the clue draw with Java's `LegacyRandomSource`), anvil results for 24
+cases (repair, merging, books, clashes, renaming, the 40-level limit),
+grindstone results and experience for 11, falling-anvil damage and wear
+chance, and comparator output, all in Java's int and float arithmetic. It
+reads no VoxelCraft source.
+
+```sh
+python3 tools/extract_java_workstation_fixtures.py /path/to/server.jar target/java-workstations.json
+diff tests/fixtures/java/26.3/workstations.json target/java-workstations.json
+scripts/boat-check.sh -- 'cargo test --profile ci --locked --test workstations --test java_workstations'
+```
+
+`tests/workstations.rs` replays every scenario and case against the game
+and checks the fuel list, brewing fuels, bottle inputs, reagents, smithing
+slots, power transmitters and enchantability both ways
+([record](../../../../docs/verification/2026-11-23-v0.17-workstations.md)).
+
 ## Illagers, vexes and ravagers
 
 `illagers.json` (v0.15 Track A) holds the facts of the vindicator, evoker,

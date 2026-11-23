@@ -177,20 +177,22 @@ impl Agent {
         let f = world.furnace_mut(pos).unwrap();
         match slot {
             0 => {
-                // Reuse desktop/controller input-change timer handling.
-                let mut cursor = next;
-                f.input = None;
-                f.click_input(&mut cursor, false);
-                f.cook = 0.0;
+                // Putting items in is Java's `setItem` (a different item
+                // restarts cooking); taking some out isn't.
+                if take {
+                    f.input = next;
+                } else {
+                    f.set_input(next);
+                }
             }
             1 => f.fuel = next,
             _ => f.output = next,
         }
-        if take && slot == 2 {
-            let roll = entities.roll();
-            if let Some(xp) = world.furnace_mut(pos).unwrap().take_output_xp(before_output, roll) {
-                entities.spawn_xp(self.session.player.pos, xp);
-            }
+        if take
+            && slot == 2
+            && let Some(xp) = world.furnace_mut(pos).unwrap().take_output_xp(before_output, || entities.roll())
+        {
+            entities.spawn_xp(self.session.player.pos, xp);
         }
         Ok(())
     }
@@ -581,17 +583,22 @@ impl Agent {
                 }
             }
             Command::Enchanting(i) => self.enchant_at_table(i, world)?,
-            Command::Anvil(slot) => {
+            command @ (Command::Anvil(_) | Command::AnvilName(_)) => {
                 let (pos, _) = self.target(world).ok_or("no anvil within reach")?;
                 if !world.get_block(pos).is_some_and(Block::is_anvil) {
                     return Err("target is not an anvil".into());
                 }
-                if slot == self.selected {
+                let (slot, name) = match &command {
+                    Command::Anvil(slot) => (Some(*slot), None),
+                    Command::AnvilName(name) => (None, Some(name.as_str())),
+                    _ => unreachable!(),
+                };
+                if slot == Some(self.selected) {
                     return Err("pick a different slot for the second item".into());
                 }
                 let left = self.session.inventory.get(self.selected).ok_or("selected slot empty")?;
-                let right = self.session.inventory.get(slot);
-                let r = crate::enchant::anvil_any_cost(left, right, self.creative).ok_or("those don't combine")?;
+                let right = slot.and_then(|slot| self.session.inventory.get(slot));
+                let r = crate::enchant::anvil_menu(left, right, name, self.creative).ok_or("those don't combine")?;
                 if !self.creative && r.cost >= crate::enchant::TOO_EXPENSIVE {
                     return Err("too expensive".into());
                 }
@@ -599,10 +606,12 @@ impl Agent {
                     return Err(format!("needs level {}", r.cost));
                 }
                 self.session.inventory.slots[self.selected] = Some(r.output);
-                self.session.inventory.slots[slot] = match (r.uses, right) {
-                    (Some(n), Some(s)) if s.count > n => Some(Stack { count: s.count - n, ..s }),
-                    _ => None,
-                };
+                if let Some(slot) = slot {
+                    self.session.inventory.slots[slot] = match (r.uses, right) {
+                        (Some(n), Some(s)) if s.count > n => Some(Stack { count: s.count - n, ..s }),
+                        _ => None,
+                    };
+                }
                 if !self.creative {
                     self.session.vitals.xp.add_levels(-(r.cost as i64));
                     crate::enchant::wear_anvil(world, pos);
@@ -1262,11 +1271,10 @@ impl Agent {
         } else if inv.add_stack(out) > 0 {
             return Err("inventory full".into());
         }
-        if !self.creative {
-            self.session.vitals.xp.add_levels(-(i as i64 + 1));
-        }
+        // Java takes the levels in every game mode (`onEnchantmentPerformed`).
+        self.session.vitals.xp.add_levels(-(i as i64 + 1));
         self.session.inventory = inv;
-        self.session.vitals.xp.seed = (crate::enchant::roll() * u32::MAX as f32) as u32 as i32;
+        self.session.vitals.xp.seed = crate::enchant::new_seed();
         Ok(())
     }
 
@@ -2203,6 +2211,23 @@ mod tests {
     }
 
     #[test]
+    fn agents_rename_on_an_anvil_for_a_level() {
+        let mut world = world();
+        let mut entities = Entities::new(1);
+        world.set_block(IVec3::new(4, 150, 1), Block::STONE);
+        world.set_block(IVec3::new(4, 151, 1), Block::ANVIL);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        a.inventory.slots[0] = Some(Stack::new(Item::DIAMOND, 5));
+        a.vitals.xp.add_levels(1);
+        a.execute(Command::parse("anvil name Shiny rocks").unwrap(), &mut world, &mut entities, &[]).unwrap();
+        let named = a.inventory.get(0).unwrap();
+        assert_eq!(named.display_name(), "Shiny rocks");
+        assert_eq!((named.count, named.repair_cost), (5, 0), "a rename alone adds no prior-work penalty");
+        assert_eq!(a.vitals.xp.level, 0);
+        assert!(Command::parse(&format!("anvil name {}", "x".repeat(51))).is_err(), "Java's 50-character limit");
+    }
+
+    #[test]
     fn agents_upgrade_held_diamond_gear_at_a_smithing_table() {
         use crate::enchant::{Enchantment, Enchants};
         use crate::item::{Tier, ToolKind};
@@ -2307,18 +2332,21 @@ mod tests {
         restored.set_block(p, Block::FURNACE);
         restored.load_furnaces(&save);
         restored.tick_furnaces(5.0);
-        assert!(restored.furnace(p).unwrap().xp > 0.0);
-        restored.furnace_mut(p).unwrap().xp = 3.0; // whole points, independent of the fraction roll
+        assert!(restored.furnace(p).unwrap().stored_xp() > 0.0);
+        // Whole points, independent of the fraction roll.
+        restored.furnace_mut(p).unwrap().recipes_used =
+            vec![crate::world::furnace::RecipeUse { recipe: Item::IRON_INGOT, xp: 3.0, count: 1 }];
         a.execute(Command::Furnace(true, 2), &mut restored, &mut e, &[]).unwrap();
         assert_eq!(a.inventory.get(0), Some(Stack::new(Item::IRON_INGOT, 1)));
-        assert_eq!(restored.furnace(p).unwrap().xp, 0.0);
+        assert_eq!(restored.furnace(p).unwrap().stored_xp(), 0.0);
         assert!(!e.orbs.is_empty());
         // A full player cannot drain slots or earn stored XP.
         a.inventory.slots.fill(Some(Stack::new(Item::DIAMOND, 64)));
         restored.furnace_mut(p).unwrap().output = Some(Stack::new(Item::IRON_INGOT, 1));
-        restored.furnace_mut(p).unwrap().xp = 4.0;
+        restored.furnace_mut(p).unwrap().recipes_used =
+            vec![crate::world::furnace::RecipeUse { recipe: Item::IRON_INGOT, xp: 4.0, count: 1 }];
         assert!(a.execute(Command::Furnace(true, 2), &mut restored, &mut e, &[]).is_err());
-        assert_eq!(restored.furnace(p).unwrap().xp, 4.0);
+        assert_eq!(restored.furnace(p).unwrap().stored_xp(), 4.0);
         assert_eq!(restored.furnace(p).unwrap().output, Some(Stack::new(Item::IRON_INGOT, 1)));
     }
 

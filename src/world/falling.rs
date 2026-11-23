@@ -286,7 +286,17 @@ impl World {
         self.falling = falling;
         self.clear_stalactite_hits();
         for (p, fell) in landed {
-            let block = fell.block;
+            let mut block = fell.block;
+            // `FallingBlockEntity.causeFallDamage`: an anvil that fell more
+            // than a block may land one step more worn, or break.
+            if block.is_anvil() {
+                let roll = (self.roll() >> 40) as f32 / (1u64 << 24) as f32;
+                match crate::enchant::falling_anvil_landing(block, fell.from_y - p.y as f64, roll).1 {
+                    Some(None) => continue,
+                    Some(Some(worn)) => block = worn,
+                    None => {}
+                }
+            }
             // BrushableBlock disables placement and drops after falling.
             if super::archaeology::owns(block.0) {
                 continue;

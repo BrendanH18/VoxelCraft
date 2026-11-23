@@ -1,10 +1,21 @@
-//! Furnaces: smelt one input at a time while fuel burns, like Minecraft.
+//! Furnaces, smokers and blast furnaces, following Java 26.3's
+//! `AbstractFurnaceBlockEntity.serverTick` tick for tick.
 //!
 //! A furnace's contents live in [`World`] keyed by position (block
 //! entities). They appear when a furnace block is placed, spill into
 //! [`World::drops`] when it's removed, keep smelting whenever their chunk
 //! is loaded, and swap the block between `FURNACE` and `LIT_FURNACE` (which
 //! glows) as the fire starts and goes out.
+//!
+//! Timers are whole game ticks, as in Java. Every 26.3 smelting, smoking
+//! and blasting recipe takes 200 ticks; what makes smokers and blast
+//! furnaces fast is the fuel's `cooking/speed_default` multiplier (2 in
+//! `#block/fast_cooking` blocks, else 1), which divides the recipe's time,
+//! and its `cooking/time_*` provider, which integer-divides the burn time
+//! by the same block's reduction factor (2 or 1). Finished items add to a
+//! per-recipe tally (Java's `RecipesUsed`) that pays experience only when a
+//! player takes from the output or the furnace is broken; hoppers take the
+//! output without it.
 
 use glam::IVec3;
 
@@ -13,12 +24,23 @@ use super::block::Block;
 use crate::inventory::{Stack, stack_from_str, stack_to_string};
 use crate::item::Item;
 
-/// Seconds to smelt one item.
+/// Seconds a normal furnace takes per item (200 ticks), for displays.
 pub const COOK_TIME: f32 = 10.0;
-/// Most experience a furnace stores.
-const MAX_XP: f32 = 1e6;
+/// `cookingtime` of every Java 26.3 smelting, smoking and blasting recipe.
+pub const RECIPE_COOK_TICKS: u32 = 200;
+/// `AbstractFurnaceBlockEntity.BURN_TIME_STANDARD`: the cooking total when
+/// no recipe matches the input.
+pub const BURN_TIME_STANDARD: u32 = 200;
+/// `AbstractFurnaceBlockEntity.BURN_COOL_SPEED`: how fast progress falls
+/// back while the furnace is out and has nothing to light it.
+pub const BURN_COOL_SPEED: u32 = 2;
+/// `cooking/fast_speed_multiplier` (smokers and blast furnaces).
+pub const FAST_SPEED_MULTIPLIER: f32 = 2.0;
+/// `cooking/fast_burn_time_reduction_factor`.
+pub const FAST_BURN_REDUCTION: u32 = 2;
 
-/// Java's specialized recipe types. Fast furnaces consume fuel twice as fast.
+/// Java's specialized recipe types. Smokers and blast furnaces are
+/// `#block/fast_cooking`: twice the speed, half the burn time.
 #[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
 pub enum FurnaceKind {
     #[default]
@@ -44,10 +66,27 @@ impl FurnaceKind {
             Self::Blast => blasts(item).then_some(out),
         }
     }
-    /// Seconds to cook one item. Java 26.3's recipes all take 200 ticks;
-    /// smokers and blast furnaces apply the fuel's fast speed multiplier (2).
+    /// Whether the block is in `#block/fast_cooking`.
+    pub fn fast(self) -> bool {
+        self != Self::Normal
+    }
+    /// `cooking/speed_default` resolved for this block.
+    pub fn speed_multiplier(self) -> f32 {
+        if self.fast() { FAST_SPEED_MULTIPLIER } else { 1.0 }
+    }
+    /// Ticks one of `item` burns here (`cooking/time_*`: the base time
+    /// integer-divided by the block's reduction factor), if it's fuel.
+    pub fn burn_ticks(self, item: Item) -> Option<u32> {
+        let base = crate::content::fuel::ticks(item)?;
+        Some(if self.fast() { base / FAST_BURN_REDUCTION } else { base })
+    }
+    /// Ticks one item takes with fuel burning (`getTotalCookTime`).
+    pub fn cook_ticks(self) -> u32 {
+        total_cook_ticks(self.speed_multiplier())
+    }
+    /// Seconds to cook one item with fuel burning.
     pub fn cook_time(self) -> f32 {
-        if self == Self::Normal { COOK_TIME } else { COOK_TIME / 2.0 }
+        self.cook_ticks() as f32 / 20.0
     }
     fn blocks(self, lit: bool) -> Block {
         match (self, lit) {
@@ -61,20 +100,72 @@ impl FurnaceKind {
     }
 }
 
-#[derive(Clone, Copy, Default, PartialEq, Debug)]
+/// `getTotalCookTime(recipe, entity)`: the recipe's time divided by the
+/// speed multiplier, rounded up (`(int) Math.ceil(time / speed)`).
+pub fn total_cook_ticks(speed: f32) -> u32 {
+    if speed > 0.0 { (RECIPE_COOK_TICKS as f32 / speed).ceil() as u32 } else { RECIPE_COOK_TICKS }
+}
+
+/// One entry of the furnace's `RecipesUsed` tally: the recipe (keyed by
+/// [`recipe_key`]), its experience per item and how many it has made.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct RecipeUse {
+    pub recipe: Item,
+    pub xp: f32,
+    pub count: u32,
+}
+
+/// The item that identifies the Java cooking recipe turning `input` into
+/// `out`. Most 26.3 cooking recipes take one item, so the input names the
+/// recipe; the ones with a list or tag ingredient (`charcoal`, `glass`,
+/// `leaf_litter` and the `*_nugget_from_*` melt-downs) are one recipe for
+/// all of their inputs, so their result names them.
+pub fn recipe_key(input: Item, out: Item) -> Item {
+    let b = Item::from_block;
+    let shared = matches!(out, Item::CHARCOAL | Item::IRON_NUGGET | Item::GOLD_NUGGET | Item::COPPER_NUGGET)
+        || out == b(Block::GLASS)
+        || out == b(super::biome_plants::LEAF_LITTER);
+    if shared { out } else { input }
+}
+
+#[derive(Clone, PartialEq, Debug)]
 pub struct Furnace {
     pub kind: FurnaceKind,
     pub input: Option<Stack>,
     pub fuel: Option<Stack>,
     pub output: Option<Stack>,
-    /// Seconds the current piece of fuel keeps burning, and its total.
-    pub burn_left: f32,
-    pub burn_total: f32,
-    /// Seconds spent on the current item.
-    pub cook: f32,
-    /// Experience stored by finished items, released when the output is
-    /// taken or the furnace is broken (Java's recipes-used tally).
-    pub xp: f32,
+    /// `litTimeRemaining` and `litTotalTime`, in ticks.
+    pub lit: u32,
+    pub lit_total: u32,
+    /// `cookingTimer` and `cookingTotalTime`, in ticks.
+    pub cook: u32,
+    pub cook_total: u32,
+    /// `speedMultiplier`: set from each fuel as it's lit.
+    pub speed: f32,
+    /// `RecipesUsed`: experience owed for finished items, paid when a
+    /// player takes from the output or the furnace is broken.
+    pub recipes_used: Vec<RecipeUse>,
+    /// Fraction of a tick carried between [`Furnace::tick`] calls (not
+    /// saved; public so callers can build furnaces with struct update).
+    pub carry: f32,
+}
+
+impl Default for Furnace {
+    fn default() -> Self {
+        Self {
+            kind: FurnaceKind::Normal,
+            input: None,
+            fuel: None,
+            output: None,
+            lit: 0,
+            lit_total: 0,
+            cook: 0,
+            cook_total: 0,
+            speed: 1.0,
+            recipes_used: Vec::new(),
+            carry: 0.0,
+        }
+    }
 }
 
 /// Java's `*_from_smoking` inputs: raw meat and fish, potatoes and kelp.
@@ -219,99 +310,211 @@ pub fn smelt_xp(out: Item) -> f32 {
     }
 }
 
-/// Seconds one of `item` burns as fuel (Minecraft's values / 20).
+/// Seconds one of `item` burns as fuel in a normal furnace (ticks / 20).
 pub fn burn_time(item: Item) -> Option<f32> {
     crate::content::fuel::ticks(item).map(|ticks| ticks as f32 / 20.0)
 }
 
+/// `ItemStack.isSameItemSameComponents`: whether two stacks stack.
+fn same_item(a: Stack, b: Stack) -> bool {
+    a.stacks_with(&b)
+}
+
+/// Pays out experience for `count` finished items worth `xp` each
+/// (`createExperience`): the whole part, plus one with the fractional
+/// part as its chance, all in Java's float arithmetic.
+pub fn award(count: u32, xp: f32, roll: f32) -> u32 {
+    let total = count as f32 * xp;
+    let whole = total.floor();
+    let fraction = total - whole;
+    whole as u32 + (fraction != 0.0 && roll < fraction) as u32
+}
+
 impl Furnace {
+    /// `setItem` on the input slot: a different item (or an emptied slot)
+    /// restarts cooking, with the total worked out for the new input.
+    pub fn set_input(&mut self, stack: Option<Stack>) {
+        let same = matches!((self.input, stack), (Some(old), Some(new)) if same_item(old, new));
+        self.input = stack;
+        if !same {
+            self.cook_total = self.total_cook_time();
+            self.cook = 0;
+        }
+    }
+
     /// Changes the input through the same slot interaction as the inventory.
     /// Adding or removing some of the same item keeps cooking progress;
-    /// replacing it or emptying the slot starts a fresh cook.
+    /// putting in a different item, or refilling an emptied slot, restarts
+    /// it (Java calls `setItem` then; taking items out doesn't).
     pub fn click_input(&mut self, cursor: &mut Option<Stack>, right: bool) {
-        let before = self.input.map(|s| (s.item, s.damage));
-        crate::inventory::click_slot(&mut self.input, cursor, right);
-        if self.input.map(|s| (s.item, s.damage)) != before {
-            self.cook = 0.0;
+        let before = self.input;
+        let mut slot = before;
+        crate::inventory::click_slot(&mut slot, cursor, right);
+        match (before, slot) {
+            (Some(old), Some(new)) if same_item(old, new) => self.input = slot,
+            (_, Some(_)) => self.set_input(slot),
+            (_, None) => self.input = None,
         }
     }
 
     pub fn is_lit(&self) -> bool {
-        self.burn_left > 0.0
+        self.lit > 0
     }
 
-    /// The smelted result of the current input, if it can go to the output.
-    fn product(&self) -> Option<Item> {
-        let out = self.kind.smelt(self.input?.item)?;
+    /// How far the current item is (`cookingTimer / cookingTotalTime`).
+    pub fn cook_progress(&self) -> f32 {
+        if self.cook_total == 0 { 0.0 } else { (self.cook as f32 / self.cook_total as f32).clamp(0.0, 1.0) }
+    }
+
+    /// How much of the current fuel is left.
+    pub fn burn_progress(&self) -> f32 {
+        if self.lit_total == 0 { 0.0 } else { (self.lit as f32 / self.lit_total as f32).clamp(0.0, 1.0) }
+    }
+
+    /// Experience the tally holds, before rounding.
+    pub fn stored_xp(&self) -> f32 {
+        self.recipes_used.iter().map(|r| r.count as f32 * r.xp).sum()
+    }
+
+    /// `getTotalCookTime(level, entity)`: the input's recipe time at the
+    /// current speed, or [`BURN_TIME_STANDARD`] without a recipe.
+    fn total_cook_time(&self) -> u32 {
+        match self.input.and_then(|s| self.kind.smelt(s.item)) {
+            Some(_) => total_cook_ticks(self.speed),
+            None => BURN_TIME_STANDARD,
+        }
+    }
+
+    /// `canBurn`: the result fits in the output slot.
+    fn can_burn(&self, out: Item) -> bool {
         match self.output {
-            None => Some(out),
-            Some(o) if o.item == out && o.count < o.max() => Some(out),
-            Some(_) => None,
+            None => true,
+            Some(o) => same_item(o, Stack::new(out, 1)) && o.count < o.max(),
         }
     }
 
-    /// Advances burning and smelting by `dt` seconds.
-    pub fn tick(&mut self, mut dt: f32) {
-        if self.kind != FurnaceKind::Normal {
-            dt *= 2.0;
+    fn record(&mut self, recipe: Item, xp: f32) {
+        match self.recipes_used.iter_mut().find(|r| r.recipe == recipe) {
+            Some(r) => r.count = r.count.saturating_add(1),
+            None => self.recipes_used.push(RecipeUse { recipe, xp, count: 1 }),
         }
-        // Step through fuel changes so a long dt can't skip lighting the next piece.
-        while dt > 0.0 {
-            if !self.is_lit()
-                && self.product().is_some()
-                && let Some(ticks) = self.fuel.and_then(|f| crate::content::fuel::ticks(f.item))
-            {
-                // Java integer-divides fuel ticks for fast furnaces. Our timers
-                // use doubled simulation time there, so retain even ticks only.
-                let ticks = if self.kind == FurnaceKind::Normal { ticks } else { ticks / 2 * 2 };
-                let t = ticks as f32 / 20.0;
-                // A lava bucket burns down to an empty bucket.
-                let bucket = self.fuel.is_some_and(|f| f.item == Item::LAVA_BUCKET);
-                self.fuel = if bucket { Some(Stack::new(Item::BUCKET, 1)) } else { take_one(self.fuel) };
-                self.burn_left = t;
-                self.burn_total = t;
-            }
-            if !self.is_lit() {
-                // Cold: progress slips back.
-                self.cook = (self.cook - 2.0 * dt).max(0.0);
-                return;
-            }
-            // Stop at the next finished item so big steps smelt everything.
-            let product = self.product();
-            let mut step = dt.min(self.burn_left);
-            if product.is_some() {
-                step = step.min(COOK_TIME - self.cook);
-            }
-            self.burn_left -= step;
-            dt -= step;
-            match product {
-                Some(out) => {
-                    self.cook += step;
-                    if self.cook + 0.0001 >= COOK_TIME {
-                        self.cook = (self.cook - COOK_TIME).max(0.0);
-                        self.input = take_one(self.input);
-                        self.xp = (self.xp + smelt_xp(out)).min(MAX_XP);
-                        match &mut self.output {
-                            Some(o) => o.count += 1,
-                            None => self.output = Some(Stack::new(out, 1)),
+    }
+
+    /// One `serverTick`. Returns a fuel remainder that had no room in the
+    /// fuel slot, which Java drops at the furnace.
+    pub fn step(&mut self) -> Option<Stack> {
+        let mut dropped = None;
+        let mut is_lit = false;
+        if self.lit > 0 {
+            self.lit -= 1;
+            is_lit = self.lit > 0;
+        }
+        let has_input = self.input.is_some();
+        let has_fuel = self.fuel.is_some();
+        if is_lit || has_fuel && has_input {
+            let recipe = self.input.and_then(|input| Some((input, self.kind.smelt(input.item)?)));
+            match recipe {
+                Some((input, out)) if self.can_burn(out) => {
+                    if !is_lit {
+                        let fuel = self.fuel.map(|f| f.item);
+                        let new_lit = fuel.and_then(|f| self.kind.burn_ticks(f)).unwrap_or(0);
+                        // `getSpeedMultiplier`: the fuel's `speed_default`, or
+                        // 1 for something with no cooking fuel component.
+                        let speed = match fuel {
+                            Some(f) if crate::content::fuel::ticks(f).is_some() => self.kind.speed_multiplier(),
+                            _ => 1.0,
+                        };
+                        self.lit = new_lit;
+                        self.lit_total = new_lit;
+                        self.speed = speed;
+                        if self.cook_total > 0 && self.cook < self.cook_total {
+                            let ratio = self.cook as f32 / self.cook_total as f32;
+                            self.cook_total = total_cook_ticks(self.speed);
+                            self.cook = (ratio * self.cook_total as f32).ceil() as u32;
+                        }
+                        if new_lit > 0 {
+                            if self.cook_total == 0 {
+                                // Java sets the total whenever `setItem` changes
+                                // the input; inputs written straight into the
+                                // slot (world generation, tests) get it here.
+                                self.cook_total = total_cook_ticks(self.speed);
+                            }
+                            dropped = self.consume_fuel();
+                            is_lit = true;
                         }
                     }
+                    if is_lit {
+                        self.cook += 1;
+                        if self.cook >= self.cook_total {
+                            self.cook = 0;
+                            self.cook_total = total_cook_ticks(self.speed);
+                            self.burn(input, out);
+                            self.record(recipe_key(input.item, out), smelt_xp(out));
+                        }
+                    } else {
+                        self.cook = 0;
+                    }
                 }
-                None => self.cook = 0.0,
+                Some(_) => self.cook = 0,
+                // An input with no recipe here leaves the timer alone.
+                None if has_input => {}
+                None => self.cook = 0,
             }
+        } else if self.cook > 0 {
+            self.cook = self.cook.saturating_sub(BURN_COOL_SPEED).min(self.cook_total);
+        }
+        dropped
+    }
+
+    /// `consumeFuel`: one fuel item goes; its crafting remainder (a lava
+    /// bucket's bucket) takes the emptied slot or is dropped.
+    fn consume_fuel(&mut self) -> Option<Stack> {
+        let fuel = self.fuel?;
+        let remainder = if fuel.item == Item::LAVA_BUCKET { Some(Item::BUCKET) } else { fuel.item.remainder() };
+        self.fuel = take_one(self.fuel);
+        let remainder = remainder.map(|i| Stack::new(i, 1));
+        if self.fuel.is_none() {
+            self.fuel = remainder;
+            None
+        } else {
+            remainder
         }
     }
 
-    /// Releases the stored experience as whole points, rounding the
-    /// fraction up with that chance (`roll` is uniform in 0..1).
-    pub fn take_xp(&mut self, roll: f32) -> u32 {
-        crate::simulation::experience::round_award(std::mem::take(&mut self.xp), roll)
+    /// `burn`: the result goes to the output and one input is used; a wet
+    /// sponge also fills a bucket waiting in the fuel slot.
+    fn burn(&mut self, input: Stack, out: Item) {
+        match &mut self.output {
+            Some(o) => o.count += 1,
+            None => self.output = Some(Stack::new(out, 1)),
+        }
+        if input.item == Item::from_block(crate::world::overworld_blocks::WET_SPONGE)
+            && self.fuel.is_some_and(|f| f.item == Item::BUCKET)
+        {
+            self.fuel = Some(Stack::new(Item::WATER_BUCKET, 1));
+        }
+        self.input = take_one(self.input);
     }
 
-    /// Releases all stored XP if the output shrank from `before`, including
-    /// on a partial transfer. No transfer leaves the tally intact; later
-    /// takes earn nothing until more items have been smelted.
-    pub fn take_output_xp(&mut self, before: u8, roll: f32) -> Option<u32> {
+    /// Runs the whole game ticks in `dt` seconds (20 per second), carrying
+    /// any fraction to the next call. Returns dropped fuel remainders.
+    pub fn tick(&mut self, dt: f32) -> Vec<Stack> {
+        let ticks = self.carry + dt * 20.0;
+        let whole = (ticks + 1e-3).floor().max(0.0);
+        self.carry = ticks - whole;
+        (0..whole as u32).filter_map(|_| self.step()).collect()
+    }
+
+    /// Pays out and clears the tally (`getRecipesToAwardAndPopExperience`):
+    /// each recipe rounds on its own, drawing a fresh `roll` in 0..1.
+    pub fn take_xp(&mut self, mut roll: impl FnMut() -> f32) -> u32 {
+        std::mem::take(&mut self.recipes_used).into_iter().map(|r| award(r.count, r.xp, roll())).sum()
+    }
+
+    /// A player took from the output (`FurnaceResultSlot`): if the output
+    /// shrank from `before`, even partly, the whole tally is paid. A take
+    /// that moved nothing pays nothing and keeps it.
+    pub fn take_output_xp(&mut self, before: u8, roll: impl FnMut() -> f32) -> Option<u32> {
         (self.output.map_or(0, |s| s.count) < before).then(|| self.take_xp(roll))
     }
 
@@ -320,46 +523,94 @@ impl Furnace {
         [self.input.take(), self.fuel.take(), self.output.take()].into_iter().flatten().collect()
     }
 
-    /// Saves the slots, cooking and fuel timers, and unclaimed XP tally.
+    /// Saves the slots, the four timers, the speed, the kind and the tally:
+    /// `input;fuel;output;lit;lit_total;cook;cook_total;speed;kind;recipes`.
     pub fn serialize(&self) -> String {
+        let recipes = if self.recipes_used.is_empty() {
+            "-".to_string()
+        } else {
+            self.recipes_used
+                .iter()
+                .map(|r| format!("{}:{}:{}", r.recipe.0, r.xp, r.count))
+                .collect::<Vec<_>>()
+                .join(",")
+        };
         format!(
-            "{};{};{};{:.2};{:.2};{:.2};{:.2};{}",
+            "{};{};{};{};{};{};{};{};{};{}",
             stack_to_string(self.input),
             stack_to_string(self.fuel),
             stack_to_string(self.output),
-            self.burn_left,
-            self.burn_total,
+            self.lit,
+            self.lit_total,
             self.cook,
-            self.xp,
-            self.kind as u8
+            self.cook_total,
+            self.speed,
+            self.kind as u8,
+            recipes
         )
     }
 
-    /// Restores saved furnace state, accepting older saves without an XP field.
+    /// Restores saved furnace state. Saves from before v0.17 kept seconds
+    /// (doubled in fast furnaces) and one experience total; they convert to
+    /// ticks, and the total becomes one tally entry that pays the same.
     pub fn deserialize(text: &str) -> Option<Self> {
         let f: Vec<&str> = text.split(';').collect();
-        // Saves from before experience have six fields.
-        let (input, fuel, output, left, total, cook, xp, kind) = match f[..] {
+        let kind = |s: &str| match s {
+            "0" => Some(FurnaceKind::Normal),
+            "1" => Some(FurnaceKind::Smoker),
+            "2" => Some(FurnaceKind::Blast),
+            _ => None,
+        };
+        if let [input, fuel, output, lit, lit_total, cook, cook_total, speed, k, recipes] = f[..] {
+            let int = |s: &str| s.parse::<u32>().ok();
+            let speed = speed.parse::<f32>().ok().filter(|v| v.is_finite() && *v >= 0.0)?;
+            let mut recipes_used = Vec::new();
+            for entry in recipes.split(',').filter(|e| !e.is_empty() && *e != "-") {
+                let [recipe, xp, count] = entry.split(':').collect::<Vec<_>>()[..] else { return None };
+                let xp = xp.parse::<f32>().ok().filter(|v| v.is_finite() && *v >= 0.0)?;
+                recipes_used.push(RecipeUse { recipe: Item(recipe.parse().ok()?), xp, count: int(count)? });
+            }
+            let cook_total = int(cook_total)?;
+            return Some(Self {
+                kind: kind(k)?,
+                input: stack_from_str(input)?,
+                fuel: stack_from_str(fuel)?,
+                output: stack_from_str(output)?,
+                lit: int(lit)?,
+                lit_total: int(lit_total)?,
+                cook: int(cook)?.min(cook_total.max(BURN_TIME_STANDARD)),
+                cook_total,
+                speed,
+                recipes_used,
+                carry: 0.0,
+            });
+        }
+        // Saves from before experience have six fields, before kinds seven.
+        let (input, fuel, output, left, total, cook, xp, k) = match f[..] {
             [input, fuel, output, left, total, cook] => (input, fuel, output, left, total, cook, "0", "0"),
             [input, fuel, output, left, total, cook, xp] => (input, fuel, output, left, total, cook, xp, "0"),
             [input, fuel, output, left, total, cook, xp, kind] => (input, fuel, output, left, total, cook, xp, kind),
             _ => return None,
         };
         let num = |s: &str| s.parse::<f32>().ok().filter(|v| v.is_finite() && *v >= 0.0);
+        let kind = kind(k)?;
+        // Fast furnaces ran their timers at double speed in seconds.
+        let scale = if kind.fast() { 10.0 } else { 20.0 };
+        let ticks = |secs: f32| (secs * scale).round() as u32;
+        let cook_total = kind.cook_ticks();
+        let xp = num(xp)?.min(1e6);
         Some(Self {
-            kind: match kind {
-                "0" => FurnaceKind::Normal,
-                "1" => FurnaceKind::Smoker,
-                "2" => FurnaceKind::Blast,
-                _ => return None,
-            },
+            kind,
             input: stack_from_str(input)?,
             fuel: stack_from_str(fuel)?,
             output: stack_from_str(output)?,
-            burn_left: num(left)?,
-            burn_total: num(total)?,
-            cook: num(cook)?.min(COOK_TIME),
-            xp: num(xp)?.min(MAX_XP),
+            lit: ticks(num(left)?),
+            lit_total: ticks(num(total)?),
+            cook: ticks(num(cook)?).min(cook_total),
+            cook_total,
+            speed: kind.speed_multiplier(),
+            recipes_used: if xp > 0.0 { vec![RecipeUse { recipe: Item(0), xp, count: 1 }] } else { Vec::new() },
+            carry: 0.0,
         })
     }
 }
@@ -397,8 +648,8 @@ impl World {
                 && self.tile_drops
             {
                 self.drops.extend(f.take_all().into_iter().map(|s| (p, s)));
-                let roll = (self.roll() >> 40) as f32 / (1u64 << 24) as f32;
-                let xp = f.take_xp(roll);
+                // `preRemoveSideEffects` pops the tally at the block's centre.
+                let xp = f.take_xp(|| (self.roll() >> 40) as f32 / (1u64 << 24) as f32);
                 if xp > 0 {
                     self.xp_drops.push((p, xp));
                 }
@@ -427,10 +678,11 @@ impl World {
                 f.kind = FurnaceKind::of(b);
             }
             let before = [f.input, f.fuel, f.output];
-            f.tick(dt as f32);
-            relight.push((p, f.is_lit(), before != [f.input, f.fuel, f.output]));
+            let dropped = f.tick(dt as f32);
+            relight.push((p, f.is_lit(), before != [f.input, f.fuel, f.output], dropped));
         }
-        for (p, lit, changed) in relight {
+        for (p, lit, changed, dropped) in relight {
+            self.drops.extend(dropped.into_iter().map(|s| (p, s)));
             if changed {
                 self.redstone_changed(p);
             }
@@ -474,95 +726,136 @@ mod tests {
         Furnace { input: Some(Stack::new(input, n)), fuel: Some(Stack::new(fuel, m)), ..Default::default() }
     }
 
-    fn run(f: &mut Furnace, secs: f32) {
-        for _ in 0..(secs * 20.0) as usize {
-            f.tick(0.05);
+    fn run(f: &mut Furnace, ticks: u32) {
+        for _ in 0..ticks {
+            f.step();
         }
     }
 
     #[test]
-    fn fast_furnaces_filter_recipes_double_speed_and_fuel_use_and_save_kind() {
+    fn fast_furnaces_filter_recipes_double_speed_and_halve_fuel_and_save_kind() {
         for (kind, input, output, reject) in [
             (FurnaceKind::Smoker, Item::RAW_BEEF, Item::STEAK, Item::RAW_IRON),
             (FurnaceKind::Blast, Item::RAW_IRON, Item::IRON_INGOT, Item::RAW_BEEF),
         ] {
             let mut f = furnace(input, 64, Item::COAL, 1);
             f.kind = kind;
-            f.tick(5.01);
-            assert_eq!(f.output, Some(Stack::new(output, 1)));
-            f.tick(35.0);
+            run(&mut f, 100);
+            assert_eq!(f.output, Some(Stack::new(output, 1)), "100 ticks per item");
+            assert_eq!((f.lit_total, f.speed), (800, 2.0), "coal burns 1600 / 2 ticks at double speed");
+            run(&mut f, 800);
             assert!(!f.is_lit());
             assert_eq!(f.output.unwrap().count, 8, "one coal always smelts eight items");
             let saved = Furnace::deserialize(&f.serialize()).unwrap();
-            assert_eq!(saved.kind, kind);
+            assert_eq!(saved, Furnace { carry: saved.carry, ..f.clone() });
             let mut g = furnace(reject, 1, Item::COAL, 1);
             g.kind = kind;
-            g.tick(20.0);
+            run(&mut g, 400);
             assert_eq!(g.fuel.unwrap().count, 1);
             assert!(g.output.is_none());
         }
         assert!(FurnaceKind::Blast.smelt(Block::SAND.into()).is_none());
         assert!(FurnaceKind::Blast.smelt(Block::ANCIENT_DEBRIS.into()).is_some());
+        assert_eq!(FurnaceKind::Smoker.burn_ticks(Item::from_name("dried_kelp_block").unwrap()), Some(2000));
     }
 
     #[test]
     fn ancient_debris_smelts_into_scrap_and_awards_two_xp_per_item() {
         let mut f = furnace(Block::ANCIENT_DEBRIS.into(), 2, Item::COAL, 1);
-        run(&mut f, 20.1);
+        run(&mut f, 400);
         assert_eq!(f.input, None);
         assert_eq!(f.output, Some(Stack::new(Item::NETHERITE_SCRAP, 2)));
-        assert_eq!(f.xp, 4.0);
-        assert_eq!(f.take_output_xp(2, 0.5), None, "no XP before taking the output");
+        assert_eq!(f.stored_xp(), 4.0);
+        assert_eq!(f.take_output_xp(2, || 0.5), None, "no XP before taking the output");
         f.output = None;
-        assert_eq!(f.take_output_xp(2, 0.5), Some(4));
-        assert_eq!(f.xp, 0.0);
+        assert_eq!(f.take_output_xp(2, || 0.5), Some(4));
+        assert_eq!(f.stored_xp(), 0.0);
     }
 
     #[test]
     fn lava_buckets_burn_long_and_leave_the_bucket() {
         let mut f = furnace(Item::from_block(Block::COBBLESTONE), 64, Item::LAVA_BUCKET, 1);
-        f.tick(1.0);
+        f.step();
         assert!(f.is_lit());
         assert_eq!(f.fuel, Some(Stack::new(Item::BUCKET, 1)));
-        for _ in 0..60 {
-            f.tick(10.0);
-        }
+        run(&mut f, 12_000);
         assert_eq!(f.output.map(|s| s.count), Some(60), "still burning after 600 s");
     }
 
     #[test]
-    fn smelts_one_item_per_cook_time_while_fuel_lasts() {
+    fn a_fuel_of_n_ticks_cooks_n_ticks_and_the_lit_state_follows_java() {
         let ore = Item::from_block(Block::IRON_ORE);
-        // A stick burns 5 s: half an ingot's worth, then the fire is out.
+        // A stick burns 100 ticks: half an ingot's worth, then the fire is out.
         let mut f = furnace(ore, 3, Item::STICK, 1);
-        run(&mut f, 1.0);
-        assert!(f.is_lit() && f.fuel.is_none());
-        run(&mut f, 6.0);
-        assert!(!f.is_lit() && f.output.is_none() && f.cook < 5.0);
-
-        // Coal burns 80 s: all three ores, then idles on until it burns out.
+        f.step();
+        assert!(f.is_lit() && f.fuel.is_none() && f.cook == 1);
+        run(&mut f, 99);
+        assert!(f.is_lit() && f.cook == 100, "the 100th tick still cooks");
+        f.step();
+        assert!(!f.is_lit(), "it goes out on the tick the timer reaches 0");
+        assert_eq!(f.cook, 98, "with no fuel left, progress cools by two");
+        // Coal burns 1600 ticks: all three ores, then idles on until it burns out.
         let mut f = furnace(ore, 3, Item::COAL, 1);
-        run(&mut f, 10.1);
+        run(&mut f, 200);
         assert_eq!(f.output, Some(Stack::new(Item::IRON_INGOT, 1)));
-        run(&mut f, 20.0);
+        run(&mut f, 400);
         assert_eq!(f.output, Some(Stack::new(Item::IRON_INGOT, 3)));
         assert!(f.input.is_none() && f.is_lit());
         // A big time step behaves the same as small ones.
         let mut g = furnace(ore, 3, Item::COAL, 1);
-        g.tick(30.1);
+        g.tick(30.0);
         assert_eq!(g.output, f.output);
+    }
+
+    #[test]
+    fn progress_cools_by_two_a_tick_with_nothing_to_burn() {
+        let mut f = furnace(Item::RAW_BEEF, 2, Item::STICK, 1);
+        run(&mut f, 50);
+        assert_eq!((f.cook, f.lit), (50, 51));
+        f.input = None;
+        f.step();
+        assert_eq!(f.cook, 0, "burning with an empty input slot resets");
+        let mut f = furnace(Item::RAW_BEEF, 2, Item::STICK, 1);
+        run(&mut f, 100);
+        assert_eq!((f.cook, f.lit), (100, 1));
+        f.step();
+        assert!(!f.is_lit());
+        assert_eq!(f.cook, 98, "out, with nothing to light it: `BURN_COOL_SPEED`");
+        let mut f = Furnace { cook: 7, cook_total: 200, ..Default::default() };
+        f.step();
+        assert_eq!(f.cook, 5);
+        run(&mut f, 3);
+        assert_eq!(f.cook, 0);
+    }
+
+    #[test]
+    fn relighting_rescales_progress_to_the_new_speed() {
+        // A smoker part way through a 200-tick total (set while unlit at
+        // speed 1) rescales to its fast total when lit: ceil(ratio * 100).
+        let mut f = Furnace { kind: FurnaceKind::Smoker, ..Default::default() };
+        f.set_input(Some(Stack::new(Item::RAW_BEEF, 1)));
+        assert_eq!(f.cook_total, 200);
+        f.cook = 51;
+        f.fuel = Some(Stack::new(Item::STICK, 1));
+        f.step();
+        assert_eq!((f.cook_total, f.cook), (100, 27), "ceil(51 / 200 * 100) then one tick");
     }
 
     #[test]
     fn needs_a_smeltable_input_and_room_for_the_output() {
         // Nothing to smelt: the fuel isn't wasted.
         let mut f = furnace(Item::STICK, 1, Item::COAL, 1);
-        run(&mut f, 1.0);
+        run(&mut f, 20);
         assert!(!f.is_lit() && f.fuel.is_some());
         // Output full of something else: no burning either.
         let mut f = furnace(Item::RAW_BEEF, 1, Item::COAL, 1);
         f.output = Some(Stack::new(Item::COAL, 1));
-        run(&mut f, 1.0);
+        run(&mut f, 20);
+        assert!(!f.is_lit());
+        // A renamed result doesn't stack with fresh ones.
+        let mut f = furnace(Item::RAW_BEEF, 1, Item::COAL, 1);
+        f.output = Some(Stack::new(Item::STEAK, 1).with_name("Dinner").unwrap());
+        run(&mut f, 20);
         assert!(!f.is_lit());
         assert_eq!(smelt(Item::RAW_BEEF), Some(Item::STEAK));
         assert!(burn_time(Item::IRON_INGOT).is_none());
@@ -570,99 +863,135 @@ mod tests {
     }
 
     #[test]
+    fn a_wet_sponge_fills_a_bucket_in_the_fuel_slot() {
+        let sponge = Item::from_block(crate::world::overworld_blocks::WET_SPONGE);
+        let mut f = furnace(sponge, 2, Item::COAL, 1);
+        f.step();
+        f.fuel = Some(Stack::new(Item::BUCKET, 1));
+        run(&mut f, 199);
+        assert_eq!(f.fuel, Some(Stack::new(Item::WATER_BUCKET, 1)));
+        assert_eq!(f.output.map(|s| s.count), Some(1));
+    }
+
+    #[test]
     fn output_transfers_release_stored_xp_once() {
         use crate::inventory::move_into;
 
         let mut f = furnace(Item::from_block(Block::GOLD_ORE), 8, Item::COAL, 2);
-        run(&mut f, COOK_TIME * 8.0 + 1.0);
-        assert_eq!(f.xp, 8.0);
+        run(&mut f, 1601);
+        assert_eq!(f.stored_xp(), 8.0);
         let mut inventory = [Some(Stack::new(Item::GOLD_INGOT, 64))];
         let stack = f.output.take().unwrap();
         f.output = move_into(stack, &mut inventory, &[0]);
-        assert_eq!(f.take_output_xp(stack.count, 0.5), None, "a full inventory does not release XP");
-        assert_eq!(f.xp, 8.0);
+        assert_eq!(f.take_output_xp(stack.count, || 0.5), None, "a full inventory does not release XP");
+        assert_eq!(f.stored_xp(), 8.0);
 
         inventory[0].as_mut().unwrap().count = 63;
         let stack = f.output.take().unwrap();
         f.output = move_into(stack, &mut inventory, &[0]);
         assert_eq!(f.output.unwrap().count, 7, "only one item fits");
-        assert_eq!(f.take_output_xp(stack.count, 0.5), Some(8), "a partial take releases the entire tally");
-        assert_eq!(f.xp, 0.0);
+        assert_eq!(f.take_output_xp(stack.count, || 0.5), Some(8), "a partial take releases the entire tally");
+        assert_eq!(f.stored_xp(), 0.0);
 
         inventory[0] = None;
         let stack = f.output.take().unwrap();
         f.output = move_into(stack, &mut inventory, &[0]);
         assert_eq!(f.output, None);
-        assert_eq!(f.take_output_xp(stack.count, 0.5), Some(0), "taking the leftovers cannot award XP twice");
-        f.input = Some(Stack::new(Block::GOLD_ORE, 1));
+        assert_eq!(f.take_output_xp(stack.count, || 0.5), Some(0), "taking the leftovers cannot award XP twice");
+        f.set_input(Some(Stack::new(Block::GOLD_ORE, 1)));
         f.fuel = Some(Stack::new(Item::COAL, 1));
-        run(&mut f, COOK_TIME + 1.0);
+        run(&mut f, 201);
         f.output.take();
-        assert_eq!(f.take_output_xp(1, 0.5), Some(1), "new smelts earn fresh XP");
+        assert_eq!(f.take_output_xp(1, || 0.5), Some(1), "new smelts earn fresh XP");
     }
 
     #[test]
-    fn smelting_stores_experience_until_taken() {
-        let mut f = furnace(Item::from_block(Block::IRON_ORE), 3, Item::COAL, 1);
-        run(&mut f, COOK_TIME * 3.0 + 1.0);
-        assert!((f.xp - 2.1).abs() < 1e-4, "{}", f.xp);
-        assert_eq!(f.take_xp(0.05), 3, "0.1 rounds up with 10% chance");
-        assert_eq!(f.xp, 0.0);
-        f.xp = 2.1;
-        assert_eq!(f.take_xp(0.5), 2);
-        assert_eq!(smelt_xp(Item::from_block(Block::GLASS)), 0.1);
-        f.xp = 1.25;
-        let g = Furnace::deserialize(&f.serialize()).unwrap();
-        assert_eq!(g.xp, 1.25);
+    fn each_recipe_rounds_its_own_fraction() {
+        // Iron ore and raw iron are separate Java recipes (0.7 each): two
+        // tallies of 0.7, each rounding up on a roll below 0.7.
+        let mut f = furnace(Item::from_block(Block::IRON_ORE), 1, Item::COAL, 1);
+        run(&mut f, 200);
+        f.set_input(Some(Stack::new(Item::RAW_IRON, 1)));
+        run(&mut f, 200);
+        assert_eq!(f.recipes_used.len(), 2);
+        let mut rolls = [0.69, 0.71].into_iter();
+        assert_eq!(f.clone().take_xp(|| rolls.next().unwrap()), 1);
+        assert_eq!(f.clone().take_xp(|| 0.5), 2);
+        assert_eq!(f.take_xp(|| 0.9), 0);
+        // Sand and red sand share Java's `glass` recipe.
+        assert_eq!(
+            recipe_key(Block::SAND.into(), Block::GLASS.into()),
+            recipe_key(Block::RED_SAND.into(), Block::GLASS.into())
+        );
+        assert_eq!(award(3, 0.1, 0.5), 0, "3 * 0.1 = 0.3 rounds up only on a roll below 0.3");
+        assert_eq!(award(3, 0.1, 0.2), 1);
+        assert_eq!(award(10, 0.7, 0.99), 7, "a whole total never rounds up");
+    }
+
+    #[test]
+    fn old_saves_convert_seconds_to_ticks_and_keep_their_experience() {
         let old = "-;-;-;0.00;0.00;0.00";
-        assert_eq!(Furnace::deserialize(old).map(|f| f.xp), Some(0.0), "older saves load");
+        assert_eq!(Furnace::deserialize(old).map(|f| f.stored_xp()), Some(0.0), "older saves load");
+        let raw = stack_to_string(Some(Stack::new(Item::RAW_IRON, 3)));
+        let coal = stack_to_string(Some(Stack::new(Item::COAL, 1)));
+        let normal = Furnace::deserialize(&format!("{raw};{coal};-;40.00;80.00;4.00;2.10;0")).unwrap();
+        assert_eq!((normal.lit, normal.lit_total, normal.cook, normal.cook_total), (800, 1600, 80, 200));
+        assert_eq!(normal.clone().take_xp(|| 0.05), 3, "0.1 rounds up with a 10% chance");
+        assert_eq!(normal.clone().take_xp(|| 0.5), 2);
+        // Fast furnaces used doubled seconds: 80 s of coal was 800 ticks.
+        let blast = Furnace::deserialize(&format!("{raw};-;-;80.00;80.00;5.00;0.00;2")).unwrap();
+        assert_eq!((blast.lit, blast.lit_total, blast.cook, blast.cook_total, blast.speed), (800, 800, 50, 100, 2.0));
+        assert!(Furnace::deserialize("junk").is_none());
     }
 
     #[test]
     fn round_trips_through_text() {
         let mut f = furnace(Item::from_block(Block::SAND), 5, Item::COAL, 2);
-        run(&mut f, 12.0);
+        run(&mut f, 240);
         let g = Furnace::deserialize(&f.serialize()).unwrap();
-        assert_eq!(g.output, f.output);
-        assert_eq!((g.input, g.fuel), (f.input, f.fuel));
-        assert!((g.burn_left - f.burn_left).abs() < 0.01 && (g.cook - f.cook).abs() < 0.01);
-        assert!(Furnace::deserialize("junk").is_none());
+        assert_eq!(g, f);
+        let mut f2 = f.clone();
+        let mut g2 = g.clone();
+        run(&mut f2, 500);
+        run(&mut g2, 500);
+        assert_eq!(f2, g2, "a reload continues tick for tick");
     }
 
     #[test]
     fn replacing_input_requires_a_full_new_cook() {
         let mut f = furnace(Item::from_block(Block::SAND), 1, Item::COAL, 1);
-        f.tick(9.9);
-        let burn = f.burn_left;
+        run(&mut f, 198);
+        let burn = f.lit;
         let mut cursor = Some(Stack::new(Block::IRON_ORE, 1));
         f.click_input(&mut cursor, false);
         assert_eq!(cursor, Some(Stack::new(Block::SAND, 1)));
-        assert_eq!(f.cook, 0.0);
-        assert_eq!(f.burn_left, burn, "replacing input keeps the fire burning");
-        f.tick(0.2);
+        assert_eq!(f.cook, 0);
+        assert_eq!(f.lit, burn, "replacing input keeps the fire burning");
+        run(&mut f, 4);
         assert!(f.output.is_none());
-        f.tick(9.9);
+        run(&mut f, 196);
         assert_eq!(f.output, Some(Stack::new(Item::IRON_INGOT, 1)));
     }
 
     #[test]
     fn same_input_keeps_progress_but_emptying_the_slot_resets_it() {
         let mut f = furnace(Item::from_block(Block::SAND), 2, Item::COAL, 1);
-        f.tick(5.0);
+        run(&mut f, 100);
         let mut cursor = Some(Stack::new(Block::SAND, 1));
         f.click_input(&mut cursor, true);
-        assert_eq!(f.cook, 5.0, "adding the same ingredient preserves progress");
+        assert_eq!(f.cook, 100, "adding the same ingredient preserves progress");
         assert_eq!(f.input.unwrap().count, 3);
         f.click_input(&mut cursor, true);
-        assert_eq!(f.cook, 5.0, "taking half also leaves the same ingredient");
+        assert_eq!(f.cook, 100, "taking half also leaves the same ingredient");
         // Put the picked-up sand back, then remove the whole stack.
         f.click_input(&mut cursor, false);
         f.click_input(&mut cursor, false);
         assert!(f.input.is_none());
-        assert_eq!(f.cook, 0.0);
+        f.step();
+        assert_eq!(f.cook, 0, "lit with an empty input slot");
         f.click_input(&mut cursor, false);
-        f.tick(0.2);
+        run(&mut f, 4);
         assert!(f.output.is_none());
-        assert!(f.cook < 1.0);
+        assert_eq!(f.cook, 4);
     }
 }
