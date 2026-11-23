@@ -157,7 +157,7 @@ impl World {
     }
 
     /// Run the notifications `redstone_changed` deferred.
-    fn drain_redstone_changes(&mut self) {
+    pub(super) fn drain_redstone_changes(&mut self) {
         if self.redstone.changed.is_empty() {
             return;
         }
@@ -993,6 +993,7 @@ impl World {
     pub fn tick_redstone(&mut self) {
         self.tick_block_ticks();
         self.run_block_events();
+        self.tick_hoppers();
     }
 
     /// `ServerLevel.tick`'s `blockTicks.tick(time, 65536, tickBlock)`: advance
@@ -1007,11 +1008,6 @@ impl World {
         self.drain_redstone_changes();
         self.drain_redstone_refreshes();
         self.redstone.tick += 1;
-        for (&p, due) in &mut self.automation.cooldown {
-            if !self.activity.contains(p, true) || !self.chunks.contains_key(&super::chunk::chunk_of(p)) {
-                *due = due.saturating_add(1);
-            }
-        }
         self.batched(World::finish_piston_moves);
         let mut due_ticks = Vec::new();
         while due_ticks.len() < order::MAX_SCHEDULED_TICKS {

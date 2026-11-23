@@ -172,6 +172,8 @@ impl HeadlessHost {
             if s.dead || s.connection.send(Packet::State(json!({"tick":self.tick,"sequence":s.input.sequence,"harness":true,"state":agent.observe(&self.world,0)}))).and_then(|()|s.connection.flush()).is_err() {s.dead=true;s.connection.close("Client is too slow or disconnected");}
         }
         crate::simulation::tick_world_rules(&mut self.world, self.spawn, true, 3);
+        // No entity pass here: hoppers tick against blocks alone.
+        self.world.tick_hoppers();
         // As `Game::tick` does: players in a stalactite's cell as it lands
         // are hit on their next tick, and anchors used outside the Nether
         // explode (`RespawnAnchorBlock.explode`, power 5).

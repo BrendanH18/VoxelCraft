@@ -269,13 +269,30 @@ Behaviours that look for entities finish in `tick_automation_entities`
 later in the same game tick, with the slot they came from; the app lends
 its players through `tick_automation_entities_with`.
 
-Hoppers push one item, then pull one from the container above in the same
-eligible cycle, followed by eight game ticks of cooldown. An emptied
-destination hopper receives cooldown `8 - k` as in Java's `tryMoveInItem`: seven
-when a hopper source pushes into a hopper that already ran its tick this game
-tick, otherwise eight. The scheduled-tick order stands in for Java's
-block-entity ticker order, and a destination idling on cooldown is not
-re-ticked, so it counts as not yet ticked. Power disables transfer and pickup.
+Hoppers are block entities, ticked as Java's `HopperBlockEntity.pushItemsTick`
+once per game tick after the scheduled ticks, block events and entities, in
+the order the hoppers were created (Java's block-entity ticker list). The
+game runs them in `World::tick_automation_entities`, after the dispensers'
+output, the hopper minecarts' own pickup and the record of where container
+carts are, so each hopper meets carts where they stand this tick and items
+where they lie. Callers that tick the world without entities
+(`World::tick_hoppers`, run by `tick_redstone` and the headless harness)
+move what meets only blocks there and leave a move involving a cart or items
+to that tick's entity pass.
+Each tick a hopper's cooldown counts down, locked or not; once it runs out an
+enabled hopper pushes one item, then pulls one from the container above (or
+collects items, unless it is full), and a move starts a cooldown of eight. A
+hopper unlocked or fed by this tick's redstone moves items in this same tick.
+An emptied destination hopper receives cooldown `8 - k` as in Java's
+`tryMoveInItem`, k = 1 when it already ran its tick this game tick, so it
+passes the item on seven ticks after it arrived either way; a hopper on a
+custom cooldown (above eight) keeps it. A hopper's container change updates
+its comparators at once (`setChanged`). Cooldowns are saved as the ticks left
+(`c,...` in the automation save) and the ticker order as `h,...` entries; an
+older save's pending hopper ticks just enrol their hoppers. Power disables
+transfer and pickup. Checked on the vanilla 26.3 server
+([record](verification/2026-11-23-v0.17-dispensing.md#follow-up-hopper-timing-2026-11-23)):
+the hopper clock runs at period 11 and the item sorter sorts as Java does.
 
 Hoppers, droppers and hopper minecarts reach containers through Java 26.3's
 faces (`world::container_sides`, checked against the same fixture): each
@@ -478,11 +495,11 @@ Chest carts expose 27 slots and hopper carts five slots through the existing
 container screen, including normal click and quick-move operations. A
 hopper moves items to and from a chest or hopper minecart (or a chest boat)
 in its own transfer, like any container (`HopperBlockEntity.getEntityContainer`,
-v0.17 Track D1): it ejects into a cart whose box reaches the cell it faces,
-then sucks from a cart whose box reaches the cell above it (before any
-loose item, and nothing at all from an empty cart), all on the one 8-tick
-cooldown, so an unloader under a track empties a cart one item every 8
-ticks. Rails stand on any block whose top can carry a rigid block
+v0.17 Tracks D1 and C2): in its block-entity tick it ejects into a cart
+whose box reaches the cell it faces, then sucks from a cart whose box
+reaches the cell above it (before any loose item, and nothing at all from an
+empty cart), all on the one 8-tick cooldown, so an unloader under a track
+empties a cart one item every 8 ticks. Rails stand on any block whose top can carry a rigid block
 (`canSupportRigidBlock`), hoppers included.
 Hopper carts pull from above or collect nearby dropped stacks each tick; a
 powered activator disables collection until an unpowered activator rail is encountered.
