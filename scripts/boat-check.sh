@@ -137,7 +137,7 @@ cleanup() {
     end_job "$watchdog"
     in_flight=0; [ -z "$job" ] || in_flight=1
     end_job "$job"
-    rm -f "$out_file"
+    rm -f "$out_file" "$out_file.timeout"
     # Interrupted while Boat made a sandbox: it may exist with no id here yet, so find it by
     # its name, in any state but stopped (Boat's state groups don't name every starting state),
     # taking the newest, so an older stopped sandbox of the name is never picked. A create
@@ -265,15 +265,20 @@ fast_start() {   # fast_start WHAT boat ARGS...; leaves the output in $out
     # off after $wait_for seconds. A create cut off may still land, so job stays set on failure
     # and the cleanup looks for the sandbox by name; a resume cut off is stopped as usual.
     echo "boat-check: still no machine ready for $what; waiting up to ${wait_for} s for one" >&2
+    rm -f "$out_file.timeout"
     "$@" --json >"$out_file" 2>&1 </dev/null &
     job=$!
-    (sleep "$wait_for"; end_job "$job") >/dev/null 2>&1 </dev/null &
+    (sleep "$wait_for"; : >"$out_file.timeout"; end_job "$job") >/dev/null 2>&1 </dev/null &
     watchdog=$!
     rc=0; wait "$job" || rc=$?
     end_job "$watchdog"; watchdog=""
     out=$(cat "$out_file" 2>/dev/null || true)
+    if [ -e "$out_file.timeout" ]; then
+        rm -f "$out_file.timeout"
+        out="no_ready_machine: no machine within ${wait_for} s"
+        return 1
+    fi
     if [ "$rc" = 0 ]; then job=""; return 0; fi
-    case "$out" in *'"event"'*error*|*'"code"'*) ;; *) out="no_ready_machine: no machine within ${wait_for} s" ;; esac
     return 1
 }
 # new_sandbox NAME [boat new ARGS...]: sets new_id to the new sandbox's id. Set creating=NAME
