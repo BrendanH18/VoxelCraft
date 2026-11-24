@@ -15,14 +15,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
         l if (tex::SOUL_FIRE_0..tex::SOUL_FIRE_0 + tex::FIRE_FRAMES as u16).contains(&l) => {
             soul_fire((l - tex::SOUL_FIRE_0) as usize, x, y, r)
         }
-        l if (tex::NETHER_STEM_SIDE..tex::NETHER_STEM_SIDE + 4).contains(&l) => stem_side(l, x, y, r),
-        l if (tex::NETHER_STEM_TOP..tex::NETHER_STEM_TOP + 4).contains(&l) => stem_top(l, x, y, r),
-        tex::CRIMSON_PLANKS | tex::WARPED_PLANKS => {
-            let colour = if layer == tex::CRIMSON_PLANKS { CRIMSON_PLANKS } else { WARPED_PLANKS };
-            let board = y / 4;
-            let seam = y % 4 == 3 || x == (board * 7 + 3) % SIZE;
-            shade(colour, if seam { 0.66 } else { 0.9 + rnd(layer, x, board, 2) * 0.14 + r * 0.04 })
-        }
         tex::CRIMSON_FUNGUS => fungus(x, y, r, [168, 30, 40], [244, 196, 80]),
         tex::WARPED_FUNGUS => fungus(x, y, r, [20, 160, 140], [250, 130, 40]),
         tex::CRIMSON_ROOTS => roots(layer, x, y, r, [126, 8, 41]),
@@ -40,15 +32,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             (7..=8, 7..=15) => shade([138, 106, 62], if x == 7 { 1.0 } else { 0.78 }),
             _ => CLEAR,
         },
-        tex::BONE_BLOCK_SIDE => {
-            let groove = x % 5 == 2;
-            shade([229, 225, 207], if groove { 0.84 } else { 0.94 + r * 0.08 })
-        }
-        tex::BONE_BLOCK_TOP => {
-            let ring = x.abs_diff(7).max(y.abs_diff(7));
-            let c = if ring <= 2 { [196, 186, 150] } else { [229, 225, 207] };
-            shade(c, if ring == 3 || ring == 7 { 0.82 } else { 0.94 + r * 0.08 })
-        }
         l if (tex::NETHER_DOORS..tex::NETHER_DOORS + 4).contains(&l) => {
             let warped = l >= tex::NETHER_DOORS + 2;
             let bottom = if warped { tex::NETHER_DOORS + 2 } else { tex::NETHER_DOORS };
@@ -78,40 +61,6 @@ fn soul_fire(frame: usize, x: usize, y: usize, r: f32) -> Rgba {
         let heat = ((y - tip) as f32 / (SIZE - tip) as f32 + r * 0.2).min(1.0);
         [(40.0 + 120.0 * heat * heat) as u8, (170.0 + 85.0 * heat) as u8, (215.0 + 40.0 * heat) as u8, 255]
     }
-}
-
-/// Bark (or stripped wood) with vertical veins.
-fn stem_side(layer: u16, x: usize, y: usize, r: f32) -> Rgba {
-    let kind = layer - tex::NETHER_STEM_SIDE;
-    let (bark, vein) = match kind {
-        0 => ([92, 25, 29], [148, 54, 74]),
-        1 => ([58, 58, 77], [22, 150, 140]),
-        2 => ([137, 57, 90], [168, 80, 112]),
-        _ => ([57, 150, 147], [84, 176, 168]),
-    };
-    let vein_x = (x + (rnd(layer, 0, y / 5, 3) * 2.0) as usize).is_multiple_of(5);
-    let glint = kind < 2 && rnd(layer, x, y, 6) > 0.95;
-    if glint {
-        shade(if kind == 0 { [232, 132, 52] } else { [120, 240, 220] }, 0.9 + r * 0.1)
-    } else if vein_x {
-        shade(vein, 0.88 + r * 0.16)
-    } else {
-        shade(bark, 0.86 + r * 0.2)
-    }
-}
-
-/// Cut end: a bark rim around a ringed core.
-fn stem_top(layer: u16, x: usize, y: usize, r: f32) -> Rgba {
-    let kind = layer - tex::NETHER_STEM_TOP;
-    let ring = x.abs_diff(7).max(y.abs_diff(7)).min(x.abs_diff(8).max(y.abs_diff(8)));
-    if ring >= 7 && kind < 2 {
-        return stem_side(tex::NETHER_STEM_SIDE + kind, x, y, r);
-    }
-    let core = match kind {
-        0 | 2 => [123, 57, 82],
-        _ => [56, 120, 117],
-    };
-    shade(core, if ring.is_multiple_of(2) { 0.8 } else { 0.95 + r * 0.08 })
 }
 
 /// A capped mushroom on a short stem.

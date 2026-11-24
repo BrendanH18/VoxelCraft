@@ -7,7 +7,7 @@
 //! 4 x 4 cell) so they never clump, light from the top left, and no run of
 //! one shade longer than four texels except deliberate grain and strata.
 //! Every tile wraps in both directions. Tiles are built once, on first use,
-//! and kept (about 105 KiB).
+//! and kept (about half a MiB; see the asset manifest's budget).
 //!
 //! Stone itself is the authored asset `assets/textures/stone.png`; the ores
 //! keep its texels exactly and add mineral clusters.
@@ -1206,11 +1206,16 @@ fn copper_palette(stage: usize) -> Vec<[u8; 3]> {
 /// Patina over the flat metal of a copper face: the same blotches on every
 /// kind of one stage, covering more of it as the copper ages.
 fn patina(g: &mut Grid, stage: usize) {
+    patina_at(g, stage, 6);
+}
+
+/// [`patina`] with the patina's three shades at `first` in the palette.
+fn patina_at(g: &mut Grid, stage: usize, first: u8) {
     for (y, row) in g.iter_mut().enumerate() {
         for (x, c) in row.iter_mut().enumerate() {
             let v = (field(230, 4, x, y, 1) * 3 + hu(230, x, y, 2) % 256) / 4;
             if (2..=4).contains(c) && v * 1000 < COPPER_COVER[stage] * 256 {
-                *c += 4;
+                *c = first + (*c - 2);
             }
         }
     }
@@ -1556,6 +1561,641 @@ fn crying_grid() -> Grid {
     g
 }
 
+// v0.18 Track 3, fifth round: metal fixtures, Nether wood, ice and snow, and
+// the workstations' faces.
+
+/// A face being composed: a grid over a palette that grows as colours are
+/// inked in (tools, flames, books on a workstation face).
+struct Canvas {
+    g: Grid,
+    pal: Vec<[u8; 3]>,
+}
+
+impl Canvas {
+    fn new(g: Grid, pal: &[[u8; 3]]) -> Self {
+        Self { g, pal: pal.to_vec() }
+    }
+
+    /// The palette index of `c`, added if new.
+    fn ink(&mut self, c: [u8; 3]) -> u8 {
+        if let Some(i) = self.pal.iter().position(|&p| p == c) {
+            return i as u8;
+        }
+        self.pal.push(c);
+        (self.pal.len() - 1) as u8
+    }
+
+    /// Sets every texel where `at` holds to colour `c`.
+    fn fill(&mut self, c: [u8; 3], at: impl Fn(usize, usize) -> bool) {
+        let i = self.ink(c);
+        for (y, row) in self.g.iter_mut().enumerate() {
+            for (x, v) in row.iter_mut().enumerate() {
+                if at(x, y) {
+                    *v = i;
+                }
+            }
+        }
+    }
+
+    fn tile(&self) -> Tile {
+        paint(&self.g, &self.pal)
+    }
+}
+
+/// `count` cracks running down (as [`crack`] draws two), cut `depth` with lit
+/// lower and right walls.
+fn cracks(g: &mut Grid, seed: u32, count: usize, depth: u8) {
+    let mut path = Vec::new();
+    for k in 0..count {
+        let h = hu(seed, k, 0, 51);
+        let (mut x, mut y) = ((cell_order(seed, 51)[k % 16] % 4) * 4 + h as usize % 4, (h >> 8) as usize % N);
+        for s in 0..6 + (h >> 16) as usize % 5 {
+            path.push((x, y));
+            y = (y + 1) % N;
+            match hu(seed, k, s, 52) % 4 {
+                0 => x = (x + 1) % N,
+                1 => x = (x + N - 1) % N,
+                _ => {}
+            }
+        }
+    }
+    carve(g, depth, |x, y| path.contains(&(x, y)));
+}
+
+/// Paints with per-index alpha (ice is see-through).
+fn paint_alpha(g: &Grid, palette: &[[u8; 3]], alpha: impl Fn(u8) -> u8) -> Tile {
+    let mut t = paint(g, palette);
+    for (i, p) in t.iter_mut().enumerate() {
+        if p[3] != 0 {
+            p[3] = alpha(g[i / N][i % N]);
+        }
+    }
+    t
+}
+
+/// A metal fixture's face (copper's `world::copper::t` kinds, also used for
+/// the iron ones) over a metal palette (indices 0-5); see-through texels
+/// are holes; `flame` lights a lantern. Keeps each kind's geometry, which
+/// the block models sample by position.
+fn fixture(kind: u16, palette: &[[u8; 3]], flame: [u8; 3]) -> Canvas {
+    use crate::world::copper::t as ct;
+    let mut c = Canvas::new(smooth_grid(400 + kind as u32, 32), palette);
+    let g = &mut c.g;
+    match kind {
+        ct::DOOR_TOP | ct::DOOR_BOTTOM => {
+            let top = kind == ct::DOOR_TOP;
+            for (y, row) in g.iter_mut().enumerate() {
+                for (x, v) in row.iter_mut().enumerate() {
+                    let frame = x <= 1 || x >= 14 || top && y <= 1 || !top && y >= 14;
+                    let rail = !top && (y == 1 || y == 2) || top && (y == 9 || y == 10);
+                    let rivet = (x == 3 || x == 12) && (y == 3 || y == 12);
+                    *v = if top && (3..=7).contains(&y) && matches!(x, 3..=6 | 9..=12) {
+                        HOLE
+                    } else if x == 0 || top && y == 0 {
+                        5
+                    } else if x == 15 || !top && y == 15 {
+                        0
+                    } else if rivet {
+                        5
+                    } else if frame || rail {
+                        if y == 1 || y == 9 { 4 } else { 2 }
+                    } else {
+                        *v
+                    };
+                }
+            }
+        }
+        ct::TRAPDOOR => {
+            for (y, row) in g.iter_mut().enumerate() {
+                for (x, v) in row.iter_mut().enumerate() {
+                    let frame = x <= 1 || y <= 1 || x >= 14 || y >= 14;
+                    let hole = !frame && (3..=12).contains(&x) && (3..=12).contains(&y) && x % 3 == 1 && y % 3 == 1;
+                    *v = if hole {
+                        HOLE
+                    } else if x == 0 || y == 0 {
+                        5
+                    } else if x == 15 || y == 15 {
+                        0
+                    } else if frame {
+                        2
+                    } else {
+                        *v
+                    };
+                }
+            }
+        }
+        ct::BARS => {
+            for (y, row) in g.iter_mut().enumerate() {
+                for (x, v) in row.iter_mut().enumerate() {
+                    let bar = x % 4 == 1 || x % 4 == 2;
+                    let rail = (1..=2).contains(&y) || (13..=14).contains(&y);
+                    *v = if !bar && !rail {
+                        HOLE
+                    } else if rail {
+                        if y == 1 || y == 13 { 5 } else { 1 }
+                    } else if x % 4 == 1 {
+                        4
+                    } else {
+                        2
+                    };
+                }
+            }
+        }
+        ct::CHAIN => {
+            for (y, row) in g.iter_mut().enumerate() {
+                for (x, v) in row.iter_mut().enumerate() {
+                    *v = if matches!(y % 8, 3 | 4) && (7..=8).contains(&x) {
+                        HOLE
+                    } else if matches!(y % 8, 2 | 5) {
+                        1
+                    } else if y % 8 == 6 || y % 8 == 1 {
+                        4
+                    } else {
+                        *v
+                    };
+                }
+            }
+        }
+        ct::LANTERN => {
+            let glow = ramp(flame, [840, 1000, 1120]);
+            let (dim, mid, hot) = (c.ink(glow[0]), c.ink(glow[1]), c.ink(glow[2]));
+            for (y, row) in c.g.iter_mut().enumerate() {
+                for (x, v) in row.iter_mut().enumerate() {
+                    let caged = x % 3 == 2 || y % 7 == 0 || y % 7 == 6 || matches!(x, 5 | 10);
+                    *v = if caged {
+                        if y % 7 == 0 {
+                            5
+                        } else if y % 7 == 6 {
+                            1
+                        } else {
+                            3
+                        }
+                    } else if (6..=9).contains(&x) && (9..=12).contains(&y) {
+                        hot
+                    } else if (y % 7) == 1 {
+                        dim
+                    } else {
+                        mid
+                    };
+                }
+            }
+        }
+        ct::CHEST_TOP => bevel(g),
+        ct::CHEST_SIDE | ct::CHEST_FRONT => {
+            bevel(g);
+            carve(g, 1, |x, y| y == 5 && (1..N - 1).contains(&x));
+            if kind == ct::CHEST_FRONT {
+                c.fill([62, 58, 56], |x, y| (7..=8).contains(&x) && (4..=7).contains(&y));
+                c.fill([112, 106, 102], |x, y| (7..=8).contains(&x) && y == 3);
+            }
+        }
+        _ => {
+            // The lightning rod's columns, lit on one side.
+            for (y, row) in g.iter_mut().enumerate() {
+                for (x, v) in row.iter_mut().enumerate() {
+                    if x % 8 == 7 || y < 4 && x % 4 == 1 {
+                        *v = 5;
+                    }
+                }
+            }
+        }
+    }
+    c
+}
+
+/// The copper fixtures' kinds, after the faces of the fourth round.
+const COPPER_FIXTURES: [u16; 10] = {
+    use crate::world::copper::t as ct;
+    [
+        ct::DOOR_TOP,
+        ct::DOOR_BOTTOM,
+        ct::TRAPDOOR,
+        ct::BARS,
+        ct::CHAIN,
+        ct::LANTERN,
+        ct::CHEST_TOP,
+        ct::CHEST_SIDE,
+        ct::CHEST_FRONT,
+        ct::ROD,
+    ]
+};
+const COPPER_FLAME: [u8; 3] = [142, 232, 128];
+const IRON: [u8; 3] = [180, 185, 183];
+const IRON_DARK: [u8; 3] = [126, 126, 132];
+const IRON_DOOR_LAYER: u16 = 1123;
+
+/// The iron door and trapdoor (one layer): a bevelled frame with two
+/// window openings.
+fn iron_door_grid() -> Grid {
+    let mut g = smooth_grid(420, 32);
+    for (y, row) in g.iter_mut().enumerate() {
+        for (x, v) in row.iter_mut().enumerate() {
+            if matches!(x, 3..=6 | 9..=12) && (3..=6).contains(&y) {
+                *v = HOLE;
+            } else if x == 0 || y == 0 {
+                *v = 5;
+            } else if x == N - 1 || y == N - 1 {
+                *v = 0;
+            }
+        }
+    }
+    carve(&mut g, 1, |x, y| y == 9 && (1..N - 1).contains(&x));
+    g
+}
+
+/// The iron chain: like copper's but with dark slots instead of holes
+/// (the chain's own boxes give its shape).
+fn iron_chain_grid() -> Grid {
+    let mut g = smooth_grid(421, 32);
+    for (y, row) in g.iter_mut().enumerate() {
+        for v in row.iter_mut() {
+            *v = match y % 8 {
+                3 | 4 => 0,
+                2 | 5 => 1,
+                1 | 6 => 4,
+                _ => *v,
+            };
+        }
+    }
+    g
+}
+
+/// Nether stems: (bark, vein, glint) of crimson and warped, then the
+/// stripped colours.
+const STEMS: [([u8; 3], [u8; 3], [u8; 3]); 2] =
+    [([92, 25, 29], [148, 54, 74], [232, 132, 52]), ([58, 58, 77], [22, 150, 140], [120, 240, 220])];
+const STRIPPED_STEMS: [[u8; 3]; 2] = [[137, 57, 90], [57, 150, 147]];
+const STEM_CORES: [[u8; 3]; 2] = [[123, 57, 82], [56, 120, 117]];
+const NETHER_PLANKS: [[u8; 3]; 2] = [[101, 48, 70], [43, 104, 99]];
+const BONE: [u8; 3] = [229, 225, 207];
+
+/// A stem's side: bark with glowing veins running down and a few glints.
+fn stem_side(seed: u32, i: usize) -> Canvas {
+    let (bark, vein, glint) = STEMS[i];
+    let mut palette = ramp(bark, [560, 720, 880, 1000, 1080, 1200]).to_vec();
+    palette[1] = vein;
+    let mut c = Canvas::new(stripped_grid(seed), &palette);
+    let gl = c.ink(glint);
+    for k in 0..4 {
+        let (x, y) = walk(seed, k, 1, 1, 64)[0];
+        c.g[y][x] = gl;
+    }
+    c
+}
+
+const ICE: Palette =
+    &[[232, 242, 255], [128, 166, 232], [142, 178, 242], [150, 186, 246], [158, 192, 248], [214, 230, 255]];
+const BLUE_ICE: Palette =
+    &[[180, 214, 255], [96, 150, 240], [108, 160, 248], [116, 168, 253], [124, 176, 255], [168, 206, 255]];
+const FROSTED_ICE: Palette =
+    &[[214, 236, 252], [132, 168, 244], [146, 180, 250], [152, 186, 252], [160, 192, 252], [226, 242, 255]];
+const SNOW_BLOCK: Recipe = Recipe {
+    jitter: 40,
+    thresholds: [110, 150],
+    pits: (4, (1, 2), 1, None),
+    bumps: (6, (1, 1), 5, None),
+    ..natural(
+        430,
+        &[[214, 222, 232], [226, 232, 240], [236, 241, 248], [240, 245, 252], [244, 248, 253], [255, 255, 255]],
+    )
+};
+const POWDER_SNOW: Recipe = Recipe {
+    seed: 431,
+    pits: (2, (1, 1), 1, None),
+    bumps: (8, (1, 2), 5, None),
+    palette: &[[208, 222, 232], [220, 234, 243], [228, 240, 248], [232, 244, 251], [236, 247, 252], [250, 253, 255]],
+    ..SNOW_BLOCK
+};
+const COMPOST: Recipe = Recipe {
+    jitter: 72,
+    thresholds: [110, 150],
+    pits: (7, (1, 3), 1, None),
+    bumps: (6, (1, 2), 5, None),
+    ..natural(432, &[[60, 42, 24], [76, 54, 31], [90, 66, 38], [99, 72, 42], [108, 80, 47], [128, 98, 60]])
+};
+const COMPOST_READY: Recipe = Recipe {
+    seed: 433,
+    palette: &[[92, 78, 58], [114, 98, 74], [130, 111, 84], [139, 119, 90], [148, 127, 96], [168, 148, 114]],
+    ..COMPOST
+};
+
+/// The workstations' oak, with a sixth shade for carved highlights.
+fn oak() -> [[u8; 3]; 6] {
+    ramp([162, 130, 78], [620, 800, 900, 1000, 1070, 1140])
+}
+const OAK_FRAME: [u8; 3] = [104, 74, 44];
+fn stone_palette(c: [u8; 3]) -> [[u8; 3]; 6] {
+    ramp(c, [700, 840, 960, 1000, 1040, 1130])
+}
+
+/// A workstation's planks with a dark wooden frame one texel wide.
+fn framed_planks(seed: u32) -> Canvas {
+    let mut c = Canvas::new(planks_grid(seed), &oak());
+    c.fill(OAK_FRAME, |x, y| x == 0 || y == 0 || x == N - 1 || y == N - 1);
+    c
+}
+
+/// A furnace-like mouth in rows 8-13 (columns 3-12): dark when cold,
+/// flames rising from the bottom when lit; the stone just above it is lit.
+fn mouth(c: &mut Canvas, lit: bool, seed: u32) {
+    let (x0, x1, y0, y1) = (3, 12, 8, 13);
+    c.fill([24, 22, 22], |x, y| (x0..=x1).contains(&x) && (y0..=y1).contains(&y));
+    c.fill([58, 56, 54], |x, y| (x0..=x1).contains(&x) && y == y0);
+    if lit {
+        let hot = [[255, 228, 120], [255, 168, 52], [222, 96, 24]];
+        for x in x0..=x1 {
+            let tip = y0 + 1 + (hu(seed, x, 0, 65) % 3) as usize;
+            for y in tip..=y1 {
+                let k = c.ink(hot[((y1 - y) * 3 / (y1 - tip + 1)).min(2)]);
+                c.g[y][x] = k;
+            }
+        }
+    }
+}
+
+/// The open barrel: its lid's rim, an inner lip lit at the top left, and a
+/// dark inside, darker deeper in.
+fn barrel_open(lid: &Canvas) -> Canvas {
+    let mut c = Canvas::new(lid.g, &lid.pal);
+    let depth = [[78, 58, 34], [62, 46, 28], [50, 37, 22], [42, 31, 19], [36, 26, 16]];
+    for y in 0..N {
+        for x in 0..N {
+            let r = ring(x, y);
+            if r == 2 {
+                let lit = x <= y && x + y <= 15;
+                c.g[y][x] = c.ink(if lit { [118, 90, 54] } else { [74, 54, 32] });
+            } else if r > 2 {
+                c.g[y][x] = c.ink(depth[(r - 3).min(4)]);
+            }
+        }
+    }
+    c
+}
+
+/// A bookshelf's books: two shelves of spines two texels wide, each lit on
+/// its left texel, now and then a short one.
+fn books(c: &mut Canvas, seed: u32) {
+    const SPINES: [[u8; 3]; 6] =
+        [[140, 40, 36], [44, 70, 140], [60, 110, 50], [150, 120, 60], [100, 60, 120], [90, 60, 40]];
+    for y in 0..N {
+        for x in 1..N - 1 {
+            let shelf = y <= 1 || y >= 14 || y == 7 || y == 8;
+            if shelf {
+                continue;
+            }
+            let book = (x - 1) / 2 + if y > 8 { 8 } else { 0 };
+            let colour = SPINES[(book * 7 + hu(seed, book, 0, 66) as usize) % SPINES.len()];
+            let top = y == 2 || y == 9;
+            let short = top && hu(seed, book, 1, 66).is_multiple_of(3);
+            let k =
+                if short { c.ink([44, 32, 22]) } else { c.ink(ramp(colour, [if x % 2 == 1 { 1080 } else { 820 }])[0]) };
+            c.g[y][x] = k;
+        }
+    }
+}
+
+/// A chiseled bookshelf's front with the books of `mask` (bit per slot).
+fn chiseled_front(mask: u8) -> Canvas {
+    const COVERS: [[u8; 3]; 6] =
+        [[150, 40, 34], [42, 92, 150], [56, 120, 50], [126, 84, 44], [120, 50, 120], [196, 160, 64]];
+    let mut c = framed_planks(510);
+    for y in 0..N {
+        for x in 0..N {
+            let row = match y {
+                1..=6 => 0,
+                9..=14 => 1,
+                _ => continue,
+            };
+            let column = match x {
+                1..=4 => 0,
+                6..=9 => 1,
+                11..=14 => 2,
+                _ => continue,
+            };
+            let slot = row * 3 + column;
+            let first = if row == 0 { 1 } else { 9 };
+            let left = [1, 6, 11][column];
+            let k = if mask & (1 << slot) == 0 {
+                // An empty slot: a recess in shadow at its top and left.
+                c.ink(if y == first || x == left { [30, 21, 12] } else { [46, 32, 18] })
+            } else {
+                let book = (x + slot * 2) % 6;
+                let height = 4 + (hu(511, x, slot, 4) % 2) as usize;
+                if y - first >= 6 - height {
+                    let band = y - first == 6 - height + 1;
+                    c.ink(
+                        ramp(
+                            COVERS[book],
+                            [if band {
+                                1150
+                            } else if x % 2 == 0 {
+                                1000
+                            } else {
+                                860
+                            }],
+                        )[0],
+                    )
+                } else {
+                    c.ink([46, 32, 18])
+                }
+            };
+            c.g[y][x] = k;
+        }
+    }
+    c
+}
+
+/// A village workstation's face: `tex::VILLAGE` + 3 x its index in
+/// `village_blocks::BASES` + 0 (side), 1 (top) or 2 (front and bottom).
+const fn village(i: u16, face: u16) -> u16 {
+    tex::VILLAGE + i * 3 + face
+}
+/// The village workstations redrawn here, by `BASES` index.
+const COMPOSTER: u16 = 2;
+const BARREL: u16 = 3;
+const SMOKER: u16 = 4;
+const BLAST_FURNACE: u16 = 6;
+const CARTOGRAPHY: u16 = 8;
+const FLETCHING: u16 = 9;
+const GRINDSTONE: u16 = 10;
+const LECTERN: u16 = 11;
+const LOOM: u16 = 12;
+const STONECUTTER: u16 = 13;
+
+/// The workstations' faces, each keeping its old layout: crafting table,
+/// furnace, smithing table, bookshelves, the village workstations and the
+/// lectern's book. Wood is the oak planks' grain, stone is a smooth or
+/// cobbled face, metal is plate, all lit from the top left.
+fn workstations(put: &mut impl FnMut(u16, Tile)) {
+    // Crafting table: a framed top with a scored 2 x 2 grid; sides with a
+    // saw and a hammer hung on the planks below a dark band.
+    let mut c = framed_planks(500);
+    carve(&mut c.g, 1, |x, y| {
+        (3..13).contains(&x) && (3..13).contains(&y) && (x == 3 || x == 8 || x == 12 || y == 3 || y == 8 || y == 12)
+    });
+    put(tex::TABLE_TOP, c.tile());
+    let mut c = Canvas::new(planks_grid(501), &oak());
+    c.fill(OAK_FRAME, |_, y| y < 3);
+    c.fill([128, 92, 56], |_, y| y == 0);
+    c.fill([170, 170, 176], |x, y| (2..7).contains(&x) && (5..12).contains(&y) && !(x == 2 && y % 2 == 0));
+    c.fill([138, 138, 146], |x, y| (2..7).contains(&x) && y == 11);
+    c.fill([96, 64, 36], |x, y| (9..11).contains(&x) && (6..14).contains(&y));
+    c.fill([128, 128, 136], |x, y| (8..13).contains(&x) && y == 4);
+    c.fill([96, 96, 104], |x, y| (8..13).contains(&x) && y == 5);
+    put(tex::TABLE_SIDE, c.tile());
+
+    // Furnace: smooth stone top and sides (banded), a cobbled front with a
+    // stone rim round its mouth.
+    let stone = stone_palette([128, 128, 128]);
+    let mut g = smooth_grid(502, 24);
+    bevel(&mut g);
+    put(tex::FURNACE_TOP, paint(&g, &stone));
+    let mut g = smooth_grid(503, 24);
+    carve(&mut g, 1, |_, y| y == 1 || y == 13);
+    put(tex::FURNACE_SIDE, paint(&g, &stone));
+    for (layer, lit) in [(tex::FURNACE_FRONT, false), (tex::FURNACE_LIT, true)] {
+        let mut c = Canvas::new(stones(61, 3, 5, 0).0, COBBLE);
+        c.fill([98, 98, 100], |x, y| (2..14).contains(&x) && (6..16).contains(&y));
+        c.fill([120, 120, 122], |x, y| (2..14).contains(&x) && y == 6);
+        mouth(&mut c, lit, 504);
+        put(layer, c.tile());
+    }
+
+    // Smithing table: a dark iron top; dark wood sides under an iron band,
+    // tongs on the front and a hammer on the sides.
+    let iron = ramp([54, 55, 63], [600, 800, 920, 1000, 1120, 1360]);
+    let mut g = smooth_grid(505, 48);
+    bevel(&mut g);
+    carve(&mut g, 1, |x, y| ring(x, y) == 2);
+    put(tex::SMITHING_TOP, paint(&g, &iron));
+    let dark = ramp([74, 31, 26], [620, 800, 900, 1000, 1080]);
+    for layer in [tex::SMITHING_FRONT, tex::SMITHING_SIDE, tex::SMITHING_BOTTOM] {
+        let mut c = Canvas::new(planks_grid(506), &dark);
+        if layer == tex::SMITHING_BOTTOM {
+            c.fill([26, 27, 30], |x, y| !(2..=13).contains(&x) && !(2..=13).contains(&y));
+        } else {
+            c.fill([47, 48, 55], |_, y| y <= 2);
+            c.fill([72, 74, 88], |_, y| y == 0);
+            c.fill([17, 18, 19], |_, y| y == 3);
+            c.fill([40, 41, 50], |x, y| y > 3 && (x == 0 || x == 15));
+            c.fill([24, 25, 28], |x, y| y > 3 && (x == 1 || x == 14));
+        }
+        if layer == tex::SMITHING_FRONT {
+            c.fill([140, 86, 60], |x, y| (x == 3 || x == 5) && (8..=11).contains(&y));
+            c.fill([73, 75, 95], |x, y| (3..=5).contains(&x) && y == 7);
+        }
+        if layer == tex::SMITHING_SIDE {
+            c.fill([35, 37, 51], |x, y| (3..=7).contains(&x) && y == 8);
+            c.fill([140, 86, 60], |x, y| x == 5 && (9..=13).contains(&y));
+        }
+        put(layer, c.tile());
+    }
+
+    // Bookshelves.
+    let mut c = Canvas::new(planks_grid(507), &oak());
+    books(&mut c, 507);
+    put(tex::BOOKSHELF, c.tile());
+    let mut c = framed_planks(508);
+    carve(&mut c.g, 1, |x, y| {
+        (x == 3 || x == 12) && (3..=12).contains(&y) || (y == 3 || y == 12) && (3..=12).contains(&x)
+    });
+    put(crate::world::wood::tex::CHISELED_TOP, c.tile());
+    let mut c = Canvas::new(planks_grid(509), &oak());
+    c.fill(OAK_FRAME, |x, _| x == 0 || x == N - 1);
+    put(crate::world::wood::tex::CHISELED_SIDE, c.tile());
+    for mask in 0..64u8 {
+        put(crate::world::wood::tex::CHISELED_FRONTS + mask as u16, chiseled_front(mask).tile());
+    }
+
+    // The village workstations.
+    let planks = |seed: u32| paint(&planks_grid(seed), &oak());
+    for (i, seed) in [(COMPOSTER, 512), (LECTERN, 513)] {
+        let mut c = framed_planks(seed);
+        bevel(&mut c.g);
+        put(village(i, 0), c.tile());
+        put(village(i, 1), planks(seed + 20));
+        put(village(i, 2), planks(seed + 40));
+    }
+    // Barrel: upright staves with two iron hoops; a lid with a bung.
+    let mut c = Canvas::new(transpose(&planks_grid(514)), &oak());
+    c.fill([64, 66, 61], |_, y| y == 3 || y == 12);
+    c.fill([104, 106, 100], |_, y| y == 2 || y == 11);
+    put(village(BARREL, 0), c.tile());
+    let mut lid = framed_planks(515);
+    lid.fill([128, 92, 56], |x, y| ring(x, y) == 1);
+    put(village(BARREL, 1), lid.tile());
+    let mut front = Canvas::new(lid.g, &lid.pal);
+    front.fill([30, 26, 19], |x, y| (7..=8).contains(&x) && (7..=8).contains(&y));
+    front.fill([118, 90, 54], |x, y| (7..=8).contains(&x) && y == 9 || x == 9 && (7..=8).contains(&y));
+    put(village(BARREL, 2), front.tile());
+    put(crate::world::lids::BARREL_OPEN_TEX, barrel_open(&lid).tile());
+    // Smoker and blast furnace, cold and lit: brick and iron-plate bodies
+    // with a mouth on the front.
+    let smoker = ramp([105, 91, 75], [600, 800, 920, 1000, 1080, 1200]);
+    let blast = ramp([119, 123, 124], [560, 780, 920, 1000, 1060, 1160]);
+    for (i, palette, body) in
+        [(SMOKER, smoker, masonry_grid(516, 8, 4, 4)), (BLAST_FURNACE, blast, metal_plates(517, 8, 4, 0))]
+    {
+        let mut top = smooth_grid(518 + i as u32, 32);
+        bevel(&mut top);
+        for (k, lit) in [(0, false), (1, true)] {
+            put(village(i + k, 0), paint(&body, &palette));
+            put(village(i + k, 1), paint(&top, &palette));
+            let mut c = Canvas::new(body, &palette);
+            mouth(&mut c, lit, 519 + i as u32);
+            put(village(i + k, 2), c.tile());
+        }
+    }
+    // Cartography table: a map pinned on a framed top.
+    let mut c = Canvas::new(planks_grid(520), &oak());
+    c.fill(OAK_FRAME, |x, y| x < 2 || y < 2 || x > 13 || y > 13);
+    c.fill([220, 215, 173], |x, y| (2..14).contains(&x) && (2..14).contains(&y) && (x / 4 + y / 4) % 2 == 0);
+    c.fill([136, 160, 106], |x, y| (2..14).contains(&x) && (2..14).contains(&y) && (x / 4 + y / 4) % 2 == 1);
+    c.fill([94, 76, 58], |x, y| (2..14).contains(&x) && (2..14).contains(&y) && (x == 2 || y == 2));
+    put(village(CARTOGRAPHY, 1), c.tile());
+    put(village(CARTOGRAPHY, 0), planks(521));
+    put(village(CARTOGRAPHY, 2), planks(522));
+    // Fletching table: a cream panel with crossed arrows on the front.
+    let mut c = framed_planks(523);
+    c.fill([212, 195, 148], |x, y| (3..13).contains(&x) && (3..13).contains(&y));
+    c.fill([236, 222, 184], |x, y| (3..13).contains(&x) && y == 3 || x == 3 && (3..13).contains(&y));
+    c.fill([69, 58, 42], |x, y| (3..13).contains(&x) && (3..13).contains(&y) && (x == y || x + y == 15));
+    put(village(FLETCHING, 2), c.tile());
+    put(village(FLETCHING, 0), planks(524));
+    put(village(FLETCHING, 1), planks(525));
+    // Grindstone and stonecutter: smooth stone; the cutter's blade on top.
+    let grey = stone_palette([126, 126, 120]);
+    for (i, seed) in [(GRINDSTONE, 526), (STONECUTTER, 527)] {
+        let g = smooth_grid(seed, 40);
+        put(village(i, 0), paint(&g, &grey));
+        put(village(i, 2), paint(&g, &grey));
+        let mut top = Canvas::new(g, &grey);
+        if i == STONECUTTER {
+            top.fill([193, 196, 193], |x, _| (6..10).contains(&x));
+            top.fill([228, 230, 228], |x, _| x == 6);
+            top.fill([150, 152, 150], |x, _| x == 9);
+        }
+        put(village(i, 1), top.tile());
+    }
+    // Loom: warp threads on the front between a wooden frame.
+    let mut c = framed_planks(528);
+    c.fill([188, 170, 139], |x, y| (2..14).contains(&x) && (2..14).contains(&y) && x % 2 == 0);
+    c.fill([107, 85, 65], |x, y| (2..14).contains(&x) && (2..14).contains(&y) && x % 2 == 1);
+    c.fill([214, 198, 168], |x, y| (2..14).contains(&x) && y == 2 && x % 2 == 0);
+    put(village(LOOM, 2), c.tile());
+    put(village(LOOM, 0), planks(529));
+    put(village(LOOM, 1), planks(530));
+    // The lectern's open book.
+    let mut c = Canvas::new(planks_grid(531), &oak());
+    c.fill([232, 224, 200], |x, y| (2..=13).contains(&x) && (3..=12).contains(&y));
+    c.fill([206, 196, 170], |x, y| (2..=13).contains(&x) && y == 12);
+    c.fill([150, 140, 120], |x, y| {
+        y % 2 == 1 && (4..=11).contains(&y) && ((3..=6).contains(&x) || (9..=12).contains(&x))
+    });
+    c.fill([92, 60, 40], |x, y| (7..=8).contains(&x) && (3..=12).contains(&y));
+    put(crate::world::workstations::BOOK_TOP, c.tile());
+}
+
 fn paint(g: &Grid, palette: &[[u8; 3]]) -> Tile {
     let mut out = [[0; 4]; N * N];
     for (y, row) in g.iter().enumerate() {
@@ -1721,6 +2361,44 @@ fn layers() -> Vec<u16> {
     for i in 0..16 {
         out.extend([tex::CONCRETE + i, tex::CONCRETE_POWDER + i, tex::COLORED_WOOL + i]);
     }
+    out.extend(round_five());
+    out
+}
+
+/// The fifth round's layers, in a fixed order.
+#[cfg(test)]
+fn round_five() -> Vec<u16> {
+    use crate::world::copper::{Stage, t as ct};
+    use crate::world::wood::tex as wood;
+    let mut out = Vec::new();
+    for stage in Stage::ALL {
+        out.extend(COPPER_FIXTURES.map(|kind| ct::layer(stage, kind)));
+    }
+    out.extend([tex::IRON_BARS, tex::CHAIN, tex::LANTERN, tex::SOUL_LANTERN, IRON_DOOR_LAYER]);
+    out.extend((0..4).map(|i| tex::NETHER_STEM_SIDE + i));
+    out.extend((0..4).map(|i| tex::NETHER_STEM_TOP + i));
+    out.extend([tex::CRIMSON_PLANKS, tex::WARPED_PLANKS, tex::BONE_BLOCK_SIDE, tex::BONE_BLOCK_TOP]);
+    out.extend([tex::ICE, t::BLUE_ICE]);
+    out.extend((0..4).map(|i| crate::world::frosted_ice::TEX + i));
+    out.extend([tex::SNOW, t::SNOW_LAYER, tex::POWDER_SNOW, tex::COMPOST, tex::COMPOST_READY]);
+    out.extend([
+        tex::TABLE_TOP,
+        tex::TABLE_SIDE,
+        tex::FURNACE_TOP,
+        tex::FURNACE_SIDE,
+        tex::FURNACE_FRONT,
+        tex::FURNACE_LIT,
+    ]);
+    out.extend([tex::SMITHING_TOP, tex::SMITHING_FRONT, tex::SMITHING_SIDE, tex::SMITHING_BOTTOM]);
+    out.extend([tex::BOOKSHELF, wood::CHISELED_TOP, wood::CHISELED_SIDE]);
+    out.extend((0..64).map(|m| wood::CHISELED_FRONTS + m));
+    for i in [COMPOSTER, BARREL, SMOKER, SMOKER + 1, BLAST_FURNACE, BLAST_FURNACE + 1, CARTOGRAPHY, FLETCHING] {
+        out.extend((0..3).map(|f| village(i, f)));
+    }
+    for i in [GRINDSTONE, LECTERN, LOOM, STONECUTTER] {
+        out.extend((0..3).map(|f| village(i, f)));
+    }
+    out.extend([crate::world::lids::BARREL_OPEN_TEX, crate::world::workstations::BOOK_TOP]);
     out
 }
 
@@ -1898,11 +2576,12 @@ fn build() -> FxHashMap<u16, Tile> {
     put(tex::GRASS_SIDE, paint(&side_grid(&GRASS.grid(), 42), &side_palette(GRASS.palette)));
     let snow = Recipe { seed: 43, palette: SNOW, ..GRASS };
     put(tex::SNOWY_GRASS_SIDE, paint(&side_grid(&snow.grid(), 43), &side_palette(SNOW)));
-    // The ores keep the stone asset's texels (its procedural fallback when
-    // the asset is absent) and deepslate's.
+    // The ores keep the stone asset's texels and deepslate's.
     let mut stone = [[0; 4]; N * N];
     for (i, p) in stone.iter_mut().enumerate() {
-        *p = super::pixel(tex::STONE, i % N, i / N);
+        // Straight from the asset: `textures::pixel` asks this module first,
+        // so calling it while the tiles are built would wait on itself.
+        *p = voxelcraft::assets::texture_pixel(tex::STONE, i % N, i / N).expect("the stone asset is embedded");
     }
     for i in 0..ORES.len() {
         put(STONE_ORES[i], ore(&stone, 100 + i as u32, i));
@@ -2237,6 +2916,68 @@ fn build() -> FxHashMap<u16, Tile> {
     put(tex::OBSIDIAN, paint(&OBSIDIAN.grid(), OBSIDIAN.palette));
     let crying: Vec<[u8; 3]> = OBSIDIAN.palette.iter().chain(&TEARS).copied().collect();
     put(tex::CRYING_OBSIDIAN, paint(&crying_grid(), &crying));
+    // Fifth round.
+    {
+        use crate::world::copper::{Stage, t as ct};
+        for (s, stage) in Stage::ALL.into_iter().enumerate() {
+            let palette = copper_palette(s);
+            for kind in COPPER_FIXTURES {
+                let mut c = fixture(kind, &palette[..6], COPPER_FLAME);
+                let first = c.pal.len() as u8;
+                c.pal.extend_from_slice(&palette[6..9]);
+                patina_at(&mut c.g, s, first);
+                put(ct::layer(stage, kind), c.tile());
+            }
+        }
+        let iron = ramp(IRON_DARK, [600, 780, 920, 1000, 1080, 1200]);
+        put(tex::IRON_BARS, fixture(ct::BARS, &iron, [0; 3]).tile());
+        put(tex::CHAIN, paint(&iron_chain_grid(), &ramp([112, 119, 133], [460, 700, 900, 1000, 1080, 1200])));
+        let cage = ramp([58, 58, 64], [600, 800, 920, 1000, 1100, 1300]);
+        put(tex::LANTERN, fixture(ct::LANTERN, &cage, [255, 206, 110]).tile());
+        put(tex::SOUL_LANTERN, fixture(ct::LANTERN, &cage, [96, 226, 238]).tile());
+        put(IRON_DOOR_LAYER, paint(&iron_door_grid(), &ramp(IRON, [700, 840, 950, 1000, 1040, 1100])));
+    }
+    for i in 0..2 {
+        let i16 = i as u16;
+        put(tex::NETHER_STEM_SIDE + i16, stem_side(440 + i as u32, i).tile());
+        let stripped = ramp(STRIPPED_STEMS[i], [560, 820, 920, 1000, 1060, 1140]);
+        put(tex::NETHER_STEM_SIDE + 2 + i16, paint(&stripped_grid(442 + i as u32), &stripped));
+        let core = STEM_CORES[i];
+        let rim = ramp(STEMS[i].0, [800, 1000]);
+        let ends = [rim[0], rim[1], ramp(core, [720])[0], ramp(core, [950])[0], ramp(core, [1080])[0]];
+        put(tex::NETHER_STEM_TOP + i16, paint(&log_top_grid(444 + i as u32), &ends));
+        let srim = ramp(STRIPPED_STEMS[i], [800, 900]);
+        let sends = [srim[0], srim[1], ramp(core, [720])[0], ramp(core, [950])[0], ramp(core, [1080])[0]];
+        put(tex::NETHER_STEM_TOP + 2 + i16, paint(&log_top_grid(446 + i as u32), &sends));
+        let planks = ramp(NETHER_PLANKS[i], [620, 800, 900, 1000, 1070]);
+        put([tex::CRIMSON_PLANKS, tex::WARPED_PLANKS][i], paint(&planks_grid(448 + i as u32), &planks));
+    }
+    let bone = stone_palette(BONE);
+    let mut g = smooth_grid(450, 24);
+    carve(&mut g, 1, |x, _| x % 5 == 2);
+    put(tex::BONE_BLOCK_SIDE, paint(&g, &bone));
+    let mut c = Canvas::new(smooth_grid(451, 24), &bone);
+    c.fill([196, 186, 150], |x, y| square_ring(x, y) <= 2);
+    carve(&mut c.g, 1, |x, y| matches!(square_ring(x, y), 3 | 7));
+    put(tex::BONE_BLOCK_TOP, c.tile());
+    let mut g = smooth_grid(452, 24);
+    cracks(&mut g, 452, 2, 0);
+    put(tex::ICE, paint_alpha(&g, ICE, |i| if i == 0 || i == 5 { 220 } else { 160 }));
+    let mut g = smooth_grid(453, 32);
+    cracks(&mut g, 453, 3, 0);
+    put(t::BLUE_ICE, paint(&g, BLUE_ICE));
+    for age in 0..4u16 {
+        let mut g = smooth_grid(454, 24);
+        cracks(&mut g, 455, age as usize, 0);
+        put(crate::world::frosted_ice::TEX + age, paint_alpha(&g, FROSTED_ICE, |_| 190));
+    }
+    let snow = SNOW_BLOCK.grid();
+    put(tex::SNOW, paint(&snow, SNOW_BLOCK.palette));
+    put(t::SNOW_LAYER, paint(&snow, SNOW_BLOCK.palette));
+    put(tex::POWDER_SNOW, paint(&POWDER_SNOW.grid(), POWDER_SNOW.palette));
+    put(tex::COMPOST, paint(&COMPOST.grid(), COMPOST.palette));
+    put(tex::COMPOST_READY, paint(&COMPOST_READY.grid(), COMPOST_READY.palette));
+    workstations(&mut put);
     tiles
 }
 
@@ -2644,6 +3385,189 @@ mod tests {
         (394, 0x16a815028389c32e),
         (378, 0x3e797f401dcf27d8),
         (272, 0xf9c23555f24821e7),
+        (2136, 0xc7038ba18dc61238),
+        (2137, 0x9b7269cb74a9d34c),
+        (2138, 0x3de6c3f2026fe1b5),
+        (2139, 0x408a20b0c8a2bbe5),
+        (2140, 0xa5b70fafce98fc44),
+        (2141, 0x0d9864941b064aad),
+        (2142, 0x0585c1a9cbc9b318),
+        (2143, 0x0eca70ea55bf8b79),
+        (2144, 0x11fbc63c4957ad39),
+        (2145, 0x11f62db18dea8e54),
+        (2154, 0xf18dd877a0257f85),
+        (2155, 0x6a1239340cfcd52e),
+        (2156, 0x0b24b2ebd91b181c),
+        (2157, 0xfcc45b2d10a817d7),
+        (2158, 0xf3fbd78218c42e30),
+        (2159, 0x74d2362c7ac37faf),
+        (2160, 0xab0d76f65230b8af),
+        (2161, 0x682007550aa1ccca),
+        (2162, 0x3674961bb031d758),
+        (2163, 0x74fbc32cc1b642ba),
+        (2172, 0xade15fc802f2d1cc),
+        (2173, 0x784d57a71fa85d11),
+        (2174, 0x011fa15042acdf5c),
+        (2175, 0x5ff0fbf728d3bac7),
+        (2176, 0x5b18a88f59c7b610),
+        (2177, 0xc9551836aeea5c9d),
+        (2178, 0xc9e08ec1fe2fad42),
+        (2179, 0xb72573ee3c015027),
+        (2180, 0x90306aa6713f5adc),
+        (2181, 0xaded40151258d189),
+        (2190, 0xd7601d28e7e1b6f5),
+        (2191, 0xccf08e396293e053),
+        (2192, 0xbaa328890bcbe2fe),
+        (2193, 0x0877f21f1ac96265),
+        (2194, 0xc7eb76088effe6e7),
+        (2195, 0x15c89c5471aff84d),
+        (2196, 0xcbc26c27e346c191),
+        (2197, 0xab23d4829b77d117),
+        (2198, 0x568ec4fe1a5a80bb),
+        (2199, 0x6c4b739df1090887),
+        (161, 0x265245cd5bb4b025),
+        (256, 0x6c60f59f1b09b064),
+        (1761, 0x9e752158d0194dbd),
+        (1762, 0xf72b67b84a615215),
+        (1123, 0x2a1dc190ced09380),
+        (1311, 0x79c389f18a2ca92d),
+        (1312, 0x5ef781220cbddd83),
+        (1313, 0x98844abf82891513),
+        (1314, 0x2bcd758bb3bb74a5),
+        (1315, 0x39a61b56678a2929),
+        (1316, 0x9f457e2c2afbf2bc),
+        (1317, 0xd586df029d91fdb8),
+        (1318, 0x9dd139fd7f37a2f8),
+        (1319, 0xc2e7cfd9fca41223),
+        (1320, 0xef99d52bb321331d),
+        (1335, 0x0c0cc755d6eb44af),
+        (1336, 0xd2edbff756d33d1d),
+        (130, 0x179bbc0890ee5f37),
+        (1461, 0xab5d51b8f2de7ff0),
+        (4000, 0x437873d2a35a7b17),
+        (4001, 0x2b50650418677228),
+        (4002, 0x2f0faa686c3d019f),
+        (4003, 0xdf59052f31028e34),
+        (14, 0x93726f9e0b8f5421),
+        (1611, 0x93726f9e0b8f5421),
+        (1765, 0x829b452bcfa0a972),
+        (527, 0x74867425031de051),
+        (528, 0xce9beee23de48ef6),
+        (49, 0xafa4c4535c2d3421),
+        (50, 0x76f5a3f76ad0001b),
+        (53, 0xf23348e40db0acc6),
+        (57, 0xe422a0f6aabf577a),
+        (51, 0x5d21cd9689880730),
+        (52, 0x61ae0809534990b8),
+        (182, 0x575b5c854bc119c6),
+        (183, 0xdd38a2ef3558e2f9),
+        (184, 0x0bc1e95aa652131d),
+        (185, 0x3203d227377ef62f),
+        (162, 0x55ed2b48ccab440e),
+        (1919, 0x2acf5b22e204305f),
+        (1920, 0x96af653f3e6296c6),
+        (1921, 0x1f68c73c19d0611d),
+        (1922, 0x3f07602f831e31b1),
+        (1923, 0x43d36cfbd6e0a169),
+        (1924, 0x68c57d940bd71ca1),
+        (1925, 0xd340d2bb46c06e21),
+        (1926, 0xd506ba17ef91f4f1),
+        (1927, 0x07d21c1fe4ae96d1),
+        (1928, 0xd4f810c3c0939d85),
+        (1929, 0xa8d7b69ab53c10a4),
+        (1930, 0x67dd2f4f47bc3358),
+        (1931, 0xb0b4dc9f4725fa20),
+        (1932, 0x059b604249d60f68),
+        (1933, 0x4f726d05a21c97e8),
+        (1934, 0x86074880d3230498),
+        (1935, 0x9415eda3c7d21338),
+        (1936, 0x2deb4b21e9a67d3c),
+        (1937, 0xfabfdb2e678619e6),
+        (1938, 0x0809d54662205daa),
+        (1939, 0xec7ccf57c5d19512),
+        (1940, 0x0d2a5759b9c09dda),
+        (1941, 0x4e1a6045e5f31b5a),
+        (1942, 0x6c23ff58828c186a),
+        (1943, 0x7bd4bf5fe1dc0b4a),
+        (1944, 0xaff03f800adc7f3e),
+        (1945, 0x456954cf3d4569ff),
+        (1946, 0x767d91b2b7a63b43),
+        (1947, 0x467afd042a30f0db),
+        (1948, 0x15911cbbf1ce1e13),
+        (1949, 0xdb9f71cf7bb33693),
+        (1950, 0x65519936aa944e03),
+        (1951, 0x107f601b3afb63a3),
+        (1952, 0xe0c7d666eca06987),
+        (1953, 0x1bf87c7d22ffacb7),
+        (1954, 0xbd4b3933c6f0eec3),
+        (1955, 0x045185bd8b556dbb),
+        (1956, 0x9399a80b547f9473),
+        (1957, 0x3eb474253dbb9af3),
+        (1958, 0x64c6467ffc64e283),
+        (1959, 0xd00154c7c39726a3),
+        (1960, 0x63a4d77699f35e3f),
+        (1961, 0x5dd326304b9fc2c6),
+        (1962, 0x0444afabd723f1f2),
+        (1963, 0x049707bab89cd83a),
+        (1964, 0xfc51d9799f19c8c2),
+        (1965, 0x2c3bcfed4cb06242),
+        (1966, 0x41d048673f96e3b2),
+        (1967, 0x4c6cb545caab1a12),
+        (1968, 0xf21349a75741543e),
+        (1969, 0xde7f73d9674cb03c),
+        (1970, 0xa09512e6e2e78a58),
+        (1971, 0x741a6b307fd17780),
+        (1972, 0xe670b26eb47e4bc8),
+        (1973, 0x805928b08feb3c48),
+        (1974, 0xeb6b6be241fceb98),
+        (1975, 0x314e9c54afc8f2b8),
+        (1976, 0x8fb0a996a561c174),
+        (1977, 0xb8fc82fa09692f4d),
+        (1978, 0xb05e0ddb72e9d899),
+        (1979, 0x2e2b309353f7c051),
+        (1980, 0x8f61a570226f5d29),
+        (1981, 0x92fabf8034defaa9),
+        (1982, 0x20a0aa63a57fa5d9),
+        (1983, 0x7465bd2619e95439),
+        (1984, 0x114f0bc294d53e35),
+        (486, 0xb6223bbe42cbe454),
+        (487, 0xc859bf5162dab929),
+        (488, 0x24a9d5ab957e1bc0),
+        (489, 0xfa0dd922be604ddd),
+        (490, 0xb752556d011b7c64),
+        (491, 0x95ffca6a4a3a94cb),
+        (492, 0x8ef9b4f7fc505b01),
+        (493, 0x9c7ae65527981129),
+        (494, 0xaa47324a104d8617),
+        (495, 0x8ef9b4f7fc505b01),
+        (496, 0x9c7ae65527981129),
+        (497, 0xc5437881b0af2444),
+        (498, 0xb5e4d760066cec62),
+        (499, 0xea351679916cefad),
+        (500, 0x1c79fad48132af04),
+        (501, 0xb5e4d760066cec62),
+        (502, 0xea351679916cefad),
+        (503, 0x9e976e895e15bf63),
+        (504, 0xf90eb0657b1019c1),
+        (505, 0x87a462730e8968cd),
+        (506, 0x339ecde7b5995730),
+        (507, 0x73a29a60fae88aa3),
+        (508, 0x3e907d74440228c0),
+        (509, 0xea6d896a7bedc38b),
+        (510, 0xb97483cb4286b8e6),
+        (511, 0xb97483cb4286b8e6),
+        (512, 0xb97483cb4286b8e6),
+        (513, 0x04083385996ae74e),
+        (514, 0x2e75355a7e358664),
+        (515, 0xe9732268ad6d94bf),
+        (516, 0xd2a70b789542aa84),
+        (517, 0x0f13388b22aa9e1f),
+        (518, 0x1a2d79cac071f706),
+        (519, 0x4d87dc23ddcb5171),
+        (520, 0xc1da815bd3f348fc),
+        (521, 0x4d87dc23ddcb5171),
+        (1290, 0x56edac78a390ac15),
+        (3945, 0xafafece853093a74),
     ];
 
     /// The measurable rules of `docs/art-and-ui.md` for natural materials.

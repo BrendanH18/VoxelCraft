@@ -57,25 +57,6 @@ pub const fn registry(id: u16) -> (&'static str, RenderKind, [u16; 6]) {
     ("frosted ice", RenderKind::Translucent, [TEX + id - FIRST.0; 6])
 }
 
-/// Original frosted ice: the ice tint with frost speckle, cracks spreading
-/// with age.
-pub fn pixel(layer: u16, x: usize, y: usize) -> [u8; 4] {
-    let age = (layer - TEX) as usize;
-    let h = (x * 31 + y * 17 + x * y * 7) % 23;
-    let crack = (age >= 1 && (x + 2 * y).is_multiple_of(11))
-        || (age >= 2 && (3 * x + y) % 13 == 1)
-        || (age >= 3 && (x * 5 + y * 3) % 7 == 2);
-    let c = if crack {
-        [210, 232, 250]
-    } else if h < 3 {
-        [236, 246, 255]
-    } else {
-        let v = 150 + (h as u8) * 2;
-        [v - 22, v + 12, 252]
-    };
-    [c[0], c[1], c[2], 190]
-}
-
 /// Frost Walker's disk radius (`radius`: `clamped(linear(3, 1), 0, 16)`).
 pub fn frost_walker_radius(level: u8) -> i32 {
     (3 + (i32::from(level) - 1)).clamp(0, 16)

@@ -70,9 +70,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             let i = l - tex::SHELF_FRONTS;
             shelf_front(l, (i / 5) as usize, i % 5, x, y)
         }
-        l if l == tex::CHISELED_TOP => chiseled_top(l, x, y, r),
-        l if l == tex::CHISELED_SIDE => chiseled_side(l, x, y, r),
-        l if l < tex::END => chiseled_front(l, (l - tex::CHISELED_FRONTS) as u8, x, y, r),
         _ => [255, 0, 255, 255],
     }
 }
@@ -181,76 +178,5 @@ fn shelf_front(layer: u16, kind: usize, variant: u16, x: usize, y: usize) -> Rgb
         shade(if core { [255, 214, 128] } else { [214, 150, 72] }, 0.92 + rnd(layer, x, y, 2) * 0.08)
     } else {
         panel
-    }
-}
-
-fn chiseled_top(layer: u16, x: usize, y: usize, r: f32) -> Rgba {
-    let c = PLANKS[0];
-    let rim = x == 0 || y == 0 || x == 15 || y == 15;
-    let inset = (x == 3 || x == 12) && (3..=12).contains(&y) || (y == 3 || y == 12) && (3..=12).contains(&x);
-    let _ = layer;
-    shade(
-        c,
-        if rim {
-            0.72
-        } else if inset {
-            0.8
-        } else {
-            0.94 + r * 0.1
-        },
-    )
-}
-
-fn chiseled_side(layer: u16, x: usize, y: usize, r: f32) -> Rgba {
-    let c = PLANKS[0];
-    let board = y / 4;
-    let seam = y % 4 == 3 || x == (board * 7 + 3) % 16;
-    let rim = x == 0 || x == 15;
-    let _ = layer;
-    shade(
-        c,
-        if rim {
-            0.72
-        } else if seam {
-            0.7
-        } else {
-            0.93 + r * 0.1
-        },
-    )
-}
-
-/// The front of a chiseled bookshelf holding books in the slots of `mask`:
-/// two rows of three slots, slot 0 top left as seen from the front.
-fn chiseled_front(layer: u16, mask: u8, x: usize, y: usize, r: f32) -> Rgba {
-    let c = PLANKS[0];
-    let row = match y {
-        1..=6 => Some(0),
-        9..=14 => Some(1),
-        _ => None,
-    };
-    let column = match x {
-        1..=4 => Some(0),
-        6..=9 => Some(1),
-        11..=14 => Some(2),
-        _ => None,
-    };
-    let (Some(row), Some(column)) = (row, column) else {
-        return shade(c, 0.78 + r * 0.08);
-    };
-    let slot = row * 3 + column;
-    if mask & (1 << slot) == 0 {
-        return shade([46, 32, 18], 0.9 + r * 0.1);
-    }
-    // Book spines: each pixel column a book, coloured and sized by slot.
-    const COVERS: [[u8; 3]; 6] =
-        [[150, 40, 34], [42, 92, 150], [56, 120, 50], [126, 84, 44], [120, 50, 120], [196, 160, 64]];
-    let first = if row == 0 { 1 } else { 9 };
-    let book = (x + slot * 2) % 6;
-    let height = 4 + (rnd(tex::CHISELED_FRONTS, x, slot, 4) * 2.0) as usize;
-    if y - first >= 6 - height {
-        let band = y - first == 6 - height + 1;
-        shade(COVERS[book], if band { 1.15 } else { 0.85 + rnd(layer, x, 0, 6) * 0.15 })
-    } else {
-        shade([46, 32, 18], 0.9)
     }
 }
