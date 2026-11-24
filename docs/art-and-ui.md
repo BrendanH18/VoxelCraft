@@ -53,8 +53,8 @@ every flat UI colour shows lighter than written:
 | Disabled `DISABLED` `[0.2; 3]` | 51 | 124 (`#7C7C7C`) | the disabled button sprite |
 | Panel shadow edge `[0.33; 3]` | 84 | 155 (`#9B9B9B`) | `#555555` (85) |
 
-Measured in the before captures (inventory panel 229 and title 137 at
-1920 × 1080) as the table predicts. The
+All five match the before captures (the inventory, pause menu and Select
+World scenes). The
 [foundation record](verification/2026-11-23-v0.18-foundation.md#colour-path)
 has the samples. The typography track (1) owns the conversion helper and the
 audit item 1 of the scope asks for. Until it lands, a track that adds a
