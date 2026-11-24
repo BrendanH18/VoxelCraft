@@ -5032,6 +5032,19 @@
     "0,141,0,torch"
    ],
    "time": 0.75
+  },
+  {
+   "group": "atmosphere",
+   "hud": false,
+   "pose": [
+    -16.5,
+    54,
+    672.5,
+    45,
+    -8
+   ],
+   "name": "underwater-ocean",
+   "description": "Eleven blocks under the deep ocean west of the seed's ocean monument (24, 48, 712), facing it: the sea floor, the monument and open water at ordinary underwater distances (v0.18 track 8; the underwater tank floats in the air and its sand floor falls away, so its view is mostly empty fog)"
   }
  ]
 }

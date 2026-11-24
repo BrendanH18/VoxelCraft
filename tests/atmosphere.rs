@@ -510,3 +510,53 @@ fn cloud_and_fog_cost() {
     println!("fog: {:.3} us per eye ({sum})", start.elapsed().as_secs_f64() * 1e6 / 100_000.0);
     println!("pattern coverage {:.3}", pattern.coverage());
 }
+
+/// The bytes a fully fogged pixel shows under water, in lava and in powder
+/// snow, worked out from the fixture as Java does it: the environment's
+/// colour (`WaterFogEnvironment` reads the biome's `water_fog_color`,
+/// #050533 in oceans and rivers), lerped toward itself scaled to its
+/// brightest channel by water vision (`FogRenderer.computeFogColor`), and
+/// written as bytes to Java's `RGBA8_UNORM` target. VoxelCraft's path
+/// (sRGB fog colour to linear, the sRGB target's encode) must land on the
+/// same bytes.
+#[test]
+fn fog_colours_show_on_screen_as_java_computes_them() {
+    let fx = fixture();
+    let byte = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+    let java = |c: [f32; 3], vision: f32| {
+        let scale = 1.0 / c[0].max(c[1]).max(c[2]);
+        c.map(|v| byte(v + (v * scale - v) * vision))
+    };
+    let base = plains_noon();
+    for biome in [Biome::Ocean, Biome::River, Biome::DeepOcean] {
+        let local = Local::resolve(atmosphere::dimension(Dimension::Overworld), atmosphere::overworld_biome(biome));
+        let water = atmosphere::rgb(hex(&fx["attribute_defaults"]["water_fog_color"]));
+        assert_eq!(local.water_fog, water, "{biome:?}");
+        for (vision, want) in [(0.0, [5, 5, 51]), (0.6, [17, 17, 173]), (1.0, [25, 25, 255])] {
+            let fog =
+                atmosphere::fog(&Eye { medium: Medium::Water, water_vision: vision, local, ..base }, RainFog(0.0));
+            let screen = atmosphere::screen_rgb8(fog.color);
+            assert_eq!(screen, java(water, vision), "{biome:?} vision {vision}");
+            assert_eq!(screen, want, "{biome:?} vision {vision}");
+        }
+    }
+    // A warm ocean's water fog (#041F33) turns teal-blue at full vision.
+    let warm =
+        Local::resolve(atmosphere::dimension(Dimension::Overworld), atmosphere::overworld_biome(Biome::WarmOcean));
+    let fog = atmosphere::fog(&Eye { medium: Medium::Water, water_vision: 1.0, local: warm, ..base }, RainFog(0.0));
+    assert_eq!(atmosphere::screen_rgb8(fog.color), [20, 155, 255]);
+    // Lava and powder snow: fixed colours, never brightened.
+    for (medium, key, want) in
+        [(Medium::Lava, "lava", [153, 25, 0]), (Medium::PowderSnow, "powder_snow", [159, 187, 204])]
+    {
+        let fog = atmosphere::fog(&Eye { medium, water_vision: 1.0, ..base }, RainFog(0.0));
+        let java = atmosphere::rgb(hex(&fx["fog"][key]["color"])).map(byte);
+        assert_eq!(atmosphere::screen_rgb8(fog.color), java, "{key}");
+        assert_eq!(java, want, "{key}");
+    }
+    // The conversion pair round-trips every byte.
+    for v in 0..=255u8 {
+        let c = [f32::from(v) / 255.0; 3];
+        assert_eq!(atmosphere::screen_rgb8(c), [v; 3]);
+    }
+}

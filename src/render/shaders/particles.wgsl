@@ -7,9 +7,20 @@ struct Globals {
 struct Axes { right: vec4<f32>, up: vec4<f32> };
 @group(0) @binding(0) var<uniform> g: Globals;
 
+// The exact sRGB transfer the target encodes with, so a colour taken
+// from linear to sRGB and back is unchanged and a fully fogged pixel
+// shows Java's fog colour byte for byte.
+fn to_srgb(c: vec3<f32>) -> vec3<f32> {
+    let x = max(c, vec3<f32>(0.0));
+    return select(1.055 * pow(x, vec3<f32>(1.0 / 2.4)) - 0.055, x * 12.92, x <= vec3<f32>(0.0031308));
+}
+fn from_srgb(c: vec3<f32>) -> vec3<f32> {
+    let x = max(c, vec3<f32>(0.0));
+    return select(pow((x + 0.055) / 1.055, vec3<f32>(2.4)), x / 12.92, x <= vec3<f32>(0.04045));
+}
 // Java 26.3's fog.glsl: spherical and cylindrical distance, and the larger
 // of the environmental and render-distance fogs, blended in sRGB as Java
-// blends it (the 2.2 power matches the fog colour's conversion).
+// blends it (exact sRGB, matching the fog colour's conversion).
 fn fog_distances(rel: vec3<f32>) -> vec2<f32> {
     return vec2<f32>(length(rel), max(length(rel.xz), abs(rel.y)));
 }
@@ -24,8 +35,7 @@ fn fog_value(d: vec2<f32>) -> f32 {
 fn apply_fog(color: vec3<f32>, d: vec2<f32>) -> vec3<f32> {
     let f = fog_value(d);
     if f <= 0.0 { return color; }
-    let e = vec3<f32>(1.0 / 2.2);
-    return pow(mix(pow(max(color, vec3<f32>(0.0)), e), pow(g.fog_color.rgb, e), f), vec3<f32>(2.2));
+    return from_srgb(mix(to_srgb(color), to_srgb(g.fog_color.rgb), f));
 }
 @group(1) @binding(0) var blocks: texture_2d_array<f32>;
 @group(1) @binding(1) var block_sampler: sampler;

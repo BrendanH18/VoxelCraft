@@ -37,11 +37,21 @@ fn hash3(p: vec3<f32>) -> f32 {
     return hash2(p.xy + hash2(p.yz + p.x * 17.0) * 91.7);
 }
 
-// Mixes two linear colours as their sRGB values (2.2 power, matching the
-// conversion the uniforms went through).
+// The exact sRGB transfer the target encodes with, so a colour taken
+// from linear to sRGB and back is unchanged and a fully fogged pixel
+// shows Java's fog colour byte for byte.
+fn to_srgb(c: vec3<f32>) -> vec3<f32> {
+    let x = max(c, vec3<f32>(0.0));
+    return select(1.055 * pow(x, vec3<f32>(1.0 / 2.4)) - 0.055, x * 12.92, x <= vec3<f32>(0.0031308));
+}
+fn from_srgb(c: vec3<f32>) -> vec3<f32> {
+    let x = max(c, vec3<f32>(0.0));
+    return select(pow((x + 0.055) / 1.055, vec3<f32>(2.4)), x / 12.92, x <= vec3<f32>(0.04045));
+}
+
+// Mixes two linear colours as their sRGB values, as Java blends them.
 fn srgb_mix(a: vec3<f32>, b: vec3<f32>, t: f32) -> vec3<f32> {
-    let e = vec3<f32>(1.0 / 2.2);
-    return pow(mix(pow(max(a, vec3<f32>(0.0)), e), pow(max(b, vec3<f32>(0.0)), e), t), vec3<f32>(2.2));
+    return from_srgb(mix(to_srgb(a), to_srgb(b), t));
 }
 
 // ---------------------------------------------------------------- sky

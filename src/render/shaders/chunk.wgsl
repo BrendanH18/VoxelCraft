@@ -29,9 +29,20 @@ struct Globals {
 
 @group(0) @binding(0) var<uniform> g: Globals;
 
+// The exact sRGB transfer the target encodes with, so a colour taken
+// from linear to sRGB and back is unchanged and a fully fogged pixel
+// shows Java's fog colour byte for byte.
+fn to_srgb(c: vec3<f32>) -> vec3<f32> {
+    let x = max(c, vec3<f32>(0.0));
+    return select(1.055 * pow(x, vec3<f32>(1.0 / 2.4)) - 0.055, x * 12.92, x <= vec3<f32>(0.0031308));
+}
+fn from_srgb(c: vec3<f32>) -> vec3<f32> {
+    let x = max(c, vec3<f32>(0.0));
+    return select(pow((x + 0.055) / 1.055, vec3<f32>(2.4)), x / 12.92, x <= vec3<f32>(0.04045));
+}
 // Java 26.3's fog.glsl: spherical and cylindrical distance, and the larger
 // of the environmental and render-distance fogs, blended in sRGB as Java
-// blends it (the 2.2 power matches the fog colour's conversion).
+// blends it (exact sRGB, matching the fog colour's conversion).
 fn fog_distances(rel: vec3<f32>) -> vec2<f32> {
     return vec2<f32>(length(rel), max(length(rel.xz), abs(rel.y)));
 }
@@ -46,8 +57,7 @@ fn fog_value(d: vec2<f32>) -> f32 {
 fn apply_fog(color: vec3<f32>, d: vec2<f32>) -> vec3<f32> {
     let f = fog_value(d);
     if f <= 0.0 { return color; }
-    let e = vec3<f32>(1.0 / 2.2);
-    return pow(mix(pow(max(color, vec3<f32>(0.0)), e), pow(g.fog_color.rgb, e), f), vec3<f32>(2.2));
+    return from_srgb(mix(to_srgb(color), to_srgb(g.fog_color.rgb), f));
 }
 
 // Night vision (Java's lightmap): brightens every light level toward full,
@@ -287,7 +297,7 @@ fn overworld_light(sky_level: f32, block_level: f32, normal: vec3<f32>, shade: f
     let b = max(max(block.r, block.g), block.b);
     let share = clamp(s / max(s + b, 1e-4), 0.0, 1.0);
     let sun = mix(vec3<f32>(1.0), daylight_tint(normal), share);
-    return pow(night_vision(java), vec3<f32>(2.2)) * shade * sun;
+    return from_srgb(night_vision(java)) * shade * sun;
 }
 
 // Java 26.3 adds the environment ambient colour to sky and block light.
@@ -310,8 +320,7 @@ fn sky_at(dir: vec3<f32>) -> vec3<f32> {
         let horizontal = spherical * sqrt(max(1.0 - dir.y * dir.y, 0.0));
         fogged = select(clamp(spherical / end, 0.0, 1.0), 1.0, horizontal >= end);
     }
-    let e = vec3<f32>(1.0 / 2.2);
-    return pow(mix(pow(g.zenith_color.rgb, e), pow(g.fog_color.rgb, e), fogged), vec3<f32>(2.2));
+    return from_srgb(mix(to_srgb(g.zenith_color.rgb), to_srgb(g.fog_color.rgb), fogged));
 }
 
 @fragment

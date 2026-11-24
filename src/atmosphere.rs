@@ -42,11 +42,29 @@ pub const fn argb(hex: u32) -> Rgba {
     [r, g, b, (hex >> 24) as f32 / 255.0]
 }
 
-/// An sRGB colour as the linear value the sRGB target encodes back to it.
-/// Uses the 2.2 power the [art guide](../../docs/art-and-ui.md#colour-pipeline)
-/// asks for until the shared helper lands; the shaders invert it exactly.
+/// An sRGB colour as the linear value the sRGB target encodes back to it,
+/// with the exact sRGB transfer function (the target's own), so a colour
+/// drawn unchanged shows Java's value byte for byte. The shaders' fog and
+/// sky blends invert it exactly (`to_srgb`/`from_srgb`).
 pub fn linear(c: Rgb) -> Rgb {
-    c.map(|v| v.max(0.0).powf(2.2))
+    c.map(|v| {
+        let v = v.max(0.0);
+        if v <= 0.04045 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
+    })
+}
+
+/// What the sRGB target stores for a linear colour (its encode).
+pub fn encode(c: Rgb) -> Rgb {
+    c.map(|v| {
+        let v = v.max(0.0);
+        if v <= 0.003_130_8 { v * 12.92 } else { 1.055 * v.powf(1.0 / 2.4) - 0.055 }
+    })
+}
+
+/// The bytes on screen for a pixel drawn in fog colour `c` (an sRGB value):
+/// through [`linear`] to the renderer and the target's encode back.
+pub fn screen_rgb8(c: Rgb) -> [u8; 3] {
+    encode(linear(c)).map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8)
 }
 
 fn lerp(t: f32, a: f32, b: f32) -> f32 {

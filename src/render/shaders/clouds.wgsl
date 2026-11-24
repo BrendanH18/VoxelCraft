@@ -74,5 +74,7 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(0) face: u32) -> VsOut {
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     let fade = 1.0 - clamp(in.dist / max(g.fog_ends.y, 1e-3), 0.0, 1.0);
     // The colour is sRGB like Java's; the target encodes linear values.
-    return vec4<f32>(pow(in.color.rgb, vec3<f32>(2.2)), in.color.a * fade);
+    let c = max(in.color.rgb, vec3<f32>(0.0));
+    let lin = select(pow((c + 0.055) / 1.055, vec3<f32>(2.4)), c / 12.92, c <= vec3<f32>(0.04045));
+    return vec4<f32>(lin, in.color.a * fade);
 }
