@@ -146,6 +146,10 @@ impl Sound {
                 ContainerCue::BarrelClose => "block.barrel.close",
                 ContainerCue::CopperChestOpen => "block.copper_chest.open",
                 ContainerCue::CopperChestClose => "block.copper_chest.close",
+                ContainerCue::CopperChestWeatheredOpen => "block.copper_chest_weathered.open",
+                ContainerCue::CopperChestWeatheredClose => "block.copper_chest_weathered.close",
+                ContainerCue::CopperChestOxidizedOpen => "block.copper_chest_oxidized.open",
+                ContainerCue::CopperChestOxidizedClose => "block.copper_chest_oxidized.close",
             }),
         }
     }
