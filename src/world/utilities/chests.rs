@@ -152,6 +152,11 @@ impl World {
             }
         }
     }
+    /// v0.18 Track 9: the chests copper golems have open, for their lids.
+    pub(in crate::world) fn golem_chest_cells(&self) -> Vec<IVec3> {
+        self.utilities.golem_viewers.keys().copied().collect()
+    }
+
     /// Player-only viewers for the transport queue (the current golem excludes itself).
     pub fn player_chest_viewers(&self, p: IVec3) -> u8 {
         self.utilities.viewers.get(&p).copied().unwrap_or(0)

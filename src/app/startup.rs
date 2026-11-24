@@ -227,6 +227,11 @@ impl Game {
         if let Some(text) = existing.as_ref().and_then(|l| l.props.get("raid_omen_position")) {
             session.load_raid_omen(text);
         }
+        // v0.18 Track 5: a save from before the recipe book starts from Java's
+        // initial book; the first tick checks the loaded inventory.
+        if let Some(text) = existing.as_ref().and_then(|l| l.props.get("recipe_book")) {
+            session.recipe_book = crate::crafting::book::RecipeBook::deserialize(text);
+        }
         session.spawn_anchor = existing.as_ref().and_then(|l| l.props.get("spawn_anchor")).and_then(|text| {
             let n: Vec<i32> = text.split(',').filter_map(|value| value.parse().ok()).collect();
             (n.len() == 3).then(|| IVec3::new(n[0], n[1], n[2]))
@@ -275,7 +280,7 @@ impl Game {
             gamerules,
             inventory_open: args.open_inventory,
             craft: crate::crafting::Grid::new(2),
-            recipe_book: recipe_book::RecipeBook::default(),
+            recipe_book: Default::default(),
             creative: Default::default(),
             hotbars: hotbars_path
                 .as_deref()
@@ -287,6 +292,7 @@ impl Game {
             cursor_px: (0.0, 0.0),
             body: Default::default(),
             show_hud: !args.no_hud,
+            captions: Vec::new(),
             hand: Default::default(),
             camera: args.camera,
             scripted_ride: args.ride.clone(),

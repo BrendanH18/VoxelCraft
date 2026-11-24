@@ -450,9 +450,11 @@ fn is_hotbar_tab(tab: Tab) -> bool {
 }
 
 impl Game {
-    /// Results the profile can craft now (empty for unknown names).
-    pub(super) fn pad_crafts(&self, name: &str) -> Vec<Stack> {
-        self.agents.players.get(name).map_or_else(Vec::new, |b| b.agent.craftable(&self.world))
+    /// v0.18 Track 5: the profile's recipe book, one entry per recipe it
+    /// shows, with the result and whether it can be made now (empty for
+    /// unknown names).
+    pub(super) fn pad_crafts(&self, name: &str) -> Vec<(voxelcraft::crafting::book::RecipeId, Stack, bool)> {
+        self.agents.players.get(name).map_or_else(Vec::new, |b| b.agent.book_entries(&self.world))
     }
 
     /// How many recipes or patterns `name`'s workstation tab offers.
@@ -556,14 +558,19 @@ impl Game {
                 _ => return true,
             },
             Slot::Recipe(i) => {
-                // Shift-crafting makes as many as the ingredients allow.
-                let Some(item) = self.pad_crafts(name).get(i).map(|s| s.item) else { return true };
+                // v0.18 Track 5: A places one set through the recipe book and
+                // takes it, Y every set (the book's shift-click); X toggles
+                // the craftable filter.
+                use voxelcraft::crafting::book::BookType;
+                let entry = self.pad_crafts(name).get(i).map(|&(id, ..)| id);
                 let Some(bot) = self.agents.players.get_mut(name) else { return false };
-                for _ in 0..if quick { 64 } else { 1 } {
-                    let craft = Command::Craft(item);
-                    if bot.agent.execute(craft, &mut self.world, &mut self.mobs.entities, &[]).is_err() {
-                        break;
-                    }
+                if right {
+                    let book = &mut bot.agent.session.recipe_book;
+                    let filtering = book.settings(BookType::Crafting).filtering;
+                    book.set_filtering(BookType::Crafting, !filtering);
+                } else if let Some(id) = entry {
+                    let _ =
+                        bot.agent.execute(Command::Recipe(id, quick), &mut self.world, &mut self.mobs.entities, &[]);
                 }
                 self.audio.ui_click();
                 return true;
@@ -708,11 +715,18 @@ impl Game {
         let (px, py) = (((sw - pw) / 2.0).floor(), ((sh - ph - footer) / 2.0).floor().max(0.0));
         ui.rect(px, py, pw, ph, [0.12, 0.12, 0.14, 0.92]);
         let creative = bot.agent.creative;
+        // v0.18 Track 5: the crafting tab is the recipe book, with its filter.
+        let filter = {
+            use voxelcraft::crafting::book::{self, BookType};
+            let filtering = bot.agent.session.recipe_book.settings(BookType::Crafting).filtering;
+            if filtering { BookType::Crafting.filter_label() } else { book::SHOWING_ALL }
+        };
+        let book_title =
+            format!("Recipe Book: {filter}  (X: filter, {})", if creative { "RB: items" } else { "LB: inventory" });
         let tab_title;
         let title = match tab {
-            Tab::Inventory => "Inventory  (RB: crafting)",
-            Tab::Crafting if creative => "Crafting  (RB: items)",
-            Tab::Crafting => "Crafting  (LB: inventory)",
+            Tab::Inventory => "Inventory  (RB: recipe book)",
+            Tab::Crafting => book_title.as_str(),
             Tab::Palette(t) => {
                 let name = voxelcraft::creative::catalogue().tabs.get(t as usize).map_or("", |t| t.title.as_str());
                 tab_title = if is_hotbar_tab(tab) {
@@ -842,11 +856,17 @@ impl Game {
                     Slot::Ref(SlotRef::SmithResult) => smithing,
                     Slot::Ref(s) if super::workstations::is_workstation_slot(s) => self.pad_workstation_slot(name, s),
                     Slot::Ref(_) => None,
-                    Slot::Recipe(i) => crafts.get(i).copied(),
+                    Slot::Recipe(i) => crafts.get(i).map(|&(_, result, _)| result),
                     Slot::Palette(i) => items.get(i).copied().flatten(),
                 };
                 if let Some(stack) = stack {
                     draw_stack(ui, x - 0.5, y - 0.5, stack, true, dial);
+                }
+                // v0.18 Track 5: recipes missing ingredients are red, as in the book.
+                if let Slot::Recipe(i) = slot(tab, c, r, lists)
+                    && crafts.get(i).is_some_and(|&(.., craftable)| !craftable)
+                {
+                    ui.rect(x - 0.5, y - 0.5, 16.0, 16.0, [0.8, 0.1, 0.1, 0.35]);
                 }
                 // v0.16 Track C: the beacon's power buttons and Done.
                 if let (Tab::Beacon(pos), Slot::Ref(s)) = (tab, slot(tab, c, r, lists)) {

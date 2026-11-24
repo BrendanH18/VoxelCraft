@@ -20,7 +20,7 @@ holds the same table (`JAVA_RULES`) and a test keeps this file identical to it.
   `fire_spread_radius_around_player` (128: fire ticks within 128 blocks of a
   player, 0: never, -1: everywhere). Old saves convert as Java's datafixer does;
   new saves write `fireSpreadRadiusAroundPlayer`.
-- Rules the engine lacks are not stored: `/gamerule limited_crafting true`
+- Rules the engine lacks are not stored: `/gamerule locator_bar false`
   reports that the rule is not implemented and names the release that adds it.
 - Three legacy names are `disable*` booleans that Java's datafixer inverts
   (`GameRuleRegistryFix.convertBooleanInverted`). `raids` is the one the
@@ -68,7 +68,7 @@ enforced.
 | `immediate_respawn` | `doImmediateRespawn` | boolean | `false` | Implemented | - | Skips the death screen (`GameRules::respawns_immediately`); Hardcore still becomes Spectator. |
 | `keep_inventory` | `keepInventory` | boolean | `false` | Implemented | - | Keeps inventory, vanishing items and experience; no orbs drop (`Player.dropEquipment`, `getBaseExperienceReward`). |
 | `lava_source_conversion` | `lavaSourceConversion` | boolean | `false` | Implemented | - | Two lava sources over a solid floor make a source when on; off by default, unlike water. |
-| `limited_crafting` | `doLimitedCrafting` | boolean | `false` | Missing | v0.18 | Needs recipe unlocking (UX-03c). |
+| `limited_crafting` | `doLimitedCrafting` | boolean | `false` | Implemented | - | v0.18 Track 5: only recipes the player has unlocked craft (special recipes always do), in the 2x2 and 3x3 grids on every input path; the crafter block is unaffected, as in Java ([recipe book record](verification/2026-11-23-v0.18-recipe-book.md)). |
 | `locator_bar` | `locatorBar` | boolean | `true` | Missing | unscheduled | No waypoint HUD. The roadmap does not schedule it; owner decision needed. |
 | `log_admin_commands` | `logAdminCommands` | boolean | `true` | Not applicable | n/a | Server log only. |
 | `max_block_modifications` | `commandModificationBlockLimit` | integer 1..2147483647 | `32768` | Not applicable | n/a | There is no `/fill` or `/clone`. |

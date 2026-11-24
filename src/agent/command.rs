@@ -38,6 +38,11 @@ pub enum Command {
     Select(usize),
     Fly(bool),
     Craft(Item),
+    /// v0.18 Track 5 `recipe <id> [max]`: the recipe book's click (shift
+    /// with `max`) on a known recipe.
+    Recipe(crate::crafting::book::RecipeId, bool),
+    /// `recipes [all|craftable] [query]`: the known recipes the book shows.
+    Recipes(Option<bool>, String),
     Chest(bool, usize),
     /// `sign x y z front|back ["line", ...]`: one side's text, as the sign
     /// edit screen's Done sends it (`ServerboundSignUpdatePacket`).
@@ -188,6 +193,8 @@ const COMMAND_NAMES: &[&str] = &[
     "catalog",
     "hotbar",
     "furnace",
+    "recipe",
+    "recipes",
 ];
 
 /// One Java command coordinate: absolute, or relative to the executor.
@@ -797,6 +804,18 @@ impl Command {
             ["fly", "on"] => Self::Fly(true),
             ["fly", "off"] => Self::Fly(false),
             ["craft", name] => Self::Craft(item(name)?),
+            ["recipe", id] | ["recipe", id, "max"] => Self::Recipe(
+                crate::crafting::book::RecipeId::from_name(id).ok_or_else(|| format!("unknown recipe: {id}"))?,
+                words.len() == 3,
+            ),
+            ["recipes", rest @ ..] => {
+                let (filter, query) = match rest.first() {
+                    Some(&"all") => (Some(false), &rest[1..]),
+                    Some(&"craftable") => (Some(true), &rest[1..]),
+                    _ => (None, rest),
+                };
+                Self::Recipes(filter, query.join(" "))
+            }
             ["furnace", action @ ("take" | "put"), slot] => Self::Furnace(
                 *action == "take",
                 match *slot {

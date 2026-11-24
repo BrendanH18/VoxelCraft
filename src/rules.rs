@@ -209,7 +209,7 @@ pub const JAVA_RULES: [RuleDef; 59] = [
     boolean("immediate_respawn", "doImmediateRespawn", false, I),
     boolean("keep_inventory", "keepInventory", false, I),
     boolean("lava_source_conversion", "lavaSourceConversion", false, I),
-    boolean("limited_crafting", "doLimitedCrafting", false, M("v0.18")),
+    boolean("limited_crafting", "doLimitedCrafting", false, I),
     boolean("locator_bar", "locatorBar", true, M("unscheduled")),
     boolean("log_admin_commands", "logAdminCommands", true, N("server log")),
     integer("max_block_modifications", "commandModificationBlockLimit", 32768, 1, i32::MAX, N("no fill or clone")),
@@ -862,13 +862,13 @@ mod tests {
     #[test]
     fn rules_the_engine_lacks_explain_why_instead_of_silently_storing_values() {
         let mut rules = GameRules::default();
-        assert!(rules.get("limited_crafting").is_none() && rules.get("doLimitedCrafting").is_none());
-        let error = rules.set("limited_crafting", "true").unwrap_err();
-        assert!(error.contains("not implemented") && error.contains("v0.18"), "{error}");
+        assert!(rules.get("locator_bar").is_none() && rules.get("locatorBar").is_none());
+        let error = rules.set("locator_bar", "false").unwrap_err();
+        assert!(error.contains("not implemented") && error.contains("unscheduled"), "{error}");
         assert!(rules.set("elytra_movement_check", "false").unwrap_err().contains("no single-player effect"));
         assert!(GameRules::unknown("nope").contains("unknown gamerule"));
         assert_eq!(rules, GameRules::default());
-        assert!(!GameRules::names().any(|name| name == "limited_crafting"));
+        assert!(!GameRules::names().any(|name| name == "locator_bar"));
         assert!(GameRules::names().any(|name| name == "keep_inventory"));
     }
 
@@ -895,14 +895,24 @@ mod tests {
         assert_eq!(rules.serialize(), "doPatrolSpawning=false");
     }
 
+    /// v0.18 Track 5: `limited_crafting` is stored and saved under its
+    /// legacy name once the recipe book enforces it.
+    #[test]
+    fn limited_crafting_is_a_saved_rule() {
+        let mut rules = GameRules::default();
+        assert!(!rules.bool("limited_crafting"));
+        rules.set("doLimitedCrafting", "true").unwrap();
+        assert!(rules.bool("limited_crafting"));
+        assert_eq!(rules.serialize(), "doLimitedCrafting=true");
+        assert_eq!(GameRules::deserialize("doLimitedCrafting=true"), rules);
+        assert!(GameRules::names().any(|name| name == "limited_crafting"));
+    }
+
     #[test]
     fn old_worlds_receive_every_default() {
         assert_eq!(GameRules::deserialize(""), GameRules::default());
         assert_eq!(GameRules::deserialize("futureRule=yes;randomTickSpeed=bad"), GameRules::default());
-        assert_eq!(
-            GameRules::deserialize("limited_crafting=true;doLimitedCrafting=true;keepInventory"),
-            GameRules::default()
-        );
+        assert_eq!(GameRules::deserialize("locator_bar=false;locatorBar=false;keepInventory"), GameRules::default());
     }
 
     #[test]

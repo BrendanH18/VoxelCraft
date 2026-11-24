@@ -525,6 +525,12 @@ impl Inventory {
         }
     }
 
+    /// Queues a stack that didn't fit anywhere for the game to drop
+    /// (the recipe book's `placeItemBackInInventory` overflow).
+    pub fn spill_stack(&mut self, stack: Stack) {
+        self.spill.push(stack);
+    }
+
     /// Takes the stacks that didn't fit, for the game to drop.
     pub fn take_spill(&mut self) -> Vec<Stack> {
         std::mem::take(&mut self.spill)

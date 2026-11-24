@@ -183,7 +183,8 @@ src/
   app/
     mod.rs           window, input, fixed game ticks, rendering, damage entry point
     actions.rs       hotbar/mining state and consumption presentation mirror
-    recipe_book.rs   recipe navigation, responsive layout and hit testing
+    recipe_book.rs   Java's recipe book view: tabs, search, filter, pages,
+                     ghost recipe, toast, layout and hit testing
     hud.rs           HUD: hotbar, hearts/food/bubbles, containers, death and F3
     gui/             menu toolkit: screen stack, focus and navigation for mouse,
                      keyboard and controller, sliders, text fields and clipboard,
@@ -207,6 +208,8 @@ src/
     hand.rs          first-person hand animation: swings, item switches, bob
   inventory.rs       inventory slots, stacking, saved container overflow
   crafting.rs        crafting grids and recipes
+  crafting/book/     v0.18 recipe book: Java recipe IDs and categories,
+                     unlock criteria, per-player state and saves, placement
   mining.rs          mining speed, harvest rules, tool wear, melee damage
   item.rs            item registry: blocks, materials, food and tools
   enchant.rs         enchantments: Java's definitions, effects, table offers,
@@ -1378,6 +1381,18 @@ creative cell) and 20000 + tab x 1000 + index (a creative stack that isn't
 a plain `Item::creative_palette` entry, which keeps codes 1000+); the
 dispenser output code 5 (`Output::Egg`, saved with pending dispenses); the
 trial spawner's saved `entity` field.
+
+#### Track 9 allocation
+
+Track 9 (sound, subtitles and container lids) uses texture layer 1290 for
+the barrel's open top (`world::lids::BARREL_OPEN_TEX`); 1291–1294 stay
+unregistered. It allocates no block states or items: Java's barrel `open`
+property is drawn from the barrel's viewers instead of a saved state (see
+the [record](verification/2026-11-23-v0.18-sound.md)). Appended orderings:
+`audio::Sound::Block` (Java event family × `BlockCue`) and
+`audio::Sound::Container` after `Sound::Crafter`, keyed after the crafter's
+cues; the options `showSubtitles`, `textBackgroundOpacity` and
+`backgroundForChatOnly` (Java's keys) at the end of `options.txt`.
 
 ## Assessment branch ID reservations
 

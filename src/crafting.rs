@@ -28,6 +28,7 @@ mod music;
 mod sculk;
 mod track_d;
 pub use copper::stonecutting as copper_stonecutting;
+pub mod book;
 pub mod colour;
 pub mod stonecutting;
 mod weapons;

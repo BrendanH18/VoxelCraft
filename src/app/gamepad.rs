@@ -397,7 +397,7 @@ impl Pads {
     /// The chests controller players have open.
     pub(super) fn open_chests(&self) -> impl Iterator<Item = IVec3> + '_ {
         self.seats.iter().filter_map(|s| match s.menu {
-            Some(Menu::Items { tab: Tab::Chest(p), .. }) => Some(p),
+            Some(Menu::Items { tab: Tab::Chest(p) | Tab::EnderChest(p), .. }) => Some(p),
             _ => None,
         })
     }
@@ -865,7 +865,6 @@ impl Game {
                 cell,
             }) => {
                 self.pads.seats[i].open(Menu::items(Tab::EnderChest(cell)));
-                self.chest_sound(cell, 0.9);
             }
             Request::Open(_) => {}
             Request::MagicDamage(amount) => {
@@ -927,6 +926,29 @@ impl Game {
 
     /// Runs `f` on agent `name`'s open screen: their session with the given
     /// container and crafting grid. Returns its result and requests.
+    /// v0.18 Track 5: recipes a controller player's open recipe book lists
+    /// lose their highlight, as the book shows them (`RecipeButton.init`).
+    pub(super) fn pad_recipe_books_seen(&mut self) {
+        let names: Vec<String> = self
+            .pads
+            .seats
+            .iter()
+            .filter(|s| matches!(s.menu, Some(Menu::Items { tab: Tab::Crafting, .. })))
+            .map(|s| s.name.clone())
+            .collect();
+        for name in names {
+            if self.agents.players.get(&name).is_none_or(|b| b.agent.session.recipe_book.highlighted_count() == 0) {
+                continue;
+            }
+            let ids: Vec<_> = self.pad_crafts(&name).into_iter().map(|(id, ..)| id).collect();
+            if let Some(bot) = self.agents.players.get_mut(&name) {
+                for id in ids {
+                    bot.agent.session.recipe_book.mark_seen(id);
+                }
+            }
+        }
+    }
+
     pub(super) fn agent_screen<R>(
         &mut self,
         name: &str,
@@ -943,6 +965,7 @@ impl Game {
             entities: &mut self.mobs.entities,
             audio: &mut self.audio,
             requests: Vec::new(),
+            limited_crafting: self.gamerules.bool("limited_crafting"),
         };
         let result = f(&mut screen);
         let requests = std::mem::take(&mut screen.requests);
@@ -1027,7 +1050,6 @@ impl Game {
             seat.open(Menu::items(Tab::Crafting));
         } else if crate::world::chest::is_chest(block) {
             seat.open(Menu::items(Tab::Chest(pos)));
-            self.chest_sound(pos, 0.9);
         } else if crate::world::furnace::is_furnace(block) {
             seat.open(Menu::items(Tab::Furnace(pos)));
         } else if block == Block::BREWING_STAND {

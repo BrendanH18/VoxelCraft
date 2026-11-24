@@ -1,7 +1,8 @@
 //! Accessibility Settings: Java 26.3's screen with the options VoxelCraft
-//! has, in Java's order. Narrator, subtitles (v0.20), chat, text background,
-//! menu blur, glint, lightning flash, panorama, splash and minecart options
-//! are left out until VoxelCraft has what they change.
+//! has, in Java's order. Narrator, high contrast, chat, menu blur, notification
+//! time, darkness, glint, lightning flash, panorama, splash and minecart
+//! options are left out until VoxelCraft has what they change. v0.18 Track 9
+//! adds Closed Captions and the text background pair the captions use.
 
 use super::{Controls, OptionsHost, change, close, percent_label};
 use crate::app::gui::{OptionList, Rect, Screen, Size, Step, Widget, on_off};
@@ -9,6 +10,9 @@ use crate::app::gui::{OptionList, Rect, Screen, Size, Step, Widget, on_off};
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(in crate::app) enum Id {
     Controls,
+    Subtitles,
+    TextBackgroundOpacity,
+    TextBackground,
     ViewBobbing,
     Distortion,
     FovEffects,
@@ -36,6 +40,21 @@ impl<H: OptionsHost> Screen<H> for Accessibility {
         // Java's first row is Narrator and a link to Controls.
         list.pair(Widget::button(Id::Controls, z, "Controls..."), None);
         list.pairs(vec![
+            Widget::button(Id::Subtitles, z, format!("Closed Captions: {}", on_off(s.show_subtitles)))
+                .tooltip("Enables captions for sounds played in the game."),
+            // `Options.percentValueLabel`: no OFF at zero.
+            Widget::slider(
+                Id::TextBackgroundOpacity,
+                z,
+                format!("Text Background Opacity: {}%", (s.text_background_opacity * 100.0).round() as i32),
+                s.text_background_opacity,
+                100,
+            ),
+            Widget::button(
+                Id::TextBackground,
+                z,
+                format!("Text Background: {}", if s.background_for_chat_only { "Chat" } else { "Everywhere" }),
+            ),
             Widget::button(Id::ViewBobbing, z, format!("View Bobbing: {}", on_off(s.view_bobbing))),
             Widget::slider(Id::Distortion, z, percent_label("Distortion Effects", s.distortion), s.distortion, 100)
                 .tooltip(
@@ -54,6 +73,8 @@ impl<H: OptionsHost> Screen<H> for Accessibility {
         match id {
             Id::Controls => return Step::push(Controls),
             Id::ViewBobbing => change(host, |s| s.view_bobbing = !s.view_bobbing),
+            Id::Subtitles => change(host, |s| s.show_subtitles = !s.show_subtitles),
+            Id::TextBackground => change(host, |s| s.background_for_chat_only = !s.background_for_chat_only),
             Id::Done => return close(host),
             _ => {}
         }
@@ -66,6 +87,7 @@ impl<H: OptionsHost> Screen<H> for Accessibility {
             Id::Distortion => change(host, |s| s.distortion = t),
             Id::FovEffects => change(host, |s| s.fov_effects = t * t),
             Id::DamageTilt => change(host, |s| s.damage_tilt = t),
+            Id::TextBackgroundOpacity => change(host, |s| s.text_background_opacity = t),
             _ => {}
         }
     }

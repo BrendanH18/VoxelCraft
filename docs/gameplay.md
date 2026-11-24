@@ -207,10 +207,24 @@ full performance display instead of duplicating the compact counter.
 - Crafting: a 2x2 grid in the survival inventory and a 3x3 grid at a
   crafting table (right-click it). Shaped recipes work anywhere in the
   grid and mirrored; click the result to craft one, and leftovers return
-  to the inventory when the screen closes (thrown out if it's full). Click Recipes
-  to browse layouts with the arrow buttons or scroll wheel; hover ingredients
-  for names and alternatives, then copy the preview into your crafting grid.
-  On narrower windows, Back closes the recipe overlay so you can craft.
+  to the inventory when the screen closes (thrown out if it's full).
+- Recipe book (v0.18, Java 26.3's): the green book button beside the 2x2
+  grid, the crafting table's grid and the furnace, smoker and blast furnace
+  opens it to the left of the screen (over it on narrow windows). Recipes
+  unlock as in Java: picking up an ingredient or the item, ten filled
+  inventory slots (the chest), entering water (boats), crafting or smelting
+  the recipe, and the crafting table from the first tick; a "New Recipe(s)
+  Unlocked!" toast shows them and the book highlights them until seen. Tabs
+  hold Java's categories (the compass tab shows all), the search box (or T)
+  filters by name, and the filter button switches between "Showing All" and
+  "Showing Craftable" (Smeltable, Blastable, Smokable). Red buttons lack
+  ingredients; buttons with a shadow hold several recipes (right-click for
+  them). Clicking a recipe moves one set of ingredients from the inventory
+  into the grid (again for one more, shift for every set the items allow);
+  without the items it shows a ghost of the recipe in the grid. Enter or
+  Space repeats the last recipe. The book's open and filter state and the
+  known recipes save with the player. With `/gamerule limited_crafting
+  true` only unlocked recipes craft.
   Recipes: planks (each log makes its own kind; any planks work in
   recipes), sticks, crafting table, chest (8 planks in a ring), torches
   (coal or charcoal over a stick), bread (3 wheat in a row), bone meal (from

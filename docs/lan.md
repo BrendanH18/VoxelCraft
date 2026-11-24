@@ -20,8 +20,11 @@ own protocol; it does not connect to vanilla Minecraft servers.
    furnaces, crafting, brewing stands, enchanting tables, anvils, grindstones,
    smithing tables, villager and wandering-trader trades, and boat, minecart
    and mount storage. Clicks, right clicks, shift transfers, armor slots and
-   throwing the held stack out of a screen run on the host; the recipe book
-   and search are local views.
+   throwing the held stack out of a screen run on the host; search is a
+   local view. The recipe book is the guest's own (saved by the host with
+   its profile): the host sends it when it changes, and clicking a recipe,
+   seeing new recipes and the open and filter settings go to the host,
+   which places the ingredients.
 
 The Multiplayer list shows each discovered world's name, address and player
 count, and flags a world that needs a different VoxelCraft version.

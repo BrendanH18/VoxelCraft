@@ -3,7 +3,7 @@ use std::sync::{Arc, OnceLock};
 use super::dsp::{self, RATE};
 use super::export::{stats, wav_bytes};
 use super::mixer::{Command, FAR, MAX_OTHERS, MAX_VOICES, Mixer, NEAR, attenuation, pan_gains};
-use super::sounds::{Call, Voice};
+use super::sounds::{Call, ContainerCue, Material, Voice, material};
 use super::*;
 use crate::world::gadgets::Instrument;
 
@@ -293,7 +293,20 @@ fn synthesis_is_fast() {
     let start = std::time::Instant::now();
     let bank = Bank::synthesize();
     let ms = start.elapsed().as_secs_f64() * 1000.0;
-    println!("synthesized {} buffers in {ms:.1} ms", bank.buffers.len());
+    println!(
+        "synthesized {} buffers ({:.1} s of audio, {:.1} MB) in {ms:.1} ms",
+        bank.buffers.len(),
+        bank.total_samples() as f32 / RATE,
+        bank.total_samples() as f32 * 4.0 / 1e6
+    );
+    let block_samples: usize = Sound::all()
+        .filter(|s| matches!(s, Sound::Block(..)) && super::block_sounds::shares(*s).is_none())
+        .map(|s| {
+            let (first, count) = bank.variants(s);
+            bank.buffers[first..first + count].iter().map(Vec::len).sum::<usize>()
+        })
+        .sum();
+    println!("of which the blocks' own sounds: {:.1} s", block_samples as f32 / RATE);
     assert!(ms < 1000.0, "synthesis took {ms} ms");
 }
 
@@ -518,4 +531,121 @@ fn ambience_loops_follow_their_own_categories() {
     assert!(energy(&[(SoundSource::Weather, 0.0)], 1.0, 0.0) > wind * 0.99, "Weather leaves wind alone");
     let half = energy(&[(SoundSource::Master, 0.5), (SoundSource::Weather, 0.5)], 0.0, 1.0);
     assert!((half / rain - 0.0625).abs() < 0.01, "master x weather: {}", half / rain);
+}
+
+/// v0.18 Track 9: every sound names a Java 26.3 sound event (only the
+/// synthesized wind and cave room tone have none), and the Java subtitles
+/// the game never plays are listed.
+#[test]
+fn every_sound_has_a_java_event_and_unplayed_subtitles_are_listed() {
+    use std::collections::BTreeSet;
+    let java = super::block_sounds::fixture();
+    let silent: BTreeSet<&str> = java["silent_events"].as_array().unwrap().iter().filter_map(|e| e.as_str()).collect();
+    let mut unmapped = Vec::new();
+    let mut unknown = Vec::new();
+    for sound in Sound::all() {
+        // A block family's cue that no `SoundType` plays is never played.
+        if matches!(sound, Sound::Block(f, c) if !f.has(c)) {
+            continue;
+        }
+        match sound.java_event() {
+            None => unmapped.push(sound.name()),
+            Some(e) if java["subtitles"].get(&e).is_none() && !silent.contains(e.as_str()) => {
+                unknown.push(format!("{} -> {e}", sound.name()))
+            }
+            Some(_) => {}
+        }
+    }
+    assert_eq!(unmapped, ["wind", "cave"], "played sounds with no Java event");
+    assert!(unknown.is_empty(), "events Java 26.3 doesn't have:\n{}", unknown.join("\n"));
+    let played: BTreeSet<&str> =
+        Sound::all().filter_map(|s| java["subtitles"][s.java_event()?.as_str()].as_str()).collect();
+    let all: BTreeSet<&str> = java["subtitles"].as_object().unwrap().values().filter_map(|v| v.as_str()).collect();
+    let never: Vec<&str> = all.difference(&played).copied().collect();
+    println!("{} of {} Java subtitles are played; never played:\n{}", played.len(), all.len(), never.join("\n"));
+    assert!(played.len() >= 250, "only {} subtitles are played", played.len());
+    // A sample of captions, as Java shows them.
+    for (sound, text) in [
+        (Sound::Break(Material::Stone), "Block broken"),
+        (Sound::Step(Material::Grass), "Footsteps"),
+        (Sound::Container(ContainerCue::ChestOpen), "Chest opens"),
+        (Sound::Container(ContainerCue::BarrelClose), "Barrel closes"),
+        (Sound::Explosion, "Explosion"),
+        (Sound::Mob(Voice::Zombie, Call::Ambient), "Zombie groans"),
+    ] {
+        assert_eq!(subtitles::subtitle(sound), Some(text), "{}", sound.name());
+    }
+    assert_eq!(subtitles::subtitle(Sound::Click), None, "`ui.button.click` has no subtitle");
+}
+
+/// v0.18 Track 9: blocks play their Java `SoundType` (from the fixture, by
+/// Java ID), every family a block can play has its own recipe, and the
+/// volume and pitch follow Java's call sites.
+#[test]
+fn blocks_play_their_own_java_sound_types() {
+    use super::block_sounds::{Family, GAIN, has_recipe, play, sound_type};
+    use crate::world::block::{Block, STATE_CAPACITY};
+    for (name, java) in [
+        ("stone", "STONE"),
+        ("deepslate", "DEEPSLATE"),
+        ("tuff", "TUFF"),
+        ("mud", "MUD"),
+        ("mud bricks", "MUD_BRICKS"),
+        ("block of copper", "COPPER"),
+        ("cherry planks", "CHERRY_WOOD"),
+        ("bamboo planks", "BAMBOO_WOOD"),
+        ("crimson planks", "NETHER_WOOD"),
+        ("block of amethyst", "AMETHYST"),
+        ("oak planks", "WOOD"),
+        ("chest", "WOOD"),
+        ("glass", "GLASS"),
+        ("white wool", "WOOL"),
+    ] {
+        let block = if name == "block of copper" {
+            Block(231)
+        } else {
+            Block::from_name(name).unwrap_or_else(|| panic!("{name} is registered"))
+        };
+        assert_eq!(sound_type(block).map(|t| t.0), Some(java), "{name}");
+    }
+    let mut resolved = 0;
+    let mut unresolved = std::collections::BTreeSet::new();
+    let mut borrowing = std::collections::BTreeSet::new();
+    for i in 0..STATE_CAPACITY as u16 {
+        let block = Block(i);
+        if block.name().is_empty() {
+            continue;
+        }
+        let Some((name, t)) = sound_type(block) else {
+            unresolved.insert(block.name());
+            continue;
+        };
+        resolved += 1;
+        for (cue, family) in BlockCue::ALL.into_iter().zip(t.families) {
+            match family {
+                Some(f) if !has_recipe(f) => {
+                    borrowing.insert(format!("{name} {cue:?}: {}", f.name()));
+                }
+                Some(f) => {
+                    let (sound, gain, pitch) = play(block, cue).unwrap();
+                    assert_eq!(sound, Sound::Block(f, cue));
+                    let (volume, java_pitch) = match cue {
+                        BlockCue::Break | BlockCue::Place => ((t.volume + 1.0) / 2.0, t.pitch * 0.8),
+                        BlockCue::Step => (t.volume * 0.15, t.pitch),
+                        BlockCue::Hit => ((t.volume + 1.0) / 8.0, t.pitch * 0.5),
+                        BlockCue::Fall => (t.volume * 0.5, t.pitch * 0.75),
+                    };
+                    assert_eq!((gain, pitch), (volume * GAIN[cue as usize], java_pitch), "{name} {cue:?}");
+                }
+                None => {}
+            }
+        }
+    }
+    println!("{resolved} states play their Java sound type; {} names have no Java block:", unresolved.len());
+    for name in &unresolved {
+        println!("  {name}");
+    }
+    assert!(resolved > 2000, "only {resolved} states resolved");
+    assert!(borrowing.is_empty(), "families without their own sounds:\n{borrowing:#?}");
+    assert!(Family::all().all(has_recipe), "every Java family has a recipe");
 }
