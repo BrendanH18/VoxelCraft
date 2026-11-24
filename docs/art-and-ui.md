@@ -41,25 +41,27 @@ to linear in one shared helper before it becomes a vertex colour. Alpha
 stays linear. Texture art is already authored in sRGB bytes and needs no
 change.
 
-**Now:** `ui.rect` and text colours are given as linear floats but were
-picked as if they were sRGB. The GPU encodes them for the sRGB target, so
-every flat UI colour shows lighter than written:
+**Done (v0.18 track 1):** every colour given to the UI, flat or a
+texture tint, is sRGB. `Ui::quad` converts it once with
+[`render::ui::linear`](../src/render/ui.rs) (the exact sRGB curve, so a
+byte value shows on screen as written; alpha untouched), and
+`render::ui::rgb(0xC6C6C6)` writes a constant as its hex. Nothing else
+converts: a track adding a colour writes the sRGB value and passes it to
+the UI as is. Before the helper, the values below were written as sRGB
+but sent as linear, so they showed lighter:
 
-| Constant | Written | On screen (sRGB) | Java's counterpart |
-|---|---|---|---|
-| Inventory panel `[0.78; 3]` | 199 | 229 (`#E5E5E5`) | `#C6C6C6` (198) |
-| Panel title text `[0.25; 3]` | 64 | 137 (`#898989`) | `#404040` (64) |
-| Button `BUTTON` `[0.42; 3]` | 107 | 173 (`#ADADAD`) | the button sprite's grey |
-| Disabled `DISABLED` `[0.2; 3]` | 51 | 124 (`#7C7C7C`) | the disabled button sprite |
-| Panel shadow edge `[0.33; 3]` | 84 | 155 (`#9B9B9B`) | `#555555` (85) |
+| Constant | Written | Showed before (sRGB) | Shows now | Java's counterpart |
+|---|---|---|---|---|
+| Inventory panel `[0.78; 3]` | 199 | 229 (`#E5E5E5`) | 199 | `#C6C6C6` (198) |
+| Panel title text `[0.25; 3]` | 64 | 137 (`#898989`) | 64 | `#404040` (64) |
+| Button `BUTTON` | 107 | 173 (`#ADADAD`) | 107 (`#6B6B6B`) | the button sprite's grey |
+| Disabled `DISABLED` | 51 | 124 (`#7C7C7C`) | 74 (`#4A4A4A`, raised for contrast) | the disabled button sprite |
+| Panel shadow edge `[0.33; 3]` | 84 | 155 (`#9B9B9B`) | 84 | `#555555` (85) |
 
-All five match the before captures (the inventory, pause menu and Select
-World scenes). The
-[foundation record](verification/2026-11-23-v0.18-foundation.md#colour-path)
-has the samples. The typography track (1) owns the conversion helper and the
-audit item 1 of the scope asks for. Until it lands, a track that adds a
-colour writes the sRGB value and converts it with `x.powf(2.2)`, with a
-comment that it becomes the shared helper.
+The [typography record](verification/2026-11-23-v0.18-typography.md)
+has the before and after samples. Translucent colours still blend in
+linear light on the sRGB surface, where Java blends sRGB values, so a
+dimming overlay at a given alpha looks a little lighter than Java's.
 
 ## Pixel grid
 
@@ -167,10 +169,19 @@ Targets for the typography track (1); the metrics are Java's.
 | Shadow | offset (1, 1), the text colour at 25 % brightness |
 | Characters | ASCII plus Latin-1 and Latin Extended-A in user text: world names, signs, name tags, book text. No `?` substitution for those |
 
-**Now:** the font is `font8x8`'s legacy ASCII set in 8 × 8 cells, with
-widths measured from each glyph's ink. It has no consistent baseline or
-descender row and replaces anything outside ASCII with `?`. Sign text must
-load unchanged when metrics change (scope item 8).
+**Done (v0.18 track 1):** VoxelCraft's own pixel font
+([`assets/font/glyphs.txt`](../assets/font/glyphs.txt), read by
+[`src/font.rs`](../src/font.rs)) covers ASCII, Latin-1 and Latin
+Extended-A with these metrics, accents composed from shared marks. Each
+character's advance equals Java 26.3's (checked against
+`tests/fixtures/java/26.3/font_metrics.json`), so Java's layouts and line
+limits fit the same text. x-height is 5. Anything else draws as a 5 × 7
+box and can't be typed. Every measurement goes through the font:
+`font::width` is Java's `Font.width` (the advances, trailing gap
+included) for limits such as a sign's 90 pixels, and `Ui::text_width`
+(`font::ink_width`) is the ink for centring and boxes. Sign text from the
+old font still shows whole (see the record). `font::VERSION` changes
+whenever a glyph does, for caches of laid-out text.
 
 ## Spacing and layout
 
@@ -201,10 +212,10 @@ state by more than colour alone (scope item 8):
 | State | Rule |
 |---|---|
 | Normal | Panel or button sprite, white text with shadow |
-| Hovered or focused (mouse, keyboard or controller) | A 1-pixel white outline around the widget, or the 50 % white overlay in a slot. Keyboard and controller focus look the same as hover |
+| Hovered or focused (mouse, keyboard or controller) | A 1-pixel white outline around the widget, or the 50 % white overlay in a slot. Keyboard and controller focus look the same as hover. Menu buttons (track 1): `#646E9C` fill, `#FFFFA0` text (4.8:1), white frame |
 | Selected (current hotbar slot, chosen tab, toggled option) | A 24 × 24 hotbar frame, or a raised tab joined to its panel, or "ON" in the label. Never colour only |
 | Pressed or active | As hovered, for the frame while held |
-| Disabled | Darker sprite with `#A0A0A0` text. It takes no focus with the mouse, but the controller may still land on it to read its tooltip |
+| Disabled | Darker sprite with `#A0A0A0` text. It takes no focus with the mouse, but the controller may still land on it to read its tooltip. Menu buttons (track 1): flat `#4A4A4A`, 3.4:1 against 5.3:1 for white on the normal `#6B6B6B` |
 | Error or warning | Red (`#FF5555`) text or a red-tinted 1-pixel outline, with the message in words |
 
 Slots draw their frame even when empty. Equipment slots show an outline

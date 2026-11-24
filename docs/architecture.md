@@ -302,8 +302,9 @@ runs silently.
 ## Dependencies
 
 wgpu and winit (graphics and windowing), cpal (audio output), glam (math),
-bytemuck, crossbeam-channel, rustc-hash, font8x8, png, pollster, log and
-env_logger.
+bytemuck, crossbeam-channel, rustc-hash, png, pollster, log and
+env_logger. The text font is VoxelCraft's own (`src/font.rs` and
+`assets/font/glyphs.txt`, v0.18); `font8x8` was dropped with it.
 
 ## Release ID reservations (v0.9–v0.19)
 

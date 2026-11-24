@@ -11,6 +11,11 @@ manifest. Missing files and duplicate keys fail the build with the asset key.
 The installed executable does not read the checkout or its current directory.
 Unmapped resources continue using the existing Rust procedural generators.
 
+The text font, `font/glyphs.txt`, is original pixel art in a plain text
+format (described at its top) that `src/font.rs` embeds and parses itself;
+it is not a manifest resource. Its widths are Java's, checked by
+`tests/typography.rs`.
+
 Supported formats are 16 x 16 RGBA8 PNG textures, schema-1 static box models
 (up to ten boxes in sixteenths, with a texture key), and mono PCM16 WAV at
 48 kHz. Entity animations and the original background compositions retain their

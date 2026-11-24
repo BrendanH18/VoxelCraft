@@ -483,6 +483,11 @@ impl<H: Host, S: Screen<H>> Dyn<H> for S {
         let list = self.list(host, size);
         let (shown, max_scroll) = place(&mut widgets, list, frame.scroll);
         self.background(host, ui, size);
+        if let Some([_, y, _, h]) = list {
+            // Java's `renderListBackground`: the list's band, the screen's
+            // width, under `menu_list_background` (black at 112 / 255).
+            ui.rect(0.0, y, size.0, h, crate::render::ui::shade(112.0 / 255.0));
+        }
         let title = self.title(host);
         let first = widgets.iter().zip(&shown).find(|(_, s)| **s).map_or(size.1 / 2.0, |(w, _)| w.rect[1]);
         ui.text(((size.0 - Ui::text_width(&title)) / 2.0).floor(), self.title_y(size, first), &title, WHITE);
@@ -971,16 +976,21 @@ pub(super) fn draw_button(ui: &mut Ui, rect: Rect, label: &str, look: Look) {
     if look.hot() {
         focus_frame(ui, rect);
     }
-    label_text(ui, rect, label, 4.0, text_color(look));
+    label_text(ui, rect, label, TEXT_MARGIN, text_color(look));
 }
 
+/// Java's `AbstractButton.TEXT_MARGIN` and `AbstractSliderButton`'s: the
+/// label's room is the widget less 2 pixels each side.
+pub(super) const TEXT_MARGIN: f32 = 2.0;
+
 /// A widget's label, centred, or scrolling back and forth when it's wider
-/// than the widget (Java's `renderScrollingString`).
+/// than the room inside `margin` (Java's `defaultScrollingHelper`, which
+/// compares `Font.width`, the trailing gap included).
 pub(super) fn label_text(ui: &mut Ui, [x, y, w, h]: Rect, label: &str, margin: f32, color: Color) {
     let ty = y + ((h - 8.0) / 2.0).floor();
     let (min_x, max_x) = (x + margin, x + w - margin);
     let width = Ui::text_width(label);
-    let overflow = width - (max_x - min_x);
+    let overflow = voxelcraft::font::width(label) as f32 - (max_x - min_x);
     if overflow <= 0.0 {
         ui.text((x + (w - width) / 2.0).floor(), ty, label, color);
         return;
@@ -1010,7 +1020,7 @@ pub(super) fn draw_slider(ui: &mut Ui, rect: Rect, label: &str, value: f32, look
     if look.focused && look.enabled {
         focus_frame(ui, rect);
     }
-    label_text(ui, rect, label, 4.0, text_color(look));
+    label_text(ui, rect, label, TEXT_MARGIN, text_color(look));
 }
 
 /// A tooltip box near `at`, kept on screen, its text wrapped like Java's.

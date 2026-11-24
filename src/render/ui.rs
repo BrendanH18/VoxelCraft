@@ -45,6 +45,15 @@ pub fn linear(c: Color) -> Color {
     [srgb_to_linear(c[0]), srgb_to_linear(c[1]), srgb_to_linear(c[2]), c[3]]
 }
 
+/// Black at `alpha` as Java blends it: Java's GUI mixes sRGB values, so a
+/// black overlay keeps `1 - alpha` of the sRGB colour behind it. Blending
+/// here is in linear light, where keeping that much takes an alpha of
+/// `1 - (1 - alpha)^2.2`. For screen dimming and list backings given as
+/// Java's alpha.
+pub fn shade(alpha: f32) -> Color {
+    [0.0, 0.0, 0.0, 1.0 - (1.0 - alpha.clamp(0.0, 1.0)).powf(2.2)]
+}
+
 /// The font atlas: every glyph of [`voxelcraft::font`] as R8 coverage.
 pub fn font_atlas() -> (Vec<u8>, (u32, u32)) {
     let f = font::font();
@@ -109,20 +118,30 @@ impl Ui {
         (self.width / self.scale, self.height / self.scale)
     }
 
+    #[inline(always)]
     fn ndc(&self, x: f32, y: f32) -> [f32; 2] {
         let (x, y) = ((x * self.scale).round(), (y * self.scale).round());
         [x / self.width * 2.0 - 1.0, 1.0 - y / self.height * 2.0]
     }
 
+    /// Converts a colour [`Ui::quad`] hasn't just seen, kept out of line so
+    /// the quad itself stays small.
+    #[cold]
+    #[inline(never)]
+    fn convert(&mut self, color: Color) {
+        self.converted = (color, linear(color));
+    }
+
     /// Arbitrary quad in UI pixels, corners clockwise from top-left.
-    /// `color` is sRGB (see [`linear`]).
+    /// `color` is sRGB (see [`linear`]). Always inlined: callers build
+    /// thousands of quads a frame, and a call per quad costs more than the
+    /// quad (v0.18 track 1 measured 2.5 times the time per text quad).
+    #[inline(always)]
     pub fn quad(&mut self, p: [[f32; 2]; 4], uv: [[f32; 2]; 4], layer: f32, color: Color) {
-        let color = if self.converted.0 == color {
-            self.converted.1
-        } else {
-            self.converted = (color, linear(color));
-            self.converted.1
-        };
+        if self.converted.0 != color {
+            self.convert(color);
+        }
+        let color = self.converted.1;
         let v: [UiVertex; 4] =
             std::array::from_fn(|i| UiVertex { pos: self.ndc(p[i][0], p[i][1]), uv: uv[i], layer, color });
         self.verts.extend_from_slice(&[v[0], v[1], v[2], v[0], v[2], v[3]]);
@@ -219,12 +238,16 @@ impl Ui {
     /// and cut to `clip` (min and max x) if given; returns the pen's travel.
     fn glyphs(&mut self, x: f32, y: f32, s: &str, color: Color, k: f32, clip: Option<(f32, f32)>) -> f32 {
         let f = font::font();
+        let glyphs = f.glyphs();
         let (aw, ah) = f.atlas_size();
-        let (aw, ah) = (aw as f32, ah as f32);
+        let (du, dv) = (1.0 / aw as f32, 1.0 / ah as f32);
+        let top = y + font::TOP as f32 * k;
+        let bottom = top + font::CELL_H as f32 * k;
         let mut pen = x;
         for c in s.chars() {
             let index = f.atlas_index(c);
-            let g = &f.glyphs()[index];
+            let g = &glyphs[index];
+            let advance = g.advance() as f32 * k;
             let w = g.width() as f32;
             if w > 0.0 {
                 let gx = (index as u32 % font::ATLAS_COLUMNS * font::CELL_W) as f32;
@@ -233,7 +256,7 @@ impl Ui {
                 let (mut u0, mut u1) = (gx, gx + w);
                 if let Some((min_x, max_x)) = clip {
                     if x1 <= min_x || x0 >= max_x {
-                        pen += g.advance() as f32 * k;
+                        pen += advance;
                         continue;
                     }
                     if x0 < min_x {
@@ -245,17 +268,16 @@ impl Ui {
                         x1 = max_x;
                     }
                 }
-                let top = y + font::TOP as f32 * k;
-                let bottom = top + font::CELL_H as f32 * k;
-                let (v0, v1) = (gy / ah, (gy + font::CELL_H as f32) / ah);
+                let (u0, u1) = (u0 * du, u1 * du);
+                let (v0, v1) = (gy * dv, (gy + font::CELL_H as f32) * dv);
                 self.quad(
                     [[x0, top], [x1, top], [x1, bottom], [x0, bottom]],
-                    [[u0 / aw, v0], [u1 / aw, v0], [u1 / aw, v1], [u0 / aw, v1]],
+                    [[u0, v0], [u1, v0], [u1, v1], [u0, v1]],
                     GLYPH,
                     color,
                 );
             }
-            pen += g.advance() as f32 * k;
+            pen += advance;
         }
         pen - x
     }
@@ -273,6 +295,115 @@ impl Ui {
         let w = Self::text_width(s);
         self.rect(x - 1.0, y - 1.0, w + 2.0, font::LINE_HEIGHT as f32 + 1.0, [0.0, 0.0, 0.0, 0.4]);
         self.text_flat(x, y, s, color);
+    }
+}
+
+#[cfg(test)]
+mod text_tests {
+    use super::*;
+
+    #[test]
+    fn colours_are_written_as_srgb_and_shown_as_written() {
+        // The GPU encodes linear output for the sRGB surface with the sRGB
+        // curve; its inverse here brings every byte back unchanged.
+        let encode = |l: f32| if l <= 0.003_130_8 { l * 12.92 } else { 1.055 * l.powf(1.0 / 2.4) - 0.055 };
+        for byte in 0..=255u8 {
+            let v = byte as f32 / 255.0;
+            assert_eq!((encode(srgb_to_linear(v)) * 255.0).round() as u8, byte);
+        }
+        assert_eq!(rgb(0xC6C6C6), [198.0 / 255.0, 198.0 / 255.0, 198.0 / 255.0, 1.0]);
+        // Alpha is not converted; the panel grey becomes about 0.57 linear.
+        let panel = linear([0.78, 0.78, 0.78, 0.5]);
+        assert!((panel[0] - 0.5705).abs() < 1e-3 && panel[3] == 0.5, "{panel:?}");
+        // Ui::quad converts what it's given, flat colours and tints alike.
+        let mut ui = Ui::with_scale(100.0, 100.0, 1.0);
+        ui.rect(0.0, 0.0, 1.0, 1.0, rgb(0x404040));
+        ui.icon(0.0, 0.0, 16.0, 3u16, [0.5, 0.5, 0.5, 1.0]);
+        assert_eq!(ui.verts[0].color, linear(rgb(0x404040)));
+        assert_eq!(ui.verts[6].color[0], srgb_to_linear(0.5));
+    }
+
+    #[test]
+    fn shades_darken_as_javas_alpha_does() {
+        // Over a mid grey, Java's 112/255 black leaves 56% of the sRGB value.
+        let behind = 0.5f32;
+        let a = shade(112.0 / 255.0)[3];
+        let blended = srgb_to_linear(behind) * (1.0 - a);
+        let encode = |l: f32| 1.055 * l.powf(1.0 / 2.4) - 0.055;
+        assert!((encode(blended) - behind * (1.0 - 112.0 / 255.0)).abs() < 0.015, "{}", encode(blended));
+        assert_eq!(shade(0.0)[3], 0.0);
+        assert_eq!(shade(1.0)[3], 1.0);
+    }
+
+    #[test]
+    fn text_quads_follow_the_font() {
+        let mut ui = Ui::with_scale(400.0, 300.0, 1.0);
+        let w = ui.text_flat(10.0, 20.0, "Aé ", WHITE);
+        assert_eq!(w, font::width("Aé ") as f32, "the pen moves by the advances");
+        assert_eq!(Ui::text_width("Aé "), font::ink_width("Aé ") as f32);
+        // Two glyph quads (the space has none), each from the line's top
+        // less 3 rows to 12 rows down, as wide as the glyph's ink.
+        assert_eq!(ui.verts.len(), 12);
+        let x = |v: &UiVertex| ((v.pos[0] + 1.0) / 2.0 * 400.0).round();
+        let y = |v: &UiVertex| ((1.0 - v.pos[1]) / 2.0 * 300.0).round();
+        assert_eq!((x(&ui.verts[0]), y(&ui.verts[0])), (10.0, 17.0));
+        assert_eq!((x(&ui.verts[2]), y(&ui.verts[2])), (15.0, 29.0));
+        assert_eq!(x(&ui.verts[6]), 16.0, "é starts after A's advance");
+        // Clipping cuts glyphs at the edges and drops those outside.
+        let mut clipped = Ui::with_scale(400.0, 300.0, 1.0);
+        clipped.text_clipped(0.0, 0.0, "WWWW", WHITE, (3.0, 14.0));
+        let xs: Vec<f32> = clipped.verts.iter().map(x).collect();
+        assert!(xs.iter().all(|&v| (3.0..=14.0).contains(&v)), "{xs:?}");
+    }
+
+    /// Headless cost of the UI paths this track changed (`cargo test
+    /// --profile ci --bin voxelcraft text_cost -- --ignored --nocapture`):
+    /// 40 shadowed lines of 57 characters in alternating colours (each line
+    /// converts two new colours), 3920 rectangles, one colour conversion
+    /// and one line's width.
+    #[test]
+    #[ignore]
+    fn text_cost() {
+        let line = "Simulation Distance: 10 Chunks - Ærøskøbing Łódź Žďár ...";
+        let colours = [WHITE, rgb(0xA0A0A0), rgb(0xFFFFA0), rgb(0x404040)];
+        let runs = 2000;
+        let start = std::time::Instant::now();
+        let mut quads = 0;
+        let mut ui = Ui::with_scale(1920.0, 1080.0, 2.0);
+        for _ in 0..runs {
+            ui.verts.clear();
+            for i in 0..40 {
+                ui.text(4.0, i as f32 * 10.0, line, colours[i % 4]);
+            }
+            quads = ui.verts.len() / 6;
+            std::hint::black_box(&ui.verts);
+        }
+        let per_frame = start.elapsed() / runs;
+        let glyphs = 40 * line.chars().count();
+        let start = std::time::Instant::now();
+        let mut ui = Ui::with_scale(1920.0, 1080.0, 2.0);
+        for _ in 0..runs {
+            ui.verts.clear();
+            for i in 0..3920 {
+                ui.rect((i % 300) as f32, (i / 300) as f32, 5.0, 12.0, colours[i / 98 % 4]);
+            }
+            std::hint::black_box(&ui.verts);
+        }
+        println!("text_cost: 3920 rectangles {:?} per frame", start.elapsed() / runs);
+        let start = std::time::Instant::now();
+        for i in 0..1_000_000u32 {
+            std::hint::black_box(linear(std::hint::black_box([i as f32 * 1e-6, 0.5, 0.25, 1.0])));
+        }
+        let convert = start.elapsed() / 1_000_000;
+        let start = std::time::Instant::now();
+        for _ in 0..runs {
+            std::hint::black_box(Ui::text_width(std::hint::black_box(line)));
+        }
+        println!("text_cost: linear() {convert:?} per colour, text_width {:?} per line", start.elapsed() / runs);
+        println!(
+            "text_cost: {glyphs} characters, {quads} quads: {per_frame:?} per frame, {:.1} ns per character",
+            per_frame.as_nanos() as f64 / glyphs as f64
+        );
     }
 }
 
