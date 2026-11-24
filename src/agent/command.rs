@@ -19,6 +19,9 @@ pub enum Command {
     Observe(i32),
     Players,
     Catalog(String),
+    /// v0.18 Track 4: `hotbar save|load 1..9`, the creative saved hotbars
+    /// (Java's activator + hotbar key): `true` loads, the row is 0..9.
+    Hotbar(bool, u8),
     Look(f32, f32),
     Run(MoveInput, u32, bool),
     Eat,
@@ -35,6 +38,11 @@ pub enum Command {
     Select(usize),
     Fly(bool),
     Craft(Item),
+    /// v0.18 Track 5 `recipe <id> [max]`: the recipe book's click (shift
+    /// with `max`) on a known recipe.
+    Recipe(crate::crafting::book::RecipeId, bool),
+    /// `recipes [all|craftable] [query]`: the known recipes the book shows.
+    Recipes(Option<bool>, String),
     Chest(bool, usize),
     /// `sign x y z front|back ["line", ...]`: one side's text, as the sign
     /// edit screen's Done sends it (`ServerboundSignUpdatePacket`).
@@ -183,7 +191,10 @@ const COMMAND_NAMES: &[&str] = &[
     "trade",
     "players",
     "catalog",
+    "hotbar",
     "furnace",
+    "recipe",
+    "recipes",
 ];
 
 /// One Java command coordinate: absolute, or relative to the executor.
@@ -749,6 +760,10 @@ impl Command {
             ["observe", r] => Self::Observe(r.parse::<i32>().ok().filter(|r| (0..=2).contains(r)).ok_or_else(bad)?),
             ["players"] => Self::Players,
             ["catalog", query @ ..] => Self::Catalog(query.join(" ")),
+            ["hotbar", action @ ("save" | "load"), n] => {
+                let row = n.parse::<u8>().ok().filter(|n| (1..=9).contains(n)).ok_or_else(bad)?;
+                Self::Hotbar(*action == "load", row - 1)
+            }
             ["look", yaw, pitch] => {
                 Self::Look(number(yaw)?.rem_euclid(360.0) as f32, number(pitch)?.clamp(-89.0, 89.0) as f32)
             }
@@ -789,6 +804,18 @@ impl Command {
             ["fly", "on"] => Self::Fly(true),
             ["fly", "off"] => Self::Fly(false),
             ["craft", name] => Self::Craft(item(name)?),
+            ["recipe", id] | ["recipe", id, "max"] => Self::Recipe(
+                crate::crafting::book::RecipeId::from_name(id).ok_or_else(|| format!("unknown recipe: {id}"))?,
+                words.len() == 3,
+            ),
+            ["recipes", rest @ ..] => {
+                let (filter, query) = match rest.first() {
+                    Some(&"all") => (Some(false), &rest[1..]),
+                    Some(&"craftable") => (Some(true), &rest[1..]),
+                    _ => (None, rest),
+                };
+                Self::Recipes(filter, query.join(" "))
+            }
             ["furnace", action @ ("take" | "put"), slot] => Self::Furnace(
                 *action == "take",
                 match *slot {

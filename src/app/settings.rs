@@ -21,6 +21,8 @@ pub struct Settings {
     pub music_volume: f32,
     pub vsync: bool,
     pub enhanced_graphics: bool,
+    /// The compact FPS counter. v0.18 Track 2: off unless a saved
+    /// `show_fps` line says otherwise; files that have one keep it.
     pub show_fps: bool,
     pub view_bobbing: bool,
     pub particles: crate::particles::Setting,
@@ -61,6 +63,32 @@ pub struct Settings {
     pub scroll_sensitivity: f64,
     /// Discrete Scrolling: every wheel event counts as one notch.
     pub discrete_scroll: bool,
+    /// v0.18 Track 9: Java's Closed Captions (`showSubtitles`, off).
+    pub show_subtitles: bool,
+    /// Text Background Opacity (`textBackgroundOpacity`, 0..1, 0.5): the
+    /// text backing where Text Background is Everywhere.
+    pub text_background_opacity: f32,
+    /// Text Background (`backgroundForChatOnly`): Chat (true, the default)
+    /// keeps each overlay's own backing; Everywhere uses the opacity above.
+    pub background_for_chat_only: bool,
+    /// v0.18 Track 3: Java's Mipmap Levels (`mipmapLevels`, 0..=4, 4): how
+    /// many of the block textures' smaller levels distant surfaces may use.
+    pub mipmap_levels: u32,
+    /// v0.18 Track 2: Menu Background Blur (`menuBackgroundBlurriness`,
+    /// 0 to 10, default 5; 0 is OFF): the blur radius behind menus.
+    pub menu_blur: u32,
+    /// v0.18 Track 7: Panorama Scroll Speed (`panoramaScrollSpeed`, 0..1,
+    /// 1): how fast the title panorama turns.
+    pub panorama_speed: f64,
+    /// v0.18 Track 8: Java's Clouds (`renderClouds`: Fancy).
+    pub clouds: voxelcraft::atmosphere::Clouds,
+    /// Cloud Distance (`cloudRange`) in Java chunks, 2..128 (128).
+    pub cloud_range: u32,
+    /// Hide Sky Flashes (`hideLightningFlashes`, off): lightning no longer
+    /// lights up the sky; the bolts still show.
+    pub hide_lightning_flashes: bool,
+    /// v0.18 Track 6: Java's Entity Shadows (`entityShadows`, on).
+    pub entity_shadows: bool,
     pub keys: super::keys::Bindings,
 }
 
@@ -69,8 +97,13 @@ pub const FOV: (f32, f32) = (30.0, 110.0);
 pub const SENSITIVITY: (f32, f32) = (0.25, 3.0);
 /// Max Framerate's range; the top value is Unlimited.
 pub const MAX_FPS: (u32, u32) = (10, 260);
+/// Menu Background Blur's range and default (`Options.menuBackgroundBlurriness`).
+pub const MENU_BLUR: (u32, u32) = (0, 10);
+pub const MENU_BLUR_DEFAULT: u32 = 5;
 /// Java's Scroll Sensitivity slider: 10^(n/100) for n in -200..=100.
 pub const SCROLL_STEPS: (i32, i32) = (-200, 100);
+/// Mipmap Levels' range (Java 26.3; `tests/fixtures/java/26.3/mipmap_levels.json`).
+pub const MIPMAP_LEVELS: (u32, u32) = (0, 4);
 
 impl Default for Settings {
     fn default() -> Self {
@@ -83,7 +116,7 @@ impl Default for Settings {
             music_volume: 1.0,
             vsync: true,
             enhanced_graphics: true,
-            show_fps: true,
+            show_fps: false,
             view_bobbing: true,
             particles: Default::default(),
             fullscreen: Default::default(),
@@ -109,6 +142,16 @@ impl Default for Settings {
             invert_mouse_y: false,
             scroll_sensitivity: 1.0,
             discrete_scroll: false,
+            show_subtitles: false,
+            text_background_opacity: 0.5,
+            background_for_chat_only: true,
+            mipmap_levels: MIPMAP_LEVELS.1,
+            menu_blur: MENU_BLUR_DEFAULT,
+            panorama_speed: voxelcraft::title::options::PANORAMA_SPEED_DEFAULT,
+            clouds: voxelcraft::atmosphere::Clouds::Fancy,
+            cloud_range: voxelcraft::atmosphere::DEFAULT_CLOUD_RANGE,
+            hide_lightning_flashes: false,
+            entity_shadows: voxelcraft::entity::shadow::OPTION_DEFAULT,
             keys: Default::default(),
         }
     }
@@ -231,6 +274,21 @@ impl Settings {
             "invertYMouse" => flag(&mut self.invert_mouse_y),
             "mouseWheelSensitivity" => self.scroll_sensitivity = num().unwrap_or(self.scroll_sensitivity),
             "discrete_mouse_scroll" => flag(&mut self.discrete_scroll),
+            "showSubtitles" => flag(&mut self.show_subtitles),
+            "textBackgroundOpacity" => {
+                self.text_background_opacity = num().map_or(self.text_background_opacity, |v| v as f32)
+            }
+            "backgroundForChatOnly" => flag(&mut self.background_for_chat_only),
+            "mipmapLevels" => self.mipmap_levels = value.parse().unwrap_or(self.mipmap_levels),
+            "menuBackgroundBlurriness" => self.menu_blur = value.parse().unwrap_or(self.menu_blur),
+            "panoramaScrollSpeed" => self.panorama_speed = num().unwrap_or(self.panorama_speed),
+            // Java also reads a boolean here (true: Fancy, false: OFF).
+            "renderClouds" => {
+                self.clouds = voxelcraft::atmosphere::Clouds::parse(value).unwrap_or(self.clouds);
+            }
+            "cloudRange" => self.cloud_range = value.parse().unwrap_or(self.cloud_range),
+            "hideLightningFlashes" => flag(&mut self.hide_lightning_flashes),
+            "entityShadows" => flag(&mut self.entity_shadows),
             _ => return self.keys.parse_line(key, value),
         }
         true
@@ -238,7 +296,7 @@ impl Settings {
 
     fn serialize_display_controls(&self, out: &mut String) {
         out.push_str(&format!(
-            "guiScale={}\nmaxFps={}\ngamma={}\nfovEffectScale={}\nscreenEffectScale={}\ndamageTiltStrength={}\ntoggleCrouch={}\ntoggleSprint={}\ninvertXMouse={}\ninvertYMouse={}\nmouseWheelSensitivity={:.4}\ndiscrete_mouse_scroll={}\n",
+            "guiScale={}\nmaxFps={}\ngamma={}\nfovEffectScale={}\nscreenEffectScale={}\ndamageTiltStrength={}\ntoggleCrouch={}\ntoggleSprint={}\ninvertXMouse={}\ninvertYMouse={}\nmouseWheelSensitivity={:.4}\ndiscrete_mouse_scroll={}\nshowSubtitles={}\ntextBackgroundOpacity={}\nbackgroundForChatOnly={}\nmipmapLevels={}\nmenuBackgroundBlurriness={}\npanoramaScrollSpeed={}\nrenderClouds={}\ncloudRange={}\nhideLightningFlashes={}\nentityShadows={}\n",
             self.gui_scale,
             self.max_fps,
             self.brightness,
@@ -251,6 +309,16 @@ impl Settings {
             self.invert_mouse_y,
             self.scroll_sensitivity,
             self.discrete_scroll,
+            self.show_subtitles,
+            self.text_background_opacity,
+            self.background_for_chat_only,
+            self.mipmap_levels,
+            self.menu_blur,
+            self.panorama_speed,
+            self.clouds.saved(),
+            self.cloud_range,
+            self.hide_lightning_flashes,
+            self.entity_shadows,
         ));
         self.keys.serialize(out);
     }
@@ -293,17 +361,34 @@ impl Settings {
             self.set_sound_volume(source, self.sound_volume(source).clamp(0.0, 1.0));
         }
         self.gui_scale = self.gui_scale.min(MAX_GUI_SCALE);
+        self.mipmap_levels = self.mipmap_levels.clamp(MIPMAP_LEVELS.0, MIPMAP_LEVELS.1);
+        self.menu_blur = self.menu_blur.clamp(MENU_BLUR.0, MENU_BLUR.1);
         // Java stores the framerate in steps of ten.
         self.max_fps = (self.max_fps.clamp(MAX_FPS.0, MAX_FPS.1) + 5) / 10 * 10;
-        for v in [&mut self.brightness, &mut self.fov_effects, &mut self.distortion, &mut self.damage_tilt] {
+        for v in [
+            &mut self.brightness,
+            &mut self.fov_effects,
+            &mut self.distortion,
+            &mut self.damage_tilt,
+            &mut self.text_background_opacity,
+        ] {
             *v = v.clamp(0.0, 1.0);
         }
+        self.panorama_speed = self.panorama_speed.clamp(0.0, 1.0);
         let (lo, hi) = SCROLL_STEPS;
         self.scroll_sensitivity = self.scroll_sensitivity.clamp(scroll_sensitivity(lo), scroll_sensitivity(hi));
+        let (lo, hi) = voxelcraft::atmosphere::CLOUD_RANGE;
+        self.cloud_range = self.cloud_range.clamp(lo, hi);
         self
     }
 
     /// The Max Framerate cap, or `None` for Unlimited.
+    /// `Options.getBackgroundColor(defaultOpacity)`: the backing alpha of
+    /// an overlay whose own opacity is `default`.
+    pub fn background_opacity(&self, default: f32) -> f32 {
+        if self.background_for_chat_only { default } else { self.text_background_opacity }
+    }
+
     pub fn frame_cap(&self) -> Option<u32> {
         (self.max_fps < MAX_FPS.1).then_some(self.max_fps)
     }
@@ -320,7 +405,7 @@ pub fn save_or_report(settings: &Settings, path: &Path) -> Result<(), String> {
 
 /// The largest fixed GUI Scale kept in the file (Java's encodable maximum is
 /// far larger; no display reaches this).
-pub const MAX_GUI_SCALE: u32 = 64;
+pub const MAX_GUI_SCALE: u32 = voxelcraft::capture::MAX_GUI_SCALE;
 
 /// Java's `logMouse`: a Scroll Sensitivity slider step to its value.
 pub fn scroll_sensitivity(step: i32) -> f64 {
@@ -338,6 +423,28 @@ mod tests {
     use super::*;
 
     #[test]
+    fn cloud_and_sky_flash_options_save_load_and_default_like_java() {
+        use voxelcraft::atmosphere::Clouds;
+        // An options file from before v0.18 has none of them: Java's defaults.
+        let old = Settings::parse("render_distance=12\nshowSubtitles=true\n");
+        assert_eq!((old.clouds, old.cloud_range, old.hide_lightning_flashes), (Clouds::Fancy, 128, false));
+        for clouds in Clouds::ALL {
+            let s = Settings { clouds, cloud_range: 37, hide_lightning_flashes: true, ..Settings::default() };
+            let text = s.serialize();
+            assert!(text.contains(&format!("renderClouds={}\n", clouds.saved())), "{text}");
+            assert_eq!(Settings::parse(&text), s);
+        }
+        // Java's legacy booleans, and the range's ends.
+        assert_eq!(Settings::parse("renderClouds=false").clouds, Clouds::Off);
+        assert_eq!(Settings::parse("renderClouds=true").clouds, Clouds::Fancy);
+        assert_eq!(Settings::parse("renderClouds=fast").clouds, Clouds::Fast);
+        assert_eq!(Settings::parse("renderClouds=junk").clouds, Clouds::Fancy);
+        assert_eq!(Settings::parse("cloudRange=1").cloud_range, 2);
+        assert_eq!(Settings::parse("cloudRange=500").cloud_range, 128);
+        assert!(Settings::parse("hideLightningFlashes=true").hide_lightning_flashes);
+    }
+
+    #[test]
     fn round_trips_and_clamps() {
         let s = Settings {
             render_distance: 12,
@@ -348,7 +455,7 @@ mod tests {
             music_volume: 0.25,
             vsync: false,
             enhanced_graphics: false,
-            show_fps: false,
+            show_fps: true,
             view_bobbing: false,
             particles: crate::particles::Setting::Decreased,
             fullscreen: super::super::fullscreen::Mode::Exclusive,
@@ -373,6 +480,40 @@ mod tests {
         assert_eq!(Settings::parse(""), Settings::default());
         assert_eq!(Settings::parse("skip_update=junk").skip_update, None);
         assert!(Settings::parse("check_updates=junk").check_updates);
+    }
+
+    /// v0.18 Track 2: the FPS counter is off for a new options file only;
+    /// a saved true or false loads unchanged and survives a save.
+    #[test]
+    fn fps_counter_defaults_off_only_without_a_saved_preference() {
+        assert!(!Settings::default().show_fps);
+        assert!(!Settings::parse("").show_fps, "no options file yet");
+        assert!(!Settings::parse("fov=80\nvsync=true\n").show_fps, "a file without the line");
+        for saved in [true, false] {
+            let s = Settings::parse(&format!("render_distance=8\nshow_fps={saved}\n"));
+            assert_eq!(s.show_fps, saved, "a saved {saved} is kept");
+            assert_eq!(Settings::parse(&s.serialize()).show_fps, saved, "and saved again");
+        }
+        // A file written by v0.17, whose default was on, keeps the counter.
+        let v017 = "render_distance=8\nsimulation_distance=10\nfov=70\nsensitivity=1.00\nvolume=1.00\nmusic_volume=1.00\nvsync=true\ngraphics=enhanced\nshow_fps=true\nview_bobbing=true\n";
+        assert!(Settings::parse(v017).show_fps);
+        assert!(Settings::default().serialize().contains("show_fps=false\n"));
+    }
+
+    /// Menu Background Blur: Java's key, range 0 to 10 and default 5,
+    /// kept across a save; out-of-range and junk values clamp or fall back.
+    #[test]
+    fn menu_blur_round_trips_with_javas_range() {
+        assert_eq!(Settings::default().menu_blur, 5);
+        assert_eq!(Settings::parse("").menu_blur, 5, "old files get the default");
+        for v in 0..=10 {
+            let s = Settings { menu_blur: v, ..Settings::default() };
+            assert!(s.serialize().contains(&format!("menuBackgroundBlurriness={v}\n")));
+            assert_eq!(Settings::parse(&s.serialize()).menu_blur, v);
+        }
+        assert_eq!(Settings::parse("menuBackgroundBlurriness=99").menu_blur, 10);
+        assert_eq!(Settings::parse("menuBackgroundBlurriness=junk").menu_blur, 5);
+        assert_eq!(Settings::parse("menuBackgroundBlurriness=-3").menu_blur, 5, "not a u32");
     }
 
     #[test]
@@ -404,6 +545,61 @@ mod tests {
         assert_eq!(wild.weather_volume, 1.0);
         assert_eq!(wild.hostile_volume, 0.5);
         assert_eq!(Settings { ui_volume: 4.0, record_volume: -1.0, ..Settings::default() }.clamped().ui_volume, 1.0);
+    }
+
+    /// v0.18 Track 9: Closed Captions and the text background options keep
+    /// Java's keys and defaults, survive a save, and old files get the defaults.
+    #[test]
+    fn subtitle_and_text_background_options_round_trip() {
+        let d = Settings::default();
+        assert!(!d.show_subtitles && d.background_for_chat_only);
+        assert_eq!(d.text_background_opacity, 0.5);
+        assert_eq!(d.background_opacity(0.8), 0.8, "Chat keeps the overlay's own backing");
+        let s = Settings {
+            show_subtitles: true,
+            text_background_opacity: 0.25,
+            background_for_chat_only: false,
+            ..Settings::default()
+        };
+        let text = s.serialize();
+        assert!(text.contains("\nshowSubtitles=true\n") && text.contains("\nbackgroundForChatOnly=false\n"));
+        let back = Settings::parse(&text);
+        assert_eq!(back, s);
+        assert_eq!(back.background_opacity(0.8), 0.25, "Everywhere uses the opacity");
+        assert!(!Settings::parse("fov=80\n").show_subtitles);
+        assert_eq!(Settings::parse("textBackgroundOpacity=7\n").text_background_opacity, 1.0);
+    }
+
+    /// v0.18 Track 6: Entity Shadows keeps Java's key and default (on),
+    /// survives a save, and files from before it existed get the default.
+    #[test]
+    fn entity_shadows_round_trip() {
+        assert!(Settings::default().entity_shadows);
+        let off = Settings { entity_shadows: false, ..Settings::default() };
+        let text = off.serialize();
+        assert!(text.contains(&format!("\n{}=false\n", voxelcraft::entity::shadow::OPTION_KEY)));
+        assert_eq!(Settings::parse(&text), off);
+        assert!(Settings::parse(&Settings::default().serialize()).entity_shadows);
+        assert!(Settings::parse("fov=80\nshowSubtitles=true\n").entity_shadows, "an older file");
+        assert!(Settings::parse("entityShadows=maybe\n").entity_shadows, "a bad value keeps the default");
+    }
+
+    /// v0.18 Track 7: Panorama Scroll Speed keeps Java's key, default and
+    /// 0..1 range, survives a save, and old files get the default.
+    #[test]
+    fn panorama_speed_round_trips_with_javas_key_and_default() {
+        use voxelcraft::title::options::{PANORAMA_SPEED_DEFAULT, PANORAMA_SPEED_KEY};
+        assert_eq!(Settings::default().panorama_speed, PANORAMA_SPEED_DEFAULT);
+        assert_eq!(PANORAMA_SPEED_KEY, "panoramaScrollSpeed");
+        let s = Settings { panorama_speed: 0.37, ..Settings::default() };
+        let text = s.serialize();
+        assert!(text.contains("\npanoramaScrollSpeed=0.37\n"), "{text}");
+        assert_eq!(Settings::parse(&text), s);
+        assert_eq!(Settings::parse("fov=80\n").panorama_speed, 1.0, "old files keep the default");
+        assert_eq!(Settings::parse("panoramaScrollSpeed=4\n").panorama_speed, 1.0);
+        assert_eq!(Settings::parse("panoramaScrollSpeed=-1\n").panorama_speed, 0.0);
+        assert_eq!(Settings::parse("panoramaScrollSpeed=nan\n").panorama_speed, 1.0);
+        assert_eq!(Settings::parse("panoramaScrollSpeed=0\n").panorama_speed, 0.0, "zero stops it");
     }
 
     #[test]
@@ -470,5 +666,24 @@ mod tests {
         assert!(!wild.toggle_sneak);
         assert_eq!(wild.keys, d.keys);
         assert_eq!(Settings::parse("maxFps=33").max_fps, 30, "steps of ten");
+    }
+
+    /// v0.18 Track 3: Mipmap Levels has Java's key, range and default, and
+    /// an options file from before it loads with the default.
+    #[test]
+    fn mipmap_levels_match_java_and_persist() {
+        let java: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/mipmap_levels.json")).unwrap();
+        let m = &java["mipmapLevels"];
+        assert_eq!(m["key"], "mipmapLevels");
+        assert_eq!((m["min"].as_u64().unwrap() as u32, m["max"].as_u64().unwrap() as u32), MIPMAP_LEVELS);
+        assert_eq!(Settings::default().mipmap_levels as u64, m["default"].as_u64().unwrap());
+        let s = Settings { mipmap_levels: 2, ..Settings::default() };
+        assert!(s.serialize().contains("mipmapLevels=2\n"));
+        assert_eq!(Settings::parse(&s.serialize()), s);
+        assert_eq!(Settings::parse("render_distance=12\n").mipmap_levels, 4, "older files get the default");
+        assert_eq!(Settings::parse("mipmapLevels=9").mipmap_levels, 4);
+        assert_eq!(Settings::parse("mipmapLevels=-1").mipmap_levels, 4);
+        assert_eq!(Settings::parse("mipmapLevels=0").mipmap_levels, 0);
     }
 }

@@ -114,7 +114,7 @@ impl Agents {
             let mut inventory = b.agent.session.inventory.clone();
             inventory.return_stacks(b.agent.session.work.into_iter().flatten());
             let mode = if b.agent.creative { voxelcraft::rules::GameMode::Creative } else { b.agent.session.mode };
-            json!({"name":name,"id":b.id.0,"position":b.agent.session.player.pos.to_array(),"yaw":b.agent.session.player.yaw,"pitch":b.agent.session.player.pitch,"mode":mode.name(),"creative":b.agent.creative,"selected":b.agent.selected,"flying":b.agent.session.player.flying,"time_since_rest":b.agent.session.vitals.time_since_rest,"ticks_frozen":b.agent.session.vitals.ticks_frozen,"warden_spawn_tracker":b.agent.session.vitals.warden.save(),"health":b.agent.session.vitals.health,"air":b.agent.session.vitals.air,"food":b.agent.session.vitals.hunger.food,"saturation":b.agent.session.vitals.hunger.saturation,"exhaustion":b.agent.session.vitals.hunger.exhaustion,"xp":b.agent.session.vitals.xp.serialize(),"effects":b.agent.session.vitals.effects.serialize(),"inventory":inventory.serialize(),"ender_chest":b.agent.session.ender.serialize(),"bed":b.agent.session.spawn_bed.map(|p|p.to_array()),"spawn_point":b.agent.session.spawn_point.map(|p|p.to_array()),"last_death":b.agent.session.last_death_to_string(),"raid_omen_position":b.agent.session.raid_omen_to_string(),"dimension":dimension})
+            json!({"name":name,"id":b.id.0,"position":b.agent.session.player.pos.to_array(),"yaw":b.agent.session.player.yaw,"pitch":b.agent.session.player.pitch,"mode":mode.name(),"creative":b.agent.creative,"selected":b.agent.selected,"flying":b.agent.session.player.flying,"time_since_rest":b.agent.session.vitals.time_since_rest,"ticks_frozen":b.agent.session.vitals.ticks_frozen,"warden_spawn_tracker":b.agent.session.vitals.warden.save(),"health":b.agent.session.vitals.health,"air":b.agent.session.vitals.air,"food":b.agent.session.vitals.hunger.food,"saturation":b.agent.session.vitals.hunger.saturation,"exhaustion":b.agent.session.vitals.hunger.exhaustion,"xp":b.agent.session.vitals.xp.serialize(),"effects":b.agent.session.vitals.effects.serialize(),"inventory":inventory.serialize(),"ender_chest":b.agent.session.ender.serialize(),"bed":b.agent.session.spawn_bed.map(|p|p.to_array()),"spawn_point":b.agent.session.spawn_point.map(|p|p.to_array()),"last_death":b.agent.session.last_death_to_string(),"raid_omen_position":b.agent.session.raid_omen_to_string(),"recipe_book":b.agent.session.recipe_book.serialize(),"dimension":dimension})
         }).collect();
         json!(profiles).to_string()
     }
@@ -162,6 +162,11 @@ impl Agents {
             }
             if let Some(text) = p["raid_omen_position"].as_str() {
                 agent.session.load_raid_omen(text);
+            }
+            // v0.18 Track 5: profiles saved before the recipe book start from
+            // Java's initial book; the first tick checks the loaded inventory.
+            if let Some(text) = p["recipe_book"].as_str() {
+                agent.session.recipe_book = crate::crafting::book::RecipeBook::deserialize(text);
             }
             agent.selected = p["selected"].as_u64().filter(|n| *n < 9).unwrap_or(0) as usize;
             agent.session.player.yaw = p["yaw"].as_f64().unwrap_or(0.0) as f32;
@@ -217,6 +222,38 @@ impl Agents {
             }
         }
     }
+}
+
+/// The agent CLI's `catalog`: `tabs` lists Java's creative tabs; `tab:<id>`
+/// lists one tab's stacks in Java's order (optionally filtered by the rest
+/// of the query); anything else is the flat creative palette as before.
+fn catalog_reply(query: &str) -> Result<serde_json::Value, String> {
+    let c = voxelcraft::creative::catalogue();
+    let entry = |s: &crate::inventory::Stack| json!({"id":s.item.0,"name":s.display_name(),"command_name":s.item.name().replace(' ',"_"),"max_stack":s.max()});
+    if query.trim() == "tabs" {
+        let tabs: Vec<_> = c
+            .shown()
+            .map(|i| &c.tabs[i])
+            .map(|t| json!({"id":t.id,"title":t.title,"items":c.items(c.index(&t.id).unwrap_or(0)).len()}))
+            .collect();
+        return Ok(json!({"ok":true,"version":VERSION,"tabs":tabs}));
+    }
+    if let Some(rest) = query.trim().strip_prefix("tab:") {
+        let (id, filter) = rest.split_once(' ').unwrap_or((rest, ""));
+        let tab = c.index(id).filter(|&i| c.tabs[i].shown()).ok_or_else(|| format!("unknown creative tab: {id}"))?;
+        let items: Vec<_> = c
+            .items(tab)
+            .iter()
+            .filter(|s| filter.trim().is_empty() || voxelcraft::creative::matches(s, filter))
+            .map(entry)
+            .collect();
+        return Ok(json!({"ok":true,"version":VERSION,"tab":id,"items":items}));
+    }
+    let items: Vec<_> = crate::item::Item::creative_palette()
+        .filter(|i| i.matches_query(query))
+        .map(|i| json!({"id":i.0,"name":i.name(),"command_name":i.name().replace(' ',"_"),"max_stack":i.max_stack()}))
+        .collect();
+    Ok(json!({"ok":true,"version":VERSION,"items":items}))
 }
 
 impl Game {
@@ -296,18 +333,39 @@ impl Game {
                     if !bot.active && active >= 8 {
                         return Err("eight agent players already active".into());
                     }
-                    let observation =
-                        matches!(command, Command::Observe(_) | Command::Players | Command::Catalog(_) | Command::Help);
+                    let observation = matches!(
+                        command,
+                        Command::Observe(_)
+                            | Command::Players
+                            | Command::Catalog(_)
+                            | Command::Recipes(..)
+                            | Command::Help
+                    );
                     if bot.reply.is_some() && !observation && !matches!(command, Command::Leave) {
                         return Err("player has a timed action in progress".into());
                     }
                     bot.active = true;
                     let radius = if let Command::Observe(r) = command { r } else { 0 };
                     match command {
-                        Command::Catalog(query) => {
-                            return Ok(Some(
-                                json!({"ok":true,"version":VERSION,"items":crate::item::Item::creative_palette().filter(|i|i.matches_query(&query)).map(|i|json!({"id":i.0,"name":i.name(),"command_name":i.name().replace(' ',"_"),"max_stack":i.max_stack()})).collect::<Vec<_>>()}),
-                            ));
+                        // v0.18 Track 4: `catalog tabs` and `catalog tab:<id> [query]`
+                        // read Java's creative tabs; a plain query keeps the old list.
+                        Command::Catalog(query) => return Ok(Some(catalog_reply(&query)?)),
+                        Command::Hotbar(load, row) => {
+                            if !bot.agent.session.mode.is_creative() {
+                                return Err("saved hotbars need creative mode".into());
+                            }
+                            if load {
+                                self.hotbars.load(row as usize, &mut bot.agent.session.inventory);
+                            } else {
+                                self.hotbars.store(row as usize, &bot.agent.session.inventory);
+                                self.save_hotbars();
+                            }
+                            return Ok(Some(json!({"ok":true,"version":VERSION})));
+                        }
+                        // v0.18 Track 5: the agent's recipe book page.
+                        Command::Recipes(filter, query) => {
+                            let page = bot.agent.recipe_list(&self.world, filter, &query);
+                            return Ok(Some(json!({"ok":true,"version":VERSION,"recipe_book":page})));
                         }
                         Command::Help => {
                             return Ok(Some(json!({"ok":true,"version":VERSION,"help":voxelcraft::agent::HELP})));
@@ -340,7 +398,15 @@ impl Game {
                         _ => {
                             let mut others = self.agents.positions();
                             others.push(self.session.player.pos);
-                            bot.agent.execute(command, &mut self.world, &mut self.mobs.entities, &others)?;
+                            // Review S6: the rules as they are now, not as of the
+                            // profile's last tick (a restored profile has had none).
+                            bot.agent.execute_with_rules(
+                                command,
+                                &self.gamerules,
+                                &mut self.world,
+                                &mut self.mobs.entities,
+                                &others,
+                            )?;
                         }
                     }
                     if bot.agent.remaining > 0 && !observation {
@@ -414,6 +480,27 @@ impl Game {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_catalog_lists_javas_creative_tabs() {
+        let tabs = super::catalog_reply("tabs").unwrap();
+        let ids: Vec<&str> = tabs["tabs"].as_array().unwrap().iter().map(|t| t["id"].as_str().unwrap()).collect();
+        assert_eq!(ids.first(), Some(&"building_blocks"));
+        assert!(ids.contains(&"spawn_eggs") && !ids.contains(&"op_blocks"));
+        let eggs = super::catalog_reply("tab:spawn_eggs creeper").unwrap();
+        let names: Vec<&str> = eggs["items"].as_array().unwrap().iter().map(|i| i["name"].as_str().unwrap()).collect();
+        assert_eq!(names, ["creeper spawn egg"]);
+        assert!(super::catalog_reply("tab:nothing").is_err());
+        // A plain query is the old flat list.
+        assert!(super::catalog_reply("stone").unwrap()["items"].as_array().unwrap().len() > 1);
+        assert_eq!(
+            voxelcraft::agent::Command::parse("hotbar save 3")
+                .ok()
+                .map(|c| matches!(c, voxelcraft::agent::Command::Hotbar(false, 2))),
+            Some(true)
+        );
+        assert!(voxelcraft::agent::Command::parse("hotbar load 10").is_err());
+    }
+
     use super::*;
     #[test]
     fn saving_returns_work_inputs_without_mutating_live_slots() {

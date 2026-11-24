@@ -54,19 +54,9 @@ pub fn pixel(layer: u16, x: usize, y: usize) -> [u8; 4] {
         let on = crate::content::banner_patterns::texel(p, (i % 2) as u8, x, y, 16);
         return if on { [255, 255, 255, 255] } else { [0, 0, 0, 0] };
     }
-    // The board's wood with an open book: two cream pages, a dark spine
-    // down the middle and faint lines of text.
-    let (x, y) = (x as i32, y as i32);
-    let wood = [128 + ((x * 3 + y * 5) % 7) as u8 * 3, 96, 58, 255];
-    let page = (2..=13).contains(&x) && (3..=12).contains(&y);
-    if !page {
-        return wood;
-    }
-    if x == 7 || x == 8 {
-        return [92, 60, 40, 255];
-    }
-    let line = y % 2 == 1 && (4..=11).contains(&y) && ((3..=6).contains(&x) || (9..=12).contains(&x));
-    if line { [150, 140, 120, 255] } else { [232, 224, 200, 255] }
+    // The lectern's open book (`BOOK_TOP`) is drawn by the client's
+    // `render::material_textures` (v0.18 Track 3).
+    [0; 4]
 }
 
 /// `LecternBlock`'s `PAGE_CHANGE_IMPULSE_TICKS`.

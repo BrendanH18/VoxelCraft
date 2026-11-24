@@ -1,13 +1,16 @@
 //! Video Settings: Java 26.3's three sections (Display, Quality &
 //! Performance, Preferences) with the options VoxelCraft can honour, in
-//! Java's order. Options that would need renderer work VoxelCraft doesn't
-//! have (Clouds, Biome Blend, Entity Distance and the like) are left out.
+//! Java's order (Quality & Performance: `tests/fixtures/java/26.3/mipmap_levels.json`). Options that would need renderer work VoxelCraft doesn't
+//! have (Biome Blend, Entity Distance and the like) are left out. v0.18
+//! Track 8 adds Clouds and Cloud Distance; Entity Shadows (Track 6) switches
+//! the ground shadows.
 
 use super::{OptionsHost, change, close, frac, lerp};
 use crate::app::gui::{OptionList, Rect, Screen, Size, Step, Widget, on_off};
-use crate::app::settings::{MAX_FPS, RENDER_DISTANCE};
+use crate::app::settings::{MAX_FPS, MIPMAP_LEVELS, RENDER_DISTANCE};
 use crate::render::ui::Ui;
 use crate::world::activity::SIMULATION_DISTANCE_RANGE;
+use voxelcraft::atmosphere::CLOUD_RANGE;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(in crate::app) enum Id {
@@ -21,7 +24,12 @@ pub(in crate::app) enum Id {
     Graphics,
     RenderDistance,
     SimulationDistance,
+    Clouds,
     Particles,
+    MipmapLevels,
+    EntityShadows,
+    MenuBlur,
+    CloudDistance,
     PreferencesHeader,
     Fps,
     Done,
@@ -29,6 +37,15 @@ pub(in crate::app) enum Id {
 
 fn range((lo, hi): (i32, i32)) -> (f32, f32) {
     (lo as f32, hi as f32)
+}
+
+fn range_u((lo, hi): (u32, u32)) -> (f32, f32) {
+    (lo as f32, hi as f32)
+}
+
+/// Cloud Distance's slider range in Java chunks.
+fn cloud_range() -> (f32, f32) {
+    (CLOUD_RANGE.0 as f32, CLOUD_RANGE.1 as f32)
 }
 
 /// Java's Max Framerate label: "Unlimited" at the top.
@@ -45,6 +62,11 @@ pub(in crate::app) fn brightness_label(v: f32) -> String {
         100 => "Brightness: Bright".into(),
         v => format!("Brightness: {v}"),
     }
+}
+
+/// Java's Mipmap Levels label: OFF at 0, otherwise the number.
+pub(in crate::app) fn mipmap_label(levels: u32) -> String {
+    if levels == 0 { "Mipmap Levels: OFF".into() } else { format!("Mipmap Levels: {levels}") }
 }
 
 /// GUI Scale's top value for this window (Auto picks it).
@@ -117,7 +139,33 @@ impl<H: OptionsHost> Screen<H> for VideoSettings {
                 frac(s.simulation_distance as f32, sd),
                 (sd.1 - sd.0) as u32,
             ),
+            // Java's Quality order: Clouds before Particles.
+            Widget::button(Id::Clouds, z, format!("Clouds: {}", s.clouds.caption())),
             Widget::button(Id::Particles, z, format!("Particles: {}", s.particles.name())),
+            Widget::slider(
+                Id::MipmapLevels,
+                z,
+                mipmap_label(s.mipmap_levels),
+                frac(s.mipmap_levels as f32, range_u(MIPMAP_LEVELS)),
+                MIPMAP_LEVELS.1 - MIPMAP_LEVELS.0,
+            ),
+            // v0.18 Track 6: after Particles and Mipmap Levels in Java's order.
+            Widget::button(
+                Id::EntityShadows,
+                z,
+                format!("{}: {}", crate::entity::shadow::OPTION_LABEL, on_off(s.entity_shadows)),
+            ),
+            // v0.18 Track 2: Java lists it after Entity Distance.
+            super::menu_blur_slider(Id::MenuBlur, s.menu_blur),
+            // Java's Quality order: Clouds before Particles; Cloud Distance
+            // after Menu Background Blur.
+            Widget::slider(
+                Id::CloudDistance,
+                z,
+                format!("Cloud Distance: {} Chunks", s.cloud_range),
+                frac(s.cloud_range as f32, cloud_range()),
+                CLOUD_RANGE.1 - CLOUD_RANGE.0,
+            ),
         ]);
         list.wide(Widget::label(Id::PreferencesHeader, z, "Preferences"));
         list.pair(
@@ -141,6 +189,8 @@ impl<H: OptionsHost> Screen<H> for VideoSettings {
                 host.apply_fullscreen();
             }
             Id::Particles => change(host, |s| s.particles = s.particles.next()),
+            Id::Clouds => change(host, |s| s.clouds = s.clouds.next()),
+            Id::EntityShadows => change(host, |s| s.entity_shadows = !s.entity_shadows),
             Id::Fps => change(host, |s| s.show_fps = !s.show_fps),
             Id::Done => return close(host),
             _ => {}
@@ -159,6 +209,9 @@ impl<H: OptionsHost> Screen<H> for VideoSettings {
                 change(host, |s| s.max_fps = MAX_FPS.0 + (t * steps).round() as u32 * 10);
             }
             Id::Brightness => change(host, |s| s.brightness = (t * 100.0).round() / 100.0),
+            Id::MipmapLevels => change(host, |s| s.mipmap_levels = lerp(range_u(MIPMAP_LEVELS), t).round() as u32),
+            Id::MenuBlur => change(host, |s| s.menu_blur = super::menu_blur_at(t)),
+            Id::CloudDistance => change(host, |s| s.cloud_range = lerp(cloud_range(), t).round() as u32),
             _ => {}
         }
     }

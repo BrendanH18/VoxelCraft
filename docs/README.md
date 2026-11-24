@@ -40,6 +40,11 @@ roadmap and recorded checks to assess completeness against the current target.
   [hosted agents/commands](agents.md).
 - [Release guide](releases.md).
 - [Dated performance investigation](performance-2026-10-07.md).
+- [Art and UI guide](art-and-ui.md): v0.18's style contract (pixel grid,
+  colour pipeline, palette and contrast, material patterns, glyph metrics,
+  components and progress icons), with the
+  [comparison scenes](development.md#comparison-scenes) and
+  [screenshots on Boat](development.md#screenshots-on-boat) that check it.
 - [Graphics and UI review](verification/2026-11-05-graphics-ui-review.md):
   source/scripted-scene observations, evidence limits and the v0.20 plan review.
 - [Initial v0.7 assessment and first correctness fixes](verification/2026-10-12-v0.7-assessment.md):

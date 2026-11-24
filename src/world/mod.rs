@@ -75,6 +75,7 @@ pub mod infested;
 pub mod java_pieces;
 pub mod jigsaw;
 pub mod jukebox;
+pub mod lids;
 mod light_shape;
 pub(crate) mod lighting;
 pub mod lightning;
@@ -229,7 +230,8 @@ impl GeneratedChunk {
 /// Per chunk-column state: skylight heightmap and how many of its chunks
 /// are loaded.
 struct Column {
-    heights: Box<[i16; CHUNK_SIZE * CHUNK_SIZE]>,
+    /// Shared copy-on-write, so mesh jobs can snapshot it by reference.
+    heights: Arc<[i16; CHUNK_SIZE * CHUNK_SIZE]>,
     loaded: i32,
     /// Biome colours, once a worker has worked them out.
     foliage: Option<Box<[u8; CHUNK_SIZE * CHUNK_SIZE]>>,
@@ -408,6 +410,12 @@ pub struct World {
     /// v0.16 Track E: infested blocks broken this tick that let their
     /// silverfish out (`InfestedBlock.spawnAfterBreak`); the game spawns them.
     pub released_silverfish: Vec<IVec3>,
+    /// Time [`World::update_players`] may spend on light per call (`None`:
+    /// all of it). See [`World::set_stream_light_budget`].
+    stream_light_budget: Option<std::time::Duration>,
+    /// Chunks whose stored light changed since the last mesh invalidation
+    /// (each listed once, while its `light_mesh_dirty` flag is set).
+    light_mesh_changed: Vec<IVec3>,
     /// Note blocks that played this tick: position, pitch 0..=24, instrument.
     pub notes: Vec<(IVec3, u8, u8)>,
     pub(crate) allay_notes: Vec<IVec3>,
@@ -451,6 +459,8 @@ pub struct World {
     pub page_turns: Vec<workstations::PageTurn>,
     /// v0.16 Track B: shulker box lids, viewers and removed contents.
     shulker_boxes: shulker_box::Shulkers,
+    /// v0.18 Track 9: chest lids and barrel tops in use or moving.
+    lids: lids::Lids,
     /// Jukebox game events since the entity pass last drained them
     /// (allays dance; track A's vibrations hook in there).
     pub jukebox_events: Vec<(IVec3, jukebox::JukeboxEvent)>,
@@ -468,6 +478,89 @@ pub struct World {
 
 fn column_of(chunk: IVec3) -> IVec2 {
     IVec2::new(chunk.x, chunk.z)
+}
+
+/// Where the padded mesh region's cells come from along one axis: the
+/// neighbouring chunk (0 below, 1 this chunk, 2 above), its first local
+/// coordinate and how many cells it supplies.
+const MESH_SEGMENTS: [(usize, usize, usize); 3] =
+    [(0, CHUNK_SIZE - MARGIN, MARGIN), (1, 0, CHUNK_SIZE), (2, 0, MARGIN)];
+
+/// What a mesh job's light snapshot is read from: shared references to the
+/// packed light of the 27 chunks around it and the heights of the sky-lit
+/// columns around it, taken on the main thread when the job is queued and
+/// read by the worker that meshes it (v0.18 Track 10: the snapshot was
+/// built cell by cell on the main thread). A later light or height write
+/// copies the shared array first, so the job sees the values of the moment
+/// it was queued, as the copy did.
+pub struct LightSources {
+    pos: IVec3,
+    /// Heights of the 3 x 3 columns that read open sky (none without a sky).
+    columns: [Option<Arc<[i16; CHUNK_SIZE * CHUNK_SIZE]>>; 9],
+    block: [Option<lighting::BlockLight>; 27],
+    sky: [Option<lighting::BlockLight>; 27],
+}
+
+impl LightSources {
+    /// Writes the snapshot into `light`, which must be dark.
+    pub fn fill(&self, light: &mut [u8; REGION_VOLUME]) {
+        let columns: [Option<&[i16; CHUNK_SIZE * CHUNK_SIZE]>; 9] = std::array::from_fn(|i| self.columns[i].as_deref());
+        let block: [Option<&lighting::BlockLight>; 27] = std::array::from_fn(|i| self.block[i].as_ref());
+        let sky: [Option<&lighting::BlockLight>; 27] = std::array::from_fn(|i| self.sky[i].as_ref());
+        mesh_light(self.pos, &columns, &block, &sky, light);
+    }
+}
+
+/// The light snapshot a mesh job takes: sky light in the low nibble and
+/// block light in the high one for every cell of the padded region around
+/// the chunk at `pos`, written into the dark `light`. Cells above a sky-lit
+/// column's height read full sky light; unloaded neighbours read dark.
+/// `columns` are the sky-lit 3 x 3 columns around the chunk (x fastest),
+/// `block` and `sky` the 27 chunks' light (x fastest, then z, then y). Each
+/// row is filled a neighbour at a time, so the per-cell work is only the
+/// packed reads.
+fn mesh_light(
+    pos: IVec3,
+    columns: &[Option<&[i16; CHUNK_SIZE * CHUNK_SIZE]>; 9],
+    block: &[Option<&lighting::BlockLight>; 27],
+    sky: &[Option<&lighting::BlockLight>; 27],
+    light: &mut [u8; REGION_VOLUME],
+) {
+    let mut ry = 0;
+    for (cy, ly0, ylen) in MESH_SEGMENTS {
+        for ly in ly0..ly0 + ylen {
+            let world_y = pos.y * CHUNK_SIZE_I + ry as i32 - MARGIN as i32;
+            let mut rz = 0;
+            for (cz, lz0, zlen) in MESH_SEGMENTS {
+                for lz in lz0..lz0 + zlen {
+                    let mut rx = 0;
+                    for (cx, lx0, xlen) in MESH_SEGMENTS {
+                        let start = rx + rz * D + ry * D * D;
+                        let row = &mut light[start..start + xlen];
+                        rx += xlen;
+                        let slot = cx + cz * 3 + cy * 9;
+                        if let Some(block) = block[slot] {
+                            for (k, cell) in row.iter_mut().enumerate() {
+                                *cell = block.get(lx0 + k, ly, lz) << 4;
+                            }
+                        }
+                        let Some(heights) = columns[cx + cz * 3] else { continue };
+                        let sky = sky[slot];
+                        let heights = &heights[lz * CHUNK_SIZE + lx0..lz * CHUNK_SIZE + lx0 + xlen];
+                        for (k, (cell, &height)) in row.iter_mut().zip(heights).enumerate() {
+                            *cell |= if world_y > i32::from(height) {
+                                15
+                            } else {
+                                sky.map_or(0, |l| l.get(lx0 + k, ly, lz))
+                            };
+                        }
+                    }
+                    rz += 1;
+                }
+            }
+            ry += 1;
+        }
+    }
 }
 
 impl World {
@@ -490,6 +583,18 @@ impl World {
         world.remote = true;
         world.hold_unloads = true;
         world
+    }
+
+    /// Bounds the light [`World::update_players`] resolves per call to
+    /// `budget` (v0.18 Track 10: installing a burst of generated chunks
+    /// could otherwise spend tens of milliseconds of one frame on light).
+    /// Light then settles over the following calls, and no mesh job is
+    /// queued until it has. A caller that sets a budget must resolve all
+    /// light ([`World::update_block_light`]) before simulating, so gameplay
+    /// reads the same light as without one. `None`, the default, resolves
+    /// everything in each call.
+    pub fn set_stream_light_budget(&mut self, budget: Option<std::time::Duration>) {
+        self.stream_light_budget = budget;
     }
 
     /// Immutable subscription snapshots; pointer identity detects even nonvisual edits.
@@ -604,7 +709,7 @@ impl World {
         let col = self.columns.entry(key).or_insert_with(|| {
             self.workers.submit(Job::Foliage(key));
             Column {
-                heights: Box::new([NO_HEIGHT; CHUNK_SIZE * CHUNK_SIZE]),
+                heights: Arc::new([NO_HEIGHT; CHUNK_SIZE * CHUNK_SIZE]),
                 loaded: 0,
                 foliage: None,
                 snow: None,
@@ -615,12 +720,12 @@ impl World {
         if !existed {
             col.loaded += 1;
         }
-        col.heights.fill(NO_HEIGHT);
+        Arc::make_mut(&mut col.heights).fill(NO_HEIGHT);
         if self.generator.dimension.has_skylight() {
             for (p, s) in &self.chunks {
                 if column_of(*p) == key {
                     let heights = mesh::chunk_heights(&s.data, p.y * CHUNK_SIZE_I);
-                    for (h, new) in col.heights.iter_mut().zip(heights) {
+                    for (h, new) in Arc::make_mut(&mut col.heights).iter_mut().zip(heights) {
                         *h = (*h).max(new);
                     }
                 }
@@ -730,6 +835,8 @@ impl World {
             primed_tnt: Vec::new(),
             contact_source: None,
             released_silverfish: Vec::new(),
+            light_mesh_changed: Vec::new(),
+            stream_light_budget: None,
             notes: Vec::new(),
             allay_notes: Vec::new(),
             trip_sounds: Vec::new(),
@@ -752,6 +859,7 @@ impl World {
             workstations: Default::default(),
             page_turns: Vec::new(),
             shulker_boxes: Default::default(),
+            lids: Default::default(),
             jukebox_events: Vec::new(),
             records: Vec::new(),
             records_started: Vec::new(),
@@ -840,8 +948,12 @@ impl World {
             && self.sky_updates.is_empty()
     }
 
+    /// Generation and mesh jobs in flight, plus one while a streaming light
+    /// budget holds back meshing until light settles, so "no pending jobs"
+    /// still means every ready chunk has been meshed.
     pub fn pending_jobs(&self) -> usize {
-        self.gen_in_flight.len() + self.mesh_in_flight
+        let held = self.stream_light_budget.is_some() && !self.dirty.is_empty() && !self.light_settled();
+        self.gen_in_flight.len() + self.mesh_in_flight + usize::from(held)
     }
 
     pub fn worker_threads(&self) -> usize {
@@ -959,7 +1071,7 @@ impl World {
     /// Gameplay biome, using worker-computed terrain heights while loaded.
     /// Before those arrive (or outside loaded columns), preserve the generator
     /// query rather than changing a spawning decision at the frontier.
-    pub(crate) fn biome_at(&self, p: IVec3) -> terrain::Biome {
+    pub fn biome_at(&self, p: IVec3) -> terrain::Biome {
         let key = column_of(chunk_of(p));
         if let Some(heights) = self.columns.get(&key).and_then(|c| c.biome_heights.as_ref()) {
             let l = local_of(p);
@@ -1315,7 +1427,7 @@ impl World {
         } else {
             old
         };
-        self.columns.get_mut(&key).unwrap().heights[i] = new as i16;
+        Arc::make_mut(&mut self.columns.get_mut(&key).unwrap().heights)[i] = new as i16;
         (old.max(self.min_y()), new.max(self.min_y()))
     }
 
@@ -1336,6 +1448,15 @@ impl World {
     /// Copy geometry and authoritative light for a CPU mesh job. Resolve pending
     /// light first; complete surrounding columns are required for exact skylight.
     pub fn mesh_input(&self, pos: IVec3) -> Box<MeshInput> {
+        let mut input = self.mesh_job_input(pos);
+        input.resolve_light();
+        input
+    }
+
+    /// [`World::mesh_input`] with its light snapshot left to the worker
+    /// that meshes it ([`MeshInput::resolve_light`]): the main thread only
+    /// takes references to the light and heights it reads.
+    fn mesh_job_input(&self, pos: IVec3) -> Box<MeshInput> {
         let mut neighbors: Neighborhood = Default::default();
         for dy in -1..=1 {
             for dz in -1..=1 {
@@ -1351,51 +1472,45 @@ impl World {
             let i = i as i32;
             self.chunks.get(&(pos + IVec3::new(i % 3 - 1, i / 9 - 1, i / 3 % 3 - 1)))
         });
-        let mut light = Box::new([0; REGION_VOLUME]);
-        for ry in 0..D {
-            let wy = ry + CHUNK_SIZE - MARGIN;
-            let (cy, ly) = (wy / CHUNK_SIZE, wy % CHUNK_SIZE);
-            let world_y = pos.y * CHUNK_SIZE_I + ry as i32 - MARGIN as i32;
-            for rz in 0..D {
-                let wz = rz + CHUNK_SIZE - MARGIN;
-                let (cz, lz) = (wz / CHUNK_SIZE, wz % CHUNK_SIZE);
-                for rx in 0..D {
-                    let wx = rx + CHUNK_SIZE - MARGIN;
-                    let (cx, lx) = (wx / CHUNK_SIZE, wx % CHUNK_SIZE);
-                    let sky = if self.generator.dimension.has_skylight() {
-                        cols[cx + cz * 3].filter(|c| c.sky_lit).map_or(0, |c| {
-                            if world_y > i32::from(c.heights[lx + lz * CHUNK_SIZE]) {
-                                15
-                            } else {
-                                slots[cx + cz * 3 + cy * 9]
-                                    .and_then(|s| s.sky_light.as_ref())
-                                    .map_or(0, |l| l.get(lx, ly, lz))
-                            }
-                        })
-                    } else {
-                        0
-                    };
-                    let block = slots[cx + cz * 3 + cy * 9]
-                        .and_then(|s| s.block_light.as_ref())
-                        .map_or(0, |l| l.get(lx, ly, lz));
-                    light[rx + rz * D + ry * D * D] = sky | block << 4;
-                }
-            }
-        }
+        let has_sky = self.generator.dimension.has_skylight();
+        let sources = LightSources {
+            pos,
+            columns: std::array::from_fn(|i| cols[i].filter(|c| has_sky && c.sky_lit).map(|c| Arc::clone(&c.heights))),
+            block: std::array::from_fn(|i| slots[i].and_then(|s| s.block_light.clone())),
+            sky: std::array::from_fn(|i| slots[i].and_then(|s| s.sky_light.clone())),
+        };
         let foliage = cols[4].and_then(|c| c.foliage.clone()).unwrap_or_else(|| Box::new([0; CHUNK_SIZE * CHUNK_SIZE]));
-        Box::new(MeshInput { neighbors, light, base_y: pos.y * CHUNK_SIZE_I, min_y: self.min_y(), foliage })
+        let models = self.lidded_in_chunk(pos).into_iter().map(local_of).collect();
+        Box::new(MeshInput {
+            neighbors,
+            light: Box::new([0; REGION_VOLUME]),
+            light_sources: Some(Box::new(sources)),
+            base_y: pos.y * CHUNK_SIZE_I,
+            min_y: self.min_y(),
+            foliage,
+            models,
+        })
     }
 
     /// A light snapshot can affect corner samples in adjacent chunks. Bump
     /// versions after each light pass so in-flight older snapshots are discarded.
     fn invalidate_light_meshes(&mut self) {
-        let changed: Vec<_> =
-            self.chunks.iter_mut().filter_map(|(&p, s)| std::mem::take(&mut s.light_mesh_dirty).then_some(p)).collect();
+        if self.light_mesh_changed.is_empty() {
+            return;
+        }
+        // Chunks whose light changed since the last pass, listed as their
+        // flag was set (v0.18 Track 10: instead of a scan of every loaded
+        // chunk). A chunk unloaded meanwhile, or reloaded with a clear
+        // flag, no longer counts.
+        let mut changed = std::mem::take(&mut self.light_mesh_changed);
+        changed.retain(|p| self.chunks.get_mut(p).is_some_and(|s| std::mem::take(&mut s.light_mesh_dirty)));
         if !self.meshes_enabled || changed.is_empty() {
+            changed.clear();
+            self.light_mesh_changed = changed;
             return;
         }
         let mut affected = FxHashSet::default();
-        for p in changed {
+        for &p in &changed {
             for y in -1..=1 {
                 for z in -1..=1 {
                     for x in -1..=1 {
@@ -1412,6 +1527,8 @@ impl World {
                 }
             }
         }
+        changed.clear();
+        self.light_mesh_changed = changed;
     }
 
     fn flush_sync_meshes(&mut self) {
@@ -1424,6 +1541,18 @@ impl World {
         }
         self.sync_meshes = pending;
         self.sync_meshes.clear();
+    }
+
+    /// Remeshes the chunk holding `p` in this frame, as a block edit there
+    /// would, for a change only its own geometry shows (a container entering
+    /// or leaving the block-entity models).
+    pub(crate) fn remesh_geometry(&mut self, p: IVec3) {
+        let c = chunk_of(p);
+        let Some(slot) = self.chunks.get_mut(&c) else { return };
+        slot.version = slot.version.wrapping_add(1);
+        if self.meshes_enabled && self.in_mesh_range(c) {
+            self.sync_meshes.insert(c);
+        }
     }
 
     /// Build a ready chunk's mesh immediately and queue it for upload; defer unready chunks.
@@ -1565,7 +1694,7 @@ impl World {
         let col = self.columns.entry(column_of(pos)).or_insert_with(|| {
             workers.submit(Job::Foliage(column_of(pos)));
             Column {
-                heights: Box::new([NO_HEIGHT; CHUNK_SIZE * CHUNK_SIZE]),
+                heights: Arc::new([NO_HEIGHT; CHUNK_SIZE * CHUNK_SIZE]),
                 loaded: 0,
                 foliage: None,
                 snow: None,
@@ -1577,7 +1706,7 @@ impl World {
         // Without a sky (the Nether) every cell counts as open: the
         // dimension's dim, even light is daylight at a fixed low level.
         if self.generator.dimension.has_skylight() {
-            for (h, new) in col.heights.iter_mut().zip(heights) {
+            for (h, new) in Arc::make_mut(&mut col.heights).iter_mut().zip(heights) {
                 *h = (*h).max(new);
             }
         }
@@ -1725,10 +1854,19 @@ impl World {
             }
         }
 
-        self.update_block_light();
+        // Light for what streaming installed: all of it, or with a per-frame
+        // budget a slice of it, the rest resuming next frame. New mesh jobs
+        // wait until it settles, so no mesh reads half-spread light.
+        let settled = match self.stream_light_budget {
+            Some(budget) => self.update_block_light_within(budget),
+            None => {
+                self.update_block_light();
+                true
+            }
+        };
 
         // Mesh the nearest ready chunks.
-        if !self.dirty.is_empty() && self.mesh_in_flight < cap {
+        if settled && !self.dirty.is_empty() && self.mesh_in_flight < cap {
             let mut candidates: Vec<(i32, IVec3)> = self.dirty.iter().map(|&p| (self.priority(p), p)).collect();
             candidates.sort_unstable_by_key(|&(k, _)| k);
             for (_, pos) in candidates {
@@ -1749,7 +1887,7 @@ impl World {
                     self.mesh_uploads.push((pos, MeshData::default()));
                     continue;
                 }
-                let input = self.mesh_input(pos);
+                let input = self.mesh_job_input(pos);
                 let slot = self.chunks.get_mut(&pos).unwrap();
                 slot.mesh_in_flight = true;
                 self.mesh_in_flight += 1;
@@ -1927,6 +2065,47 @@ mod tests {
             assert!(Instant::now() < deadline, "world never settled");
             std::thread::sleep(Duration::from_millis(1));
         }
+    }
+
+    /// Streams generation 1 terrain around the origin at render distance 2,
+    /// with `budget` as the streaming light budget, until every job is done
+    /// and light has settled.
+    fn streamed(budget: Option<Duration>) -> World {
+        let generator = Arc::new(Generator::with_generation(7, terrain::Dimension::Overworld, terrain::Generation::V1));
+        let mut world = World::new(generator, Default::default(), 2);
+        world.set_stream_light_budget(budget);
+        let at = DVec3::new(0.5, 80.0, 0.5);
+        let deadline = Instant::now() + Duration::from_secs(60);
+        loop {
+            world.update(at);
+            world.mesh_uploads.clear();
+            if world.loaded_chunks() > 0 && world.pending_jobs() == 0 && world.dirty.is_empty() && world.light_settled()
+            {
+                return world;
+            }
+            assert!(Instant::now() < deadline, "world never settled");
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
+
+    #[test]
+    fn a_streaming_light_budget_settles_to_the_same_light() {
+        let full = streamed(None);
+        // The smallest budget: each call does only the minimum light work.
+        let budgeted = streamed(Some(Duration::ZERO));
+        assert_eq!(full.loaded_chunks(), budgeted.loaded_chunks());
+        let mut lit = 0;
+        for x in (-60..60).step_by(3) {
+            for z in (-60..60).step_by(3) {
+                for y in (40..140).step_by(2) {
+                    let p = IVec3::new(x, y, z);
+                    assert_eq!(full.block_light(p), budgeted.block_light(p), "block light at {p}");
+                    assert_eq!(full.sky_light(p), budgeted.sky_light(p), "sky light at {p}");
+                    lit += usize::from(full.sky_light(p).is_some_and(|l| l > 0 && l < 15));
+                }
+            }
+        }
+        assert!(lit > 0, "the samples include partly lit cells");
     }
 
     #[test]

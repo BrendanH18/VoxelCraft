@@ -92,6 +92,10 @@ impl Game {
         );
         let moved = (self.session.player.pos - before).with_y(0.0).length();
         self.session.tick_lodestones(&self.world);
+        // A LAN guest's recipe book is the host's to unlock.
+        if self.lan.client.is_none() {
+            self.session.tick_recipe_book(&self.world);
+        }
         for stack in [self.session.inventory.get(self.body.actions.selected), self.session.inventory.offhand]
             .into_iter()
             .flatten()
@@ -227,6 +231,8 @@ impl Game {
         let open: Vec<_> = keyboard.into_iter().chain(self.pads.open_chests()).chain(self.open_chests()).collect();
         // v0.16 Track B: open shulker boxes lift their lids.
         self.world.set_shulker_viewers(&open);
+        // v0.18 Track 9: chest lids and barrel tops, with their sounds.
+        self.world.set_container_viewers(&open);
         self.world.set_chest_viewers(open);
         crate::simulation::tick_world_rules(
             &mut self.world,

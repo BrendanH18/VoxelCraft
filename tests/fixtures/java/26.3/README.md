@@ -323,6 +323,28 @@ cargo test --release --test java_recipes
 cargo run --release --no-default-features --example recipe_audit > target/recipe-audit.json
 ```
 
+## Recipe book
+
+`recipe_book.json` (v0.18 Track 5) holds the recipe book's facts from the
+pinned server and client jars: every learnable recipe (1,739; the 24
+special recipes are listed apart) with its recipe book category, group and
+`show_notification`; the unlock criteria of each recipe advancement in
+`data/minecraft/advancement/recipes/` (items and item tags, with the tags
+expanded in `item_tags`, ten occupied slots for the chest, `tick` for the
+crafting table, entering water for boats), every one of which is a single
+requirement group; and, read from the client's class files and
+`en_us.json`, the category registry order, each book's tabs and icons, the
+search tabs' categories, the settings keys, the filter and toast labels and
+the layout and timing constants. `build.rs` embeds it with `recipes.json`'s
+shapes for `crafting::book`; `tests/recipe_book.rs` compares the game with
+it. See the [recipe book record](../../../../docs/verification/2026-11-23-v0.18-recipe-book.md).
+
+```sh
+python3 tools/extract_java_recipe_book_fixtures.py /path/to/server.jar /path/to/client.jar --output target/recipe_book.json
+diff tests/fixtures/java/26.3/recipe_book.json target/recipe_book.json
+cargo test --profile ci --test recipe_book
+```
+
 ## Block loot
 
 `block_loot.json` evaluates every block loot table in the pinned artifact
@@ -1613,3 +1635,29 @@ and height and the crop and stem light and growth constants to it
 ([record](../../../../docs/verification/2026-11-23-v0.17-reference-contraptions.md#farms-follow-up-2026-11-23)).
 VoxelCraft's cactus doesn't grow, and its bamboo lacks Java's `STAGE`; those
 facts wait in the fixture.
+
+## Title panorama and world icons (v0.18 Track 7)
+
+`title.json` holds the client's title facts: the panorama's field of view,
+near and far planes and tilt (`CubeMap.render`, `GuiRenderer`), its spin per
+real-time tick and its option (`Panorama.extractRenderState`,
+`Options.panoramaSpeed`: `panoramaScrollSpeed`, a unit slider defaulting
+to 1.0 with a percentage label), Accessibility Settings' option order, the
+logo box (`LogoRenderer`), the world icon's capture rule and size
+(`GameRenderer.tryTakeScreenshotIfNeeded`/`takeAutoScreenshot`,
+`FaviconTexture`), its list size and hover wash (`WorldListEntry`), Edit
+World's button column (`EditWorldScreen`) and the English labels. The
+extractor checks each method's shape and fails if Java changes it. It needs
+`javap`:
+
+```sh
+python3 tools/extract_java_title_fixtures.py /path/to/client.jar --output target/java-title.json
+diff tests/fixtures/java/26.3/title.json target/java-title.json
+scripts/boat-check.sh -- 'cargo test --profile ci --locked --test title_identity'
+```
+
+`tests/title_identity.rs` checks `voxelcraft::title` against it
+([record](../../../../docs/verification/2026-11-23-v0.18-title.md)). Two
+facts come from the 26.3 asset index (index 34), not the jar, and are
+recorded there: the panorama faces are 1024 x 1024 and
+`panorama_overlay.png` is a single transparent pixel.

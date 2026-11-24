@@ -135,7 +135,13 @@ most 1/120 second. Offline menus pause the game clock.
 Gameplay sky and block light belong to `World`, with incremental removal and
 increase queues. Edits, streaming and fixed world steps resolve it without
 waiting for meshes. Render jobs still compute their own light snapshots;
-their results cannot replace gameplay light. Crops, saplings and other growth
+their results cannot replace gameplay light. The chunk light arrays and
+column heights are shared copy-on-write: queueing a mesh job only takes
+references to the 27 chunks' light and the nine columns' heights
+(`LightSources`), and the worker builds the padded light region from them
+(`MeshInput::resolve_light`), so the main thread does no per-cell copy. A
+light write after a job is queued copies the shared array first, so the job
+still sees the light of the moment it was queued (v0.18 Track 10). Crops, saplings and other growth
 read this gameplay sky and block light, including in headless worlds.
 Complete column heightmaps seed gameplay skylight, including in the End.
 Uncertain light at incomplete loaded borders is explicitly unknown.
@@ -155,8 +161,9 @@ Controller and LAN players run the shared actions on their own session
 state is swapped into the host's. Independent simultaneous dimensions and
 shape-aware light occlusion remain future work. A first desktop LAN slice uses
 bounded binary-framed TCP and authoritative chunk snapshots; see [LAN](lan.md).
-Split-screen is implemented, and each view blends Nether biome fog around its
-own eye.
+Split-screen is implemented, and each view blends its biome's fog and sky
+colours around its own eye and keeps its own rain fog and water vision
+(`voxelcraft::atmosphere`, v0.18 Track 8).
 See [the headless smoke run and checks](development.md#headless-simulation-foundation).
 
 ## Code layout
@@ -164,6 +171,10 @@ See [the headless smoke run and checks](development.md#headless-simulation-found
 ```text
 src/
   lib.rs             reusable engine exports (no device dependencies)
+  atmosphere.rs      Java 26.3's fog, sky and cloud colours and distances
+                     (environment attributes, day timeline, weather layers,
+                     fog environments); atmosphere/clouds.rs: the cloud
+                     pattern and Java's cell mesh rules
   main.rs            desktop argument parsing, event loop
   session.rs         actor-owned core state, personal spawn selection
   session/
@@ -183,7 +194,8 @@ src/
   app/
     mod.rs           window, input, fixed game ticks, rendering, damage entry point
     actions.rs       hotbar/mining state and consumption presentation mirror
-    recipe_book.rs   recipe navigation, responsive layout and hit testing
+    recipe_book.rs   Java's recipe book view: tabs, search, filter, pages,
+                     ghost recipe, toast, layout and hit testing
     hud.rs           HUD: hotbar, hearts/food/bubbles, containers, death and F3
     gui/             menu toolkit: screen stack, focus and navigation for mouse,
                      keyboard and controller, sliders, text fields and clipboard,
@@ -193,7 +205,9 @@ src/
                      screen and the pause menu
     title/           title screen, Select World, Edit World, Create New World,
                      the newer-version backup prompt, Multiplayer and the
-                     update screen, all on the toolkit
+                     update screen, all on the toolkit; the wordmark and
+                     default world icon (art.rs)
+    world_icon.rs    taking a world's icon.png on its first visit
     settings.rs      options file (per-user data folder: saves/options.txt)
     weather.rs       rain/snow render geometry
     mobs.rs          mob glue: melee, loot, explosions, entity events, --spawn
@@ -207,6 +221,8 @@ src/
     hand.rs          first-person hand animation: swings, item switches, bob
   inventory.rs       inventory slots, stacking, saved container overflow
   crafting.rs        crafting grids and recipes
+  crafting/book/     v0.18 recipe book: Java recipe IDs and categories,
+                     unlock criteria, per-player state and saves, placement
   mining.rs          mining speed, harvest rules, tool wear, melee damage
   item.rs            item registry: blocks, materials, food and tools
   enchant.rs         enchantments: Java's definitions, effects, table offers,
@@ -277,7 +293,8 @@ src/
     block_model.rs   free-standing textured blocks (falling sand, dropped items)
     hand.rs          first-person hand and held item (Minecraft's transforms)
     item_sprites.rs  procedural item icons (their own texture array, layers 256+)
-    ui.rs            HUD geometry: rects, bitmap text, block icons
+    ui.rs            HUD geometry: rects, bitmap text, block icons, UI images
+    panorama.rs      the title panorama: six faces, spin, blur
     textures.rs      procedural block textures
     shaders/         WGSL
 ```
@@ -299,8 +316,9 @@ runs silently.
 ## Dependencies
 
 wgpu and winit (graphics and windowing), cpal (audio output), glam (math),
-bytemuck, crossbeam-channel, rustc-hash, font8x8, png, pollster, log and
-env_logger.
+bytemuck, crossbeam-channel, rustc-hash, png, pollster, log and
+env_logger. The text font is VoxelCraft's own (`src/font.rs` and
+`assets/font/glyphs.txt`, v0.18); `font8x8` was dropped with it.
 
 ## Release ID reservations (v0.9–v0.19)
 
@@ -1335,6 +1353,87 @@ nothing using 13952 or above:
 
 No item, texture layer or appended ordering: every age is named, drawn,
 dropped and picked as sugar cane.
+
+### v0.18 Polish and performance track reservations
+
+Reserved on 2026-11-23 when the owner approved the v0.18 plan (milestone
+M7), for eleven parallel tracks after `examples/id_map.rs` at `d5c1fee`
+showed states 13968–14335, items 1850–1999 and texture layers 1211–1299
+and 4066–4095 unregistered. Layers 1211–1299 were v0.17 reservations that
+no track used, and nothing references them; layers 4066–4095 are the 30
+above the current count, which is 30 short of the 4096 a quad can address,
+so new block textures should replace layers rather than add them. Each
+track allocates only inside its own row, records what it used under its own
+heading below, and leaves unused IDs unregistered. Texture layers are never
+saved and may be repacked at integration. The integrator makes appended
+orderings (sounds, particle kinds, item icons, options) contiguous in
+landing order.
+
+| Block states | Item IDs | Texture layers | Track |
+| --- | --- | --- | --- |
+| — | 1850–1949 | — | 4. Creative inventory and spawn eggs (item icons sit after layer 4096 and need no block layer) |
+| — | — | 1211–1259 | 3. Core material art |
+| — | — | 1260–1279 | 8. Atmosphere |
+| — | — | 1280–1289 | 6. Mobs |
+| — | — | 1290–1294 | 9. Sound, subtitles and container lids |
+| — | — | — | 0. Foundation; 1. Typography; 2. Shared UI; 5. Recipe book; 7. Title and worlds; 10. Performance |
+| 13968–14335 | 1950–1999 | 1295–1299, 4066–4095 | Integrator |
+
+#### Track 4 allocation
+
+Items 1850–1936 are the 87 spawn eggs VoxelCraft registers
+(`content::spawn_egg`), in the order of
+`tests/fixtures/java/26.3/spawn_eggs.json`: the Spawn Eggs tab's (chicken
+1850 to shulker 1935), then the Wither's egg (1936), which no tab lists.
+Item 1937 is kept for the Ender Dragon's egg, left unregistered (its
+`registry_gaps.json` entry says why); 1938–1949 are unused. No block
+states or block texture layers. Item icons appended after the furnace
+minecart's: 87 layers (`item::icon_count`), one per egg in id order.
+In `Item::all_items` (and so `creative_palette` and its LAN codes) the eggs
+come after the End crystal, v0.17's last entry, whose code stays 2645.
+Appended orderings: key bindings `key.saveToolbarActivator` and
+`key.loadToolbarActivator` after `key.swapOffhand` (`app::keys::Action`
+and `options.txt`); LAN slot codes 405 (Destroy Item), 406 (an empty
+creative cell) and 20000 + tab x 1000 + index (a creative stack that isn't
+a plain `Item::creative_palette` entry, which keeps codes 1000+); the
+dispenser output code 5 (`Output::Egg`, saved with pending dispenses); the
+trial spawner's saved `entity` field.
+
+#### Track 6 allocation
+
+Track 6 (mobs) uses texture layers 1280–1289 for its ten mob material
+patterns, in `entity::model::Pattern` order from `PATTERN_TEX` (1280):
+wool, fur, hide, feather, mottle, bone, speckle, bristle, cloth and rot
+(`render/mob_textures.rs`). It allocates no block states or items. Appended
+orderings: the option `entityShadows` (Java's key) at the end of
+`options.txt`; entity shader materials 5 (ground shadow) and 6 (patterned
+box) after the slime shell's 4; byte 6 of `BoxInstance::shade`, which was
+spare, now holds the box's pattern. Nothing new is saved.
+
+#### Track 9 allocation
+
+Track 9 (sound, subtitles and container lids) uses texture layer 1290 for
+the barrel's open top (`world::lids::BARREL_OPEN_TEX`); 1291–1294 stay
+unregistered. It allocates no block states or items: Java's barrel `open`
+property is drawn from the barrel's viewers instead of a saved state (see
+the [record](verification/2026-11-23-v0.18-sound.md)). Appended orderings:
+`audio::Sound::Block` (Java event family × `BlockCue`) and
+`audio::Sound::Container` after `Sound::Crafter`, keyed after the crafter's
+cues; the options `showSubtitles`, `textBackgroundOpacity` and
+`backgroundForChatOnly` (Java's keys) at the end of `options.txt`.
+
+#### Track 8 allocation
+
+Track 8 (atmosphere) allocates no block states, items or texture layers:
+the clouds' pattern is generated at startup and the fog, sky and cloud
+colours are computed, so the reserved layers 1260–1279 stay unregistered.
+Appended orderings: the options `renderClouds`, `cloudRange` and
+`hideLightningFlashes` (Java's keys and values) after Track 9's at the end of
+`options.txt`'s display lines; `app::options::video::Id::Clouds` and
+`CloudDistance` and `accessibility::Id::HideSkyFlashes` (screen ids, not
+saved). The benchmark scene list (`performance::SCENES` and
+`benchmarks/scenes.json`) gains `weather`, `underwater` and `nether` after
+`streaming`.
 
 ## Assessment branch ID reservations
 

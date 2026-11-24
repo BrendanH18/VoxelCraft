@@ -11,6 +11,8 @@ impl Game {
         new: Option<title::NewWorld>,
     ) -> Game {
         let Shell { renderer, audio, settings, settings_path, updates, gilrs } = shell;
+        // v0.18 Track 4: saved hotbars live beside `options.txt`, like Java's `hotbar.nbt`.
+        let hotbars_path = settings_path.as_ref().map(|_| saves_dir.join("hotbars.txt"));
         let storage = Storage::new(saves_dir.join(world_dir));
         let existing = if args.join.is_some() || args.new_world || new.is_some() || !storage.exists() {
             None
@@ -62,8 +64,7 @@ impl Game {
             .or(args.mode)
             .or_else(|| existing.as_ref().and_then(|l| l.props.get("mode")).and_then(|m| GameMode::from_name(m)))
             .unwrap_or_default();
-        let hardcore = new.as_ref().is_some_and(|n| n.hardcore)
-            || root_props.get("hardcore").is_some_and(|v| v == "true" || v == "1");
+        let hardcore = starting_hardcore(new.as_ref(), existing.is_some(), args, &root_props);
         let difficulty = if hardcore {
             Difficulty::Hard
         } else {
@@ -72,8 +73,7 @@ impl Game {
                 .or_else(|| root_props.get("difficulty").and_then(|d| Difficulty::from_name(d)))
                 .unwrap_or_default()
         };
-        let gamerules =
-            root_props.get("gamerules").map_or_else(GameRules::default, |text| GameRules::deserialize(text));
+        let gamerules = starting_rules(root_props.get("gamerules").map(String::as_str), args);
         let inventory = existing
             .as_ref()
             .and_then(|l| l.props.get("inventory"))
@@ -225,6 +225,11 @@ impl Game {
         if let Some(text) = existing.as_ref().and_then(|l| l.props.get("raid_omen_position")) {
             session.load_raid_omen(text);
         }
+        // v0.18 Track 5: a save from before the recipe book starts from Java's
+        // initial book; the first tick checks the loaded inventory.
+        if let Some(text) = existing.as_ref().and_then(|l| l.props.get("recipe_book")) {
+            session.recipe_book = crate::crafting::book::RecipeBook::deserialize(text);
+        }
         session.spawn_anchor = existing.as_ref().and_then(|l| l.props.get("spawn_anchor")).and_then(|text| {
             let n: Vec<i32> = text.split(',').filter_map(|value| value.parse().ok()).collect();
             (n.len() == 3).then(|| IVec3::new(n[0], n[1], n[2]))
@@ -273,12 +278,19 @@ impl Game {
             gamerules,
             inventory_open: args.open_inventory,
             craft: crate::crafting::Grid::new(2),
-            recipe_book: recipe_book::RecipeBook::default(),
-            creative_scroll: 0,
+            recipe_book: Default::default(),
+            creative: Default::default(),
+            hotbars: hotbars_path
+                .as_deref()
+                .and_then(|p| std::fs::read_to_string(p).ok())
+                .map(|t| voxelcraft::creative::Hotbars::deserialize(&t))
+                .unwrap_or_default(),
+            hotbars_path,
             work_scroll: 0,
             cursor_px: (0.0, 0.0),
             body: Default::default(),
             show_hud: !args.no_hud,
+            captions: Vec::new(),
             hand: Default::default(),
             camera: args.camera,
             scripted_ride: args.ride.clone(),
@@ -287,7 +299,7 @@ impl Game {
             clock: Default::default(),
             previous_eye,
             rendered_eye: previous_eye,
-            nether_fog: Default::default(),
+            atmosphere_views: Default::default(),
             day_time: args
                 .time
                 .or_else(|| existing.as_ref().and_then(|l| l.props.get("time")).and_then(|t| t.parse().ok()))
@@ -302,16 +314,11 @@ impl Game {
                     (n.len() == 3).then(|| IVec3::new(n[0], n[1], n[2]))
                 })
                 .unwrap_or_else(|| overworld.find_spawn()),
-            weather: {
-                let mut w = weather::Weather::new(seed);
-                if let Some(text) = existing.as_ref().and_then(|l| l.props.get("weather")) {
-                    w.deserialize(text);
-                }
-                if let Some(rain) = args.weather {
-                    w.set(rain, true);
-                }
-                w
-            },
+            weather: starting_weather(
+                seed,
+                existing.as_ref().and_then(|l| l.props.get("weather")).map(String::as_str),
+                args,
+            ),
             weather_verts: Vec::new(),
             started: now,
             animation_time: args.animation_time,
@@ -326,6 +333,12 @@ impl Game {
             popup: (String::new(), now - Duration::from_secs(10)),
             save_error: None,
             screenshot: args.screenshot.clone(),
+            // v0.18 Track 7: a world this game hosts takes its icon; scripted
+            // runs only when asked (`--world-icon`), LAN clients never.
+            world_icon: (args.join.is_none() && (settings_path.is_some() || args.world_icon))
+                .then(|| world_icon::WorldIcon::new(saves_dir.join(world_dir))),
+            panorama_out: args.panorama.clone(),
+            panorama_face: None,
             screenshot_state: 0,
             screenshot_settled: None,
             open_trading: args.open_trading,
@@ -343,10 +356,15 @@ impl Game {
             benchmark: benchmark::Run::from_args(args),
             frame_started: None,
             audio,
-            mobs: mobs::Mobs::new(seed, args.spawn.clone(), args.wait).holding(args.spawn_held.clone()),
+            mobs: mobs::Mobs::new(seed, args.spawn.clone(), args.wait)
+                .holding(args.spawn_held.clone())
+                .still(args.still_mobs),
             particles: crate::particles::System::new(seed),
             menu: menu::startup_menu(args.open_menu.as_deref()),
             menu_action: None,
+            death: Default::default(),
+            anvil_name: Default::default(),
+            death_respawn_sent: None,
             had_focus: false,
             settings,
             settings_path,
@@ -376,6 +394,17 @@ impl Game {
         game.world.maps =
             root_props.get("maps").and_then(|s| crate::world::maps::MapStorage::load(s)).unwrap_or_default();
         game.restore_dimension(&dimension_props);
+        // v0.18 Track 0's capture flags: `--open-recipe-book` opens the
+        // crafting book (Track 5), `--creative-tab` selects a creative tab
+        // (Track 4; the operator tab isn't shown, so it stays on the default).
+        if args.open_recipe_book {
+            game.session.recipe_book.set_open(crate::crafting::book::BookType::Crafting, true);
+        }
+        if let Some(id) = args.creative_tab
+            && let Some(tab) = voxelcraft::creative::catalogue().tabs.iter().position(|t| t.id == id)
+        {
+            game.creative_select(tab);
+        }
         if game.session.vitals.is_dead() {
             game.on_death();
         } else if game.screenshot.is_none()
@@ -399,6 +428,45 @@ impl Game {
     }
 }
 
+/// Whether the world is Hardcore: chosen on Create New World, saved in the
+/// level file, or `--hardcore` for a world this run creates.
+fn starting_hardcore(
+    new: Option<&title::NewWorld>,
+    existing: bool,
+    args: &Args,
+    root_props: &std::collections::BTreeMap<String, String>,
+) -> bool {
+    new.is_some_and(|n| n.hardcore)
+        || (args.hardcore && !existing)
+        || root_props.get("hardcore").is_some_and(|v| v == "true" || v == "1")
+}
+
+/// The saved game rules, with `--gamerule` values set over them (parsing
+/// already checked each name and value).
+fn starting_rules(saved: Option<&str>, args: &Args) -> GameRules {
+    let mut rules = saved.map_or_else(GameRules::default, GameRules::deserialize);
+    for (name, value) in &args.gamerules {
+        if let Err(e) = rules.set(name, value) {
+            log::warn!("--gamerule {name}={value}: {e}");
+        }
+    }
+    rules
+}
+
+/// The saved weather, or `--weather`'s at full strength from the start.
+fn starting_weather(seed: u64, saved: Option<&str>, args: &Args) -> weather::Weather {
+    let mut w = weather::Weather::new(seed);
+    if let Some(text) = saved {
+        w.deserialize(text);
+    }
+    match args.weather {
+        Some(true) if args.thunder => w.set_thunder(true),
+        Some(rain) => w.set(rain, true),
+        None => {}
+    }
+    w
+}
+
 /// The generator a world uses: new worlds take the latest, saved ones keep
 /// the one their `level.txt` records (see [`super::save::record_generation`]).
 fn world_generation(existing: Option<&LevelInfo>) -> Generation {
@@ -409,6 +477,86 @@ fn world_generation(existing: Option<&LevelInfo>) -> Generation {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn args(list: &[&str]) -> Args {
+        crate::parse_args_from(list.iter().map(|s| s.to_string())).unwrap()
+    }
+
+    #[test]
+    fn bench_lengths_must_be_finite() {
+        for bad in ["NaN", "inf", "-1"] {
+            assert!(crate::parse_args_from(["--bench-seconds", bad].map(String::from)).is_err(), "{bad}");
+            assert!(crate::parse_args_from(["--bench-warmup", bad].map(String::from)).is_err(), "{bad}");
+        }
+        assert_eq!(args(&["--bench-seconds", "30"]).bench_seconds, 30.0);
+    }
+
+    #[test]
+    fn gui_scale_overrides_the_options_for_the_session() {
+        let mut settings = settings::Settings::default();
+        assert_eq!(settings.gui_scale, 0, "scripted runs start from Auto");
+        super::super::apply_session_overrides(&mut settings, &args(&["--screenshot", "x.png", "--gui-scale", "2"]));
+        assert_eq!(settings.gui_scale, 2);
+        super::super::apply_session_overrides(&mut settings, &args(&["--screenshot", "x.png", "--gui-scale", "auto"]));
+        assert_eq!(settings.gui_scale, 0);
+        super::super::apply_session_overrides(&mut settings, &args(&[]));
+        assert_eq!(settings.gui_scale, 0, "no flag keeps the option");
+        assert!(
+            crate::parse_args_from(["--gui-scale", "2"].map(String::from)).is_err(),
+            "a normal run keeps its saved GUI Scale"
+        );
+        // At 1280x720 a requested 4 is capped at what fits, as in the options.
+        assert_eq!(crate::render::ui::Ui::gui_scale(1280.0, 720.0, 4), 3.0);
+        assert!(crate::parse_args_from(["--gui-scale".to_string(), "huge".to_string()]).is_err());
+    }
+
+    #[test]
+    fn recipe_book_and_creative_tab_open_their_screens() {
+        let book = args(&["--open-recipe-book"]);
+        assert!(book.open_recipe_book && book.open_inventory, "the recipe book opens in the inventory");
+        let table = args(&["--open-recipe-book", "--open-block", "0,64,0"]);
+        assert!(table.open_recipe_book && !table.open_inventory, "or beside the block's screen");
+
+        let tab = args(&["--creative-tab", "minecraft:combat"]);
+        assert_eq!(tab.creative_tab, Some("combat"));
+        assert_eq!(tab.mode, Some(GameMode::Creative));
+        assert!(tab.open_inventory);
+        assert!(crate::parse_args_from(["--survival", "--creative-tab", "search"].map(String::from)).is_err());
+        assert!(crate::parse_args_from(["--creative-tab", "everything"].map(String::from)).is_err());
+
+        let mut once = args(&["--open-recipe-book", "--creative-tab", "search", "--hardcore"]);
+        once.clear_one_shot();
+        assert!(!once.open_recipe_book && once.creative_tab.is_none() && !once.hardcore);
+    }
+
+    #[test]
+    fn hardcore_applies_to_worlds_this_run_creates() {
+        let none = std::collections::BTreeMap::new();
+        let hard = args(&["--hardcore"]);
+        assert!(starting_hardcore(None, false, &hard, &none));
+        assert!(!starting_hardcore(None, true, &hard, &none), "a saved world keeps its own setting");
+        assert!(!starting_hardcore(None, false, &args(&[]), &none));
+        let saved = std::collections::BTreeMap::from([("hardcore".to_string(), "true".to_string())]);
+        assert!(starting_hardcore(None, true, &args(&[]), &saved));
+    }
+
+    #[test]
+    fn gamerules_and_weather_hold_a_capture_steady() {
+        let a = args(&["--gamerule", "advance_time=false", "--gamerule", "advance_weather=false"]);
+        let rules = starting_rules(None, &a);
+        assert!(!rules.bool("advance_time") && !rules.bool("advance_weather"));
+        let saved = GameRules::default().serialize();
+        assert!(!starting_rules(Some(&saved), &a).bool("advance_time"), "set over the saved rules");
+        assert!(starting_rules(None, &args(&[])).bool("advance_time"));
+        assert!(crate::parse_args_from(["--gamerule", "advance_time=soon"].map(String::from)).is_err());
+
+        let thunder = starting_weather(1, None, &args(&["--weather", "thunder"]));
+        assert!(thunder.raining && thunder.thundering && thunder.is_thundering(), "at full strength at once");
+        let rain = starting_weather(1, None, &args(&["--weather", "rain"]));
+        assert!(rain.raining && !rain.thundering && rain.strength == 1.0);
+        let clear = starting_weather(1, Some("1,100,1,100"), &args(&["--weather", "clear"]));
+        assert!(!clear.raining && !clear.thundering && clear.strength == 0.0);
+    }
 
     #[test]
     fn new_worlds_save_and_reload_as_generation_5() {

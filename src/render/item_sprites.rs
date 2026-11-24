@@ -282,6 +282,28 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
             };
             shaded(&egg, x, y, shell, 0.04).map(|p| if (x + y) % 5 == 0 { tint(speck, 0.9) } else { p })
         }
+        Sprite::SpawnEgg(base, spots) => {
+            // Original v0.18 icon: an upright egg, taller and rounder than the
+            // chicken egg, with irregular spots of the second colour and a
+            // small highlight at the top left.
+            let egg = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                let nx = (px - 8.0) / if py < 8.5 { 4.6 - (8.5 - py) * 0.12 } else { 4.6 };
+                let ny = (py - 8.5) / 6.2;
+                nx * nx + ny * ny <= 1.0
+            };
+            shaded(&egg, x, y, base, 0.05).map(|p| {
+                let spot = |cx: f32, cy: f32, r: f32| (px - cx).powi(2) + (py - cy).powi(2) <= r * r;
+                if (x, y) == (6, 4) || (x, y) == (6, 5) {
+                    tint(base, 1.35)
+                } else if spot(10.0, 6.0, 1.6) || spot(6.5, 10.5, 1.9) || spot(10.5, 12.0, 1.2) || spot(5.0, 7.5, 0.8) {
+                    let edge = !egg(x + 1, y) || !egg(x, y + 1);
+                    tint(spots, if edge { 0.7 } else { 1.0 })
+                } else {
+                    p
+                }
+            })
+        }
         Sprite::TrimTemplate(pattern) => trim_template(pattern, x, y),
         Sprite::Bowl(soup) => {
             let bowl = |x: i32, y: i32| (3..=12).contains(&x) && (8..=13).contains(&y) && y < 17 - (x - 7).abs();

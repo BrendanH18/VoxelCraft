@@ -59,7 +59,14 @@ const fn mite(w: f32, h: f32, d: f32, color: Rgb, noise: u8) -> Cuboid {
     cube([-w / 2.0, 0.0, -d / 2.0], [w / 2.0, h, d / 2.0], color, noise)
 }
 const MITE_SEGMENTS: [&[Cuboid]; 4] = [
-    &[mite(4.0, 3.0, 2.0, MITE_SHELL, 40)],
+    // v0.18 Track 6 round 4: glowing eyes and small mandibles on the head.
+    &[
+        mite(4.0, 3.0, 2.0, MITE_SHELL, 40),
+        cube([-1.6, 1.5, 1.0], [-0.6, 2.3, 1.05], [190, 120, 236], 0),
+        cube([0.6, 1.5, 1.0], [1.6, 2.3, 1.05], [190, 120, 236], 0),
+        cube([-1.2, 0.0, 1.0], [-0.7, 0.6, 1.6], [30, 22, 40], 0),
+        cube([0.7, 0.0, 1.0], [1.2, 0.6, 1.6], [30, 22, 40], 0),
+    ],
     &[mite(6.0, 4.0, 5.0, MITE_SHELL, 52), cube([-2.0, 4.0, -1.5], [2.0, 4.01, 1.5], MITE_GLOW, 70)],
     &[mite(3.0, 3.0, 1.0, MITE_SHELL, 44)],
     &[mite(1.0, 2.0, 1.0, MITE_GLOW, 36)],

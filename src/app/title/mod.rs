@@ -9,7 +9,10 @@
 //! without a window; Multiplayer and the update screen need the real
 //! [`Title`] (its LAN discovery and updater).
 
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::mpsc;
 use std::time::Instant;
 
 use glam::{DVec3, Vec3};
@@ -18,7 +21,8 @@ use winit::keyboard::ModifiersState;
 use winit::window::CursorGrabMode;
 
 use crate::render::FrameParams;
-use crate::render::ui::Ui;
+use crate::render::panorama;
+use crate::render::ui::{ICON_SLOTS, ImageRect, Ui};
 use crate::simulation::difficulty::Difficulty;
 use crate::update::State;
 
@@ -27,6 +31,7 @@ use super::options::OptionsHost;
 use super::settings::Settings;
 use super::{GameMode, Shell};
 
+mod art;
 mod create;
 mod edit;
 mod home;
@@ -80,7 +85,75 @@ pub(in crate::app) trait TitleHost: OptionsHost<Out = Action> + Sized {
     fn update_notice(&self) -> Option<String>;
     fn multiplayer(&mut self) -> Step<Self>;
     fn updates(&mut self) -> Step<Self>;
+    /// v0.18 Track 7: where a world's icon sits in the UI image atlas (x, y,
+    /// w, h), or `None` to draw the default icon (no icon, an unusable
+    /// file, or not loaded yet).
+    fn world_icon(&self, _dir: &str) -> Option<[f32; 4]> {
+        None
+    }
+    /// Forgets loaded icons, so files changed since are read again.
+    fn forget_icons(&self) {}
 }
+
+/// World icons read from disk per frame at most, so a long list never
+/// stalls a frame (each is a small PNG; the rest show the default icon
+/// until a later frame).
+const ICON_LOADS_PER_FRAME: u32 = 4;
+
+/// v0.18 Track 7: world icons loaded into the UI image atlas.
+#[derive(Default)]
+struct Icons {
+    /// Each world folder's atlas slot, or `None` for the default icon.
+    slots: std::collections::HashMap<String, Option<usize>>,
+    /// The folder holding each slot.
+    owners: Vec<Option<String>>,
+    next: usize,
+    /// Loads left this frame.
+    budget: u32,
+    /// Pixels to copy into the atlas before the frame is drawn.
+    uploads: Vec<(ImageRect, Vec<u8>)>,
+}
+
+impl Icons {
+    fn rect(slot: usize) -> [f32; 4] {
+        let r = crate::render::ui::icon_slot(slot);
+        [r.x as f32, r.y as f32, r.w as f32, r.h as f32]
+    }
+
+    fn get(&mut self, saves_dir: &Path, dir: &str) -> Option<[f32; 4]> {
+        if let Some(slot) = self.slots.get(dir) {
+            return slot.map(Self::rect);
+        }
+        if self.budget == 0 {
+            return None;
+        }
+        self.budget -= 1;
+        let slot = match voxelcraft::title::icon::read(&saves_dir.join(dir).join(voxelcraft::title::icon::FILE)) {
+            Ok(pixels) => {
+                self.owners.resize(ICON_SLOTS, None);
+                let slot = self.next;
+                self.next = (self.next + 1) % ICON_SLOTS;
+                if let Some(old) = self.owners[slot].replace(dir.to_string()) {
+                    self.slots.remove(&old);
+                }
+                self.uploads.push((crate::render::ui::icon_slot(slot), pixels));
+                Some(slot)
+            }
+            Err(voxelcraft::title::icon::Problem::Missing) => None,
+            // Java logs "Invalid icon for world" and shows the default.
+            Err(voxelcraft::title::icon::Problem::Invalid(e)) => {
+                log::warn!("invalid icon for world {dir}: {e}");
+                None
+            }
+        };
+        self.slots.insert(dir.to_string(), slot);
+        slot.map(Self::rect)
+    }
+}
+
+/// The panorama's spin, kept while the game runs as Java's `Panorama` is,
+/// so going back to the title carries on from where it was.
+static SPIN: AtomicU32 = AtomicU32::new(0);
 
 pub(super) struct Title {
     shell: Shell,
@@ -100,6 +173,10 @@ pub(super) struct Title {
     menus: gui::Stack<Title>,
     modifiers: ModifiersState,
     clipboard: SystemClipboard,
+    /// v0.18 Track 7: the panorama's faces being decoded, until uploaded.
+    panorama: Option<mpsc::Receiver<Result<panorama::Faces, String>>>,
+    last_frame: Instant,
+    icons: RefCell<Icons>,
 }
 
 impl gui::Host for Title {
@@ -107,10 +184,6 @@ impl gui::Host for Title {
 
     fn click(&mut self) {
         self.shell.audio.ui_click();
-    }
-
-    fn in_world(&self) -> bool {
-        false
     }
 }
 
@@ -168,6 +241,16 @@ impl TitleHost for Title {
     fn updates(&mut self) -> Step<Self> {
         Step::push(update::UpdateScreen)
     }
+
+    fn world_icon(&self, dir: &str) -> Option<[f32; 4]> {
+        self.icons.borrow_mut().get(&self.saves_dir, dir)
+    }
+
+    fn forget_icons(&self) {
+        let mut icons = self.icons.borrow_mut();
+        icons.slots.clear();
+        icons.owners.clear();
+    }
 }
 
 impl Title {
@@ -177,6 +260,23 @@ impl Title {
         window.set_cursor_visible(true);
         let mut menus = gui::Stack::default();
         menus.open(home::Home);
+        let mut shell = shell;
+        shell.renderer.upload_ui_image(crate::render::ui::WORDMARK_RECT, &art::wordmark());
+        shell.renderer.upload_ui_image(crate::render::ui::DEFAULT_ICON_RECT, &art::default_icon());
+        // Decoding the faces takes a moment: off the main thread, with the
+        // old sky behind the menus until they are ready.
+        let panorama = (!shell.renderer.panorama_loaded()).then(|| {
+            let (tx, rx) = mpsc::channel();
+            std::thread::spawn(move || {
+                let started = Instant::now();
+                let faces = panorama::decode();
+                if let Ok(f) = &faces {
+                    log::info!("decoded the title panorama ({} x {}) in {:?}", f.size, f.size, started.elapsed());
+                }
+                let _ = tx.send(faces);
+            });
+            rx
+        });
         Self {
             shell,
             saves_dir: saves_dir.to_path_buf(),
@@ -190,6 +290,32 @@ impl Title {
             menus,
             modifiers: ModifiersState::empty(),
             clipboard: SystemClipboard,
+            panorama,
+            last_frame: Instant::now(),
+            icons: RefCell::default(),
+        }
+    }
+
+    /// Uploads the panorama once its faces are decoded.
+    fn poll_panorama(&mut self) {
+        let Some(rx) = &self.panorama else { return };
+        match rx.try_recv() {
+            Ok(Ok(faces)) => {
+                let started = Instant::now();
+                self.shell.renderer.set_panorama(&faces);
+                log::info!(
+                    "uploaded the title panorama: {} GPU bytes in {:?}",
+                    self.shell.renderer.panorama_bytes(),
+                    started.elapsed()
+                );
+                self.panorama = None;
+            }
+            Ok(Err(e)) => {
+                log::error!("the title panorama couldn't be loaded, showing the sky instead: {e}");
+                self.panorama = None;
+            }
+            Err(mpsc::TryRecvError::Empty) => {}
+            Err(mpsc::TryRecvError::Disconnected) => self.panorama = None,
         }
     }
 
@@ -430,6 +556,10 @@ impl Title {
 
     fn screenshot_done(&mut self) -> bool {
         let Some(path) = &self.screenshot else { return false };
+        // A capture shows the panorama, so it waits for the faces.
+        if self.panorama.is_some() {
+            return false;
+        }
         self.frames += 1;
         match self.frames {
             3 => self.shell.renderer.request_capture(path.clone()),
@@ -439,8 +569,35 @@ impl Title {
         false
     }
 
-    /// Draws a slowly turning sky behind the menus.
+    /// Java blurs the panorama by Menu Background Blur under every screen
+    /// that blurs but the title menu itself (`TitleScreen` draws it sharp).
+    fn blur(&self) -> u32 {
+        if self.menus.depth() > 1 && self.menus.blurs() { self.shell.settings.menu_blur } else { 0 }
+    }
+
+    /// Draws the panorama (or, until it loads, a slowly turning sky) behind
+    /// the menus.
     fn frame(&mut self) {
+        let now = Instant::now();
+        let seconds = (now - self.last_frame).as_secs_f32().min(1.0);
+        self.last_frame = now;
+        self.poll_panorama();
+        self.icons.get_mut().budget = ICON_LOADS_PER_FRAME;
+        let ui = self.build_ui();
+        for (rect, pixels) in std::mem::take(&mut self.icons.get_mut().uploads) {
+            self.shell.renderer.upload_ui_image(rect, &pixels);
+        }
+        if self.shell.renderer.panorama_loaded() {
+            let mut spin = f32::from_bits(SPIN.load(Ordering::Relaxed));
+            // Captures hold the panorama still, so two builds compare.
+            if self.screenshot.is_none() {
+                spin = voxelcraft::title::panorama::advance(spin, seconds, self.shell.settings.panorama_speed);
+                SPIN.store(spin.to_bits(), Ordering::Relaxed);
+            }
+            let blur = self.blur();
+            self.shell.renderer.render_title(panorama::View { spin, blur }, &ui);
+            return;
+        }
         let t = self.started.elapsed().as_secs_f32();
         let sky = super::sky_state(0.12);
         let yaw = t * 0.02;
@@ -454,6 +611,20 @@ impl Title {
             fog_color: sky.horizon,
             fog_start: 200.0,
             fog_end: 400.0,
+            fog_render: [400.0, 400.0],
+            sky_end: 400.0,
+            cloud_end: 400.0,
+            sunrise: [0.0; 4],
+            sky_light_color: [1.0; 3],
+            // The title keeps a cloud layer over its sky (v0.18 Track 8's
+            // clouds, white like Java's daytime clouds).
+            clouds: Some(crate::render::clouds::CloudParams {
+                mode: self.shell.settings.clouds,
+                range: self.shell.settings.cloud_range,
+                ticks: f64::from(t) * 20.0,
+                height: voxelcraft::atmosphere::CLOUD_HEIGHT,
+            }),
+            cloud_color: [1.0, 1.0, 1.0, 0.8],
             daylight: sky.daylight,
             zenith_color: sky.zenith,
             dimension: crate::world::terrain::Dimension::Overworld,
@@ -465,9 +636,13 @@ impl Title {
             cracks: Vec::new(),
             block_models: Vec::new(),
             signs: Vec::new(),
-            ui: self.build_ui(),
+            ui,
             rain: 0.0,
             night_vision: 0.0,
+            // v0.18 Track 2: Java blurs what is behind the title screens
+            // (`Screen.extractBlurredBackground`) by Menu Background Blur.
+            blur: self.blur(),
+            ui_under_blur: 0,
         };
         self.shell.renderer.render(&params);
     }

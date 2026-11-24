@@ -17,6 +17,13 @@ const CENTER_HEAD: &[Cuboid] = &[
     cube([-4.5, 1., 8.2], [-3.5, 2., 8.6], GLINT, 0),
     cube([3.5, 1., 8.2], [4.5, 2., 8.6], GLINT, 0),
     cube([-5., -6., 8.], [5., -4., 8.4], SOCKET, 0),
+    // v0.18 Track 6 round 4: teeth, a nose hole and cracks.
+    cube([-4., -5., 8.4], [-3., -4., 8.5], BONE_LIGHT, 0),
+    cube([-1.5, -5., 8.4], [-0.5, -4., 8.5], BONE_LIGHT, 0),
+    cube([0.5, -5., 8.4], [1.5, -4., 8.5], BONE_LIGHT, 0),
+    cube([3., -5., 8.4], [4., -4., 8.5], BONE_LIGHT, 0),
+    cube([-1., -2.5, 8.], [1., -0.5, 8.4], SOCKET, 0),
+    cube([5., 4., 8.], [5.6, 7.5, 8.2], SOCKET, 0),
 ];
 /// A side head (12 pixels).
 const SIDE_HEAD: &[Cuboid] = &[
@@ -24,6 +31,11 @@ const SIDE_HEAD: &[Cuboid] = &[
     cube([-4.5, 0., 6.], [-1.5, 2.5, 6.4], SOCKET, 0),
     cube([1.5, 0., 6.], [4.5, 2.5, 6.4], SOCKET, 0),
     cube([-3.5, -4.5, 6.], [3.5, -3., 6.4], SOCKET, 0),
+    // v0.18 Track 6 round 4: glints and teeth.
+    cube([-3.4, 0.8, 6.2], [-2.6, 1.6, 6.6], GLINT, 0),
+    cube([2.6, 0.8, 6.2], [3.4, 1.6, 6.6], GLINT, 0),
+    cube([-2.5, -4., 6.4], [-1.7, -3., 6.5], BONE_LIGHT, 0),
+    cube([1.7, -4., 6.4], [2.5, -3., 6.5], BONE_LIGHT, 0),
 ];
 const SHOULDERS: &[Cuboid] = &[cube([-20., 34., -1.], [20., 40., 5.], BONE_LIGHT, 22)];
 /// The spine hangs from the shoulders (pivot at its top) with three ribs.
@@ -117,10 +129,22 @@ pub fn build_beacon_beams(world: &crate::world::World, camera: DVec3, time: f32,
             let height = if last { (top - pos.y as f32 - y).max(s.height as f32) } else { s.height as f32 };
             // Model pixels: 16 to a block.
             let (lo, hi) = (y * 16.0, (y + height) * 16.0);
-            let inner =
-                Cuboid { min: [-3.2, lo, -3.2], max: [3.2, hi, 3.2], color: s.color, noise: 10, translucent: true };
-            let glow =
-                Cuboid { min: [-4.0, lo, -4.0], max: [4.0, hi, 4.0], color: s.color, noise: 0, translucent: true };
+            let inner = Cuboid {
+                min: [-3.2, lo, -3.2],
+                max: [3.2, hi, 3.2],
+                color: s.color,
+                noise: 10,
+                translucent: true,
+                pattern: 0,
+            };
+            let glow = Cuboid {
+                min: [-4.0, lo, -4.0],
+                max: [4.0, hi, 4.0],
+                color: s.color,
+                noise: 0,
+                translucent: true,
+                pattern: 0,
+            };
             for (j, c) in [inner, glow].iter().enumerate() {
                 push_cuboid(
                     out,

@@ -217,6 +217,8 @@ pub enum Sprite {
     Egg,
     /// v0.15 Track D: a blue or brown egg, by shell colour.
     TintedEgg([u8; 3]),
+    /// v0.18 Track 4: a spawn egg, by base and spot colour.
+    SpawnEgg([u8; 3], [u8; 3]),
     /// v0.15 Track D: a spectral arrow, with a glowing gold head.
     SpectralArrow,
     /// v0.15 Track D: an armor trim smithing template, by `TrimPattern` index.
@@ -1183,6 +1185,10 @@ impl Item {
         if let Some(info) = crate::content::harness::item_info(self) {
             return info;
         }
+        // v0.18 Track 4: the spawn eggs.
+        if let Some(info) = crate::content::spawn_egg::item_info(self) {
+            return info;
+        }
         // v0.16 Track B: elytra, firework rockets and firework stars.
         if let Some(info) =
             crate::content::elytra::item_info(self).or_else(|| crate::content::fireworks::item_info(self))
@@ -1872,6 +1878,11 @@ impl Item {
             .chain([Self::FURNACE_MINECART])
             // v0.16 Track G: the End crystal, which draws its own layer.
             .chain([crate::entity::crystal::END_CRYSTAL])
+            // v0.18 Track 4: the spawn eggs, appended so every older item
+            // keeps its place in `creative_palette` (LAN slot codes); their
+            // icons follow the furnace minecart's (`sprite_for_layer` skips
+            // the End crystal, which draws its own layer).
+            .chain(crate::content::spawn_egg::all())
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1963,6 +1974,16 @@ fn sprite_index(item: Item) -> Option<u16> {
         i if i == Item::FURNACE_MINECART.0 => {
             Some(track_d_icon_base() + TRACK_D_ICONS as u16 + TRACK_B16_ICONS as u16 + 1 + GEN5_ICONS as u16)
         }
+        // v0.18 Track 4: the spawn eggs follow the furnace minecart.
+        i if (crate::content::spawn_egg::ITEM_FIRST..crate::content::spawn_egg::ITEM_END).contains(&i) => Some(
+            track_d_icon_base()
+                + TRACK_D_ICONS as u16
+                + TRACK_B16_ICONS as u16
+                + 1
+                + GEN5_ICONS as u16
+                + 1
+                + (i - crate::content::spawn_egg::ITEM_FIRST),
+        ),
         // v0.17 build-5000 ITEM-08: the bundles follow the experience bottle.
         i if (crate::content::bundle::ITEM_FIRST..crate::content::bundle::ITEM_END).contains(&i) => Some(
             late_icon_base()
@@ -2109,6 +2130,7 @@ pub const fn icon_count() -> u32 {
         + 1 // v0.16 Track C: the Nether star.
         + GEN5_ICONS
         + 1 // v0.17 Track D1: the furnace minecart.
+        + (crate::content::spawn_egg::ITEM_END - crate::content::spawn_egg::ITEM_FIRST) as u32 // v0.18 Track 4.
 }
 
 /// v0.16 Track B's items, in icon order (after v0.15 Track D's).
@@ -2341,7 +2363,12 @@ pub fn effect_icon_layer(effect: crate::simulation::effects::Effect) -> u16 {
 pub fn sprite_for_layer(index: u16) -> Option<Sprite> {
     Item::all_items()
         // v0.16 Track A's chorus items draw block texture layers.
-        .filter(|i| !i.is_map() && *i != Item::SUSPICIOUS_STEW && !crate::content::chorus::is_item(*i))
+        .filter(|i| {
+            !i.is_map()
+                && *i != Item::SUSPICIOUS_STEW
+                && !crate::content::chorus::is_item(*i)
+                && *i != crate::entity::crystal::END_CRYSTAL
+        })
         .nth(index as usize)
         .map(|i| i.info().sprite)
 }

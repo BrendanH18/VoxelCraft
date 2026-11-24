@@ -1,7 +1,11 @@
 //! Accessibility Settings: Java 26.3's screen with the options VoxelCraft
-//! has, in Java's order. Narrator, subtitles (v0.20), chat, text background,
-//! menu blur, glint, lightning flash, panorama, splash and minecart options
-//! are left out until VoxelCraft has what they change.
+//! has, in Java's order. Narrator, high contrast, chat, notification time,
+//! darkness, glint, splash and minecart options are left out until
+//! VoxelCraft has what they change; Monochrome Logo changes a loading screen
+//! VoxelCraft doesn't have. v0.18 Track 9 adds Closed Captions and the text
+//! background pair the captions use, Track 2 Menu Background Blur, Track 8
+//! Hide Sky Flashes and Track 7 Panorama Scroll Speed with the title
+//! panorama.
 
 use super::{Controls, OptionsHost, change, close, percent_label};
 use crate::app::gui::{OptionList, Rect, Screen, Size, Step, Widget, on_off};
@@ -9,10 +13,16 @@ use crate::app::gui::{OptionList, Rect, Screen, Size, Step, Widget, on_off};
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(in crate::app) enum Id {
     Controls,
+    Subtitles,
+    MenuBlur,
+    TextBackgroundOpacity,
+    TextBackground,
     ViewBobbing,
     Distortion,
     FovEffects,
     DamageTilt,
+    HideSkyFlashes,
+    PanoramaSpeed,
     Done,
 }
 
@@ -36,6 +46,22 @@ impl<H: OptionsHost> Screen<H> for Accessibility {
         // Java's first row is Narrator and a link to Controls.
         list.pair(Widget::button(Id::Controls, z, "Controls..."), None);
         list.pairs(vec![
+            Widget::button(Id::Subtitles, z, format!("Closed Captions: {}", on_off(s.show_subtitles)))
+                .tooltip("Enables captions for sounds played in the game."),
+            super::menu_blur_slider(Id::MenuBlur, s.menu_blur),
+            // `Options.percentValueLabel`: no OFF at zero.
+            Widget::slider(
+                Id::TextBackgroundOpacity,
+                z,
+                format!("Text Background Opacity: {}%", (s.text_background_opacity * 100.0).round() as i32),
+                s.text_background_opacity,
+                100,
+            ),
+            Widget::button(
+                Id::TextBackground,
+                z,
+                format!("Text Background: {}", if s.background_for_chat_only { "Chat" } else { "Everywhere" }),
+            ),
             Widget::button(Id::ViewBobbing, z, format!("View Bobbing: {}", on_off(s.view_bobbing))),
             Widget::slider(Id::Distortion, z, percent_label("Distortion Effects", s.distortion), s.distortion, 100)
                 .tooltip(
@@ -46,6 +72,28 @@ impl<H: OptionsHost> Screen<H> for Accessibility {
                 .tooltip("Controls how much the field of view can change with gameplay effects."),
             Widget::slider(Id::DamageTilt, z, percent_label("Damage Tilt", s.damage_tilt), s.damage_tilt, 100)
                 .tooltip("The amount of camera shake caused by being hurt."),
+            // Java's `options.hideLightningFlashes`, after Darkness Pulsing
+            // (not in VoxelCraft yet) and Damage Tilt.
+            Widget::button(
+                Id::HideSkyFlashes,
+                z,
+                format!("Hide Sky Flashes: {}", on_off(s.hide_lightning_flashes)),
+            )
+            .tooltip(
+                "Prevents Lightning Bolts or other environmental effects from making the sky flash. The sources of flashes themselves will still be visible.",
+            ),
+            // `Options.percentValueLabel`, like the text background's.
+            Widget::slider(
+                Id::PanoramaSpeed,
+                z,
+                format!(
+                    "{}: {}%",
+                    voxelcraft::title::options::PANORAMA_SPEED_LABEL,
+                    (s.panorama_speed * 100.0).round() as i32
+                ),
+                s.panorama_speed as f32,
+                100,
+            ),
         ]);
         list.done(Widget::button(Id::Done, z, "Done"), size)
     }
@@ -54,6 +102,9 @@ impl<H: OptionsHost> Screen<H> for Accessibility {
         match id {
             Id::Controls => return Step::push(Controls),
             Id::ViewBobbing => change(host, |s| s.view_bobbing = !s.view_bobbing),
+            Id::Subtitles => change(host, |s| s.show_subtitles = !s.show_subtitles),
+            Id::TextBackground => change(host, |s| s.background_for_chat_only = !s.background_for_chat_only),
+            Id::HideSkyFlashes => change(host, |s| s.hide_lightning_flashes = !s.hide_lightning_flashes),
             Id::Done => return close(host),
             _ => {}
         }
@@ -66,6 +117,9 @@ impl<H: OptionsHost> Screen<H> for Accessibility {
             Id::Distortion => change(host, |s| s.distortion = t),
             Id::FovEffects => change(host, |s| s.fov_effects = t * t),
             Id::DamageTilt => change(host, |s| s.damage_tilt = t),
+            Id::TextBackgroundOpacity => change(host, |s| s.text_background_opacity = t),
+            Id::MenuBlur => change(host, |s| s.menu_blur = super::menu_blur_at(t)),
+            Id::PanoramaSpeed => change(host, |s| s.panorama_speed = f64::from(t)),
             _ => {}
         }
     }

@@ -47,6 +47,12 @@ pub struct Args {
     pub enhanced_graphics: Option<bool>,
     pub new_world: bool,
     pub bench: bool,
+    /// `--bench-tick SCENE`: the headless tick and streaming benchmark
+    /// (`voxelcraft::tick_bench`), its JSON report on stdout.
+    pub bench_tick: Option<String>,
+    /// `--bench-seconds S` and `--bench-warmup S` for `--bench-tick`.
+    pub bench_seconds: f64,
+    pub bench_warmup: f64,
     pub screenshot: Option<String>,
     /// Session-only perspective for screenshot inspection.
     pub camera: voxelcraft::camera::CameraMode,
@@ -79,6 +85,18 @@ pub struct Args {
     pub time: Option<f64>,
     /// `--weather`: start raining (true) or clear (false).
     pub weather: Option<bool>,
+    /// `--weather thunder`: start a thunderstorm (with `weather` raining).
+    pub thunder: bool,
+    /// `--gui-scale`: the GUI Scale of a scripted run (0 is Auto).
+    pub gui_scale: Option<u32>,
+    /// `--open-recipe-book`: start with the recipe book open (screenshots).
+    pub open_recipe_book: bool,
+    /// `--creative-tab`: open the creative inventory on this Java tab id (screenshots).
+    pub creative_tab: Option<&'static str>,
+    /// `--hardcore`: a new world is a Hardcore world.
+    pub hardcore: bool,
+    /// `--gamerule name=value`: rules set on the world once loaded (repeatable).
+    pub gamerules: Vec<(String, String)>,
     /// `--dimension`: start in the Overworld, Nether or End.
     pub dimension: Option<world::terrain::Dimension>,
     /// Blocks to set once the world has loaded (debugging/screenshots).
@@ -103,6 +121,14 @@ pub struct Args {
     pub wait: f64,
     /// `--animation-time`: hold the animation clock here, so captures can be compared.
     pub animation_time: Option<f32>,
+    /// `--still-mobs`: landed mobs hold still facing the camera, for comparable captures.
+    pub still_mobs: bool,
+    /// v0.18 Track 7: `--panorama DIR`, with `--screenshot`: render the six
+    /// title panorama faces from the pose into DIR before the screenshot.
+    pub panorama: Option<std::path::PathBuf>,
+    /// v0.18 Track 7: `--world-icon`: take the world's icon in a scripted
+    /// run too (by the usual rule), waiting for it before `--screenshot` exits.
+    pub world_icon: bool,
     /// x,y,z,yaw_deg,pitch_deg
     pub pose: Option<[f64; 5]>,
     /// Starting health / air overrides (debugging/screenshots).
@@ -169,6 +195,16 @@ voxelcraft [options]
   --inventory-search <text>  initial inventory search query
   --open-trading    open a targeted villager once it claims a job (screenshots)
   --open-inventory  start with the inventory screen open (screenshots)
+  --open-recipe-book  start with the recipe book open, in the inventory or
+                    beside --open-block's crafting table (screenshots)
+  --creative-tab <id>  open the creative inventory on this Java tab
+                    (building_blocks ... search ... inventory; screenshots)
+  --gui-scale <auto|n>  GUI Scale for a scripted run, which ignores saved
+                    options (n is capped at what fits the window)
+  --hardcore        a new world is a Hardcore world (with --health 0, the
+                    Hardcore death)
+  --gamerule r=v    set a game rule once the world loads (repeatable; e.g.
+                    advance_time=false holds --time for captures)
   --pad-player <s>  seat a controller player holding a copy of your
                     inventory, with play, pause, inventory, crafting or
                     palette (creative) open
@@ -178,8 +214,9 @@ voxelcraft [options]
                     select, create, edit, recreate, backup, multiplayer or direct on the
                     title screens (edit, recreate and backup use --world's save, else
                     the last played)
-  --open-block x,y,z  open the furnace, chest, brewing stand, enchanting
-                    table, anvil or smithing table once loaded (screenshots)
+  --open-block x,y,z  open the crafting table, furnace, chest, brewing stand,
+                    enchanting table, anvil, smithing table or another
+                    workstation once loaded (screenshots)
   --place x,y,z,b   set a block once loaded (repeatable; y may be ~ for the
                     terrain surface, e.g. 0,~,0,water; b may be a raw block id)
   --sign x,y,z,text write a sign's front text once placed, lines split by |
@@ -220,8 +257,14 @@ voxelcraft [options]
                     an allay an item to hold
   --wait <secs>     with --screenshot: keep simulating this long first
   --animation-time <secs>  hold the animation clock (idle animations, clouds, water) at this time, for comparable captures
+  --still-mobs      landed mobs stop moving and face the starting camera, for comparable captures
+  --panorama <dir>  with --screenshot and a square --size: render the title
+                    panorama's six faces (panorama_0..5.png) from the --pose
+                    position into dir first
+  --world-icon      take the world's icon.png even in a scripted run
   --time <0..1>     starting time of day (0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight)
-  --weather <w>     start with clear skies or rain (clear, rain)
+  --weather <w>     start with clear skies, rain or a thunderstorm (clear,
+                    rain, thunder)
   --dimension <d>   start in overworld, nether or end (arriving through a
                     portal unless --pose is given)
   --screenshot <f>  wait for the world to load, save a PNG and exit
@@ -242,6 +285,16 @@ voxelcraft [options]
   --validate-assets validate embedded original resources and exit\n  --export-music    render original seeded music to target/music/*.wav with stats, and exit";
 
 fn parse_args() -> Result<Args, String> {
+    parse_args_from(std::env::args().skip(1))
+}
+
+/// A benchmark length in seconds: finite and not negative, so the run ends.
+fn finite_seconds(text: &str) -> Option<f64> {
+    text.parse::<f64>().ok().filter(|s| s.is_finite() && *s >= 0.0)
+}
+
+/// Parses command-line arguments (without the program name).
+pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Result<Args, String> {
     let mut args = Args {
         seed: None,
         host_lan: None,
@@ -265,6 +318,9 @@ fn parse_args() -> Result<Args, String> {
         enhanced_graphics: None,
         new_world: false,
         bench: false,
+        bench_tick: None,
+        bench_seconds: 60.0,
+        bench_warmup: 10.0,
         screenshot: None,
         camera: Default::default(),
         ride: None,
@@ -287,6 +343,12 @@ fn parse_args() -> Result<Args, String> {
         open_menu: None,
         time: None,
         weather: None,
+        thunder: false,
+        gui_scale: None,
+        open_recipe_book: false,
+        creative_tab: None,
+        hardcore: false,
+        gamerules: Vec::new(),
         dimension: None,
         place: Vec::new(),
         signs: Vec::new(),
@@ -298,6 +360,9 @@ fn parse_args() -> Result<Args, String> {
         spawn_held: Vec::new(),
         wait: 0.0,
         animation_time: None,
+        still_mobs: false,
+        panorama: None,
+        world_icon: false,
         pose: None,
         health: None,
         air: None,
@@ -316,7 +381,7 @@ fn parse_args() -> Result<Args, String> {
         export_sounds: false,
         export_music: false,
     };
-    let mut it = std::env::args().skip(1);
+    let mut it = arguments.into_iter();
     while let Some(a) = it.next() {
         let mut value = |name: &str| it.next().ok_or(format!("{name} needs a value"));
         match a.as_str() {
@@ -369,6 +434,13 @@ fn parse_args() -> Result<Args, String> {
             }
             "--new" => args.new_world = true,
             "--bench" => args.bench = true,
+            "--bench-tick" => args.bench_tick = Some(value("--bench-tick")?),
+            "--bench-seconds" => {
+                args.bench_seconds = finite_seconds(&value("--bench-seconds")?).ok_or("bad --bench-seconds")?
+            }
+            "--bench-warmup" => {
+                args.bench_warmup = finite_seconds(&value("--bench-warmup")?).ok_or("bad --bench-warmup")?
+            }
             "--bench-render" => args.bench_render = true,
             "--benchmark-scene" => {
                 args.benchmark_scene = Some(voxelcraft::performance::parse_scene(&value("--benchmark-scene")?)?);
@@ -595,17 +667,23 @@ fn parse_args() -> Result<Args, String> {
                 args.spawn.push((kind, glam::IVec3::new(n[0], n[1], n[2]), armor));
             }
             "--wait" => args.wait = value("--wait")?.parse().map_err(|_| "bad --wait")?,
+            "--still-mobs" => args.still_mobs = true,
             "--animation-time" => {
                 args.animation_time = Some(value("--animation-time")?.parse().map_err(|_| "bad --animation-time")?);
             }
             "--time" => args.time = Some(value("--time")?.parse::<f64>().map_err(|_| "bad --time")?.rem_euclid(1.0)),
             "--weather" => {
-                args.weather = Some(match value("--weather")?.as_str() {
-                    "rain" => true,
-                    "clear" => false,
-                    _ => return Err("--weather needs clear or rain".into()),
-                })
+                let weather = voxelcraft::capture::parse_weather(&value("--weather")?)?;
+                args.weather = Some(weather != voxelcraft::capture::Weather::Clear);
+                args.thunder = weather == voxelcraft::capture::Weather::Thunder;
             }
+            "--gui-scale" => args.gui_scale = Some(voxelcraft::capture::parse_gui_scale(&value("--gui-scale")?)?),
+            "--open-recipe-book" => args.open_recipe_book = true,
+            "--creative-tab" => {
+                args.creative_tab = Some(voxelcraft::capture::parse_creative_tab(&value("--creative-tab")?)?);
+            }
+            "--hardcore" => args.hardcore = true,
+            "--gamerule" => args.gamerules.push(voxelcraft::capture::parse_gamerule(&value("--gamerule")?)?),
             "--dimension" => {
                 let v = value("--dimension")?;
                 let dim = world::terrain::Dimension::from_name(&v);
@@ -657,6 +735,8 @@ fn parse_args() -> Result<Args, String> {
                 }
             }
             "--screenshot" => args.screenshot = Some(value("--screenshot")?),
+            "--panorama" => args.panorama = Some(value("--panorama")?.into()),
+            "--world-icon" => args.world_icon = true,
             "--pose" => {
                 let v: Vec<f64> = value("--pose")?.split(',').filter_map(|s| s.trim().parse().ok()).collect();
                 args.pose = Some(v.try_into().map_err(|_| "--pose needs x,y,z,yaw,pitch")?);
@@ -674,6 +754,28 @@ fn parse_args() -> Result<Args, String> {
     }
     if let Some(world) = &args.world {
         data::validate_world_name(world)?;
+    }
+    // A creative tab is a creative inventory screen; the recipe book opens
+    // in the inventory unless a block's screen (a crafting table) is asked for.
+    if args.creative_tab.is_some() {
+        if args.mode.is_some_and(|mode| mode != app::GameMode::Creative) {
+            return Err("--creative-tab needs creative mode".into());
+        }
+        args.mode = Some(app::GameMode::Creative);
+        args.open_inventory = true;
+    }
+    // A normal run's GUI Scale is the saved option, and an override would be
+    // written back when the options are next saved: the flag is for scripted
+    // runs, which read and save no options file.
+    if args.gui_scale.is_some() && args.screenshot.is_none() && !args.bench_render && args.benchmark_scene.is_none() {
+        return Err("--gui-scale is for scripted runs (--screenshot, --bench-render, --benchmark)".into());
+    }
+    if args.open_recipe_book && args.open_block.is_none() {
+        args.open_inventory = true;
+    }
+    // The Nether benchmark scene starts there, arriving through a portal.
+    if args.benchmark_scene.as_deref() == Some("nether") {
+        args.dimension = Some(world::terrain::Dimension::Nether);
     }
     Ok(args)
 }
@@ -695,6 +797,11 @@ impl Args {
         self.open_menu = None;
         self.time = None;
         self.weather = None;
+        self.thunder = false;
+        self.open_recipe_book = false;
+        self.creative_tab = None;
+        self.hardcore = false;
+        self.gamerules.clear();
         self.dimension = None;
         self.place.clear();
         self.carts.clear();
@@ -704,6 +811,7 @@ impl Args {
         self.open_block = None;
         self.spawn.clear();
         self.spawn_held.clear();
+        self.still_mobs = false;
         self.pose = None;
         self.health = None;
         self.air = None;
@@ -801,6 +909,24 @@ fn main() {
         if let Err(e) = audio::export_sounds("target/sounds") {
             eprintln!("export failed: {e}");
             std::process::exit(1);
+        }
+        return;
+    }
+    if let Some(scene) = args.bench_tick.clone() {
+        let options = voxelcraft::tick_bench::Options {
+            scene,
+            seed: args.seed.unwrap_or(12345),
+            render_distance: args.render_distance.unwrap_or(8),
+            warmup: args.bench_warmup,
+            seconds: args.bench_seconds,
+            ..Default::default()
+        };
+        match voxelcraft::tick_bench::run(&options) {
+            Ok(report) => println!("{report}"),
+            Err(e) => {
+                eprintln!("tick benchmark: {e}");
+                std::process::exit(1);
+            }
         }
         return;
     }

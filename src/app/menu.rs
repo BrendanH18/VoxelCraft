@@ -23,10 +23,6 @@ impl gui::Host for Game {
     fn click(&mut self) {
         self.audio.ui_click();
     }
-
-    fn in_world(&self) -> bool {
-        true
-    }
 }
 
 impl OptionsHost for Game {
@@ -304,6 +300,9 @@ impl Game {
 
     /// Controller navigation from a controller that hasn't joined as a player.
     pub(super) fn menu_nav(&mut self, nav: Nav) -> Option<MenuAction> {
+        if !self.menu.is_open() && self.death.is_open() {
+            return self.death_nav(nav);
+        }
         self.with_menu(|stack, game, size| stack.nav(game, nav, size))
     }
 
@@ -323,7 +322,9 @@ impl Game {
             self.renderer.set_vsync(s.vsync);
         }
         self.renderer.set_brightness(s.brightness);
+        self.renderer.set_mipmap_levels(s.mipmap_levels);
         self.audio.set_volumes(|source| s.sound_volume(source));
+        self.audio.set_subtitles(s.show_subtitles);
     }
 
     /// Writes `options.txt`, logging and returning what went wrong.

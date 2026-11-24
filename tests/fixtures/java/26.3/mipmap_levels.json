@@ -1,0 +1,33 @@
+{
+ "source": "Java 26.3 client: Options, VideoSettingsScreen and en_us.json",
+ "client_sha1": "e877b6a07acd633fb3bb475002175cec036e7b87",
+ "mipmapLevels": {
+  "label": "Mipmap Levels",
+  "zero_format": "%s: OFF",
+  "value_format": "%s: %s",
+  "key": "mipmapLevels",
+  "min": 0,
+  "max": 4,
+  "default": 4,
+  "marks_graphics_preset_custom": true
+ },
+ "quality_options": [
+  "biomeBlendRadius",
+  "renderDistance",
+  "prioritizeChunkUpdates",
+  "simulationDistance",
+  "ambientOcclusion",
+  "cloudStatus",
+  "particles",
+  "mipmapLevels",
+  "entityShadows",
+  "entityDistanceScaling",
+  "menuBackgroundBlurriness",
+  "cloudRange",
+  "cutoutLeaves",
+  "improvedTransparency",
+  "textureFiltering",
+  "maxAnisotropyBit",
+  "weatherRadius"
+ ]
+}

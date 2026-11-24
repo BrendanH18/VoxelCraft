@@ -17,6 +17,7 @@ pub mod mining;
 pub mod placement;
 pub mod raid;
 pub mod ranged;
+mod recipes;
 mod recovery;
 pub mod storage;
 mod weapons;
@@ -82,6 +83,13 @@ pub struct PlayerSession {
     /// v0.15 Track E: where Bad Omen became Raid Omen (Java's saved
     /// `raid_omen_position`); the raid starts there when the omen ends.
     pub raid_omen_pos: Option<IVec3>,
+    /// v0.18 Track 5: known and highlighted recipes and the book's
+    /// settings (Java's saved `recipeBook`).
+    pub recipe_book: crate::crafting::book::RecipeBook,
+    /// v0.18 Track 2: the anvil's name box (`AnvilMenu.itemName`) and the
+    /// left-hand stack it was typed for. Not saved: Java's menu forgets it
+    /// when the screen closes or the left input changes.
+    anvil_name: Option<(Stack, String)>,
 }
 
 /// Where a sleeper lay down: the bed's head block and the spot on it.
@@ -118,6 +126,36 @@ pub struct PersonalSpawn {
 }
 
 impl PlayerSession {
+    /// v0.18 Track 2: what the anvil's name box holds for the item now in
+    /// the left input, `None` while it still shows the item's own name
+    /// (`AnvilScreen.slotChanged` resets the box when that item changes).
+    pub fn anvil_name(&self) -> Option<&str> {
+        let (stack, name) = self.anvil_name.as_ref()?;
+        (self.work[0] == Some(*stack)).then_some(name.as_str())
+    }
+
+    /// Types `name` into the anvil's name box for the item in the left
+    /// input (`ServerboundRenameItemPacket`): filtered and refused past 50
+    /// characters as `AnvilMenu.validateName` does. Returns whether it took.
+    pub fn set_anvil_name(&mut self, name: &str) -> bool {
+        let Some(left) = self.work[0] else {
+            self.anvil_name = None;
+            return false;
+        };
+        match crate::enchant::valid_anvil_name(name) {
+            Some(name) => {
+                self.anvil_name = Some((left, name));
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Forgets the name box (the anvil screen closed).
+    pub fn clear_anvil_name(&mut self) {
+        self.anvil_name = None;
+    }
+
     /// `ServerExplosion.hurtEntities` for this player and a blast of `power`
     /// at `center`, with the blocks still standing: the damage before
     /// difficulty and armor, and the push in blocks per second. Spectators
@@ -198,6 +236,8 @@ impl PlayerSession {
             weapons: Default::default(),
             frost_last: None,
             raid_omen_pos: None,
+            recipe_book: Default::default(),
+            anvil_name: None,
         }
     }
 
@@ -230,6 +270,8 @@ impl PlayerSession {
             weapons: Default::default(),
             frost_last: None,
             raid_omen_pos: None,
+            recipe_book: Default::default(),
+            anvil_name: None,
         }
     }
 

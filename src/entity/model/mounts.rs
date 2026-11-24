@@ -26,8 +26,8 @@ const fn bodies() -> [[Cuboid; 3]; 9] {
     out
 }
 const BODIES: [[Cuboid; 3]; 9] = bodies();
-const fn heads() -> [[Cuboid; 5]; 9] {
-    let mut out = [[cube([0.; 3], [0.; 3], [0; 3], 0); 5]; 9];
+const fn heads() -> [[Cuboid; 7]; 9] {
+    let mut out = [[cube([0.; 3], [0.; 3], [0; 3], 0); 7]; 9];
     let mut i = 0;
     while i < 9 {
         out[i] = [
@@ -36,12 +36,15 @@ const fn heads() -> [[Cuboid; 5]; 9] {
             cube([-2., 7., 1.], [-1., 11., 3.], COLORS[i], 14),
             cube([1., 7., 1.], [2., 11., 3.], COLORS[i], 14),
             cube([-2.6, 7., 5.], [2.6, 8., 6.], [30, 26, 22], 0),
+            // v0.18 Track 6: nostrils on the muzzle.
+            cube([-1.8, 5., 9.], [-0.8, 6., 9.05], [30, 26, 22], 0),
+            cube([0.8, 5., 9.], [1.8, 6., 9.05], [30, 26, 22], 0),
         ];
         i += 1;
     }
     out
 }
-const HEADS: [[Cuboid; 5]; 9] = heads();
+const HEADS: [[Cuboid; 7]; 9] = heads();
 const fn legs() -> [[Cuboid; 2]; 9] {
     let mut out = [[cube([0.; 3], [0.; 3], [0; 3], 0); 2]; 9];
     let mut i = 0;
@@ -223,6 +226,11 @@ const CAMEL_HEAD: &[Cuboid] = &[
     cube([-3.6, 12., 6.], [3.6, 13., 7.], [40, 32, 24], 0),
     cube([-4.5, 13., 1.], [-3.5, 14., 3.], [205, 152, 80], 10),
     cube([3.5, 13., 1.], [4.5, 14., 3.], [205, 152, 80], 10),
+    // v0.18 Track 6: nostrils, a split lip and a darker shaggy brow.
+    cube([-2.2, 13., 12.], [-1., 14., 12.05], [96, 66, 36], 0),
+    cube([1., 13., 12.], [2.2, 14., 12.05], [96, 66, 36], 0),
+    cube([-0.2, 9.5, 12.], [0.2, 12., 12.05], [150, 108, 60], 0),
+    cube([-3.55, 13.2, 5.5], [3.55, 13.8, 7.6], [176, 126, 66], 0),
 ];
 const CAMEL_SADDLE: &[Cuboid] = &[
     cube([-5., 35., -7.], [5., 36.2, 5.], [132, 72, 36], 16),

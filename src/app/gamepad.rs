@@ -397,7 +397,7 @@ impl Pads {
     /// The chests controller players have open.
     pub(super) fn open_chests(&self) -> impl Iterator<Item = IVec3> + '_ {
         self.seats.iter().filter_map(|s| match s.menu {
-            Some(Menu::Items { tab: Tab::Chest(p), .. }) => Some(p),
+            Some(Menu::Items { tab: Tab::Chest(p) | Tab::EnderChest(p), .. }) => Some(p),
             _ => None,
         })
     }
@@ -439,7 +439,7 @@ impl Game {
             match (event.event, seat) {
                 (EventType::ButtonPressed(Button::Start, _), None) => joins.push(event.id),
                 // A controller that hasn't joined drives the host's open menus.
-                (EventType::ButtonPressed(button, _), None) if self.menu.is_open() => {
+                (EventType::ButtonPressed(button, _), None) if self.menu.is_open() || self.death.is_open() => {
                     host_navs.extend(super::gui::Nav::from_pad(button));
                 }
                 (EventType::ButtonPressed(button, _), Some(seat)) => match button {
@@ -615,7 +615,12 @@ impl Game {
             "pause" => seat.open(Menu::Pause { choice: 0 }),
             "inventory" => seat.open(Menu::items(Tab::Inventory)),
             "crafting" => seat.open(Menu::items(Tab::Crafting)),
-            "palette" => seat.open(Menu::items(Tab::Palette)),
+            // v0.18 Track 4: the first creative tab, Building Blocks.
+            "palette" => {
+                if let Some(&t) = super::pad_menu::creative_tabs().first() {
+                    seat.open(Menu::items(Tab::Palette(t)));
+                }
+            }
             _ => {}
         }
     }
@@ -626,7 +631,7 @@ impl Game {
         let Some(mut menu) = self.pads.seats[i].menu else { return false };
         let tab = match menu {
             Menu::Items { tab, .. } => tab,
-            Menu::Pause { .. } | Menu::Sign { .. } => Tab::Inventory,
+            Menu::Pause { .. } | Menu::Sign { .. } | Menu::Rename { .. } => Tab::Inventory,
         };
         let action = menu.press(nav, self.pad_lists(name, tab));
         if action == Action::Leave {
@@ -655,10 +660,10 @@ impl Game {
             Some(c) => {
                 let mut longer = text.clone();
                 longer.push(c);
-                let max = if hanging { 60.0 } else { 90.0 };
+                let max = if hanging { 60 } else { 90 };
                 if voxelcraft::world::wood::entities::allowed(c)
                     && longer.chars().count() <= voxelcraft::world::wood::entities::MAX_LINE_CHARS
-                    && crate::render::ui::Ui::text_width(&longer) <= max
+                    && voxelcraft::font::width(&longer) <= max
                 {
                     *text = longer;
                 }
@@ -705,6 +710,7 @@ impl Game {
     /// Empties controller player `name`'s workstation input slots.
     pub(super) fn take_pad_work(&mut self, name: &str) -> Vec<crate::inventory::Stack> {
         let Some(bot) = self.agents.players.get_mut(name) else { return Vec::new() };
+        bot.agent.session.clear_anvil_name();
         bot.agent.session.work.iter_mut().filter_map(Option::take).collect()
     }
 
@@ -755,6 +761,12 @@ impl Game {
                     Menu::Items { .. } => agent.session.vitals.is_dead(),
                     // `SignEditScreen.tick`: the editor closes once the sign goes.
                     Menu::Sign { cell, .. } => self.world.sign_at(cell).is_none() || agent.session.vitals.is_dead(),
+                    // v0.18 Track 2: the anvil's name box goes with the anvil.
+                    Menu::Rename { pos, .. } => {
+                        !self.world.get_block(pos).is_some_and(Block::is_anvil)
+                            || !agent.session.can_keep_using_block(pos)
+                            || agent.session.vitals.is_dead()
+                    }
                     Menu::Pause { .. } => false,
                 };
                 if gone {
@@ -844,15 +856,10 @@ impl Game {
             Request::Open(Used::EditSign { cell, front }) => {
                 let Some((sign, entity)) = self.world.sign_at(cell) else { return };
                 let seat = &mut self.pads.seats[i];
-                // Text an agent wrote can be wider than the sign; cut it as the
-                // keyboard editor's tick does.
-                let max = if sign.hanging() { 60.0 } else { 90.0 };
-                seat.sign_text = entity.side(front).lines.clone().map(|mut line| {
-                    while crate::render::ui::Ui::text_width(&line) > max {
-                        line.pop();
-                    }
-                    line
-                });
+                // Lines wider than the sign (written by an agent, or before
+                // the v0.18 font) stay whole; only typing is limited, as in
+                // Java's editor.
+                seat.sign_text = entity.side(front).lines.clone();
                 seat.open(Menu::Sign { cell, front, hanging: sign.hanging(), line: 0, key: (0, 0), shift: false });
             }
             Request::Open(Used::Utility {
@@ -860,7 +867,6 @@ impl Game {
                 cell,
             }) => {
                 self.pads.seats[i].open(Menu::items(Tab::EnderChest(cell)));
-                self.chest_sound(cell, 0.9);
             }
             Request::Open(_) => {}
             Request::MagicDamage(amount) => {
@@ -922,6 +928,29 @@ impl Game {
 
     /// Runs `f` on agent `name`'s open screen: their session with the given
     /// container and crafting grid. Returns its result and requests.
+    /// v0.18 Track 5: recipes a controller player's open recipe book lists
+    /// lose their highlight, as the book shows them (`RecipeButton.init`).
+    pub(super) fn pad_recipe_books_seen(&mut self) {
+        let names: Vec<String> = self
+            .pads
+            .seats
+            .iter()
+            .filter(|s| matches!(s.menu, Some(Menu::Items { tab: Tab::Crafting, .. })))
+            .map(|s| s.name.clone())
+            .collect();
+        for name in names {
+            if self.agents.players.get(&name).is_none_or(|b| b.agent.session.recipe_book.highlighted_count() == 0) {
+                continue;
+            }
+            let ids: Vec<_> = self.pad_crafts(&name).into_iter().map(|(id, ..)| id).collect();
+            if let Some(bot) = self.agents.players.get_mut(&name) {
+                for id in ids {
+                    bot.agent.session.recipe_book.mark_seen(id);
+                }
+            }
+        }
+    }
+
     pub(super) fn agent_screen<R>(
         &mut self,
         name: &str,
@@ -938,6 +967,7 @@ impl Game {
             entities: &mut self.mobs.entities,
             audio: &mut self.audio,
             requests: Vec::new(),
+            limited_crafting: self.gamerules.bool("limited_crafting"),
         };
         let result = f(&mut screen);
         let requests = std::mem::take(&mut screen.requests);
@@ -1022,7 +1052,6 @@ impl Game {
             seat.open(Menu::items(Tab::Crafting));
         } else if crate::world::chest::is_chest(block) {
             seat.open(Menu::items(Tab::Chest(pos)));
-            self.chest_sound(pos, 0.9);
         } else if crate::world::furnace::is_furnace(block) {
             seat.open(Menu::items(Tab::Furnace(pos)));
         } else if block == Block::BREWING_STAND {

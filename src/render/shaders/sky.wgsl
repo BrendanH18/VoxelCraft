@@ -1,19 +1,28 @@
-// Procedural sky (gradient, sun, moon, stars) and the cloud layer.
+// Procedural sky: Java 26.3's sky colour overhead fogged toward the fog
+// colour (`sky.fsh`), with VoxelCraft's own sun, moon, stars and glow.
+// Clouds are their own pass (clouds.wgsl).
 
 struct Globals {
     view_proj: mat4x4<f32>,
     inv_view_proj: mat4x4<f32>,
-    // Horizon colour; also the fog colour so terrain fades into the sky.
+    // Linear fog colour: the horizon, and what terrain fades into.
     fog_color: vec4<f32>,
+    // Linear sky colour overhead (Java's `visual/sky_color`).
     zenith_color: vec4<f32>,
     // xyz: direction towards the sun, w: time in seconds.
     sun: vec4<f32>,
-    // x: fog start, y: fog end, z: daylight, w: rain strength
+    // z: daylight, w: rain strength
     params: vec4<f32>,
-    // xy: camera xz wrapped to the cloud pattern period, z: cloud plane y
-    // relative to the camera, w: cloud draw radius.
     clouds: vec4<f32>,
     environment: vec4<f32>,
+    effects: vec4<f32>,
+    ambient: vec4<f32>,
+    fog: vec4<f32>,
+    // x: sky fog end.
+    fog_ends: vec4<f32>,
+    sky_light: vec4<f32>,
+    // Linear sunrise/sunset colour and strength.
+    sunrise: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> g: Globals;
@@ -26,6 +35,23 @@ fn hash2(p: vec2<f32>) -> f32 {
 
 fn hash3(p: vec3<f32>) -> f32 {
     return hash2(p.xy + hash2(p.yz + p.x * 17.0) * 91.7);
+}
+
+// The exact sRGB transfer the target encodes with, so a colour taken
+// from linear to sRGB and back is unchanged and a fully fogged pixel
+// shows Java's fog colour byte for byte.
+fn to_srgb(c: vec3<f32>) -> vec3<f32> {
+    let x = max(c, vec3<f32>(0.0));
+    return select(1.055 * pow(x, vec3<f32>(1.0 / 2.4)) - 0.055, x * 12.92, x <= vec3<f32>(0.0031308));
+}
+fn from_srgb(c: vec3<f32>) -> vec3<f32> {
+    let x = max(c, vec3<f32>(0.0));
+    return select(pow((x + 0.055) / 1.055, vec3<f32>(2.4)), x / 12.92, x <= vec3<f32>(0.04045));
+}
+
+// Mixes two linear colours as their sRGB values, as Java blends them.
+fn srgb_mix(a: vec3<f32>, b: vec3<f32>, t: f32) -> vec3<f32> {
+    return from_srgb(mix(to_srgb(a), to_srgb(b), t));
 }
 
 // ---------------------------------------------------------------- sky
@@ -53,11 +79,12 @@ fn fs_sky(in: SkyOut) -> @location(0) vec4<f32> {
     let dir = normalize(far.xyz / far.w);
     if g.environment.x > 0.5 {
         if g.environment.x > 1.5 {
-            // A static, mottled violet sky; no sun, moon, stars or clouds.
+            // A static, mottled sky in the End's fog colour (Java's
+            // #181318), as dark as Java's end sky texture under its #282828
+            // tint; no sun, moon, stars or clouds.
             let cell = floor(dir * 180.0);
             let grain = hash3(cell);
-            let haze = pow(1.0 - abs(dir.y), 3.0);
-            let color = mix(g.zenith_color.rgb, g.fog_color.rgb, haze) * (0.8 + grain * 0.4);
+            let color = g.fog_color.rgb * (0.7 + grain * 0.6);
             return vec4<f32>(color, 1.0);
         }
         return vec4<f32>(g.fog_color.rgb, 1.0);
@@ -65,15 +92,24 @@ fn fs_sky(in: SkyOut) -> @location(0) vec4<f32> {
     let sun = normalize(g.sun.xyz);
     let daylight = g.params.z;
 
-    // Horizon-to-zenith gradient; below the horizon stays horizon-coloured.
-    let up = clamp(dir.y, 0.0, 1.0);
-    var color = mix(g.fog_color.rgb, g.zenith_color.rgb, pow(up, 0.6));
+    // Java's sky is a plane 16 blocks overhead in the sky colour, fogged by
+    // its distance up to the sky fog end (`sky.fsh`): spherical distance
+    // linearly, horizontal distance as a step. Below the horizon there is
+    // only the clear colour, the fog. Blended in sRGB, as Java does.
+    var fogged = 1.0;
+    if dir.y > 0.0 {
+        let end = max(g.fog_ends.x, 1.0);
+        let spherical = 16.0 / dir.y;
+        let horizontal = spherical * sqrt(max(1.0 - dir.y * dir.y, 0.0));
+        fogged = select(clamp(spherical / end, 0.0, 1.0), 1.0, horizontal >= end);
+    }
+    var color = srgb_mix(g.zenith_color.rgb, g.fog_color.rgb, fogged);
 
-    // Warm glow around the sun near the horizon at dawn/dusk.
-    let toward_sun = max(dot(dir, sun), 0.0);
-    let low_sun = 1.0 - smoothstep(0.0, 0.45, abs(sun.y));
-    let horizon = 1.0 - smoothstep(0.0, 0.5, abs(dir.y));
-    color += vec3<f32>(1.0, 0.45, 0.15) * pow(toward_sun, 6.0) * low_sun * horizon * 0.7;
+    // Java's sunrise/sunset glow (`visual/sunrise_sunset_color`) around the
+    // sun's side of the horizon.
+    let toward_sun = max(dot(normalize(vec3<f32>(dir.x, 0.0, dir.z) + vec3<f32>(0.0, 1e-4, 0.0)), normalize(vec3<f32>(sun.x, 0.0, sun.z))), 0.0);
+    let horizon = 1.0 - smoothstep(0.0, 0.45, abs(dir.y));
+    color = srgb_mix(color, g.sunrise.rgb, g.sunrise.w * pow(toward_sun, 3.0) * horizon);
 
     // Stars rotate with the sun and fade in at night.
     let rain = g.params.w;
@@ -115,58 +151,4 @@ fn fs_sky(in: SkyOut) -> @location(0) vec4<f32> {
         }
     }
     return vec4<f32>(mix(color, clear, rain), 1.0);
-}
-
-// ------------------------------------------------------------- clouds
-
-struct CloudOut {
-    @builtin(position) clip: vec4<f32>,
-    @location(0) rel: vec3<f32>,
-};
-
-@vertex
-fn vs_clouds(@builtin(vertex_index) i: u32) -> CloudOut {
-    var corners = array<vec2<f32>, 6>(
-        vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, -1.0), vec2<f32>(1.0, 1.0),
-        vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, 1.0),
-    );
-    let xz = corners[i] * g.clouds.w;
-    let rel = vec3<f32>(xz.x, g.clouds.z, xz.y);
-    var out: CloudOut;
-    out.clip = g.view_proj * vec4<f32>(rel, 1.0);
-    out.rel = rel;
-    return out;
-}
-
-const CLOUD_CELL: f32 = 12.0;
-
-fn value_noise(p: vec2<f32>) -> f32 {
-    let i = floor(p);
-    let f = fract(p);
-    let u = f * f * (3.0 - 2.0 * f);
-    let a = hash2(i);
-    let b = hash2(i + vec2<f32>(1.0, 0.0));
-    let c = hash2(i + vec2<f32>(0.0, 1.0));
-    let d = hash2(i + vec2<f32>(1.0, 1.0));
-    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
-}
-
-@fragment
-fn fs_clouds(in: CloudOut) -> @location(0) vec4<f32> {
-    let drift = vec2<f32>(g.sun.w * 1.2, 0.0);
-    let world = in.rel.xz + g.clouds.xy + drift;
-    // Evaluate coverage once per cell for crisp blocky edges.
-    let cell = floor(world / CLOUD_CELL);
-    let n = value_noise(cell / 5.0) * 0.65 + value_noise(cell / 2.0) * 0.35;
-    // Rain clouds over most of the sky.
-    if n < 0.58 - 0.3 * g.params.w {
-        discard;
-    }
-    let dist = length(in.rel.xz);
-    let fade = 1.0 - smoothstep(g.clouds.w * 0.6, g.clouds.w, dist);
-    // Daylight bottoms out at 0.12 (moonlight); map that to near-black clouds.
-    let k = clamp((g.params.z - 0.12) / 0.88, 0.0, 1.0);
-    let lit = mix(vec3<f32>(0.012, 0.014, 0.025), vec3<f32>(1.0, 1.0, 1.0), k * k) * (1.0 - 0.5 * g.params.w);
-    let color = mix(lit, g.fog_color.rgb, smoothstep(0.0, g.clouds.w, dist) * 0.6);
-    return vec4<f32>(color, 0.8 * fade);
 }

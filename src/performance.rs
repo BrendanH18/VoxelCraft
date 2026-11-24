@@ -204,8 +204,19 @@ pub fn parse_window_mode(text: &str) -> Result<&'static str, String> {
 }
 
 /// Live benchmark scene names accepted by `--benchmark-scene`, matching `benchmarks/scenes.json`.
-pub const SCENES: [&str; 8] =
-    ["survival", "building", "entities", "automation", "materials", "streaming", "menus", "title"];
+pub const SCENES: [&str; 11] = [
+    "survival",
+    "building",
+    "entities",
+    "automation",
+    "materials",
+    "streaming",
+    "weather",
+    "underwater",
+    "nether",
+    "menus",
+    "title",
+];
 /// Scenes that cycle through menu screens. Most of them pause a single-player
 /// game, as Java's do, so their runs don't count simulation ticks.
 pub const MENU_SCENES: [&str; 2] = ["menus", "title"];
@@ -518,7 +529,7 @@ mod tests {
         for scene in SCENES {
             assert_eq!(parse_scene(scene).unwrap(), scene);
         }
-        for bad in ["", "Survival", "nether", "survival "] {
+        for bad in ["", "Survival", "the_nether", "survival "] {
             assert!(parse_scene(bad).is_err(), "{bad:?}");
         }
         assert_eq!(parse_duration("1"), Ok(1.0));

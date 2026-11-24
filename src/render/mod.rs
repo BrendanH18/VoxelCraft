@@ -11,12 +11,15 @@
 
 pub mod arena;
 pub mod block_model;
+mod blur;
 pub mod brushable;
+pub mod clouds;
 pub mod entity;
 mod gpu_timer;
 pub mod hand;
 mod item_sprites;
 mod outline;
+pub mod panorama;
 pub mod particles;
 pub mod signs;
 pub mod textures;
@@ -50,10 +53,11 @@ struct Globals {
     zenith_color: [f32; 4],
     /// xyz: direction to the sun, w: time in seconds.
     sun: [f32; 4],
-    /// x: fog start, y: fog end, z: daylight.
+    /// x, y: unused (the fog is in `fog`), z: daylight (Java's visual sky
+    /// light factor), w: rain level.
     params: [f32; 4],
-    /// xy: wrapped cloud pattern origin, z: cloud plane y relative to the
-    /// camera, w: cloud radius.
+    /// xyz: the cloud layer's offset from the camera (`CloudRenderer`'s
+    /// `-x in cell, base y, -z in cell`).
     clouds: [f32; 4],
     /// x: dimension (0 Overworld, 1 Nether, 2 End); y: enhanced graphics; zw: camera xz wrapped at 128 blocks.
     environment: [f32; 4],
@@ -61,12 +65,18 @@ struct Globals {
     effects: [f32; 4],
     /// rgb: `visual/ambient_light_color`; w: use the skyless dimension lightmap.
     ambient: [f32; 4],
+    /// Java 26.3's fog (`FogData`): environmental start and end on
+    /// spherical distance, render-distance start and end on cylindrical.
+    fog: [f32; 4],
+    /// x: sky fog end, y: cloud fog end.
+    fog_ends: [f32; 4],
+    /// rgb: sRGB `visual/sky_light_color`; w: unused.
+    sky_light: [f32; 4],
+    /// rgb: linear sunrise/sunset glow colour, w: its strength.
+    sunrise: [f32; 4],
+    /// sRGB cloud colour and alpha (Java's `visual/cloud_color`).
+    cloud_color: [f32; 4],
 }
-
-const CLOUD_HEIGHT: f64 = 192.0;
-/// Cloud pattern wraps after this many blocks (keeps shader math precise).
-const CLOUD_PERIOD: f64 = 12.0 * 5.0 * 1024.0;
-const CLOUD_SPEED: f64 = 1.2;
 
 struct ChunkMesh {
     /// Where the quads live in the arena.
@@ -105,9 +115,23 @@ pub struct FrameParams {
     pub view_effect: glam::Mat4,
     pub fov_y: f32,
     pub sky_color: [f64; 3],
+    /// Linear fog colour (Java's sRGB fog colour through [`crate::atmosphere::linear`]).
     pub fog_color: [f32; 3],
+    /// Java's environmental fog start and end (spherical distance).
     pub fog_start: f32,
     pub fog_end: f32,
+    /// Java's render-distance fog start and end (cylindrical distance).
+    pub fog_render: [f32; 2],
+    /// Fog ends for the sky and the clouds.
+    pub sky_end: f32,
+    pub cloud_end: f32,
+    /// Linear sunrise/sunset glow colour and strength.
+    pub sunrise: [f32; 4],
+    /// sRGB `visual/sky_light_color` (the lightmap works in Java's gamma space).
+    pub sky_light_color: [f32; 3],
+    /// The clouds to draw, if any, and their sRGB colour.
+    pub clouds: Option<clouds::CloudParams>,
+    pub cloud_color: [f32; 4],
     /// Skylight multiplier, 1 at noon.
     pub daylight: f32,
     pub zenith_color: [f32; 3],
@@ -129,6 +153,12 @@ pub struct FrameParams {
     pub hand: Option<hand::Hand>,
     /// HUD geometry, drawn last.
     pub ui: Vec<UiVertex>,
+    /// v0.18 Track 2: the menu background blur's radius in pixels (Menu
+    /// Background Blur; 0 draws no blur). The world and the first
+    /// `ui_under_blur` UI vertices (the HUD) are blurred; the rest (the
+    /// menu) is drawn sharp over them.
+    pub blur: u32,
+    pub ui_under_blur: usize,
     /// Rain strength 0..1: hides the sun, moon and stars and thickens the
     /// clouds.
     pub rain: f32,
@@ -200,6 +230,12 @@ fn face_runs(offsets: &[u32], mask: u8, mut f: impl FnMut(u32, u32)) {
     }
 }
 
+/// v0.18 Track 2: how many passes the menu background blur draws.
+#[cfg(test)]
+pub fn blur_passes() -> usize {
+    blur::PASSES
+}
+
 /// A window image being drawn this frame (or the offscreen target).
 pub struct Frame {
     surface: Option<wgpu::SurfaceTexture>,
@@ -246,6 +282,18 @@ impl Viewport {
     }
 }
 
+/// v0.18 Track 7: the centred square of a view, copied for a world icon and
+/// read back without stalling the frame.
+struct IconReadback {
+    buffer: wgpu::Buffer,
+    side: u32,
+    /// Bytes between rows in `buffer`.
+    row: u32,
+    bgra: bool,
+    /// 0 while mapping, 1 mapped, 2 failed.
+    state: Arc<std::sync::atomic::AtomicU8>,
+}
+
 pub struct Renderer {
     pub window: Arc<Window>,
     surface: wgpu::Surface<'static>,
@@ -256,7 +304,17 @@ pub struct Renderer {
     globals_buf: wgpu::Buffer,
     globals_bg: wgpu::BindGroup,
     blocks_bg: wgpu::BindGroup,
+    /// What `blocks_bg` binds, kept to rebuild it when Mipmap Levels changes.
+    block_textures: BlockTextures,
+    /// The Mipmap Levels option: the smallest level samplers may reach.
+    mipmap_levels: u32,
     font_bg: wgpu::BindGroup,
+    /// v0.18 Track 7: the UI image atlas (wordmark, world icons).
+    ui_images: wgpu::Texture,
+    /// v0.18 Track 7: the title panorama.
+    panorama: panorama::PanoramaPass,
+    /// v0.18 Track 7: a world icon read back from a drawn view.
+    icon: Option<IconReadback>,
     opaque_pipeline: wgpu::RenderPipeline,
     cutout_pipeline: wgpu::RenderPipeline,
     cross_pipeline: wgpu::RenderPipeline,
@@ -265,14 +323,16 @@ pub struct Renderer {
     decal_pipeline: wgpu::RenderPipeline,
     decal_buf: wgpu::Buffer,
     sky_pipeline: wgpu::RenderPipeline,
-    cloud_pipeline: wgpu::RenderPipeline,
     ui_pipeline: wgpu::RenderPipeline,
     entities: entity::EntityPass,
     /// v0.15 Track D: the Glowing outline.
     outline: outline::Outline,
+    /// v0.18 Track 2: the menu background blur.
+    blur: blur::Blur,
     particles: particles::ParticlePass,
     block_models: block_model::BlockModelPass,
     weather: weather::WeatherPass,
+    clouds: clouds::CloudPass,
     quad_indices: wgpu::Buffer,
     instances: wgpu::Buffer,
     instance_capacity: usize,
@@ -291,7 +351,17 @@ pub struct Renderer {
     backend: wgpu::Backend,
     /// (distance², chunk, camera-relative origin, faces that can face the camera).
     visible: Vec<(f32, IVec3, [f32; 3], u8)>,
+    /// The visible chunks' origins for the instance buffer, kept between
+    /// frames so drawing allocates nothing once it has grown.
+    instance_scratch: Vec<[f32; 3]>,
     capture: Option<std::path::PathBuf>,
+    /// v0.18 Track 7: the next frame's first view is copied for a world icon.
+    icon_requested: bool,
+    /// v0.18 Track 7: why the requested icon couldn't be copied, for
+    /// [`Renderer::poll_icon`] to report.
+    icon_error: Option<String>,
+    /// v0.18 Track 7: icon requests dropped by [`Renderer::clear_world`].
+    icon_cancels: u64,
     offscreen: Option<wgpu::Texture>,
     /// Render to `offscreen` instead of the window (benchmarks).
     pub force_offscreen: bool,
@@ -384,6 +454,45 @@ fn block_shader(source: &'static str, page_layers: Option<u32>) -> wgpu::ShaderS
         None => std::borrow::Cow::Borrowed(source),
     };
     wgpu::ShaderSource::Wgsl(source)
+}
+
+/// The block texture pages and item icons that `blocks_bg` binds.
+struct BlockTextures {
+    layout: wgpu::BindGroupLayout,
+    pages: Vec<wgpu::TextureView>,
+    items: wgpu::TextureView,
+}
+
+impl BlockTextures {
+    /// The bind group with a sampler that reaches mip level `levels` at
+    /// most (the Mipmap Levels option; 0 samples only the full-size level).
+    fn bind_group(&self, device: &wgpu::Device, levels: u32) -> wgpu::BindGroup {
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("blocks sampler"),
+            address_mode_u: wgpu::AddressMode::Repeat,
+            address_mode_v: wgpu::AddressMode::Repeat,
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
+            lod_max_clamp: levels as f32,
+            ..Default::default()
+        });
+        let mut entries = vec![
+            wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&self.pages[0]) },
+            wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&sampler) },
+            wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&self.items) },
+        ];
+        // Empty pages share page zero rather than allocating unused GPU storage.
+        entries.extend((1..tex::PAGES).map(|page| wgpu::BindGroupEntry {
+            binding: page as u32 + 2,
+            resource: wgpu::BindingResource::TextureView(self.pages.get(page).unwrap_or(&self.pages[0])),
+        }));
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("blocks"),
+            layout: &self.layout,
+            entries: &entries,
+        })
+    }
 }
 
 impl Renderer {
@@ -498,15 +607,6 @@ impl Renderer {
             textures::item_layers(),
             textures::generate_item_mips(),
         );
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("blocks sampler"),
-            address_mode_u: wgpu::AddressMode::Repeat,
-            address_mode_v: wgpu::AddressMode::Repeat,
-            mag_filter: wgpu::FilterMode::Nearest,
-            min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::MipmapFilterMode::Linear,
-            ..Default::default()
-        });
         let texture_entry = |binding| wgpu::BindGroupLayoutEntry {
             binding,
             visibility: wgpu::ShaderStages::FRAGMENT,
@@ -532,40 +632,43 @@ impl Renderer {
             label: Some("blocks layout"),
             entries: &layout_entries,
         });
-        let mut block_entries = vec![
-            wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&block_views[0]) },
-            wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&sampler) },
-            wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&items_view) },
-        ];
-        // Empty pages share page zero rather than allocating unused GPU storage.
-        block_entries.extend((1..tex::PAGES).map(|page| wgpu::BindGroupEntry {
-            binding: page as u32 + 2,
-            resource: wgpu::BindingResource::TextureView(block_views.get(page).unwrap_or(&block_views[0])),
-        }));
-        let blocks_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("blocks"),
-            layout: &blocks_layout,
-            entries: &block_entries,
-        });
+        let block_textures = BlockTextures { layout: blocks_layout.clone(), pages: block_views, items: items_view };
+        let mipmap_levels = textures::MIP_LEVELS - 1;
+        let blocks_bg = block_textures.bind_group(&device, mipmap_levels);
 
         let font_view = Self::create_font_texture(&device, &queue);
+        let ui_images = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("ui images"),
+            size: wgpu::Extent3d { width: ui::IMAGE_ATLAS, height: ui::IMAGE_ATLAS, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let ui_images_view = ui_images.create_view(&Default::default());
+        let plain_texture = |binding| wgpu::BindGroupLayoutEntry {
+            binding,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Texture {
+                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                view_dimension: wgpu::TextureViewDimension::D2,
+                multisampled: false,
+            },
+            count: None,
+        };
         let font_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("font layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Texture {
-                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                    view_dimension: wgpu::TextureViewDimension::D2,
-                    multisampled: false,
-                },
-                count: None,
-            }],
+            entries: &[plain_texture(0), plain_texture(1)],
         });
         let font_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("font"),
             layout: &font_layout,
-            entries: &[wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&font_view) }],
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&font_view) },
+                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&ui_images_view) },
+            ],
         });
         let ui_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("ui pipeline layout"),
@@ -768,13 +871,6 @@ impl Renderer {
         };
         // The sky only fills pixels still at the cleared far depth.
         let sky_pipeline = make_sky_pipeline("sky", "vs_sky", "fs_sky", wgpu::CompareFunction::GreaterEqual, None);
-        let cloud_pipeline = make_sky_pipeline(
-            "clouds",
-            "vs_clouds",
-            "fs_clouds",
-            wgpu::CompareFunction::Greater,
-            Some(wgpu::BlendState::ALPHA_BLENDING),
-        );
 
         let ui_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("hud"),
@@ -816,8 +912,11 @@ impl Renderer {
             particles::ParticlePass::new(&device, &queue, &globals_layout, &blocks_layout, format, paged_blocks);
         let entities = entity::EntityPass::new(&device, &queue, &globals_layout, &blocks_layout, format, paged_blocks);
         let outline = outline::Outline::new(&device, format);
+        let blur = blur::Blur::new(&device, format);
         let block_models = block_model::BlockModelPass::new(&device, &layout, format, paged_blocks);
         let weather = weather::WeatherPass::new(&device, &layout, format);
+        let clouds = clouds::CloudPass::new(&device, &layout, format);
+        let panorama = panorama::PanoramaPass::new(&device, format);
 
         // --- Shared buffers ----------------------------------------------
         let indices: Vec<u32> =
@@ -849,7 +948,12 @@ impl Renderer {
             globals_buf,
             globals_bg,
             blocks_bg,
+            block_textures,
+            mipmap_levels,
             font_bg,
+            ui_images,
+            panorama,
+            icon: None,
             opaque_pipeline,
             cutout_pipeline,
             cross_pipeline,
@@ -858,13 +962,14 @@ impl Renderer {
             decal_pipeline,
             decal_buf,
             sky_pipeline,
-            cloud_pipeline,
             ui_pipeline,
             entities,
             outline,
+            blur,
             particles,
             block_models,
             weather,
+            clouds,
             quad_indices,
             instances,
             instance_capacity,
@@ -880,7 +985,11 @@ impl Renderer {
             adapter_name: info.name.clone(),
             backend: info.backend,
             visible: Vec::new(),
+            instance_scratch: Vec::new(),
             capture: None,
+            icon_requested: false,
+            icon_error: None,
+            icon_cancels: 0,
             offscreen: None,
             offscreen_frames: [None, None],
             last_submission: None,
@@ -954,6 +1063,177 @@ impl Renderer {
     /// Blocks until the GPU has finished all submitted work.
     pub fn wait_idle(&self) {
         let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
+    }
+
+    /// v0.18 Track 7: copies the UI image atlas region `rect` from `rgba`
+    /// (rows `rect.w * 4` bytes).
+    pub fn upload_ui_image(&mut self, rect: ui::ImageRect, rgba: &[u8]) {
+        debug_assert_eq!(rgba.len(), (rect.w * rect.h * 4) as usize);
+        self.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.ui_images,
+                mip_level: 0,
+                origin: wgpu::Origin3d { x: rect.x, y: rect.y, z: 0 },
+                aspect: wgpu::TextureAspect::All,
+            },
+            rgba,
+            wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(rect.w * 4), rows_per_image: Some(rect.h) },
+            wgpu::Extent3d { width: rect.w, height: rect.h, depth_or_array_layers: 1 },
+        );
+    }
+
+    /// v0.18 Track 7: whether the title panorama's faces are on the GPU.
+    pub fn panorama_loaded(&self) -> bool {
+        self.panorama.loaded()
+    }
+
+    /// v0.18 Track 7: uploads the decoded panorama faces (kept until exit).
+    pub fn set_panorama(&mut self, faces: &panorama::Faces) {
+        self.panorama.upload(&self.device, &self.queue, faces);
+    }
+
+    /// GPU bytes the panorama's faces take.
+    pub fn panorama_bytes(&self) -> u64 {
+        self.panorama.bytes
+    }
+
+    /// v0.18 Track 7: draws a title frame, the panorama then `ui`; false if
+    /// it was skipped (window hidden) or no panorama is loaded.
+    pub fn render_title(&mut self, view: panorama::View, ui: &[UiVertex]) -> bool {
+        if !self.panorama.loaded() {
+            return false;
+        }
+        let Some(mut frame) = self.begin_frame() else { return false };
+        self.panorama.prepare(&self.queue, view, self.size());
+        let blurred = view.blur > 0;
+        if blurred {
+            self.panorama.ensure_blur_target(&self.device, self.size());
+        }
+        if ui.len() > self.ui_capacity {
+            self.ui_capacity = ui.len().next_power_of_two();
+            self.ui_buf = Self::create_ui_buffer(&self.device, self.ui_capacity);
+        }
+        if !ui.is_empty() {
+            self.queue.write_buffer(&self.ui_buf, 0, bytemuck::cast_slice(ui));
+        }
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        if let Some(target) = self.panorama.blur_view().filter(|_| blurred) {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("title blur"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: target,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            self.panorama.draw_blur(&mut pass);
+        }
+        let timed = self.gpu_timer.as_mut().and_then(|timer| timer.next_pass());
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("title"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &frame.view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.depth,
+                    depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(0.0), store: wgpu::StoreOp::Discard }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: timed.zip(self.gpu_timer.as_ref()).map(|((start, end), timer)| {
+                    wgpu::RenderPassTimestampWrites {
+                        query_set: &timer.queries,
+                        beginning_of_pass_write_index: Some(start),
+                        end_of_pass_write_index: Some(end),
+                    }
+                }),
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            if blurred {
+                self.panorama.draw_upscale(&mut pass);
+            } else {
+                self.panorama.draw(&mut pass);
+            }
+            if !ui.is_empty() {
+                pass.set_pipeline(&self.ui_pipeline);
+                pass.set_bind_group(0, &self.globals_bg, &[]);
+                pass.set_bind_group(1, &self.blocks_bg, &[]);
+                pass.set_bind_group(2, &self.font_bg, &[]);
+                pass.set_vertex_buffer(0, self.ui_buf.slice(..));
+                pass.draw(0..ui.len() as u32, 0..1);
+            }
+        }
+        self.last_submission = Some(self.queue.submit([encoder.finish()]));
+        frame.drawn = true;
+        self.stats.draw_calls = 1 + usize::from(blurred) + usize::from(!ui.is_empty());
+        self.end_frame(frame);
+        true
+    }
+
+    /// How many icon requests [`Renderer::clear_world`] has dropped: a
+    /// capture that sees this change stops waiting for its frame.
+    pub fn icon_cancels(&self) -> u64 {
+        self.icon_cancels
+    }
+
+    /// v0.18 Track 7: copies the centred square of the next frame's first
+    /// view, drawn without its HUD (as Java takes the icon before the GUI),
+    /// for [`Renderer::poll_icon`]. Ignored while one is being read back.
+    pub fn request_icon(&mut self) {
+        if self.icon.is_none() {
+            self.icon_requested = true;
+        }
+    }
+
+    /// v0.18 Track 7: the requested icon's square of pixels (RGBA, side x
+    /// side) once the GPU has finished it, `Some(Err)` if it can't be read.
+    /// Never waits for the GPU.
+    pub fn poll_icon(&mut self) -> Option<Result<(Vec<u8>, u32), String>> {
+        use std::sync::atomic::Ordering;
+        if let Some(e) = self.icon_error.take() {
+            return Some(Err(e));
+        }
+        let state = self.icon.as_ref()?.state.load(Ordering::Acquire);
+        if state == 0 {
+            let _ = self.device.poll(wgpu::PollType::Poll);
+            return None;
+        }
+        let icon = self.icon.take()?;
+        if state != 1 {
+            return Some(Err("the icon's frame couldn't be read back".into()));
+        }
+        let mapped = icon.buffer.slice(..).get_mapped_range().map_err(|e| e.to_string());
+        let out = mapped.map(|mapped| {
+            let mut pixels = Vec::with_capacity((icon.side * icon.side * 4) as usize);
+            for y in 0..icon.side {
+                let line = &mapped[(y * icon.row) as usize..(y * icon.row + icon.side * 4) as usize];
+                for px in line.as_chunks::<4>().0 {
+                    pixels.extend_from_slice(&if icon.bgra {
+                        [px[2], px[1], px[0], 255]
+                    } else {
+                        [px[0], px[1], px[2], 255]
+                    });
+                }
+            }
+            (pixels, icon.side)
+        });
+        icon.buffer.unmap();
+        Some(out)
     }
 
     pub fn capture_pending(&self) -> bool {
@@ -1085,7 +1365,8 @@ impl Renderer {
     }
 
     fn create_font_texture(device: &wgpu::Device, queue: &wgpu::Queue) -> wgpu::TextureView {
-        let size = wgpu::Extent3d { width: ui::FONT_ATLAS_W, height: ui::FONT_ATLAS_H, depth_or_array_layers: 1 };
+        let (atlas, (width, height)) = ui::font_atlas();
+        let size = wgpu::Extent3d { width, height, depth_or_array_layers: 1 };
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("font"),
             size,
@@ -1098,8 +1379,8 @@ impl Renderer {
         });
         queue.write_texture(
             texture.as_image_copy(),
-            &ui::font_atlas(),
-            wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(ui::FONT_ATLAS_W), rows_per_image: None },
+            &atlas,
+            wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(width), rows_per_image: None },
             size,
         );
         texture.create_view(&Default::default())
@@ -1123,6 +1404,17 @@ impl Renderer {
     /// `notGamma` curve (0 Moody, 0.5 Default, 1 Bright).
     pub fn set_brightness(&mut self, brightness: f32) {
         self.brightness = brightness.clamp(0.0, 1.0);
+    }
+
+    /// Java's Mipmap Levels (0 to 4): how many of the textures' smaller
+    /// levels distant surfaces may sample. Every level stays uploaded, so a
+    /// change only replaces the sampler and its bind group: no texture work.
+    pub fn set_mipmap_levels(&mut self, levels: u32) {
+        let levels = levels.min(textures::MIP_LEVELS - 1);
+        if levels != self.mipmap_levels {
+            self.mipmap_levels = levels;
+            self.blocks_bg = self.block_textures.bind_group(&self.device, levels);
+        }
     }
 
     pub fn set_vsync(&mut self, vsync: bool) {
@@ -1156,6 +1448,18 @@ impl Renderer {
         }
         self.set_entities(&Default::default());
         self.set_weather(&[]);
+        // v0.18 Track 7: an icon asked for or being read back belongs to the
+        // world (or dimension) being left; nobody must write it. Counting the
+        // cancel lets a capture still waiting for it try again.
+        if self.icon_requested || self.icon.is_some() || self.icon_error.is_some() {
+            self.icon_cancels += 1;
+        }
+        self.icon_requested = false;
+        self.icon = None;
+        self.icon_error = None;
+        // Nothing of the new world is drawn yet: an icon retry waits for a
+        // frame of it rather than the last one's chunk count.
+        self.stats.visible = 0;
     }
 
     pub fn remove_mesh(&mut self, pos: IVec3) {
@@ -1313,13 +1617,13 @@ impl Renderer {
             self.instance_capacity = self.visible.len().next_power_of_two();
             self.instances = Self::create_instance_buffer(&self.device, self.instance_capacity);
         }
-        let instance_data: Vec<[f32; 3]> = self.visible.iter().map(|v| v.2).collect();
-        if !instance_data.is_empty() {
-            self.queue.write_buffer(&self.instances, 0, bytemuck::cast_slice(&instance_data));
+        self.instance_scratch.clear();
+        self.instance_scratch.extend(self.visible.iter().map(|v| v.2));
+        if !self.instance_scratch.is_empty() {
+            self.queue.write_buffer(&self.instances, 0, bytemuck::cast_slice(&self.instance_scratch));
         }
 
-        let cloud_origin = (DVec3::new(p.camera.x + p.time as f64 * CLOUD_SPEED, 0.0, p.camera.z))
-            .rem_euclid(DVec3::splat(CLOUD_PERIOD));
+        let cloud_offset = self.clouds.prepare(&self.device, &self.queue, p.camera, p.clouds);
         let globals = Globals {
             view_proj: view_proj.to_cols_array_2d(),
             inv_view_proj: view_proj.inverse().to_cols_array_2d(),
@@ -1342,12 +1646,12 @@ impl Renderer {
                 let [r, g, b] = p.dimension.ambient_light_color();
                 [r, g, b, if p.dimension.has_sky() { 0.0 } else { 1.0 }]
             },
-            clouds: [
-                cloud_origin.x as f32,
-                cloud_origin.z as f32,
-                (CLOUD_HEIGHT - p.camera.y) as f32,
-                p.fog_end.max(64.0) * 1.6,
-            ],
+            clouds: [cloud_offset[0], cloud_offset[1], cloud_offset[2], 0.0],
+            fog: [p.fog_start, p.fog_end, p.fog_render[0], p.fog_render[1]],
+            fog_ends: [p.sky_end, p.cloud_end, 0.0, 0.0],
+            sky_light: [p.sky_light_color[0], p.sky_light_color[1], p.sky_light_color[2], 0.0],
+            sunrise: p.sunrise,
+            cloud_color: p.cloud_color,
         };
         self.queue.write_buffer(&self.globals_buf, 0, bytemuck::bytes_of(&globals));
 
@@ -1411,11 +1715,27 @@ impl Renderer {
             self.entities.draw_mask(&mut pass);
         }
         let timed = self.gpu_timer.as_mut().and_then(|timer| timer.next_pass());
+        // v0.18 Track 2: with a blurring menu open, the world and HUD go to
+        // the blur's scene target, and the menu is drawn after the blur.
+        let blurring = p.blur > 0;
+        let under = if blurring { p.ui_under_blur.min(hud.len()) } else { hud.len() };
+        // v0.18 Track 7: a world icon is taken from the first view, before its
+        // HUD; a frame blurred by a menu waits for one that isn't.
+        let icon_now = self.icon_requested && !frame.drawn && !blurring;
+        if icon_now {
+            self.icon_requested = false;
+        }
+        if blurring {
+            let size = (self.config.width, self.config.height);
+            let rect = [vp.x as f32, vp.y as f32, (vp.x + vp.width) as f32, (vp.y + vp.height) as f32];
+            self.blur.prepare(&self.device, &self.queue, size, p.blur, rect);
+        }
+        let scene = if blurring { self.blur.scene() } else { None };
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("main"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view,
+                    view: scene.unwrap_or(view),
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -1496,10 +1816,7 @@ impl Renderer {
             // Sky after terrain so early-z skips covered pixels.
             pass.set_pipeline(&self.sky_pipeline);
             pass.draw(0..3, 0..1);
-            if p.dimension.has_sky() {
-                pass.set_pipeline(&self.cloud_pipeline);
-                pass.draw(0..6, 0..1);
-            }
+            self.clouds.draw(&mut pass);
 
             if cracks > 0 {
                 pass.set_pipeline(&self.decal_pipeline);
@@ -1524,18 +1841,129 @@ impl Renderer {
                 pass.set_bind_group(0, &self.globals_bg, &[]);
             }
 
-            if !hud.is_empty() {
+            if under > 0 && !icon_now {
                 pass.set_pipeline(&self.ui_pipeline);
+                pass.set_bind_group(2, &self.font_bg, &[]);
+                pass.set_vertex_buffer(0, self.ui_buf.slice(..));
+                pass.draw(0..under as u32, 0..1);
+            }
+        }
+        if blurring {
+            self.blur.finish(&mut encoder, view, [vp.x, vp.y, vp.width, vp.height]);
+            stats.draw_calls += blur::PASSES;
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("menu"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
+                })],
+                // The UI pipeline ignores depth but declares the format.
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.depth,
+                    depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(0.0), store: wgpu::StoreOp::Discard }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            pass.set_viewport(vp.x as f32, vp.y as f32, vp.width as f32, vp.height as f32, 0.0, 1.0);
+            pass.set_scissor_rect(vp.x, vp.y, vp.width, vp.height);
+            if hud.len() > under {
+                pass.set_bind_group(0, &self.globals_bg, &[]);
+                pass.set_bind_group(1, &self.blocks_bg, &[]);
+                pass.set_pipeline(&self.ui_pipeline);
+                pass.set_bind_group(2, &self.font_bg, &[]);
+                pass.set_vertex_buffer(0, self.ui_buf.slice(..));
+                pass.draw(under as u32..hud.len() as u32, 0..1);
+            }
+        }
+        if icon_now {
+            self.copy_icon(&mut encoder, &*frame, vp);
+            if !hud.is_empty() {
+                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("hud after icon"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view,
+                        depth_slice: None,
+                        resolve_target: None,
+                        ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
+                    })],
+                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                        view: &self.depth,
+                        depth_ops: Some(wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(0.0),
+                            store: wgpu::StoreOp::Discard,
+                        }),
+                        stencil_ops: None,
+                    }),
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                    multiview_mask: None,
+                });
+                pass.set_viewport(vp.x as f32, vp.y as f32, vp.width as f32, vp.height as f32, 0.0, 1.0);
+                pass.set_scissor_rect(vp.x, vp.y, vp.width, vp.height);
+                pass.set_pipeline(&self.ui_pipeline);
+                pass.set_bind_group(0, &self.globals_bg, &[]);
+                pass.set_bind_group(1, &self.blocks_bg, &[]);
                 pass.set_bind_group(2, &self.font_bg, &[]);
                 pass.set_vertex_buffer(0, self.ui_buf.slice(..));
                 pass.draw(0..hud.len() as u32, 0..1);
             }
         }
         self.last_submission = Some(self.queue.submit([encoder.finish()]));
+        if let Some(icon) = &self.icon
+            && icon.state.load(std::sync::atomic::Ordering::Acquire) == 0
+            && icon_now
+        {
+            let state = icon.state.clone();
+            icon.buffer.slice(..).map_async(wgpu::MapMode::Read, move |r| {
+                state.store(if r.is_ok() { 1 } else { 2 }, std::sync::atomic::Ordering::Release);
+            });
+        }
         frame.drawn = true;
         stats.gpu_bytes = self.arena.capacity_bytes();
         stats.gpu_used_bytes = self.arena.used_bytes();
         self.stats = stats;
+    }
+
+    /// v0.18 Track 7: copies the centred square of `vp` into a buffer for
+    /// [`Renderer::poll_icon`] (Java's `GameRenderer.takeAutoScreenshot`).
+    fn copy_icon(&mut self, encoder: &mut wgpu::CommandEncoder, frame: &Frame, vp: Viewport) {
+        let target = match &frame.surface {
+            Some(f) => &f.texture,
+            None => self.offscreen.as_ref().unwrap(),
+        };
+        if !target.usage().contains(wgpu::TextureUsages::COPY_SRC) {
+            // A result all the same, so the capture isn't left waiting.
+            self.icon_error = Some("the window's surface can't be copied (no COPY_SRC)".into());
+            return;
+        }
+        let (dx, dy, side) = voxelcraft::title::icon::square_crop(vp.width, vp.height);
+        let row = (side * 4).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("world icon"),
+            size: (row * side) as u64,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture: target,
+                mip_level: 0,
+                origin: wgpu::Origin3d { x: vp.x + dx, y: vp.y + dy, z: 0 },
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &buffer,
+                layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(row), rows_per_image: Some(side) },
+            },
+            wgpu::Extent3d { width: side, height: side, depth_or_array_layers: 1 },
+        );
+        let bgra = matches!(self.config.format, wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb);
+        self.icon = Some(IconReadback { buffer, side, row, bgra, state: Arc::default() });
     }
 
     /// Saves a requested screenshot and presents the frame.
@@ -1606,9 +2034,12 @@ mod tests {
             ("entity", include_str!("shaders/entity.wgsl")),
             ("particles", include_str!("shaders/particles.wgsl")),
             ("overlay", include_str!("shaders/overlay.wgsl")),
+            ("blur", include_str!("shaders/blur.wgsl")),
             ("sky", include_str!("shaders/sky.wgsl")),
             ("weather", include_str!("shaders/weather.wgsl")),
             ("outline", include_str!("shaders/outline.wgsl")),
+            ("clouds", include_str!("shaders/clouds.wgsl")),
+            ("panorama", include_str!("shaders/panorama.wgsl")),
         ];
         for (name, source) in shaders {
             for paged in [None, Some(256), Some(2048)] {

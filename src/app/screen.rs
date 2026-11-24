@@ -38,6 +38,8 @@ pub(super) struct Screen<'a> {
     pub entities: &'a mut Entities,
     pub audio: &'a mut Audio,
     pub requests: Vec<Request>,
+    /// v0.18 Track 5: the `limited_crafting` gamerule.
+    pub limited_crafting: bool,
 }
 
 /// Where stacks leaving a container land in the inventory: the hotbar from
@@ -58,6 +60,20 @@ pub(super) fn storage_of(container: Container) -> Option<Storage> {
         Container::Brewing(p) => Some(Storage::Brewing(p)),
         _ => None,
     }
+}
+
+/// The crafting result `session` may take from `craft` (see
+/// [`Screen::craft_result`]); the HUD shows the same.
+pub(super) fn crafting_result(
+    craft: &Grid,
+    world: &World,
+    session: &PlayerSession,
+    limited_crafting: bool,
+) -> Option<Stack> {
+    if !session.recipe_book.allows(craft, limited_crafting) {
+        return None;
+    }
+    craft.result_in(&world.maps)
 }
 
 /// The storage slot a screen slot names, if it is one.
@@ -82,7 +98,8 @@ pub(super) fn anvil_preview(container: Container, session: &PlayerSession) -> Op
         return voxelcraft::grindstone::result(session.work[0], session.work[1]).map(|r| (r, false));
     }
     let creative = session.mode.is_creative();
-    let result = enchant::anvil_any_cost(session.work[0]?, session.work[1], creative)?;
+    // v0.18 Track 2: with the name box's text, as `AnvilMenu.createResult`.
+    let result = enchant::anvil_menu(session.work[0]?, session.work[1], session.anvil_name(), creative)?;
     Some((result, !creative && result.cost >= enchant::TOO_EXPENSIVE))
 }
 
@@ -138,7 +155,7 @@ impl Screen<'_> {
             SlotRef::CraftResult => {
                 // Craft until the ingredients run out or the result won't fit.
                 let order = to_player_order();
-                while let Some(mut result) = self.craft.result_in(&self.world.maps) {
+                while let Some(mut result) = self.craft_result() {
                     let mut slots = self.session.inventory.slots;
                     if move_into(result, &mut slots, &order).is_some() {
                         break;
@@ -208,11 +225,20 @@ impl Screen<'_> {
             | SlotRef::BeaconPower(_)
             | SlotRef::BeaconDone
             | SlotRef::BeaconCancel => {}
-            SlotRef::Palette(item) => {
-                if self.session.mode.is_creative() {
-                    self.session.inventory.add(item, item.max_stack());
-                }
+            // v0.18 Track 4: shift on a creative cell takes a full stack,
+            // or fills the held one (`slotClicked` with `QUICK_MOVE`).
+            SlotRef::Palette(stack) if self.session.mode.is_creative() => {
+                voxelcraft::creative::click(&mut self.session.inventory.cursor, Some(stack), false, true)
             }
+            // Shift on Destroy Item empties the whole inventory.
+            SlotRef::Destroy if self.session.mode.is_creative() => {
+                let inv = &mut self.session.inventory;
+                inv.slots.fill(None);
+                inv.armor.fill(None);
+                inv.offhand = None;
+                let _ = self.craft.take_all();
+            }
+            SlotRef::Palette(_) | SlotRef::PaletteEmpty | SlotRef::Destroy => {}
         }
     }
 
@@ -290,8 +316,18 @@ impl Screen<'_> {
         })
     }
 
-    /// Shared desktop/controller/LAN remainder delivery, including stacked honey.
+    /// What this player may take from the crafting result: the grid's
+    /// result, unless `limited_crafting` hides a recipe they don't know
+    /// (`RecipeCraftingHolder.setRecipeUsed`).
+    pub(super) fn craft_result(&self) -> Option<Stack> {
+        crafting_result(self.craft, self.world, self.session, self.limited_crafting)
+    }
+
+    /// Shared desktop/controller/LAN remainder delivery, including stacked
+    /// honey. Taking the result teaches its recipe
+    /// (`RecipeCraftingHolder.awardUsedRecipes`).
     fn consume_craft(&mut self) {
+        self.session.recipe_book.crafted(self.craft);
         for mut stack in self.craft.consume_with_remainders() {
             stack.count = self.session.inventory.add_stack(stack);
             if stack.count != 0 {
@@ -300,10 +336,47 @@ impl Screen<'_> {
         }
     }
 
+    /// v0.18 Track 5: the recipe book's click on recipe `id`
+    /// (`ServerGamePacketListenerImpl.handlePlaceRecipe`): only a known
+    /// recipe, only on a crafting grid or furnace, never by a spectator. The
+    /// items move by Java's placement rules (`crafting::book::place`), with
+    /// `selected` the hotbar slot returned items go to first.
+    pub(super) fn place_recipe(
+        &mut self,
+        id: voxelcraft::crafting::book::RecipeId,
+        max: bool,
+        selected: usize,
+    ) -> Option<voxelcraft::crafting::book::place::Outcome> {
+        use voxelcraft::crafting::book::place;
+        if self.session.mode == voxelcraft::rules::GameMode::Spectator || !self.session.recipe_book.knows(id) {
+            return None;
+        }
+        let recipe = id.recipe()?;
+        let creative = self.session.mode.is_creative();
+        let inventory = &mut self.session.inventory;
+        let outcome = match *self.container {
+            Container::Furnace(p) => {
+                place::place_in_furnace(recipe, self.world.furnace_mut(p)?, inventory, selected, max, creative)
+            }
+            Container::Inventory | Container::CraftingTable => {
+                place::place_in_grid(recipe, self.craft, inventory, selected, max, creative)
+            }
+            _ => return None,
+        };
+        // What didn't fit back drops at once, as Java's
+        // `placeItemBackInInventory` does, for every player (agents and LAN
+        // guests have no per-tick spill drop).
+        let (eye, forward) = (self.session.player.eye(), self.session.player.forward().as_dvec3());
+        for stack in self.session.inventory.take_spill() {
+            self.entities.throw(stack, eye, forward);
+        }
+        Some(outcome)
+    }
+
     /// Clicking the crafting result: takes one craft onto the cursor (or
     /// onto a matching held stack, if it fits) and uses up the ingredients.
     pub(super) fn take_craft_result(&mut self) {
-        let Some(mut result) = self.craft.result_in(&self.world.maps) else { return };
+        let Some(mut result) = self.craft_result() else { return };
         match &mut self.session.inventory.cursor {
             None => {
                 // `MapItem.onCraftedBy`: a zoomed-out map gets its new map id.
@@ -403,13 +476,16 @@ impl Screen<'_> {
                 | SlotRef::BeaconDone
                 | SlotRef::BeaconCancel,
             ) => {}
-            Some(SlotRef::Palette(item)) => {
-                // Creative palette: take a full stack, or trash the held one.
-                self.session.inventory.cursor = match self.session.inventory.cursor {
-                    Some(_) => None,
-                    None => Some(Stack::new(item, item.max_stack())),
-                };
+            // v0.18 Track 4: Java's creative cell rules (`creative::click`).
+            Some(SlotRef::Palette(stack)) if self.session.mode.is_creative() => {
+                voxelcraft::creative::click(&mut self.session.inventory.cursor, Some(stack), right, false)
             }
+            Some(SlotRef::PaletteEmpty) if self.session.mode.is_creative() => {
+                voxelcraft::creative::click(&mut self.session.inventory.cursor, None, right, false)
+            }
+            // Destroy Item deletes the held stack.
+            Some(SlotRef::Destroy) if self.session.mode.is_creative() => self.session.inventory.cursor = None,
+            Some(SlotRef::Palette(_) | SlotRef::PaletteEmpty | SlotRef::Destroy) => {}
             None => {}
         }
     }

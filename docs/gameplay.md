@@ -17,10 +17,11 @@ Sprint can be set to Toggle there.
 | Left Ctrl | Sprint |
 | R | Toggle flying (creative); the old `F` binding moved so `F` can match Java |
 | F | Swap the selected item with the off-hand (controller: D-pad down; CLI/LAN: `swap`) |
-| Left / right click | Break / place block (hold to repeat); left click on a mob attacks it; respawn on the death screen |
+| Left / right click | Break / place block (hold to repeat); left click on a mob attacks it; the death screen's buttons |
 | Middle click | Pick block |
 | Q / Ctrl+Q | Drop one of the selected item / the whole stack (with the inventory open: from the slot under the mouse) |
-| E | Inventory (click to move stacks; creative shows the block palette) |
+| E | Inventory (click to move stacks; creative opens Java's creative inventory, see below) |
+| C / X + 1–9 | Creative: save the hotbar to / load it from saved hotbar 1–9 (Save and Load Hotbar Activator) |
 | Shift + click | In the inventory: move a stack between the open chest or furnace and the inventory (or between hotbar and main grid); on a crafting result, craft as many as fit |
 | Right click on a door or fence gate | Open / close it |
 | Shift + right click | Build against a crafting table, furnace, chest, door or gate instead of using it |
@@ -44,6 +45,29 @@ Sprint can be set to Toggle there.
 | F11 | Toggle fullscreen; Options → Fullscreen chooses Borderless (macOS native fullscreen Space) or Exclusive (native resolution), and it is remembered |
 | Esc | Pause menu (the game pauses): Back to Game, Options..., Save and Quit to Title; Esc again goes back |
 
+**Creative inventory** (v0.18; [record](verification/2026-11-23-v0.18-creative.md)).
+E in creative opens Java 26.3's creative screen: Building Blocks, Colored
+Blocks, Natural Blocks, Functional Blocks and Redstone Blocks along the top
+with Saved Hotbars and Search Items at its right end; Tools & Utilities,
+Combat, Food & Drinks, Ingredients and Spawn Eggs along the bottom with
+Survival Inventory at its right. Each tab lists Java's items in Java's
+order (items the game doesn't have yet are left out) in a 9 x 5 grid that
+scrolls with the wheel or the scrollbar. Click an item for one, Shift-click
+for a full stack, middle-click for a full stack onto an empty cursor, a
+number key to put a full stack in that hotbar slot, Q to throw one
+(Ctrl+Q a stack); clicking another item or an empty cell with a stack held
+deletes it, and Shift-clicking the hotbar clears that slot. T (the chat
+key) jumps to Search, where typing filters by name. Survival Inventory
+shows the armour, off-hand and inventory with Destroy Item (Shift-click it
+to clear the inventory) and the player, who turns to follow the pointer.
+Saved Hotbars shows the nine hotbars saved with C + a number key (X + the
+number loads one); they are kept per install in `saves/hotbars.txt`.
+Controllers page through the item tabs and Saved Hotbars with LB/RB (Y
+loads a saved row, X saves it); the CLI agent's `catalog tabs`,
+`catalog tab:<id>` and `hotbar save|load 1..9` do the same. The survival
+inventory now uses Java's layout too: armour down the left, the player
+beside it, the off-hand under the player and the 2 x 2 grid to the right.
+
 The world autosaves every two minutes and on exit. Switching away from
 the window also pauses offline play. See [save backups and version compatibility](releases.md#player-data-and-old-saves)
 before upgrading or returning to an older build.
@@ -55,10 +79,13 @@ Java 26.3's screens with the options VoxelCraft can honour: FOV and, in a
 world, Difficulty with Java's lock; Music & Sounds (Master Volume and a
 slider per sound category); Video Settings
 (Max Framerate, VSync, GUI Scale, Fullscreen, Brightness, Graphics, Render
-and Simulation Distance, Particles, FPS Counter); Controls (Mouse Settings
+and Simulation Distance, Particles, Menu Background Blur, FPS Counter);
+Controls (Mouse Settings
 with Sensitivity, Scroll Sensitivity, Discrete Scrolling and Invert Mouse;
-Key Binds; Sneak and Sprint Hold/Toggle); Accessibility Settings (View
-Bobbing, Distortion Effects, FOV Effects, Damage Tilt); Credits &
+Key Binds; Sneak and Sprint Hold/Toggle); Accessibility Settings (Closed
+Captions, Menu Background Blur, Text Background Opacity and Text
+Background, View Bobbing, Distortion Effects, FOV Effects, Damage Tilt);
+Credits &
 Attribution; and Check for Updates. Render Distance is shown in Java's
 16-block chunks. Changes apply immediately and are saved to
 `saves/options.txt` inside the
@@ -72,10 +99,17 @@ caves. Water reflects the sky rather than nearby objects; geometry shadows,
 PBR materials and screen-space reflections remain future work. Classic
 keeps the original lighting and water appearance.
 
-A compact FPS counter is on by default at the top left. It averages
-presented frames over half a second and stays readable in inventories and
-menus. Options → FPS Counter hides it; F1 hides the HUD, and F3 shows the
-full performance display instead of duplicating the compact counter.
+Menu Background Blur (Java's 0 to 10, default 5; 0 is OFF) blurs the
+world and HUD behind the pause menu, Options and the other menus, with
+Java's light in-world backdrop over it; inventories and workstations darken
+the world instead, and the death screen has its own red backdrop.
+
+A compact FPS counter can show at the top left (Options → Video Settings →
+FPS Counter). It is off for a new options file; an existing
+`options.txt` keeps whatever it saved. It averages presented frames over
+half a second and stays readable in inventories and menus; F1 hides the
+HUD, and F3 shows the full performance display instead of duplicating the
+compact counter.
 
 ![F3 debug screen](images/debug.jpg)
 
@@ -126,15 +160,21 @@ full performance display instead of duplicating the compact counter.
   while it rains) and fade in or out over 5 seconds. The day lasts Java's
   24000 ticks (20 minutes). Rain falls as snow in cold
   biomes and on high ground (biomes cool above y = 80, as in Java), and not at all in deserts, savannas and
-  badlands. It greys and darkens the sky, hides the sun, moon and stars
-  behind thicker clouds, stops at the first block overhead, waters
+  badlands. It greys and darkens the sky and clouds and draws the fog in
+  (Java 26.3's weather layers and rain fog), hides the sun, moon and stars,
+  stops at the first block overhead, waters
   farmland under open sky, keeps zombies and skeletons from burning, and
   can be heard drumming on the roof. The time of day and the weather are
   saved with the world
 - Torches give off light level 14 (glowstone 15)
 - Flood-fill sky and block light with smooth lighting and ambient occlusion
 - Day/night cycle with a procedural sky: square sun and moon, sunset glow,
-  rotating stars and drifting blocky clouds; distance and underwater fog
+  rotating stars. Sky, fog and cloud colours, fog distances and clouds follow
+  Java 26.3 (v0.18 Track 8): each biome's sky, fog and water fog colours
+  blended around the eye, the day timeline, rain and thunder, the lava,
+  powder snow, water, Blindness and Darkness fogs, and Java's flat (Fast)
+  and block-shaped (Fancy) clouds drifting east, with the Clouds, Cloud
+  Distance and Hide Sky Flashes options ([atmosphere record](verification/2026-11-23-v0.18-atmosphere.md))
 - Flowing water: falls, spreads up to 7 blocks toward the nearest drop,
   dries up without a source, and forms infinite sources; lowered surfaces
 - Lava: flows like water but six times slower and only 3 blocks, glows
@@ -178,14 +218,29 @@ full performance display instead of duplicating the compact counter.
   killing one drops its loot. All mobs,
   arrows and explosion smoke are drawn in a single draw call
 - Survival and creative modes: timed block breaking with crack overlay,
-  drops, a 36-slot inventory with stacks, and a scrollable creative palette
+  drops, a 36-slot inventory with stacks, and Java's tabbed creative
+  inventory
 - Crafting: a 2x2 grid in the survival inventory and a 3x3 grid at a
   crafting table (right-click it). Shaped recipes work anywhere in the
   grid and mirrored; click the result to craft one, and leftovers return
-  to the inventory when the screen closes (thrown out if it's full). Click Recipes
-  to browse layouts with the arrow buttons or scroll wheel; hover ingredients
-  for names and alternatives, then copy the preview into your crafting grid.
-  On narrower windows, Back closes the recipe overlay so you can craft.
+  to the inventory when the screen closes (thrown out if it's full).
+- Recipe book (v0.18, Java 26.3's): the green book button beside the 2x2
+  grid, the crafting table's grid and the furnace, smoker and blast furnace
+  opens it to the left of the screen (over it on narrow windows). Recipes
+  unlock as in Java: picking up an ingredient or the item, ten filled
+  inventory slots (the chest), entering water (boats), crafting or smelting
+  the recipe, and the crafting table from the first tick; a "New Recipe(s)
+  Unlocked!" toast shows them and the book highlights them until seen. Tabs
+  hold Java's categories (the compass tab shows all), the search box (or T)
+  filters by name, and the filter button switches between "Showing All" and
+  "Showing Craftable" (Smeltable, Blastable, Smokable). Red buttons lack
+  ingredients; buttons with a shadow hold several recipes (right-click for
+  them). Clicking a recipe moves one set of ingredients from the inventory
+  into the grid (again for one more, shift for every set the items allow);
+  without the items it shows a ghost of the recipe in the grid. Enter or
+  Space repeats the last recipe. The book's open and filter state and the
+  known recipes save with the player. With `/gamerule limited_crafting
+  true` only unlocked recipes craft.
   Recipes: planks (each log makes its own kind; any planks work in
   recipes), sticks, crafting table, chest (8 planks in a ring), torches
   (coal or charcoal over a stick), bread (3 wheat in a row), bone meal (from
@@ -258,8 +313,14 @@ full performance display instead of duplicating the compact counter.
 - Survival health: 10 hearts, fall damage (1 per block beyond 3; water
   breaks falls), 15 s of air then drowning, a red hurt flash and shaking
   hearts. Dying shows
-  a death screen; everything you carried drops where you died, and clicking
-  respawns at the world spawn with full health. Creative is immune to damage.
+  Java's death screen ("You Died!", the cause and your score); everything
+  you carried drops where you died. After a second its Respawn button
+  brings you back at your bed or the world spawn with full health, and
+  Title Screen asks "Are you sure you want to quit?" first. In Hardcore it
+  says "Game Over!" and offers Spectate World (respawn as a spectator) and
+  Title Screen, which leaves without asking. Escape does nothing there, and
+  the game keeps running behind it. With `immediate_respawn` on you respawn
+  at once, in Hardcore as a spectator. Creative is immune to damage.
   Health and air are saved with the world
 - Hunger, like Minecraft: 10 drumsticks plus a hidden saturation buffer
   (5 at spawn). Exhaustion from sprinting (0.1 per block), swimming (0.01
@@ -372,8 +433,10 @@ full performance display instead of duplicating the compact counter.
   prior-work penalty both items carry, which doubles plus one with each
   use; at 40 levels survival says "Too Expensive!". Renaming costs one
   level more (a rename alone is capped at 39 levels and adds no prior
-  work); agents rename with `anvil name <text>`, but the desktop and
-  controller screens have no name box yet. Each survival use
+  work). The screen's name box takes the left item's name; type over it
+  (a blank box clears a custom name). On a controller, the anvil row's
+  last entry opens a keyboard for the name; agents rename with
+  `anvil name <text>`, and LAN guests' names go to the host. Each survival use
   has a 12% chance to chip the anvil (chipped, damaged, then it breaks),
   and an anvil that falls more than a block lands worn one step with a
   chance of 5% plus 5% per block fallen.

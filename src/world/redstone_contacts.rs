@@ -145,7 +145,10 @@ impl World {
     fn redstone_contact_box(&mut self, (min, max): (DVec3, DVec3), living: bool, arrow: bool, cart: bool) {
         if living {
             let foot = (min + DVec3::new((max.x - min.x) * 0.5, -0.01, (max.z - min.z) * 0.5)).floor().as_ivec3();
-            self.touch_redstone_ore(foot);
+            // Only redstone ore reacts; the table rejects everything else.
+            if self.get_block(foot).is_some_and(contact_block) {
+                self.touch_redstone_ore(foot);
+            }
         }
         let lo = min.floor().as_ivec3();
         let hi = max.floor().as_ivec3();
@@ -154,6 +157,9 @@ impl World {
                 for x in lo.x..=hi.x {
                     let p = IVec3::new(x, y, z);
                     let Some(b) = self.get_block(p) else { continue };
+                    if !contact_block(b) {
+                        continue;
+                    }
                     let bounds = match r::component(b) {
                         Some(Component::Plate { .. }) => {
                             Some((DVec3::new(0.0625, 0.0, 0.0625), DVec3::new(0.9375, 0.25, 0.9375)))
@@ -223,4 +229,21 @@ pub(super) fn plate_power(kind: u8, c: Contacts) -> u8 {
         2 => c.all.min(15) as u8,
         _ => c.all.min(150).div_ceil(10) as u8,
     }
+}
+
+/// Whether an entity touching `b` can matter to [`World::redstone_contact_box`]:
+/// a pressure plate, a wooden button, a detector rail, tripwire or redstone
+/// ore. A table over every block state, so the other cells an entity's box
+/// covers cost one lookup (v0.18 Track 10).
+fn contact_block(b: super::block::Block) -> bool {
+    static TABLE: std::sync::OnceLock<Box<[bool]>> = std::sync::OnceLock::new();
+    let classify = |b: super::block::Block| {
+        matches!(r::component(b), Some(Component::Plate { .. } | Component::Button { wood: true, .. }))
+            || super::rails::kind(b) == Some(super::rails::RailKind::Detector)
+            || super::gadgets::is_tripwire(b)
+            || matches!(b.base(), super::block::Block::REDSTONE_ORE | super::block::Block::DEEPSLATE_REDSTONE_ORE)
+    };
+    let table = TABLE
+        .get_or_init(|| (0..super::block::STATE_CAPACITY as u16).map(|id| classify(super::block::Block(id))).collect());
+    table.get(b.0 as usize).copied().unwrap_or_else(|| classify(b))
 }

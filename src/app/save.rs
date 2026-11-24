@@ -61,6 +61,7 @@ impl Game {
         if let Some(text) = self.session.raid_omen_to_string() {
             props.insert("raid_omen_position".to_string(), text);
         }
+        props.insert("recipe_book".to_string(), self.session.recipe_book.serialize());
         if let Some(p) = self.session.spawn_point {
             props.insert("spawn_point".to_string(), format!("{},{},{}", p.x, p.y, p.z));
         }

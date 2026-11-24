@@ -80,10 +80,12 @@ mod projectile;
 pub mod raid;
 mod replica;
 pub mod sculk_events;
+pub mod shadow;
 pub mod shulker;
 pub mod silverfish;
 mod slime;
 pub mod sniffer;
+pub mod spawn_egg;
 mod spawn_lists;
 mod spawn_rules;
 mod spawning;
@@ -1254,6 +1256,16 @@ pub struct Entities {
     /// Mobs drawn last frame (F3).
     pub rendered: usize,
     mesh: model::EntityMesh,
+    /// v0.18 Track 6: `--still-mobs`, for comparison captures. A mob that has
+    /// landed stops updating (no AI, movement, burning or sounds), faces this
+    /// point and keeps its lighting fresh, so its pose is the same in every run.
+    pub still: Option<DVec3>,
+    /// Updates since `still` was set, after which fliers hold still too.
+    still_ticks: u32,
+    /// v0.18 Track 6: this frame's shadow casters, kept to reuse the allocation.
+    casters: Vec<shadow::Caster>,
+    /// v0.18 Track 6: the mobs' simulation poses while `mesh` draws interpolated ones.
+    poses: Vec<[f32; 5]>,
 }
 
 impl Entities {
@@ -1354,6 +1366,10 @@ impl Entities {
             structure_timer: 0.0,
             rendered: 0,
             mesh: model::EntityMesh::default(),
+            still: None,
+            still_ticks: 0,
+            casters: Vec::new(),
+            poses: Vec::new(),
         }
     }
 
@@ -2149,6 +2165,7 @@ impl Entities {
             if m.riding.is_none() {
                 m.previous_pos = m.pos;
             }
+            m.previous_pose = m.pose_values();
         }
         for a in &mut self.arrows {
             a.previous_pos = a.pos;
@@ -2201,7 +2218,17 @@ impl Entities {
         alpha: f64,
     ) -> &mut model::EntityMesh {
         self.mesh.clear();
+        // v0.18 Track 6: draw each mob turned and mid-stride as of `alpha`,
+        // then put the simulation's values back.
+        self.poses.clear();
+        for m in &mut self.mobs {
+            self.poses.push(m.pose_values());
+            m.set_pose_values(m.render_pose(alpha as f32));
+        }
         self.rendered = model::build(&self.mobs, camera, forward, max_dist, time, alpha, &mut self.mesh);
+        for (m, &pose) in self.mobs.iter_mut().zip(&self.poses) {
+            m.set_pose_values(pose);
+        }
         model::build_arrows(&self.arrows, camera, alpha, &mut self.mesh);
         model::build_tridents(&self.tridents, camera, alpha, &mut self.mesh);
         model::build_fangs(&self.fangs, camera, &mut self.mesh);
@@ -2224,6 +2251,53 @@ impl Entities {
         if let Some(fight) = &self.fight {
             dragon_model::build_fight(fight, &self.crystals, camera, time, alpha, &mut self.mesh);
         }
+        &mut self.mesh
+    }
+
+    /// v0.18 Track 6: restarts the entity random sequence from `seed`, so
+    /// `--still-mobs` captures throw their items and roll their spawns
+    /// (wool colour, babies, variants) the same way in every run, however
+    /// many ticks ran before the scene was placed.
+    pub fn reseed_for_capture(&mut self, seed: u64) {
+        self.rng = Rng::new(seed ^ 0x7374_696c_6c00);
+    }
+
+    /// v0.18 Track 6: adds ground shadows to the mesh [`Entities::mesh`]
+    /// built for this view, when `enabled` (the Entity Shadows option): for
+    /// the mobs, dropped items, experience orbs, minecarts and boats, primed
+    /// TNT, End crystals and the dragon here, and for `others` (players and
+    /// falling blocks, which live elsewhere). Returns the mesh.
+    pub fn shadows<G: shadow::Ground + ?Sized>(
+        &mut self,
+        ground: &G,
+        camera: DVec3,
+        alpha: f64,
+        others: &[shadow::Caster],
+        enabled: bool,
+    ) -> &mut model::EntityMesh {
+        if !enabled {
+            return &mut self.mesh;
+        }
+        let mut casters = std::mem::take(&mut self.casters);
+        casters.clear();
+        shadow::mob_casters(&self.mobs, camera, alpha, &mut casters);
+        let near = |c: &shadow::Caster| c.pos.distance_squared(camera) < shadow::FADE_DISTANCE_SQ;
+        let at = |radius: f32, strength: f32| move |pos: DVec3| shadow::Caster { pos, radius, strength };
+        let (radius, strength) = shadow::ITEM;
+        let items = self.items.iter().map(|i| i.previous_pos.lerp(i.pos, alpha)).map(at(radius, strength));
+        let orbs = self.orbs.iter().map(|o| o.previous_pos.lerp(o.pos, alpha)).map(at(radius, strength));
+        let carts = self.minecarts.iter().map(|c| {
+            let pos = c.previous_pos.lerp(c.pos, alpha);
+            shadow::Caster { pos, radius: shadow::cart_radius(c.kind), strength: 1.0 }
+        });
+        let tnt = self.tnt.iter().map(|t| t.previous_pos.lerp(t.pos, alpha)).map(at(shadow::BLOCK_RADIUS, 1.0));
+        let crystals = self.crystals.list.iter().map(|c| c.pos).map(at(shadow::CRYSTAL_RADIUS, 1.0));
+        let dragon = self.fight.as_ref().and_then(|f| f.dragon.as_ref());
+        let dragon = dragon.map(|d| d.previous_pos.lerp(d.pos, alpha)).map(at(shadow::DRAGON_RADIUS, 1.0));
+        let all = items.chain(orbs).chain(carts).chain(tnt).chain(crystals).chain(dragon);
+        casters.extend(all.chain(others.iter().copied()).filter(|c| c.radius > 0.0 && near(c)));
+        shadow::build(ground, &casters, camera, &mut self.mesh);
+        self.casters = casters;
         &mut self.mesh
     }
 
@@ -3242,6 +3316,67 @@ mod tests {
             e.update(0.05, &world, &far);
         }
         assert!(e.mobs[0].effects.has(Effect::FireResistance));
+    }
+
+    /// v0.18 Track 6: between ticks a mob is drawn turned and mid-stride as
+    /// far as the frame is through the tick, and the simulation keeps its values.
+    #[test]
+    fn mobs_turn_and_walk_smoothly_between_ticks() {
+        let mut e = Entities::new(5);
+        e.spawn(MobKind::Pig, DVec3::new(6.5, 10.0, 0.5));
+        e.mobs[0].yaw = 3.0;
+        e.mobs[0].limb_amp = 0.0;
+        e.snapshot_positions();
+        // One tick turns it across the -pi/pi seam and starts it walking.
+        e.mobs[0].set_pose_values([-3.0, 0.4, -0.2, 2.0, 1.0]);
+        let half = e.mesh(DVec3::new(0.0, 11.0, 0.0), glam::Vec3::X, 64.0, 0.0, 0.5).boxes().to_vec();
+        assert_eq!(e.mobs[0].pose_values(), [-3.0, 0.4, -0.2, 2.0, 1.0], "the simulation keeps its pose");
+        let mid = e.mobs[0].render_pose(0.5);
+        assert!((mid[0] - std::f32::consts::PI).abs() < 1e-4, "the short way round: {}", mid[0]);
+        for (got, want) in mid[1..].iter().zip([0.2, -0.1, 1.0, 0.5]) {
+            assert!((got - want).abs() < 1e-5, "{mid:?}");
+        }
+        // The same mob posed halfway, drawn at the end of its tick, looks the same.
+        let mut f = Entities::new(5);
+        f.spawn(MobKind::Pig, DVec3::new(6.5, 10.0, 0.5));
+        f.mobs[0].set_pose_values(mid);
+        f.snapshot_positions();
+        let posed = f.mesh(DVec3::new(0.0, 11.0, 0.0), glam::Vec3::X, 64.0, 0.0, 1.0).boxes().to_vec();
+        assert_eq!(half.len(), posed.len());
+        for (a, b) in half.iter().zip(&posed) {
+            for (ra, rb) in a.rows.iter().zip(&b.rows) {
+                assert!(ra.iter().zip(rb).all(|(x, y)| (x - y).abs() < 1e-4), "{ra:?} vs {rb:?}");
+            }
+        }
+    }
+
+    /// v0.18 Track 6: `--still-mobs` holds landed mobs where they are,
+    /// facing the camera, and the update loop still moves on past them.
+    #[test]
+    fn still_mobs_land_then_hold_their_pose_facing_the_camera() {
+        let mut e = Entities::new(5);
+        e.spawn(MobKind::Pig, DVec3::new(0.5, 11.0, 0.5));
+        e.spawn(MobKind::Zombie, DVec3::new(4.5, 10.0, 0.5));
+        let camera = DVec3::new(2.5, 12.0, -8.0);
+        e.still = Some(camera);
+        let c = ctx(DVec3::new(2.5, 10.0, -8.0));
+        for _ in 0..20 {
+            e.snapshot_positions();
+            e.update(0.05, &Grid::flat(10), &c);
+        }
+        let landed: Vec<DVec3> = e.mobs.iter().map(|m| m.pos).collect();
+        assert!(e.mobs.iter().all(|m| m.on_ground && (m.pos.y - 10.0).abs() < 1e-3), "{landed:?}");
+        for _ in 0..100 {
+            e.snapshot_positions();
+            e.update(0.05, &Grid::flat(10), &c);
+        }
+        for (m, was) in e.mobs.iter().zip(&landed) {
+            assert_eq!(m.pos, *was, "{:?} held still", m.kind);
+            let to = (camera - m.pos).normalize();
+            let facing = DVec3::new(f64::from(m.yaw.cos()), 0.0, f64::from(m.yaw.sin()));
+            assert!(facing.dot(DVec3::new(to.x, 0.0, to.z).normalize()) > 0.999, "{:?} faces the camera", m.kind);
+            assert_eq!((m.limb_amp, m.head_yaw, m.burning), (0.0, 0.0, false));
+        }
     }
 
     #[test]

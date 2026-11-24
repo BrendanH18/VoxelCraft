@@ -11,11 +11,20 @@ const EYE: Rgb = [40, 40, 56];
 
 const BASE: &[Cuboid] =
     &[cube([-8.0, 0.0, -8.0], [8.0, 8.0, 8.0], SHELL, 34), cube([-8.05, 6.0, -8.05], [8.05, 8.0, 8.05], SHELL_RIM, 20)];
-const LID: &[Cuboid] = &[cube([-8.0, 0.0, -8.0], [8.0, 12.0, 8.0], SHELL, 34)];
+// v0.18 Track 6 round 4: plate seams across the lid, which take the dye.
+const LID: &[Cuboid] = &[
+    cube([-8.0, 0.0, -8.0], [8.0, 12.0, 8.0], SHELL, 34),
+    cube([-8.05, 2.0, -0.5], [8.05, 12.05, 0.5], SHELL_RIM, 0),
+    cube([-0.5, 2.0, -8.05], [0.5, 12.05, 8.05], SHELL_RIM, 0),
+];
 const SHULKER_HEAD: &[Cuboid] = &[
     cube([-3.0, 0.0, -3.0], [3.0, 6.0, 3.0], HEAD, 18),
     cube([-2.0, 2.5, 3.0], [-0.5, 4.0, 3.05], EYE, 0),
     cube([0.5, 2.5, 3.0], [2.0, 4.0, 3.05], EYE, 0),
+    // v0.18 Track 6 round 4: eye glints and a small mouth.
+    cube([-1.1, 3.4, 3.05], [-0.7, 3.8, 3.1], [230, 226, 214], 0),
+    cube([1.3, 3.4, 3.05], [1.7, 3.8, 3.1], [230, 226, 214], 0),
+    cube([-1.0, 1.0, 3.0], [1.0, 1.5, 3.05], [150, 120, 96], 0),
 ];
 
 /// The whole shell turned so its base clings to `attach` (around the

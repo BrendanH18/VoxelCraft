@@ -75,6 +75,13 @@ pub fn effect(code: u32) -> Option<(Effect, u32)> {
     })
 }
 
+/// v0.18 Track 4: the code of the stew with Java's `suspicious_stew_effects`
+/// entry `id` for `duration` ticks (the creative tab's stews).
+pub fn stew_code(id: &str, duration: u32) -> Option<u32> {
+    let effect = Effect::from_id(id.strip_prefix("minecraft:").unwrap_or(id))?;
+    (1..=14).find(|&code| self::effect(code) == Some((effect, duration)))
+}
+
 pub fn flower_effect(flower: Item) -> Option<u32> {
     Some(match flower.block()?.name() {
         "dandelion" | "golden dandelion" | "blue orchid" => 1,

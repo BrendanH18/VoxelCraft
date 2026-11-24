@@ -27,9 +27,6 @@ pub(in crate::app) struct Host {
 impl super::super::gui::Host for Host {
     type Out = ();
     fn click(&mut self) {}
-    fn in_world(&self) -> bool {
-        self.world.is_some()
-    }
 }
 
 impl OptionsHost for Host {
@@ -254,6 +251,54 @@ fn max_framerate_and_brightness_map_like_java() {
     );
 }
 
+/// v0.18 Track 6: Java's Entity Shadows toggle, on by default, after Mipmap Levels.
+#[test]
+fn entity_shadows_toggles_like_java() {
+    let mut host = Host::default();
+    let mut video = VideoSettings;
+    assert_eq!(label(&video, &host, video::Id::EntityShadows), "Entity Shadows: ON");
+    video.activate(&mut host, video::Id::EntityShadows);
+    assert!(!host.settings.entity_shadows);
+    assert_eq!(label(&video, &host, video::Id::EntityShadows), "Entity Shadows: OFF");
+    let ids: Vec<_> = video.widgets(&host, (640.0, 360.0)).iter().map(|w| w.id).collect();
+    let at = |id| ids.iter().position(|&i| i == id).unwrap();
+    assert_eq!(at(video::Id::EntityShadows), at(video::Id::MipmapLevels) + 1);
+    assert_eq!(at(video::Id::MenuBlur), at(video::Id::EntityShadows) + 1);
+}
+
+/// v0.18 Track 3: Mipmap Levels is Java's slider: 0 to 4 in whole steps,
+/// "OFF" at 0, right after Particles.
+#[test]
+fn mipmap_levels_is_javas_slider() {
+    let java: serde_json::Value =
+        serde_json::from_str(include_str!("../../../tests/fixtures/java/26.3/mipmap_levels.json")).unwrap();
+    let m = &java["mipmapLevels"];
+    let format = |n: u32| {
+        let label = m["label"].as_str().unwrap();
+        if n == 0 {
+            m["zero_format"].as_str().unwrap().replacen("%s", label, 1)
+        } else {
+            m["value_format"].as_str().unwrap().replacen("%s", label, 1).replacen("%s", &n.to_string(), 1)
+        }
+    };
+    let mut host = Host::default();
+    let mut video = VideoSettings;
+    assert_eq!(label(&video, &host, video::Id::MipmapLevels), format(4));
+    for (t, n) in [(0.0, 0), (0.24, 1), (0.5, 2), (0.76, 3), (1.0, 4)] {
+        video.slide(&mut host, video::Id::MipmapLevels, t);
+        assert_eq!(host.settings.mipmap_levels, n);
+        assert_eq!(label(&video, &host, video::Id::MipmapLevels), format(n));
+    }
+    assert_eq!(format(0), "Mipmap Levels: OFF");
+    // Java's order: Particles, then Mipmap Levels.
+    let order = java["quality_options"].as_array().unwrap();
+    let at = |k: &str| order.iter().position(|v| v == k).unwrap();
+    assert_eq!(at("mipmapLevels"), at("particles") + 1);
+    let ids: Vec<_> = video.widgets(&host, (640.0, 360.0)).into_iter().map(|w| w.id).collect();
+    let pos = |id| ids.iter().position(|&i| i == id).unwrap();
+    assert_eq!(pos(video::Id::MipmapLevels), pos(video::Id::Particles) + 1);
+}
+
 #[test]
 fn gui_scale_cycles_auto_then_each_scale_that_fits() {
     let mut host = Host { window: Some((1920, 1080)), ..Host::default() };
@@ -290,6 +335,12 @@ fn accessibility_sliders_use_javas_labels_and_curves() {
     assert_eq!(label(&screen, &host, accessibility::Id::FovEffects), "FOV Effects: 25%");
     screen.slide(&mut host, accessibility::Id::DamageTilt, 0.5);
     assert_eq!(label(&screen, &host, accessibility::Id::DamageTilt), "Damage Tilt: 50%");
+    // v0.18 Track 7: Panorama Scroll Speed, a percentage with no OFF.
+    assert_eq!(label(&screen, &host, accessibility::Id::PanoramaSpeed), "Panorama Scroll Speed: 100%");
+    screen.slide(&mut host, accessibility::Id::PanoramaSpeed, 0.0);
+    assert_eq!(label(&screen, &host, accessibility::Id::PanoramaSpeed), "Panorama Scroll Speed: 0%");
+    screen.slide(&mut host, accessibility::Id::PanoramaSpeed, 0.25);
+    assert_eq!(host.settings.panorama_speed, 0.25);
     screen.activate(&mut host, accessibility::Id::ViewBobbing);
     assert!(!host.settings.view_bobbing);
     assert_eq!(crate::app::fov_effects(1.2, 0.0), 1.0, "FOV Effects OFF keeps the FOV");
@@ -375,8 +426,8 @@ fn every_sound_slider_is_reachable_by_keyboard_and_controller() {
         stack.open(MusicAndSounds);
         let (shape, _) = stack.peek(&host, size);
         let sliders: Vec<usize> = (0..shape.slots.len()).filter(|&i| shape.slots[i].focusable).collect();
-        // Ten sliders and Done.
-        assert_eq!(sliders.len(), SoundSource::ALL.len() + 1, "{size:?}");
+        // Ten sliders, Closed Captions (v0.18 Track 9) and Done.
+        assert_eq!(sliders.len(), SoundSource::ALL.len() + 2, "{size:?}");
         for (n, source) in SoundSource::ALL.into_iter().enumerate() {
             // Tab to slider `n`, lower it with the arrow key, raise it with the D-pad.
             let mut tabs = Host::default();
@@ -639,7 +690,11 @@ fn key_binds_list_every_action_under_javas_categories() {
             _ => None,
         })
         .collect();
-    assert_eq!(headings, ["Movement", "Miscellaneous", "Multiplayer", "Gameplay", "Inventory", "Debug", "VoxelCraft"]);
+    // v0.18 Track 4: the saved-hotbar activators bring Java's Creative Mode category.
+    assert_eq!(
+        headings,
+        ["Movement", "Miscellaneous", "Multiplayer", "Gameplay", "Inventory", "Creative Mode", "Debug", "VoxelCraft"]
+    );
     for action in Action::ALL {
         assert!(widgets.iter().any(|w| w.id == keybinds::Id::Change(action)), "{action:?} is listed");
     }
@@ -686,4 +741,71 @@ fn labels_follow_java() {
     // f32 values just under a whole percent still show that percent.
     assert_eq!(video::brightness_label(0.53), "Brightness: 53");
     assert_eq!(video::brightness_label(0.59), "Brightness: 59");
+}
+
+/// v0.18 Track 9: Closed Captions sits in Music & Sound Options and in
+/// Accessibility Settings with Java's label, off by default; the text
+/// background pair follows it in Accessibility Settings.
+#[test]
+fn closed_captions_and_text_background_use_javas_labels() {
+    let mut host = Host::default();
+    assert_eq!(label(&MusicAndSounds, &host, sound::Id::Subtitles), "Closed Captions: OFF");
+    assert_eq!(label(&Accessibility, &host, accessibility::Id::Subtitles), "Closed Captions: OFF");
+    MusicAndSounds.activate(&mut host, sound::Id::Subtitles);
+    assert!(host.settings.show_subtitles);
+    assert_eq!(label(&Accessibility, &host, accessibility::Id::Subtitles), "Closed Captions: ON");
+    let mut screen = Accessibility;
+    screen.activate(&mut host, accessibility::Id::Subtitles);
+    assert!(!host.settings.show_subtitles);
+    assert_eq!(label(&screen, &host, accessibility::Id::TextBackgroundOpacity), "Text Background Opacity: 50%");
+    assert_eq!(label(&screen, &host, accessibility::Id::TextBackground), "Text Background: Chat");
+    screen.activate(&mut host, accessibility::Id::TextBackground);
+    assert_eq!(label(&screen, &host, accessibility::Id::TextBackground), "Text Background: Everywhere");
+    screen.slide(&mut host, accessibility::Id::TextBackgroundOpacity, 0.0);
+    assert_eq!(label(&screen, &host, accessibility::Id::TextBackgroundOpacity), "Text Background Opacity: 0%");
+    // Java's order: Closed Captions, then the text background pair, before View Bobbing.
+    let ids: Vec<_> = screen.widgets(&host, (640.0, 360.0)).into_iter().map(|w| w.id).collect();
+    let at = |id| ids.iter().position(|&i| i == id).unwrap();
+    assert!(at(accessibility::Id::Subtitles) < at(accessibility::Id::TextBackgroundOpacity));
+    assert!(at(accessibility::Id::TextBackgroundOpacity) < at(accessibility::Id::TextBackground));
+    assert!(at(accessibility::Id::TextBackground) < at(accessibility::Id::ViewBobbing));
+}
+
+/// v0.18 Track 8: Clouds and Cloud Distance sit in Video Settings' Quality
+/// section in Java's order, and Hide Sky Flashes in Accessibility Settings,
+/// with Java 26.3's labels, values and defaults.
+#[test]
+fn cloud_and_sky_flash_options_use_javas_labels_and_order() {
+    use voxelcraft::atmosphere::Clouds;
+    let mut host = Host::default();
+    let mut video = VideoSettings;
+    assert_eq!(label(&video, &host, video::Id::Clouds), "Clouds: Fancy");
+    for (want, caption) in [(Clouds::Off, "OFF"), (Clouds::Fast, "Fast"), (Clouds::Fancy, "Fancy")] {
+        video.activate(&mut host, video::Id::Clouds);
+        assert_eq!(host.settings.clouds, want);
+        assert_eq!(label(&video, &host, video::Id::Clouds), format!("Clouds: {caption}"));
+    }
+    assert_eq!(label(&video, &host, video::Id::CloudDistance), "Cloud Distance: 128 Chunks");
+    video.slide(&mut host, video::Id::CloudDistance, 0.0);
+    assert_eq!(label(&video, &host, video::Id::CloudDistance), "Cloud Distance: 2 Chunks");
+    video.slide(&mut host, video::Id::CloudDistance, 0.5);
+    assert_eq!(host.settings.cloud_range, 65);
+    let ids: Vec<_> = video.widgets(&host, (640.0, 360.0)).into_iter().map(|w| w.id).collect();
+    let at = |id| ids.iter().position(|&i| i == id).unwrap();
+    assert!(at(video::Id::SimulationDistance) < at(video::Id::Clouds));
+    assert!(at(video::Id::Clouds) < at(video::Id::Particles));
+    // Java: Particles, Mipmap Levels, (Entity Shadows), Menu Background Blur, Cloud Distance.
+    assert!(at(video::Id::Particles) < at(video::Id::MipmapLevels));
+    assert!(at(video::Id::MipmapLevels) < at(video::Id::MenuBlur));
+    assert!(at(video::Id::MenuBlur) < at(video::Id::CloudDistance));
+    assert!(at(video::Id::CloudDistance) < at(video::Id::PreferencesHeader));
+
+    let mut screen = Accessibility;
+    assert_eq!(label(&screen, &host, accessibility::Id::HideSkyFlashes), "Hide Sky Flashes: OFF");
+    screen.activate(&mut host, accessibility::Id::HideSkyFlashes);
+    assert!(host.settings.hide_lightning_flashes);
+    assert_eq!(label(&screen, &host, accessibility::Id::HideSkyFlashes), "Hide Sky Flashes: ON");
+    let ids: Vec<_> = screen.widgets(&host, (640.0, 360.0)).into_iter().map(|w| w.id).collect();
+    let at = |id| ids.iter().position(|&i| i == id).unwrap();
+    assert!(at(accessibility::Id::DamageTilt) < at(accessibility::Id::HideSkyFlashes));
 }

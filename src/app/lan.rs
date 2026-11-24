@@ -2,7 +2,7 @@
 //! controller hands (`hands::Actor`); screens still borrow host container code.
 use super::{Container, Game, GameMode, gamepad::Body, hud::SlotRef};
 use crate::crafting::Grid;
-use crate::inventory::{stack_from_str, stack_to_string};
+use crate::inventory::{Stack, stack_from_str, stack_to_string};
 use crate::knockback;
 use crate::world::{
     World,
@@ -69,6 +69,8 @@ pub(super) struct Peer {
     /// v0.15 Track B: a lectern or held book this client should open its
     /// reader or editor for, numbered like `sign_edit`.
     book_open: Option<(Value, u32)>,
+    /// v0.18 Track 5: the recipe book revision this client last got.
+    recipe_book_sent: Option<u32>,
 }
 impl Peer {
     fn new(connection: Connection) -> Self {
@@ -97,6 +99,7 @@ impl Peer {
             sign_edit: None,
             sign_editing: false,
             book_open: None,
+            recipe_book_sent: None,
         }
     }
 }
@@ -285,7 +288,9 @@ const WOOD_BYTES: usize = voxelcraft::lan::MAX_FRAME / 4;
 fn fit_state(mut v: Value) -> (Option<Value>, bool) {
     let fits = |v: &Value| serde_json::to_vec(v).is_ok_and(|b| b.len() < voxelcraft::lan::MAX_FRAME - 16);
     let mut shed_looks = false;
-    for shed in ["extras", "workstations", "copper_golem_statues", "wood", "decor", "items", "looks", "mobs"] {
+    for shed in
+        ["recipe_book", "extras", "workstations", "copper_golem_statues", "wood", "decor", "items", "looks", "mobs"]
+    {
         if fits(&v) {
             return (Some(v), shed_looks);
         }
@@ -700,7 +705,7 @@ impl Game {
     /// The chests LAN players have open.
     pub(super) fn open_chests(&self) -> impl Iterator<Item = IVec3> + '_ {
         self.lan.peers.iter().filter(|p| p.open).filter_map(|p| match p.body.container() {
-            Container::Chest(pos) => Some(pos),
+            Container::Chest(pos) | Container::EnderChest(pos) => Some(pos),
             _ => None,
         })
     }
@@ -740,11 +745,10 @@ impl Game {
         peer.body.let_go();
         peer.body.container = container;
         peer.open = true;
-        if let Container::Chest(pos) | Container::EnderChest(pos) = container {
-            self.chest_sound(pos, 0.65);
-            if self.world.get_block(pos).is_some_and(crate::entity::nether::guarded_by_piglins) {
-                self.mobs.entities.piglins_notice(id, at, true, &self.world);
-            }
+        if let Container::Chest(pos) | Container::EnderChest(pos) = container
+            && self.world.get_block(pos).is_some_and(crate::entity::nether::guarded_by_piglins)
+        {
+            self.mobs.entities.piglins_notice(id, at, true, &self.world);
         }
     }
 
@@ -754,13 +758,11 @@ impl Game {
         if !peer.open {
             return;
         }
-        if let Container::Chest(pos) | Container::EnderChest(pos) = peer.body.container {
-            self.chest_sound(pos, 0.8);
-        }
         if let Some(bot) = self.agents.players.get_mut(&name) {
             let session = &mut bot.agent.session;
             let work: Vec<_> = session.work.iter_mut().filter_map(Option::take).collect();
             session.inventory.return_stacks(peer.grid.take_all().into_iter().chain(work));
+            session.clear_anvil_name();
         }
         peer.grid = Grid::new(2);
         peer.body.container = Container::Inventory;
@@ -780,6 +782,19 @@ impl Game {
             }
             "inventory" => self.peer_open(peer, Container::Inventory),
             "close" => self.peer_close(peer),
+            c if c.starts_with("recipe_") => self.remote_recipe_book(peer, c)?,
+            // v0.18 Track 2: the guest typed in an anvil's name box
+            // (`ServerboundRenameItemPacket`).
+            c if let Some(name) = super::anvil::parse_rename(c) => {
+                let Some(profile) = peer.profile.clone() else { return Ok(()) };
+                if peer.open
+                    && matches!(peer.body.container, Container::Anvil(_))
+                    && let Some(bot) = self.agents.players.get_mut(&profile)
+                    && !bot.agent.session.set_anvil_name(name)
+                {
+                    return Err("Invalid item name".into());
+                }
+            }
             "swap" => {
                 let name = peer.profile.clone().unwrap_or_default();
                 self.agent_hands(&name, &mut peer.body, |h| {
@@ -936,6 +951,50 @@ impl Game {
             Container::Minecart(id) => self.mobs.entities.vehicle_in_reach(id, eye, session.entity_screen_range()),
         }
     }
+    /// v0.18 Track 5: a guest's recipe book (`ServerboundPlaceRecipePacket`,
+    /// `ServerboundRecipeBookSeenRecipePacket` and
+    /// `ServerboundRecipeBookChangeSettingsPacket`): `recipe_place <id> max|one`,
+    /// `recipe_seen <id>` and `recipe_settings <book> <open> <filtering>`.
+    fn remote_recipe_book(&mut self, peer: &mut Peer, command: &str) -> Result<(), String> {
+        use voxelcraft::crafting::book::RecipeId;
+        let Some(name) = peer.profile.clone() else { return Ok(()) };
+        let words: Vec<&str> = command.split_whitespace().collect();
+        let recipe =
+            |w: Option<&&str>| w.and_then(|w| RecipeId::from_name(w)).ok_or_else(|| "Unknown recipe".to_string());
+        match words.first().copied() {
+            Some("recipe_place") => {
+                let id = recipe(words.get(1))?;
+                let max = words.get(2) == Some(&"max");
+                let Some(session) = self.agents.players.get(&name).map(|b| &b.agent.session) else { return Ok(()) };
+                if !peer.open || !self.container_still_valid(session, peer.body.container) || session.vitals.is_dead() {
+                    return Ok(());
+                }
+                let selected = self.agents.players.get(&name).map_or(0, |b| b.agent.selected);
+                let mut container = peer.body.container;
+                let _ = self.agent_screen(&name, &mut container, &mut peer.grid, |s| s.place_recipe(id, max, selected));
+                peer.body.container = container;
+            }
+            Some("recipe_seen") => {
+                let id = recipe(words.get(1))?;
+                if let Some(bot) = self.agents.players.get_mut(&name) {
+                    bot.agent.session.recipe_book.mark_seen(id);
+                }
+            }
+            Some("recipe_settings") => {
+                let book =
+                    words.get(1).and_then(|b| super::recipe_book::book_from_name(b)).ok_or("Unknown recipe book")?;
+                let flag = |i: usize| words.get(i).map(|w| *w == "1").ok_or("Bad recipe book settings");
+                let (open, filtering) = (flag(2)?, flag(3)?);
+                if let Some(bot) = self.agents.players.get_mut(&name) {
+                    bot.agent.session.recipe_book.set_open(book, open);
+                    bot.agent.session.recipe_book.set_filtering(book, filtering);
+                }
+            }
+            _ => return Err("Unknown recipe book command".into()),
+        }
+        Ok(())
+    }
+
     fn remote_click(&mut self, peer: &mut Peer, encoded: u16, right: bool, shift: bool) {
         if !peer.open {
             return;
@@ -952,7 +1011,9 @@ impl Game {
             return;
         }
         let Some(slot) = decode_slot(encoded, peer.body.container, session.mode, peer.grid.size) else { return };
-        let quick = shift && session.inventory.cursor.is_none();
+        // v0.18 Track 4: creative cells take shift with a stack held too.
+        let quick =
+            shift && (session.inventory.cursor.is_none() || matches!(slot, SlotRef::Palette(_) | SlotRef::Destroy));
         let mut container = peer.body.container;
         let done = self.agent_screen(&name, &mut container, &mut peer.grid, |s| {
             if quick { s.quick_move(slot) } else { s.click_slot(slot, right) }
@@ -1450,14 +1511,26 @@ impl Game {
             snapshot["workstations"] = json!(self.world.workstations_near(here, 160.0));
             // v0.16 Track B: shulker box lids that are open or moving.
             snapshot["shulker_lids"] = json!(self.world.shulker_lids_near(here, 160.0));
+            // v0.18 Track 9: chest lids and barrel tops in use or moving.
+            snapshot["lids"] = json!(self.world.lids_near(here, 160.0));
             if let Some((open, serial)) = &peer.book_open {
                 let mut open = open.clone();
                 open["serial"] = json!(serial);
                 snapshot["book_open"] = open;
             }
+            // v0.18 Track 5: the guest's recipe book when it changed, and the
+            // rule that hides the result of recipes it doesn't know.
+            let book_revision = bot.agent.session.recipe_book.revision;
+            if peer.recipe_book_sent != Some(book_revision) {
+                snapshot["recipe_book"] = json!(bot.agent.session.recipe_book.serialize());
+            }
+            snapshot["limited_crafting"] = json!(self.gamerules.bool("limited_crafting"));
             let (snapshot, shed_looks) = fit_state(snapshot);
             if snapshot.as_ref().is_some_and(|v| v["wood"].is_string()) {
                 peer.wood_sent = Some((wood_version, here));
+            }
+            if snapshot.as_ref().is_some_and(|v| v["recipe_book"].is_string()) {
+                peer.recipe_book_sent = Some(book_revision);
             }
             if shed_looks {
                 // Looks dropped to fit: resend them all next tick.
@@ -1607,6 +1680,13 @@ impl Game {
         }
         let mut own = Agent::new(self.session.player.pos);
         apply(&mut own, &snapshot["self"]);
+        // v0.18 Track 5: the host's copy of this guest's recipe book; its
+        // settings are taken only the first time (the guest changes them).
+        if let Some(text) = snapshot["recipe_book"].as_str() {
+            self.session.recipe_book.sync_from(text, !self.recipe_book.synced);
+        }
+        let limited = if snapshot["limited_crafting"] == true { "true" } else { "false" };
+        let _ = self.gamerules.set("limited_crafting", limited);
         // The host's draw is authoritative (a charged crossbow fired and
         // reloading, say) once it has seen this client's latest use press or
         // release; until then the local prediction stands.
@@ -1711,6 +1791,7 @@ impl Game {
             self.world.replace_workstations(text);
         }
         self.world.apply_shulker_lids(&snapshot["shulker_lids"]);
+        self.world.apply_lids(&snapshot["lids"]);
         let edit = &snapshot["sign_edit"];
         if let (Some(serial), Some(p)) = (edit["serial"].as_u64(), vector(&edit["pos"]))
             && serial as u32 != self.lan.sign_serial
@@ -1853,8 +1934,11 @@ impl Game {
                     continue;
                 }
                 let uid = m["m"].get(0).and_then(Value::as_u64).unwrap_or(0) as u32;
+                let known = previous.contains_key(&uid);
                 let mut mob = previous.remove(&uid).unwrap_or_else(|| crate::entity::Mob::new(kind, pos, 0.0));
                 mob.previous_pos = mob.pos;
+                // v0.18 Track 6: turn and walk smoothly from the last snapshot's pose.
+                let before = mob.pose_values();
                 mob.pos = pos;
                 mob.uid = uid;
                 mob.yaw = f(5).unwrap_or(0.0) as f32;
@@ -1873,6 +1957,7 @@ impl Game {
                 }
                 mob.riding = m["r"].as_u64().and_then(|r| u32::try_from(r).ok());
                 mob.animate_replica(voxelcraft::simulation::TICK_SECONDS as f32);
+                mob.previous_pose = if known { before } else { mob.pose_values() };
                 self.mobs.entities.mobs.push(mob);
             }
         }
@@ -2060,7 +2145,26 @@ pub(super) fn encode_slot(slot: SlotRef) -> Option<u16> {
         SlotRef::BeaconPower(i) if i < 7 => 561 + u16::from(i),
         SlotRef::BeaconDone => 568,
         SlotRef::BeaconCancel => 569,
-        SlotRef::Palette(item) => 1000 + crate::item::Item::creative_palette().position(|i| i == item)? as u16,
+        // A plain creative stack keeps the code older hosts read: its place
+        // in `Item::creative_palette`. v0.18 Track 4: other stacks (potions,
+        // enchanted books, rockets) are 20000 + tab x 1000 + their place in
+        // that tab of `creative::catalogue`.
+        SlotRef::Palette(stack) => {
+            match crate::item::Item::creative_palette().position(|i| Stack::new(i, 1) == stack) {
+                Some(i) if i < 19_000 => 1000 + i as u16,
+                _ => {
+                    let c = voxelcraft::creative::catalogue();
+                    let (t, i) = (0..c.tabs.len())
+                        .find_map(|t| c.tabs[t].items.iter().position(|&s| s == stack).map(|i| (t, i)))?;
+                    if i >= 1000 {
+                        return None;
+                    }
+                    20_000 + t as u16 * 1000 + i as u16
+                }
+            }
+        }
+        SlotRef::Destroy => 405,
+        SlotRef::PaletteEmpty => 406,
         _ => return None,
     })
 }
@@ -2129,9 +2233,16 @@ fn decode_slot(slot: u16, container: Container, mode: GameMode, grid_size: usize
             _ => crate::item::ArmorPiece::Boots,
         })),
         404 if container == Container::Inventory => Some(SlotRef::Offhand),
-        1000.. if mode.is_creative() && container == Container::Inventory => {
-            crate::item::Item::creative_palette().nth((slot - 1000) as usize).map(SlotRef::Palette)
+        405 if mode.is_creative() && container == Container::Inventory => Some(SlotRef::Destroy),
+        406 if mode.is_creative() && container == Container::Inventory => Some(SlotRef::PaletteEmpty),
+        20_000.. if mode.is_creative() && container == Container::Inventory => {
+            let (t, i) = ((slot - 20_000) / 1000, (slot - 20_000) % 1000);
+            let tab = voxelcraft::creative::catalogue().tabs.get(t as usize)?;
+            tab.items.get(i as usize).copied().map(SlotRef::Palette)
         }
+        1000.. if mode.is_creative() && container == Container::Inventory => crate::item::Item::creative_palette()
+            .nth((slot - 1000) as usize)
+            .map(|item| SlotRef::Palette(Stack::new(item, 1))),
         _ => None,
     }
 }
@@ -2448,7 +2559,14 @@ fn peer_sounds(
         json!([horn.key(), at.x, at.y, at.z, 1.0, 1.0, 1.0, crate::audio::SoundSource::Neutral.index()])
     });
     let heard = tapped.iter().filter(|t| t.0 != horn).filter_map(|&(sound, pos, gain, (lo, hi), source)| {
-        let movement = matches!(sound, Sound::Step(_) | Sound::Land | Sound::Splash | Sound::Swim);
+        let movement = matches!(
+            sound,
+            Sound::Step(_)
+                | Sound::Block(_, crate::audio::BlockCue::Step | crate::audio::BlockCue::Fall)
+                | Sound::Land
+                | Sound::Splash
+                | Sound::Swim
+        );
         // Positionless sounds are the host's own: only body sounds others would hear.
         let pos = match pos {
             Some(p) => p,
@@ -2736,6 +2854,23 @@ mod tests {
         apply(&mut copy, &lite);
         assert_eq!((copy.inventory.get(1), copy.inventory.armor[0]), (Some(book), Some(helmet)));
     }
+
+    /// v0.18 Track 4: the spawn eggs come after every v0.17 palette entry,
+    /// so an older palette code still means the same item; the End crystal,
+    /// v0.17's last entry, keeps its code.
+    #[test]
+    fn legacy_palette_codes_keep_their_items() {
+        let crystal = Stack::new(crate::entity::crystal::END_CRYSTAL, 1);
+        assert_eq!(encode_slot(SlotRef::Palette(crystal)), Some(LEGACY_END_CRYSTAL_CODE));
+        let decoded = decode_slot(LEGACY_END_CRYSTAL_CODE, Container::Inventory, GameMode::Creative, 2);
+        assert_eq!(decoded, Some(SlotRef::Palette(crystal)));
+        let eggs = voxelcraft::content::spawn_egg::EGGS.len();
+        let palette: Vec<_> = crate::item::Item::creative_palette().collect();
+        assert!(palette[palette.len() - eggs..].iter().all(|&i| voxelcraft::content::spawn_egg::is_spawn_egg(i)));
+    }
+    /// 1000 + 1645: the End crystal was the last of v0.17's 1646 palette entries.
+    const LEGACY_END_CRYSTAL_CODE: u16 = 2645;
+
     #[test]
     fn slots_are_bounded_and_validated_against_the_authoritative_screen() {
         let inventory = Container::Inventory;
@@ -2749,9 +2884,9 @@ mod tests {
         assert!(decode_slot(1000, inventory, GameMode::Survival, 2).is_none());
         assert!(decode_slot(u16::MAX, inventory, GameMode::Creative, 2).is_none());
         let item = crate::item::Item::from(Block::DIRT);
-        let slot = encode_slot(SlotRef::Palette(item)).unwrap();
+        let slot = encode_slot(SlotRef::Palette(Stack::new(item, 1))).unwrap();
         assert!(
-            matches!(decode_slot(slot,inventory,GameMode::Creative,2),Some(SlotRef::Palette(decoded)) if decoded==item)
+            matches!(decode_slot(slot,inventory,GameMode::Creative,2),Some(SlotRef::Palette(decoded)) if decoded==Stack::new(item, 1))
         );
     }
 }

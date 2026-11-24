@@ -1,0 +1,81 @@
+{
+ "accessibility_order": [
+  "narrator",
+  "showSubtitles",
+  "highContrast",
+  "menuBackgroundBlurriness",
+  "textBackgroundOpacity",
+  "backgroundForChatOnly",
+  "chatOpacity",
+  "chatLineSpacing",
+  "chatDelay",
+  "notificationDisplayTime",
+  "bobView",
+  "screenEffectScale",
+  "fovEffectScale",
+  "darknessEffectScale",
+  "damageTiltStrength",
+  "glintSpeed",
+  "glintStrength",
+  "hideLightningFlash",
+  "darkMojangStudiosBackground",
+  "panoramaSpeed",
+  "hideSplashTexts",
+  "narratorHotkey",
+  "rotateWithMinecart",
+  "highContrastBlockOutline"
+ ],
+ "client_sha1": "e877b6a07acd633fb3bb475002175cec036e7b87",
+ "edit_world_column": [
+  "selectWorld.edit.resetIcon",
+  "selectWorld.edit.openFolder",
+  "selectWorld.edit.backup",
+  "selectWorld.edit.backupFolder",
+  "selectWorld.edit.optimize"
+ ],
+ "english": {
+  "options.accessibility.panorama_speed": "Panorama Scroll Speed",
+  "options.darkMojangStudiosBackgroundColor": "Monochrome Logo",
+  "options.darkMojangStudiosBackgroundColor.tooltip": "Changes the Mojang Studios loading screen background color to black.",
+  "selectWorld.edit.resetIcon": "Reset Icon",
+  "selectWorld.edit.title": "Edit World",
+  "selectWorld.title": "Select World"
+ },
+ "logo": {
+  "default_height_offset": 30,
+  "logo_height": 44,
+  "logo_width": 256
+ },
+ "panorama": {
+  "faces": 6,
+  "far": 10.0,
+  "fov_degrees": 85.0,
+  "near": 0.05000000074505806,
+  "overlay_texture": "textures/gui/title/background/panorama_overlay.png",
+  "pitch_degrees": 10.0,
+  "sampling": "blurred (linear) with mean mipmaps",
+  "spin_per_tick_degrees": 0.10000000149011612,
+  "spin_uses_real_time_ticks": true
+ },
+ "panorama_speed_option": {
+  "default": 1.0,
+  "key": "panoramaScrollSpeed",
+  "label": "Panorama Scroll Speed",
+  "slider": "unit (0..1)",
+  "value_label": "percent"
+ },
+ "source": "Java 26.3 client jar (pinned SHA-1); numbers, keys and labels only",
+ "world_icon": {
+  "attempt_interval_ms": 1000,
+  "crop": "centred square",
+  "file": "icon.png",
+  "hover_fill": "0xA0909090",
+  "list_size": 32,
+  "local_server_only": true,
+  "min_rendered_sections_exclusive": 10,
+  "refuses_symbolic_links": true,
+  "requires_all_sections_rendered": true,
+  "size": 64,
+  "taken_after_level_before_gui": true
+ }
+}

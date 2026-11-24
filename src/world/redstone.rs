@@ -1067,7 +1067,7 @@ impl World {
     }
 
     /// Java's `Level.skyDarken` as last supplied by the clock.
-    pub(super) fn sky_darken(&self) -> u8 {
+    pub fn sky_darken(&self) -> u8 {
         self.redstone.sky_darken
     }
 
@@ -1125,8 +1125,9 @@ impl World {
 
     pub fn touch_redstone_ore(&mut self, p: IVec3) -> bool {
         let Some(b) = self.get_block(p) else { return false };
-        let deep = b.base() == Block::DEEPSLATE_REDSTONE_ORE;
-        if !deep && b.base() != Block::REDSTONE_ORE {
+        let base = b.base();
+        let deep = base == Block::DEEPSLATE_REDSTONE_ORE;
+        if !deep && base != Block::REDSTONE_ORE {
             return false;
         }
         if !matches!(r::component(b), Some(Component::GlowingOre(_))) {

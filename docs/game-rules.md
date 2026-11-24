@@ -20,7 +20,7 @@ holds the same table (`JAVA_RULES`) and a test keeps this file identical to it.
   `fire_spread_radius_around_player` (128: fire ticks within 128 blocks of a
   player, 0: never, -1: everywhere). Old saves convert as Java's datafixer does;
   new saves write `fireSpreadRadiusAroundPlayer`.
-- Rules the engine lacks are not stored: `/gamerule limited_crafting true`
+- Rules the engine lacks are not stored: `/gamerule locator_bar false`
   reports that the rule is not implemented and names the release that adds it.
 - Three legacy names are `disable*` booleans that Java's datafixer inverts
   (`GameRuleRegistryFix.convertBooleanInverted`). `raids` is the one the
@@ -65,10 +65,10 @@ enforced.
 | `forgive_dead_players` | `forgiveDeadPlayers` | boolean | `true` | Implemented | - | A dying player's death step tells every neutral mob (bee, iron golem, polar bear, wolf, enderman, zombified piglin) in the box 32, 10 and 32 blocks around its block; those angry at it stop (`ServerPlayer.tellNeutralMobsThatIDied`, `NeutralMob.playerDied`). Off, the grudge holds and the respawned player is still the target (`entity::neutral`). Piglins still drop a dead foe either way. |
 | `freeze_damage` | `freezeDamage` | boolean | `true` | Implemented | - | Powder snow freezing damage to players; off makes them immune to it (PLY-02c). |
 | `global_sound_events` | `globalSoundEvents` | boolean | `true` | Not applicable | n/a | Only chooses whether dragon, wither and similar sounds reach players in other dimensions or far away. |
-| `immediate_respawn` | `doImmediateRespawn` | boolean | `false` | Implemented | - | Skips the death screen (`GameRules::respawns_immediately`); Hardcore still becomes Spectator. |
+| `immediate_respawn` | `doImmediateRespawn` | boolean | `false` | Implemented | - | Skips the death screen (`GameRules::respawns_immediately`). The host respawns at once, in Hardcore as a spectator (Java's client respawns and the server sets Spectator); CLI agents and LAN guests in Hardcore still become spectators where they died. |
 | `keep_inventory` | `keepInventory` | boolean | `false` | Implemented | - | Keeps inventory, vanishing items and experience; no orbs drop (`Player.dropEquipment`, `getBaseExperienceReward`). |
 | `lava_source_conversion` | `lavaSourceConversion` | boolean | `false` | Implemented | - | Two lava sources over a solid floor make a source when on; off by default, unlike water. |
-| `limited_crafting` | `doLimitedCrafting` | boolean | `false` | Missing | v0.18 | Needs recipe unlocking (UX-03c). |
+| `limited_crafting` | `doLimitedCrafting` | boolean | `false` | Implemented | - | v0.18 Track 5: only recipes the player has unlocked craft (special recipes always do), in the 2x2 and 3x3 grids on every input path; the crafter block is unaffected, as in Java ([recipe book record](verification/2026-11-23-v0.18-recipe-book.md)). |
 | `locator_bar` | `locatorBar` | boolean | `true` | Missing | unscheduled | No waypoint HUD. The roadmap does not schedule it; owner decision needed. |
 | `log_admin_commands` | `logAdminCommands` | boolean | `true` | Not applicable | n/a | Server log only. |
 | `max_block_modifications` | `commandModificationBlockLimit` | integer 1..2147483647 | `32768` | Not applicable | n/a | There is no `/fill` or `/clone`. |
@@ -94,7 +94,7 @@ enforced.
 | `send_command_feedback` | `sendCommandFeedback` | boolean | `true` | Implemented | - | Quiet successful console commands; failures still print. CLI agents always receive results. |
 | `show_advancement_messages` | `announceAdvancements` | boolean | `true` | Not applicable | n/a | There are no advancements (side feature, roadmap section 1.4). |
 | `show_death_messages` | `showDeathMessages` | boolean | `true` | Partial | - | VoxelCraft writes death messages to the log only; there is no chat, so the rule has nothing visible to hide. |
-| `spawner_blocks_work` | `spawnerBlocksEnabled` | boolean | `true` | Implemented | - | Stops monster cages from ticking (`BaseSpawner.serverTick`); spawn eggs on spawners are not modelled. |
+| `spawner_blocks_work` | `spawnerBlocksEnabled` | boolean | `true` | Implemented | - | Stops monster cages from ticking (`BaseSpawner.serverTick`), and spawn eggs then fail on spawners and trial spawners ("Spawner blocks are not enabled", v0.18). |
 | `spawn_mobs` | `doMobSpawning` | boolean | `true` | Implemented | - | Natural spawning and custom spawners; chunk-generation herds are not gated, as in Java. |
 | `spawn_monsters` | `spawnMonsters` | boolean | `true` | Implemented | - | Hostile spawn categories only; animals and water creatures still spawn. |
 | `spawn_patrols` | `doPatrolSpawning` | boolean | `true` | Implemented | - | Gates the pillager patrol spawner (`PatrolSpawner.tick`). v0.15 Track E. |

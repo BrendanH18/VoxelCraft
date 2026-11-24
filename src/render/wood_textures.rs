@@ -1,5 +1,5 @@
 //! Original procedural textures of the v0.12 wood track (`world::wood::tex`):
-//! stripped logs, quarter-turned log sides, trapdoors, sign item sprites,
+//! quarter-turned log and stripped log sides, trapdoors, sign item sprites,
 //! shelves and the chiseled bookshelf.
 
 use super::{Rgba, noisy, pixel as base_pixel, rnd, shade};
@@ -58,11 +58,10 @@ const LOG_SIDES: [u16; 10] = [
 pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     let r = rnd(layer, x, y, 0);
     match layer {
-        l if l < tex::STRIPPED_TOP => stripped_side(l, (l - tex::STRIPPED_SIDE) as usize, x, y, r),
-        l if l < tex::LOG_SIDE_TURNED => stripped_top((l - tex::STRIPPED_TOP) as usize, x, y, r),
+        // Stripped sides and ends are drawn by `material_textures` (v0.18 Track 3).
         // A quarter turn: the grain runs across instead of up.
         l if l < tex::STRIPPED_SIDE_TURNED => base_pixel(LOG_SIDES[(l - tex::LOG_SIDE_TURNED) as usize], y, x),
-        l if l < tex::TRAPDOORS => pixel(tex::STRIPPED_SIDE + l - tex::STRIPPED_SIDE_TURNED, y, x),
+        l if l < tex::TRAPDOORS => base_pixel(tex::STRIPPED_SIDE + l - tex::STRIPPED_SIDE_TURNED, y, x),
         l if l < tex::SIGN_ICONS => trapdoor((l - tex::TRAPDOORS) as usize, x, y, r),
         l if l < tex::HANGING_SIGN_ICONS => sign_icon((l - tex::SIGN_ICONS) as usize, x, y, r),
         l if l < tex::SHELF => hanging_sign_icon((l - tex::HANGING_SIGN_ICONS) as usize, x, y, r),
@@ -71,49 +70,7 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             let i = l - tex::SHELF_FRONTS;
             shelf_front(l, (i / 5) as usize, i % 5, x, y)
         }
-        l if l == tex::CHISELED_TOP => chiseled_top(l, x, y, r),
-        l if l == tex::CHISELED_SIDE => chiseled_side(l, x, y, r),
-        l if l < tex::END => chiseled_front(l, (l - tex::CHISELED_FRONTS) as u8, x, y, r),
         _ => [255, 0, 255, 255],
-    }
-}
-
-/// Bare wood with vertical grain; the bamboo block keeps its grooves and nodes.
-fn stripped_side(layer: u16, kind: usize, x: usize, y: usize, r: f32) -> Rgba {
-    let c = STRIPPED[kind];
-    if kind == 9 {
-        let groove = x.is_multiple_of(4);
-        let node = y % 8 == 3;
-        return shade(c, if groove || node { 0.8 } else { 0.94 + r * 0.1 });
-    }
-    let grain = (x + (rnd(layer, 0, y / 5, 3) * 2.0) as usize).is_multiple_of(5);
-    let knot = rnd(layer, x / 3, y / 4, 7) > 0.97;
-    shade(
-        c,
-        if knot {
-            0.75
-        } else if grain {
-            0.84
-        } else {
-            0.94 + r * 0.1
-        },
-    )
-}
-
-/// A cut end: a thin rim of the stripped surface around rings.
-fn stripped_top(kind: usize, x: usize, y: usize, r: f32) -> Rgba {
-    let c = STRIPPED[kind];
-    if kind == 9 {
-        let ring = x.is_multiple_of(8) || y.is_multiple_of(8);
-        return shade(c, if ring { 0.82 } else { 1.0 + r * 0.06 });
-    }
-    let (dx, dy) = (x as f32 - 7.5, y as f32 - 7.5);
-    let d = (dx * dx + dy * dy).sqrt().max(dx.abs().max(dy.abs()) * 0.98);
-    if d > 7.0 {
-        shade(c, 0.88 + r * 0.08)
-    } else {
-        let ring = (d * 1.1) as i32 % 2 == 0;
-        shade(c, if ring { 1.06 } else { 0.96 + r * 0.06 })
     }
 }
 
@@ -221,76 +178,5 @@ fn shelf_front(layer: u16, kind: usize, variant: u16, x: usize, y: usize) -> Rgb
         shade(if core { [255, 214, 128] } else { [214, 150, 72] }, 0.92 + rnd(layer, x, y, 2) * 0.08)
     } else {
         panel
-    }
-}
-
-fn chiseled_top(layer: u16, x: usize, y: usize, r: f32) -> Rgba {
-    let c = PLANKS[0];
-    let rim = x == 0 || y == 0 || x == 15 || y == 15;
-    let inset = (x == 3 || x == 12) && (3..=12).contains(&y) || (y == 3 || y == 12) && (3..=12).contains(&x);
-    let _ = layer;
-    shade(
-        c,
-        if rim {
-            0.72
-        } else if inset {
-            0.8
-        } else {
-            0.94 + r * 0.1
-        },
-    )
-}
-
-fn chiseled_side(layer: u16, x: usize, y: usize, r: f32) -> Rgba {
-    let c = PLANKS[0];
-    let board = y / 4;
-    let seam = y % 4 == 3 || x == (board * 7 + 3) % 16;
-    let rim = x == 0 || x == 15;
-    let _ = layer;
-    shade(
-        c,
-        if rim {
-            0.72
-        } else if seam {
-            0.7
-        } else {
-            0.93 + r * 0.1
-        },
-    )
-}
-
-/// The front of a chiseled bookshelf holding books in the slots of `mask`:
-/// two rows of three slots, slot 0 top left as seen from the front.
-fn chiseled_front(layer: u16, mask: u8, x: usize, y: usize, r: f32) -> Rgba {
-    let c = PLANKS[0];
-    let row = match y {
-        1..=6 => Some(0),
-        9..=14 => Some(1),
-        _ => None,
-    };
-    let column = match x {
-        1..=4 => Some(0),
-        6..=9 => Some(1),
-        11..=14 => Some(2),
-        _ => None,
-    };
-    let (Some(row), Some(column)) = (row, column) else {
-        return shade(c, 0.78 + r * 0.08);
-    };
-    let slot = row * 3 + column;
-    if mask & (1 << slot) == 0 {
-        return shade([46, 32, 18], 0.9 + r * 0.1);
-    }
-    // Book spines: each pixel column a book, coloured and sized by slot.
-    const COVERS: [[u8; 3]; 6] =
-        [[150, 40, 34], [42, 92, 150], [56, 120, 50], [126, 84, 44], [120, 50, 120], [196, 160, 64]];
-    let first = if row == 0 { 1 } else { 9 };
-    let book = (x + slot * 2) % 6;
-    let height = 4 + (rnd(tex::CHISELED_FRONTS, x, slot, 4) * 2.0) as usize;
-    if y - first >= 6 - height {
-        let band = y - first == 6 - height + 1;
-        shade(COVERS[book], if band { 1.15 } else { 0.85 + rnd(layer, x, 0, 6) * 0.15 })
-    } else {
-        shade([46, 32, 18], 0.9)
     }
 }

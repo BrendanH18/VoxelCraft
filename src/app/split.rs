@@ -29,60 +29,79 @@ pub(super) struct Scene {
     pub time: f32,
     pub alpha: f64,
     pub now: Instant,
+    /// Game ticks since the last frame (0 while paused), for the fog's smoothing.
+    pub ticks: f32,
 }
 
-/// The blended biome fog around `camera`, from the sampler that belongs to `view`.
-fn view_haze(
-    samplers: &mut Vec<crate::world::nether_biome::FogSampler>,
-    view: usize,
-    camera: DVec3,
-    biome: impl Fn(i32, i32) -> crate::world::nether_biome::NetherBiome,
-) -> [f32; 3] {
-    if samplers.len() <= view {
-        samplers.resize_with(view + 1, Default::default);
+/// One eye's atmosphere state between frames: its biome blend, smoothed
+/// rain fog and water vision (`LocalPlayer.waterVisionTime`, in ticks).
+#[derive(Default)]
+pub(super) struct ViewAtmosphere {
+    sampler: voxelcraft::atmosphere::Sampler,
+    rain: voxelcraft::atmosphere::RainFog,
+    water_ticks: f32,
+}
+
+/// How far terrain is drawn around `camera` in every direction, in blocks:
+/// Java's render distance in blocks, or less where VoxelCraft's 32-block
+/// chunks stop short of it. Chunks are meshed while their horizontal chunk
+/// distance from the camera's chunk is at most `rd`, so the nearest chunk
+/// that isn't bounds the distance. Java's render-distance fog ends there,
+/// so the fog closes before the terrain's ragged edge instead of past it.
+pub(super) fn meshed_radius(rd: i32, camera: DVec3) -> f32 {
+    let size = crate::world::chunk::CHUNK_SIZE_I;
+    let (cx, cz) = ((camera.x / f64::from(size)).floor() as i32, (camera.z / f64::from(size)).floor() as i32);
+    let mut nearest = f64::from(rd * size);
+    for a in -rd - 1..=rd + 1 {
+        for b in -rd - 1..=rd + 1 {
+            if a * a + b * b <= rd * rd {
+                continue;
+            }
+            // Distance from the camera to that chunk's column.
+            let (x0, z0) = (f64::from((cx + a) * size), f64::from((cz + b) * size));
+            let dx = (x0 - camera.x).max(camera.x - (x0 + f64::from(size))).max(0.0);
+            let dz = (z0 - camera.z).max(camera.z - (z0 + f64::from(size))).max(0.0);
+            nearest = nearest.min(dx.hypot(dz));
+        }
     }
-    samplers[view].sample(camera, biome)
+    nearest as f32
 }
 
-/// Fog for an eye: colour, sky overhead, start and end.
+/// One eye's fog, sky and clouds for this frame (sRGB colours).
 #[derive(Clone, Copy)]
-pub(super) struct Fog {
-    pub color: [f32; 3],
-    /// Sky colour overhead, which follows the fog under a fluid.
-    pub zenith: [f32; 3],
-    pub start: f32,
-    pub end: f32,
+pub(super) struct Atmosphere {
+    pub fog: voxelcraft::atmosphere::Fog,
+    /// `visual/sky_light_factor` and `visual/sky_light_color`.
+    pub sky_light: (f32, [f32; 3]),
+    pub cloud_color: [f32; 4],
 }
 
-impl Fog {
-    /// Java 26.3 BlindnessFogEnvironment: five blocks, fading over the final second.
-    /// Lava's own environmental fog has priority over mob-effect fog.
-    pub(super) fn blinded(self, ticks: Option<u32>, view_distance: f32) -> Self {
-        let Some(ticks) = ticks else { return self };
-        // Only lava's fog is this short (it ends at 2); water fog ends at 28
-        // and still yields to blindness.
-        if self.end <= 3.0 {
-            return self;
-        }
-        let strength = (ticks as f32 / 20.0).min(1.0);
-        let end = view_distance + (5.0 - view_distance) * strength;
-        Self { color: self.color.map(|c| c * (1.0 - strength).powi(2)), start: end * 0.25, end, ..self }
+impl Atmosphere {
+    /// The renderer's linear fog colour.
+    pub fn fog_color(&self) -> [f32; 3] {
+        voxelcraft::atmosphere::linear(self.fog.color)
     }
 
-    /// Java's darkness fog (`DarknessFogEnvironment`): the fog closes in to
-    /// 15 blocks, start at three quarters of the end, blending out over the
-    /// effect's last 22 ticks; the colour darkens with the effect's pulse
-    /// (`LightTexture.calculateDarknessScale`, `0.45 * cos(ticks * pi / 40)`).
-    /// The lightmap darkening itself is approximated by this colour pulse.
-    pub(super) fn darkened(self, ticks: Option<u32>, view_distance: f32, time: f32) -> Self {
-        let Some(ticks) = ticks else { return self };
-        if self.end <= 15.0 {
-            return self;
-        }
-        let blend = (ticks as f32 / 22.0).min(1.0);
-        let end = view_distance + (15.0 - view_distance) * blend;
-        let pulse = 0.45 * (time * 20.0 * std::f32::consts::PI * 0.025).cos().max(0.0) * blend;
-        Self { color: self.color.map(|c| c * (1.0 - pulse)), start: end * 0.75, end: end.min(self.end), ..self }
+    /// How far entities and beams need building: nothing past this shows.
+    pub fn end(&self) -> f32 {
+        self.fog.end()
+    }
+
+    /// Fills the fog, sky and cloud fields of a frame.
+    pub fn apply(&self, p: &mut FrameParams) {
+        use voxelcraft::atmosphere::linear;
+        p.fog_color = self.fog_color();
+        p.sky_color = p.fog_color.map(f64::from);
+        p.zenith_color = linear(self.fog.sky);
+        p.fog_start = self.fog.environmental_start;
+        p.fog_end = self.fog.environmental_end;
+        p.fog_render = [self.fog.render_distance_start, self.fog.render_distance_end];
+        p.sky_end = self.fog.sky_end;
+        p.cloud_end = self.fog.cloud_end;
+        let [r, g, b] = linear([self.fog.sunrise[0], self.fog.sunrise[1], self.fog.sunrise[2]]);
+        p.sunrise = [r, g, b, self.fog.sunrise[3]];
+        p.sky_light_color = self.sky_light.1;
+        p.cloud_color = self.cloud_color;
     }
 }
 
@@ -157,55 +176,112 @@ impl Game {
         }
     }
 
-    /// The Nether's haze at `camera` for view `view` (0 is the host's): Java's `FogRenderer`
-    /// blends the biome fog around each eye, so every split-screen view has its own sampler.
-    pub(super) fn nether_haze(&self, view: usize, camera: DVec3) -> [f32; 3] {
-        let generator = &self.world.generator;
-        if generator.dimension != crate::world::terrain::Dimension::Nether {
-            return super::dimension::NETHER_FOG;
-        }
-        view_haze(&mut self.nether_fog.borrow_mut(), view, camera, |qx, qz| {
-            generator.nether_biome(qx * 4, qz * 4).unwrap_or(crate::world::nether_biome::NetherBiome::NetherWastes)
-        })
-    }
-
-    /// Horizon and zenith colours seen from `camera` in view `view`.
-    fn view_sky(&self, scene: &Scene, view: usize, camera: DVec3) -> ([f32; 3], [f32; 3]) {
-        if self.dimension == crate::world::terrain::Dimension::Nether {
-            let haze = self.nether_haze(view, camera);
-            (haze, haze)
-        } else {
-            (scene.sky.horizon, scene.sky.zenith)
-        }
-    }
-
-    /// Fog seen from `camera` in view `view`, in the frame's sky.
-    pub(super) fn fog(&self, scene: &Scene, view: usize, camera: DVec3) -> Fog {
+    /// Java 26.3's fog, sky and clouds seen from `camera` in view `view`
+    /// (0 is the host's) by a player with `vitals`, looking along `forward`.
+    /// Each view keeps its own biome blend, rain fog and water vision, as
+    /// each of Java's eyes would.
+    pub(super) fn atmosphere(
+        &self,
+        scene: &Scene,
+        view: usize,
+        camera: DVec3,
+        forward: glam::Vec3,
+        vitals: &voxelcraft::simulation::survival::Vitals,
+        spectator: bool,
+    ) -> Atmosphere {
+        use crate::world::terrain::Dimension;
+        use voxelcraft::atmosphere::{self as atm, Medium};
+        use voxelcraft::simulation::effects::Effect;
         let cell = camera.floor().as_ivec3();
         let fluid = self.world.get_block(cell).filter(|b| b.is_water() || b.is_lava()).filter(|b| {
             let above = self.world.get_block(cell + glam::IVec3::Y);
             let covered = above.is_some_and(|a| if b.is_water() { a.is_water() } else { a.is_lava() });
             camera.y - camera.y.floor() < 1.0 - if covered { 0.0 } else { b.fluid_drop() as f64 / 16.0 }
         });
-        let in_lava = fluid.is_some_and(|b| b.is_lava());
-        let underwater = fluid.is_some();
-        let view_dist = (self.world.render_distance() * 32) as f32;
-        let (horizon, zenith) = self.view_sky(scene, view, camera);
-        let powder = self.world.get_block(cell) == Some(crate::world::scaffolding::POWDER_SNOW);
-        let (color, start, end) = if powder {
-            ([0.623, 0.734, 0.785], 0.0, 2.0)
-        } else if in_lava {
-            (super::LAVA_FOG, 0.0, 2.0)
-        } else if underwater {
-            (super::WATER_FOG.map(|c| c * scene.sky.daylight), 0.0, 28.0)
-        } else if self.dimension == crate::world::terrain::Dimension::End {
-            (horizon, view_dist * 0.45, view_dist * 0.95)
-        } else if !self.dimension.has_sky() {
-            (horizon, 8.0, view_dist.min(160.0) * 0.8)
+        let medium = if self.world.get_block(cell) == Some(crate::world::scaffolding::POWDER_SNOW) {
+            Medium::PowderSnow
         } else {
-            (horizon, view_dist * 0.55, view_dist * 0.95)
+            match fluid {
+                Some(b) if b.is_lava() => Medium::Lava,
+                Some(_) => Medium::Water,
+                None => Medium::Air,
+            }
         };
-        Fog { color, zenith: if underwater || powder { color } else { zenith }, start, end }
+        let dimension = self.dimension;
+        let base = atm::dimension(dimension);
+        let generator = &self.world.generator;
+        let world = &self.world;
+        let visuals = |p: glam::IVec3| match dimension {
+            Dimension::Overworld => atm::overworld_biome(world.biome_at(p)),
+            Dimension::Nether => atm::nether_biome(
+                generator.nether_biome(p.x, p.z).unwrap_or(crate::world::nether_biome::NetherBiome::NetherWastes),
+            ),
+            Dimension::End => atm::biome_visuals("the_end").expect("the End biome"),
+        };
+        let mut views = self.atmosphere_views.borrow_mut();
+        if views.len() <= view {
+            views.resize_with(view + 1, Default::default);
+        }
+        let state = &mut views[view];
+        let local = state.sampler.sample(camera.x, camera.z, |qx, qz| {
+            atm::Local::resolve(base, visuals(glam::IVec3::new(qx * 4, cell.y, qz * 4)))
+        });
+        let effects = &vitals.effects;
+        // `LocalPlayer.waterVisionTime`: up a tick per tick under water, down ten out of it.
+        if medium == Medium::Water {
+            state.water_ticks = (state.water_ticks + scene.ticks * if spectator { 10.0 } else { 1.0 }).min(600.0);
+        } else {
+            state.water_ticks = (state.water_ticks - scene.ticks * 10.0).max(0.0);
+        }
+        let darkness = effects.get(Effect::Darkness).map(|e| (e.ticks as f32 / 22.0).min(1.0));
+        let weather = if dimension == Dimension::Overworld {
+            atm::Weather { rain: self.weather.rain_level(), thunder: self.weather.thunder_level() }
+        } else {
+            atm::Weather::default()
+        };
+        let eye = atm::Eye {
+            dimension,
+            local,
+            precipitation: dimension == Dimension::Overworld
+                && atm::overworld_biome(self.world.biome_at(cell)).precipitation,
+            day_ticks: self.day_time * atm::DAY_TICKS,
+            weather,
+            sky_flash: dimension == Dimension::Overworld
+                && !self.settings.hide_lightning_flashes
+                && self.mobs.entities.lightning.iter().any(|b| b.visible()),
+            render_distance: meshed_radius(self.world.render_distance(), camera),
+            cloud_range: self.settings.cloud_range,
+            sky_light: self.world.sky_light(cell).unwrap_or(15),
+            camera_y: camera.y as f32,
+            forward_x: forward.x,
+            medium,
+            spectator,
+            fire_resistance: effects.has(Effect::FireResistance),
+            blindness: effects.get(Effect::Blindness).map(|e| e.ticks),
+            darkness,
+            night_vision: if darkness.is_some() { 0.0 } else { effects.night_vision(scene.time) },
+            water_vision: if medium == Medium::Water { atm::water_vision(state.water_ticks as u32) } else { 0.0 },
+        };
+        state.rain.update(&eye, scene.ticks);
+        Atmosphere {
+            fog: atm::fog(&eye, state.rain),
+            sky_light: atm::sky_light(&eye),
+            cloud_color: atm::cloud_color(&eye),
+        }
+    }
+
+    /// The clouds this frame draws: Java draws none where the cloud colour
+    /// is transparent (the Nether and the End) or with Clouds OFF. They
+    /// drift with the animation clock, so held captures keep them still.
+    pub(super) fn cloud_params(&self, scene: &Scene, color: [f32; 4]) -> Option<crate::render::clouds::CloudParams> {
+        (color[3] > 0.0 && self.settings.clouds != voxelcraft::atmosphere::Clouds::Off).then(|| {
+            crate::render::clouds::CloudParams {
+                mode: self.settings.clouds,
+                range: self.settings.cloud_range,
+                ticks: f64::from(scene.time) * 20.0,
+                height: voxelcraft::atmosphere::dimension(self.dimension).cloud_height,
+            }
+        })
     }
 
     /// Plays what agents did since last frame: breaking, placing, chewing.
@@ -273,17 +349,15 @@ impl Game {
             let feet = a.previous_pos.lerp(a.player.pos, scene.alpha);
             let eye = feet + (a.player.eye() - a.player.pos);
             let (camera, forward) = bot.camera.view(&self.world, eye, a.player.forward());
-            let fog = self
-                .fog(scene, view + 1, camera)
-                .darkened(
-                    a.vitals.effects.get(voxelcraft::simulation::effects::Effect::Darkness).map(|e| e.ticks),
-                    self.settings.render_distance as f32 * 32.0,
-                    scene.time,
-                )
-                .blinded(
-                    a.vitals.effects.get(voxelcraft::simulation::effects::Effect::Blindness).map(|e| e.ticks),
-                    self.settings.render_distance as f32 * 32.0,
-                );
+            let atmosphere = self.atmosphere(
+                scene,
+                view + 1,
+                camera,
+                forward,
+                &a.vitals,
+                a.session.mode == super::GameMode::Spectator,
+            );
+            let fog_end = atmosphere.end();
             let models = self.block_models(scene.alpha, camera);
             let highlight = a.target(&self.world).map(|(p, _)| {
                 let (min, max) = self.world.outline(p);
@@ -339,11 +413,24 @@ impl Game {
                     ));
                 }
             }
-            let verts = self.mobs.entities.mesh(camera, forward, fog.end, scene.time, scene.alpha);
-            super::push_avatars(&self.world, &others, camera, fog.end, scene.time, verts);
-            crate::render::signs::text(&self.world, camera, verts);
-            crate::entity::model::build_beacon_beams(&self.world, camera, scene.time, fog.end, verts);
-            crate::entity::model::build_conduits(&self.world, camera, fog.end, verts);
+            self.mobs.entities.mesh(camera, forward, fog_end, scene.time, scene.alpha);
+            // v0.18 Track 6: ground shadows, for the players drawn in this view too.
+            let mut casters = super::shadow_casters(&self.world, others.iter().map(|o| o.1), scene.alpha);
+            if !bot.camera.first_person() && super::casts_shadow(&a.vitals, a.mode) {
+                casters.push(voxelcraft::entity::shadow::player(feet));
+            }
+            let shadows = self.settings.entity_shadows;
+            let verts = self.mobs.entities.shadows(&self.world, camera, scene.alpha, &casters, shadows);
+            super::push_avatars(&self.world, &others, camera, fog_end, scene.time, verts);
+            crate::render::signs::text(
+                &mut self.mobs.sign_text,
+                crate::render::signs::FONT_VERSION,
+                &self.world,
+                camera,
+                verts,
+            );
+            crate::entity::model::build_beacon_beams(&self.world, camera, scene.time, fog_end, verts);
+            crate::entity::model::build_conduits(&self.world, camera, fog_end, verts);
             if !bot.camera.first_person() {
                 crate::entity::model::build_player(
                     &a.player,
@@ -370,7 +457,7 @@ impl Game {
             self.renderer.set_entities(verts);
             super::weather::sheets(&self.world, camera, scene.rain, &mut self.weather_verts);
             self.renderer.set_weather(&self.weather_verts);
-            let params = FrameParams {
+            let mut params = FrameParams {
                 camera,
                 forward,
                 view_effect: voxelcraft::camera::view_effect(
@@ -387,12 +474,19 @@ impl Game {
                     } else {
                         1.0
                     },
-                sky_color: fog.color.map(|c| c as f64),
-                fog_color: fog.color,
-                fog_start: fog.start,
-                fog_end: fog.end,
-                daylight: scene.sky.daylight,
-                zenith_color: fog.zenith,
+                sky_color: [0.0; 3],
+                fog_color: [0.0; 3],
+                fog_start: 0.0,
+                fog_end: 0.0,
+                fog_render: [0.0; 2],
+                sky_end: 0.0,
+                cloud_end: 0.0,
+                sunrise: [0.0; 4],
+                sky_light_color: [1.0; 3],
+                clouds: self.cloud_params(scene, atmosphere.cloud_color),
+                cloud_color: [0.0; 4],
+                daylight: if self.dimension.has_sky() { atmosphere.sky_light.0 } else { scene.sky.daylight },
+                zenith_color: [0.0; 3],
                 sun_dir: scene.sky.sun_dir,
                 dimension: self.dimension,
                 enhanced_graphics: self.settings.enhanced_graphics,
@@ -436,7 +530,11 @@ impl Game {
                 rain: scene.rain,
                 night_vision: a.vitals.effects.vision(scene.time, a.player.head_in_water(&self.world)),
                 ui,
+                // Controller players' screens are in-game panels: no blur.
+                blur: 0,
+                ui_under_blur: 0,
             };
+            atmosphere.apply(&mut params);
             self.renderer.set_particles(&self.particles.pool, &self.world, camera, forward, scene.alpha);
             self.renderer.draw_view(frame, &params, vp);
         }
@@ -522,38 +620,37 @@ impl Game {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::world::nether_biome::NetherBiome;
+    use crate::world::{nether_biome::NetherBiome, terrain::Dimension};
+    use voxelcraft::atmosphere::{Local, Sampler, biome_visuals, dimension, nether_biome};
+
+    #[test]
+    fn the_fog_reaches_only_as_far_as_terrain_is_drawn() {
+        use glam::DVec3;
+        // From a chunk's centre at render distance 6 (12 Java chunks, 192
+        // blocks), the nearest undrawn chunk's column is 176.7 blocks away.
+        let r = super::meshed_radius(6, DVec3::new(16.0, 70.0, 16.0));
+        assert!((r - 176.726).abs() < 0.01, "{r}");
+        // Never past Java's distance, and at most a chunk and a half short of it.
+        for (rd, x) in [(8, 0.5), (8, 31.5), (16, 12.0), (2, 5.0)] {
+            let r = super::meshed_radius(rd, DVec3::new(x, 0.0, 3.0));
+            assert!(r <= (rd * 32) as f32 && r >= (rd as f32 - 1.5) * 32.0, "{rd} {x}: {r}");
+        }
+    }
 
     #[test]
     fn each_split_screen_view_blends_the_fog_around_its_own_eye() {
         // Soul sand valley to the west of x = 0 and crimson forest to the east.
-        let biome = |qx: i32, _qz: i32| if qx < 0 { NetherBiome::SoulSandValley } else { NetherBiome::CrimsonForest };
-        let mut samplers = Vec::new();
-        let host = view_haze(&mut samplers, 0, DVec3::new(-200.0, 70.0, 0.0), biome);
-        let follower = view_haze(&mut samplers, 1, DVec3::new(200.0, 70.0, 0.0), biome);
-        assert_eq!(host, NetherBiome::SoulSandValley.fog_color());
-        assert_eq!(follower, NetherBiome::CrimsonForest.fog_color());
-        // The host's reading is unchanged by the follower sampling elsewhere in the same frame.
-        assert_eq!(view_haze(&mut samplers, 0, DVec3::new(-200.0, 70.0, 0.0), biome), host);
-    }
-}
-
-#[cfg(test)]
-mod blindness_tests {
-    use super::Fog;
-    #[test]
-    fn blindness_uses_reference_terrain_distance_and_last_second_fade() {
-        let f = Fog { color: [0.5; 3], zenith: [0.5; 3], start: 200.0, end: 256.0 };
-        let full = f.blinded(Some(100), 256.0);
-        assert_eq!((full.start, full.end, full.color), (1.25, 5.0, [0.0; 3]));
-        let fading = f.blinded(Some(10), 256.0);
-        assert_eq!((fading.start, fading.end, fading.color), (32.625, 130.5, [0.125; 3]));
-        assert_eq!(f.blinded(None, 256.0).end, f.end);
-        // Real lava fog, as `Game::fog` builds it: from 0 to 2 blocks.
-        let lava = Fog { start: 0.0, end: 2.0, ..f };
-        assert_eq!(lava.blinded(Some(100), 256.0).end, 2.0);
-        let water = Fog { start: 0.0, end: 28.0, ..f };
-        assert_eq!(water.blinded(Some(100), 256.0).end, 5.0, "blindness overrides water fog");
+        let local = |qx: i32, _qz: i32| {
+            let biome = if qx < 0 { NetherBiome::SoulSandValley } else { NetherBiome::CrimsonForest };
+            Local::resolve(dimension(Dimension::Nether), nether_biome(biome))
+        };
+        let (mut host, mut follower) = (Sampler::default(), Sampler::default());
+        let west = host.sample(-200.0, 0.0, local);
+        let east = follower.sample(200.0, 0.0, local);
+        assert_eq!(west.fog, NetherBiome::SoulSandValley.fog_color());
+        assert_eq!(east.fog, NetherBiome::CrimsonForest.fog_color());
+        // The host's reading is unchanged by the follower sampling elsewhere.
+        assert_eq!(host.sample(-200.0, 0.0, local), west);
+        assert!(biome_visuals("the_end").is_some());
     }
 }

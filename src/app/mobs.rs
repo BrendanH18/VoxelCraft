@@ -24,15 +24,36 @@ pub(super) struct Mobs {
     /// `--wait`: seconds to keep simulating before a `--screenshot`.
     wait: f64,
     wait_start: Option<Instant>,
+    /// `--still-mobs` (see `Entities::still`).
+    still: bool,
+    /// Sign text laid out once and redrawn from the cache each frame.
+    pub sign_text: crate::render::signs::TextCache,
 }
 
 impl Mobs {
     pub fn new(seed: u64, spawn: Vec<(MobKind, IVec3, Option<crate::entity::armor::Equipped>)>, wait: f64) -> Self {
-        Self { entities: Entities::new(seed), pending: spawn, held: Vec::new(), wait, wait_start: None }
+        Self {
+            entities: Entities::new(seed),
+            pending: spawn,
+            held: Vec::new(),
+            wait,
+            wait_start: None,
+            sign_text: Default::default(),
+            still: false,
+        }
     }
 
     pub fn holding(self, held: Vec<(usize, crate::item::Item)>) -> Self {
         Self { held, ..self }
+    }
+
+    pub fn still(self, still: bool) -> Self {
+        Self { still, ..self }
+    }
+
+    /// Whether `--still-mobs` pins this capture's mobs.
+    pub fn still_mobs(&self) -> bool {
+        self.still
     }
 
     /// For `--screenshot`: true once `--wait` seconds have passed since the
@@ -89,12 +110,23 @@ impl Game {
 
     /// Applies `--spawn` requests (with the other `--place` edits).
     pub(super) fn spawn_pending_mobs(&mut self) {
+        if self.mobs.still {
+            self.mobs.entities.still = Some(self.session.player.eye());
+        }
         let held = std::mem::take(&mut self.mobs.held);
         for (i, (kind, mut pos, armor)) in std::mem::take(&mut self.mobs.pending).into_iter().enumerate() {
             if pos.y == i32::MIN {
                 pos.y = self.world.generator.column(pos.x, pos.z).height + 1;
             }
             self.mobs.entities.spawn(kind, pos.as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
+            // v0.18 Track 6: a pinned mob placed standing on a full block is
+            // held from its first tick, before it can hop, swing or wander.
+            if self.mobs.still
+                && crate::physics::full_collision(&self.world, pos - IVec3::Y)
+                && let Some(mob) = self.mobs.entities.mobs.last_mut()
+            {
+                mob.on_ground = true;
+            }
             if let Some(equipped) = armor
                 && let Some(mob) = self.mobs.entities.mobs.last_mut()
             {
@@ -614,8 +646,11 @@ impl Game {
                         }
                         // `emitDiggingParticles`: the block's hit sound at volume and pitch 0.5.
                         MobSound::SnifferDigHit(block) => {
-                            let sound = Sound::Step(crate::audio::sounds::material(block));
-                            self.audio.play_in(SoundSource::Neutral, sound, Some(pos), 0.5, (0.5, 0.5));
+                            // v0.18 Track 9: the block's own hit sound.
+                            let hit = crate::audio::block_sounds::play(block, crate::audio::BlockCue::Hit);
+                            if let Some((sound, ..)) = hit {
+                                self.audio.play_in(SoundSource::Neutral, sound, Some(pos), 0.5, (0.5, 0.5));
+                            }
                             continue;
                         }
                         MobSound::Bell => (Sound::Bell, 1.0),

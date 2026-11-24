@@ -1,0 +1,816 @@
+{
+ "source": {
+  "client_sha1": "e877b6a07acd633fb3bb475002175cec036e7b87",
+  "tool": "tools/extract_java_atmosphere_fixtures.py",
+  "colours": "sRGB values as Java's floats carry them (Java blends them without linearising)"
+ },
+ "attribute_defaults": {
+  "fog_start_distance": 0.0,
+  "fog_end_distance": 1024.0,
+  "sky_fog_end_distance": 512.0,
+  "cloud_fog_end_distance": 2048.0,
+  "water_fog_start_distance": -8.0,
+  "water_fog_end_distance": 96.0,
+  "cloud_height": 192.33,
+  "water_fog_color": "#050533",
+  "fog_color": "#000000",
+  "sky_color": "#000000",
+  "cloud_color": "#00000000",
+  "block_light_tint": "#ffd88c",
+  "ambient_light_color": "#000000"
+ },
+ "dimensions": {
+  "overworld": {
+   "has_skylight": true,
+   "has_ceiling": false,
+   "min_y": -64,
+   "timelines": "#minecraft:in_overworld",
+   "sky_color": "#78a7ff",
+   "fog_color": "#c0d8ff",
+   "cloud_color": "#ccffffff",
+   "cloud_height": 192.33,
+   "ambient_light_color": "#0a0a0a"
+  },
+  "the_nether": {
+   "has_skylight": false,
+   "has_ceiling": true,
+   "min_y": 0,
+   "timelines": "#minecraft:in_nether",
+   "fog_start_distance": 10.0,
+   "fog_end_distance": 96.0,
+   "ambient_light_color": "#302821"
+  },
+  "the_end": {
+   "has_skylight": true,
+   "has_ceiling": false,
+   "min_y": 0,
+   "timelines": "#minecraft:in_end",
+   "sky_color": "#000000",
+   "fog_color": "#181318",
+   "ambient_light_color": "#3f473f"
+  }
+ },
+ "biomes": {
+  "badlands": {
+   "has_precipitation": false,
+   "sky_color": "#6eb1ff"
+  },
+  "bamboo_jungle": {
+   "has_precipitation": true,
+   "sky_color": "#77a8ff"
+  },
+  "basalt_deltas": {
+   "has_precipitation": false,
+   "fog_color": "#685f70"
+  },
+  "beach": {
+   "has_precipitation": true,
+   "sky_color": "#78a7ff"
+  },
+  "birch_forest": {
+   "has_precipitation": true,
+   "sky_color": "#7aa5ff"
+  },
+  "cherry_grove": {
+   "has_precipitation": true,
+   "sky_color": "#7ba4ff",
+   "water_fog_color": "#5db7ef"
+  },
+  "cold_ocean": {
+   "has_precipitation": true,
+   "sky_color": "#7ba4ff"
+  },
+  "crimson_forest": {
+   "has_precipitation": false,
+   "fog_color": "#330303"
+  },
+  "dappled_forest": {
+   "has_precipitation": true,
+   "sky_color": "#7ca3ff",
+   "fog_color": "#ccd8e2",
+   "water_fog_color": "#375154"
+  },
+  "dark_forest": {
+   "has_precipitation": true,
+   "sky_color": "#79a6ff"
+  },
+  "deep_cold_ocean": {
+   "has_precipitation": true,
+   "sky_color": "#7ba4ff"
+  },
+  "deep_dark": {
+   "has_precipitation": true,
+   "sky_color": "#78a7ff"
+  },
+  "deep_frozen_ocean": {
+   "has_precipitation": true,
+   "sky_color": "#7ba4ff"
+  },
+  "deep_lukewarm_ocean": {
+   "has_precipitation": true,
+   "sky_color": "#7ba4ff",
+   "water_fog_color": "#041633"
+  },
+  "deep_ocean": {
+   "has_precipitation": true,
+   "sky_color": "#7ba4ff"
+  },
+  "desert": {
+   "has_precipitation": false,
+   "sky_color": "#6eb1ff"
+  },
+  "dripstone_caves": {
+   "has_precipitation": true,
+   "sky_color": "#78a7ff"
+  },
+  "end_barrens": {
+   "has_precipitation": false
+  },
+  "end_highlands": {
+   "has_precipitation": false
+  },
+  "end_midlands": {
+   "has_precipitation": false
+  },
+  "eroded_badlands": {
+   "has_precipitation": false,
+   "sky_color": "#6eb1ff"
+  },
+  "flower_forest": {
+   "has_precipitation": true,
+   "sky_color": "#79a6ff"
+  },
+  "forest": {
+   "has_precipitation": true,
+   "sky_color": "#79a6ff"
+  },
+  "frozen_ocean": {
+   "has_precipitation": true,
+   "sky_color": "#7fa1ff"
+  },
+  "frozen_peaks": {
+   "has_precipitation": true,
+   "sky_color": "#859dff"
+  },
+  "frozen_river": {
+   "has_precipitation": true,
+   "sky_color": "#7fa1ff"
+  },
+  "grove": {
+   "has_precipitation": true,
+   "sky_color": "#81a0ff"
+  },
+  "ice_spikes": {
+   "has_precipitation": true,
+   "sky_color": "#7fa1ff"
+  },
+  "jagged_peaks": {
+   "has_precipitation": true,
+   "sky_color": "#859dff"
+  },
+  "jungle": {
+   "has_precipitation": true,
+   "sky_color": "#77a8ff"
+  },
+  "lukewarm_ocean": {
+   "has_precipitation": true,
+   "sky_color": "#7ba4ff",
+   "water_fog_color": "#041633"
+  },
+  "lush_caves": {
+   "has_precipitation": true,
+   "sky_color": "#7ba4ff"
+  },
+  "mangrove_swamp": {
+   "has_precipitation": true,
+   "sky_color": "#78a7ff",
+   "fog_color": "#c0d8ff",
+   "water_fog_color": "#4d7a60",
+   "water_fog_end_distance_multiplier": 0.85
+  },
+  "meadow": {
+   "has_precipitation": true,
+   "sky_color": "#7ba4ff"
+  },
+  "mushroom_fields": {
+   "has_precipitation": true,
+   "sky_color": "#77a8ff"
+  },
+  "nether_wastes": {
+   "has_precipitation": false,
+   "fog_color": "#330808"
+  },
+  "ocean": {
+   "has_precipitation": true,
+   "sky_color": "#7ba4ff"
+  },
+  "old_growth_birch_forest": {
+   "has_precipitation": true,
+   "sky_color": "#7aa5ff"
+  },
+  "old_growth_pine_taiga": {
+   "has_precipitation": true,
+   "sky_color": "#7ca3ff"
+  },
+  "old_growth_spruce_taiga": {
+   "has_precipitation": true,
+   "sky_color": "#7da3ff"
+  },
+  "pale_garden": {
+   "has_precipitation": true,
+   "sky_color": "#b9b9b9",
+   "fog_color": "#817770",
+   "water_fog_color": "#556980"
+  },
+  "plains": {
+   "has_precipitation": true,
+   "sky_color": "#78a7ff"
+  },
+  "river": {
+   "has_precipitation": true,
+   "sky_color": "#7ba4ff"
+  },
+  "savanna": {
+   "has_precipitation": false,
+   "sky_color": "#6eb1ff"
+  },
+  "savanna_plateau": {
+   "has_precipitation": false,
+   "sky_color": "#6eb1ff"
+  },
+  "small_end_islands": {
+   "has_precipitation": false
+  },
+  "snowy_beach": {
+   "has_precipitation": true,
+   "sky_color": "#7fa1ff"
+  },
+  "snowy_plains": {
+   "has_precipitation": true,
+   "sky_color": "#7fa1ff"
+  },
+  "snowy_slopes": {
+   "has_precipitation": true,
+   "sky_color": "#829fff"
+  },
+  "snowy_taiga": {
+   "has_precipitation": true,
+   "sky_color": "#839eff"
+  },
+  "soul_sand_valley": {
+   "has_precipitation": false,
+   "fog_color": "#1b4745"
+  },
+  "sparse_jungle": {
+   "has_precipitation": true,
+   "sky_color": "#77a8ff"
+  },
+  "stony_peaks": {
+   "has_precipitation": true,
+   "sky_color": "#76a8ff"
+  },
+  "stony_shore": {
+   "has_precipitation": true,
+   "sky_color": "#7da2ff"
+  },
+  "sulfur_caves": {
+   "has_precipitation": true,
+   "sky_color": "#78a7ff",
+   "fog_color": "#8cb831",
+   "water_fog_color": "#17543c"
+  },
+  "sunflower_plains": {
+   "has_precipitation": true,
+   "sky_color": "#78a7ff"
+  },
+  "swamp": {
+   "has_precipitation": true,
+   "sky_color": "#78a7ff",
+   "water_fog_color": "#232317",
+   "water_fog_end_distance_multiplier": 0.85
+  },
+  "taiga": {
+   "has_precipitation": true,
+   "sky_color": "#7da3ff"
+  },
+  "the_end": {
+   "has_precipitation": false
+  },
+  "the_void": {
+   "has_precipitation": false,
+   "sky_color": "#7ba4ff"
+  },
+  "warm_ocean": {
+   "has_precipitation": true,
+   "sky_color": "#7ba4ff",
+   "water_fog_color": "#041f33"
+  },
+  "warped_forest": {
+   "has_precipitation": false,
+   "fog_color": "#1a051a"
+  },
+  "windswept_forest": {
+   "has_precipitation": true,
+   "sky_color": "#7da2ff"
+  },
+  "windswept_gravelly_hills": {
+   "has_precipitation": true,
+   "sky_color": "#7da2ff"
+  },
+  "windswept_hills": {
+   "has_precipitation": true,
+   "sky_color": "#7da2ff"
+  },
+  "windswept_savanna": {
+   "has_precipitation": false,
+   "sky_color": "#6eb1ff"
+  },
+  "wooded_badlands": {
+   "has_precipitation": false,
+   "sky_color": "#6eb1ff"
+  }
+ },
+ "day_timeline": {
+  "period_ticks": 24000,
+  "tracks": {
+   "fog_color": {
+    "modifier": "multiply",
+    "ease": "linear",
+    "keyframes": [
+     [
+      133,
+      "#ffffff"
+     ],
+     [
+      11867,
+      "#ffffff"
+     ],
+     [
+      13670,
+      "#0f0f16"
+     ],
+     [
+      22330,
+      "#0f0f16"
+     ]
+    ]
+   },
+   "sky_color": {
+    "modifier": "multiply",
+    "ease": "linear",
+    "keyframes": [
+     [
+      133,
+      "#ffffff"
+     ],
+     [
+      11867,
+      "#ffffff"
+     ],
+     [
+      13670,
+      "#000000"
+     ],
+     [
+      22330,
+      "#000000"
+     ]
+    ]
+   },
+   "cloud_color": {
+    "modifier": "multiply",
+    "ease": "linear",
+    "keyframes": [
+     [
+      133,
+      "#ffffffff"
+     ],
+     [
+      11867,
+      "#ffffffff"
+     ],
+     [
+      13670,
+      "#ff191926"
+     ],
+     [
+      22330,
+      "#ff191926"
+     ]
+    ]
+   },
+   "sunrise_sunset_color": {
+    "modifier": "override",
+    "ease": "linear",
+    "keyframes": [
+     [
+      71,
+      "#5fefa333"
+     ],
+     [
+      310,
+      "#29f5ba33"
+     ],
+     [
+      565,
+      "#06fbd433"
+     ],
+     [
+      730,
+      "#00ffe533"
+     ],
+     [
+      11270,
+      "#00ffe533"
+     ],
+     [
+      11397,
+      "#04fcd833"
+     ],
+     [
+      11522,
+      "#0ff9cb33"
+     ],
+     [
+      11690,
+      "#29f5ba33"
+     ],
+     [
+      11929,
+      "#5fefa333"
+     ],
+     [
+      12243,
+      "#b1e78733"
+     ],
+     [
+      12358,
+      "#cce47e33"
+     ],
+     [
+      12512,
+      "#e9e07233"
+     ],
+     [
+      12613,
+      "#f6dd6b33"
+     ],
+     [
+      12732,
+      "#feda6333"
+     ],
+     [
+      12841,
+      "#fed75c33"
+     ],
+     [
+      13035,
+      "#ecd25133"
+     ],
+     [
+      13252,
+      "#c1cc4733"
+     ],
+     [
+      13775,
+      "#36be3733"
+     ],
+     [
+      13888,
+      "#1fbb3533"
+     ],
+     [
+      14039,
+      "#09b73333"
+     ],
+     [
+      14192,
+      "#00b33333"
+     ],
+     [
+      21807,
+      "#00b23333"
+     ],
+     [
+      21961,
+      "#09b73333"
+     ],
+     [
+      22112,
+      "#1fbb3533"
+     ],
+     [
+      22225,
+      "#36be3733"
+     ],
+     [
+      22748,
+      "#c1cc4733"
+     ],
+     [
+      22965,
+      "#ecd25133"
+     ],
+     [
+      23159,
+      "#fed75c33"
+     ],
+     [
+      23272,
+      "#feda6333"
+     ],
+     [
+      23488,
+      "#e9e07233"
+     ],
+     [
+      23642,
+      "#cce47e33"
+     ],
+     [
+      23757,
+      "#b1e78733"
+     ]
+    ]
+   },
+   "sun_angle": {
+    "modifier": "override",
+    "ease": {
+     "cubic_bezier": [
+      0.362,
+      0.241,
+      0.638,
+      0.759
+     ]
+    },
+    "keyframes": [
+     [
+      6000,
+      360.0
+     ],
+     [
+      6000,
+      0.0
+     ]
+    ]
+   },
+   "sky_light_factor": {
+    "modifier": "multiply",
+    "ease": "linear",
+    "keyframes": [
+     [
+      730,
+      1.0
+     ],
+     [
+      11270,
+      1.0
+     ],
+     [
+      13140,
+      0.24
+     ],
+     [
+      22860,
+      0.24
+     ]
+    ]
+   },
+   "sky_light_color": {
+    "modifier": "multiply",
+    "ease": "linear",
+    "keyframes": [
+     [
+      730,
+      "#ffffff"
+     ],
+     [
+      11270,
+      "#ffffff"
+     ],
+     [
+      13140,
+      "#7a7aff"
+     ],
+     [
+      22860,
+      "#7a7aff"
+     ]
+    ]
+   }
+  }
+ },
+ "weather": {
+  "order": "rain at (rain level - thunder level), then thunder at the thunder level; each lerps from the value to the modified value",
+  "greyscale_weights": [
+   0.3,
+   0.59,
+   0.11
+  ],
+  "rain": {
+   "sky_color_blend_to_gray": {
+    "brightness": 0.6000000238418579,
+    "factor": 0.75
+   },
+   "fog_color_multiply": [
+    0.5,
+    0.5,
+    0.6000000238418579
+   ],
+   "cloud_color_blend_to_gray": {
+    "brightness": 0.23999999463558197,
+    "factor": 0.5
+   }
+  },
+  "thunder": {
+   "sky_color_blend_to_gray": {
+    "brightness": 0.23999999463558197,
+    "factor": 0.9399999976158142
+   },
+   "fog_color_multiply": [
+    0.25,
+    0.25,
+    0.30000001192092896
+   ],
+   "cloud_color_blend_to_gray": {
+    "brightness": 0.0949999988079071,
+    "factor": 0.9399999976158142
+   }
+  }
+ },
+ "fog": {
+  "environment_order": [
+   "LavaFogEnvironment",
+   "PowderedSnowFogEnvironment",
+   "BlindnessFogEnvironment",
+   "DarknessFogEnvironment",
+   "WaterFogEnvironment",
+   "AtmosphericFogEnvironment"
+  ],
+  "render_distance": {
+   "blocks_per_chunk": 16,
+   "span_divisor": 10.0,
+   "span_min": 4.0,
+   "span_max": 64.0,
+   "rule": "start = blocks - clamp(blocks / 10, 4, 64), end = blocks, on cylindrical distance"
+  },
+  "atmospheric": {
+   "sunrise_min_render_distance_chunks": 4,
+   "sky_mix_chunks": 32.0,
+   "sky_mix_min": 0.25,
+   "sky_mix_power": 0.25,
+   "sky_mix_rule": "1 - lerp(clamp(min(sky_fog_end / 16, chunks) / 32), 0.25, 1) ^ 0.25 toward the sky colour",
+   "rain_start_offset": -160.0,
+   "rain_end_offset": -256.0,
+   "rain_min_end": 96.0,
+   "rain_sky_light_min": 8.0,
+   "rain_sky_light_span": 7.0,
+   "no_precipitation_factor": 0.5,
+   "rain_fog_rate_per_tick": 0.20000000298023224
+  },
+  "lava": {
+   "color": "#991900",
+   "start": 0.25,
+   "end": 1.0,
+   "fire_resistance_start": 0.0,
+   "fire_resistance_end": 5.0,
+   "spectator_start": -8.0,
+   "spectator_end_fraction": 0.5
+  },
+  "powder_snow": {
+   "color": "#9fbbcc",
+   "start": 0.0,
+   "end": 2.0,
+   "spectator_start": -8.0,
+   "spectator_end_fraction": 0.5
+  },
+  "blindness": {
+   "distance": 5.0,
+   "fade_ticks": 20.0,
+   "start_fraction": 0.25,
+   "sky_cloud_fraction": 0.800000011920929
+  },
+  "darkness": {
+   "distance": 15.0,
+   "start_fraction": 0.75
+  },
+  "water": {
+   "vision_min_end_fraction": 0.25
+  },
+  "water_vision": {
+   "max_ticks": 600.0,
+   "mid_ticks": 100.0,
+   "early_weight": 0.6000000238418579,
+   "late_weight": 0.3999999761581421,
+   "rule": "min(t/100, 1) * 0.6 + clamp((t - 100) / 500, 0, 1) * 0.4 under water, 1 from 600 ticks; +1 per tick under water, -10 out"
+  },
+  "boss_darkening": [
+   0.699999988079071,
+   0.6000000238418579,
+   0.6000000238418579
+  ]
+ },
+ "shaders": {
+  "fog": "max(linear(spherical distance, environmental start, end), linear(cylindrical distance, render-distance start, end)); cylindrical = max(length(xz), |y|)",
+  "sky": "fog value = linear(spherical distance to the sky plane, 0, sky end), mixed toward the fog colour",
+  "cloud_alpha": "alpha * (1 - linear(spherical distance, 0, cloud end))",
+  "cloud_face_shades": {
+   "down": 0.7,
+   "up": 1.0,
+   "north": 0.8,
+   "south": 0.8,
+   "west": 0.9,
+   "east": 0.9
+  }
+ },
+ "clouds": {
+  "cell_size_blocks": 12.0,
+  "thickness_blocks": 4.0,
+  "drift_blocks_per_tick": 0.030000001192092896,
+  "z_offset_blocks": 3.9600000381469727,
+  "ticks_per_cell": 400.0,
+  "radius_rule": "ceil(Cloud Distance chunks * 16 / 12) cells, a disc of cells",
+  "fast": "one downward face per filled cell at the cloud base, shaded with the top face's colour",
+  "fancy": "box cells 12 x 4 x 12: top unless the camera is below the base, bottom unless above the top, sides only toward the camera where the neighbour is empty; inside faces for the 3 x 3 cells around the camera",
+  "flat_uses_top_colour": true
+ },
+ "rain": {
+  "rain_max_alpha": 1.0,
+  "snow_max_alpha": 0.8,
+  "edge_alpha": 0.5,
+  "alpha_rule": "lerp(min(distance^2 / radius^2, 1), max alpha, 0.5) * rain level, per column"
+ },
+ "sky_flash": {
+  "ticks": 2,
+  "sky_color_lerp": 0.2199999988079071,
+  "flash_color": [
+   0.8,
+   0.8,
+   1.0
+  ],
+  "sky_light_factor": 1.0,
+  "rule": "while flashing, sky colour = lerp(0.22, sky, (0.8, 0.8, 1)) and sky light factor = 1; Hide Sky Flashes makes the flash time 0"
+ },
+ "options": {
+  "clouds": {
+   "key": "renderClouds",
+   "label": "Clouds",
+   "values": [
+    {
+     "name": "OFF",
+     "saved": "false",
+     "caption": "OFF"
+    },
+    {
+     "name": "FAST",
+     "saved": "fast",
+     "caption": "Fast"
+    },
+    {
+     "name": "FANCY",
+     "saved": "true",
+     "caption": "Fancy"
+    }
+   ],
+   "saved_names_in_order": [
+    "false",
+    "fast",
+    "true"
+   ],
+   "default": "FANCY"
+  },
+  "cloud_distance": {
+   "key": "cloudRange",
+   "label": "Cloud Distance",
+   "value_label": "%s Chunks",
+   "min": 2,
+   "max": 128,
+   "default": 128
+  },
+  "hide_sky_flashes": {
+   "key": "hideLightningFlashes",
+   "label": "Hide Sky Flashes",
+   "tooltip": "Prevents Lightning Bolts or other environmental effects from making the sky flash. The sources of flashes themselves will still be visible.",
+   "default": false
+  },
+  "video_quality_order": [
+   "biomeBlendRadius",
+   "renderDistance",
+   "prioritizeChunkUpdates",
+   "simulationDistance",
+   "ambientOcclusion",
+   "cloudStatus",
+   "particles",
+   "mipmapLevels",
+   "entityShadows",
+   "entityDistanceScaling",
+   "menuBackgroundBlurriness",
+   "cloudRange",
+   "cutoutLeaves",
+   "improvedTransparency",
+   "textureFiltering",
+   "maxAnisotropyBit",
+   "weatherRadius"
+  ]
+ }
+}

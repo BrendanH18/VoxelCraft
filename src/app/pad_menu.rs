@@ -12,10 +12,11 @@
 
 use glam::IVec3;
 
+use super::gui::{self, style};
 use super::hud::{SlotRef, draw_stack};
 use super::{Container, Game};
 use crate::inventory::Stack;
-use crate::item::{ArmorPiece, Item};
+use crate::item::ArmorPiece;
 use crate::render::ui::{Ui, WHITE};
 use crate::world::block::Block;
 use voxelcraft::agent::Command;
@@ -40,8 +41,10 @@ pub(super) enum Nav {
 pub(super) enum Tab {
     Inventory,
     Crafting,
-    /// Creative players' item palette.
-    Palette,
+    /// v0.18 Track 4: one of Java's creative tabs (an index into
+    /// `creative::catalogue`): the item tabs in Java's order, then Saved
+    /// Hotbars. Search needs typing, so it stays with the mouse and keyboard.
+    Palette(u8),
     Chest(IVec3),
     /// The player's own ender inventory, at the ender chest in this cell.
     EnderChest(IVec3),
@@ -139,6 +142,14 @@ pub(super) enum Menu {
         key: (usize, usize),
         shift: bool,
     },
+    /// v0.18 Track 2: the anvil's name box at `pos`, typed on the sign
+    /// editor's keyboard: A types, X erases, Y shifts, B or Start goes back
+    /// to the anvil.
+    Rename {
+        pos: IVec3,
+        key: (usize, usize),
+        shift: bool,
+    },
 }
 
 /// A slot under the menu cursor.
@@ -150,6 +161,8 @@ pub(super) enum Slot {
     Recipe(usize),
     /// The nth creative palette item.
     Palette(usize),
+    /// v0.18 Track 2: the anvil's name box (A opens the keyboard).
+    AnvilName,
 }
 
 /// What a button press asks the game to do.
@@ -221,7 +234,7 @@ impl Menu {
     pub fn items(tab: Tab) -> Self {
         // Start on the hotbar, or the first entry of a list.
         let row = match tab {
-            Tab::Crafting | Tab::Palette | Tab::Trading(_) => 0,
+            Tab::Crafting | Tab::Palette(_) | Tab::Trading(_) => 0,
             _ => rows(tab, Lists::default()) - 1,
         };
         Menu::Items { tab, col: 0, row }
@@ -240,34 +253,23 @@ impl Menu {
                 _ => Action::None,
             },
             Menu::Sign { line, key, shift, .. } => {
-                let rows = KEYS.len() + 1;
-                let (col, row) = key;
                 match nav {
-                    Nav::Up | Nav::Down => {
-                        *row = if nav == Nav::Up { (*row + rows - 1) % rows } else { (*row + 1) % rows };
-                        *col = (*col).min(key_count(*row) - 1);
-                    }
-                    Nav::Left => *col = (*col + key_count(*row) - 1) % key_count(*row),
-                    Nav::Right => *col = (*col + 1) % key_count(*row),
                     // `AbstractSignEditScreen.keyPressed`: up and down wrap through the four lines.
                     Nav::Lb => *line = (*line + 3) % 4,
                     Nav::Rb => *line = (*line + 1) % 4,
-                    Nav::Y => *shift = !*shift,
-                    Nav::X => return Action::Erase,
-                    Nav::B | Nav::Start => return Action::Close,
-                    Nav::A => {
-                        if let Some(c) = key_char(*col, *row, *shift) {
-                            return Action::Type(c);
-                        }
-                        match *col {
-                            0 => *shift = !*shift,
-                            1 => return Action::Type(' '),
-                            2 => return Action::Erase,
-                            _ => return Action::Close,
-                        }
-                    }
+                    _ => return keyboard(nav, key, shift),
                 }
                 Action::None
+            }
+            Menu::Rename { pos, key, shift } => {
+                let pos = *pos;
+                match keyboard(nav, key, shift) {
+                    Action::Close => {
+                        *self = Menu::Items { tab: Tab::Anvil(pos), col: ANVIL.len(), row: 0 };
+                        Action::None
+                    }
+                    action => action,
+                }
             }
             Menu::Items { tab, col, row } => {
                 let rows = rows(*tab, lists);
@@ -280,13 +282,19 @@ impl Menu {
                     Nav::Down => *row = (*row + 1) % rows,
                     Nav::Left => *col = (*col + len(*row) - 1) % len(*row),
                     Nav::Right => *col = (*col + 1) % len(*row),
+                    Nav::A if slot(*tab, *col, *row, lists) == Slot::AnvilName => {
+                        if let Tab::Anvil(pos) = *tab {
+                            *self = Menu::Rename { pos, key: (0, 0), shift: false };
+                        }
+                        return Action::None;
+                    }
                     Nav::A => return Action::Click(slot(*tab, *col, *row, lists), false),
                     Nav::X => return Action::Click(slot(*tab, *col, *row, lists), true),
                     Nav::Y => return Action::QuickMove(slot(*tab, *col, *row, lists)),
                     Nav::Lb | Nav::Rb => {
                         let mut cycle = vec![Tab::Inventory, Tab::Crafting];
                         if lists.palette > 0 {
-                            cycle.push(Tab::Palette);
+                            cycle.extend(creative_tabs().into_iter().map(Tab::Palette));
                         }
                         // Containers keep their own screen.
                         if let Some(i) = cycle.iter().position(|t| t == tab) {
@@ -317,6 +325,37 @@ impl Menu {
     }
 }
 
+/// The on-screen keyboard shared by the sign editor and the anvil's name
+/// box: the cursor moves over the keys, A types the key under it (or
+/// Shift, Space, Delete, Done), X erases, Y shifts, B or Start is Done.
+fn keyboard(nav: Nav, (col, row): &mut (usize, usize), shift: &mut bool) -> Action {
+    let rows = KEYS.len() + 1;
+    match nav {
+        Nav::Up | Nav::Down => {
+            *row = if nav == Nav::Up { (*row + rows - 1) % rows } else { (*row + 1) % rows };
+            *col = (*col).min(key_count(*row) - 1);
+        }
+        Nav::Left => *col = (*col + key_count(*row) - 1) % key_count(*row),
+        Nav::Right => *col = (*col + 1) % key_count(*row),
+        Nav::Y => *shift = !*shift,
+        Nav::X => return Action::Erase,
+        Nav::B | Nav::Start => return Action::Close,
+        Nav::A => {
+            if let Some(c) = key_char(*col, *row, *shift) {
+                return Action::Type(c);
+            }
+            match *col {
+                0 => *shift = !*shift,
+                1 => return Action::Type(' '),
+                2 => return Action::Erase,
+                _ => return Action::Close,
+            }
+        }
+        Nav::Lb | Nav::Rb => {}
+    }
+    Action::None
+}
+
 /// Inventory and furnace: a top row (armor, or the furnace's input, fuel
 /// and output), three main rows, hotbar. Chest: three chest rows, then the
 /// player's. Lists: nine to a row.
@@ -340,7 +379,7 @@ fn rows(tab: Tab, lists: Lists) -> usize {
         Tab::Trading(_) => 6,
         Tab::Chest(_) | Tab::EnderChest(_) | Tab::Vehicle(_) => container_rows(lists) + 4,
         Tab::Crafting => lists.crafts.div_ceil(COLS),
-        Tab::Palette => lists.palette.div_ceil(COLS),
+        Tab::Palette(_) => lists.palette.div_ceil(COLS),
     }
 }
 
@@ -354,7 +393,9 @@ fn row_len(tab: Tab, row: usize, lists: Lists) -> usize {
         Tab::Furnace(_) if row == 0 => return FURNACE.len(),
         Tab::Brewing(_) if row == 0 => return BREWING.len(),
         Tab::Enchanting(_) if row == 0 => return ENCHANTING.len(),
-        Tab::Anvil(_) | Tab::Grindstone(_) if row == 0 => return ANVIL.len(),
+        // v0.18 Track 2: the anvil's row ends with its name box.
+        Tab::Anvil(_) if row == 0 => return ANVIL.len() + 1,
+        Tab::Grindstone(_) if row == 0 => return ANVIL.len(),
         Tab::Smithing(_) if row == 0 => return SMITHING.len(),
         Tab::Stonecutter(_) if row == 0 => return STONECUTTER.len(),
         Tab::Loom(_) if row == 0 => return LOOM.len(),
@@ -364,7 +405,7 @@ fn row_len(tab: Tab, row: usize, lists: Lists) -> usize {
             return (lists.choices - (row - 1) * COLS).min(COLS);
         }
         Tab::Crafting => lists.crafts,
-        Tab::Palette => lists.palette,
+        Tab::Palette(_) => lists.palette,
         _ => return COLS,
     };
     if row + 1 == list.div_ceil(COLS) && !list.is_multiple_of(COLS) { list % COLS } else { COLS }
@@ -380,6 +421,7 @@ fn slot(tab: Tab, col: usize, row: usize, lists: Lists) -> Slot {
         Tab::Furnace(_) if row == 0 => Slot::Ref(FURNACE[col]),
         Tab::Brewing(_) if row == 0 => Slot::Ref(BREWING[col]),
         Tab::Enchanting(_) if row == 0 => Slot::Ref(ENCHANTING[col]),
+        Tab::Anvil(_) if row == 0 && col == ANVIL.len() => Slot::AnvilName,
         Tab::Anvil(_) | Tab::Grindstone(_) if row == 0 => Slot::Ref(ANVIL[col]),
         Tab::Smithing(_) if row == 0 => Slot::Ref(SMITHING[col]),
         Tab::Stonecutter(_) if row == 0 => Slot::Ref(STONECUTTER[col]),
@@ -418,19 +460,41 @@ fn slot(tab: Tab, col: usize, row: usize, lists: Lists) -> Slot {
         Tab::Chest(_) | Tab::EnderChest(_) | Tab::Vehicle(_) if row == container_rows(lists) + 3 => inv(col),
         Tab::Chest(_) | Tab::EnderChest(_) | Tab::Vehicle(_) => inv(COLS * (row - container_rows(lists) + 1) + col),
         Tab::Crafting => Slot::Recipe(COLS * row + col),
-        Tab::Palette => Slot::Palette(COLS * row + col),
+        Tab::Palette(_) => Slot::Palette(COLS * row + col),
     }
 }
 
-/// Every item the creative palette offers, in order.
-fn palette() -> Vec<Item> {
-    Item::creative_palette().collect()
+/// v0.18 Track 4: the creative tabs a controller pages through with LB/RB:
+/// Java's item tabs in its order, then Saved Hotbars.
+pub(super) fn creative_tabs() -> Vec<u8> {
+    use voxelcraft::creative::Kind;
+    let c = voxelcraft::creative::catalogue();
+    let of = |kind: Kind| c.shown().filter(move |&i| c.tabs[i].kind == kind).map(|i| i as u8);
+    of(Kind::Category).chain(of(Kind::Hotbar)).collect()
+}
+
+/// What creative tab `tab` lists: its stacks, or the saved hotbars' 81
+/// cells (empty cells as `None`).
+fn palette(tab: u8, hotbars: &voxelcraft::creative::Hotbars) -> Vec<Option<Stack>> {
+    let c = voxelcraft::creative::catalogue();
+    match c.tabs.get(tab as usize) {
+        Some(t) if t.kind == voxelcraft::creative::Kind::Hotbar => hotbars.cells(),
+        _ => c.items(tab as usize).iter().copied().map(Some).collect(),
+    }
+}
+
+/// Whether creative tab `tab` is Saved Hotbars.
+fn is_hotbar_tab(tab: Tab) -> bool {
+    matches!(tab, Tab::Palette(t) if voxelcraft::creative::catalogue().tabs.get(t as usize)
+        .is_some_and(|t| t.kind == voxelcraft::creative::Kind::Hotbar))
 }
 
 impl Game {
-    /// Results the profile can craft now (empty for unknown names).
-    pub(super) fn pad_crafts(&self, name: &str) -> Vec<Stack> {
-        self.agents.players.get(name).map_or_else(Vec::new, |b| b.agent.craftable(&self.world))
+    /// v0.18 Track 5: the profile's recipe book, one entry per recipe it
+    /// shows, with the result and whether it can be made now (empty for
+    /// unknown names).
+    pub(super) fn pad_crafts(&self, name: &str) -> Vec<(voxelcraft::crafting::book::RecipeId, Stack, bool)> {
+        self.agents.players.get(name).map_or_else(Vec::new, |b| b.agent.book_entries(&self.world))
     }
 
     /// How many recipes or patterns `name`'s workstation tab offers.
@@ -471,7 +535,12 @@ impl Game {
         Lists {
             choices: self.pad_choices(name, tab),
             crafts: if tab == Tab::Crafting { self.pad_crafts(name).len() } else { 0 },
-            palette: if creative { Item::creative_palette().count() } else { 0 },
+            // Any count signals creative; a creative tab gives its length.
+            palette: match tab {
+                _ if !creative => 0,
+                Tab::Palette(t) => palette(t, &self.hotbars).len().max(1),
+                _ => 1,
+            },
             container: match tab {
                 Tab::Chest(p) => self.world.container_slots(p),
                 Tab::Vehicle(id) => self.mobs.entities.vehicle_slots(id).map_or(0, |s| s.len()),
@@ -483,6 +552,14 @@ impl Game {
     /// Do what a menu press asked for seat `seat`, playing `name`. Returns
     /// false to close the menu.
     pub(super) fn apply_menu(&mut self, seat: usize, name: &str, menu: Menu, action: Action) -> bool {
+        if let Menu::Rename { .. } = menu {
+            match action {
+                Action::Type(c) => self.pad_rename_type(name, Some(c)),
+                Action::Erase => self.pad_rename_type(name, None),
+                _ => {}
+            }
+            return true;
+        }
         if let Menu::Sign { cell, front, hanging, line, .. } = menu {
             match action {
                 Action::Type(c) => self.pad_sign_type(seat, line, hanging, Some(c)),
@@ -507,19 +584,49 @@ impl Game {
         };
         let slot = match slot {
             Slot::Ref(s) => s,
-            Slot::Palette(i) => match palette().get(i) {
-                Some(&item) => SlotRef::Palette(item),
-                None => return true,
-            },
-            Slot::Recipe(i) => {
-                // Shift-crafting makes as many as the ingredients allow.
-                let Some(item) = self.pad_crafts(name).get(i).map(|s| s.item) else { return true };
+            // v0.18 Track 4: on Saved Hotbars, Y loads the row under the
+            // cursor into this player's hotbar and X saves it there.
+            Slot::Palette(i) if is_hotbar_tab(tab) && (quick || right) => {
                 let Some(bot) = self.agents.players.get_mut(name) else { return false };
-                for _ in 0..if quick { 64 } else { 1 } {
-                    let craft = Command::Craft(item);
-                    if bot.agent.execute(craft, &mut self.world, &mut self.mobs.entities, &[]).is_err() {
-                        break;
-                    }
+                if quick {
+                    self.hotbars.load(i / COLS, &mut bot.agent.session.inventory);
+                } else {
+                    self.hotbars.store(i / COLS, &bot.agent.session.inventory);
+                    self.save_hotbars();
+                }
+                self.audio.ui_click();
+                return true;
+            }
+            Slot::Palette(i) => match tab {
+                Tab::Palette(t) => match palette(t, &self.hotbars).get(i) {
+                    Some(Some(stack)) => SlotRef::Palette(*stack),
+                    Some(None) => SlotRef::PaletteEmpty,
+                    None => return true,
+                },
+                _ => return true,
+            },
+            // The name box opens on A ([`Menu::press`]); X and Y do nothing.
+            Slot::AnvilName => return true,
+            Slot::Recipe(i) => {
+                // v0.18 Track 5: A places one set through the recipe book and
+                // takes it, Y every set (the book's shift-click); X toggles
+                // the craftable filter.
+                use voxelcraft::crafting::book::BookType;
+                let entry = self.pad_crafts(name).get(i).map(|&(id, ..)| id);
+                let Some(bot) = self.agents.players.get_mut(name) else { return false };
+                if right {
+                    let book = &mut bot.agent.session.recipe_book;
+                    let filtering = book.settings(BookType::Crafting).filtering;
+                    book.set_filtering(BookType::Crafting, !filtering);
+                } else if let Some(id) = entry {
+                    let recipe = Command::Recipe(id, quick);
+                    let _ = bot.agent.execute_with_rules(
+                        recipe,
+                        &self.gamerules,
+                        &mut self.world,
+                        &mut self.mobs.entities,
+                        &[],
+                    );
                 }
                 self.audio.ui_click();
                 return true;
@@ -560,7 +667,58 @@ impl Game {
             let x = ((sw - Ui::text_width(&shown)) / 2.0).floor();
             ui.text_flat(x, y, &shown, [0.0, 0.0, 0.0, 1.0]);
         }
-        let mut y = top + 4.0 * 12.0 + 30.0;
+        let y = pad_keyboard_ui(ui, top + 4.0 * 12.0 + 30.0, key, shift);
+        let help = "A type  X delete  Y shift  LB/RB line  B done";
+        ui.text(((sw - Ui::text_width(help)) / 2.0).floor(), y + 4.0, help, WHITE);
+    }
+
+    /// v0.18 Track 2: the controller's anvil name box: the text (or the
+    /// item's own name) and the keyboard.
+    fn pad_rename_ui(&self, ui: &mut Ui, name: &str, key: (usize, usize), shift: bool) {
+        let (sw, sh) = ui.size();
+        let title = "Repair & Name";
+        let top = (sh / 2.0 - 80.0).max(4.0).floor();
+        ui.text(((sw - Ui::text_width(title)) / 2.0).floor(), top, title, WHITE);
+        let text = self.pad_anvil_name(name).unwrap_or_default();
+        let (w, left) = (110.0, ((sw - 110.0) / 2.0).floor());
+        style::inset(ui, left, top + 14.0, w, 16.0, 0x000000);
+        let shown = gui::fit(&format!("{text}_"), w - 8.0);
+        ui.text(left + 4.0, top + 18.0, &shown, WHITE);
+        let y = pad_keyboard_ui(ui, top + 40.0, key, shift);
+        let help = "A type  X delete  Y shift  B done";
+        ui.text(((sw - Ui::text_width(help)) / 2.0).floor(), y + 4.0, help, WHITE);
+    }
+
+    /// The text the anvil's name box shows for controller player `name`:
+    /// what they typed, or the left item's own name; `None` without one.
+    pub(super) fn pad_anvil_name(&self, name: &str) -> Option<String> {
+        let session = &self.agents.players.get(name)?.agent.session;
+        let left = session.work[0]?;
+        Some(session.anvil_name().map_or_else(|| left.display_name().to_string(), str::to_string))
+    }
+
+    /// A controller player typed or erased a character in the anvil's name box.
+    fn pad_rename_type(&mut self, name: &str, typed: Option<char>) {
+        let Some(mut text) = self.pad_anvil_name(name) else { return };
+        match typed {
+            Some(c) => text.push(c),
+            None => {
+                text.pop();
+            }
+        }
+        if let Some(bot) = self.agents.players.get_mut(name)
+            && bot.agent.session.set_anvil_name(&text)
+        {
+            self.audio.ui_click();
+        }
+    }
+}
+
+/// The on-screen keyboard from `y`, centred, with key `key` lit; returns
+/// the y under it.
+fn pad_keyboard_ui(ui: &mut Ui, mut y: f32, key: (usize, usize), shift: bool) -> f32 {
+    let sw = ui.size().0;
+    {
         for row in 0..=KEYS.len() {
             let count = key_count(row);
             let w = if row < KEYS.len() { 16.0 } else { 40.0 };
@@ -568,7 +726,8 @@ impl Game {
             for col in 0..count {
                 let x = x0 + col as f32 * (w + 2.0);
                 let lit = (col, row) == key;
-                ui.rect(x, y, w, 14.0, if lit { [0.45, 0.5, 0.75, 0.95] } else { [0.2, 0.2, 0.2, 0.9] });
+                // v0.18 Track 2: the lit key is the hot button, outlined white.
+                style::button(ui, [x, y, w, 14.0], if lit { style::State::Hot } else { style::State::Normal });
                 let label = match key_char(col, row, shift) {
                     Some(c) => c.to_string(),
                     None if col == 0 && shift => "SHIFT".to_string(),
@@ -578,10 +737,11 @@ impl Game {
             }
             y += 16.0;
         }
-        let help = "A type  X delete  Y shift  LB/RB line  B done";
-        ui.text(((sw - Ui::text_width(help)) / 2.0).floor(), y + 4.0, help, WHITE);
     }
+    y
+}
 
+impl Game {
     /// Draws `menu` over a controller player's view.
     pub(super) fn pad_menu_ui(&self, ui: &mut Ui, name: &str, menu: Menu) {
         let (sw, sh) = ui.size();
@@ -609,7 +769,7 @@ impl Game {
                     let (w, y) = (100.0, (sh / 2.0 - 10.0 + 22.0 * i as f32).floor());
                     let x = ((sw - w) / 2.0).floor();
                     let lit = i == choice;
-                    ui.rect(x, y, w, 18.0, if lit { [0.45, 0.5, 0.75, 0.95] } else { [0.2, 0.2, 0.2, 0.9] });
+                    style::button(ui, [x, y, w, 18.0], if lit { style::State::Hot } else { style::State::Normal });
                     ui.text(((sw - Ui::text_width(label)) / 2.0).floor(), y + 5.0, label, WHITE);
                 }
                 return;
@@ -619,9 +779,13 @@ impl Game {
                 self.pad_sign_ui(ui, name, hanging, line, key, shift);
                 return;
             }
+            Menu::Rename { key, shift, .. } => {
+                self.pad_rename_ui(ui, name, key, shift);
+                return;
+            }
         };
         let crafts = if tab == Tab::Crafting { self.pad_crafts(name) } else { Vec::new() };
-        let items = if tab == Tab::Palette { palette() } else { Vec::new() };
+        let items = if let Tab::Palette(t) = tab { palette(t, &self.hotbars) } else { Vec::new() };
         let lists = Lists {
             choices: self.pad_choices(name, tab),
             crafts: crafts.len(),
@@ -657,18 +821,35 @@ impl Game {
             Tab::Chest(_) | Tab::EnderChest(_) | Tab::Vehicle(_) => {
                 4.0 * ((r >= container_rows(lists)) as u8 + (r >= container_rows(lists) + 3) as u8) as f32
             }
-            Tab::Crafting | Tab::Palette => 0.0,
+            Tab::Crafting | Tab::Palette(_) => 0.0,
         };
         let pw = COLS as f32 * 18.0 + 12.0;
         let ph = 18.0 * shown.max(1) as f32 + gap(n.saturating_sub(1)) + 26.0;
         let (px, py) = (((sw - pw) / 2.0).floor(), ((sh - ph - footer) / 2.0).floor().max(0.0));
         ui.rect(px, py, pw, ph, [0.12, 0.12, 0.14, 0.92]);
+        style::outline(ui, [px - 1.0, py - 1.0, pw + 2.0, ph + 2.0], style::srgb(style::token::OUTLINE));
         let creative = bot.agent.creative;
+        // v0.18 Track 5: the crafting tab is the recipe book, with its filter.
+        let filter = {
+            use voxelcraft::crafting::book::{self, BookType};
+            let filtering = bot.agent.session.recipe_book.settings(BookType::Crafting).filtering;
+            if filtering { BookType::Crafting.filter_label() } else { book::SHOWING_ALL }
+        };
+        let book_title =
+            format!("Recipe Book: {filter}  (X: filter, {})", if creative { "RB: items" } else { "LB: inventory" });
+        let tab_title;
         let title = match tab {
-            Tab::Inventory => "Inventory  (RB: crafting)",
-            Tab::Crafting if creative => "Crafting  (RB: items)",
-            Tab::Crafting => "Crafting  (LB: inventory)",
-            Tab::Palette => "Items  (RB: inventory)",
+            Tab::Inventory => "Inventory  (RB: recipe book)",
+            Tab::Crafting => book_title.as_str(),
+            Tab::Palette(t) => {
+                let name = voxelcraft::creative::catalogue().tabs.get(t as usize).map_or("", |t| t.title.as_str());
+                tab_title = if is_hotbar_tab(tab) {
+                    format!("{name}  (Y: load row, X: save row)")
+                } else {
+                    format!("{name}  (LB/RB: tabs)")
+                };
+                &tab_title
+            }
             Tab::Chest(p) if self.world.chest_partner(p).is_some() => "Large Chest",
             Tab::Chest(p) if super::crafter::is_crafter(&self.world, p) => "Crafter  (A on an empty slot: toggle)",
             Tab::Chest(p) => super::hud::container_title(self.world.get_block(p)),
@@ -712,7 +893,9 @@ impl Game {
         };
         let anvil = match (tab, work[0]) {
             (Tab::Grindstone(_), _) => voxelcraft::grindstone::result(work[0], work[1]),
-            (Tab::Anvil(_), Some(left)) => crate::enchant::anvil_any_cost(left, work[1], bot.agent.creative),
+            (Tab::Anvil(_), Some(left)) => {
+                crate::enchant::anvil_menu(left, work[1], bot.agent.session.anvil_name(), bot.agent.creative)
+            }
             _ => None,
         };
         let smithing = match (tab, work[0], work[1], work[2]) {
@@ -729,7 +912,12 @@ impl Game {
             } else {
                 (format!("Cost: {}", r.cost), if short { [1.0, 0.38, 0.38, 1.0] } else { [0.5, 1.0, 0.13, 1.0] })
             };
-            ui.text(px + 6.0 + 18.0 * 3.0 + 6.0, py + 23.0, &text, colour);
+            ui.text(px + 6.0 + 18.0 * 4.0 + 6.0, py + 28.0, &text, colour);
+        }
+        // v0.18 Track 2: the name box's text beside the anvil's row.
+        if let (Tab::Anvil(_), Some(text)) = (tab, self.pad_anvil_name(name)) {
+            let x = px + 6.0 + 18.0 * 4.0 + 6.0;
+            ui.text(x, py + 19.0, &gui::fit(&text, px + pw - x - 4.0), WHITE);
         }
         let mut hovered = None;
         let mut clue = None;
@@ -749,7 +937,9 @@ impl Game {
                     0.0
                 };
                 let (x, y) = (px + 6.0 + offset + 18.0 * c as f32, py + 18.0 + 18.0 * (r - first) as f32 + gap(r));
+                // v0.18 Track 2: slots keep a frame on the dark panel.
                 ui.rect(x, y, 17.0, 17.0, [0.3, 0.3, 0.32, 0.95]);
+                style::outline(ui, [x, y, 17.0, 17.0], style::veil(style::token::SLOT, 0.5));
                 let stack = match slot(tab, c, r, lists) {
                     Slot::Ref(SlotRef::Armor(p)) => inv.armor[p as usize],
                     Slot::Ref(SlotRef::Trade(i)) => {
@@ -789,11 +979,24 @@ impl Game {
                     Slot::Ref(SlotRef::SmithResult) => smithing,
                     Slot::Ref(s) if super::workstations::is_workstation_slot(s) => self.pad_workstation_slot(name, s),
                     Slot::Ref(_) => None,
-                    Slot::Recipe(i) => crafts.get(i).copied(),
-                    Slot::Palette(i) => items.get(i).map(|&item| Stack::new(item, 1)),
+                    Slot::Recipe(i) => crafts.get(i).map(|&(_, result, _)| result),
+                    Slot::Palette(i) => items.get(i).copied().flatten(),
+                    Slot::AnvilName => {
+                        // A name tag's shape marks the name box.
+                        if let Some(layer) = crate::item::Item::NAME_TAG.icon_layer() {
+                            ui.icon_shape(x, y, 16.0, layer, [0.0, 0.0, 1.0, 1.0], style::srgba(0xE0E0E0, 0.6));
+                        }
+                        None
+                    }
                 };
                 if let Some(stack) = stack {
                     draw_stack(ui, x - 0.5, y - 0.5, stack, true, dial);
+                }
+                // v0.18 Track 5: recipes missing ingredients are red, as in the book.
+                if let Slot::Recipe(i) = slot(tab, c, r, lists)
+                    && crafts.get(i).is_some_and(|&(.., craftable)| !craftable)
+                {
+                    ui.rect(x - 0.5, y - 0.5, 16.0, 16.0, [0.8, 0.1, 0.1, 0.35]);
                 }
                 // v0.16 Track C: the beacon's power buttons and Done.
                 if let (Tab::Beacon(pos), Slot::Ref(s)) = (tab, slot(tab, c, r, lists)) {
@@ -821,7 +1024,10 @@ impl Game {
                     super::crafter::draw_disabled(ui, x, y, 17.0);
                 }
                 if (c, r) == (col, row) {
+                    // The cursor: the hover veil and a white frame, so it
+                    // shows without colour.
                     ui.rect(x, y, 17.0, 17.0, [1.0, 1.0, 1.0, 0.35]);
+                    style::outline(ui, [x - 1.0, y - 1.0, 19.0, 19.0], WHITE);
                     hovered = Some((stack, x, y));
                 }
             }
@@ -842,13 +1048,10 @@ impl Game {
         }
         if let Some(f) = furnace {
             // Flame (fuel left) and arrow (cooking) beside the furnace slots.
-            let (x, y) = (px + 6.0 + 18.0 * 3.0 + 6.0, py + 18.0);
-            let burn = f.burn_progress();
-            ui.rect(x, y + 2.0, 40.0, 5.0, [0.0, 0.0, 0.0, 0.7]);
-            ui.rect(x + 1.0, y + 3.0, 38.0 * burn.clamp(0.0, 1.0), 3.0, [1.0, 0.55, 0.1, 1.0]);
-            let cook = f.cook_progress();
-            ui.rect(x, y + 10.0, 40.0, 5.0, [0.0, 0.0, 0.0, 0.7]);
-            ui.rect(x + 1.0, y + 11.0, 38.0 * cook.clamp(0.0, 1.0), 3.0, WHITE);
+            // v0.18 Track 2: the desktop screen's pixel flame and arrow.
+            let (x, y) = (px + 6.0 + 18.0 * 3.0 + 4.0, py + 18.0);
+            style::flame(ui, x, y + 1.0, f.burn_progress());
+            style::arrow(ui, x + 16.0, y, f.cook_progress());
         }
         if n == 0 {
             ui.text(px + 6.0, py + 20.0, "Nothing to craft", [0.7, 0.7, 0.7, 1.0]);
@@ -974,7 +1177,7 @@ mod tests {
 
         let creative = Lists { crafts: 0, palette: 30, container: 27, choices: 0 };
         m.press(Nav::Lb, creative);
-        assert!(matches!(m, Menu::Items { tab: Tab::Palette, .. }), "LB wraps back to the palette");
+        assert!(matches!(m, Menu::Items { tab: Tab::Palette(_), .. }), "LB wraps back to the creative tabs");
         m.press(Nav::Up, creative);
         m.press(Nav::Right, creative);
         assert_eq!(m.slot(creative), Some(Slot::Palette(28)), "last row");

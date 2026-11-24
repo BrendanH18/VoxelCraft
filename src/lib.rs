@@ -3,14 +3,18 @@
 
 pub mod agent;
 pub mod assets;
+pub mod atmosphere;
 pub mod camera;
+pub mod capture;
 pub mod color;
 pub mod content;
 pub mod control;
 pub mod crafting;
+pub mod creative;
 pub mod enchant;
 pub mod entity;
 pub mod equipment;
+pub mod font;
 pub mod grindstone;
 pub mod inventory;
 pub mod item;
@@ -31,6 +35,8 @@ pub mod session;
 pub mod simulation;
 pub mod smithing;
 pub mod survival_items;
+pub mod tick_bench;
+pub mod title;
 pub mod weapons;
 mod workers;
 pub mod world;
