@@ -208,6 +208,11 @@ impl Game {
                 ui.text(((sw - Ui::text_width(hint)) / 2.0).floor(), (sh / 2.0 + 4.0).floor(), hint, WHITE);
             }
         }
+        // v0.18 Track 9: Java draws captions under a menu screen and over
+        // in-game screens such as the inventory.
+        if self.menu.is_open() {
+            self.captions_ui(&mut ui);
+        }
         // An immediate respawn due next frame skips the death screen.
         if let Some(cause) = &self.session.vitals.death
             && !self.respawn_due
@@ -244,6 +249,9 @@ impl Game {
         if self.console.open {
             self.console_ui(&mut ui);
         }
+        if !self.menu.is_open() {
+            self.captions_ui(&mut ui);
+        }
         // F3 already includes the same FPS measurement. Draw last so the
         // compact counter stays readable above menus and screen effects.
         if self.settings.show_fps && self.show_hud && !self.show_debug {
@@ -252,6 +260,40 @@ impl Game {
             ui.text(6.0, 6.0, &text, WHITE);
         }
         ui.verts
+    }
+
+    /// v0.18 Track 9: `SubtitleOverlay`'s captions, stacked up from 35
+    /// pixels above the bottom-right corner, each centred on a backing as
+    /// wide as the widest caption plus room for both arrows.
+    fn captions_ui(&self, ui: &mut Ui) {
+        if self.captions.is_empty() {
+            return;
+        }
+        let (sw, sh) = ui.size();
+        let widest = self.captions.iter().map(|c| Ui::text_width(c.text)).fold(0.0f32, f32::max);
+        let width = widest + Ui::text_width("<") + Ui::text_width(" ") + Ui::text_width(">") + Ui::text_width(" ");
+        let half = (width / 2.0).floor();
+        // `font.lineHeight` is 9: half of it, rounded down, above and below.
+        let (height, half_height) = (9.0, 4.0);
+        let backing = [0.0, 0.0, 0.0, self.settings.background_opacity(0.8)];
+        for (row, c) in self.captions.iter().enumerate() {
+            let cx = (sw - half - 2.0).floor();
+            let cy = (sh - 35.0 - row as f32 * (height + 1.0)).floor();
+            ui.rect(cx - half - 1.0, cy - half_height - 1.0, 2.0 * half + 2.0, 2.0 * half_height + 2.0, backing);
+            let grey = f32::from(c.brightness) / 255.0;
+            let colour = [grey, grey, grey, 1.0];
+            let top = cy - half_height;
+            match c.arrow {
+                crate::audio::subtitles::Arrow::Right => {
+                    ui.text(cx + half - Ui::text_width(">"), top, ">", colour);
+                }
+                crate::audio::subtitles::Arrow::Left => {
+                    ui.text(cx - half, top, "<", colour);
+                }
+                crate::audio::subtitles::Arrow::None => {}
+            }
+            ui.text(cx - (Ui::text_width(c.text) / 2.0).floor(), top, c.text, colour);
+        }
     }
 
     fn hotbar_ui(&self, ui: &mut Ui, now: Instant) {

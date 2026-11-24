@@ -75,6 +75,7 @@ pub mod infested;
 pub mod java_pieces;
 pub mod jigsaw;
 pub mod jukebox;
+pub mod lids;
 mod light_shape;
 pub(crate) mod lighting;
 pub mod lightning;
@@ -451,6 +452,8 @@ pub struct World {
     pub page_turns: Vec<workstations::PageTurn>,
     /// v0.16 Track B: shulker box lids, viewers and removed contents.
     shulker_boxes: shulker_box::Shulkers,
+    /// v0.18 Track 9: chest lids and barrel tops in use or moving.
+    lids: lids::Lids,
     /// Jukebox game events since the entity pass last drained them
     /// (allays dance; track A's vibrations hook in there).
     pub jukebox_events: Vec<(IVec3, jukebox::JukeboxEvent)>,
@@ -752,6 +755,7 @@ impl World {
             workstations: Default::default(),
             page_turns: Vec::new(),
             shulker_boxes: Default::default(),
+            lids: Default::default(),
             jukebox_events: Vec::new(),
             records: Vec::new(),
             records_started: Vec::new(),
@@ -1383,7 +1387,8 @@ impl World {
             }
         }
         let foliage = cols[4].and_then(|c| c.foliage.clone()).unwrap_or_else(|| Box::new([0; CHUNK_SIZE * CHUNK_SIZE]));
-        Box::new(MeshInput { neighbors, light, base_y: pos.y * CHUNK_SIZE_I, min_y: self.min_y(), foliage })
+        let models = self.lidded_in_chunk(pos).into_iter().map(local_of).collect();
+        Box::new(MeshInput { neighbors, light, base_y: pos.y * CHUNK_SIZE_I, min_y: self.min_y(), foliage, models })
     }
 
     /// A light snapshot can affect corner samples in adjacent chunks. Bump
@@ -1424,6 +1429,18 @@ impl World {
         }
         self.sync_meshes = pending;
         self.sync_meshes.clear();
+    }
+
+    /// Remeshes the chunk holding `p` in this frame, as a block edit there
+    /// would, for a change only its own geometry shows (a container entering
+    /// or leaving the block-entity models).
+    pub(crate) fn remesh_geometry(&mut self, p: IVec3) {
+        let c = chunk_of(p);
+        let Some(slot) = self.chunks.get_mut(&c) else { return };
+        slot.version = slot.version.wrapping_add(1);
+        if self.meshes_enabled && self.in_mesh_range(c) {
+            self.sync_meshes.insert(c);
+        }
     }
 
     /// Build a ready chunk's mesh immediately and queue it for upload; defer unready chunks.

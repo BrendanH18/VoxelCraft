@@ -614,8 +614,11 @@ impl Game {
                         }
                         // `emitDiggingParticles`: the block's hit sound at volume and pitch 0.5.
                         MobSound::SnifferDigHit(block) => {
-                            let sound = Sound::Step(crate::audio::sounds::material(block));
-                            self.audio.play_in(SoundSource::Neutral, sound, Some(pos), 0.5, (0.5, 0.5));
+                            // v0.18 Track 9: the block's own hit sound.
+                            let hit = crate::audio::block_sounds::play(block, crate::audio::BlockCue::Hit);
+                            if let Some((sound, ..)) = hit {
+                                self.audio.play_in(SoundSource::Neutral, sound, Some(pos), 0.5, (0.5, 0.5));
+                            }
                             continue;
                         }
                         MobSound::Bell => (Sound::Bell, 1.0),

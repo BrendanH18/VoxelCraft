@@ -397,7 +397,7 @@ impl Pads {
     /// The chests controller players have open.
     pub(super) fn open_chests(&self) -> impl Iterator<Item = IVec3> + '_ {
         self.seats.iter().filter_map(|s| match s.menu {
-            Some(Menu::Items { tab: Tab::Chest(p), .. }) => Some(p),
+            Some(Menu::Items { tab: Tab::Chest(p) | Tab::EnderChest(p), .. }) => Some(p),
             _ => None,
         })
     }
@@ -860,7 +860,6 @@ impl Game {
                 cell,
             }) => {
                 self.pads.seats[i].open(Menu::items(Tab::EnderChest(cell)));
-                self.chest_sound(cell, 0.9);
             }
             Request::Open(_) => {}
             Request::MagicDamage(amount) => {
@@ -1046,7 +1045,6 @@ impl Game {
             seat.open(Menu::items(Tab::Crafting));
         } else if crate::world::chest::is_chest(block) {
             seat.open(Menu::items(Tab::Chest(pos)));
-            self.chest_sound(pos, 0.9);
         } else if crate::world::furnace::is_furnace(block) {
             seat.open(Menu::items(Tab::Furnace(pos)));
         } else if block == Block::BREWING_STAND {

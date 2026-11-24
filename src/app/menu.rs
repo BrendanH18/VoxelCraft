@@ -324,6 +324,7 @@ impl Game {
         }
         self.renderer.set_brightness(s.brightness);
         self.audio.set_volumes(|source| s.sound_volume(source));
+        self.audio.set_subtitles(s.show_subtitles);
     }
 
     /// Writes `options.txt`, logging and returning what went wrong.

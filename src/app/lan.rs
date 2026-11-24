@@ -705,7 +705,7 @@ impl Game {
     /// The chests LAN players have open.
     pub(super) fn open_chests(&self) -> impl Iterator<Item = IVec3> + '_ {
         self.lan.peers.iter().filter(|p| p.open).filter_map(|p| match p.body.container() {
-            Container::Chest(pos) => Some(pos),
+            Container::Chest(pos) | Container::EnderChest(pos) => Some(pos),
             _ => None,
         })
     }
@@ -745,11 +745,10 @@ impl Game {
         peer.body.let_go();
         peer.body.container = container;
         peer.open = true;
-        if let Container::Chest(pos) | Container::EnderChest(pos) = container {
-            self.chest_sound(pos, 0.65);
-            if self.world.get_block(pos).is_some_and(crate::entity::nether::guarded_by_piglins) {
-                self.mobs.entities.piglins_notice(id, at, true, &self.world);
-            }
+        if let Container::Chest(pos) | Container::EnderChest(pos) = container
+            && self.world.get_block(pos).is_some_and(crate::entity::nether::guarded_by_piglins)
+        {
+            self.mobs.entities.piglins_notice(id, at, true, &self.world);
         }
     }
 
@@ -758,9 +757,6 @@ impl Game {
         let Some(name) = peer.profile.clone() else { return };
         if !peer.open {
             return;
-        }
-        if let Container::Chest(pos) | Container::EnderChest(pos) = peer.body.container {
-            self.chest_sound(pos, 0.8);
         }
         if let Some(bot) = self.agents.players.get_mut(&name) {
             let session = &mut bot.agent.session;
@@ -1500,6 +1496,8 @@ impl Game {
             snapshot["workstations"] = json!(self.world.workstations_near(here, 160.0));
             // v0.16 Track B: shulker box lids that are open or moving.
             snapshot["shulker_lids"] = json!(self.world.shulker_lids_near(here, 160.0));
+            // v0.18 Track 9: chest lids and barrel tops in use or moving.
+            snapshot["lids"] = json!(self.world.lids_near(here, 160.0));
             if let Some((open, serial)) = &peer.book_open {
                 let mut open = open.clone();
                 open["serial"] = json!(serial);
@@ -1778,6 +1776,7 @@ impl Game {
             self.world.replace_workstations(text);
         }
         self.world.apply_shulker_lids(&snapshot["shulker_lids"]);
+        self.world.apply_lids(&snapshot["lids"]);
         let edit = &snapshot["sign_edit"];
         if let (Some(serial), Some(p)) = (edit["serial"].as_u64(), vector(&edit["pos"]))
             && serial as u32 != self.lan.sign_serial
@@ -2515,7 +2514,14 @@ fn peer_sounds(
         json!([horn.key(), at.x, at.y, at.z, 1.0, 1.0, 1.0, crate::audio::SoundSource::Neutral.index()])
     });
     let heard = tapped.iter().filter(|t| t.0 != horn).filter_map(|&(sound, pos, gain, (lo, hi), source)| {
-        let movement = matches!(sound, Sound::Step(_) | Sound::Land | Sound::Splash | Sound::Swim);
+        let movement = matches!(
+            sound,
+            Sound::Step(_)
+                | Sound::Block(_, crate::audio::BlockCue::Step | crate::audio::BlockCue::Fall)
+                | Sound::Land
+                | Sound::Splash
+                | Sound::Swim
+        );
         // Positionless sounds are the host's own: only body sounds others would hear.
         let pos = match pos {
             Some(p) => p,

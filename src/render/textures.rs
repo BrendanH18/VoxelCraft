@@ -113,6 +113,10 @@ const DIRT: [u8; 3] = [134, 96, 67];
 const GRASS: [u8; 3] = [95, 159, 53];
 
 pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
+    // v0.18 Track 9: a barrel's open top, while it is in use.
+    if layer == crate::world::lids::BARREL_OPEN_TEX {
+        return barrel_open(x, y);
+    }
     // v0.16 Track C: heads, the wither rose and its pot, the beacon.
     if (crate::world::skulls::TEX..crate::world::skulls::TEX_END).contains(&layer) {
         return crate::world::skulls::pixel(layer, x, y);
@@ -2188,6 +2192,26 @@ fn village_pixel(layer: u16, x: usize, y: usize) -> Rgba {
             let edge = y.is_multiple_of(4) || (i == 3 && (y == 3 || y == 12));
             let c = if edge { if i == 3 { [64, 66, 61] } else { [87, 65, 38] } } else { [145, 110, 64] };
             if i == 3 && face == 2 && x == 8 && y == 8 { [30, 26, 19, 255] } else { noisy(layer, x, y, c, 0.12) }
+        }
+    }
+}
+
+/// v0.18 Track 9: the barrel's top with its lid off (Java's `barrel_top_open`):
+/// the closed top's rim of staves around a dark hollow, original pixels.
+fn barrel_open(x: usize, y: usize) -> Rgba {
+    let closed = village_pixel(tex::VILLAGE + 3 * 3 + 2, x, y);
+    let ring = x.min(y).min(15 - x).min(15 - y);
+    match ring {
+        0 | 1 => closed,
+        // The inner lip catches a little light on its upper-left edges.
+        2 => {
+            let lit = x <= y && x + y <= 15;
+            shade([96, 72, 42], if lit { 0.9 } else { 0.7 })
+        }
+        _ => {
+            let depth = (ring - 3) as f32 / 5.0;
+            let grain = rnd(crate::world::lids::BARREL_OPEN_TEX, x, y, 0);
+            shade([46, 34, 21], 0.85 - depth * 0.35 + grain * 0.1)
         }
     }
 }

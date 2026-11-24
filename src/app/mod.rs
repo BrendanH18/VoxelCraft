@@ -212,6 +212,8 @@ struct Game {
     /// The host player's hands and open screen.
     body: gamepad::Body,
     show_hud: bool,
+    /// v0.18 Track 9: this frame's captions (Closed Captions).
+    captions: Vec<crate::audio::subtitles::Shown>,
     hand: hand::HandAnim,
     last_space: Instant,
     last_frame: Instant,
@@ -450,6 +452,7 @@ impl Shell {
         }
         self.renderer.set_brightness(s.brightness);
         self.audio.set_volumes(|source| s.sound_volume(source));
+        self.audio.set_subtitles(s.show_subtitles);
     }
 }
 
@@ -513,6 +516,7 @@ impl ApplicationHandler for App {
         renderer.force_offscreen = self.args.benchmark_scene.is_some() && self.args.benchmark_offscreen;
         let mut audio = crate::audio::Audio::new(self.args.mute, settings.volume);
         audio.set_volumes(|source| settings.sound_volume(source));
+        audio.set_subtitles(settings.show_subtitles);
         let root = self.saves_dir.parent().unwrap_or(&self.saves_dir);
         let source = match &self.args.update_source {
             Some(dir) => crate::update::Source::Folder(dir.clone()),
@@ -1305,7 +1309,6 @@ impl Game {
             self.session.cancel_consumption();
         } else {
             if let Container::Chest(pos) = self.body.container {
-                self.chest_sound(pos, 0.8);
                 self.close_ender_chest(pos);
             }
             let table = self.take_work();
@@ -1500,6 +1503,7 @@ impl Game {
 
     fn play_notes(&mut self) {
         self.play_shulker_sounds();
+        self.play_lid_sounds();
         let notes = std::mem::take(&mut self.world.notes);
         for (pos, pitch, instrument) in notes {
             // v0.16 Track C: a head above imitates its mob at pitch 1.
@@ -2199,6 +2203,12 @@ impl Game {
         weather::sheets(&self.world, camera, scene.rain, &mut self.weather_verts);
         self.renderer.set_weather(&self.weather_verts);
         let viewports = self.viewports();
+        // v0.18 Track 9: the captions as heard from the camera this frame.
+        {
+            let forward = self.session.player.forward().as_dvec3();
+            let right = forward.cross(glam::DVec3::Y).normalize_or_zero();
+            self.captions = self.audio.subtitles(self.session.player.eye(), forward, right);
+        }
         let params = FrameParams {
             camera,
             forward,
@@ -2369,6 +2379,7 @@ impl Game {
             .chain(self.item_models(alpha))
             .chain(self.banner_models(camera))
             .chain(self.shulker_models(camera, alpha))
+            .chain(self.lid_models(alpha))
             .chain(self.decor_models())
             .collect()
     }

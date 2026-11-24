@@ -99,3 +99,39 @@ listening review of the exported samples is still appropriate.
 - [Java MusicInfo](https://github.com/KernelDotDLL/mcp-1.21.4/blob/master/src/main/java/net/minecraft/client/sounds/MusicInfo.java)
 - [Java situational selection](https://github.com/KernelDotDLL/mcp-1.21.4/blob/master/src/main/java/net/minecraft/client/Minecraft.java)
 - [Java Nether biome music](https://github.com/KernelDotDLL/mcp-1.21.4/blob/master/src/main/java/net/minecraft/data/worldgen/biome/NetherBiomes.java)
+
+## Block sounds, subtitles and container lids (v0.18 Track 9)
+
+Sound effects are synthesized in `src/audio` like the music. Since v0.18
+every block plays its Java 26.3 `SoundType`: `tests/fixtures/java/26.3/sounds.json`
+(written by `tools/extract_java_sound_fixtures.py` from the pinned jars and
+the client's `sounds.json` asset) names each Java block's type, and each
+type's volume, pitch and break, step, place, hit and fall events. A state
+finds its Java block by name, so no state's sound is guessed; the few
+VoxelCraft-only states keep the older shared materials. Each Java event
+family (`block.stone.*`, `block.deepslate.*`, `block.cherry_wood.*`, …)
+has its own original recipe in `src/audio/block_sounds.rs`, and a family's
+hit and fall reuse its step buffers, as Java's events reuse the step files.
+Volumes and pitches follow Java's call sites (breaking and placing at
+`(volume + 1) / 2` and `pitch * 0.8`, steps at `volume * 0.15`, mining hits
+every fourth tick at `(volume + 1) / 8` and `pitch * 0.5`, falls at
+`volume * 0.5` and `pitch * 0.75`), scaled once so that a volume-1 type is as
+loud as before.
+
+Closed Captions (Java's `showSubtitles`, off by default) shows Java's
+subtitle overlay: each played sound's Java event names its English caption,
+repeats of the same text merge, captions fade from white to grey over three
+seconds, and `<` or `>` points to a sound more than 60 degrees off the view.
+The captions stack up from the bottom-right corner on Text Background's
+backing (`backgroundForChatOnly`: Chat keeps the overlay's 80% black;
+Everywhere uses Text Background Opacity). `src/audio/events.rs` maps every
+sound to its Java event; the verification record lists stand-ins and the
+Java subtitles the game never plays.
+
+Chests, trapped and copper chests and ender chests open their lids at
+`ChestLidController`'s 0.1 a tick (eased as `ChestRenderer` eases them),
+and barrels show their open top, while anyone (a player on any input path,
+a LAN guest or a copper golem) has them open. The first viewer's arrival
+and the last one's leaving play the container's open and close sounds.
+Only containers in use or still moving are drawn as models; the chunk mesh
+leaves them out and is rebuilt once when one enters or leaves.

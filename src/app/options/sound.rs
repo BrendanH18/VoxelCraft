@@ -2,18 +2,20 @@
 //! across the full width, then a slider for every other sound category, two
 //! to a row in Java's order.
 //!
-//! Left out, on purpose: Show Subtitles (v0.20), Directional Audio and the
+//! v0.18 Track 9: Closed Captions sits where Java's does, after the output
+//! device, alone in its row. Left out, on purpose: Directional Audio and the
 //! output device (the mixer has no HRTF and opens the system default), Music
 //! Frequency and the Now Playing toast, and Java's Narrator/Voice slider
 //! (nothing speaks).
 
 use super::{OptionsHost, change, close, percent_label};
-use crate::app::gui::{OptionList, Rect, Screen, Size, Step, Widget};
+use crate::app::gui::{OptionList, Rect, Screen, Size, Step, Widget, on_off};
 use crate::audio::SoundSource;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(in crate::app) enum Id {
     Volume(SoundSource),
+    Subtitles,
     Done,
 }
 
@@ -42,12 +44,21 @@ impl<H: OptionsHost> Screen<H> for MusicAndSounds {
         for row in others.chunks(2) {
             list.pair(slider(row[0]), row.get(1).map(|&source| slider(source)));
         }
+        list.pair(
+            Widget::button(Id::Subtitles, [0.0; 4], format!("Closed Captions: {}", on_off(s.show_subtitles)))
+                .tooltip("Enables captions for sounds played in the game."),
+            None,
+        );
         list.done(Widget::button(Id::Done, [0.0; 4], "Done"), size)
     }
 
     fn activate(&mut self, host: &mut H, id: Id) -> Step<H> {
         match id {
             Id::Done => close(host),
+            Id::Subtitles => {
+                change(host, |s| s.show_subtitles = !s.show_subtitles);
+                Step::Stay
+            }
             Id::Volume(_) => Step::Stay,
         }
     }

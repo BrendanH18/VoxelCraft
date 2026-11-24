@@ -1364,6 +1364,18 @@ landing order.
 | — | — | — | 0. Foundation; 1. Typography; 2. Shared UI; 5. Recipe book; 7. Title and worlds; 10. Performance |
 | 13968–14335 | 1950–1999 | 1295–1299, 4066–4095 | Integrator |
 
+#### Track 9 allocation
+
+Track 9 (sound, subtitles and container lids) uses texture layer 1290 for
+the barrel's open top (`world::lids::BARREL_OPEN_TEX`); 1291–1294 stay
+unregistered. It allocates no block states or items: Java's barrel `open`
+property is drawn from the barrel's viewers instead of a saved state (see
+the [record](verification/2026-11-23-v0.18-sound.md)). Appended orderings:
+`audio::Sound::Block` (Java event family × `BlockCue`) and
+`audio::Sound::Container` after `Sound::Crafter`, keyed after the crafter's
+cues; the options `showSubtitles`, `textBackgroundOpacity` and
+`backgroundForChatOnly` (Java's keys) at the end of `options.txt`.
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating
