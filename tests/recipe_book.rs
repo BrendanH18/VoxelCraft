@@ -226,7 +226,10 @@ fn slots_trigger_on_change_and_crafting_or_smelting_teaches_the_recipe() {
     inventory.slots[3] = Some(Stack::new(item("oak log"), 2));
     book.tick(&inventory, false);
     assert!(book.knows(id("oak_planks")) && book.highlighted(id("oak_planks")));
-    assert_eq!(book.take_toasts(), vec![id("oak_planks")]);
+    // A log also unlocks the other recipes that name logs; each notifies.
+    let toasts = book.take_toasts();
+    assert!(toasts.contains(&id("oak_planks")), "{toasts:?}");
+    assert!(toasts.iter().all(|t| t.raw().notify && book.knows(*t)));
     // The crafting table's recipe doesn't notify.
     let mut fresh = RecipeBook::default();
     fresh.tick(&Inventory::default(), false);
@@ -454,11 +457,11 @@ fn a_migrated_player_can_start_from_logs_under_limited_crafting() {
     inventory.slots[0] = Some(Stack::new(item("oak log"), 4));
     let mut book = RecipeBook::deserialize("");
     assert_eq!(book.known_count(), 0);
-    let craft = |book: &mut RecipeBook, inventory: &mut Inventory, name: &str, size: usize| {
+    let craft = |book: &mut RecipeBook, inventory: &mut Inventory, name: &str, size: usize, max: bool| {
         book.tick(inventory, false);
         assert!(book.knows(id(name)), "{name} unlocked");
         let mut grid = Grid::new(size);
-        assert_eq!(place::place_in_grid(recipe(name), &mut grid, inventory, 0, true, false), Outcome::Filled, "{name}");
+        assert_eq!(place::place_in_grid(recipe(name), &mut grid, inventory, 0, max, false), Outcome::Filled, "{name}");
         while book.allows(&grid, true)
             && let Some(result) = grid.result()
         {
@@ -470,10 +473,10 @@ fn a_migrated_player_can_start_from_logs_under_limited_crafting() {
             inventory.add_stack(stack);
         }
     };
-    craft(&mut book, &mut inventory, "oak_planks", 2);
-    craft(&mut book, &mut inventory, "stick", 2);
-    craft(&mut book, &mut inventory, "crafting_table", 2);
-    craft(&mut book, &mut inventory, "wooden_pickaxe", 3);
+    craft(&mut book, &mut inventory, "oak_planks", 2, true);
+    craft(&mut book, &mut inventory, "stick", 2, false);
+    craft(&mut book, &mut inventory, "crafting_table", 2, false);
+    craft(&mut book, &mut inventory, "wooden_pickaxe", 3, false);
     assert!(inventory.find(item("wooden pickaxe")).is_some());
     // No history was invented: nothing unrelated is known.
     assert!(!book.knows(id("iron_pickaxe")) && !book.knows(id("furnace")));
