@@ -77,11 +77,17 @@ const NAUTILUS_SHELL: &[Cuboid] = &[
     cube([-5.2, 6., -6.], [5.2, 7.5, 4.2], STRIPE, 10),
     cube([-5.2, 10., -7.], [5.2, 11.5, 4.2], STRIPE, 10),
     cube([-3., 8., -8.6], [3., 13., -8.], STRIPE, 12),
+    // v0.18 Track 6 round 4: the hood's fold over the head.
+    cube([-4.5, 12., 4.], [4.5, 13., 4.25], STRIPE, 0),
 ];
 const NAUTILUS_HEAD: &[Cuboid] = &[
     cube([-4., 0., 0.], [4., 7., 6.], SOFT, 18),
     cube([-4.2, 4., 2.], [-3.6, 5.5, 3.5], NAUTILUS_EYE, 0),
     cube([3.6, 4., 2.], [4.2, 5.5, 3.5], NAUTILUS_EYE, 0),
+    // v0.18 Track 6 round 4: eye glints and a beak between the tentacles.
+    cube([-4.25, 5.0, 2.6], [-4.2, 5.4, 3.0], [230, 228, 220], 0),
+    cube([4.2, 5.0, 2.6], [4.25, 5.4, 3.0], [230, 228, 220], 0),
+    cube([-1.0, 2.0, 6.0], [1.0, 3.2, 6.6], [70, 46, 40], 0),
 ];
 const NAUTILUS_TENTACLES: &[Cuboid] = &[
     cube([-3., 0., 0.], [-1.5, 2., 5.], SOFT, 16),
@@ -184,6 +190,9 @@ const SULFUR_CUBE: &[Cuboid] = &[
     cube([-2.0, 4.2, 2.8], [-0.7, 4.8, 2.9], SULFUR_FACE, 0),
     cube([0.7, 4.2, 2.8], [2.0, 4.8, 2.9], SULFUR_FACE, 0),
     cube([-0.6, 2.4, 2.8], [0.6, 3.0, 2.9], SULFUR_FACE, 0),
+    // v0.18 Track 6 round 4: eye glints in the core.
+    cube([-1.3, 4.4, 2.9], [-0.9, 4.7, 2.95], [250, 240, 190], 0),
+    cube([1.3, 4.4, 2.9], [1.7, 4.7, 2.95], [250, 240, 190], 0),
     glass([-3.92, 0.0, -3.92], [3.92, 7.84, 3.92], SULFUR_SHELL, 50),
 ];
 const SULFUR_SHELL_ONLY: &[Cuboid] = &[glass([-3.92, 0.0, -3.92], [3.92, 7.84, 3.92], SULFUR_SHELL, 50)];

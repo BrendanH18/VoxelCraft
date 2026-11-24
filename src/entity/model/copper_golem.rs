@@ -1,13 +1,23 @@
 //! Original riveted copper automaton; cargo uses existing item art, no new layers.
 use super::*;
 const COPPER: Rgb = [185, 106, 65];
-const BODY: &[Cuboid] =
-    &[cube([-3., 4., -2.], [3., 10., 2.], COPPER, 23), cube([-2.5, 6., 2.], [2.5, 8.5, 2.3], [85, 64, 48], 6)];
+/// v0.18 Track 6 round 4: rivets and seams, a shade darker than the copper
+/// at each stage of oxidation.
+const RIVET: Rgb = [150, 84, 50];
+const BODY: &[Cuboid] = &[
+    cube([-3., 4., -2.], [3., 10., 2.], COPPER, 23),
+    cube([-2.5, 6., 2.], [2.5, 8.5, 2.3], [85, 64, 48], 6),
+    cube([-2.6, 9.0, 2.0], [-2.0, 9.6, 2.05], RIVET, 0),
+    cube([2.0, 9.0, 2.0], [2.6, 9.6, 2.05], RIVET, 0),
+    cube([-3.05, 4.0, -2.05], [3.05, 4.6, 2.05], RIVET, 0),
+];
 const HEAD: &[Cuboid] = &[
     cube([-3.6, 0., -3.], [3.6, 5., 3.], COPPER, 25),
     cube([-0.7, 1.1, 3.], [0.7, 2.2, 4.6], COPPER, 15),
     cube([-2.6, 2., 3.], [-1.1, 3.3, 3.3], [244, 212, 131], 0),
     cube([1.1, 2., 3.], [2.6, 3.3, 3.3], [244, 212, 131], 0),
+    cube([-2.0, 0.5, 3.], [2.0, 0.9, 3.05], RIVET, 0),
+    cube([-3.65, 4.4, -3.05], [3.65, 5.0, 3.05], RIVET, 0),
     cube([-0.5, 5., -0.5], [0.5, 7.5, 0.5], COPPER, 8),
     cube([-1.4, 7., -1.4], [1.4, 7.8, 1.4], COPPER, 12),
 ];
@@ -45,6 +55,11 @@ pub(super) fn colour(m: &Mob, c: &mut Cuboid) {
         && let Some(s) = &m.copper_golem
     {
         c.color = [[185, 106, 65], [159, 122, 81], [88, 145, 117], [60, 154, 133]][s.stage as usize];
+    }
+    if c.color == RIVET
+        && let Some(s) = &m.copper_golem
+    {
+        c.color = [[150, 84, 50], [126, 96, 62], [66, 116, 92], [44, 122, 104]][s.stage as usize];
     }
 }
 pub(super) fn cargo(m: &Mob, origin: Vec3, body: Quat, light: ([u8; 4], u8), out: &mut Vec<EntityVertex>) {

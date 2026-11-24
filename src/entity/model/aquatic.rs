@@ -88,6 +88,17 @@ const AXOLOTL: &[Cuboid] = &[
     cube([2.4, 3.6, 7.1], [2.7, 3.9, 7.15], [236, 230, 236], 0),
     cube([-2.0, 5.0, 3.0], [2.0, 5.6, 4.0], [197, 83, 132], 0),
 ];
+/// The axolotls' variant body colours (lucy, wild, gold, cyan, blue), in
+/// the order of `aquatic` variant numbers.
+pub(super) const AXOLOTL_BODIES: [Rgb; 5] =
+    [[237, 160, 184], [139, 104, 81], [225, 186, 66], [184, 217, 221], [89, 101, 184]];
+/// The marker colour of the gills and head frill, recoloured per variant.
+pub(super) const AXOLOTL_GILL: Rgb = [197, 83, 132];
+/// v0.18 Track 6: each variant's gills, a distinct colour brighter and more
+/// saturated than its body: hot pink on the pink axolotl, rose on the wild
+/// brown one, deep orange on the gold, pink on the cyan, violet on the blue.
+pub(super) const AXOLOTL_GILLS: [Rgb; 5] =
+    [[222, 70, 136], [218, 120, 124], [244, 120, 30], [232, 140, 200], [176, 98, 222]];
 const AXO_TAIL: &[Cuboid] = &[cube([-0.5, 0.0, -6.0], [0.5, 4.0, 0.0], [217, 130, 171], 14)];
 const GUARDIAN: &[Cuboid] = &[
     cube([-6.0, 0.0, -6.0], [6.0, 13.6, 6.0], [105, 138, 129], 35),
