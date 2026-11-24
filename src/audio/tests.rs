@@ -307,7 +307,11 @@ fn synthesis_is_fast() {
         })
         .sum();
     println!("of which the blocks' own sounds: {:.1} s", block_samples as f32 / RATE);
-    assert!(ms < 1000.0, "synthesis took {ms} ms");
+    // The bank is built on the audio thread at startup, so this bounds how
+    // long the game starts silent. v0.18's blocks' own sounds took it to
+    // 0.55 s on a Boat sandbox and 1.6 s on CI's Windows runner, which runs
+    // it beside the other tests; 2 s keeps that within budget.
+    assert!(ms < 2000.0, "synthesis took {ms} ms");
 }
 
 #[test]
