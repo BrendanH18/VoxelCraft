@@ -163,6 +163,21 @@ fn icons_only_accept_their_own_frame_and_give_up_when_unreadable() {
     assert_eq!(rule.step(5000, true, || panic!("given up"), 100, true), icon::Step::Wait);
 }
 
+/// A dimension change drops the frame a capture asked for: the capture
+/// stops waiting and takes one again once the destination has drawn, rather
+/// than hanging.
+#[test]
+fn a_dropped_icon_frame_is_taken_again_later() {
+    let mut rule = icon::Capture::default();
+    assert_eq!(rule.step(0, true, || false, 100, true), icon::Step::Capture);
+    rule.canceled();
+    assert!(!rule.awaiting() && !rule.is_done());
+    // Not again within the second, nor before the destination has drawn.
+    assert_eq!(rule.step(500, true, || false, 100, true), icon::Step::Wait);
+    assert_eq!(rule.step(1000, true, || false, 3, false), icon::Step::Wait);
+    assert_eq!(rule.step(2000, true, || false, 100, true), icon::Step::Capture);
+}
+
 #[test]
 fn icons_keep_the_centred_square_shrunk_to_64() {
     assert_eq!(icon::square_crop(1920, 1080), (420, 0, 1080));

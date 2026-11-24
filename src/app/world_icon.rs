@@ -19,12 +19,20 @@ pub(super) struct WorldIcon {
     rule: Capture,
     started: Instant,
     writer: Option<std::thread::JoinHandle<Result<(), String>>>,
+    /// The renderer's cancel count when this world last asked for a frame.
+    cancels: u64,
 }
 
 impl WorldIcon {
     /// The icon of the world saved in `world_dir`.
     pub fn new(world_dir: PathBuf) -> Self {
-        Self { path: world_dir.join(icon::FILE), rule: Capture::default(), started: Instant::now(), writer: None }
+        Self {
+            path: world_dir.join(icon::FILE),
+            rule: Capture::default(),
+            started: Instant::now(),
+            writer: None,
+            cancels: 0,
+        }
     }
 
     /// Before a frame is drawn: finishes earlier work and asks the renderer
@@ -39,6 +47,12 @@ impl WorldIcon {
                 Err(_) => log::warn!("the world icon writer stopped"),
             }
             self.rule.finished();
+        }
+        // A dimension change dropped the frame this world asked for: wait for
+        // the destination to draw, then try again.
+        if self.rule.awaiting() && self.writer.is_none() && renderer.icon_cancels() != self.cancels {
+            log::info!("the world icon's frame was dropped; taking it again later");
+            self.rule.canceled();
         }
         if let Some(result) = renderer.poll_icon() {
             match result {
@@ -59,6 +73,7 @@ impl WorldIcon {
         let now = self.started.elapsed().as_millis() as u64;
         let sections = chunks_drawn * icon::SECTIONS_PER_CHUNK;
         if self.rule.step(now, true, || self.path.is_file(), sections, settled) == Step::Capture {
+            self.cancels = renderer.icon_cancels();
             renderer.request_icon();
         }
     }

@@ -360,6 +360,8 @@ pub struct Renderer {
     /// v0.18 Track 7: why the requested icon couldn't be copied, for
     /// [`Renderer::poll_icon`] to report.
     icon_error: Option<String>,
+    /// v0.18 Track 7: icon requests dropped by [`Renderer::clear_world`].
+    icon_cancels: u64,
     offscreen: Option<wgpu::Texture>,
     /// Render to `offscreen` instead of the window (benchmarks).
     pub force_offscreen: bool,
@@ -987,6 +989,7 @@ impl Renderer {
             capture: None,
             icon_requested: false,
             icon_error: None,
+            icon_cancels: 0,
             offscreen: None,
             offscreen_frames: [None, None],
             last_submission: None,
@@ -1185,6 +1188,12 @@ impl Renderer {
     /// v0.18 Track 7: copies the centred square of the next frame's first
     /// view, drawn without its HUD (as Java takes the icon before the GUI),
     /// for [`Renderer::poll_icon`]. Ignored while one is being read back.
+    /// How many icon requests [`Renderer::clear_world`] has dropped: a
+    /// capture that sees this change stops waiting for its frame.
+    pub fn icon_cancels(&self) -> u64 {
+        self.icon_cancels
+    }
+
     pub fn request_icon(&mut self) {
         if self.icon.is_none() {
             self.icon_requested = true;
@@ -1440,7 +1449,11 @@ impl Renderer {
         self.set_entities(&Default::default());
         self.set_weather(&[]);
         // v0.18 Track 7: an icon asked for or being read back belongs to the
-        // world being left; the next world must never write it.
+        // world (or dimension) being left; nobody must write it. Counting the
+        // cancel lets a capture still waiting for it try again.
+        if self.icon_requested || self.icon.is_some() || self.icon_error.is_some() {
+            self.icon_cancels += 1;
+        }
         self.icon_requested = false;
         self.icon = None;
         self.icon_error = None;
