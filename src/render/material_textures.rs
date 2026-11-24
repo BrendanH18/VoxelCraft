@@ -398,6 +398,12 @@ const ORES: [(&[[u8; 3]], usize); 8] = [
 /// rim to the bottom right.
 fn ore(background: &Tile, seed: u32, i: usize) -> Tile {
     let (pal, count) = ORES[i];
+    ore_on(background, seed, pal, count)
+}
+
+/// `count` mineral clusters of `pal` (shade, body, highlight, and an
+/// optional fleck) over `background`.
+fn ore_on(background: &Tile, seed: u32, pal: &[[u8; 3]], count: usize) -> Tile {
     let mut out = *background;
     let rgba = |c: [u8; 3]| [c[0], c[1], c[2], 255];
     for k in 0..count {
@@ -509,7 +515,11 @@ fn gravel_grid() -> Grid {
 /// uneven length, darker at their tips, with a shade on the dirt below.
 /// Indices 0..6 are dirt's, 6.. the lip's.
 fn side_grid(lip: &Grid, seed: u32) -> Grid {
-    let mut g = DIRT.grid();
+    side_over(DIRT.grid(), lip, seed)
+}
+
+/// A lip over any six-shade `base` (nylium over netherrack, for one).
+fn side_over(mut g: Grid, lip: &Grid, seed: u32) -> Grid {
     for x in 0..N {
         let drip = 2 + (hu(seed, x / 2, 0, 19) % 3) as usize + usize::from(hu(seed, x, 0, 20).is_multiple_of(3));
         for y in 0..drip {
@@ -1141,6 +1151,411 @@ fn terracotta_colours() -> Vec<(u16, [u8; 3])> {
     out
 }
 
+// v0.18 Track 3, fourth round: quartz, purpur, copper, colours, ore blocks,
+// the Nether and the End.
+
+/// A smooth face: base shades only, very little variation.
+fn smooth_grid(seed: u32, jitter: u32) -> Grid {
+    let mut g = base_grid(seed, 4, jitter, [96, 160], false);
+    break_runs(&mut g, 2, 4, 4);
+    g
+}
+
+/// The grid turned a quarter: columns become rows (pillars lying down).
+fn transpose(g: &Grid) -> Grid {
+    std::array::from_fn(|y| std::array::from_fn(|x| g[x][y]))
+}
+
+/// Chebyshev distance from the tile's centre, 0 to 7.
+fn square_ring(x: usize, y: usize) -> usize {
+    x.abs_diff(7).max(y.abs_diff(7))
+}
+
+const QUARTZ: [u8; 3] = [236, 230, 222];
+/// The block of redstone's layer (`world::redstone_blocks`).
+const REDSTONE_BLOCK_LAYER: u16 = 1122;
+const PURPUR: [u8; 3] = [170, 126, 170];
+const PURPUR_TEX: u16 = crate::world::end_blocks::TEX;
+
+/// Quartz, which is pale and smooth: its shades sit close together.
+fn quartz_palette() -> [[u8; 3]; 6] {
+    ramp(QUARTZ, [800, 880, 950, 975, 1000, 1020])
+}
+
+fn quartz_pillar_side() -> Grid {
+    let mut g = smooth_grid(201, 16);
+    carve(&mut g, 1, |x, _| x % 5 == 0);
+    g
+}
+
+/// Copper per oxidation stage: bare metal, its patina, and how much of the
+/// surface the patina covers in per mille (`copper_textures`' colours).
+const COPPER_METAL: [[u8; 3]; 4] = [[196, 112, 76], [168, 126, 104], [116, 150, 114], [84, 160, 132]];
+const COPPER_PATINA: [[u8; 3]; 4] = [[176, 98, 66], [112, 152, 124], [88, 166, 132], [70, 140, 116]];
+const COPPER_COVER: [u32; 4] = [0, 300, 600, 900];
+
+/// A copper stage's shades: metal 0-5, patina 6-8, the bulb's dark glass
+/// 9-10, its glow 11-12 and the powered mark 13.
+fn copper_palette(stage: usize) -> Vec<[u8; 3]> {
+    let mut p = ramp(COPPER_METAL[stage], [700, 840, 940, 1000, 1060, 1180]).to_vec();
+    p.extend(ramp(COPPER_PATINA[stage], [880, 1000, 1110]));
+    p.extend([[70, 60, 58], [116, 84, 64], [232, 170, 96], [255, 214, 140], [210, 40, 30]]);
+    p
+}
+
+/// Patina over the flat metal of a copper face: the same blotches on every
+/// kind of one stage, covering more of it as the copper ages.
+fn patina(g: &mut Grid, stage: usize) {
+    for (y, row) in g.iter_mut().enumerate() {
+        for (x, c) in row.iter_mut().enumerate() {
+            let v = (field(230, 4, x, y, 1) * 3 + hu(230, x, y, 2) % 256) / 4;
+            if (2..=4).contains(c) && v * 1000 < COPPER_COVER[stage] * 256 {
+                *c += 4;
+            }
+        }
+    }
+}
+
+/// One copper face of `kind` (`world::copper::t`) at `stage`.
+fn copper_grid(stage: usize, kind: u16) -> Grid {
+    use crate::world::copper::t as ct;
+    let mut g = smooth_grid(220 + kind as u32, 32);
+    match kind {
+        ct::BLOCK => bevel(&mut g),
+        ct::CUT => {
+            // Four plates, each lit at its top left.
+            for (y, row) in g.iter_mut().enumerate() {
+                for (x, c) in row.iter_mut().enumerate() {
+                    if x % 8 == 7 || y % 8 == 7 {
+                        *c = 0;
+                    } else if x % 8 == 0 || y % 8 == 0 {
+                        *c = 5;
+                    }
+                }
+            }
+        }
+        ct::CHISELED => {
+            bevel(&mut g);
+            carve(&mut g, 1, |x, y| ring(x, y) == 4);
+        }
+        ct::GRATE => {
+            bevel(&mut g);
+            for (y, row) in g.iter_mut().enumerate() {
+                for (x, c) in row.iter_mut().enumerate() {
+                    let rim = x == 0 || y == 0 || x == N - 1 || y == N - 1;
+                    if !rim && !x.is_multiple_of(4) && !y.is_multiple_of(4) && (x % 4 == 2 || y % 4 == 2) {
+                        *c = HOLE;
+                    }
+                }
+            }
+        }
+        _ => {
+            // A bulb: frame, a groove, and the window (lit, powered or not).
+            let state = kind - ct::BULB;
+            let (lit, powered) = (state & 1 == 1, state & 2 == 2);
+            for (y, row) in g.iter_mut().enumerate() {
+                for (x, c) in row.iter_mut().enumerate() {
+                    let (dx, dy) = ((2 * x).abs_diff(15), (2 * y).abs_diff(15));
+                    let d2 = dx * dx + dy * dy;
+                    let mid = |v: usize| (6..=9).contains(&v);
+                    *c = match ring(x, y) {
+                        0 => 0,
+                        1 if powered && ((y == 1 || y == 14) && mid(x) || (x == 1 || x == 14) && mid(y)) => 13,
+                        1 => 5,
+                        2 => *c,
+                        3 => 1,
+                        _ if lit => {
+                            if d2 < 256 {
+                                12
+                            } else {
+                                11
+                            }
+                        }
+                        _ if d2 < 100 => 10,
+                        _ => 9,
+                    };
+                }
+            }
+        }
+    }
+    patina(&mut g, stage);
+    g
+}
+
+/// Concrete: dyed cement, smooth with a faint mottle.
+const CONCRETE: Recipe = Recipe {
+    jitter: 24,
+    thresholds: [96, 160],
+    pits: (3, (1, 2), 2, None),
+    bumps: (2, (1, 2), 4, None),
+    ..natural(240, &[])
+};
+/// Concrete powder: dyed grit, like sand.
+const CONCRETE_POWDER: Recipe = Recipe { seed: 241, ..SAND };
+
+/// Wool: rows of knitted stitches two texels tall, lit on their upper half,
+/// with a few stray light fibres.
+fn wool_grid() -> Grid {
+    let mut g = [[3; N]; N];
+    for (y, row) in g.iter_mut().enumerate() {
+        for (x, c) in row.iter_mut().enumerate() {
+            let k = (x + (y / 2) % 2 * 2) % 4;
+            let v = [2u8, 3, 4, 3][k];
+            *c = if y % 2 == 1 { v - 1 } else { v };
+        }
+    }
+    bumps(&mut g, 250, 6, (1, 2), 5, None, 7);
+    pits(&mut g, 250, 4, (1, 1), 1, None, 9);
+    g
+}
+
+/// The wool and concrete colours, in `DyeColor` order.
+fn dye(i: usize) -> [u8; 3] {
+    crate::color::DyeColor::ALL[i].rgb()
+}
+
+/// Plates `w` x `h` of metal (iron, gold, netherite) with the masonry
+/// joints and bevels, over a smooth metal face.
+fn metal_plates(seed: u32, w: usize, h: usize, shift: usize) -> Grid {
+    let mut g = masonry_grid(seed, w, h, shift);
+    let face = smooth_grid(seed + 1, 24);
+    for (y, row) in g.iter_mut().enumerate() {
+        for (x, c) in row.iter_mut().enumerate() {
+            if (2..=4).contains(c) {
+                *c = face[y][x];
+            }
+        }
+    }
+    g
+}
+
+/// A gem block: 8 x 8 cut stones, each a low pyramid lit at its top left.
+fn gem_grid(seed: u32) -> Grid {
+    let mut g = [[0; N]; N];
+    for (y, row) in g.iter_mut().enumerate() {
+        for (x, c) in row.iter_mut().enumerate() {
+            let (lx, ly) = (x % 8, y % 8);
+            *c = if lx == 7 || ly == 7 {
+                0
+            } else if lx == 0 || ly == 0 {
+                5
+            } else {
+                match (lx + ly).cmp(&7) {
+                    std::cmp::Ordering::Less => 4,
+                    std::cmp::Ordering::Equal => 3,
+                    std::cmp::Ordering::Greater => 2,
+                }
+            };
+        }
+    }
+    // A glint on each stone's lit face.
+    for k in 0..4 {
+        let h = hu(seed, k, 0, 60);
+        let (x, y) = ((k % 2) * 8 + 2 + h as usize % 2, (k / 2) * 8 + 2 + (h >> 4) as usize % 2);
+        g[y][x] = 5;
+    }
+    g
+}
+
+const LAPIS: Recipe = Recipe {
+    jitter: 64,
+    thresholds: [110, 150],
+    pits: (5, (1, 2), 1, None),
+    bumps: (8, (1, 2), 5, None),
+    ..natural(261, &[[16, 36, 104], [24, 50, 136], [28, 58, 152], [30, 64, 160], [34, 70, 170], [76, 116, 218]])
+};
+const REDSTONE_BLOCK: Recipe = Recipe {
+    jitter: 64,
+    thresholds: [110, 150],
+    pits: (5, (1, 2), 1, None),
+    bumps: (8, (1, 2), 5, None),
+    ..natural(262, &[[96, 10, 6], [140, 18, 10], [166, 22, 14], [180, 25, 15], [194, 30, 18], [240, 80, 60]])
+};
+const COAL_BLOCK: Recipe = Recipe {
+    jitter: 48,
+    thresholds: [110, 150],
+    pits: (5, (1, 2), 1, None),
+    bumps: (7, (1, 2), 5, None),
+    ..natural(263, &[[12, 12, 14], [20, 20, 22], [26, 26, 28], [30, 30, 32], [36, 36, 38], [86, 86, 92]])
+};
+/// Raw ore blocks: chunks of raw metal with dark gaps.
+const RAW_IRON: [u8; 3] = [198, 148, 118];
+const RAW_GOLD: [u8; 3] = [232, 188, 62];
+const RAW_COPPER: [u8; 3] = [176, 98, 64];
+const AMETHYST: [u8; 3] = [133, 97, 191];
+const AMETHYST_BUDS: [[u8; 3]; 2] = [[196, 156, 238], [236, 214, 255]];
+
+const NETHERRACK: Recipe = Recipe {
+    jitter: 72,
+    thresholds: [110, 150],
+    pits: (8, (2, 4), 1, Some(0)),
+    bumps: (5, (1, 3), 5, Some(1)),
+    ..natural(270, &[[66, 30, 30], [86, 42, 40], [100, 49, 47], [111, 54, 52], [120, 60, 57], [138, 72, 68]])
+};
+const CRIMSON_NYLIUM: Recipe = Recipe {
+    jitter: 72,
+    thresholds: [110, 150],
+    pits: (6, (1, 2), 1, None),
+    bumps: (9, (1, 3), 5, Some(1)),
+    ..natural(271, &[[80, 14, 14], [100, 22, 22], [120, 28, 28], [130, 31, 31], [142, 36, 34], [176, 52, 42]])
+};
+const WARPED_NYLIUM: Recipe = Recipe {
+    seed: 272,
+    palette: &[[18, 70, 62], [26, 88, 78], [38, 104, 92], [43, 114, 101], [50, 126, 112], [78, 160, 138]],
+    ..CRIMSON_NYLIUM
+};
+const SOUL_SAND: Recipe = Recipe {
+    jitter: 64,
+    thresholds: [110, 150],
+    pits: (4, (1, 2), 1, None),
+    bumps: (5, (1, 2), 5, None),
+    ..natural(273, &[[44, 32, 26], [62, 47, 37], [76, 58, 46], [84, 64, 51], [92, 70, 56], [108, 84, 68]])
+};
+const SOUL_SOIL: Recipe = Recipe {
+    pits: (9, (2, 3), 1, Some(0)),
+    ..Recipe {
+        seed: 274,
+        palette: &[[40, 30, 24], [56, 42, 34], [68, 52, 42], [75, 57, 46], [82, 62, 50], [98, 76, 62]],
+        ..SOUL_SAND
+    }
+};
+const BASALT: [u8; 3] = [91, 88, 94];
+const SMOOTH_BASALT: Recipe = Recipe {
+    jitter: 32,
+    thresholds: [110, 150],
+    pits: (4, (1, 2), 1, None),
+    bumps: (3, (1, 2), 5, None),
+    ..natural(275, &[[50, 50, 56], [60, 60, 66], [68, 68, 74], [72, 72, 78], [76, 76, 82], [88, 88, 96]])
+};
+const MAGMA: Palette = &[
+    [42, 18, 16],
+    [56, 24, 21],
+    [66, 29, 25],
+    [72, 32, 27],
+    [80, 36, 30],
+    [96, 46, 38],
+    [236, 111, 24],
+    [255, 182, 64],
+];
+const GLOWSTONE: Palette =
+    &[[150, 110, 60], [206, 160, 84], [232, 190, 102], [244, 206, 116], [250, 215, 120], [255, 236, 170]];
+const QUARTZ_ORE: [[u8; 3]; 3] = [[150, 140, 132], [235, 228, 220], [255, 252, 246]];
+const DEBRIS: Palette = &[
+    [48, 34, 29],
+    [62, 44, 37],
+    [70, 49, 41],
+    [76, 53, 44],
+    [84, 59, 49],
+    [100, 72, 60],
+    [151, 110, 88],
+    [176, 134, 108],
+];
+const NETHER_WART: Recipe = Recipe {
+    jitter: 80,
+    thresholds: [105, 150],
+    pits: (8, (1, 3), 1, None),
+    bumps: (9, (1, 3), 5, Some(1)),
+    ..natural(276, &[[64, 2, 2], [86, 4, 4], [104, 6, 6], [114, 6, 6], [126, 10, 10], [156, 26, 22]])
+};
+const WARPED_WART: Recipe = Recipe {
+    seed: 277,
+    palette: &[[12, 66, 68], [16, 90, 92], [20, 108, 110], [22, 119, 121], [26, 132, 134], [52, 160, 160]],
+    ..NETHER_WART
+};
+const SHROOMLIGHT: Recipe = Recipe {
+    jitter: 64,
+    thresholds: [110, 150],
+    pits: (6, (1, 2), 1, None),
+    bumps: (9, (1, 3), 5, None),
+    ..natural(278, &[[196, 98, 40], [220, 124, 56], [234, 142, 66], [240, 150, 72], [246, 162, 84], [255, 214, 140]])
+};
+const END_STONE: Recipe = Recipe {
+    jitter: 56,
+    thresholds: [110, 150],
+    pits: (8, (2, 4), 1, Some(0)),
+    bumps: (3, (1, 2), 5, None),
+    ..natural(
+        280,
+        &[[176, 180, 124], [196, 200, 140], [212, 216, 156], [220, 224, 164], [228, 232, 172], [240, 242, 190]],
+    )
+};
+const OBSIDIAN: Recipe = Recipe {
+    jitter: 56,
+    thresholds: [110, 150],
+    pits: (5, (1, 2), 1, None),
+    bumps: (6, (1, 2), 5, None),
+    ..natural(281, &[[10, 6, 16], [16, 11, 25], [20, 14, 31], [22, 16, 34], [26, 19, 40], [80, 60, 110]])
+};
+const TEARS: [[u8; 3]; 2] = [[150, 46, 236], [204, 124, 255]];
+
+/// Soul sand: grains with a few face-like hollows sunk in each quarter.
+fn soul_sand_grid() -> Grid {
+    let mut g = SOUL_SAND.grid();
+    carve(&mut g, 0, |x, y| {
+        let (cx, cy) = (x % 8, y % 8);
+        (cx == 2 || cx == 5) && cy == 2 || (2..=5).contains(&cx) && cy == 5
+    });
+    g
+}
+
+/// Magma: dark rock cracked by glowing seams (index 6), hottest (7) here and
+/// there along them.
+fn magma_grid() -> Grid {
+    let (mut g, _) = stones(282, 3, 6, 6);
+    for (y, row) in g.iter_mut().enumerate() {
+        for (x, c) in row.iter_mut().enumerate() {
+            if *c == 6 && hu(282, x, y, 61).is_multiple_of(4) {
+                *c = 7;
+            }
+        }
+    }
+    g
+}
+
+/// Ancient debris' side: dark rubble with pale mineral folds.
+fn debris_side_grid() -> Grid {
+    let mut g = Recipe { seed: 283, palette: DEBRIS, ..NETHERRACK }.grid();
+    for (y, row) in g.iter_mut().enumerate() {
+        for (x, c) in row.iter_mut().enumerate() {
+            match (y + x / 4 + (x / 7) * 2) % 8 {
+                0 => *c = 7,
+                1 => *c = 6,
+                2 => *c = 1,
+                _ => {}
+            }
+        }
+    }
+    g
+}
+
+/// Ancient debris' top: a squared spiral of pale mineral.
+fn debris_top_grid() -> Grid {
+    let mut g = Recipe { seed: 284, palette: DEBRIS, ..NETHERRACK }.grid();
+    for (y, row) in g.iter_mut().enumerate() {
+        for (x, c) in row.iter_mut().enumerate() {
+            if ring(x, y).is_multiple_of(3) && !(x == 8 && y > 7) {
+                *c = if ring(x, y) == 0 { 6 } else { 7 };
+            }
+        }
+    }
+    g
+}
+
+/// Crying obsidian: obsidian with violet tears running down.
+fn crying_grid() -> Grid {
+    let mut g = OBSIDIAN.grid();
+    for k in 0..6 {
+        let h = hu(285, k, 0, 62);
+        let cell = cell_order(285, 62)[k];
+        let (x, mut y) = ((cell % 4) * 4 + h as usize % 4, (cell / 4) * 4 + (h >> 2) as usize % 4);
+        for s in 0..2 + (h >> 8) as usize % 3 {
+            g[y][x] = if s == 0 { 7 } else { 6 };
+            y = (y + 1) % N;
+        }
+    }
+    g
+}
+
 fn paint(g: &Grid, palette: &[[u8; 3]]) -> Tile {
     let mut out = [[0; 4]; N * N];
     for (y, row) in g.iter().enumerate() {
@@ -1291,6 +1706,21 @@ fn layers() -> Vec<u16> {
     }
     out.extend(ROUND_THREE);
     out.extend(terracotta_colours().into_iter().map(|(layer, _)| layer));
+    out.extend(ROUND_FOUR);
+    out.extend([tex::OBSIDIAN, tex::CRYING_OBSIDIAN, PURPUR_TEX, PURPUR_TEX + 1, PURPUR_TEX + 2]);
+    {
+        use crate::world::copper::{Stage, t as ct};
+        for stage in Stage::ALL {
+            for kind in
+                [ct::BLOCK, ct::CUT, ct::CHISELED, ct::GRATE, ct::BULB, ct::BULB + 1, ct::BULB + 2, ct::BULB + 3]
+            {
+                out.push(ct::layer(stage, kind));
+            }
+        }
+    }
+    for i in 0..16 {
+        out.extend([tex::CONCRETE + i, tex::CONCRETE_POWDER + i, tex::COLORED_WOOL + i]);
+    }
     out
 }
 
@@ -1335,6 +1765,57 @@ const ROUND_THREE: [u16; 38] = [
     wt::STRIPPED_TOP + 9,
     t::AZALEA_LEAVES,
     t::FLOWERING_AZALEA_LEAVES,
+];
+
+/// The fourth round's layers, in `layers` order (copper, the colours and the
+/// purpur layers are added in `layers`).
+#[cfg(test)]
+const ROUND_FOUR: [u16; 45] = [
+    st::QUARTZ_SIDE,
+    st::QUARTZ_TOP,
+    st::QUARTZ_BOTTOM,
+    st::QUARTZ_BRICKS,
+    st::CHISELED_QUARTZ,
+    st::CHISELED_QUARTZ_TOP,
+    st::QUARTZ_PILLAR_SIDE,
+    st::QUARTZ_PILLAR_SIDE_TURNED,
+    st::QUARTZ_PILLAR_TOP,
+    tex::COPPER_BLOCK,
+    tex::WOOL,
+    tex::IRON_BLOCK,
+    tex::GOLD_BLOCK,
+    tex::NETHERITE_BLOCK,
+    st::DIAMOND_BLOCK,
+    tex::EMERALD_BLOCK,
+    tex::LAPIS_BLOCK,
+    REDSTONE_BLOCK_LAYER,
+    st::COAL_BLOCK,
+    tex::RAW_IRON_BLOCK,
+    tex::RAW_GOLD_BLOCK,
+    tex::RAW_COPPER_BLOCK,
+    t::AMETHYST,
+    t::BUDDING_AMETHYST,
+    tex::NETHERRACK,
+    tex::CRIMSON_NYLIUM_TOP,
+    tex::CRIMSON_NYLIUM_SIDE,
+    tex::WARPED_NYLIUM_TOP,
+    tex::WARPED_NYLIUM_SIDE,
+    tex::QUARTZ_ORE,
+    tex::SOUL_SAND,
+    tex::SOUL_SOIL,
+    tex::BASALT_SIDE,
+    tex::BASALT_TOP,
+    tex::POLISHED_BASALT_SIDE,
+    tex::POLISHED_BASALT_TOP,
+    t::SMOOTH_BASALT,
+    tex::MAGMA,
+    tex::GLOWSTONE,
+    tex::DEBRIS_SIDE,
+    tex::DEBRIS_TOP,
+    tex::NETHER_WART_BLOCK,
+    tex::WARPED_WART_BLOCK,
+    tex::SHROOMLIGHT,
+    tex::END_STONE,
 ];
 
 /// The second round's single layers, in `layers` order.
@@ -1612,6 +2093,150 @@ fn build() -> FxHashMap<u16, Tile> {
         let r = Recipe { seed: 150 + i as u32, ..TERRACOTTA };
         put(layer, paint(&r.grid_in(&palette), &palette));
     }
+    // Fourth round.
+    let q = quartz_palette();
+    let mut g = smooth_grid(200, 16);
+    put(st::QUARTZ_SIDE, paint(&g, &q));
+    bevel(&mut g);
+    put(st::QUARTZ_TOP, paint(&g, &q));
+    put(st::QUARTZ_BOTTOM, paint(&smooth_grid(202, 8), &q));
+    put(st::QUARTZ_BRICKS, paint(&masonry_grid(203, 8, 4, 4), &q));
+    let mut g = smooth_grid(204, 16);
+    carve(&mut g, 1, |x, y| {
+        y == 1
+            || y == 14
+            || (2..=13).contains(&y) && (3..13).contains(&x) && ((x + y) % 6 == 0 || (x + 15 - y) % 6 == 0)
+    });
+    put(st::CHISELED_QUARTZ, paint(&g, &q));
+    let mut g = smooth_grid(205, 16);
+    bevel(&mut g);
+    carve(&mut g, 1, |x, y| matches!(ring(x, y), 3 | 6));
+    put(st::CHISELED_QUARTZ_TOP, paint(&g, &q));
+    let pillar = quartz_pillar_side();
+    put(st::QUARTZ_PILLAR_SIDE, paint(&pillar, &q));
+    put(st::QUARTZ_PILLAR_SIDE_TURNED, paint(&transpose(&pillar), &q));
+    let mut g = smooth_grid(206, 16);
+    bevel(&mut g);
+    carve(&mut g, 1, |x, y| ring(x, y) == 4);
+    put(st::QUARTZ_PILLAR_TOP, paint(&g, &q));
+    let purpur = ramp(PURPUR, [620, 800, 920, 1000, 1060, 1140]);
+    put(PURPUR_TEX, paint(&masonry_grid(207, 4, 4, 2), &purpur));
+    let mut g = smooth_grid(208, 32);
+    carve(&mut g, 1, |x, _| x % 4 == 0);
+    for x in 0..N {
+        (g[0][x], g[N - 1][x]) = (5, 0);
+    }
+    put(PURPUR_TEX + 1, paint(&g, &purpur));
+    let mut g = smooth_grid(209, 32);
+    bevel(&mut g);
+    carve(&mut g, 1, |x, y| ring(x, y) == 3);
+    put(PURPUR_TEX + 2, paint(&g, &purpur));
+    {
+        use crate::world::copper::{Stage, t as ct};
+        for (s, stage) in Stage::ALL.into_iter().enumerate() {
+            let palette = copper_palette(s);
+            for kind in
+                [ct::BLOCK, ct::CUT, ct::CHISELED, ct::GRATE, ct::BULB, ct::BULB + 1, ct::BULB + 2, ct::BULB + 3]
+            {
+                put(ct::layer(stage, kind), paint(&copper_grid(s, kind), &palette));
+            }
+        }
+        // The unaffected block of copper has its own layer.
+        put(tex::COPPER_BLOCK, paint(&copper_grid(0, ct::BLOCK), &copper_palette(0)));
+    }
+    let wool = wool_grid();
+    for i in 0..16 {
+        let c = dye(i);
+        let concrete = ramp(c, [900, 955, 980, 1000, 1020, 1060]);
+        let r = Recipe { seed: 240 + i as u32, ..CONCRETE };
+        put(tex::CONCRETE + i as u16, paint(&r.grid_in(&concrete), &concrete));
+        let powder = ramp(c, [820, 900, 960, 1000, 1040, 1110]);
+        let r = Recipe { seed: 300 + i as u32, ..CONCRETE_POWDER };
+        put(tex::CONCRETE_POWDER + i as u16, paint(&r.grid_in(&powder), &powder));
+        let knit = ramp(c, [760, 860, 930, 1000, 1060, 1130]);
+        put(tex::COLORED_WOOL + i as u16, paint(&wool, &knit));
+        if i == 0 {
+            put(tex::WOOL, paint(&wool, &knit));
+        }
+    }
+    put(
+        tex::IRON_BLOCK,
+        paint(&metal_plates(290, 16, 8, 0), &ramp([218, 218, 222], [720, 860, 950, 1000, 1030, 1080])),
+    );
+    put(tex::GOLD_BLOCK, paint(&metal_plates(292, 8, 8, 4), &ramp([246, 207, 56], [700, 840, 940, 1000, 1030, 1070])));
+    put(
+        tex::NETHERITE_BLOCK,
+        paint(&metal_plates(294, 16, 8, 8), &ramp([67, 60, 63], [560, 780, 920, 1000, 1080, 1300])),
+    );
+    put(st::DIAMOND_BLOCK, paint(&gem_grid(296), &ramp([98, 226, 220], [600, 820, 920, 1000, 1060, 1150])));
+    put(tex::EMERALD_BLOCK, paint(&gem_grid(297), &ramp([24, 176, 78], [560, 800, 920, 1000, 1080, 1300])));
+    let mut g = LAPIS.grid();
+    bevel(&mut g);
+    put(tex::LAPIS_BLOCK, paint(&g, LAPIS.palette));
+    let mut g = REDSTONE_BLOCK.grid();
+    bevel(&mut g);
+    put(REDSTONE_BLOCK_LAYER, paint(&g, REDSTONE_BLOCK.palette));
+    put(st::COAL_BLOCK, paint(&COAL_BLOCK.grid(), COAL_BLOCK.palette));
+    for (layer, seed, c) in [
+        (tex::RAW_IRON_BLOCK, 298, RAW_IRON),
+        (tex::RAW_GOLD_BLOCK, 299, RAW_GOLD),
+        (tex::RAW_COPPER_BLOCK, 300, RAW_COPPER),
+    ] {
+        put(layer, paint(&stones(seed, 4, 6, 0).0, &ramp(c, [560, 780, 900, 1000, 1080, 1180])));
+    }
+    let amethyst: Vec<[u8; 3]> =
+        ramp(AMETHYST, [600, 800, 920, 1000, 1080, 1200]).iter().chain(&AMETHYST_BUDS).copied().collect();
+    let crystal = stones(301, 3, 6, 0).0;
+    put(t::AMETHYST, paint(&crystal, &amethyst));
+    let mut g = crystal;
+    for k in 0..5 {
+        let cells = walk(301, k, 2, 3, 63);
+        for &(x, y) in &cells {
+            g[y][x] = 6;
+        }
+        let (x, y) = cells[0];
+        g[y][x] = 7;
+    }
+    put(t::BUDDING_AMETHYST, paint(&g, &amethyst));
+    let netherrack = NETHERRACK.grid();
+    let netherrack_tile = paint(&netherrack, NETHERRACK.palette);
+    put(tex::NETHERRACK, netherrack_tile);
+    for (top, side, r, seed) in [
+        (tex::CRIMSON_NYLIUM_TOP, tex::CRIMSON_NYLIUM_SIDE, &CRIMSON_NYLIUM, 286),
+        (tex::WARPED_NYLIUM_TOP, tex::WARPED_NYLIUM_SIDE, &WARPED_NYLIUM, 287),
+    ] {
+        let lip = r.grid();
+        put(top, paint(&lip, r.palette));
+        let palette: Vec<[u8; 3]> = NETHERRACK.palette.iter().chain(r.palette).copied().collect();
+        put(side, paint(&side_over(netherrack, &lip, seed), &palette));
+    }
+    put(tex::QUARTZ_ORE, ore_on(&netherrack_tile, 288, &QUARTZ_ORE, 5));
+    put(tex::SOUL_SAND, paint(&soul_sand_grid(), SOUL_SAND.palette));
+    put(tex::SOUL_SOIL, paint(&SOUL_SOIL.grid(), SOUL_SOIL.palette));
+    let basalt = ramp(BASALT, [560, 720, 880, 1000, 1080, 1200]);
+    put(tex::BASALT_SIDE, paint(&stripped_grid(289), &basalt));
+    let mut g = Recipe { seed: 302, palette: &[], ..SMOOTH_BASALT }.grid_in(&basalt);
+    carve(&mut g, 1, |x, y| square_ring(x, y).is_multiple_of(3));
+    put(tex::BASALT_TOP, paint(&g, &basalt));
+    let mut g = smooth_grid(303, 32);
+    carve(&mut g, 1, |x, _| x % 4 == 3);
+    put(tex::POLISHED_BASALT_SIDE, paint(&g, &basalt));
+    let mut g = smooth_grid(304, 32);
+    bevel(&mut g);
+    carve(&mut g, 1, |x, y| ring(x, y) == 3);
+    put(tex::POLISHED_BASALT_TOP, paint(&g, &basalt));
+    put(t::SMOOTH_BASALT, paint(&SMOOTH_BASALT.grid(), SMOOTH_BASALT.palette));
+    put(tex::MAGMA, paint(&magma_grid(), MAGMA));
+    put(tex::GLOWSTONE, paint(&stones(305, 4, 6, 0).0, GLOWSTONE));
+    put(tex::DEBRIS_SIDE, paint(&debris_side_grid(), DEBRIS));
+    put(tex::DEBRIS_TOP, paint(&debris_top_grid(), DEBRIS));
+    put(tex::NETHER_WART_BLOCK, paint(&NETHER_WART.grid(), NETHER_WART.palette));
+    put(tex::WARPED_WART_BLOCK, paint(&WARPED_WART.grid(), WARPED_WART.palette));
+    put(tex::SHROOMLIGHT, paint(&SHROOMLIGHT.grid(), SHROOMLIGHT.palette));
+    put(tex::END_STONE, paint(&END_STONE.grid(), END_STONE.palette));
+    put(tex::OBSIDIAN, paint(&OBSIDIAN.grid(), OBSIDIAN.palette));
+    let crying: Vec<[u8; 3]> = OBSIDIAN.palette.iter().chain(&TEARS).copied().collect();
+    put(tex::CRYING_OBSIDIAN, paint(&crying_grid(), &crying));
     tiles
 }
 
@@ -1889,6 +2514,136 @@ mod tests {
         (360, 0x98d114f4e837d587),
         (361, 0xb985ad67ba0a8793),
         (362, 0x5483464001a3a7ef),
+        (2011, 0xd84b3640e476b4ab),
+        (2012, 0xe6c9ef18629c544e),
+        (2013, 0xaf7909c088f81de1),
+        (2014, 0x22bf9fd3c7cec053),
+        (2015, 0x1488b1bb5897c72b),
+        (2016, 0x83dbf956b3c4437e),
+        (2017, 0x58d71d5cb366b317),
+        (2035, 0xa69d9d8681f5d407),
+        (2018, 0x8a3438b5a59da80c),
+        (193, 0x66b7a5d7e83aef9c),
+        (48, 0x5f073c4826be15b1),
+        (174, 0xea305e916bd91321),
+        (255, 0xb0ebdfe265f2bd95),
+        (181, 0x6821fb4419159c24),
+        (2032, 0xf1445b5cb4b236cd),
+        (194, 0x76d16b6661799e55),
+        (171, 0x290545d7113e1957),
+        (1122, 0x6f3d6d16f68f7dfb),
+        (2031, 0xf07f4e99b04ae59b),
+        (190, 0xd52ee230a9b70aea),
+        (191, 0xdda45e470c8eee36),
+        (192, 0x04da7952d4ffa10c),
+        (1473, 0x77609d8461f8c42b),
+        (1474, 0x4ebbee29077f3193),
+        (77, 0xc902ef271b71dae6),
+        (1307, 0x630a67b39b390865),
+        (1308, 0xf98e5a34b951e299),
+        (1309, 0x89758cb402141815),
+        (1310, 0x8427f7fa2a9a2d91),
+        (79, 0x426524a894d9744a),
+        (78, 0x08db746024b8ed8b),
+        (1333, 0x7a37483d3df333c3),
+        (250, 0xd86535ca29baf051),
+        (251, 0x9cf505fb70c71b9b),
+        (252, 0xa39a260f8b603ffd),
+        (253, 0x2ca47ce4640a7601),
+        (1483, 0x7208ac569222f567),
+        (254, 0x239d8f7663dc6bec),
+        (25, 0x983b1295c9c1e27b),
+        (179, 0xe2224e782f4548ca),
+        (180, 0xda1458f960993f7b),
+        (1321, 0x63c44db74e3d644b),
+        (1322, 0x197399a92b13ca49),
+        (1323, 0xba6178993a1866ac),
+        (151, 0xd9829146645c4c59),
+        (47, 0x6a7ee9615d532cbe),
+        (1400, 0x4d6bc1c6f11a97cf),
+        (529, 0xf89094352c6f6994),
+        (530, 0xaf114e826573019b),
+        (531, 0xde26c778a22ef318),
+        (2128, 0x66b7a5d7e83aef9c),
+        (2129, 0xd0f255e2e09f5d88),
+        (2130, 0x111142c042cee882),
+        (2131, 0xa5822aef04b928e9),
+        (2132, 0xfa318d3863981610),
+        (2133, 0x32f0d76b5ad62fac),
+        (2134, 0x6d8ab8d9898dbefd),
+        (2135, 0x30483a00c6821c48),
+        (2146, 0x31e1c43e18624e4b),
+        (2147, 0x9b2bfa743a0b0276),
+        (2148, 0x7e656ec1531a9c05),
+        (2149, 0x9c0696a9e227c434),
+        (2150, 0x3678d4274675eeb4),
+        (2151, 0xe80359be773cc6e8),
+        (2152, 0xa7f5be802f4092b5),
+        (2153, 0x1f3573ffb2fabf04),
+        (2164, 0x36f6abb82292cf8f),
+        (2165, 0xa90ca874a80b3fc8),
+        (2166, 0x82f54473941e464e),
+        (2167, 0x745c019ab32b60ac),
+        (2168, 0xdb88078822c496ad),
+        (2169, 0x8c4bdf32ee448293),
+        (2170, 0xd2e14e4ba47a2ace),
+        (2171, 0x1220585564ad7aba),
+        (2182, 0xbcd810e38f151859),
+        (2183, 0x0527c3aa5410492b),
+        (2184, 0x5fb30f3bda0cc15f),
+        (2185, 0x5b574a3d6c30213f),
+        (2186, 0x4936de947ad14f43),
+        (2187, 0xbcad07362d167ffb),
+        (2188, 0x03b62ed72d451e31),
+        (2189, 0x46fd3f822a2e0983),
+        (379, 0xfde983214bf906c0),
+        (363, 0x9ca005e780f254ca),
+        (257, 0x5f073c4826be15b1),
+        (380, 0xe0167c713c18a95a),
+        (364, 0x8c2afd6e29ceb36f),
+        (258, 0xfac45fa3790aeaa1),
+        (381, 0x6b6c7c944221e126),
+        (365, 0x2bb39dd5e633de5c),
+        (259, 0xd417d9181ca98d81),
+        (382, 0x9714b725f36687b4),
+        (366, 0xd76300e4e5cbde4d),
+        (260, 0x75c6d65684d58e41),
+        (383, 0xe4725ef4c42038a1),
+        (367, 0x93aaa6c1a4d9d167),
+        (261, 0xc1730e30518bfbdf),
+        (384, 0x68742140ee96e069),
+        (368, 0x662c0b42f9905915),
+        (262, 0x09f79911d3907821),
+        (385, 0x6b523515ed987051),
+        (369, 0xa8295f54926a6178),
+        (263, 0x1eec6c606f7e7ed8),
+        (386, 0x43ccc1aa5f3395b1),
+        (370, 0xeb0aa77871188190),
+        (264, 0x4c82f14a062dc74b),
+        (387, 0x732a8f87cc9d03bd),
+        (371, 0x95555df4883e36d5),
+        (265, 0x8bcb5973098acb3a),
+        (388, 0x681ea96b7c8d659e),
+        (372, 0x98efba6450d213a0),
+        (266, 0x37e51dbb07a195da),
+        (389, 0xb43ac81096939f69),
+        (373, 0xeb09f5cf04494b05),
+        (267, 0x006063817bd93faa),
+        (390, 0xa38794b1b1e6243d),
+        (374, 0xaafe50be37d68f03),
+        (268, 0x89f0e258ed1c8655),
+        (391, 0x806f7a960bc3a58d),
+        (375, 0xc59b29d06bfddaa1),
+        (269, 0x29cb5cb12b7fcd96),
+        (392, 0xe034db6a2e91c699),
+        (376, 0xf76c786aac5fb238),
+        (270, 0xaa75cbcec7349e34),
+        (393, 0xf028ba983872523f),
+        (377, 0x32a5eb81aaa9cb27),
+        (271, 0xa485c4f9473f4f51),
+        (394, 0x16a815028389c32e),
+        (378, 0x3e797f401dcf27d8),
+        (272, 0xf9c23555f24821e7),
     ];
 
     /// The measurable rules of `docs/art-and-ui.md` for natural materials.

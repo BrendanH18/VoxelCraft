@@ -322,4 +322,6 @@ as it was until the title track's panorama lands.
   Masonry (`masonry_grid`: running bond, one-texel joints along each
   block's bottom and right, lit top and left) and carved faces (`carve`:
   the groove dark, its lower and right walls lit) follow the manufactured
-  rules above.
+  rules above. Metal blocks (copper, iron, gold, netherite) are plates in
+  the same masonry; copper's patina spreads in the same blotches over every
+  face of one oxidation stage.

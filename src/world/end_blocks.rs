@@ -444,48 +444,13 @@ fn shade(c: [i32; 3], d: i32) -> [u8; 4] {
     [(c[0] + d).clamp(0, 255) as u8, (c[1] + d).clamp(0, 255) as u8, (c[2] + d).clamp(0, 255) as u8, 255]
 }
 
-/// Original textures: purpur as lilac tiles in a staggered four-by-four
-/// course; the pillar fluted on its sides with a framed boss on its ends;
-/// the End rod pale and glowing; chorus as mottled violet.
+/// Original textures: the End rod pale and glowing; chorus as mottled
+/// violet. Purpur and its pillar are drawn by the client's
+/// `render::material_textures` (v0.18 Track 3).
 pub fn pixel(layer: u16, x: usize, y: usize) -> [u8; 4] {
     let n = (hash(layer, x, y) % 13) as i32 - 6;
     let (xi, yi) = (x as i32, y as i32);
-    const PURPUR: [i32; 3] = [170, 126, 170];
     match layer {
-        T_PURPUR => {
-            // Rows of 4-high tiles, every other row shifted by two.
-            let row = yi / 4;
-            let col = (xi + if row % 2 == 1 { 2 } else { 0 }) % 4;
-            let mortar = yi % 4 == 3 || col == 3;
-            shade(PURPUR, if mortar { -34 } else { n + (row * 3 % 7) })
-        }
-        T_PILLAR_SIDE => {
-            let flute = xi % 4 == 0;
-            let band = yi == 0 || yi == 15;
-            shade(
-                PURPUR,
-                if band {
-                    -28
-                } else if flute {
-                    -22
-                } else {
-                    n + 4
-                },
-            )
-        }
-        T_PILLAR_TOP => {
-            let ring = xi.min(yi).min(15 - xi).min(15 - yi);
-            shade(
-                PURPUR,
-                if ring == 0 || ring == 3 {
-                    -30
-                } else if ring >= 5 {
-                    10 + n
-                } else {
-                    n
-                },
-            )
-        }
         T_ROD => {
             let glow = 236 + n.abs();
             shade([glow, glow - 6, glow + 2], 0)
