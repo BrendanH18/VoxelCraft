@@ -150,8 +150,9 @@ every rule below:
   mean), so walls of stone read rougher than the ground. Gravel's pebbles
   need their dark gaps, so it has its own band: 75 % within ±25 %
   (changed in track 3's second round; ±18 % left it flat).
-- No pattern at a distance: in natural stone, ground, grass and sandstone
-  tops, every 4 × 4 block's mean luminance is within 8 % of the tile's.
+- No pattern at a distance: in natural stone, ground, grass, sandstone
+  tops, calcite, blackstone, mud and terracotta, every 4 × 4 block's mean
+  luminance is within 8 % of the tile's.
   A tile with a light half and a dark half, or accents lined up along a
   row, repeats into bands and diagonals across a wall (the first round's
   cave ceiling showed it). The generator evens each tile out after drawing
@@ -318,3 +319,7 @@ as it was until the title track's panorama lands.
   [`material_textures.rs`](../src/render/material_textures.rs) (v0.18 track 3):
   palettes, soft base patches, stratified clusters lit from the top left,
   a pass that breaks straight runs and one that evens out 4 × 4 blocks.
+  Masonry (`masonry_grid`: running bond, one-texel joints along each
+  block's bottom and right, lit top and left) and carved faces (`carve`:
+  the groove dark, its lower and right walls lit) follow the manufactured
+  rules above.

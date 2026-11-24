@@ -4027,6 +4027,543 @@
    ]
   },
   {
+   "name": "material-masonry",
+   "group": "materials",
+   "description": "Thirty-two bricks, tiles, chiseled and cut stones, mud and azalea leaves as 2 x 2 x 2 cubes in four rising rows, from above at noon: the third round's masonry",
+   "matrix": {
+    "size": [
+     [
+      1920,
+      1080
+     ],
+     [
+      1280,
+      720
+     ]
+    ],
+    "gui_scale": [
+     "auto"
+    ]
+   },
+   "pose": [
+    0.5,
+    162,
+    6,
+    90,
+    -32
+   ],
+   "hud": false,
+   "fill": [
+    [
+     -12,
+     150,
+     18,
+     -11,
+     151,
+     19,
+     "stone bricks"
+    ],
+    [
+     -9,
+     150,
+     18,
+     -8,
+     151,
+     19,
+     "mossy stone bricks"
+    ],
+    [
+     -6,
+     150,
+     18,
+     -5,
+     151,
+     19,
+     "cracked stone bricks"
+    ],
+    [
+     -3,
+     150,
+     18,
+     -2,
+     151,
+     19,
+     "chiseled stone bricks"
+    ],
+    [
+     0,
+     150,
+     18,
+     1,
+     151,
+     19,
+     "bricks"
+    ],
+    [
+     3,
+     150,
+     18,
+     4,
+     151,
+     19,
+     "mud bricks"
+    ],
+    [
+     6,
+     150,
+     18,
+     7,
+     151,
+     19,
+     "packed mud"
+    ],
+    [
+     9,
+     150,
+     18,
+     10,
+     151,
+     19,
+     "mud"
+    ],
+    [
+     -12,
+     151,
+     21,
+     -11,
+     152,
+     22,
+     "nether bricks"
+    ],
+    [
+     -9,
+     151,
+     21,
+     -8,
+     152,
+     22,
+     "red nether bricks"
+    ],
+    [
+     -6,
+     151,
+     21,
+     -5,
+     152,
+     22,
+     "cracked nether bricks"
+    ],
+    [
+     -3,
+     151,
+     21,
+     -2,
+     152,
+     22,
+     "chiseled nether bricks"
+    ],
+    [
+     0,
+     151,
+     21,
+     1,
+     152,
+     22,
+     "end stone bricks"
+    ],
+    [
+     3,
+     151,
+     21,
+     4,
+     152,
+     22,
+     "prismarine bricks"
+    ],
+    [
+     6,
+     151,
+     21,
+     7,
+     152,
+     22,
+     "calcite"
+    ],
+    [
+     9,
+     151,
+     21,
+     10,
+     152,
+     22,
+     "smooth stone"
+    ],
+    [
+     -12,
+     152,
+     24,
+     -11,
+     153,
+     25,
+     "deepslate bricks"
+    ],
+    [
+     -9,
+     152,
+     24,
+     -8,
+     153,
+     25,
+     "cracked deepslate bricks"
+    ],
+    [
+     -6,
+     152,
+     24,
+     -5,
+     153,
+     25,
+     "deepslate tiles"
+    ],
+    [
+     -3,
+     152,
+     24,
+     -2,
+     153,
+     25,
+     "chiseled deepslate"
+    ],
+    [
+     0,
+     152,
+     24,
+     1,
+     153,
+     25,
+     "tuff bricks"
+    ],
+    [
+     3,
+     152,
+     24,
+     4,
+     153,
+     25,
+     "chiseled tuff"
+    ],
+    [
+     6,
+     152,
+     24,
+     7,
+     153,
+     25,
+     "chiseled tuff bricks"
+    ],
+    [
+     9,
+     152,
+     24,
+     10,
+     153,
+     25,
+     "azalea leaves"
+    ],
+    [
+     -12,
+     153,
+     27,
+     -11,
+     154,
+     28,
+     "polished blackstone"
+    ],
+    [
+     -9,
+     153,
+     27,
+     -8,
+     154,
+     28,
+     "polished blackstone bricks"
+    ],
+    [
+     -6,
+     153,
+     27,
+     -5,
+     154,
+     28,
+     "chiseled polished blackstone"
+    ],
+    [
+     -3,
+     153,
+     27,
+     -2,
+     154,
+     28,
+     "blackstone"
+    ],
+    [
+     0,
+     153,
+     27,
+     1,
+     154,
+     28,
+     "gilded blackstone"
+    ],
+    [
+     3,
+     153,
+     27,
+     4,
+     154,
+     28,
+     "chiseled sandstone"
+    ],
+    [
+     6,
+     153,
+     27,
+     7,
+     154,
+     28,
+     "chiseled red sandstone"
+    ],
+    [
+     9,
+     153,
+     27,
+     10,
+     154,
+     28,
+     "flowering azalea leaves"
+    ]
+   ]
+  },
+  {
+   "name": "material-terracotta",
+   "group": "materials",
+   "description": "Plain and the sixteen coloured terracottas, a block of stripped bamboo and three glazed terracottas (unchanged, for comparison) as 2 x 2 x 2 cubes in rising rows, from above at noon",
+   "matrix": {
+    "size": [
+     [
+      1920,
+      1080
+     ],
+     [
+      1280,
+      720
+     ]
+    ],
+    "gui_scale": [
+     "auto"
+    ]
+   },
+   "pose": [
+    0.5,
+    162,
+    6,
+    90,
+    -32
+   ],
+   "hud": false,
+   "fill": [
+    [
+     -12,
+     150,
+     18,
+     -11,
+     151,
+     19,
+     "terracotta"
+    ],
+    [
+     -9,
+     150,
+     18,
+     -8,
+     151,
+     19,
+     "white terracotta"
+    ],
+    [
+     -6,
+     150,
+     18,
+     -5,
+     151,
+     19,
+     "orange terracotta"
+    ],
+    [
+     -3,
+     150,
+     18,
+     -2,
+     151,
+     19,
+     "magenta terracotta"
+    ],
+    [
+     0,
+     150,
+     18,
+     1,
+     151,
+     19,
+     "light blue terracotta"
+    ],
+    [
+     3,
+     150,
+     18,
+     4,
+     151,
+     19,
+     "yellow terracotta"
+    ],
+    [
+     6,
+     150,
+     18,
+     7,
+     151,
+     19,
+     "lime terracotta"
+    ],
+    [
+     9,
+     150,
+     18,
+     10,
+     151,
+     19,
+     "pink terracotta"
+    ],
+    [
+     -12,
+     151,
+     21,
+     -11,
+     152,
+     22,
+     "gray terracotta"
+    ],
+    [
+     -9,
+     151,
+     21,
+     -8,
+     152,
+     22,
+     "light gray terracotta"
+    ],
+    [
+     -6,
+     151,
+     21,
+     -5,
+     152,
+     22,
+     "cyan terracotta"
+    ],
+    [
+     -3,
+     151,
+     21,
+     -2,
+     152,
+     22,
+     "purple terracotta"
+    ],
+    [
+     0,
+     151,
+     21,
+     1,
+     152,
+     22,
+     "blue terracotta"
+    ],
+    [
+     3,
+     151,
+     21,
+     4,
+     152,
+     22,
+     "brown terracotta"
+    ],
+    [
+     6,
+     151,
+     21,
+     7,
+     152,
+     22,
+     "green terracotta"
+    ],
+    [
+     9,
+     151,
+     21,
+     10,
+     152,
+     22,
+     "red terracotta"
+    ],
+    [
+     -12,
+     152,
+     24,
+     -11,
+     153,
+     25,
+     "black terracotta"
+    ],
+    [
+     -9,
+     152,
+     24,
+     -8,
+     153,
+     25,
+     "block of stripped bamboo"
+    ],
+    [
+     -6,
+     152,
+     24,
+     -5,
+     153,
+     25,
+     "orange glazed terracotta"
+    ],
+    [
+     -3,
+     152,
+     24,
+     -2,
+     153,
+     25,
+     "blue glazed terracotta"
+    ],
+    [
+     0,
+     152,
+     24,
+     1,
+     153,
+     25,
+     "lime glazed terracotta"
+    ]
+   ]
+  },
+  {
    "name": "mobs-uneven-ground",
    "group": "mobs",
    "description": "Nine mobs and a fan of dropped items on grass with one- and two-block bumps, a moment after spawning, at sunrise (time 0.0, held: below the undead sunburn threshold, as in the entities benchmark): silhouettes, faces and ground contact",

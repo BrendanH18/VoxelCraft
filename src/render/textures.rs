@@ -387,18 +387,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
         p[3] = 150;
         return p;
     }
-    if (tex::STAINED_TERRACOTTA..tex::STAINED_TERRACOTTA + 10).contains(&layer) {
-        let rgb = crate::color::DyeColor::ALL
-            [[2, 3, 5, 6, 7, 9, 10, 11, 13, 15][(layer - tex::STAINED_TERRACOTTA) as usize]]
-            .rgb();
-        let clay = [152u8, 94, 67];
-        let mixed = [
-            (rgb[0] as u16 / 2 + clay[0] as u16 / 2) as u8,
-            (rgb[1] as u16 / 2 + clay[1] as u16 / 2) as u8,
-            (rgb[2] as u16 / 2 + clay[2] as u16 / 2) as u8,
-        ];
-        return noisy(layer, x, y, mixed, 0.05);
-    }
     if (tex::CONCRETE_POWDER..tex::CONCRETE_POWDER + 16).contains(&layer) {
         let rgb = crate::color::DyeColor::ALL[(layer - tex::CONCRETE_POWDER) as usize].rgb();
         return noisy(layer, x, y, rgb, 0.12);
@@ -619,18 +607,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
         tex::CHERRY_DOOR_TOP | tex::CHERRY_DOOR_BOTTOM => {
             wooden_door(layer, x, y, r, [226, 178, 172], tex::CHERRY_DOOR_TOP, tex::CHERRY_DOOR_BOTTOM)
         }
-        l if (tex::TERRACOTTA..tex::TERRACOTTA + 7).contains(&l) => {
-            const COLOURS: [[u8; 3]; 7] = [
-                [152, 94, 67],
-                [162, 84, 38],
-                [186, 134, 36],
-                [144, 62, 48],
-                [78, 52, 36],
-                [210, 178, 160],
-                [136, 108, 98],
-            ];
-            noisy(layer, x, y, COLOURS[(l - tex::TERRACOTTA) as usize], 0.05)
-        }
         tex::ICE => {
             // Pale blue and see-through, with bright fracture lines.
             let crack =
@@ -735,7 +711,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             }
         }
         tex::SNOW => noisy(layer, x, y, [240, 245, 252], 0.03),
-        tex::CALCITE | tex::SMOOTH_STONE => rock(layer, x, y, r),
         tex::CACTUS_SIDE => {
             let line = x % 4 == 1;
             let spike = rnd(layer, x, y, 8) < 0.05;
@@ -744,15 +719,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
         tex::CACTUS_TOP => {
             let border = x == 0 || y == 0 || x == SIZE - 1 || y == SIZE - 1;
             shade([88, 150, 58], if border { 0.75 } else { 0.95 + r * 0.1 })
-        }
-        tex::BRICKS => {
-            let row = y / 4;
-            let offset = if row.is_multiple_of(2) { 0 } else { 4 };
-            if y % 4 == 3 || (x + offset) % 8 == 7 {
-                shade([200, 195, 185], 0.9 + r * 0.1)
-            } else {
-                shade([150, 72, 56], 0.85 + rnd(layer, (x + offset) / 8, row, 1) * 0.2 + r * 0.06)
-            }
         }
         tex::GLOWSTONE => {
             let pts = points(layer, 7);
@@ -1012,7 +978,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
                 [0, 0, 0, 0]
             }
         }
-        tex::STONE_BRICKS | tex::MOSSY_STONE_BRICKS | tex::CRACKED_STONE_BRICKS => stone_bricks(layer, x, y, r),
         tex::RAIL | tex::RAIL_EW | tex::RAIL_SE | tex::RAIL_SW | tex::RAIL_NW | tex::RAIL_NE => {
             rail_pixel(layer, x, y, r)
         }
@@ -1085,39 +1050,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
                 shade([40, 90, 110], 0.9 + r * 0.3)
             } else {
                 shade([8, 12, 18], 0.8 + r * 0.4)
-            }
-        }
-        tex::BLACKSTONE
-        | tex::POLISHED_BLACKSTONE
-        | tex::POLISHED_BLACKSTONE_BRICKS
-        | tex::CRACKED_POLISHED_BLACKSTONE_BRICKS
-        | tex::CHISELED_POLISHED_BLACKSTONE
-        | tex::GILDED_BLACKSTONE => {
-            let brick = matches!(layer, tex::POLISHED_BLACKSTONE_BRICKS | tex::CRACKED_POLISHED_BLACKSTONE_BRICKS);
-            let mortar = brick && (y.is_multiple_of(8) || (x + if y < 8 { 0 } else { 8 }).is_multiple_of(16));
-            let crack = layer == tex::CRACKED_POLISHED_BLACKSTONE_BRICKS && (x + y * 3).is_multiple_of(13);
-            let carving = layer == tex::CHISELED_POLISHED_BLACKSTONE
-                && ((x == 3 || x == 12) && (3..13).contains(&y)
-                    || (y == 3 || y == 12) && (3..13).contains(&x)
-                    || (y == 7 || y == 9) && (6..10).contains(&x));
-            let gold = layer == tex::GILDED_BLACKSTONE && rnd(layer, x / 2, y / 2, 5) > 0.82;
-            let smooth = layer == tex::POLISHED_BLACKSTONE;
-            if gold {
-                noisy(layer, x, y, [204, 158, 40], 0.25)
-            } else {
-                noisy(
-                    layer,
-                    x,
-                    y,
-                    if mortar || crack || carving {
-                        [22, 20, 26]
-                    } else if smooth {
-                        [56, 51, 61]
-                    } else {
-                        [48, 43, 52]
-                    },
-                    if smooth { 0.12 } else { 0.28 },
-                )
             }
         }
         tex::BASALT_SIDE | tex::POLISHED_BASALT_SIDE => {
@@ -1312,16 +1244,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             let (d1, _, _) = voronoi(x, y, &pts);
             if d1 < 1.3 { shade([235, 228, 220], 0.9 + r * 0.12) } else { pixel(tex::NETHERRACK, x, y) }
         }
-        tex::NETHER_BRICKS => {
-            // Small dark bricks, half-offset every row.
-            let row = y / 4;
-            let offset = if row.is_multiple_of(2) { 0 } else { 4 };
-            if y % 4 == 3 || (x + offset) % 8 == 7 {
-                shade([30, 15, 18], 1.0 + r * 0.2)
-            } else {
-                shade([68, 34, 40], 0.85 + rnd(layer, (x + offset) / 8, row, 1) * 0.2 + r * 0.1)
-            }
-        }
         tex::PORTAL => {
             // Swirling violet, see-through at the dark streaks.
             let (fx, fy) = (x as f32 / SIZE as f32, y as f32 / SIZE as f32);
@@ -1416,16 +1338,6 @@ fn wooden_door(layer: u16, x: usize, y: usize, r: f32, colour: [u8; 3], top: u16
             board
         };
         shade(colour, f)
-    }
-}
-
-/// Calcite and smooth stone (`material` draws the other stones).
-fn rock(layer: u16, x: usize, y: usize, r: f32) -> Rgba {
-    if layer == tex::CALCITE {
-        let crack = (x + y).is_multiple_of(7) && rnd(layer, x, y, 6) < 0.5;
-        shade(if crack { [186, 186, 180] } else { [223, 224, 216] }, 0.94 + r * 0.08)
-    } else {
-        shade([158, 158, 158], 0.96 + r * 0.06)
     }
 }
 
@@ -1614,38 +1526,6 @@ fn crop_cross(stage: u8, x: usize, y: usize, leaf: [u8; 3], fruit: [u8; 3]) -> R
         return grown;
     }
     if stage >= 4 && y + (stage as usize) < 12 { shade(fruit, 1.0) } else { shade(leaf, 0.95) }
-}
-
-/// Stone bricks, two courses with staggered joints and bevelled edges;
-/// mossy ones are overgrown in patches and cracked ones split.
-fn stone_bricks(layer: u16, x: usize, y: usize, r: f32) -> Rgba {
-    let course = y / 8;
-    let joint = if course == 0 { 0 } else { 8 };
-    let (lx, ly) = ((x + 16 - joint) % 16, y % 8);
-    let mortar = ly == 7 || lx == 15;
-    let mut f = if mortar {
-        0.62
-    } else if ly == 0 || lx == 0 {
-        1.12
-    } else if ly == 6 || lx == 14 {
-        0.82
-    } else {
-        0.92 + r * 0.12
-    };
-    if layer == tex::CRACKED_STONE_BRICKS {
-        // A jagged crack wandering down each course.
-        let crack_x = (4 + course * 5 + ly / 2 + (ly % 3 == 1) as usize) % 14;
-        if lx == crack_x && ly < 7 {
-            f = 0.5;
-        }
-    }
-    if layer == tex::MOSSY_STONE_BRICKS {
-        let moss = rnd(layer, x / 2, y / 2, 5) + if mortar { 0.25 } else { 0.0 };
-        if moss > 0.68 {
-            return shade([84, 108, 52], 0.85 + r * 0.3);
-        }
-    }
-    shade([122, 121, 122], f)
 }
 
 /// The eye of ender set in a frame: green with a dark slit pupil, `y`

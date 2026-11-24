@@ -235,6 +235,12 @@ struct Recipe {
 
 impl Recipe {
     fn grid(&self) -> Grid {
+        self.grid_in(self.palette)
+    }
+
+    /// The recipe over another palette of the same shape (terracotta's
+    /// colours are computed, not constants).
+    fn grid_in(&self, palette: &[[u8; 3]]) -> Grid {
         let mut g = base_grid(self.seed, self.cells, self.jitter, self.thresholds, self.broad);
         break_runs(&mut g, 2, 4, 4);
         let (n, size, dark, deep) = self.pits;
@@ -243,7 +249,7 @@ impl Recipe {
         bumps(&mut g, self.seed, n, size, light, shadow, 7);
         // Accents included: clusters that meet mustn't line up into a streak.
         break_runs(&mut g, 1, 5, 4);
-        balance(&mut g, self.palette, 2, 4, self.seed);
+        balance(&mut g, palette, 2, 4, self.seed);
         break_runs(&mut g, 1, 5, 4);
         g
     }
@@ -890,6 +896,251 @@ const STRIPPED: [[u8; 3]; 9] = [
     [240, 232, 228],
 ];
 
+// v0.18 Track 3, third round: masonry, carved faces, terracotta and the rest.
+
+/// Masonry: running-bond blocks `w` x `h` whose bottom row and right column
+/// are the one-texel joint, each course shifted `shift` texels; each block
+/// lit along its top and left, shaded just inside its bottom and right when
+/// it is tall enough, with its own tone over a soft surface.
+/// Indices: joint 0, shade 1, faces 2-4, light 5.
+fn masonry_grid(seed: u32, w: usize, h: usize, shift: usize) -> Grid {
+    let mut g = base_grid(seed, 4, 48, [110, 150], false);
+    break_runs(&mut g, 2, 4, 4);
+    for (y, row) in g.iter_mut().enumerate() {
+        let course = y / h;
+        let off = course * shift % w;
+        for (x, c) in row.iter_mut().enumerate() {
+            let sx = (x + N - off) % N;
+            let (lx, ly) = (sx % w, y % h);
+            let tone = (hu(seed, sx / w, course, 50) % 3) as u8;
+            *c = if ly == h - 1 || lx == w - 1 {
+                0
+            } else if ly == 0 || lx == 0 {
+                5
+            } else if h >= 6 && (ly == h - 2 || lx == w - 2) {
+                1
+            } else {
+                (*c + tone).saturating_sub(1).clamp(2, 4)
+            };
+        }
+    }
+    g
+}
+
+/// A smooth face with a one-texel bevel: light along the top and left,
+/// joint along the bottom and right.
+fn bevel(g: &mut Grid) {
+    for (y, row) in g.iter_mut().enumerate() {
+        for (x, c) in row.iter_mut().enumerate() {
+            if x == N - 1 || y == N - 1 {
+                *c = 0;
+            } else if x == 0 || y == 0 {
+                *c = 5;
+            }
+        }
+    }
+}
+
+/// Cuts a groove where `mask` holds: `depth` texels, and the groove's lower
+/// and right walls (the texel right of or below it) catch the light.
+fn carve(g: &mut Grid, depth: u8, mask: impl Fn(usize, usize) -> bool) {
+    let cut = |x: usize, y: usize| mask(x % N, y % N);
+    for (y, row) in g.iter_mut().enumerate() {
+        for (x, c) in row.iter_mut().enumerate() {
+            if cut(x, y) {
+                *c = depth;
+            } else if (cut(x + N - 1, y) || cut(x, y + N - 1)) && (2..=4).contains(c) {
+                *c = 5;
+            }
+        }
+    }
+}
+
+/// Distance from the tile's edge, 0 to 7 (a square ring index).
+fn ring(x: usize, y: usize) -> usize {
+    let dx = if x < 8 { x } else { 15 - x };
+    let dy = if y < 8 { y } else { 15 - y };
+    dx.min(dy)
+}
+
+/// Two cracks running down through the blocks, stepping aside now and then.
+fn crack(g: &mut Grid, seed: u32) {
+    let mut path = Vec::new();
+    for k in 0..2 {
+        let h = hu(seed, k, 0, 51);
+        let (mut x, mut y) = ((cell_order(seed, 51)[k] % 4) * 4 + h as usize % 4, (h >> 8) as usize % N);
+        for s in 0..6 + (h >> 16) as usize % 5 {
+            path.push((x, y));
+            y = (y + 1) % N;
+            match hu(seed, k, s, 52) % 4 {
+                0 => x = (x + 1) % N,
+                1 => x = (x + N - 1) % N,
+                _ => {}
+            }
+        }
+    }
+    carve(g, 0, |x, y| path.contains(&(x, y)));
+}
+
+/// Moss over masonry: clusters (index 6, lit corner 7), more of them low.
+fn moss(g: &mut Grid, seed: u32) {
+    for k in 0..10 {
+        let mut cells = walk(seed, k, 2, 5, 53);
+        // Two clusters in three sit in the lower half, where moss gathers.
+        if k % 3 != 0 {
+            cells.iter_mut().for_each(|(_, y)| *y = 8 + *y % 8);
+        }
+        for &(x, y) in &cells {
+            g[y][x] = 6;
+        }
+        let (x, y) = cells[0];
+        g[y][x] = 7;
+    }
+}
+
+const STONE_BRICKS: Palette = &[
+    [78, 78, 81],
+    [100, 100, 103],
+    [114, 114, 117],
+    [122, 122, 125],
+    [130, 130, 133],
+    [146, 146, 149],
+    [70, 96, 44],
+    [92, 120, 56],
+];
+const BRICKS: Palette = &[[176, 168, 158], [118, 56, 44], [136, 66, 52], [146, 72, 56], [156, 78, 61], [172, 92, 72]];
+const NETHER_BRICKS: Palette = &[[28, 14, 17], [50, 24, 29], [60, 30, 35], [66, 33, 39], [72, 36, 42], [86, 44, 50]];
+const RED_NETHER_BRICKS: Palette =
+    &[[40, 6, 8], [84, 10, 14], [100, 12, 16], [108, 14, 18], [116, 16, 20], [132, 22, 26]];
+const END_STONE_BRICKS: Palette =
+    &[[176, 178, 124], [196, 198, 138], [212, 214, 152], [220, 222, 158], [228, 230, 164], [238, 240, 180]];
+const PRISMARINE_BRICKS: Palette =
+    &[[60, 112, 102], [80, 140, 128], [92, 160, 148], [99, 171, 158], [106, 180, 166], [122, 194, 180]];
+const DEEPSLATE_BRICKS: Palette = &[[30, 30, 34], [46, 46, 52], [60, 60, 66], [66, 66, 72], [72, 72, 78], [86, 86, 94]];
+const TUFF_BRICKS: Palette =
+    &[[64, 66, 58], [84, 86, 78], [100, 101, 94], [108, 109, 102], [116, 117, 110], [130, 132, 124]];
+const BLACKSTONE_BRICKS: Palette =
+    &[[20, 18, 24], [34, 31, 38], [42, 38, 46], [48, 43, 52], [52, 47, 56], [66, 60, 70]];
+const MUD_BRICKS: Palette =
+    &[[112, 84, 62], [124, 92, 70], [132, 99, 75], [137, 103, 79], [142, 107, 82], [156, 120, 92]];
+const BLACKSTONE: Recipe = Recipe {
+    jitter: 64,
+    thresholds: [110, 150],
+    pits: (8, (1, 3), 1, Some(0)),
+    bumps: (5, (1, 2), 5, None),
+    ..natural(101, &[[24, 22, 28], [34, 31, 38], [42, 38, 46], [48, 43, 52], [54, 49, 58], [68, 62, 72]])
+};
+const MUD: Recipe = Recipe {
+    jitter: 48,
+    thresholds: [110, 150],
+    pits: (5, (1, 2), 1, None),
+    bumps: (6, (1, 2), 5, None),
+    ..natural(102, &[[40, 38, 42], [50, 48, 52], [56, 53, 57], [60, 57, 61], [64, 61, 65], [78, 74, 78]])
+};
+const PACKED_MUD: Recipe = Recipe {
+    jitter: 48,
+    thresholds: [110, 150],
+    pits: (5, (1, 2), 1, None),
+    bumps: (3, (1, 2), 5, None),
+    ..natural(103, &[[110, 82, 60], [124, 93, 69], [136, 102, 76], [142, 107, 80], [148, 112, 84], [162, 124, 94]])
+};
+const STRAW: [[u8; 3]; 2] = [[168, 136, 86], [190, 158, 102]];
+const CALCITE: Recipe = Recipe {
+    jitter: 48,
+    thresholds: [110, 150],
+    pits: (7, (2, 3), 1, None),
+    bumps: (3, (1, 2), 5, None),
+    ..natural(
+        104,
+        &[[170, 172, 166], [196, 198, 192], [214, 216, 210], [222, 224, 216], [230, 232, 224], [240, 242, 236]],
+    )
+};
+/// Terracotta: fired clay, the quietest natural surface here.
+const TERRACOTTA: Recipe = Recipe {
+    jitter: 40,
+    thresholds: [110, 150],
+    pits: (5, (1, 2), 1, None),
+    bumps: (4, (1, 2), 5, None),
+    ..natural(105, &[])
+};
+const AZALEA_LEAVES: Palette =
+    &[[58, 78, 30], [72, 96, 38], [86, 112, 44], [94, 122, 48], [102, 132, 54], [120, 148, 66]];
+const AZALEA_FLOWERS: [[u8; 3]; 2] = [[190, 92, 176], [226, 140, 210]];
+const GOLD: [[u8; 3]; 2] = [[196, 150, 36], [242, 204, 92]];
+
+/// Packed mud: mud pressed with short straws lying across it.
+fn packed_mud_grid() -> Grid {
+    let mut g = PACKED_MUD.grid();
+    for k in 0..8 {
+        let h = hu(PACKED_MUD.seed, k, 0, 54);
+        let cell = cell_order(PACKED_MUD.seed, 54)[k];
+        let (x, y) = ((cell % 4) * 4 + h as usize % 4, (cell / 4) * 4 + (h >> 2) as usize % 4);
+        for s in 0..2 + (h >> 8) as usize % 2 {
+            g[y][(x + s) % N] = if s == 0 { 7 } else { 6 };
+        }
+    }
+    g
+}
+
+/// Gilded blackstone: blackstone with gold flecks lit at their corner.
+fn gilded_grid() -> Grid {
+    let mut g = BLACKSTONE.grid();
+    for k in 0..6 {
+        let cells = walk(BLACKSTONE.seed, k, 2, 4, 55);
+        for &(x, y) in &cells {
+            g[y][x] = 6;
+        }
+        let (x, y) = cells[0];
+        g[y][x] = 7;
+    }
+    g
+}
+
+/// Chiseled sandstone: layered bands top and bottom, a carved diamond and
+/// a pip on the smooth face between them.
+fn chiseled_sandstone_grid(seed: u32) -> Grid {
+    let mut g = strata_grid(seed);
+    for row in g.iter_mut().take(13).skip(3) {
+        for c in row.iter_mut() {
+            *c = (*c).clamp(2, 4);
+        }
+    }
+    carve(&mut g, 1, |x, y| {
+        let d = (x as i32 * 2 - 15).abs() + (y as i32 * 2 - 15).abs();
+        y == 2 || y == 13 || (3..=12).contains(&y) && ((9..=11).contains(&d) || d <= 2)
+    });
+    g
+}
+
+/// Stripped bamboo: four grooved canes a side, ridged at their nodes.
+fn stripped_bamboo_grid() -> Grid {
+    let mut g = base_grid(109, 4, 32, [100, 156], false);
+    carve(&mut g, 1, |x, y| x % 4 == 3 || y % 8 == 3);
+    g
+}
+
+/// The bamboo block's cut end: four by four cane ends.
+fn bamboo_top_grid() -> Grid {
+    let mut g = base_grid(110, 4, 32, [100, 156], false);
+    carve(&mut g, 1, |x, y| x % 4 == 3 || y % 4 == 3);
+    g
+}
+
+/// Terracotta's colours: plain and the six natural dyes, then ten dyed with
+/// half dye and half clay.
+fn terracotta_colours() -> Vec<(u16, [u8; 3])> {
+    const PLAIN: [[u8; 3]; 7] =
+        [[152, 94, 67], [162, 84, 38], [186, 134, 36], [144, 62, 48], [78, 52, 36], [210, 178, 160], [136, 108, 98]];
+    let clay = [152u16, 94, 67];
+    let mut out: Vec<(u16, [u8; 3])> = (0..7).map(|i| (tex::TERRACOTTA + i as u16, PLAIN[i])).collect();
+    for (i, dye) in [2, 3, 5, 6, 7, 9, 10, 11, 13, 15].into_iter().enumerate() {
+        let rgb = crate::color::DyeColor::ALL[dye].rgb();
+        let mix = [0, 1, 2].map(|c| (rgb[c] as u16 / 2 + clay[c] / 2) as u8);
+        out.push((tex::STAINED_TERRACOTTA + i as u16, mix));
+    }
+    out
+}
+
 fn paint(g: &Grid, palette: &[[u8; 3]]) -> Tile {
     let mut out = [[0; 4]; N * N];
     for (y, row) in g.iter().enumerate() {
@@ -1038,8 +1289,53 @@ fn layers() -> Vec<u16> {
     for i in 0..STRIPPED.len() as u16 {
         out.extend([wt::STRIPPED_SIDE + i, wt::STRIPPED_TOP + i]);
     }
+    out.extend(ROUND_THREE);
+    out.extend(terracotta_colours().into_iter().map(|(layer, _)| layer));
     out
 }
+
+/// The third round's layers, in `layers` order (terracotta after them).
+#[cfg(test)]
+const ROUND_THREE: [u16; 38] = [
+    tex::STONE_BRICKS,
+    tex::MOSSY_STONE_BRICKS,
+    tex::CRACKED_STONE_BRICKS,
+    st::CHISELED_STONE_BRICKS,
+    tex::BRICKS,
+    tex::NETHER_BRICKS,
+    st::CRACKED_NETHER_BRICKS,
+    st::CHISELED_NETHER_BRICKS,
+    st::RED_NETHER_BRICKS,
+    st::END_STONE_BRICKS,
+    t::PRISMARINE_BRICKS,
+    st::DEEPSLATE_BRICKS,
+    st::CRACKED_DEEPSLATE_BRICKS,
+    st::DEEPSLATE_TILES,
+    st::CRACKED_DEEPSLATE_TILES,
+    st::CHISELED_DEEPSLATE,
+    st::TUFF_BRICKS,
+    st::CHISELED_TUFF,
+    st::CHISELED_TUFF_TOP,
+    st::CHISELED_TUFF_BRICKS,
+    st::CHISELED_TUFF_BRICKS_TOP,
+    tex::POLISHED_BLACKSTONE_BRICKS,
+    tex::CRACKED_POLISHED_BLACKSTONE_BRICKS,
+    tex::POLISHED_BLACKSTONE,
+    tex::CHISELED_POLISHED_BLACKSTONE,
+    tex::BLACKSTONE,
+    tex::GILDED_BLACKSTONE,
+    t::MUD,
+    t::PACKED_MUD,
+    t::MUD_BRICKS,
+    tex::CALCITE,
+    tex::SMOOTH_STONE,
+    st::CHISELED_SANDSTONE,
+    st::CHISELED_RED_SANDSTONE,
+    wt::STRIPPED_SIDE + 9,
+    wt::STRIPPED_TOP + 9,
+    t::AZALEA_LEAVES,
+    t::FLOWERING_AZALEA_LEAVES,
+];
 
 /// The second round's single layers, in `layers` order.
 #[cfg(test)]
@@ -1203,6 +1499,118 @@ fn build() -> FxHashMap<u16, Tile> {
         put(wt::STRIPPED_SIDE + i16, paint(&stripped_grid(seed), &ramp(c, [560, 820, 920, 1000, 1060, 1140])));
         let ends = ramp(c, [800, 860, 720, 950, 1060]);
         put(wt::STRIPPED_TOP + i16, paint(&log_top_grid(seed + 20), &ends));
+    }
+    // Third round.
+    let stone_bricks = masonry_grid(111, 16, 8, 8);
+    put(tex::STONE_BRICKS, paint(&stone_bricks, STONE_BRICKS));
+    let mut g = stone_bricks;
+    moss(&mut g, 112);
+    put(tex::MOSSY_STONE_BRICKS, paint(&g, STONE_BRICKS));
+    let mut g = stone_bricks;
+    crack(&mut g, 113);
+    put(tex::CRACKED_STONE_BRICKS, paint(&g, STONE_BRICKS));
+    let mut g = base_grid(114, 4, 32, [100, 156], false);
+    bevel(&mut g);
+    carve(&mut g, 1, |x, y| matches!(ring(x, y), 3 | 6));
+    put(st::CHISELED_STONE_BRICKS, paint(&g, STONE_BRICKS));
+    put(tex::BRICKS, paint(&masonry_grid(115, 8, 4, 4), BRICKS));
+    let nether = masonry_grid(116, 8, 4, 4);
+    put(tex::NETHER_BRICKS, paint(&nether, NETHER_BRICKS));
+    let mut g = nether;
+    crack(&mut g, 117);
+    put(st::CRACKED_NETHER_BRICKS, paint(&g, NETHER_BRICKS));
+    let mut g = nether;
+    let face = base_grid(118, 4, 32, [100, 156], false);
+    for (y, row) in g.iter_mut().enumerate() {
+        for (x, c) in row.iter_mut().enumerate() {
+            if ring(x, y) >= 2 {
+                *c = face[y][x];
+            }
+        }
+    }
+    carve(&mut g, 1, |x, y| matches!(ring(x, y), 2 | 5));
+    put(st::CHISELED_NETHER_BRICKS, paint(&g, NETHER_BRICKS));
+    put(st::RED_NETHER_BRICKS, paint(&masonry_grid(119, 8, 4, 4), RED_NETHER_BRICKS));
+    put(st::END_STONE_BRICKS, paint(&masonry_grid(120, 8, 4, 4), END_STONE_BRICKS));
+    put(t::PRISMARINE_BRICKS, paint(&masonry_grid(121, 8, 4, 4), PRISMARINE_BRICKS));
+    let deep_bricks = masonry_grid(122, 8, 4, 4);
+    put(st::DEEPSLATE_BRICKS, paint(&deep_bricks, DEEPSLATE_BRICKS));
+    let mut g = deep_bricks;
+    crack(&mut g, 123);
+    put(st::CRACKED_DEEPSLATE_BRICKS, paint(&g, DEEPSLATE_BRICKS));
+    let tiles8 = masonry_grid(124, 8, 8, 0);
+    put(st::DEEPSLATE_TILES, paint(&tiles8, DEEPSLATE_BRICKS));
+    let mut g = tiles8;
+    crack(&mut g, 125);
+    put(st::CRACKED_DEEPSLATE_TILES, paint(&g, DEEPSLATE_BRICKS));
+    let mut g = base_grid(126, 4, 32, [100, 156], false);
+    bevel(&mut g);
+    carve(&mut g, 1, |x, y| matches!(ring(x, y), 2 | 4 | 6));
+    put(st::CHISELED_DEEPSLATE, paint(&g, DEEPSLATE_BRICKS));
+    let tuff_bricks = masonry_grid(127, 8, 4, 4);
+    put(st::TUFF_BRICKS, paint(&tuff_bricks, TUFF_BRICKS));
+    let mut g = base_grid(128, 4, 32, [100, 156], false);
+    bevel(&mut g);
+    carve(&mut g, 1, |x, y| y == 2 || y == 13 || (3..=12).contains(&y) && (x == 2 || x == 13 || y == 4 || y == 11));
+    put(st::CHISELED_TUFF, paint(&g, TUFF_BRICKS));
+    let mut g = base_grid(129, 4, 32, [100, 156], false);
+    bevel(&mut g);
+    carve(&mut g, 1, |x, y| matches!(ring(x, y), 3 | 6));
+    put(st::CHISELED_TUFF_TOP, paint(&g, TUFF_BRICKS));
+    let mut g = tuff_bricks;
+    let face = base_grid(130, 4, 32, [100, 156], false);
+    for (y, row) in g.iter_mut().enumerate().take(12).skip(4) {
+        row.copy_from_slice(&face[y]);
+    }
+    carve(&mut g, 1, |x, y| y == 3 || y == 11 || (4..=10).contains(&y) && ring(x, y) == 5);
+    put(st::CHISELED_TUFF_BRICKS, paint(&g, TUFF_BRICKS));
+    let mut g = base_grid(131, 4, 32, [100, 156], false);
+    bevel(&mut g);
+    carve(&mut g, 1, |x, y| ring(x, y) == 4);
+    put(st::CHISELED_TUFF_BRICKS_TOP, paint(&g, TUFF_BRICKS));
+    let blackstone_bricks = masonry_grid(132, 16, 8, 8);
+    put(tex::POLISHED_BLACKSTONE_BRICKS, paint(&blackstone_bricks, BLACKSTONE_BRICKS));
+    let mut g = blackstone_bricks;
+    crack(&mut g, 133);
+    put(tex::CRACKED_POLISHED_BLACKSTONE_BRICKS, paint(&g, BLACKSTONE_BRICKS));
+    put(tex::POLISHED_BLACKSTONE, paint(&polished_grid(134, N), &polished_palette([56, 51, 61])));
+    let mut g = polished_grid(135, N);
+    carve(&mut g, 1, |x, y| {
+        (x == 3 || x == 12) && (3..13).contains(&y)
+            || (y == 3 || y == 12) && (3..13).contains(&x)
+            || (y == 7 || y == 9) && (6..10).contains(&x)
+    });
+    put(tex::CHISELED_POLISHED_BLACKSTONE, paint(&g, &polished_palette([56, 51, 61])));
+    put(tex::BLACKSTONE, paint(&BLACKSTONE.grid(), BLACKSTONE.palette));
+    let gilded: Vec<[u8; 3]> = BLACKSTONE.palette.iter().chain(&GOLD).copied().collect();
+    put(tex::GILDED_BLACKSTONE, paint(&gilded_grid(), &gilded));
+    put(t::MUD, paint(&MUD.grid(), MUD.palette));
+    let packed: Vec<[u8; 3]> = PACKED_MUD.palette.iter().chain(&STRAW).copied().collect();
+    put(t::PACKED_MUD, paint(&packed_mud_grid(), &packed));
+    put(t::MUD_BRICKS, paint(&masonry_grid(136, 8, 4, 4), MUD_BRICKS));
+    put(tex::CALCITE, paint(&CALCITE.grid(), CALCITE.palette));
+    put(tex::SMOOTH_STONE, paint(&polished_grid(137, N), &polished_palette([158, 158, 158])));
+    put(st::CHISELED_SANDSTONE, paint(&chiseled_sandstone_grid(138), SANDSTONE_SIDE));
+    put(st::CHISELED_RED_SANDSTONE, paint(&chiseled_sandstone_grid(139), RED_SANDSTONE_SIDE));
+    let bamboo = ramp([195, 175, 80], [560, 820, 920, 1000, 1060, 1140]);
+    put(wt::STRIPPED_SIDE + 9, paint(&stripped_bamboo_grid(), &bamboo));
+    put(wt::STRIPPED_TOP + 9, paint(&bamboo_top_grid(), &bamboo));
+    put(t::AZALEA_LEAVES, paint(&leaves_grid(140), AZALEA_LEAVES));
+    let mut g = leaves_grid(141);
+    for k in 0..6 {
+        let cells = walk(141, k, 2, 3, 56);
+        for &(x, y) in &cells {
+            g[y][x] = 6;
+        }
+        let (x, y) = cells[0];
+        g[y][x] = 7;
+    }
+    let flowering: Vec<[u8; 3]> = AZALEA_LEAVES.iter().chain(&AZALEA_FLOWERS).copied().collect();
+    put(t::FLOWERING_AZALEA_LEAVES, paint(&g, &flowering));
+    for (i, (layer, colour)) in terracotta_colours().into_iter().enumerate() {
+        let palette = ramp(colour, [820, 900, 960, 1000, 1040, 1100]);
+        let r = Recipe { seed: 150 + i as u32, ..TERRACOTTA };
+        put(layer, paint(&r.grid_in(&palette), &palette));
     }
     tiles
 }
@@ -1426,6 +1834,61 @@ mod tests {
         (1793, 0x97961019dc7d8ba3),
         (1784, 0x13bc5933ed64106d),
         (1794, 0xe78179c1c58a6ee3),
+        (158, 0x97e4bd37bea9daf5),
+        (159, 0x890bc818f2315291),
+        (160, 0x95e22768bf8d6ba3),
+        (2030, 0x1ea42f0640f18fc9),
+        (22, 0x40575369ce7dbd08),
+        (80, 0xf286d4140f53f3cd),
+        (2028, 0xbd00a852cd197245),
+        (2027, 0x121c89f1613f15a5),
+        (2026, 0x897f73d19c311599),
+        (2029, 0x4cdb3d652571514b),
+        (1513, 0x89cd70655ca14dcd),
+        (2006, 0x62ba1178c86a15a9),
+        (2007, 0x78ddb8a8ba007081),
+        (2008, 0x4c421e1e7cb52633),
+        (2009, 0xdf6f26539e9e5c17),
+        (2010, 0x0162cb6d5be08793),
+        (2001, 0xec77fec4ba3be7b5),
+        (2002, 0x804a7af27d117007),
+        (2003, 0xf113de615366fad3),
+        (2004, 0xd68cf2595b3026e6),
+        (2005, 0x0df8463f87d671b0),
+        (246, 0x46842491f2f50d55),
+        (247, 0x385f383048dbd59a),
+        (245, 0x8dd9dc1b6c8d25bb),
+        (248, 0x4091f253feb7855b),
+        (244, 0x0251bc4eb7be2c1c),
+        (249, 0x7f254dddbed81791),
+        (1456, 0x585a91aad59f9cad),
+        (1457, 0x18241999acaf741c),
+        (1458, 0xfdb8e90bb31b9526),
+        (202, 0x75bfeddc961f40a7),
+        (203, 0x36d03bb4a8a23373),
+        (2025, 0xcd8fc25980c6b9c5),
+        (2023, 0x4164aa47229fe91b),
+        (1785, 0x4c7ee45f64dfe881),
+        (1795, 0x3a77413aeeb186f5),
+        (1488, 0xfa0c2916e8ca3e9f),
+        (1489, 0x7de72144511370c1),
+        (115, 0xc9464d44ea7873b1),
+        (116, 0x1803d6d5baff2422),
+        (117, 0xd02e4bf1044f1cf8),
+        (118, 0x42220ccd573c3b17),
+        (119, 0xfef18607934fac67),
+        (120, 0xab33dd5335b598b0),
+        (121, 0xeb62d9cd6ab34671),
+        (353, 0x90271a3f8dba3967),
+        (354, 0x0913f2b4326592fa),
+        (355, 0xbdb01c8fd7c7e515),
+        (356, 0xd7848f76051eff2a),
+        (357, 0x0e07e51e8f3aa949),
+        (358, 0x43ba64495b13c07c),
+        (359, 0x0aab093c295db1dd),
+        (360, 0x98d114f4e837d587),
+        (361, 0xb985ad67ba0a8793),
+        (362, 0x5483464001a3a7ef),
     ];
 
     /// The measurable rules of `docs/art-and-ui.md` for natural materials.
@@ -1487,6 +1950,11 @@ mod tests {
             t::COARSE_DIRT,
             t::PODZOL_TOP,
             t::MYCELIUM_TOP,
+            tex::CALCITE,
+            tex::BLACKSTONE,
+            t::MUD,
+            tex::TERRACOTTA,
+            tex::STAINED_TERRACOTTA,
         ] {
             let d = block_deviation(&tile(layer));
             check(d <= 0.08, format!("layer {layer}: a 4 x 4 block {d} off the mean"));
