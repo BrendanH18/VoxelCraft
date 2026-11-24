@@ -1821,6 +1821,11 @@ impl Game {
                 log::warn!("--brush {pos}: not a suspicious block");
             }
         }
+        // v0.18 Track 6: pinned captures draw their throws and spawn rolls
+        // from a fixed point of the entity random sequence.
+        if self.mobs.still_mobs() {
+            self.mobs.entities.reseed_for_capture(self.world.generator.seed);
+        }
         // Fanned out so each one can be seen.
         let drops = std::mem::take(&mut self.drop);
         for (i, &(item, count)) in drops.iter().enumerate() {
@@ -2290,7 +2295,14 @@ impl Game {
             })
             .collect();
         benchmark::mark(&mut self.benchmark, 2);
-        let verts = self.mobs.entities.mesh(camera, forward, fog_end, scene.time, alpha);
+        self.mobs.entities.mesh(camera, forward, fog_end, scene.time, alpha);
+        // v0.18 Track 6: ground shadows, for the players drawn in this view too.
+        let mut casters = shadow_casters(&self.world, others.iter().map(|o| o.1), alpha);
+        if !self.camera.first_person() && casts_shadow(&self.session.vitals, self.session.mode) {
+            casters
+                .push(voxelcraft::entity::shadow::player(eye - (self.session.player.eye() - self.session.player.pos)));
+        }
+        let verts = self.mobs.entities.shadows(&self.world, camera, alpha, &casters, self.settings.entity_shadows);
         push_avatars(&self.world, &others, camera, fog_end, scene.time, verts);
         crate::render::signs::text(
             &mut self.mobs.sign_text,
@@ -2633,6 +2645,30 @@ fn capitalize(s: &str) -> String {
 /// world; the inventory and container screens don't either.
 fn pauses_simulation(screen_open: bool, shared: bool) -> bool {
     screen_open && !shared
+}
+
+/// v0.18 Track 6: whether a player's body casts a ground shadow: drawn
+/// (`Vitals::visible`), not Invisible and not a spectator (Java's
+/// `isInvisible` hides both).
+pub(crate) fn casts_shadow(
+    vitals: &voxelcraft::simulation::survival::Vitals,
+    mode: voxelcraft::rules::GameMode,
+) -> bool {
+    vitals.visible()
+        && !vitals.effects.has(voxelcraft::simulation::effects::Effect::Invisibility)
+        && mode != voxelcraft::rules::GameMode::Spectator
+}
+
+/// v0.18 Track 6: the shadow casters the entity list doesn't hold: the
+/// players drawn in this view (at `players`' feet) and the falling blocks.
+pub(crate) fn shadow_casters(
+    world: &voxelcraft::world::World,
+    players: impl Iterator<Item = DVec3>,
+    alpha: f64,
+) -> Vec<voxelcraft::entity::shadow::Caster> {
+    use voxelcraft::entity::shadow;
+    let falling = world.falling_blocks().iter().map(|f| shadow::falling_block(f.previous_pos.lerp(f.pos, alpha)));
+    players.map(shadow::player).chain(falling).collect()
 }
 
 #[cfg(test)]

@@ -1934,8 +1934,11 @@ impl Game {
                     continue;
                 }
                 let uid = m["m"].get(0).and_then(Value::as_u64).unwrap_or(0) as u32;
+                let known = previous.contains_key(&uid);
                 let mut mob = previous.remove(&uid).unwrap_or_else(|| crate::entity::Mob::new(kind, pos, 0.0));
                 mob.previous_pos = mob.pos;
+                // v0.18 Track 6: turn and walk smoothly from the last snapshot's pose.
+                let before = mob.pose_values();
                 mob.pos = pos;
                 mob.uid = uid;
                 mob.yaw = f(5).unwrap_or(0.0) as f32;
@@ -1954,6 +1957,7 @@ impl Game {
                 }
                 mob.riding = m["r"].as_u64().and_then(|r| u32::try_from(r).ok());
                 mob.animate_replica(voxelcraft::simulation::TICK_SECONDS as f32);
+                mob.previous_pose = if known { before } else { mob.pose_values() };
                 self.mobs.entities.mobs.push(mob);
             }
         }

@@ -467,7 +467,12 @@ reproducible before/after scenes for v0.18's visual work, in five groups:
   1280 × 720 with Auto GUI scale.
 - `mobs`: nine mobs and dropped items on uneven grass at sunrise (held
   below the sunburn threshold, so the undead survive the wait) and at
-  midnight.
+  midnight, and two close-ups pinned with `--still-mobs` (v0.18 Track 6):
+  `mobs-still-farm` (chicken, pig, cow, sheep and wolf on one- and
+  two-block steps, with dropped items) and `mobs-still-hostile` (villager,
+  zombie, skeleton, creeper, enderman and spider) at noon, and four more
+  pinned rows of the other mobs: `mobs-still-village-nether`,
+  `mobs-still-animals`, `mobs-still-small` and `mobs-still-large`.
 - `ui`: the survival HUD, inventory, recipe book, a crafting table with the
   recipe book, a furnace, the creative inventory on two tabs, the pause menu,
   Video Settings, Accessibility Settings, the death screen and the
@@ -496,8 +501,15 @@ scene holds the time and weather with game rules. `python3
 tools/capture_scenes.py list` prints them, and `args NAME` prints the
 command line of each variant. `scripts/boat-capture.sh` puts one folder of
 PNGs per commit under `target/captures/`. Mobs move during the 1.5 seconds
-the mob scenes wait, so those two scenes are the only ones that differ
-between runs of one build.
+the first two mob scenes wait, so those two scenes are the only ones that
+differ between runs of one build. `--still-mobs` (capture-only) pins them
+instead: a mob that has landed stops updating (no AI, movement, sunlight
+burning or sounds), turns to face the starting camera and keeps its
+lighting current; a mob placed standing on a full block is held from its
+first tick, and fliers hold still after ten ticks. The flag also restarts
+the entity random sequence from the world seed before the scene's
+scripted throws and spawns, so wool colours, babies and variants come out
+the same every run, and the pinned scenes compare like with like.
 
 `python3 tools/compare_captures.py target/captures/<before> target/captures/<after>`
 puts each capture the two folders share side by side (before on the left)

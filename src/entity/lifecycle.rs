@@ -99,6 +99,9 @@ impl Entities {
         self.sense_dolphins(world, &moved);
         // v0.16 Track C: the Wither's server AI before the mobs move.
         self.wither_tick(dt, world, ctx, &mut events);
+        if self.still.is_some() {
+            self.still_ticks = self.still_ticks.saturating_add(1);
+        }
         let mut i = 0;
         while i < self.mobs.len() {
             let m = &self.mobs[i];
@@ -233,6 +236,14 @@ impl Entities {
                         self.mobs.push(child);
                     }
                 }
+                continue;
+            }
+            // Fliers never land: they hold still after ten ticks.
+            if let Some(face) = self.still
+                && (self.mobs[i].on_ground || self.still_ticks > 10)
+            {
+                self.mobs[i].hold_still(world, face);
+                i += 1;
                 continue;
             }
             let before_tame = self.mobs[i].mount.as_ref().map(|s| (s.tame, s.rider));

@@ -5389,6 +5389,291 @@
    ],
    "name": "underwater-ocean",
    "description": "Eleven blocks under the deep ocean west of the seed's ocean monument (24, 48, 712), facing it: the sea floor, the monument and open water at ordinary underwater distances (v0.18 track 8; the underwater tank floats in the air and its sand floor falls away, so its view is mostly empty fog)"
+  },
+  {
+   "name": "mobs-still-farm",
+   "group": "mobs",
+   "description": "Close-up of a chicken, pig, cow, sheep and wolf at noon, pinned with --still-mobs (each mob lands, then holds still facing the camera), with dropped items in front and one- and two-block steps under the sheep and wolf: faces, markings and ground shadows on uneven terrain",
+   "pose": [
+    0.5,
+    153.4,
+    14.5,
+    90,
+    -14
+   ],
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "fill": [
+    [
+     -9,
+     150,
+     13,
+     9,
+     150,
+     28,
+     "grass"
+    ]
+   ],
+   "place": [
+    "2,151,20,grass",
+    "2,151,21,grass",
+    "5,151,20,grass",
+    "5,152,20,grass",
+    "6,151,20,grass",
+    "-1,151,22,grass"
+   ],
+   "spawn": [
+    "chicken,-6,151,19",
+    "pig,-4,151,20",
+    "cow,-1,151,20",
+    "sheep,2,152,20",
+    "wolf,5,153,20"
+   ],
+   "args": [
+    "--still-mobs",
+    "--drop",
+    "diamond_sword",
+    "--drop",
+    "oak_planks,8",
+    "--drop",
+    "apple,3",
+    "--drop",
+    "iron_ingot,5"
+   ]
+  },
+  {
+   "name": "mobs-still-hostile",
+   "group": "mobs",
+   "description": "Close-up of a villager, zombie, skeleton, creeper, enderman and spider at noon, pinned with --still-mobs (landed mobs hold still facing the camera and don't burn), on flat grass with a one-block step: faces, markings, material contrast and ground shadows",
+   "pose": [
+    0.5,
+    154.0,
+    13.5,
+    90,
+    -12
+   ],
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "fill": [
+    [
+     -9,
+     150,
+     13,
+     9,
+     150,
+     28,
+     "grass"
+    ]
+   ],
+   "place": [
+    "5,151,21,grass",
+    "6,151,21,grass",
+    "5,151,22,grass",
+    "6,151,22,grass"
+   ],
+   "spawn": [
+    "villager,-6,151,21",
+    "zombie,-4,151,21",
+    "skeleton,-2,151,21",
+    "creeper,0,151,21",
+    "enderman,2,151,22",
+    "spider,5,152,21"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
+  },
+  {
+   "name": "mobs-still-village-nether",
+   "group": "mobs",
+   "description": "Pinned close-up (v0.18 Track 6 round 2): iron golem, witch, pillager, vindicator, evoker, piglin, zombified piglin, hoglin and blaze at noon, each holding still facing the camera",
+   "pose": [
+    0.5,
+    154.0,
+    13.5,
+    90,
+    -12
+   ],
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "fill": [
+    [
+     -11,
+     150,
+     13,
+     11,
+     150,
+     30,
+     "grass"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "iron_golem,-8,151,21",
+    "witch,-6,151,21",
+    "pillager,-4,151,21",
+    "vindicator,-2,151,21",
+    "evoker,0,151,21",
+    "piglin,2,151,21",
+    "zombified_piglin,4,151,21",
+    "hoglin,6,151,21",
+    "blaze,8,152,21"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
+  },
+  {
+   "name": "mobs-still-animals",
+   "group": "mobs",
+   "description": "Pinned close-up (v0.18 Track 6 round 2): horse, llama, goat, fox, cat, rabbit, panda and polar bear at noon, facing the camera",
+   "pose": [
+    0.5,
+    154.0,
+    13.5,
+    90,
+    -12
+   ],
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "fill": [
+    [
+     -11,
+     150,
+     13,
+     11,
+     150,
+     30,
+     "grass"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "horse,-8,151,21",
+    "llama,-6,151,21",
+    "goat,-4,151,21",
+    "fox,-2,151,21",
+    "cat,0,151,21",
+    "rabbit,2,151,21",
+    "panda,4,151,21",
+    "polar_bear,7,151,21"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
+  },
+  {
+   "name": "mobs-still-small",
+   "group": "mobs",
+   "description": "Pinned close-up (v0.18 Track 6 round 2): slime, magma cube, frog, axolotl, turtle, bee, parrot, silverfish, endermite and bat at noon (fliers hold still after ten ticks)",
+   "pose": [
+    0.5,
+    153.4,
+    14.5,
+    90,
+    -14
+   ],
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "fill": [
+    [
+     -11,
+     150,
+     13,
+     11,
+     150,
+     30,
+     "grass"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "slime,-8,151,20",
+    "magma_cube,-6,151,20",
+    "frog,-4,151,20",
+    "axolotl,-2,151,20",
+    "turtle,0,151,20",
+    "bee,2,152,20",
+    "parrot,4,152,20",
+    "silverfish,5,151,19",
+    "endermite,6,151,19",
+    "bat,8,152,20"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
+  },
+  {
+   "name": "mobs-still-large",
+   "group": "mobs",
+   "description": "Pinned close-up (v0.18 Track 6 round 2): camel, sniffer, warden, ravager and squid at noon, facing the camera",
+   "pose": [
+    0.5,
+    154.5,
+    13,
+    90,
+    -10
+   ],
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "fill": [
+    [
+     -11,
+     150,
+     13,
+     11,
+     150,
+     30,
+     "grass"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "camel,-7,151,23",
+    "sniffer,-3,151,23",
+    "warden,1,151,23",
+    "ravager,5,151,23",
+    "squid,8,151,21"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
   }
  ]
 }

@@ -117,10 +117,22 @@ pub fn build_beacon_beams(world: &crate::world::World, camera: DVec3, time: f32,
             let height = if last { (top - pos.y as f32 - y).max(s.height as f32) } else { s.height as f32 };
             // Model pixels: 16 to a block.
             let (lo, hi) = (y * 16.0, (y + height) * 16.0);
-            let inner =
-                Cuboid { min: [-3.2, lo, -3.2], max: [3.2, hi, 3.2], color: s.color, noise: 10, translucent: true };
-            let glow =
-                Cuboid { min: [-4.0, lo, -4.0], max: [4.0, hi, 4.0], color: s.color, noise: 0, translucent: true };
+            let inner = Cuboid {
+                min: [-3.2, lo, -3.2],
+                max: [3.2, hi, 3.2],
+                color: s.color,
+                noise: 10,
+                translucent: true,
+                pattern: 0,
+            };
+            let glow = Cuboid {
+                min: [-4.0, lo, -4.0],
+                max: [4.0, hi, 4.0],
+                color: s.color,
+                noise: 0,
+                translucent: true,
+                pattern: 0,
+            };
             for (j, c) in [inner, glow].iter().enumerate() {
                 push_cuboid(
                     out,

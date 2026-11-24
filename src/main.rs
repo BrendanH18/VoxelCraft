@@ -121,6 +121,8 @@ pub struct Args {
     pub wait: f64,
     /// `--animation-time`: hold the animation clock here, so captures can be compared.
     pub animation_time: Option<f32>,
+    /// `--still-mobs`: landed mobs hold still facing the camera, for comparable captures.
+    pub still_mobs: bool,
     /// v0.18 Track 7: `--panorama DIR`, with `--screenshot`: render the six
     /// title panorama faces from the pose into DIR before the screenshot.
     pub panorama: Option<std::path::PathBuf>,
@@ -255,6 +257,7 @@ voxelcraft [options]
                     an allay an item to hold
   --wait <secs>     with --screenshot: keep simulating this long first
   --animation-time <secs>  hold the animation clock (idle animations, clouds, water) at this time, for comparable captures
+  --still-mobs      landed mobs stop moving and face the starting camera, for comparable captures
   --panorama <dir>  with --screenshot and a square --size: render the title
                     panorama's six faces (panorama_0..5.png) from the --pose
                     position into dir first
@@ -352,6 +355,7 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
         spawn_held: Vec::new(),
         wait: 0.0,
         animation_time: None,
+        still_mobs: false,
         panorama: None,
         world_icon: false,
         pose: None,
@@ -658,6 +662,7 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
                 args.spawn.push((kind, glam::IVec3::new(n[0], n[1], n[2]), armor));
             }
             "--wait" => args.wait = value("--wait")?.parse().map_err(|_| "bad --wait")?,
+            "--still-mobs" => args.still_mobs = true,
             "--animation-time" => {
                 args.animation_time = Some(value("--animation-time")?.parse().map_err(|_| "bad --animation-time")?);
             }
@@ -795,6 +800,7 @@ impl Args {
         self.open_block = None;
         self.spawn.clear();
         self.spawn_held.clear();
+        self.still_mobs = false;
         self.pose = None;
         self.health = None;
         self.air = None;

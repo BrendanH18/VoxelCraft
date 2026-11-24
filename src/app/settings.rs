@@ -87,6 +87,8 @@ pub struct Settings {
     /// Hide Sky Flashes (`hideLightningFlashes`, off): lightning no longer
     /// lights up the sky; the bolts still show.
     pub hide_lightning_flashes: bool,
+    /// v0.18 Track 6: Java's Entity Shadows (`entityShadows`, on).
+    pub entity_shadows: bool,
     pub keys: super::keys::Bindings,
 }
 
@@ -149,6 +151,7 @@ impl Default for Settings {
             clouds: voxelcraft::atmosphere::Clouds::Fancy,
             cloud_range: voxelcraft::atmosphere::DEFAULT_CLOUD_RANGE,
             hide_lightning_flashes: false,
+            entity_shadows: voxelcraft::entity::shadow::OPTION_DEFAULT,
             keys: Default::default(),
         }
     }
@@ -285,6 +288,7 @@ impl Settings {
             }
             "cloudRange" => self.cloud_range = value.parse().unwrap_or(self.cloud_range),
             "hideLightningFlashes" => flag(&mut self.hide_lightning_flashes),
+            "entityShadows" => flag(&mut self.entity_shadows),
             _ => return self.keys.parse_line(key, value),
         }
         true
@@ -292,7 +296,7 @@ impl Settings {
 
     fn serialize_display_controls(&self, out: &mut String) {
         out.push_str(&format!(
-            "guiScale={}\nmaxFps={}\ngamma={}\nfovEffectScale={}\nscreenEffectScale={}\ndamageTiltStrength={}\ntoggleCrouch={}\ntoggleSprint={}\ninvertXMouse={}\ninvertYMouse={}\nmouseWheelSensitivity={:.4}\ndiscrete_mouse_scroll={}\nshowSubtitles={}\ntextBackgroundOpacity={}\nbackgroundForChatOnly={}\nmipmapLevels={}\nmenuBackgroundBlurriness={}\npanoramaScrollSpeed={}\nrenderClouds={}\ncloudRange={}\nhideLightningFlashes={}\n",
+            "guiScale={}\nmaxFps={}\ngamma={}\nfovEffectScale={}\nscreenEffectScale={}\ndamageTiltStrength={}\ntoggleCrouch={}\ntoggleSprint={}\ninvertXMouse={}\ninvertYMouse={}\nmouseWheelSensitivity={:.4}\ndiscrete_mouse_scroll={}\nshowSubtitles={}\ntextBackgroundOpacity={}\nbackgroundForChatOnly={}\nmipmapLevels={}\nmenuBackgroundBlurriness={}\npanoramaScrollSpeed={}\nrenderClouds={}\ncloudRange={}\nhideLightningFlashes={}\nentityShadows={}\n",
             self.gui_scale,
             self.max_fps,
             self.brightness,
@@ -314,6 +318,7 @@ impl Settings {
             self.clouds.saved(),
             self.cloud_range,
             self.hide_lightning_flashes,
+            self.entity_shadows,
         ));
         self.keys.serialize(out);
     }
@@ -563,6 +568,20 @@ mod tests {
         assert_eq!(back.background_opacity(0.8), 0.25, "Everywhere uses the opacity");
         assert!(!Settings::parse("fov=80\n").show_subtitles);
         assert_eq!(Settings::parse("textBackgroundOpacity=7\n").text_background_opacity, 1.0);
+    }
+
+    /// v0.18 Track 6: Entity Shadows keeps Java's key and default (on),
+    /// survives a save, and files from before it existed get the default.
+    #[test]
+    fn entity_shadows_round_trip() {
+        assert!(Settings::default().entity_shadows);
+        let off = Settings { entity_shadows: false, ..Settings::default() };
+        let text = off.serialize();
+        assert!(text.contains(&format!("\n{}=false\n", voxelcraft::entity::shadow::OPTION_KEY)));
+        assert_eq!(Settings::parse(&text), off);
+        assert!(Settings::parse(&Settings::default().serialize()).entity_shadows);
+        assert!(Settings::parse("fov=80\nshowSubtitles=true\n").entity_shadows, "an older file");
+        assert!(Settings::parse("entityShadows=maybe\n").entity_shadows, "a bad value keeps the default");
     }
 
     /// v0.18 Track 7: Panorama Scroll Speed keeps Java's key, default and

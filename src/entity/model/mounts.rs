@@ -26,8 +26,8 @@ const fn bodies() -> [[Cuboid; 3]; 9] {
     out
 }
 const BODIES: [[Cuboid; 3]; 9] = bodies();
-const fn heads() -> [[Cuboid; 5]; 9] {
-    let mut out = [[cube([0.; 3], [0.; 3], [0; 3], 0); 5]; 9];
+const fn heads() -> [[Cuboid; 7]; 9] {
+    let mut out = [[cube([0.; 3], [0.; 3], [0; 3], 0); 7]; 9];
     let mut i = 0;
     while i < 9 {
         out[i] = [
@@ -36,12 +36,15 @@ const fn heads() -> [[Cuboid; 5]; 9] {
             cube([-2., 7., 1.], [-1., 11., 3.], COLORS[i], 14),
             cube([1., 7., 1.], [2., 11., 3.], COLORS[i], 14),
             cube([-2.6, 7., 5.], [2.6, 8., 6.], [30, 26, 22], 0),
+            // v0.18 Track 6: nostrils on the muzzle.
+            cube([-1.8, 5., 9.], [-0.8, 6., 9.05], [30, 26, 22], 0),
+            cube([0.8, 5., 9.], [1.8, 6., 9.05], [30, 26, 22], 0),
         ];
         i += 1;
     }
     out
 }
-const HEADS: [[Cuboid; 5]; 9] = heads();
+const HEADS: [[Cuboid; 7]; 9] = heads();
 const fn legs() -> [[Cuboid; 2]; 9] {
     let mut out = [[cube([0.; 3], [0.; 3], [0; 3], 0); 2]; 9];
     let mut i = 0;

@@ -251,6 +251,21 @@ fn max_framerate_and_brightness_map_like_java() {
     );
 }
 
+/// v0.18 Track 6: Java's Entity Shadows toggle, on by default, after Mipmap Levels.
+#[test]
+fn entity_shadows_toggles_like_java() {
+    let mut host = Host::default();
+    let mut video = VideoSettings;
+    assert_eq!(label(&video, &host, video::Id::EntityShadows), "Entity Shadows: ON");
+    video.activate(&mut host, video::Id::EntityShadows);
+    assert!(!host.settings.entity_shadows);
+    assert_eq!(label(&video, &host, video::Id::EntityShadows), "Entity Shadows: OFF");
+    let ids: Vec<_> = video.widgets(&host, (640.0, 360.0)).iter().map(|w| w.id).collect();
+    let at = |id| ids.iter().position(|&i| i == id).unwrap();
+    assert_eq!(at(video::Id::EntityShadows), at(video::Id::MipmapLevels) + 1);
+    assert_eq!(at(video::Id::MenuBlur), at(video::Id::EntityShadows) + 1);
+}
+
 /// v0.18 Track 3: Mipmap Levels is Java's slider: 0 to 4 in whole steps,
 /// "OFF" at 0, right after Particles.
 #[test]

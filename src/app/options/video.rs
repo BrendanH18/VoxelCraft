@@ -2,7 +2,8 @@
 //! Performance, Preferences) with the options VoxelCraft can honour, in
 //! Java's order (Quality & Performance: `tests/fixtures/java/26.3/mipmap_levels.json`). Options that would need renderer work VoxelCraft doesn't
 //! have (Biome Blend, Entity Distance and the like) are left out. v0.18
-//! Track 8 adds Clouds and Cloud Distance.
+//! Track 8 adds Clouds and Cloud Distance; Entity Shadows (Track 6) switches
+//! the ground shadows.
 
 use super::{OptionsHost, change, close, frac, lerp};
 use crate::app::gui::{OptionList, Rect, Screen, Size, Step, Widget, on_off};
@@ -26,6 +27,7 @@ pub(in crate::app) enum Id {
     Clouds,
     Particles,
     MipmapLevels,
+    EntityShadows,
     MenuBlur,
     CloudDistance,
     PreferencesHeader,
@@ -147,6 +149,12 @@ impl<H: OptionsHost> Screen<H> for VideoSettings {
                 frac(s.mipmap_levels as f32, range_u(MIPMAP_LEVELS)),
                 MIPMAP_LEVELS.1 - MIPMAP_LEVELS.0,
             ),
+            // v0.18 Track 6: after Particles and Mipmap Levels in Java's order.
+            Widget::button(
+                Id::EntityShadows,
+                z,
+                format!("{}: {}", crate::entity::shadow::OPTION_LABEL, on_off(s.entity_shadows)),
+            ),
             // v0.18 Track 2: Java lists it after Entity Distance.
             super::menu_blur_slider(Id::MenuBlur, s.menu_blur),
             // Java's Quality order: Clouds before Particles; Cloud Distance
@@ -182,6 +190,7 @@ impl<H: OptionsHost> Screen<H> for VideoSettings {
             }
             Id::Particles => change(host, |s| s.particles = s.particles.next()),
             Id::Clouds => change(host, |s| s.clouds = s.clouds.next()),
+            Id::EntityShadows => change(host, |s| s.entity_shadows = !s.entity_shadows),
             Id::Fps => change(host, |s| s.show_fps = !s.show_fps),
             Id::Done => return close(host),
             _ => {}

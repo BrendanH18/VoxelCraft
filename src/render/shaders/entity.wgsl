@@ -191,8 +191,11 @@ fn vs_box(
     let pos = vec3<f32>(dot(row0.xyz, p) + row0.w, dot(row1.xyz, p) + row1.w, dot(row2.xyz, p) + row2.w);
     var out: VsOut;
     out.torch = light.y;
-    out.material = 0u;
-    out.layer = 0u;
+    // v0.18 Track 6: a box's material pattern (byte 6 of its shades) draws
+    // from block layer 1279 + pattern as material 6.
+    let pattern = u32(round(shade_z.z * 255.0));
+    out.material = select(0u, 6u, pattern > 0u);
+    out.layer = select(0u, 1279u + pattern, pattern > 0u);
     out.clip = g.view_proj * vec4<f32>(pos, 1.0);
     out.uv = face_uv + vec2<f32>(lo.w + f32(axis) * 31.0 + f32(face & 1u) * 17.0, hi.w);
     out.color = color;
@@ -283,9 +286,25 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
 
     // Held blocks and item icons share the terrain bind group. Both are
     // sampled up front so derivatives stay in uniform control flow.
-    let held_block = sample_block(in.uv, min(in.layer, 4095u));
+    // Patterned boxes (material 6) sample one texel per model pixel.
+    let block_uv = select(in.uv, in.uv / 16.0, in.material == 6u);
+    let held_block = sample_block(block_uv, min(in.layer, 4095u));
     let held_icon = textureSample(items, blocks_sampler, in.uv, max(in.layer, 4096u) - 4096u);
     let texel = clamp(vec2<i32>(floor(in.uv)), vec2<i32>(0), vec2<i32>(63));
+    // v0.18 Track 6: a ground shadow (`entity/shadow.rs`). The uv runs 0..1
+    // across the shadow's diameter; alpha is the piece's strength. The disc
+    // is drawn on a 16-step pixel grid with a soft rim, black, fogged out.
+    if in.material == 5u {
+        let cell = (floor(in.uv * 16.0) + 0.5) / 16.0;
+        let d = length(cell - vec2<f32>(0.5)) * 2.0;
+        let disc = 1.0 - smoothstep(0.55, 1.0, d);
+        let f = clamp((in.dist - g.params.x) / (g.params.y - g.params.x), 0.0, 1.0);
+        let fog = f * f * (3.0 - 2.0 * f);
+        // Java blends in gamma space, darkening the on-screen colour by
+        // (1 - a); this target blends in linear light, where that is (1 - a)^2.2.
+        let a = disc * in.color.a * (1.0 - fog);
+        return vec4<f32>(0.0, 0.0, 0.0, 1.0 - pow(1.0 - a, 2.2));
+    }
     if in.material == 1u {
         let tex = textureLoad(skin, texel, 0, 0);
         if tex.a < 0.5 { discard; }
@@ -295,6 +314,9 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         let tex = textureLoad(skin, texel, i32(in.layer), 0);
         if tex.a < 0.5 { discard; }
         base = tex.rgb * pow(in.color.rgb, vec3<f32>(2.2));
+    } else if in.material == 6u {
+        // v0.18 Track 6: the pattern is a grey modulation, neutral at linear 0.5.
+        base = pow(in.color.rgb, vec3<f32>(2.2)) * held_block.rgb * 2.0;
     } else if in.material == 2u {
         // Block layers are below tex::ITEM_BASE (4096); icons are at and above it.
         let tex = select(held_block, held_icon, in.layer >= 4096u);
@@ -320,7 +342,8 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         let stripe = abs(fract(in.uv.x * 0.11 - in.uv.y * 0.11 + g.sun.w * 0.35) - 0.5);
         c += vec3<f32>(0.55, 0.42, 0.9) * smoothstep(0.40, 0.50, 0.5 - stripe);
     }
-    // Material 4 (slime shell) is drawn blended; everything else is opaque.
+    // Material 4 (slime shell) is drawn blended; everything else is opaque
+    // (shadows, material 5, returned above).
     let alpha = select(1.0, 0.62, in.material == 4u);
     return vec4<f32>(apply_fog(c, in.dist), alpha);
 }

@@ -1067,7 +1067,7 @@ impl World {
     }
 
     /// Java's `Level.skyDarken` as last supplied by the clock.
-    pub(super) fn sky_darken(&self) -> u8 {
+    pub fn sky_darken(&self) -> u8 {
         self.redstone.sky_darken
     }
 

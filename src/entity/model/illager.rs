@@ -9,31 +9,38 @@ const NOSE: Rgb = [128, 134, 130];
 const BROW: Rgb = [52, 50, 48];
 const EYE: Rgb = [42, 110, 72];
 
-const fn head(eye: Rgb) -> [Cuboid; 6] {
+// v0.18 Track 6: eye whites, a thin mouth and a robe placket (the skin and
+// cloth take the default pattern).
+const EYE_WHITE: Rgb = [214, 212, 204];
+const fn head(eye: Rgb) -> [Cuboid; 9] {
     [
         cube([-4.0, 0.0, -4.0], [4.0, 9.0, 4.0], SKIN, 20),
         cube([-1.0, 1.0, 4.0], [1.0, 5.0, 6.0], NOSE, 16),
         cube([-3.5, 5.0, 4.0], [3.5, 6.0, 4.15], BROW, 0),
-        cube([-3.0, 4.0, 4.0], [-1.0, 5.0, 4.1], eye, 0),
-        cube([1.0, 4.0, 4.0], [3.0, 5.0, 4.1], eye, 0),
+        cube([-3.0, 4.0, 4.0], [-2.0, 5.0, 4.1], EYE_WHITE, 0),
+        cube([-2.0, 4.0, 4.0], [-1.0, 5.0, 4.1], eye, 0),
+        cube([1.0, 4.0, 4.0], [2.0, 5.0, 4.1], eye, 0),
+        cube([2.0, 4.0, 4.0], [3.0, 5.0, 4.1], EYE_WHITE, 0),
+        cube([-1.5, 0.4, 4.0], [1.5, 0.8, 4.05], [86, 90, 88], 0),
         cube([-4.05, 7.5, -4.05], [4.05, 9.0, 4.05], [64, 60, 58], 10),
     ]
 }
-const HEAD: [Cuboid; 6] = head(EYE);
-const HEAD_ILLUSIONER: [Cuboid; 6] = head([60, 90, 170]);
+const HEAD: [Cuboid; 9] = head(EYE);
+const HEAD_ILLUSIONER: [Cuboid; 9] = head([60, 90, 170]);
 
-const fn robe(cloth: Rgb, trim: Rgb, belt: Rgb) -> [Cuboid; 4] {
+const fn robe(cloth: Rgb, trim: Rgb, belt: Rgb) -> [Cuboid; 5] {
     [
         cube([-4.0, 12.0, -3.0], [4.0, 24.0, 3.0], cloth, 26),
         cube([-4.2, 4.0, -3.2], [4.2, 12.0, 3.2], cloth, 26),
         cube([-4.25, 4.0, 3.2], [4.25, 5.0, 3.3], trim, 8),
         cube([-4.1, 13.0, -3.1], [4.1, 14.0, 3.1], belt, 8),
+        cube([-0.75, 5.0, 3.2], [0.75, 12.0, 3.25], trim, 8),
     ]
 }
-const VINDICATOR_BODY: [Cuboid; 4] = robe([62, 66, 72], [40, 42, 46], [84, 58, 40]);
-const EVOKER_BODY: [Cuboid; 4] = robe([34, 32, 36], [198, 162, 60], [150, 120, 50]);
-const ILLUSIONER_BODY: [Cuboid; 4] = robe([46, 76, 140], [180, 190, 210], [70, 60, 50]);
-const PILLAGER_BODY: [Cuboid; 4] = robe([96, 84, 76], [62, 56, 52], [70, 52, 40]);
+const VINDICATOR_BODY: [Cuboid; 5] = robe([62, 66, 72], [40, 42, 46], [84, 58, 40]);
+const EVOKER_BODY: [Cuboid; 5] = robe([34, 32, 36], [198, 162, 60], [150, 120, 50]);
+const ILLUSIONER_BODY: [Cuboid; 5] = robe([46, 76, 140], [180, 190, 210], [70, 60, 50]);
+const PILLAGER_BODY: [Cuboid; 5] = robe([96, 84, 76], [62, 56, 52], [70, 52, 40]);
 
 const LEG: &[Cuboid] = &[cube([-2.0, -12.0, -2.0], [2.0, 0.0, 2.0], [54, 50, 46], 24)];
 const ARM: &[Cuboid] = &[cube([-2.0, -10.0, -2.0], [2.0, 2.0, 2.0], SKIN, 18)];
