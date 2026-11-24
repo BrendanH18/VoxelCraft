@@ -58,7 +58,7 @@ impl Game {
                         self.search.query.clear();
                         self.search.selected = false;
                     }
-                    for c in text.chars().filter(|c| !c.is_control()) {
+                    for c in text.chars().filter(|&c| voxelcraft::font::allowed(c)) {
                         if self.search.query.len() + c.len_utf8() <= 64 {
                             self.search.query.push(c);
                         }
@@ -116,7 +116,7 @@ impl Game {
                         self.search.selected = false;
                     }
                     // `EditBox.setMaxLength(50)`.
-                    for c in text.chars().filter(|c| !c.is_control()) {
+                    for c in text.chars().filter(|&c| voxelcraft::font::allowed(c)) {
                         if self.search.query.chars().count() < 50 {
                             self.search.query.push(c);
                         }

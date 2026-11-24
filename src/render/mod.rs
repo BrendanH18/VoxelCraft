@@ -1085,7 +1085,8 @@ impl Renderer {
     }
 
     fn create_font_texture(device: &wgpu::Device, queue: &wgpu::Queue) -> wgpu::TextureView {
-        let size = wgpu::Extent3d { width: ui::FONT_ATLAS_W, height: ui::FONT_ATLAS_H, depth_or_array_layers: 1 };
+        let (atlas, (width, height)) = ui::font_atlas();
+        let size = wgpu::Extent3d { width, height, depth_or_array_layers: 1 };
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("font"),
             size,
@@ -1098,8 +1099,8 @@ impl Renderer {
         });
         queue.write_texture(
             texture.as_image_copy(),
-            &ui::font_atlas(),
-            wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(ui::FONT_ATLAS_W), rows_per_image: None },
+            &atlas,
+            wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(width), rows_per_image: None },
             size,
         );
         texture.create_view(&Default::default())

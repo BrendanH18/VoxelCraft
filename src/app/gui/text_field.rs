@@ -1,6 +1,8 @@
 //! An editable one-line text field, like Java's edit box: a caret, a
-//! selection, word jumps and the clipboard. Text is printable ASCII, the
-//! characters the UI font has.
+//! selection, word jumps and the clipboard. Text is any character the font
+//! draws (`voxelcraft::font::allowed`): ASCII, Latin-1 and Latin
+//! Extended-A. The caret and selection are byte indices that always sit on
+//! character boundaries, and the length limit counts characters.
 
 use std::cell::Cell;
 
@@ -16,17 +18,23 @@ const SELECTION: Color = [0.0, 0.0, 1.0, 0.55];
 
 /// Characters a field can hold.
 pub(super) fn allowed(c: char) -> bool {
-    c.is_ascii() && !c.is_ascii_control()
+    voxelcraft::font::allowed(c)
 }
 
 #[derive(Clone, Debug)]
 pub(in crate::app) struct TextField {
     text: String,
-    /// Caret, as a byte index (text is ASCII).
+    /// Caret, as a byte index on a character boundary.
     cursor: usize,
     /// The other end of the selection; equal to `cursor` when nothing is selected.
     anchor: usize,
+    /// Longest text in characters (Java's `maxLength`, in UTF-16 units,
+    /// which is the same for every character the font draws).
     max: usize,
+    /// Widest text in font pixels ([`voxelcraft::font::width`]), if limited:
+    /// an edit that would pass it is refused whole, as Java's sign editor's
+    /// `TextFieldHelper` refuses it. Text set from outside may be wider.
+    max_width: Option<i32>,
     /// First character shown, moved to keep the caret in view.
     start: Cell<usize>,
     /// Grey text shown while the field is empty.
@@ -35,13 +43,27 @@ pub(in crate::app) struct TextField {
 
 impl TextField {
     pub fn new(max: usize) -> Self {
-        Self { text: String::new(), cursor: 0, anchor: 0, max, start: Cell::new(0), hint: String::new() }
+        Self {
+            text: String::new(),
+            cursor: 0,
+            anchor: 0,
+            max,
+            max_width: None,
+            start: Cell::new(0),
+            hint: String::new(),
+        }
     }
 
     pub fn with_text(text: &str, max: usize) -> Self {
         let mut field = Self::new(max);
         field.set(text);
         field
+    }
+
+    /// Limits typing to `width` font pixels (see `max_width`).
+    pub fn max_width(mut self, width: i32) -> Self {
+        self.max_width = Some(width);
+        self
     }
 
     pub fn hint(mut self, hint: impl Into<String>) -> Self {
@@ -53,13 +75,14 @@ impl TextField {
         &self.text
     }
 
-    /// Replaces the text and puts the caret at its end.
+    /// Replaces the text and puts the caret at its end. Only the character
+    /// set and length limit apply: a sign line wider than its width keeps
+    /// every character.
     pub fn set(&mut self, text: &str) {
-        self.text.clear();
-        self.cursor = 0;
-        self.anchor = 0;
+        self.text = text.chars().filter(|&c| allowed(c)).take(self.max).collect();
+        self.cursor = self.text.len();
+        self.anchor = self.cursor;
         self.start.set(0);
-        self.insert(text);
     }
 
     /// The selected range, start first.
@@ -85,9 +108,20 @@ impl TextField {
     /// Types `s` over the selection, dropping characters the field doesn't
     /// take and anything past its length limit.
     pub fn insert(&mut self, s: &str) {
-        self.delete_selection();
-        let room = self.max.saturating_sub(self.text.len());
+        let (a, b) = self.selection();
+        let kept = self.text.len() - (b - a);
+        let room = self.max.saturating_sub(self.text[..a].chars().count() + self.text[b..].chars().count());
         let s: String = s.chars().filter(|&c| allowed(c)).take(room).collect();
+        if let Some(max) = self.max_width {
+            let mut next = String::with_capacity(kept + s.len());
+            next.push_str(&self.text[..a]);
+            next.push_str(&s);
+            next.push_str(&self.text[b..]);
+            if voxelcraft::font::width(&next) > max {
+                return;
+            }
+        }
+        self.delete_selection();
         self.text.insert_str(self.cursor, &s);
         self.cursor += s.len();
         self.anchor = self.cursor;
@@ -102,6 +136,16 @@ impl TextField {
         self.cursor = a;
         self.anchor = a;
         true
+    }
+
+    /// The character boundary before `i`.
+    fn prev(&self, i: usize) -> usize {
+        self.text[..i].char_indices().next_back().map_or(0, |(j, _)| j)
+    }
+
+    /// The character boundary after `i`.
+    fn next(&self, i: usize) -> usize {
+        self.text[i..].chars().next().map_or(i, |c| i + c.len_utf8())
     }
 
     fn move_to(&mut self, pos: usize, extend: bool) {
@@ -160,14 +204,14 @@ impl TextField {
             }
             KeyCode::Backspace => {
                 if !self.delete_selection() && self.cursor > 0 {
-                    let to = if word { self.word_left(self.cursor) } else { self.cursor - 1 };
+                    let to = if word { self.word_left(self.cursor) } else { self.prev(self.cursor) };
                     self.text.replace_range(to..self.cursor, "");
                     self.move_to(to, false);
                 }
             }
             KeyCode::Delete => {
                 if !self.delete_selection() && self.cursor < self.text.len() {
-                    let to = if word { self.word_right(self.cursor) } else { self.cursor + 1 };
+                    let to = if word { self.word_right(self.cursor) } else { self.next(self.cursor) };
                     self.text.replace_range(self.cursor..to, "");
                 }
             }
@@ -178,7 +222,7 @@ impl TextField {
                 } else if !key.shift && a != b {
                     a
                 } else {
-                    self.cursor.saturating_sub(1)
+                    self.prev(self.cursor)
                 };
                 self.move_to(to, key.shift);
             }
@@ -189,7 +233,7 @@ impl TextField {
                 } else if !key.shift && a != b {
                     b
                 } else {
-                    self.cursor + 1
+                    self.next(self.cursor)
                 };
                 self.move_to(to, key.shift);
             }
@@ -211,12 +255,15 @@ impl TextField {
     /// The first character to show so the caret stays inside `width`.
     fn visible_start(&self, width: f32) -> usize {
         let mut start = self.start.get().min(self.cursor).min(self.text.len());
+        while !self.text.is_char_boundary(start) {
+            start -= 1;
+        }
         while start < self.cursor && Ui::text_width(&self.text[start..self.cursor]) > width {
-            start += 1;
+            start = self.next(start);
         }
         // Show more on the left once text is deleted from the right.
-        while start > 0 && Ui::text_width(&self.text[start - 1..]) <= width {
-            start -= 1;
+        while start > 0 && Ui::text_width(&self.text[self.prev(start)..]) <= width {
+            start = self.prev(start);
         }
         self.start.set(start);
         start
@@ -225,10 +272,14 @@ impl TextField {
     /// Puts the caret at the character boundary nearest `x` UI pixels from
     /// the field's left edge, clearing the selection.
     pub fn click(&mut self, x: f32) {
-        let start = self.start.get().min(self.text.len());
+        let mut start = self.start.get().min(self.text.len());
+        while !self.text.is_char_boundary(start) {
+            start -= 1;
+        }
         let x = x - 4.0;
         let at = |k: usize| if k == start { 0.0 } else { Ui::text_width(&self.text[start..k]) + 1.0 };
-        let pos = (start..=self.text.len()).min_by(|&a, &b| (at(a) - x).abs().total_cmp(&(at(b) - x).abs()));
+        let boundaries = self.text[start..].char_indices().map(|(i, _)| start + i).chain([self.text.len()]);
+        let pos = boundaries.min_by(|&a, &b| (at(a) - x).abs().total_cmp(&(at(b) - x).abs()));
         self.move_to(pos.unwrap_or(self.text.len()), false);
     }
 
@@ -246,7 +297,7 @@ impl TextField {
         let shown = &self.text[start..];
         let mut end = shown.len();
         while end > 0 && Ui::text_width(&shown[..end]) > width {
-            end -= 1;
+            end = shown[..end].char_indices().next_back().map_or(0, |(j, _)| j);
         }
         let shown = &shown[..end];
         ui.text(tx, ty, shown, if enabled { TEXT } else { DISABLED_TEXT });

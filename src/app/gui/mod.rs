@@ -24,7 +24,7 @@ use std::time::Instant;
 use winit::event::{KeyEvent, MouseButton};
 use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
 
-use crate::render::ui::{Color, Ui, WHITE};
+use crate::render::ui::{Color, Ui, WHITE, rgb};
 
 pub(super) use clipboard::{Clipboard, SystemClipboard};
 pub(super) use dialog::{Confirm, Notice};
@@ -42,11 +42,18 @@ pub(super) const GAP: f32 = 4.0;
 /// Width of a slider's handle.
 pub(super) const HANDLE_W: f32 = 8.0;
 
-pub(super) const BUTTON: Color = [0.42, 0.42, 0.42, 1.0];
-pub(super) const HOT: Color = [0.48, 0.52, 0.72, 1.0];
-pub(super) const DISABLED: Color = [0.2, 0.2, 0.2, 1.0];
-pub(super) const GREY: Color = [0.63, 0.63, 0.63, 1.0];
-pub(super) const HOT_TEXT: Color = [1.0, 1.0, 0.63, 1.0];
+// Widget colours, sRGB (art guide, "Components and states"). White text
+// on BUTTON is 5.3:1; HOT_TEXT on HOT 4.8:1; disabled GREY on DISABLED
+// 3.4:1, readable but 1.6 times less than enabled. Hover and focus also
+// draw a white frame, and a disabled button is flat, so no state is
+// told by colour alone.
+pub(super) const BUTTON: Color = rgb(0x6B6B6B);
+pub(super) const HOT: Color = rgb(0x646E9C);
+pub(super) const DISABLED: Color = rgb(0x4A4A4A);
+/// Disabled text (Java's `#A0A0A0`).
+pub(super) const GREY: Color = rgb(0xA0A0A0);
+/// Hovered or focused text (Java's legacy `#FFFFA0`).
+pub(super) const HOT_TEXT: Color = rgb(0xFFFFA0);
 
 /// What a widget is, which decides how it's drawn and what input it takes.
 #[derive(Clone, Debug, PartialEq)]
@@ -961,7 +968,7 @@ pub(super) fn draw_button(ui: &mut Ui, rect: Rect, label: &str, look: Look) {
         BUTTON
     };
     bevel(ui, rect, fill, look.enabled);
-    if look.focused && look.enabled {
+    if look.hot() {
         focus_frame(ui, rect);
     }
     label_text(ui, rect, label, 4.0, text_color(look));

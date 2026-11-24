@@ -16,6 +16,7 @@ use crate::world::block::{Block, tex as block_tex};
 use crate::world::wood::entities::{SignEntity, SignText, text_color};
 use crate::world::wood::signs::{Mount, Sign};
 use crate::world::wood::{self, Kind, shelves};
+use voxelcraft::font;
 
 /// Java's default block entity view distance.
 pub const RANGE: f64 = 64.0;
@@ -155,27 +156,14 @@ pub fn vertices(models: &[SignModel], camera: DVec3, out: &mut Vec<BlockVertex>)
 
 // ---- Text ------------------------------------------------------------------
 
-/// Advance of a glyph in font pixels, as the UI font (`ui::glyph_advance`).
-fn advance(c: char) -> i32 {
-    super::ui::glyph_advance(c) as i32
-}
-
-/// Java's `Font.width`.
-pub fn text_width(s: &str) -> i32 {
-    s.chars().map(advance).sum::<i32>() - 1
-}
-
-/// The part of `line` that fits `max` font pixels (the renderer's
-/// `font.split(line, maxWidth)` first line, cut by character).
+/// The part of `line` a sign shows in `max` font pixels: the first line
+/// Java's renderer wraps it to (`font.split(line, maxWidth).get(0)`), or,
+/// if longer, all that fitted the pre-v0.18 font, so signs written then
+/// keep every character they showed ([`font::legacy_prefix`]).
 pub fn fitted(line: &str, max: i32) -> &str {
-    let mut width = -1;
-    for (i, c) in line.char_indices() {
-        width += advance(c);
-        if width > max {
-            return &line[..i];
-        }
-    }
-    line
+    let java = font::first_line(line, max);
+    let legacy = font::legacy_prefix(line, max);
+    if legacy.len() > java.len() { legacy } else { java }
 }
 
 /// Where a sign side's text sits: its centre, its right and its out-of-face
@@ -241,27 +229,12 @@ impl Pen<'_> {
         let (color, light, torch) = style;
         let mut pen = x0;
         for c in line.chars() {
-            let c = if c.is_ascii() { c } else { '?' };
-            let glyph = font8x8::legacy::BASIC_LEGACY[c as usize];
-            let left = glyph.iter().fold(0u8, |a, r| a | r);
-            let left = if left == 0 { 0 } else { left.trailing_zeros() } as f64;
-            for (row, bits) in glyph.into_iter().enumerate() {
-                let mut x = 0;
-                while x < 8 {
-                    if bits & (1 << x) == 0 {
-                        x += 1;
-                        continue;
-                    }
-                    let start = x;
-                    while x < 8 && bits & (1 << x) != 0 {
-                        x += 1;
-                    }
-                    let px = pen - left + start as f64 + offset.0;
-                    let py = y0 + row as f64 + offset.1;
-                    self.rect((px, py, (x - start) as f64, 1.0), lift, color, light, torch);
-                }
+            let glyph = font::glyph(c);
+            for (x, y, n) in glyph.runs() {
+                let (px, py) = (pen + x as f64 + offset.0, y0 + y as f64 + offset.1);
+                self.rect((px, py, n as f64, 1.0), lift, color, light, torch);
             }
-            pen += advance(c) as f64;
+            pen += glyph.advance() as f64;
         }
     }
 }
@@ -321,7 +294,8 @@ fn side_text(
         if line.is_empty() {
             continue;
         }
-        let x0 = -(text_width(line) as f64) / 2.0;
+        // Java: `-font.width(line) / 2`, in whole font pixels.
+        let x0 = -(font::width(line) / 2) as f64;
         let y0 = i as f64 * line_height - midpoint;
         if text.glowing {
             if near || text.color == crate::color::DyeColor::Black {
@@ -403,11 +377,27 @@ mod tests {
 
     #[test]
     fn lines_are_cut_to_the_sign_width() {
-        let long = "W".repeat(40);
+        // Accented letters are two bytes; the cut falls between characters.
+        let long = "É".repeat(40);
         let cut = fitted(&long, 90);
-        assert!(!cut.is_empty() && cut.len() < long.len());
-        assert!(text_width(cut) <= 90 && text_width(&long[..cut.len() + 1]) > 90);
+        assert_eq!(cut.chars().count(), 15, "15 six-pixel letters are 90 pixels");
+        assert!(font::width(cut) <= 90);
         assert_eq!(fitted("Hi", 60), "Hi");
+        // Java wraps at the last space that fits and shows the first line.
+        assert_eq!(fitted("Grüße aus Zürich und Köln", 60), "Grüße aus");
+    }
+
+    #[test]
+    fn signs_written_before_the_new_font_keep_their_text() {
+        // Every printable ASCII line the old font let a sign show is still
+        // shown whole, however the new widths compare.
+        for c in ' '..='~' {
+            let mut line = String::new();
+            while font::legacy_prefix(&format!("{line}{c}"), 90).len() > line.len() {
+                line.push(c);
+            }
+            assert_eq!(fitted(&line, 90), line, "{c:?}");
+        }
     }
 
     #[test]

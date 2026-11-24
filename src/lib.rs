@@ -13,6 +13,7 @@ pub mod creative;
 pub mod enchant;
 pub mod entity;
 pub mod equipment;
+pub mod font;
 pub mod grindstone;
 pub mod inventory;
 pub mod item;
