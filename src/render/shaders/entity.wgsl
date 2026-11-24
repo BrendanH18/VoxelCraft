@@ -298,8 +298,8 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         let cell = (floor(in.uv * 16.0) + 0.5) / 16.0;
         let d = length(cell - vec2<f32>(0.5)) * 2.0;
         let disc = 1.0 - smoothstep(0.55, 1.0, d);
-        let f = clamp((in.dist - g.params.x) / (g.params.y - g.params.x), 0.0, 1.0);
-        let fog = f * f * (3.0 - 2.0 * f);
+        // Faded by Track 8's fog (Java's spherical and cylindrical distances).
+        let fog = fog_value(in.dist);
         // Java blends in gamma space, darkening the on-screen colour by
         // (1 - a); this target blends in linear light, where that is (1 - a)^2.2.
         let a = disc * in.color.a * (1.0 - fog);
