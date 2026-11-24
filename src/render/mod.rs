@@ -68,7 +68,7 @@ struct Globals {
     fog: [f32; 4],
     /// x: sky fog end, y: cloud fog end.
     fog_ends: [f32; 4],
-    /// rgb: linear `visual/sky_light_color`; w: unused.
+    /// rgb: sRGB `visual/sky_light_color`; w: unused.
     sky_light: [f32; 4],
     /// rgb: linear sunrise/sunset glow colour, w: its strength.
     sunrise: [f32; 4],
@@ -125,7 +125,7 @@ pub struct FrameParams {
     pub cloud_end: f32,
     /// Linear sunrise/sunset glow colour and strength.
     pub sunrise: [f32; 4],
-    /// Linear `visual/sky_light_color`.
+    /// sRGB `visual/sky_light_color` (the lightmap works in Java's gamma space).
     pub sky_light_color: [f32; 3],
     /// The clouds to draw, if any, and their sRGB colour.
     pub clouds: Option<clouds::CloudParams>,
@@ -1621,6 +1621,7 @@ mod tests {
             ("sky", include_str!("shaders/sky.wgsl")),
             ("weather", include_str!("shaders/weather.wgsl")),
             ("outline", include_str!("shaders/outline.wgsl")),
+            ("clouds", include_str!("shaders/clouds.wgsl")),
         ];
         for (name, source) in shaders {
             for paged in [None, Some(256), Some(2048)] {

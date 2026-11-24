@@ -155,8 +155,9 @@ Controller and LAN players run the shared actions on their own session
 state is swapped into the host's. Independent simultaneous dimensions and
 shape-aware light occlusion remain future work. A first desktop LAN slice uses
 bounded binary-framed TCP and authoritative chunk snapshots; see [LAN](lan.md).
-Split-screen is implemented, and each view blends Nether biome fog around its
-own eye.
+Split-screen is implemented, and each view blends its biome's fog and sky
+colours around its own eye and keeps its own rain fog and water vision
+(`voxelcraft::atmosphere`, v0.18 Track 8).
 See [the headless smoke run and checks](development.md#headless-simulation-foundation).
 
 ## Code layout
@@ -164,6 +165,10 @@ See [the headless smoke run and checks](development.md#headless-simulation-found
 ```text
 src/
   lib.rs             reusable engine exports (no device dependencies)
+  atmosphere.rs      Java 26.3's fog, sky and cloud colours and distances
+                     (environment attributes, day timeline, weather layers,
+                     fog environments); atmosphere/clouds.rs: the cloud
+                     pattern and Java's cell mesh rules
   main.rs            desktop argument parsing, event loop
   session.rs         actor-owned core state, personal spawn selection
   session/
@@ -1393,6 +1398,19 @@ the [record](verification/2026-11-23-v0.18-sound.md)). Appended orderings:
 `audio::Sound::Container` after `Sound::Crafter`, keyed after the crafter's
 cues; the options `showSubtitles`, `textBackgroundOpacity` and
 `backgroundForChatOnly` (Java's keys) at the end of `options.txt`.
+
+#### Track 8 allocation
+
+Track 8 (atmosphere) allocates no block states, items or texture layers:
+the clouds' pattern is generated at startup and the fog, sky and cloud
+colours are computed, so the reserved layers 1260–1279 stay unregistered.
+Appended orderings: the options `renderClouds`, `cloudRange` and
+`hideLightningFlashes` (Java's keys and values) after Track 9's at the end of
+`options.txt`'s display lines; `app::options::video::Id::Clouds` and
+`CloudDistance` and `accessibility::Id::HideSkyFlashes` (screen ids, not
+saved). The benchmark scene list (`performance::SCENES` and
+`benchmarks/scenes.json`) gains `weather`, `underwater` and `nether` after
+`streaming`.
 
 ## Assessment branch ID reservations
 

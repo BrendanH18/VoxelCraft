@@ -470,3 +470,43 @@ fn gameplay_light_does_not_follow_the_visual_model() {
     assert_eq!(atmosphere::sky_light(&flash).0, 1.0);
     assert_eq!(SpawnLight::at(18000, 0.0, 0.0).sky_darken, SpawnLight::NIGHT.sky_darken);
 }
+
+/// Headless cost of the cloud layer (run with `--ignored --nocapture`):
+/// faces and rebuild time at Java's default Cloud Distance (128 chunks)
+/// and at 12, for Fancy and Fast, below and inside the layer, and the cost
+/// of one eye's fog. A rebuild happens only when the camera enters another
+/// 12-block cell or crosses the layer, or the options change.
+#[test]
+#[ignore]
+fn cloud_and_fog_cost() {
+    use std::time::Instant;
+    let pattern = Pattern::generate();
+    let mut faces = Vec::new();
+    for range in [128u32, 12] {
+        for mode in [Clouds::Fancy, Clouds::Fast] {
+            for y in [100.0, 194.0] {
+                let radius = clouds::radius_cells(range);
+                let mut best = f64::MAX;
+                for i in 0..20 {
+                    let view = View::new(f64::from(i) * 12.0, y, 0.0, 0.0, atmosphere::CLOUD_HEIGHT);
+                    let start = Instant::now();
+                    clouds::build(&pattern, &view, mode, radius, &mut faces);
+                    best = best.min(start.elapsed().as_secs_f64() * 1000.0);
+                }
+                println!(
+                    "clouds {range} chunks {mode:?} camera y {y}: {} faces ({} KiB), best rebuild {best:.3} ms",
+                    faces.len(),
+                    faces.len() * 4 / 1024
+                );
+            }
+        }
+    }
+    let eye = plains_noon();
+    let start = Instant::now();
+    let mut sum = 0.0;
+    for i in 0..100_000 {
+        sum += atmosphere::fog(&Eye { day_ticks: f64::from(i), ..eye }, RainFog(0.5)).environmental_end;
+    }
+    println!("fog: {:.3} us per eye ({sum})", start.elapsed().as_secs_f64() * 1e6 / 100_000.0);
+    println!("pattern coverage {:.3}", pattern.coverage());
+}

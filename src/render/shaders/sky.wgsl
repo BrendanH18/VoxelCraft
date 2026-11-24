@@ -69,11 +69,12 @@ fn fs_sky(in: SkyOut) -> @location(0) vec4<f32> {
     let dir = normalize(far.xyz / far.w);
     if g.environment.x > 0.5 {
         if g.environment.x > 1.5 {
-            // A static, mottled violet sky; no sun, moon, stars or clouds.
+            // A static, mottled sky in the End's fog colour (Java's
+            // #181318), as dark as Java's end sky texture under its #282828
+            // tint; no sun, moon, stars or clouds.
             let cell = floor(dir * 180.0);
             let grain = hash3(cell);
-            let haze = pow(1.0 - abs(dir.y), 3.0);
-            let color = mix(g.zenith_color.rgb, g.fog_color.rgb, haze) * (0.8 + grain * 0.4);
+            let color = g.fog_color.rgb * (0.7 + grain * 0.6);
             return vec4<f32>(color, 1.0);
         }
         return vec4<f32>(g.fog_color.rgb, 1.0);

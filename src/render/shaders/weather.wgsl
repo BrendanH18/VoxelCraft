@@ -18,7 +18,7 @@ struct Globals {
     fog: vec4<f32>,
     // x: sky fog end, y: cloud fog end.
     fog_ends: vec4<f32>,
-    // rgb: linear visual/sky_light_color.
+    // rgb: sRGB visual/sky_light_color (Java's gamma-space lightmap).
     sky_light: vec4<f32>,
     sunrise: vec4<f32>,
 };
@@ -103,13 +103,19 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
             color = vec3<f32>(0.95, 0.97, 1.0);
         }
     } else {
-        // Long thin streaks falling fast.
-        let fall = (in.uv.y + t * (11.0 + h * 4.0)) * 0.5 + h * 7.0;
+        // Thin streaks falling fast, on a 64-texel grid across the sheet as
+        // Java's rain texture is (v0.18 Track 8: the old 16-texel streaks
+        // were four times as wide and crowded the view near the camera).
+        let rain_lanes = 8.0;
+        let rain_lane = floor(in.uv.x * rain_lanes);
+        let rh = hash1(in.seed * 13.7 + rain_lane * 3.1);
+        let rx = floor(fract(in.uv.x * rain_lanes) * 8.0);
+        let fall = (in.uv.y + t * (11.0 + rh * 4.0)) * 0.75 + rh * 7.0;
         let cell = floor(fall);
-        let ch = hash1(cell * 5.9 + in.seed + lane * 17.0);
+        let ch = hash1(cell * 5.9 + in.seed + rain_lane * 17.0);
         let ty = fract(fall);
-        if ch > 0.55 && tx == floor(fract(ch * 7.0) * 4.0) && ty < 0.3 {
-            alpha = 0.45 * (1.0 - ty / 0.3 * 0.5);
+        if ch > 0.5 && rx == floor(fract(ch * 7.0) * 8.0) && ty < 0.22 {
+            alpha = 0.6 * (1.0 - ty / 0.22 * 0.5);
             color = vec3<f32>(0.62, 0.7, 0.85);
         }
     }

@@ -19,7 +19,7 @@ struct Globals {
     fog: vec4<f32>,
     // x: sky fog end, y: cloud fog end.
     fog_ends: vec4<f32>,
-    // rgb: linear visual/sky_light_color.
+    // rgb: sRGB visual/sky_light_color (Java's gamma-space lightmap).
     sky_light: vec4<f32>,
     sunrise: vec4<f32>,
 };
@@ -155,18 +155,42 @@ fn daylight_tint(normal: vec3<f32>) -> vec3<f32> {
     if g.environment.x > 0.5 {
         return vec3<f32>(1.0);
     }
-    // Java 26.3's `visual/sky_light_color`: white by day, blue at night.
     if g.environment.y < 0.5 {
-        return g.sky_light.rgb;
+        return vec3<f32>(1.0);
     }
     let moon = g.sun.y < 0.0;
     let dir = select(g.sun.xyz, -g.sun.xyz, moon);
     let elevation = abs(dir.y);
     let dusk = 1.0 - smoothstep(0.05, 0.45, elevation);
     let warm = mix(vec3<f32>(1.0), vec3<f32>(1.12, 0.80, 0.58), dusk);
-    let tint = select(warm, vec3<f32>(1.0), moon) * g.sky_light.rgb;
+    // Moonlight takes its blue from `visual/sky_light_color` (overworld_light).
+    let tint = select(warm, vec3<f32>(1.0), moon);
     let diffuse = max(dot(normal, dir), 0.0);
-    return mix(tint * (0.62 + 0.38 * diffuse), g.sky_light.rgb * 0.85, g.params.w);
+    return mix(tint * (0.62 + 0.38 * diffuse), vec3<f32>(0.85), g.params.w);
+}
+
+// v0.18 Track 8: Java 26.3's lightmap (`lightmap.fsh`) for the Overworld,
+// in Java's gamma space: the dimension's ambient colour, plus sky light
+// (the brightness curve times `visual/sky_light_factor` and
+// `visual/sky_light_color`, blue at night), plus block light
+// (`visual/block_light_tint` #FFD88C mixed toward white by
+// 0.9 * (2l - 1)^2, times the curve and Java's block factor 1.4), clamped,
+// with night vision and the Brightness option; then converted once for the
+// sRGB target. Face and corner shading and VoxelCraft's sun-facing tint stay
+// outside the conversion (the tint weighted by the sky's share), so fully
+// sunlit faces look as before while shade, night and torch-lit interiors
+// take Java's darkness and warmth.
+fn overworld_light(sky_level: f32, block_level: f32, normal: vec3<f32>, shade: f32) -> vec3<f32> {
+    let sky = (sky_level / (4.0 - 3.0 * sky_level)) * g.params.z * g.sky_light.rgb;
+    let p = (2.0 * block_level - 1.0) * (2.0 * block_level - 1.0);
+    let hue = mix(vec3<f32>(1.0, 0.847, 0.549), vec3<f32>(1.0), 0.9 * p);
+    let block = hue * (block_level / (4.0 - 3.0 * block_level)) * 1.4;
+    let java = clamp(g.ambient.rgb + sky + block, vec3<f32>(0.0), vec3<f32>(1.0));
+    let s = max(max(sky.r, sky.g), sky.b);
+    let b = max(max(block.r, block.g), block.b);
+    let share = clamp(s / max(s + b, 1e-4), 0.0, 1.0);
+    let sun = mix(vec3<f32>(1.0), daylight_tint(normal), share);
+    return pow(night_vision(java), vec3<f32>(2.2)) * shade * sun;
 }
 
 // Java 26.3 adds the environment ambient colour to sky and block light.
@@ -196,7 +220,11 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     }
     let l = in.light.xz / (4.0 - 3.0 * in.light.xz);
     let torch = l.y * vec3<f32>(1.0, 0.86, 0.66);
-    let lit = night_vision(dimension_light(l.x * g.params.z * daylight_tint(normal), torch)) * in.light.y;
+    let sky = l.x * g.params.z * daylight_tint(normal);
+    var lit = night_vision(dimension_light(sky, torch)) * in.light.y;
+    if g.ambient.w <= 0.0 {
+        lit = overworld_light(in.light.x, in.light.z, normal, in.light.y);
+    }
     let c = apply_fog(tex.rgb * in.tint * lit, in.dist);
     return vec4<f32>(c, 1.0);
 }

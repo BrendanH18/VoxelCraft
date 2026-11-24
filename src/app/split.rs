@@ -42,6 +42,31 @@ pub(super) struct ViewAtmosphere {
     water_ticks: f32,
 }
 
+/// How far terrain is drawn around `camera` in every direction, in blocks:
+/// Java's render distance in blocks, or less where VoxelCraft's 32-block
+/// chunks stop short of it. Chunks are meshed while their horizontal chunk
+/// distance from the camera's chunk is at most `rd`, so the nearest chunk
+/// that isn't bounds the distance. Java's render-distance fog ends there,
+/// so the fog closes before the terrain's ragged edge instead of past it.
+pub(super) fn meshed_radius(rd: i32, camera: DVec3) -> f32 {
+    let size = crate::world::chunk::CHUNK_SIZE_I;
+    let (cx, cz) = ((camera.x / f64::from(size)).floor() as i32, (camera.z / f64::from(size)).floor() as i32);
+    let mut nearest = f64::from(rd * size);
+    for a in -rd - 1..=rd + 1 {
+        for b in -rd - 1..=rd + 1 {
+            if a * a + b * b <= rd * rd {
+                continue;
+            }
+            // Distance from the camera to that chunk's column.
+            let (x0, z0) = (f64::from((cx + a) * size), f64::from((cz + b) * size));
+            let dx = (x0 - camera.x).max(camera.x - (x0 + f64::from(size))).max(0.0);
+            let dz = (z0 - camera.z).max(camera.z - (z0 + f64::from(size))).max(0.0);
+            nearest = nearest.min(dx.hypot(dz));
+        }
+    }
+    nearest as f32
+}
+
 /// One eye's fog, sky and clouds for this frame (sRGB colours).
 #[derive(Clone, Copy)]
 pub(super) struct Atmosphere {
@@ -75,7 +100,7 @@ impl Atmosphere {
         p.cloud_end = self.fog.cloud_end;
         let [r, g, b] = linear([self.fog.sunrise[0], self.fog.sunrise[1], self.fog.sunrise[2]]);
         p.sunrise = [r, g, b, self.fog.sunrise[3]];
-        p.sky_light_color = linear(self.sky_light.1);
+        p.sky_light_color = self.sky_light.1;
         p.cloud_color = self.cloud_color;
     }
 }
@@ -224,7 +249,7 @@ impl Game {
             sky_flash: dimension == Dimension::Overworld
                 && !self.settings.hide_lightning_flashes
                 && self.mobs.entities.lightning.iter().any(|b| b.visible()),
-            render_distance: (self.world.render_distance() * 32) as f32,
+            render_distance: meshed_radius(self.world.render_distance(), camera),
             cloud_range: self.settings.cloud_range,
             sky_light: self.world.sky_light(cell).unwrap_or(15),
             camera_y: camera.y as f32,
@@ -581,6 +606,20 @@ impl Game {
 mod tests {
     use crate::world::{nether_biome::NetherBiome, terrain::Dimension};
     use voxelcraft::atmosphere::{Local, Sampler, biome_visuals, dimension, nether_biome};
+
+    #[test]
+    fn the_fog_reaches_only_as_far_as_terrain_is_drawn() {
+        use glam::DVec3;
+        // From a chunk's centre at render distance 6 (12 Java chunks, 192
+        // blocks), the nearest undrawn chunk's column is 176.7 blocks away.
+        let r = super::meshed_radius(6, DVec3::new(16.0, 70.0, 16.0));
+        assert!((r - 176.726).abs() < 0.01, "{r}");
+        // Never past Java's distance, and at most a chunk and a half short of it.
+        for (rd, x) in [(8, 0.5), (8, 31.5), (16, 12.0), (2, 5.0)] {
+            let r = super::meshed_radius(rd, DVec3::new(x, 0.0, 3.0));
+            assert!(r <= (rd * 32) as f32 && r >= (rd as f32 - 1.5) * 32.0, "{rd} {x}: {r}");
+        }
+    }
 
     #[test]
     fn each_split_screen_view_blends_the_fog_around_its_own_eye() {

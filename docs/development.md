@@ -394,7 +394,9 @@ reproducible before/after scenes for v0.18's visual work, in five groups:
 - `title`: the title screen, Select World with four fixed saves and empty,
   and Create New World, at the same four sizes.
 - `atmosphere`: the seeded landscape at noon, dusk and midnight, in rain and
-  a thunderstorm, inside a water tank, and in the Nether and the End.
+  a thunderstorm, inside a water tank, and in the Nether and the End. Track
+  8's fog, clouds, rain and light are compared on these
+  ([record](verification/2026-11-23-v0.18-atmosphere.md)).
 
 Each scene records its seed, game mode, pose, placements, spawned mobs,
 time, weather, dimension, resolution, GUI scale, render distance and held
@@ -479,6 +481,19 @@ both sides of every sign. In front of the grid is a wall of item frames
 holding items. Building it takes several seconds, which count toward cold
 load but not toward warm-up or samples. Runs whose view or simulation distance
 differs from `benchmarks/scenes.json` (256 and 160 blocks) are rejected.
+
+Three atmosphere scenes (v0.18 Track 8,
+[record](verification/2026-11-23-v0.18-atmosphere.md)) measure what the fog,
+clouds and weather cost. `weather` flies the survival orbit in a full
+thunderstorm held at noon (`advance_time` and `advance_weather` off), with
+rain sheets, the rain fog, the storm's sky and clouds, and lightning bolts
+and sky flashes. `underwater` clears a 35 x 35 column at spawn and builds a
+glass-walled tank of still water 33 x 33 and 12 deep on sand with a fixed
+scatter of seagrass, with the camera 5.5 blocks above its floor, turning:
+water fog, the surface from below and translucent water. `nether` starts in
+the Nether where its portal arrives for the seed and turns the camera in
+place there. Their reports record the dimension and the rain and thunder
+levels. Run them with `--scenes weather,underwater,nether`.
 
 The two menu scenes open each screen in their `screens` list for two seconds
 in turn. `menus` does this in a world at spawn, with the camera turning: the
