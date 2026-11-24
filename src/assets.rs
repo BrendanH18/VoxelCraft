@@ -31,6 +31,19 @@ pub fn validate() -> Result<(), String> {
                     return Err(format!("asset {key}: expected a 16 x 16 PNG"));
                 }
             }
+            // v0.18 Track 7: a title panorama face, an RGB8 square.
+            Some("panorama") => {
+                let side =
+                    entry["width"].as_u64().filter(|w| w.is_power_of_two() && Some(*w) == entry["height"].as_u64());
+                let side = side.ok_or_else(|| format!("asset {key}: faces are power-of-two squares"))? as u32;
+                let mut header = [0u8; 10];
+                header[..4].copy_from_slice(&side.to_be_bytes());
+                header[4..8].copy_from_slice(&side.to_be_bytes());
+                header[8..].copy_from_slice(&[8, 2]);
+                if bytes.get(..8) != Some(b"\x89PNG\r\n\x1a\n") || bytes.get(16..26) != Some(&header[..]) {
+                    return Err(format!("asset {key}: expected a {side} x {side} RGB8 PNG"));
+                }
+            }
             Some("model") => {
                 model_boxes(key)?;
             }

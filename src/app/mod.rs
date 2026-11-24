@@ -61,6 +61,7 @@ pub use voxelcraft::rules::GameMode;
 mod title;
 mod weather;
 mod wither;
+mod world_icon;
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -262,6 +263,12 @@ struct Game {
     /// Why the last save failed, until it succeeds again.
     save_error: Option<String>,
     screenshot: Option<String>,
+    /// v0.18 Track 7: the world icon's capture (`None` for LAN clients and
+    /// scripted runs without `--world-icon`).
+    world_icon: Option<world_icon::WorldIcon>,
+    /// v0.18 Track 7: `--panorama DIR` and the face being rendered.
+    panorama_out: Option<std::path::PathBuf>,
+    panorama_face: Option<usize>,
     screenshot_state: u32,
     /// When `--screenshot` first found streaming settled (see [`SCREENSHOT_FLUID_WAIT`]).
     screenshot_settled: Option<Instant>,
@@ -1923,6 +1930,28 @@ impl Game {
                 self.screenshot_state = 1;
                 false
             }
+            // v0.18 Track 7: `--panorama`: the six faces first, one per frame.
+            // Each face is drawn and captured on the frame after it is set.
+            1 if let Some(dir) = self.panorama_out.clone() => {
+                if self.renderer.capture_pending() {
+                    return false;
+                }
+                let face = self.panorama_face.map_or(0, |f| f + 1);
+                if face < 6 {
+                    if let Err(e) = std::fs::create_dir_all(&dir) {
+                        log::error!("--panorama: can't create {}: {e}", dir.display());
+                    }
+                    self.panorama_face = Some(face);
+                    self.renderer.request_capture(dir.join(format!("panorama_{face}.png")));
+                } else {
+                    finish_panorama(&dir);
+                    self.panorama_face = None;
+                    self.panorama_out = None;
+                }
+                false
+            }
+            // `--world-icon` waits for the icon before the screenshot.
+            1 if self.world_icon.as_ref().is_some_and(|i| !i.done()) && self.screenshot.is_some() => false,
             // Settled for one frame (uploads applied); capture on the next.
             1 => {
                 self.renderer.request_capture(path);
@@ -2338,7 +2367,7 @@ impl Game {
         } else {
             (Vec::new(), None)
         };
-        let params = FrameParams {
+        let mut params = FrameParams {
             camera,
             forward,
             view_effect: voxelcraft::camera::view_effect(
@@ -2411,6 +2440,23 @@ impl Game {
             blur: blur_from.map_or(0, |_| self.settings.menu_blur),
             ui_under_blur: blur_from.unwrap_or(0),
         };
+        // v0.18 Track 7: `--panorama` renders each face as a square 90-degree view.
+        if let Some(face) = self.panorama_face {
+            let (forward, view_effect) = panorama_face_view(face);
+            params.forward = forward;
+            params.view_effect = view_effect;
+            params.fov_y = std::f32::consts::FRAC_PI_2;
+            params.hand = None;
+            params.highlight = None;
+            params.ui = Vec::new();
+            params.blur = 0;
+            params.ui_under_blur = 0;
+        }
+        if let Some(icon) = self.world_icon.as_mut() {
+            let drawn = self.renderer.stats.visible;
+            let settled = self.world.loaded_chunks() > 0 && self.world.pending_jobs() == 0;
+            icon.before_frame(&mut self.renderer, drawn, settled);
+        }
         benchmark::mark(&mut self.benchmark, 4);
         let Some(mut frame) = self.renderer.begin_frame() else {
             return; // hidden window: don't count this frame in the stats
@@ -2437,6 +2483,48 @@ impl Game {
         if self.settings_path.is_some() && self.benchmark.is_none() {
             self.frame_limit.wait(self.settings.frame_cap());
         }
+    }
+}
+
+/// v0.18 Track 7: rewrites the six captured faces as RGB PNGs (the captures
+/// are RGBA with an opaque alpha), the form `assets/panorama/` keeps.
+fn finish_panorama(dir: &std::path::Path) {
+    for face in 0..6 {
+        let path = dir.join(format!("panorama_{face}.png"));
+        let result = (|| -> Result<(), String> {
+            let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
+            let mut reader = png::Decoder::new(std::io::BufReader::new(file)).read_info().map_err(|e| e.to_string())?;
+            let mut buf = vec![0; reader.output_buffer_size().ok_or("too large")?];
+            let info = reader.next_frame(&mut buf).map_err(|e| e.to_string())?;
+            if info.width != info.height {
+                return Err(format!("{} x {} isn't square: give --size a square", info.width, info.height));
+            }
+            let rgb: Vec<u8> =
+                buf[..info.buffer_size()].as_chunks::<4>().0.iter().flat_map(|p| [p[0], p[1], p[2]]).collect();
+            let file = std::fs::File::create(&path).map_err(|e| e.to_string())?;
+            let mut enc = png::Encoder::new(std::io::BufWriter::new(file), info.width, info.height);
+            enc.set_color(png::ColorType::Rgb);
+            enc.set_depth(png::BitDepth::Eight);
+            enc.set_compression(png::Compression::High);
+            enc.write_header().and_then(|mut w| w.write_image_data(&rgb)).map_err(|e| e.to_string())
+        })();
+        match result {
+            Ok(()) => log::info!("panorama face {}", path.display()),
+            Err(e) => log::error!("--panorama: {}: {e}", path.display()),
+        }
+    }
+}
+
+/// v0.18 Track 7: the camera for panorama face `face`: its forward
+/// direction, and for the up and down faces (which the camera's Y-up view
+/// can't look along) a turn of view space from a northward view, so each
+/// face comes out with `voxelcraft::title::panorama::FACES`' up.
+fn panorama_face_view(face: usize) -> (glam::Vec3, glam::Mat4) {
+    use voxelcraft::title::panorama::FACES;
+    match face {
+        4 => (glam::Vec3::NEG_Z, glam::Mat4::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
+        5 => (glam::Vec3::NEG_Z, glam::Mat4::from_rotation_x(std::f32::consts::FRAC_PI_2)),
+        _ => (FACES[face].forward, glam::Mat4::IDENTITY),
     }
 }
 

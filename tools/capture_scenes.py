@@ -109,8 +109,56 @@ def scene_args(scene, settings):
     return args
 
 
-def write_saves(saves_dir, saves):
-    """Fake saves for the world list: `level.txt` alone, with fixed folder dates."""
+def icon_args(save, data_dir, png):
+    """The game run that takes a save's world icon: its first visit, from the spawn.
+
+    `--world-icon` makes the scripted run take `icon.png` by the game's usual rule
+    and wait for it; the run writes nothing else to the save."""
+    icon = save["icon"]
+    args = ["--no-update-check", "--mute", "--no-vsync", "--data-dir", str(data_dir), "--world", save["dir"]]
+    args += ["--size", "{}x{}".format(*icon.get("size", [640, 360]))]
+    args += ["--rd", str(icon.get("render_distance", 4)), "--animation-time", "7.3"]
+    args += ["--time", str(icon.get("time", 0.25)), "--gamerule", "advance_time=false"]
+    args += ["--gamerule", "advance_weather=false", "--weather", "clear"]
+    if icon.get("pose"):
+        args += ["--pose", ",".join(str(v) for v in icon["pose"])]
+    return args + ["--world-icon", "--screenshot", str(png)]
+
+
+def take_icons(binary, out, scene_name, saves):
+    """Takes each save's icon once per scene (`saves[].icon`), kept for every variant."""
+    folder = out / ".icons" / scene_name
+    for save in saves:
+        if "icon" not in save:
+            continue
+        kept = folder / (save["dir"] + ".png")
+        if kept.exists():
+            continue
+        data_dir = folder / ".data"
+        if data_dir.exists():
+            shutil.rmtree(data_dir)
+        write_saves(data_dir / "saves", [save])
+        command = [str(binary)] + icon_args(save, data_dir, folder / "first-visit.png")
+        folder.mkdir(parents=True, exist_ok=True)
+        with open(folder / (save["dir"] + ".log"), "w", encoding="utf-8") as f:
+            try:
+                subprocess.call(command, stdout=f, stderr=subprocess.STDOUT, timeout=TIMEOUT_SECONDS)
+            except subprocess.TimeoutExpired:
+                pass
+        icon = data_dir / "saves" / save["dir"] / "icon.png"
+        if icon.exists():
+            shutil.copyfile(icon, kept)
+            print("took the icon of {}".format(save["dir"]), file=sys.stderr)
+        else:
+            # Keep the run's log beside the captures.
+            shutil.copyfile(folder / (save["dir"] + ".log"), out / "{}-{}-icon.log".format(scene_name, save["dir"]))
+            print("FAILED to take the icon of {}".format(save["dir"]), file=sys.stderr)
+        shutil.rmtree(data_dir, ignore_errors=True)
+
+
+def write_saves(saves_dir, saves, icons=None):
+    """Fake saves for the world list: `level.txt` alone, with fixed folder dates, and
+    the icon `take_icons` took for a save that asks for one."""
     for i, save in enumerate(saves):
         folder = saves_dir / save["dir"]
         folder.mkdir(parents=True, exist_ok=True)
@@ -120,6 +168,9 @@ def write_saves(saves_dir, saves):
         level.write_text("\n".join(lines) + "\n", encoding="utf-8")
         stamp = SAVE_EPOCH - 3600 * i
         os.utime(level, (stamp, stamp))
+        icon = icons / (save["dir"] + ".png") if icons else None
+        if icon and icon.exists():
+            shutil.copyfile(icon, folder / "icon.png")
 
 
 def select(data, names):
@@ -134,13 +185,13 @@ def select(data, names):
     return picked
 
 
-def capture(binary, out, name, args, commit, saves=()):
+def capture(binary, out, name, args, commit, saves=(), icons=None):
     """One screenshot run in its own data folder; returns the manifest entry."""
     data_dir = out / ".data" / name
     if data_dir.exists():
         shutil.rmtree(data_dir)
     if saves:
-        write_saves(data_dir / "saves", saves)
+        write_saves(data_dir / "saves", saves, icons)
     png = out / (name + ".png")
     if png.exists():
         png.unlink()
@@ -189,7 +240,12 @@ def run(opts):
             for suffix, settings in variants(data, scene):
                 name = scene["name"] + suffix
                 args = scene_args(scene, settings)
-                entry = capture(opts.binary, out, name, args, opts.commit, scene.get("saves", ()))
+                saves = scene.get("saves", ())
+                icons = None
+                if any("icon" in save for save in saves):
+                    take_icons(opts.binary, out, scene["name"], saves)
+                    icons = out / ".icons" / scene["name"]
+                entry = capture(opts.binary, out, name, args, opts.commit, saves, icons)
                 entry.update(scene=scene["name"], group=scene.get("group"), settings=settings)
                 entry["placements"] = len(scene.get("place", [])) + sum(
                     len(fill_cells(f)) for f in scene.get("fill", [])
@@ -198,6 +254,7 @@ def run(opts):
                 failed += entry["png"] is None
     previous.write_text(json.dumps(manifest, indent=1, sort_keys=True) + "\n", encoding="utf-8")
     shutil.rmtree(out / ".data", ignore_errors=True)
+    shutil.rmtree(out / ".icons", ignore_errors=True)
     return 1 if failed else 0
 
 

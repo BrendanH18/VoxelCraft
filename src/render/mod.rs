@@ -18,6 +18,7 @@ mod gpu_timer;
 pub mod hand;
 mod item_sprites;
 mod outline;
+pub mod panorama;
 pub mod particles;
 pub mod signs;
 pub mod textures;
@@ -259,6 +260,18 @@ impl Viewport {
     }
 }
 
+/// v0.18 Track 7: the centred square of a view, copied for a world icon and
+/// read back without stalling the frame.
+struct IconReadback {
+    buffer: wgpu::Buffer,
+    side: u32,
+    /// Bytes between rows in `buffer`.
+    row: u32,
+    bgra: bool,
+    /// 0 while mapping, 1 mapped, 2 failed.
+    state: Arc<std::sync::atomic::AtomicU8>,
+}
+
 pub struct Renderer {
     pub window: Arc<Window>,
     surface: wgpu::Surface<'static>,
@@ -274,6 +287,12 @@ pub struct Renderer {
     /// The Mipmap Levels option: the smallest level samplers may reach.
     mipmap_levels: u32,
     font_bg: wgpu::BindGroup,
+    /// v0.18 Track 7: the UI image atlas (wordmark, world icons).
+    ui_images: wgpu::Texture,
+    /// v0.18 Track 7: the title panorama.
+    panorama: panorama::PanoramaPass,
+    /// v0.18 Track 7: a world icon read back from a drawn view.
+    icon: Option<IconReadback>,
     opaque_pipeline: wgpu::RenderPipeline,
     cutout_pipeline: wgpu::RenderPipeline,
     cross_pipeline: wgpu::RenderPipeline,
@@ -314,6 +333,8 @@ pub struct Renderer {
     /// frames so drawing allocates nothing once it has grown.
     instance_scratch: Vec<[f32; 3]>,
     capture: Option<std::path::PathBuf>,
+    /// v0.18 Track 7: the next frame's first view is copied for a world icon.
+    icon_requested: bool,
     offscreen: Option<wgpu::Texture>,
     /// Render to `offscreen` instead of the window (benchmarks).
     pub force_offscreen: bool,
@@ -589,23 +610,38 @@ impl Renderer {
         let blocks_bg = block_textures.bind_group(&device, mipmap_levels);
 
         let font_view = Self::create_font_texture(&device, &queue);
+        let ui_images = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("ui images"),
+            size: wgpu::Extent3d { width: ui::IMAGE_ATLAS, height: ui::IMAGE_ATLAS, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let ui_images_view = ui_images.create_view(&Default::default());
+        let plain_texture = |binding| wgpu::BindGroupLayoutEntry {
+            binding,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Texture {
+                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                view_dimension: wgpu::TextureViewDimension::D2,
+                multisampled: false,
+            },
+            count: None,
+        };
         let font_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("font layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Texture {
-                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                    view_dimension: wgpu::TextureViewDimension::D2,
-                    multisampled: false,
-                },
-                count: None,
-            }],
+            entries: &[plain_texture(0), plain_texture(1)],
         });
         let font_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("font"),
             layout: &font_layout,
-            entries: &[wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&font_view) }],
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&font_view) },
+                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&ui_images_view) },
+            ],
         });
         let ui_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("ui pipeline layout"),
@@ -859,6 +895,7 @@ impl Renderer {
         let blur = blur::Blur::new(&device, format);
         let block_models = block_model::BlockModelPass::new(&device, &layout, format, paged_blocks);
         let weather = weather::WeatherPass::new(&device, &layout, format);
+        let panorama = panorama::PanoramaPass::new(&device, format);
 
         // --- Shared buffers ----------------------------------------------
         let indices: Vec<u32> =
@@ -893,6 +930,9 @@ impl Renderer {
             block_textures,
             mipmap_levels,
             font_bg,
+            ui_images,
+            panorama,
+            icon: None,
             opaque_pipeline,
             cutout_pipeline,
             cross_pipeline,
@@ -926,6 +966,7 @@ impl Renderer {
             visible: Vec::new(),
             instance_scratch: Vec::new(),
             capture: None,
+            icon_requested: false,
             offscreen: None,
             offscreen_frames: [None, None],
             last_submission: None,
@@ -999,6 +1040,168 @@ impl Renderer {
     /// Blocks until the GPU has finished all submitted work.
     pub fn wait_idle(&self) {
         let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
+    }
+
+    /// v0.18 Track 7: copies the UI image atlas region `rect` from `rgba`
+    /// (rows `rect.w * 4` bytes).
+    pub fn upload_ui_image(&mut self, rect: ui::ImageRect, rgba: &[u8]) {
+        debug_assert_eq!(rgba.len(), (rect.w * rect.h * 4) as usize);
+        self.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.ui_images,
+                mip_level: 0,
+                origin: wgpu::Origin3d { x: rect.x, y: rect.y, z: 0 },
+                aspect: wgpu::TextureAspect::All,
+            },
+            rgba,
+            wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(rect.w * 4), rows_per_image: Some(rect.h) },
+            wgpu::Extent3d { width: rect.w, height: rect.h, depth_or_array_layers: 1 },
+        );
+    }
+
+    /// v0.18 Track 7: whether the title panorama's faces are on the GPU.
+    pub fn panorama_loaded(&self) -> bool {
+        self.panorama.loaded()
+    }
+
+    /// v0.18 Track 7: uploads the decoded panorama faces (kept until exit).
+    pub fn set_panorama(&mut self, faces: &panorama::Faces) {
+        self.panorama.upload(&self.device, &self.queue, faces);
+    }
+
+    /// GPU bytes the panorama's faces take.
+    pub fn panorama_bytes(&self) -> u64 {
+        self.panorama.bytes
+    }
+
+    /// v0.18 Track 7: draws a title frame, the panorama then `ui`; false if
+    /// it was skipped (window hidden) or no panorama is loaded.
+    pub fn render_title(&mut self, view: panorama::View, ui: &[UiVertex]) -> bool {
+        if !self.panorama.loaded() {
+            return false;
+        }
+        let Some(mut frame) = self.begin_frame() else { return false };
+        self.panorama.prepare(&self.queue, view, self.size());
+        let blurred = view.blur > 0;
+        if blurred {
+            self.panorama.ensure_blur_target(&self.device, self.size());
+        }
+        if ui.len() > self.ui_capacity {
+            self.ui_capacity = ui.len().next_power_of_two();
+            self.ui_buf = Self::create_ui_buffer(&self.device, self.ui_capacity);
+        }
+        if !ui.is_empty() {
+            self.queue.write_buffer(&self.ui_buf, 0, bytemuck::cast_slice(ui));
+        }
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        if let Some(target) = self.panorama.blur_view().filter(|_| blurred) {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("title blur"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: target,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            self.panorama.draw_blur(&mut pass);
+        }
+        let timed = self.gpu_timer.as_mut().and_then(|timer| timer.next_pass());
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("title"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &frame.view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.depth,
+                    depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(0.0), store: wgpu::StoreOp::Discard }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: timed.zip(self.gpu_timer.as_ref()).map(|((start, end), timer)| {
+                    wgpu::RenderPassTimestampWrites {
+                        query_set: &timer.queries,
+                        beginning_of_pass_write_index: Some(start),
+                        end_of_pass_write_index: Some(end),
+                    }
+                }),
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            if blurred {
+                self.panorama.draw_upscale(&mut pass);
+            } else {
+                self.panorama.draw(&mut pass);
+            }
+            if !ui.is_empty() {
+                pass.set_pipeline(&self.ui_pipeline);
+                pass.set_bind_group(0, &self.globals_bg, &[]);
+                pass.set_bind_group(1, &self.blocks_bg, &[]);
+                pass.set_bind_group(2, &self.font_bg, &[]);
+                pass.set_vertex_buffer(0, self.ui_buf.slice(..));
+                pass.draw(0..ui.len() as u32, 0..1);
+            }
+        }
+        self.last_submission = Some(self.queue.submit([encoder.finish()]));
+        frame.drawn = true;
+        self.stats.draw_calls = 1 + usize::from(blurred) + usize::from(!ui.is_empty());
+        self.end_frame(frame);
+        true
+    }
+
+    /// v0.18 Track 7: copies the centred square of the next frame's first
+    /// view, drawn without its HUD (as Java takes the icon before the GUI),
+    /// for [`Renderer::poll_icon`]. Ignored while one is being read back.
+    pub fn request_icon(&mut self) {
+        if self.icon.is_none() {
+            self.icon_requested = true;
+        }
+    }
+
+    /// v0.18 Track 7: the requested icon's square of pixels (RGBA, side x
+    /// side) once the GPU has finished it, `Some(Err)` if it can't be read.
+    /// Never waits for the GPU.
+    pub fn poll_icon(&mut self) -> Option<Result<(Vec<u8>, u32), String>> {
+        use std::sync::atomic::Ordering;
+        let state = self.icon.as_ref()?.state.load(Ordering::Acquire);
+        if state == 0 {
+            let _ = self.device.poll(wgpu::PollType::Poll);
+            return None;
+        }
+        let icon = self.icon.take()?;
+        if state != 1 {
+            return Some(Err("the icon's frame couldn't be read back".into()));
+        }
+        let mapped = icon.buffer.slice(..).get_mapped_range().map_err(|e| e.to_string());
+        let out = mapped.map(|mapped| {
+            let mut pixels = Vec::with_capacity((icon.side * icon.side * 4) as usize);
+            for y in 0..icon.side {
+                let line = &mapped[(y * icon.row) as usize..(y * icon.row + icon.side * 4) as usize];
+                for px in line.as_chunks::<4>().0 {
+                    pixels.extend_from_slice(&if icon.bgra {
+                        [px[2], px[1], px[0], 255]
+                    } else {
+                        [px[0], px[1], px[2], 255]
+                    });
+                }
+            }
+            (pixels, icon.side)
+        });
+        icon.buffer.unmap();
+        Some(out)
     }
 
     pub fn capture_pending(&self) -> bool {
@@ -1473,6 +1676,12 @@ impl Renderer {
         // the blur's scene target, and the menu is drawn after the blur.
         let blurring = p.blur > 0;
         let under = if blurring { p.ui_under_blur.min(hud.len()) } else { hud.len() };
+        // v0.18 Track 7: a world icon is taken from the first view, before its
+        // HUD; a frame blurred by a menu waits for one that isn't.
+        let icon_now = self.icon_requested && !frame.drawn && !blurring;
+        if icon_now {
+            self.icon_requested = false;
+        }
         if blurring {
             let size = (self.config.width, self.config.height);
             let rect = [vp.x as f32, vp.y as f32, (vp.x + vp.width) as f32, (vp.y + vp.height) as f32];
@@ -1592,7 +1801,7 @@ impl Renderer {
                 pass.set_bind_group(0, &self.globals_bg, &[]);
             }
 
-            if under > 0 {
+            if under > 0 && !icon_now {
                 pass.set_pipeline(&self.ui_pipeline);
                 pass.set_bind_group(2, &self.font_bg, &[]);
                 pass.set_vertex_buffer(0, self.ui_buf.slice(..));
@@ -1631,11 +1840,89 @@ impl Renderer {
                 pass.draw(under as u32..hud.len() as u32, 0..1);
             }
         }
+        if icon_now {
+            self.copy_icon(&mut encoder, &*frame, vp);
+            if !hud.is_empty() {
+                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("hud after icon"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view,
+                        depth_slice: None,
+                        resolve_target: None,
+                        ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
+                    })],
+                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                        view: &self.depth,
+                        depth_ops: Some(wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(0.0),
+                            store: wgpu::StoreOp::Discard,
+                        }),
+                        stencil_ops: None,
+                    }),
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                    multiview_mask: None,
+                });
+                pass.set_viewport(vp.x as f32, vp.y as f32, vp.width as f32, vp.height as f32, 0.0, 1.0);
+                pass.set_scissor_rect(vp.x, vp.y, vp.width, vp.height);
+                pass.set_pipeline(&self.ui_pipeline);
+                pass.set_bind_group(0, &self.globals_bg, &[]);
+                pass.set_bind_group(1, &self.blocks_bg, &[]);
+                pass.set_bind_group(2, &self.font_bg, &[]);
+                pass.set_vertex_buffer(0, self.ui_buf.slice(..));
+                pass.draw(0..hud.len() as u32, 0..1);
+            }
+        }
         self.last_submission = Some(self.queue.submit([encoder.finish()]));
+        if let Some(icon) = &self.icon
+            && icon.state.load(std::sync::atomic::Ordering::Acquire) == 0
+            && icon_now
+        {
+            let state = icon.state.clone();
+            icon.buffer.slice(..).map_async(wgpu::MapMode::Read, move |r| {
+                state.store(if r.is_ok() { 1 } else { 2 }, std::sync::atomic::Ordering::Release);
+            });
+        }
         frame.drawn = true;
         stats.gpu_bytes = self.arena.capacity_bytes();
         stats.gpu_used_bytes = self.arena.used_bytes();
         self.stats = stats;
+    }
+
+    /// v0.18 Track 7: copies the centred square of `vp` into a buffer for
+    /// [`Renderer::poll_icon`] (Java's `GameRenderer.takeAutoScreenshot`).
+    fn copy_icon(&mut self, encoder: &mut wgpu::CommandEncoder, frame: &Frame, vp: Viewport) {
+        let target = match &frame.surface {
+            Some(f) => &f.texture,
+            None => self.offscreen.as_ref().unwrap(),
+        };
+        if !target.usage().contains(wgpu::TextureUsages::COPY_SRC) {
+            log::warn!("surface doesn't support COPY_SRC; can't take the world icon");
+            return;
+        }
+        let (dx, dy, side) = voxelcraft::title::icon::square_crop(vp.width, vp.height);
+        let row = (side * 4).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("world icon"),
+            size: (row * side) as u64,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture: target,
+                mip_level: 0,
+                origin: wgpu::Origin3d { x: vp.x + dx, y: vp.y + dy, z: 0 },
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &buffer,
+                layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(row), rows_per_image: Some(side) },
+            },
+            wgpu::Extent3d { width: side, height: side, depth_or_array_layers: 1 },
+        );
+        let bgra = matches!(self.config.format, wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb);
+        self.icon = Some(IconReadback { buffer, side, row, bgra, state: Arc::default() });
     }
 
     /// Saves a requested screenshot and presents the frame.
@@ -1710,6 +1997,7 @@ mod tests {
             ("sky", include_str!("shaders/sky.wgsl")),
             ("weather", include_str!("shaders/weather.wgsl")),
             ("outline", include_str!("shaders/outline.wgsl")),
+            ("panorama", include_str!("shaders/panorama.wgsl")),
         ];
         for (name, source) in shaders {
             for paged in [None, Some(256), Some(2048)] {

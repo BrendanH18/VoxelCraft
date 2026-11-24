@@ -77,6 +77,9 @@ pub struct Settings {
     /// v0.18 Track 2: Menu Background Blur (`menuBackgroundBlurriness`,
     /// 0 to 10, default 5; 0 is OFF): the blur radius behind menus.
     pub menu_blur: u32,
+    /// v0.18 Track 7: Panorama Scroll Speed (`panoramaScrollSpeed`, 0..1,
+    /// 1): how fast the title panorama turns.
+    pub panorama_speed: f64,
     pub keys: super::keys::Bindings,
 }
 
@@ -135,6 +138,7 @@ impl Default for Settings {
             background_for_chat_only: true,
             mipmap_levels: MIPMAP_LEVELS.1,
             menu_blur: MENU_BLUR_DEFAULT,
+            panorama_speed: voxelcraft::title::options::PANORAMA_SPEED_DEFAULT,
             keys: Default::default(),
         }
     }
@@ -264,6 +268,7 @@ impl Settings {
             "backgroundForChatOnly" => flag(&mut self.background_for_chat_only),
             "mipmapLevels" => self.mipmap_levels = value.parse().unwrap_or(self.mipmap_levels),
             "menuBackgroundBlurriness" => self.menu_blur = value.parse().unwrap_or(self.menu_blur),
+            "panoramaScrollSpeed" => self.panorama_speed = num().unwrap_or(self.panorama_speed),
             _ => return self.keys.parse_line(key, value),
         }
         true
@@ -271,7 +276,7 @@ impl Settings {
 
     fn serialize_display_controls(&self, out: &mut String) {
         out.push_str(&format!(
-            "guiScale={}\nmaxFps={}\ngamma={}\nfovEffectScale={}\nscreenEffectScale={}\ndamageTiltStrength={}\ntoggleCrouch={}\ntoggleSprint={}\ninvertXMouse={}\ninvertYMouse={}\nmouseWheelSensitivity={:.4}\ndiscrete_mouse_scroll={}\nshowSubtitles={}\ntextBackgroundOpacity={}\nbackgroundForChatOnly={}\nmipmapLevels={}\nmenuBackgroundBlurriness={}\n",
+            "guiScale={}\nmaxFps={}\ngamma={}\nfovEffectScale={}\nscreenEffectScale={}\ndamageTiltStrength={}\ntoggleCrouch={}\ntoggleSprint={}\ninvertXMouse={}\ninvertYMouse={}\nmouseWheelSensitivity={:.4}\ndiscrete_mouse_scroll={}\nshowSubtitles={}\ntextBackgroundOpacity={}\nbackgroundForChatOnly={}\nmipmapLevels={}\nmenuBackgroundBlurriness={}\npanoramaScrollSpeed={}\n",
             self.gui_scale,
             self.max_fps,
             self.brightness,
@@ -289,6 +294,7 @@ impl Settings {
             self.background_for_chat_only,
             self.mipmap_levels,
             self.menu_blur,
+            self.panorama_speed,
         ));
         self.keys.serialize(out);
     }
@@ -344,6 +350,7 @@ impl Settings {
         ] {
             *v = v.clamp(0.0, 1.0);
         }
+        self.panorama_speed = self.panorama_speed.clamp(0.0, 1.0);
         let (lo, hi) = SCROLL_STEPS;
         self.scroll_sensitivity = self.scroll_sensitivity.clamp(scroll_sensitivity(lo), scroll_sensitivity(hi));
         self
@@ -513,6 +520,24 @@ mod tests {
         assert_eq!(back.background_opacity(0.8), 0.25, "Everywhere uses the opacity");
         assert!(!Settings::parse("fov=80\n").show_subtitles);
         assert_eq!(Settings::parse("textBackgroundOpacity=7\n").text_background_opacity, 1.0);
+    }
+
+    /// v0.18 Track 7: Panorama Scroll Speed keeps Java's key, default and
+    /// 0..1 range, survives a save, and old files get the default.
+    #[test]
+    fn panorama_speed_round_trips_with_javas_key_and_default() {
+        use voxelcraft::title::options::{PANORAMA_SPEED_DEFAULT, PANORAMA_SPEED_KEY};
+        assert_eq!(Settings::default().panorama_speed, PANORAMA_SPEED_DEFAULT);
+        assert_eq!(PANORAMA_SPEED_KEY, "panoramaScrollSpeed");
+        let s = Settings { panorama_speed: 0.37, ..Settings::default() };
+        let text = s.serialize();
+        assert!(text.contains("\npanoramaScrollSpeed=0.37\n"), "{text}");
+        assert_eq!(Settings::parse(&text), s);
+        assert_eq!(Settings::parse("fov=80\n").panorama_speed, 1.0, "old files keep the default");
+        assert_eq!(Settings::parse("panoramaScrollSpeed=4\n").panorama_speed, 1.0);
+        assert_eq!(Settings::parse("panoramaScrollSpeed=-1\n").panorama_speed, 0.0);
+        assert_eq!(Settings::parse("panoramaScrollSpeed=nan\n").panorama_speed, 1.0);
+        assert_eq!(Settings::parse("panoramaScrollSpeed=0\n").panorama_speed, 0.0, "zero stops it");
     }
 
     #[test]

@@ -1635,3 +1635,29 @@ and height and the crop and stem light and growth constants to it
 ([record](../../../../docs/verification/2026-11-23-v0.17-reference-contraptions.md#farms-follow-up-2026-11-23)).
 VoxelCraft's cactus doesn't grow, and its bamboo lacks Java's `STAGE`; those
 facts wait in the fixture.
+
+## Title panorama and world icons (v0.18 Track 7)
+
+`title.json` holds the client's title facts: the panorama's field of view,
+near and far planes and tilt (`CubeMap.render`, `GuiRenderer`), its spin per
+real-time tick and its option (`Panorama.extractRenderState`,
+`Options.panoramaSpeed`: `panoramaScrollSpeed`, a unit slider defaulting
+to 1.0 with a percentage label), Accessibility Settings' option order, the
+logo box (`LogoRenderer`), the world icon's capture rule and size
+(`GameRenderer.tryTakeScreenshotIfNeeded`/`takeAutoScreenshot`,
+`FaviconTexture`), its list size and hover wash (`WorldListEntry`), Edit
+World's button column (`EditWorldScreen`) and the English labels. The
+extractor checks each method's shape and fails if Java changes it. It needs
+`javap`:
+
+```sh
+python3 tools/extract_java_title_fixtures.py /path/to/client.jar --output target/java-title.json
+diff tests/fixtures/java/26.3/title.json target/java-title.json
+scripts/boat-check.sh -- 'cargo test --profile ci --locked --test title_identity'
+```
+
+`tests/title_identity.rs` checks `voxelcraft::title` against it
+([record](../../../../docs/verification/2026-11-23-v0.18-title.md)). Two
+facts come from the 26.3 asset index (index 34), not the jar, and are
+recorded there: the panorama faces are 1024 x 1024 and
+`panorama_overlay.png` is a single transparent pixel.

@@ -23,10 +23,6 @@ impl gui::Host for Game {
     fn click(&mut self) {
         self.audio.ui_click();
     }
-
-    fn in_world(&self) -> bool {
-        true
-    }
 }
 
 impl OptionsHost for Game {

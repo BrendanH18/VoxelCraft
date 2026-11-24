@@ -365,9 +365,6 @@ mod tests {
         fn click(&mut self) {
             self.clicks += 1;
         }
-        fn in_world(&self) -> bool {
-            true
-        }
     }
 
     impl DeathHost for Dead {

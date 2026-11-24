@@ -143,8 +143,6 @@ pub(super) trait Host: 'static {
     type Out;
     /// The UI click sound.
     fn click(&mut self);
-    /// Whether a world is open behind the menus.
-    fn in_world(&self) -> bool;
 }
 
 /// What a screen asks the stack to do after an input.
@@ -311,15 +309,12 @@ pub(super) trait Screen<H: Host>: 'static {
     fn title_y(&self, _size: Size, _first_widget: f32) -> f32 {
         layout::TITLE_Y
     }
-    fn background(&self, host: &H, ui: &mut Ui, (sw, sh): Size) {
-        if host.in_world() {
-            // v0.18 Track 2: Java's in-world menu backdrop over the blurred
-            // world (`Screen.extractMenuBackground`, 25% black).
-            ui.rect(0.0, 0.0, sw, sh, style::argb(style::MENU_VEIL));
-        } else {
-            // Blending is in linear space: it takes a high alpha to look dark.
-            ui.rect(0.0, 0.0, sw, sh, [0.0, 0.0, 0.0, 0.6]);
-        }
+    fn background(&self, _host: &H, ui: &mut Ui, (sw, sh): Size) {
+        // v0.18 Track 2: Java's menu backdrop over the blurred world
+        // (`Screen.extractMenuBackground`, 25% black). Track 7: off the world
+        // Java's `menu_background.png` is the same black at 64 of 255, over
+        // the blurred title panorama.
+        ui.rect(0.0, 0.0, sw, sh, style::argb(style::MENU_VEIL));
     }
     /// Whether the world behind blurs (Menu Background Blur) while this
     /// screen is on top: Java's ordinary screens do; the death screen,
@@ -811,8 +806,8 @@ impl<H: Host> Stack<H> {
         }
     }
 
-    /// How many screens are open, for tests.
-    #[cfg(test)]
+    /// How many screens are open (the title draws its panorama sharp only
+    /// under the title menu alone).
     pub fn depth(&self) -> usize {
         self.entries.len()
     }
