@@ -194,7 +194,9 @@ src/
                      screen and the pause menu
     title/           title screen, Select World, Edit World, Create New World,
                      the newer-version backup prompt, Multiplayer and the
-                     update screen, all on the toolkit
+                     update screen, all on the toolkit; the wordmark and
+                     default world icon (art.rs)
+    world_icon.rs    taking a world's icon.png on its first visit
     settings.rs      options file (per-user data folder: saves/options.txt)
     weather.rs       rain/snow render geometry
     mobs.rs          mob glue: melee, loot, explosions, entity events, --spawn
@@ -280,7 +282,8 @@ src/
     block_model.rs   free-standing textured blocks (falling sand, dropped items)
     hand.rs          first-person hand and held item (Minecraft's transforms)
     item_sprites.rs  procedural item icons (their own texture array, layers 256+)
-    ui.rs            HUD geometry: rects, bitmap text, block icons
+    ui.rs            HUD geometry: rects, bitmap text, block icons, UI images
+    panorama.rs      the title panorama: six faces, spin, blur
     textures.rs      procedural block textures
     shaders/         WGSL
 ```
