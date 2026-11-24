@@ -211,6 +211,22 @@ pub struct TrialSpawner {
     pub next_spawn: Option<u8>,
     /// `ejectingLootTable`: an index into the active configuration's loot.
     pub ejecting_loot: Option<u8>,
+    /// v0.18 Track 4: the mob a spawn egg set (`FullConfig.overrideEntity`:
+    /// both configurations spawn only it). Saved as `entity`.
+    pub entity: Option<MobKind>,
+}
+
+/// `TrialSpawnerConfig.withSpawning(type)`: one potential, the bare entity
+/// id (so `finalizeSpawn` runs), weight 1.
+fn override_potentials(kind: MobKind) -> &'static [Potential] {
+    static TABLE: std::sync::OnceLock<Vec<[Potential; 1]>> = std::sync::OnceLock::new();
+    let table = TABLE.get_or_init(|| {
+        MobKind::ALL
+            .iter()
+            .map(|&kind| [Potential { kind, baby: false, size: None, finalize: true, equipment: None, weight: 1 }])
+            .collect()
+    });
+    &table[MobKind::ALL.iter().position(|&k| k == kind).unwrap_or(0)]
 }
 
 impl TrialSpawner {
@@ -221,6 +237,14 @@ impl TrialSpawner {
                 if ominous { &c.2 } else { &c.1 }
             }
             _ => &EMPTY,
+        }
+    }
+
+    /// The active configuration's `spawn_potentials`, or the spawn egg's mob.
+    pub fn potentials(&self, ominous: bool) -> &'static [Potential] {
+        match self.entity {
+            Some(kind) => override_potentials(kind),
+            None => self.config(ominous).potentials,
         }
     }
 
@@ -258,6 +282,7 @@ impl TrialSpawner {
             "total_mobs_spawned": self.total_mobs_spawned,
             "spawn_data": self.next_spawn,
             "ejecting_loot_table": self.ejecting_loot,
+            "entity": self.entity.map(MobKind::name),
         })
     }
 
@@ -278,6 +303,7 @@ impl TrialSpawner {
             total_mobs_spawned: v["total_mobs_spawned"].as_u64().and_then(|n| u32::try_from(n).ok()).unwrap_or(0),
             next_spawn: small(&v["spawn_data"]),
             ejecting_loot: small(&v["ejecting_loot_table"]),
+            entity: v["entity"].as_str().and_then(MobKind::from_name),
         })
     }
 }

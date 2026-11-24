@@ -19,6 +19,9 @@ pub enum Command {
     Observe(i32),
     Players,
     Catalog(String),
+    /// v0.18 Track 4: `hotbar save|load 1..9`, the creative saved hotbars
+    /// (Java's activator + hotbar key): `true` loads, the row is 0..9.
+    Hotbar(bool, u8),
     Look(f32, f32),
     Run(MoveInput, u32, bool),
     Eat,
@@ -188,6 +191,7 @@ const COMMAND_NAMES: &[&str] = &[
     "trade",
     "players",
     "catalog",
+    "hotbar",
     "furnace",
     "recipe",
     "recipes",
@@ -756,6 +760,10 @@ impl Command {
             ["observe", r] => Self::Observe(r.parse::<i32>().ok().filter(|r| (0..=2).contains(r)).ok_or_else(bad)?),
             ["players"] => Self::Players,
             ["catalog", query @ ..] => Self::Catalog(query.join(" ")),
+            ["hotbar", action @ ("save" | "load"), n] => {
+                let row = n.parse::<u8>().ok().filter(|n| (1..=9).contains(n)).ok_or_else(bad)?;
+                Self::Hotbar(*action == "load", row - 1)
+            }
             ["look", yaw, pitch] => {
                 Self::Look(number(yaw)?.rem_euclid(360.0) as f32, number(pitch)?.clamp(-89.0, 89.0) as f32)
             }

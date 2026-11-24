@@ -26,6 +26,8 @@ pub(super) enum Category {
     Multiplayer,
     Gameplay,
     Inventory,
+    /// v0.18 Track 4: `KeyMapping.Category.CREATIVE`.
+    Creative,
     Debug,
     VoxelCraft,
 }
@@ -38,6 +40,7 @@ impl Category {
             Category::Multiplayer => "Multiplayer",
             Category::Gameplay => "Gameplay",
             Category::Inventory => "Inventory",
+            Category::Creative => "Creative Mode",
             Category::Debug => "Debug",
             Category::VoxelCraft => "VoxelCraft",
         }
@@ -83,9 +86,13 @@ pub(super) enum Action {
     RenderDistanceDown,
     RenderDistanceUp,
     SwapHands,
+    /// v0.18 Track 4: saved hotbars (`keySaveHotbarActivator`,
+    /// `keyLoadHotbarActivator`), appended so saved bindings keep their order.
+    SaveHotbar,
+    LoadHotbar,
 }
 
-pub(super) const COUNT: usize = Action::SwapHands as usize + 1;
+pub(super) const COUNT: usize = Action::LoadHotbar as usize + 1;
 
 /// One row of the table: save name, label, category and default.
 struct Spec {
@@ -144,6 +151,9 @@ const SPECS: [Spec; COUNT] = [
     spec("key.voxelcraft.renderDistanceDown", "Lower Render Distance", C::VoxelCraft, key(KeyCode::BracketLeft)),
     spec("key.voxelcraft.renderDistanceUp", "Raise Render Distance", C::VoxelCraft, key(KeyCode::BracketRight)),
     spec("key.swapOffhand", "Swap Item With Offhand", C::Inventory, key(KeyCode::KeyF)),
+    // `Options`: HID usage 6 (C) and 27 (X), `KeyMapping.Category.CREATIVE`.
+    spec("key.saveToolbarActivator", "Save Hotbar Activator", C::Creative, key(KeyCode::KeyC)),
+    spec("key.loadToolbarActivator", "Load Hotbar Activator", C::Creative, key(KeyCode::KeyX)),
 ];
 
 impl Action {
@@ -185,6 +195,8 @@ impl Action {
             RenderDistanceDown,
             RenderDistanceUp,
             SwapHands,
+            SaveHotbar,
+            LoadHotbar,
         ]
     };
 
@@ -207,6 +219,11 @@ impl Action {
     /// The hotbar slot (0..9) a hotbar action selects.
     pub fn hotbar(self) -> Option<usize> {
         (self as usize).checked_sub(Action::Hotbar1 as usize).filter(|&i| i < 9)
+    }
+
+    /// The action that selects hotbar slot `i` (0..9).
+    pub fn hotbar_key(i: usize) -> Action {
+        Action::ALL[Action::Hotbar1 as usize + i.min(8)]
     }
 
     /// Every action in Java's Key Binds order: by category, then `order`,

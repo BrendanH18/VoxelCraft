@@ -15,7 +15,7 @@ use glam::IVec3;
 use super::hud::{SlotRef, draw_stack};
 use super::{Container, Game};
 use crate::inventory::Stack;
-use crate::item::{ArmorPiece, Item};
+use crate::item::ArmorPiece;
 use crate::render::ui::{Ui, WHITE};
 use crate::world::block::Block;
 use voxelcraft::agent::Command;
@@ -40,8 +40,10 @@ pub(super) enum Nav {
 pub(super) enum Tab {
     Inventory,
     Crafting,
-    /// Creative players' item palette.
-    Palette,
+    /// v0.18 Track 4: one of Java's creative tabs (an index into
+    /// `creative::catalogue`): the item tabs in Java's order, then Saved
+    /// Hotbars. Search needs typing, so it stays with the mouse and keyboard.
+    Palette(u8),
     Chest(IVec3),
     /// The player's own ender inventory, at the ender chest in this cell.
     EnderChest(IVec3),
@@ -221,7 +223,7 @@ impl Menu {
     pub fn items(tab: Tab) -> Self {
         // Start on the hotbar, or the first entry of a list.
         let row = match tab {
-            Tab::Crafting | Tab::Palette | Tab::Trading(_) => 0,
+            Tab::Crafting | Tab::Palette(_) | Tab::Trading(_) => 0,
             _ => rows(tab, Lists::default()) - 1,
         };
         Menu::Items { tab, col: 0, row }
@@ -286,7 +288,7 @@ impl Menu {
                     Nav::Lb | Nav::Rb => {
                         let mut cycle = vec![Tab::Inventory, Tab::Crafting];
                         if lists.palette > 0 {
-                            cycle.push(Tab::Palette);
+                            cycle.extend(creative_tabs().into_iter().map(Tab::Palette));
                         }
                         // Containers keep their own screen.
                         if let Some(i) = cycle.iter().position(|t| t == tab) {
@@ -340,7 +342,7 @@ fn rows(tab: Tab, lists: Lists) -> usize {
         Tab::Trading(_) => 6,
         Tab::Chest(_) | Tab::EnderChest(_) | Tab::Vehicle(_) => container_rows(lists) + 4,
         Tab::Crafting => lists.crafts.div_ceil(COLS),
-        Tab::Palette => lists.palette.div_ceil(COLS),
+        Tab::Palette(_) => lists.palette.div_ceil(COLS),
     }
 }
 
@@ -364,7 +366,7 @@ fn row_len(tab: Tab, row: usize, lists: Lists) -> usize {
             return (lists.choices - (row - 1) * COLS).min(COLS);
         }
         Tab::Crafting => lists.crafts,
-        Tab::Palette => lists.palette,
+        Tab::Palette(_) => lists.palette,
         _ => return COLS,
     };
     if row + 1 == list.div_ceil(COLS) && !list.is_multiple_of(COLS) { list % COLS } else { COLS }
@@ -418,13 +420,33 @@ fn slot(tab: Tab, col: usize, row: usize, lists: Lists) -> Slot {
         Tab::Chest(_) | Tab::EnderChest(_) | Tab::Vehicle(_) if row == container_rows(lists) + 3 => inv(col),
         Tab::Chest(_) | Tab::EnderChest(_) | Tab::Vehicle(_) => inv(COLS * (row - container_rows(lists) + 1) + col),
         Tab::Crafting => Slot::Recipe(COLS * row + col),
-        Tab::Palette => Slot::Palette(COLS * row + col),
+        Tab::Palette(_) => Slot::Palette(COLS * row + col),
     }
 }
 
-/// Every item the creative palette offers, in order.
-fn palette() -> Vec<Item> {
-    Item::creative_palette().collect()
+/// v0.18 Track 4: the creative tabs a controller pages through with LB/RB:
+/// Java's item tabs in its order, then Saved Hotbars.
+pub(super) fn creative_tabs() -> Vec<u8> {
+    use voxelcraft::creative::Kind;
+    let c = voxelcraft::creative::catalogue();
+    let of = |kind: Kind| c.shown().filter(move |&i| c.tabs[i].kind == kind).map(|i| i as u8);
+    of(Kind::Category).chain(of(Kind::Hotbar)).collect()
+}
+
+/// What creative tab `tab` lists: its stacks, or the saved hotbars' 81
+/// cells (empty cells as `None`).
+fn palette(tab: u8, hotbars: &voxelcraft::creative::Hotbars) -> Vec<Option<Stack>> {
+    let c = voxelcraft::creative::catalogue();
+    match c.tabs.get(tab as usize) {
+        Some(t) if t.kind == voxelcraft::creative::Kind::Hotbar => hotbars.cells(),
+        _ => c.items(tab as usize).iter().copied().map(Some).collect(),
+    }
+}
+
+/// Whether creative tab `tab` is Saved Hotbars.
+fn is_hotbar_tab(tab: Tab) -> bool {
+    matches!(tab, Tab::Palette(t) if voxelcraft::creative::catalogue().tabs.get(t as usize)
+        .is_some_and(|t| t.kind == voxelcraft::creative::Kind::Hotbar))
 }
 
 impl Game {
@@ -473,7 +495,12 @@ impl Game {
         Lists {
             choices: self.pad_choices(name, tab),
             crafts: if tab == Tab::Crafting { self.pad_crafts(name).len() } else { 0 },
-            palette: if creative { Item::creative_palette().count() } else { 0 },
+            // Any count signals creative; a creative tab gives its length.
+            palette: match tab {
+                _ if !creative => 0,
+                Tab::Palette(t) => palette(t, &self.hotbars).len().max(1),
+                _ => 1,
+            },
             container: match tab {
                 Tab::Chest(p) => self.world.container_slots(p),
                 Tab::Vehicle(id) => self.mobs.entities.vehicle_slots(id).map_or(0, |s| s.len()),
@@ -509,9 +536,26 @@ impl Game {
         };
         let slot = match slot {
             Slot::Ref(s) => s,
-            Slot::Palette(i) => match palette().get(i) {
-                Some(&item) => SlotRef::Palette(item),
-                None => return true,
+            // v0.18 Track 4: on Saved Hotbars, Y loads the row under the
+            // cursor into this player's hotbar and X saves it there.
+            Slot::Palette(i) if is_hotbar_tab(tab) && (quick || right) => {
+                let Some(bot) = self.agents.players.get_mut(name) else { return false };
+                if quick {
+                    self.hotbars.load(i / COLS, &mut bot.agent.session.inventory);
+                } else {
+                    self.hotbars.store(i / COLS, &bot.agent.session.inventory);
+                    self.save_hotbars();
+                }
+                self.audio.ui_click();
+                return true;
+            }
+            Slot::Palette(i) => match tab {
+                Tab::Palette(t) => match palette(t, &self.hotbars).get(i) {
+                    Some(Some(stack)) => SlotRef::Palette(*stack),
+                    Some(None) => SlotRef::PaletteEmpty,
+                    None => return true,
+                },
+                _ => return true,
             },
             Slot::Recipe(i) => {
                 // v0.18 Track 5: A places one set through the recipe book and
@@ -628,7 +672,7 @@ impl Game {
             }
         };
         let crafts = if tab == Tab::Crafting { self.pad_crafts(name) } else { Vec::new() };
-        let items = if tab == Tab::Palette { palette() } else { Vec::new() };
+        let items = if let Tab::Palette(t) = tab { palette(t, &self.hotbars) } else { Vec::new() };
         let lists = Lists {
             choices: self.pad_choices(name, tab),
             crafts: crafts.len(),
@@ -664,7 +708,7 @@ impl Game {
             Tab::Chest(_) | Tab::EnderChest(_) | Tab::Vehicle(_) => {
                 4.0 * ((r >= container_rows(lists)) as u8 + (r >= container_rows(lists) + 3) as u8) as f32
             }
-            Tab::Crafting | Tab::Palette => 0.0,
+            Tab::Crafting | Tab::Palette(_) => 0.0,
         };
         let pw = COLS as f32 * 18.0 + 12.0;
         let ph = 18.0 * shown.max(1) as f32 + gap(n.saturating_sub(1)) + 26.0;
@@ -679,10 +723,19 @@ impl Game {
         };
         let book_title =
             format!("Recipe Book: {filter}  (X: filter, {})", if creative { "RB: items" } else { "LB: inventory" });
+        let tab_title;
         let title = match tab {
             Tab::Inventory => "Inventory  (RB: recipe book)",
             Tab::Crafting => book_title.as_str(),
-            Tab::Palette => "Items  (RB: inventory)",
+            Tab::Palette(t) => {
+                let name = voxelcraft::creative::catalogue().tabs.get(t as usize).map_or("", |t| t.title.as_str());
+                tab_title = if is_hotbar_tab(tab) {
+                    format!("{name}  (Y: load row, X: save row)")
+                } else {
+                    format!("{name}  (LB/RB: tabs)")
+                };
+                &tab_title
+            }
             Tab::Chest(p) if self.world.chest_partner(p).is_some() => "Large Chest",
             Tab::Chest(p) if super::crafter::is_crafter(&self.world, p) => "Crafter  (A on an empty slot: toggle)",
             Tab::Chest(p) => super::hud::container_title(self.world.get_block(p)),
@@ -804,7 +857,7 @@ impl Game {
                     Slot::Ref(s) if super::workstations::is_workstation_slot(s) => self.pad_workstation_slot(name, s),
                     Slot::Ref(_) => None,
                     Slot::Recipe(i) => crafts.get(i).map(|&(_, result, _)| result),
-                    Slot::Palette(i) => items.get(i).map(|&item| Stack::new(item, 1)),
+                    Slot::Palette(i) => items.get(i).copied().flatten(),
                 };
                 if let Some(stack) = stack {
                     draw_stack(ui, x - 0.5, y - 0.5, stack, true, dial);
@@ -994,7 +1047,7 @@ mod tests {
 
         let creative = Lists { crafts: 0, palette: 30, container: 27, choices: 0 };
         m.press(Nav::Lb, creative);
-        assert!(matches!(m, Menu::Items { tab: Tab::Palette, .. }), "LB wraps back to the palette");
+        assert!(matches!(m, Menu::Items { tab: Tab::Palette(_), .. }), "LB wraps back to the creative tabs");
         m.press(Nav::Up, creative);
         m.press(Nav::Right, creative);
         assert_eq!(m.slot(creative), Some(Slot::Palette(28)), "last row");

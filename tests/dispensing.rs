@@ -486,3 +486,29 @@ fn queued_dispenses_survive_save_and_reload() {
     loaded.tick_automation_entities(&mut e);
     assert_eq!(e.items.len(), 1);
 }
+
+/// v0.18 Track 4: `SpawnEggItemBehavior`: the egg's mob appears in front,
+/// dropped onto the floor (the dispenser doesn't face up), the egg is used
+/// and `entity_place` is posted; on Peaceful a monster's egg stays put.
+#[test]
+fn spawn_eggs_spawn_their_mob_in_front() {
+    use voxelcraft::content::spawn_egg;
+    let egg = spawn_egg::egg(MobKind::Cow).unwrap();
+    assert_eq!(dispensing::behaviour(egg), Behaviour::SpawnEgg);
+    let mut w = world();
+    let mut e = Entities::new(1);
+    fire(&mut w, &mut e, Stack::new(egg, 2), &mut []);
+    assert_eq!(e.mobs.len(), 1);
+    assert_eq!(e.mobs[0].kind, MobKind::Cow);
+    // In front of the dispenser at P (y 145), on the floor at y 144's top.
+    assert_eq!(e.mobs[0].pos, centre(FRONT));
+    assert_eq!(held(&w).map(|s| s.count), Some(1));
+
+    let creeper = spawn_egg::egg(MobKind::Creeper).unwrap();
+    let mut w = world();
+    w.rules.difficulty = 0;
+    let mut e = Entities::new(1);
+    fire(&mut w, &mut e, Stack::new(creeper, 1), &mut []);
+    assert!(e.mobs.is_empty(), "Peaceful: no creeper");
+    assert_eq!(held(&w).map(|s| s.count), Some(1), "and the egg stays");
+}

@@ -1,5 +1,5 @@
 //! Inventory search input shared by creative filtering and survival/container highlighting.
-use super::{Container, Game};
+use super::Game;
 use crate::render::ui::{Ui, WHITE};
 use winit::event::KeyEvent;
 use winit::keyboard::{KeyCode, PhysicalKey};
@@ -13,6 +13,9 @@ pub(super) struct Search {
 }
 impl Game {
     pub(super) fn search_key(&mut self, event: &KeyEvent) -> bool {
+        if self.inventory_open && self.shows_palette() {
+            return self.creative_search_key(event);
+        }
         if !self.inventory_open || !self.shows_search() {
             return false;
         }
@@ -45,7 +48,6 @@ impl Game {
                 } else {
                     self.search.query.pop();
                 }
-                self.creative_scroll = 0;
             }
             _ => {
                 if !self.modifiers.control_key()
@@ -61,12 +63,74 @@ impl Game {
                             self.search.query.push(c);
                         }
                     }
-                    self.creative_scroll = 0;
                 }
             }
         }
         true
     }
+    /// v0.18 Track 4: typing on the creative search tab, whose box always
+    /// has focus (`setCanLoseFocus(false)`). A number key over a filled
+    /// slot swaps instead (`checkHotbarKeyPressed`); Escape closes.
+    fn creative_search_key(&mut self, event: &KeyEvent) -> bool {
+        if self.creative.kind() != voxelcraft::creative::Kind::Search {
+            return false;
+        }
+        let PhysicalKey::Code(code) = event.physical_key else { return true };
+        let digit = matches!(
+            code,
+            KeyCode::Digit1
+                | KeyCode::Digit2
+                | KeyCode::Digit3
+                | KeyCode::Digit4
+                | KeyCode::Digit5
+                | KeyCode::Digit6
+                | KeyCode::Digit7
+                | KeyCode::Digit8
+                | KeyCode::Digit9
+        );
+        if digit && !matches!(self.slot_under_cursor(), None | Some(super::hud::SlotRef::PaletteEmpty)) {
+            return false;
+        }
+        let before = self.search.query.clone();
+        match code {
+            KeyCode::Escape => {
+                self.toggle_inventory();
+                return true;
+            }
+            KeyCode::KeyA if self.modifiers.control_key() => self.search.selected = true,
+            KeyCode::Backspace | KeyCode::Delete => {
+                if self.search.selected {
+                    self.search.query.clear();
+                    self.search.selected = false;
+                } else {
+                    self.search.query.pop();
+                }
+            }
+            _ => {
+                if !self.modifiers.control_key()
+                    && !self.modifiers.super_key()
+                    && let Some(text) = &event.text
+                {
+                    if text.chars().any(|c| !c.is_control()) && self.search.selected {
+                        self.search.query.clear();
+                        self.search.selected = false;
+                    }
+                    // `EditBox.setMaxLength(50)`.
+                    for c in text.chars().filter(|c| !c.is_control()) {
+                        if self.search.query.chars().count() < 50 {
+                            self.search.query.push(c);
+                        }
+                    }
+                }
+            }
+        }
+        // `refreshSearchResults` scrolls back to the top.
+        if self.search.query != before {
+            self.creative.scroll = 0.0;
+        }
+        true
+    }
+
     pub(super) fn search_click(&mut self) -> bool {
         if !self.shows_search() {
             return false;
@@ -88,11 +152,7 @@ impl Game {
         }
         let room = w - 6.0;
         let text = if self.search.query.is_empty() && !self.search.focused {
-            let hints: &[&str] = if self.session.mode.is_creative() && self.body.container == Container::Inventory {
-                &["Search items..."]
-            } else {
-                &["Find items (Ctrl+F)...", "Find items..."]
-            };
+            let hints: &[&str] = &["Find items (Ctrl+F)...", "Find items..."];
             // The longest hint that fits, never a clipped one.
             hints.iter().find(|h| Ui::text_width(h) <= room).unwrap_or(&hints[hints.len() - 1]).to_string()
         } else {

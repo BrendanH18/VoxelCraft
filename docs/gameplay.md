@@ -20,7 +20,8 @@ Sprint can be set to Toggle there.
 | Left / right click | Break / place block (hold to repeat); left click on a mob attacks it; respawn on the death screen |
 | Middle click | Pick block |
 | Q / Ctrl+Q | Drop one of the selected item / the whole stack (with the inventory open: from the slot under the mouse) |
-| E | Inventory (click to move stacks; creative shows the block palette) |
+| E | Inventory (click to move stacks; creative opens Java's creative inventory, see below) |
+| C / X + 1–9 | Creative: save the hotbar to / load it from saved hotbar 1–9 (Save and Load Hotbar Activator) |
 | Shift + click | In the inventory: move a stack between the open chest or furnace and the inventory (or between hotbar and main grid); on a crafting result, craft as many as fit |
 | Right click on a door or fence gate | Open / close it |
 | Shift + right click | Build against a crafting table, furnace, chest, door or gate instead of using it |
@@ -43,6 +44,29 @@ Sprint can be set to Toggle there.
 | F5 | Cycle first-person, behind and front views |
 | F11 | Toggle fullscreen; Options → Fullscreen chooses Borderless (macOS native fullscreen Space) or Exclusive (native resolution), and it is remembered |
 | Esc | Pause menu (the game pauses): Back to Game, Options..., Save and Quit to Title; Esc again goes back |
+
+**Creative inventory** (v0.18; [record](verification/2026-11-23-v0.18-creative.md)).
+E in creative opens Java 26.3's creative screen: Building Blocks, Colored
+Blocks, Natural Blocks, Functional Blocks and Redstone Blocks along the top
+with Saved Hotbars and Search Items at its right end; Tools & Utilities,
+Combat, Food & Drinks, Ingredients and Spawn Eggs along the bottom with
+Survival Inventory at its right. Each tab lists Java's items in Java's
+order (items the game doesn't have yet are left out) in a 9 x 5 grid that
+scrolls with the wheel or the scrollbar. Click an item for one, Shift-click
+for a full stack, middle-click for a full stack onto an empty cursor, a
+number key to put a full stack in that hotbar slot, Q to throw one
+(Ctrl+Q a stack); clicking another item or an empty cell with a stack held
+deletes it, and Shift-clicking the hotbar clears that slot. T (the chat
+key) jumps to Search, where typing filters by name. Survival Inventory
+shows the armour, off-hand and inventory with Destroy Item (Shift-click it
+to clear the inventory) and the player, who turns to follow the pointer.
+Saved Hotbars shows the nine hotbars saved with C + a number key (X + the
+number loads one); they are kept per install in `saves/hotbars.txt`.
+Controllers page through the item tabs and Saved Hotbars with LB/RB (Y
+loads a saved row, X saves it); the CLI agent's `catalog tabs`,
+`catalog tab:<id>` and `hotbar save|load 1..9` do the same. The survival
+inventory now uses Java's layout too: armour down the left, the player
+beside it, the off-hand under the player and the 2 x 2 grid to the right.
 
 The world autosaves every two minutes and on exit. Switching away from
 the window also pauses offline play. See [save backups and version compatibility](releases.md#player-data-and-old-saves)
@@ -178,7 +202,8 @@ full performance display instead of duplicating the compact counter.
   killing one drops its loot. All mobs,
   arrows and explosion smoke are drawn in a single draw call
 - Survival and creative modes: timed block breaking with crack overlay,
-  drops, a 36-slot inventory with stacks, and a scrollable creative palette
+  drops, a 36-slot inventory with stacks, and Java's tabbed creative
+  inventory
 - Crafting: a 2x2 grid in the survival inventory and a 3x3 grid at a
   crafting table (right-click it). Shaped recipes work anywhere in the
   grid and mirrored; click the result to craft one, and leftovers return

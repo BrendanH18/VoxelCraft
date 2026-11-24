@@ -14,6 +14,7 @@ mod conduit;
 mod console;
 mod containers;
 mod crafter;
+mod creative;
 mod credits;
 mod dimension;
 mod distortion;
@@ -38,6 +39,7 @@ mod pad_menu;
 mod particles;
 mod patterns;
 mod player_actions;
+mod preview;
 mod raid;
 mod recipe_book;
 mod save;
@@ -202,8 +204,12 @@ struct Game {
     craft: crate::crafting::Grid,
     /// v0.18 Track 5: the recipe book's view (tab, page, search, ghost, toasts).
     recipe_book: recipe_book::View,
-    /// First visible row of the creative palette.
-    creative_scroll: usize,
+    /// v0.18 Track 4: the creative screen's tab, scroll and scrollbar drag.
+    creative: creative::State,
+    /// v0.18 Track 4: saved hotbars (`HotbarManager`), per install.
+    hotbars: voxelcraft::creative::Hotbars,
+    /// `saves/hotbars.txt`; `None` in scripted runs, which save nothing.
+    hotbars_path: Option<std::path::PathBuf>,
     /// Rows scrolled in the stonecutter's recipe list or the loom's
     /// pattern list (v0.15 Track B).
     work_scroll: usize,
@@ -619,6 +625,7 @@ impl ApplicationHandler for App {
             WindowEvent::CursorMoved { position, .. } => {
                 game.cursor_px = (position.x as f32, position.y as f32);
                 game.menu_cursor_moved();
+                game.creative_drag();
             }
             WindowEvent::Focused(true) => game.had_focus = true,
             WindowEvent::ModifiersChanged(m) => game.modifiers = m.state(),
@@ -700,8 +707,12 @@ impl ApplicationHandler for App {
                     // even when it's a mouse button.
                     if pressed && game.settings.keys.is(keys::Action::Inventory, input) {
                         game.toggle_inventory();
+                    } else if pressed && button == MouseButton::Middle && game.shows_palette() {
+                        game.creative_clone();
                     } else if pressed {
                         game.inventory_click(button == MouseButton::Right);
+                    } else if button == MouseButton::Left {
+                        game.creative.dragging = false;
                     }
                     return;
                 }
@@ -911,6 +922,16 @@ impl Game {
             if self.inventory_open && self.lan.client.is_none() && !dead && self.swap_under_cursor(slot) {
                 return;
             }
+            // v0.18 Track 4: `Minecraft.handleKeybinds` for a player with
+            // infinite materials: an activator held with a hotbar key loads
+            // (load first) or saves that saved hotbar instead.
+            if playing && self.session.mode.is_creative() && self.lan.client.is_none() {
+                let (save, load) = (self.held(A::SaveHotbar), self.held(A::LoadHotbar));
+                if save || load {
+                    self.hotbar_load_or_save(slot, load);
+                    return;
+                }
+            }
             self.select(slot);
             return;
         }
@@ -927,6 +948,7 @@ impl Game {
                     self.swap_hands();
                 }
             }
+            A::Chat if self.inventory_open && self.creative_chat_key() => {}
             A::Chat | A::Command if !self.inventory_open && !self.console.open => self.open_console(action == A::Chat),
             // Hardcore deaths end in spectator for good; only `/gamemode` cheats out.
             A::GameMode if self.lan.client.is_some() => self.lan_command(if self.session.mode.is_creative() {
@@ -1015,6 +1037,10 @@ impl Game {
         let lines = if s.discrete_scroll && lines != 0.0 { lines.signum() } else { lines } * s.scroll_sensitivity;
         if self.menu.is_open() {
             self.menu_wheel(lines as f32);
+        } else if self.inventory_open && self.shows_palette() {
+            // v0.18 Track 4: `CreativeModeInventoryScreen.mouseScrolled`
+            // takes the scaled wheel as it comes.
+            self.creative_wheel(lines);
         } else if self.inventory_open {
             // Small steps add up, as on the hotbar, so low sensitivities still scroll.
             if self.scroll != 0.0 && lines.signum() != self.scroll.signum() {
@@ -1295,8 +1321,15 @@ impl Game {
         }
         self.inventory_open = !self.inventory_open;
         if self.inventory_open {
-            self.search.focused =
-                self.session.mode == GameMode::Creative && self.body.container == Container::Inventory;
+            // v0.18 Track 4: Java's search box has focus only on the search
+            // tab, and reopening the screen clears it (`init`'s `selectTab`).
+            let creative = self.session.mode == GameMode::Creative && self.body.container == Container::Inventory;
+            self.search.focused = creative && self.creative.kind() == voxelcraft::creative::Kind::Search;
+            if creative {
+                self.search.query.clear();
+                self.creative.dragging = false;
+                self.creative.scroll = 0.0;
+            }
             self.search.selected = false;
             self.set_grab(false);
             self.keys.clear();
@@ -1353,6 +1386,10 @@ impl Game {
             if self.search_click() {
                 return;
             }
+            // The creative tabs and scrollbar are a local view too.
+            if self.shows_palette() && self.creative_press(right) {
+                return;
+            }
             if self.recipe_book_click(right) {
                 return;
             }
@@ -1372,6 +1409,9 @@ impl Game {
         if self.search_click() {
             return;
         }
+        if self.shows_palette() && self.creative_press(right) {
+            return;
+        }
         if self.throw_cursor(right) {
             return;
         }
@@ -1383,7 +1423,20 @@ impl Game {
             self.recipe_slot_clicked(slot);
             self.audio.ui_click();
         }
-        if self.modifiers.shift_key() && self.session.inventory.cursor.is_none() {
+        // v0.18 Track 4: in an item tab, shift-clicking the hotbar deletes
+        // the stack (`ItemPickerMenu.quickMoveStack`).
+        if self.shows_palette()
+            && self.modifiers.shift_key()
+            && self.creative.kind() != voxelcraft::creative::Kind::Inventory
+            && let Some(hud::SlotRef::Inventory(i)) = slot
+            && i < 9
+        {
+            self.session.inventory.slots[i] = None;
+            return;
+        }
+        // Creative cells take shift with a stack held too (filling it).
+        let creative_cell = matches!(slot, Some(hud::SlotRef::Palette(_) | hud::SlotRef::Destroy));
+        if self.modifiers.shift_key() && (self.session.inventory.cursor.is_none() || creative_cell) {
             if let Some(slot) = slot {
                 self.quick_move(slot);
             }
@@ -1428,15 +1481,27 @@ impl Game {
         self.with_screen(|s| s.quick_move(slot));
     }
 
-    /// Scrolls the creative palette by whole rows.
+    /// Scrolls a workstation's list by whole rows (the creative screen
+    /// scrolls in `creative_wheel`).
     fn scroll_palette(&mut self, rows: i32) {
-        if self.scroll_work_list(rows) {
+        self.scroll_work_list(rows);
+    }
+
+    /// v0.18 Track 4: a middle click on the creative screen
+    /// (`ContainerInput.CLONE`): a full stack of what's under the pointer
+    /// onto an empty cursor.
+    fn creative_clone(&mut self) {
+        if self.lan.client.is_some() {
             return;
         }
-        if self.session.mode.is_creative() {
-            let max = hud::palette_rows(&self.search.query).saturating_sub(hud::PALETTE_ROWS);
-            self.creative_scroll = self.creative_scroll.saturating_add_signed(rows as isize).min(max);
-        }
+        let stack = match self.slot_under_cursor() {
+            Some(hud::SlotRef::Palette(s)) => Some(s),
+            Some(hud::SlotRef::Inventory(i)) => self.session.inventory.get(i),
+            Some(hud::SlotRef::Armor(p)) => self.session.inventory.armor[p as usize],
+            Some(hud::SlotRef::Offhand) => self.session.inventory.offhand,
+            _ => None,
+        };
+        voxelcraft::creative::clone(&mut self.session.inventory.cursor, stack);
     }
 
     fn ride_minecarts(&mut self, input: crate::player::MoveInput) {

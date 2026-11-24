@@ -62,7 +62,7 @@ pub enum Behaviour {
     Equipment,
     /// `SulfurCubeBlockDispenseItemBehavior`: `#sulfur_cube_swallowable`.
     SulfurCubeBlock,
-    /// `SpawnEggItemBehavior`. VoxelCraft has no spawn eggs yet (v0.18).
+    /// `SpawnEggItemBehavior` (v0.18 Track 4).
     SpawnEgg,
 }
 
@@ -202,6 +202,9 @@ pub fn behaviour(item: Item) -> Behaviour {
     }
     if crate::entity::sulfur_cube::swallowable(item) {
         return Behaviour::SulfurCubeBlock;
+    }
+    if crate::content::spawn_egg::is_spawn_egg(item) {
+        return Behaviour::SpawnEgg;
     }
     Behaviour::Default
 }

@@ -19,8 +19,13 @@ use super::{Container, Game, GameMode};
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub(super) enum SlotRef {
     Inventory(usize),
-    /// Creative palette entry.
-    Palette(Item),
+    /// A filled creative cell (v0.18 Track 4: the stack, components and all).
+    Palette(Stack),
+    /// An empty creative cell: a click there drops the held stack
+    /// (`CreativeModeInventoryScreen.slotClicked`).
+    PaletteEmpty,
+    /// The Survival Inventory tab's Destroy Item slot.
+    Destroy,
     /// Crafting grid cell (row-major in the grid's own size).
     Craft(usize),
     CraftResult,
@@ -73,19 +78,14 @@ pub(super) enum SlotRef {
     Armor(ArmorPiece),
 }
 
-/// Visible rows of the creative palette.
-pub(super) const PALETTE_ROWS: usize = 3;
-
-/// Total rows in the creative palette.
-pub(super) fn palette_rows(query: &str) -> usize {
-    Item::creative_palette().filter(|item| item.matches_query(query)).count().div_ceil(9)
-}
-
-const SLOT: f32 = 18.0;
+pub(super) const SLOT: f32 = 18.0;
 const PANEL_W: f32 = 9.0 * SLOT + 14.0;
 const PANEL_H: f32 = 4.0 * SLOT + 38.0;
 /// Extra height for the crafting area above the inventory grid.
 const CRAFT_H: f32 = 3.0 * SLOT + 14.0;
+/// v0.18 Track 4: the survival inventory's top section, so its main grid
+/// sits at Java's y 84 (`InventoryScreen`'s slots, frames a pixel up-left).
+const SURVIVAL_TOP: f32 = 84.0 - 1.0 - 18.0;
 
 const DEBUG_TEXT: Color = [0.88, 0.88, 0.88, 1.0];
 const HIGHLIGHT: Color = [1.0, 1.0, 0.6, 1.0];
@@ -680,7 +680,7 @@ fn effects_ui(ui: &mut Ui, effects: &Effects) {
 /// Java's effect panels beside the inventory (`EffectsInInventory`), in
 /// `compareTo` order: icon, name and level, and time left; just icons when
 /// the screen is too narrow.
-fn effect_list_ui(ui: &mut Ui, effects: &Effects, right: f32, top: f32) {
+pub(super) fn effect_list_ui(ui: &mut Ui, effects: &Effects, right: f32, top: f32) {
     let label = effects::list_label;
     let sorted = effects.sorted();
     let text_w = sorted.iter().map(|a| Ui::text_width(&label(a))).fold(0.0, f32::max);
@@ -846,7 +846,8 @@ impl Game {
         }
         match (self.has_top_section(), self.shows_armor()) {
             (false, _) => 0.0,
-            (true, true) => CRAFT_H + SLOT,
+            // v0.18 Track 4: `InventoryScreen`'s main grid starts at y 84.
+            (true, true) => SURVIVAL_TOP,
             (true, false) => CRAFT_H,
         }
     }
@@ -856,14 +857,14 @@ impl Game {
         if self.shows_armor() { 1.5 * SLOT } else { SLOT }
     }
 
-    fn shows_palette(&self) -> bool {
+    pub(super) fn shows_palette(&self) -> bool {
         self.session.mode.is_creative() && self.body.container == Container::Inventory
     }
 
     /// Whether the search bar shows: on the inventory and storage screens,
     /// not on workstations where it would only add clutter.
     pub(super) fn shows_search(&self) -> bool {
-        matches!(self.body.container, Container::Inventory | Container::Chest(_))
+        matches!(self.body.container, Container::Inventory | Container::Chest(_)) && !self.shows_palette()
     }
 
     fn search_h(&self) -> f32 {
@@ -887,6 +888,9 @@ impl Game {
     /// furnace or a chest), a 3x9 grid (main inventory, or the block palette
     /// in creative) and the hotbar.
     pub(super) fn inventory_slots(&self, screen: (f32, f32)) -> Vec<(SlotRef, f32, f32)> {
+        if self.shows_palette() {
+            return self.creative_slots(screen);
+        }
         let (px, py, _) = self.panel(screen);
         let py = py + self.search_h();
         let mut out = Vec::with_capacity(46);
@@ -968,6 +972,25 @@ impl Game {
                 out.push((SlotRef::BrewBottle(i), px + x, py + y));
             }
             CRAFT_H
+        } else if self.shows_armor() {
+            // v0.18 Track 4: `InventoryMenu`'s positions (Java's slot
+            // corners; frames sit a pixel up and left): armor down the
+            // left, the off-hand under the player preview, the 2x2 grid
+            // and its result to the right.
+            let at = |x: f32, y: f32| (px + x - 1.0, py + y - 1.0);
+            for (i, piece) in ArmorPiece::ALL.into_iter().enumerate() {
+                let (x, y) = at(8.0, 8.0 + i as f32 * SLOT);
+                out.push((SlotRef::Armor(piece), x, y));
+            }
+            let (x, y) = at(77.0, 62.0);
+            out.push((SlotRef::Offhand, x, y));
+            for i in 0..4 {
+                let (x, y) = at(98.0 + (i % 2) as f32 * SLOT, 18.0 + (i / 2) as f32 * SLOT);
+                out.push((SlotRef::Craft(i), x, y));
+            }
+            let (x, y) = at(154.0, 28.0);
+            out.push((SlotRef::CraftResult, x, y));
+            self.top_h()
         } else if self.has_top_section() {
             let n = self.craft.size;
             // The grid sits left of centre, the result to its right past an
@@ -978,34 +1001,15 @@ impl Game {
                 out.push((SlotRef::Craft(i), gx + (i % n) as f32 * SLOT, gy + (i / n) as f32 * SLOT));
             }
             out.push((SlotRef::CraftResult, px + 7.0 + 6.0 * SLOT, py + 18.0 + self.top_mid()));
-            if self.shows_armor() {
-                for (i, piece) in ArmorPiece::ALL.into_iter().enumerate() {
-                    out.push((SlotRef::Armor(piece), px + 7.0, py + 18.0 + i as f32 * SLOT));
-                }
-                out.push((SlotRef::Offhand, px + 7.0 + 8.0 * SLOT, py + 18.0 + self.top_mid()));
-            }
             self.top_h()
         } else {
             0.0
         };
         let py = py + top;
         let grid = |i: usize| (px + 7.0 + (i % 9) as f32 * SLOT, py + 18.0 + (i / 9) as f32 * SLOT);
-        if self.shows_palette() {
-            let first = self.creative_scroll * 9;
-            for (i, item) in Item::creative_palette()
-                .filter(|item| item.matches_query(&self.search.query))
-                .skip(first)
-                .take(PALETTE_ROWS * 9)
-                .enumerate()
-            {
-                let (x, y) = grid(i);
-                out.push((SlotRef::Palette(item), x, y));
-            }
-        } else {
-            for i in 0..27 {
-                let (x, y) = grid(i);
-                out.push((SlotRef::Inventory(HOTBAR_SLOTS + i), x, y));
-            }
+        for i in 0..27 {
+            let (x, y) = grid(i);
+            out.push((SlotRef::Inventory(HOTBAR_SLOTS + i), x, y));
         }
         for i in 0..HOTBAR_SLOTS {
             out.push((SlotRef::Inventory(i), px + 7.0 + i as f32 * SLOT, py + 18.0 + 3.0 * SLOT + 6.0));
@@ -1016,6 +1020,9 @@ impl Game {
     /// Whether the mouse is off the inventory panel and the recipe book:
     /// clicking there throws the held stack out, like Minecraft.
     pub(super) fn cursor_off_panel(&self) -> bool {
+        if self.shows_palette() {
+            return self.creative_off_panel();
+        }
         let scale = self.ui_scale();
         let (w, h) = self.ui_size();
         let screen = (w as f32 / scale, h as f32 / scale);
@@ -1031,6 +1038,9 @@ impl Game {
         let scale = self.ui_scale();
         let (w, h) = self.ui_size();
         let (mx, my) = (self.cursor_px.0 / scale, self.cursor_px.1 / scale);
+        if self.shows_palette() {
+            return self.creative_slot_at((w as f32 / scale, h as f32 / scale), (mx, my));
+        }
         // A narrow screen's open recipe book covers the menu.
         if self.book_covers_menu() {
             return None;
@@ -1059,6 +1069,10 @@ impl Game {
     fn inventory_ui(&self, ui: &mut Ui) {
         let (sw, sh) = ui.size();
         ui.rect(0.0, 0.0, sw, sh, [0.0, 0.0, 0.0, 0.45]);
+        if self.shows_palette() {
+            self.creative_ui(ui);
+            return;
+        }
         let (px, py, panel_h) = self.panel((sw, sh));
         effect_list_ui(ui, &self.session.vitals.effects, px, py);
         ui.rect(px, py, PANEL_W, panel_h, [0.78, 0.78, 0.78, 1.0]);
@@ -1092,7 +1106,12 @@ impl Game {
             (Container::Inventory, GameMode::Adventure) => "Adventure Inventory",
             (Container::Inventory, GameMode::Spectator) => "Spectator",
         };
-        ui.text_flat(px + 8.0, py + 6.0, title, [0.25, 0.25, 0.25, 1.0]);
+        if self.shows_armor() {
+            // `InventoryScreen`: only the crafting grid is labelled, at (97, 8).
+            ui.text_flat(px + 97.0, py + 7.0, "Crafting", [0.25, 0.25, 0.25, 1.0]);
+        } else {
+            ui.text_flat(px + 8.0, py + 6.0, title, [0.25, 0.25, 0.25, 1.0]);
+        }
         if let Container::Trading(id) = self.body.container {
             self.trading_ui(ui, id, px, py);
         } else if let Container::Brewing(p) = self.body.container
@@ -1111,7 +1130,12 @@ impl Game {
         {
             // Arrow toward the result; in a furnace it fills with progress
             // and a flame between input and fuel shows the fuel left.
-            let (ax, ay) = (px + 7.0 + 4.0 * SLOT + 9.0, py + 18.0 + self.top_mid() + 5.0);
+            let (ax, ay) = if self.shows_armor() {
+                // Between Java's 2x2 grid and its result.
+                (px + 135.0, py + 31.0)
+            } else {
+                (px + 7.0 + 4.0 * SLOT + 9.0, py + 18.0 + self.top_mid() + 5.0)
+            };
             let furnace = match self.body.container {
                 Container::Furnace(p) => self.world.furnace(p).cloned(),
                 _ => None,
@@ -1141,26 +1165,28 @@ impl Game {
         if matches!(self.body.container, Container::Chest(_) | Container::Minecart(_)) {
             ui.text_flat(px + 8.0, py + 6.0, "Inventory", [0.25, 0.25, 0.25, 1.0]);
         }
-        if self.shows_palette() {
-            // Scrollbar beside the palette grid.
-            let (x, y, h) = (px + PANEL_W - 6.0, py + 18.0, PALETTE_ROWS as f32 * SLOT);
-            let rows = palette_rows(&self.search.query).max(1) as f32;
-            let thumb = h * (PALETTE_ROWS as f32 / rows).min(1.0);
-            let top = y + (h - thumb) * self.creative_scroll as f32 / (rows - PALETTE_ROWS as f32).max(1.0);
-            ui.rect(x, y, 4.0, h, [0.45, 0.45, 0.45, 1.0]);
-            ui.rect(x, top, 4.0, thumb, WHITE);
+        if self.shows_armor() {
+            // v0.18 Track 4: `InventoryScreen`'s player, turning toward the pointer.
+            let mouse = (self.cursor_px.0 / ui.scale, self.cursor_px.1 / ui.scale);
+            ui.rect(px + 25.0, top_py + 7.0, 50.0, 71.0, [0.0, 0.0, 0.0, 1.0]);
+            super::preview::player(ui, (px + 26.0, top_py + 8.0, px + 75.0, top_py + 78.0), 30.0, 0.0625, mouse);
         }
+        self.slots_ui(ui, px, top_py);
+    }
 
-        if self.shows_palette() && palette_rows(&self.search.query) == 0 {
-            ui.text_flat(px + 8.0, py + 30.0, "No matching items", [0.3, 0.3, 0.3, 1.0]);
-        }
+    /// Every slot of the open screen with its stack, the hover highlight,
+    /// the hovered stack's tooltip and the stack on the cursor (shared by
+    /// the container screens and the creative screen).
+    pub(super) fn slots_ui(&self, ui: &mut Ui, px: f32, top_py: f32) {
+        let (sw, sh) = ui.size();
         let hovered = self.slot_under_cursor();
         for (r, x, y) in self.inventory_slots((sw, sh)) {
             ui.rect(x, y, SLOT, SLOT, [0.55, 0.55, 0.55, 1.0]);
             ui.rect(x + 1.0, y + 1.0, SLOT - 1.0, SLOT - 1.0, [0.45, 0.45, 0.45, 1.0]);
             let stack = match r {
                 SlotRef::Inventory(i) => self.session.inventory.get(i),
-                SlotRef::Palette(b) => Some(Stack::new(b, 1)),
+                SlotRef::Palette(stack) => Some(stack),
+                SlotRef::PaletteEmpty | SlotRef::Destroy => None,
                 SlotRef::Craft(i) => self.craft.cells[i],
                 SlotRef::CraftResult => super::screen::crafting_result(
                     &self.craft,
@@ -1218,7 +1244,12 @@ impl Game {
         }
         let hovered_stack = match hovered {
             Some(SlotRef::Inventory(i)) => self.session.inventory.get(i),
-            Some(SlotRef::Palette(item)) => Some(Stack::new(item, 1)),
+            Some(SlotRef::Palette(stack)) => Some(stack),
+            Some(SlotRef::PaletteEmpty) => None,
+            Some(SlotRef::Destroy) => {
+                self.tooltip(ui, "Destroy Item");
+                None
+            }
             Some(SlotRef::Craft(i)) => self.craft.cells[i],
             Some(SlotRef::CraftResult) => super::screen::crafting_result(
                 &self.craft,
@@ -1338,7 +1369,7 @@ impl Game {
         }
     }
 
-    fn tooltip(&self, ui: &mut Ui, text: &str) {
+    pub(super) fn tooltip(&self, ui: &mut Ui, text: &str) {
         self.tooltip_coloured(ui, text, WHITE);
     }
 

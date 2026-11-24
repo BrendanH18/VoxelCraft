@@ -225,7 +225,7 @@ impl Entities {
                     d.current_mobs.push(uid);
                     d.total_mobs_spawned += 1;
                     d.next_mob_spawns_at = now + config.ticks_between_spawn;
-                    d.next_spawn = self.pick_potential(config);
+                    d.next_spawn = self.pick_potential(d.potentials(*ominous));
                 }
                 state
             }
@@ -281,15 +281,15 @@ impl Entities {
 
     /// `getOrCreateNextSpawnData`.
     fn next_spawn(&mut self, d: &mut TrialSpawner, ominous: bool) -> Option<ts::Potential> {
-        let config = d.config(ominous);
-        if d.next_spawn.is_none_or(|i| i as usize >= config.potentials.len()) {
-            d.next_spawn = self.pick_potential(config);
+        let potentials = d.potentials(ominous);
+        if d.next_spawn.is_none_or(|i| i as usize >= potentials.len()) {
+            d.next_spawn = self.pick_potential(potentials);
         }
-        d.next_spawn.and_then(|i| config.potentials.get(i as usize)).copied()
+        d.next_spawn.and_then(|i| potentials.get(i as usize)).copied()
     }
 
-    fn pick_potential(&mut self, config: &ts::Config) -> Option<u8> {
-        let indexed: Vec<(u8, u32)> = config.potentials.iter().enumerate().map(|(i, p)| (i as u8, p.weight)).collect();
+    fn pick_potential(&mut self, potentials: &[ts::Potential]) -> Option<u8> {
+        let indexed: Vec<(u8, u32)> = potentials.iter().enumerate().map(|(i, p)| (i as u8, p.weight)).collect();
         weighted(&mut self.rng, &indexed)
     }
 
@@ -391,7 +391,7 @@ impl Entities {
             }
         }
         let config = d.config(true);
-        if !config.potentials.is_empty() {
+        if !d.potentials(true).is_empty() {
             d.next_spawn = None;
         }
         d.total_mobs_spawned = 0;

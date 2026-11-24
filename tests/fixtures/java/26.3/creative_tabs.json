@@ -1,0 +1,9765 @@
+{
+ "reference": "Minecraft Java Edition 26.3",
+ "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+ "client_sha1": "e877b6a07acd633fb3bb475002175cec036e7b87",
+ "sources": [
+  "tools/JavaCreativeTabs.java run against the server jar after Bootstrap.bootStrap(): CreativeModeTabs.tryRebuildTabContents(FeatureFlags.DEFAULT_FLAGS, permissions, lookup) without and with operator permissions; data-driven registries listed in id order and tags in file order, as the client receives them",
+  "assets/minecraft/lang/en_us.json (titles)"
+ ],
+ "notes": [
+  "Tabs are in registry order. `items` is a tab's contents when permissions change nothing; otherwise `player` and `operator` give them. `display` is what the tab shows; `search`, when present, is what it adds to the search tab instead (Java's TabVisibility).",
+  "Component patches are Java's DataComponentPatch JSON with the minecraft: namespace dropped."
+ ],
+ "tabs": [
+  {
+   "id": "building_blocks",
+   "row": "top",
+   "column": 0,
+   "type": "category",
+   "aligned_right": false,
+   "show_title": true,
+   "can_scroll": true,
+   "title_key": "itemGroup.buildingBlocks",
+   "title": "Building Blocks",
+   "icon": "bricks",
+   "background": "textures/gui/container/creative_inventory/tab_items.png",
+   "items": {
+    "display": [
+     {
+      "item": "oak_log"
+     },
+     {
+      "item": "oak_wood"
+     },
+     {
+      "item": "stripped_oak_log"
+     },
+     {
+      "item": "stripped_oak_wood"
+     },
+     {
+      "item": "oak_planks"
+     },
+     {
+      "item": "oak_stairs"
+     },
+     {
+      "item": "oak_slab"
+     },
+     {
+      "item": "oak_fence"
+     },
+     {
+      "item": "oak_fence_gate"
+     },
+     {
+      "item": "oak_door"
+     },
+     {
+      "item": "oak_trapdoor"
+     },
+     {
+      "item": "oak_pressure_plate"
+     },
+     {
+      "item": "oak_button"
+     },
+     {
+      "item": "spruce_log"
+     },
+     {
+      "item": "spruce_wood"
+     },
+     {
+      "item": "stripped_spruce_log"
+     },
+     {
+      "item": "stripped_spruce_wood"
+     },
+     {
+      "item": "spruce_planks"
+     },
+     {
+      "item": "spruce_stairs"
+     },
+     {
+      "item": "spruce_slab"
+     },
+     {
+      "item": "spruce_fence"
+     },
+     {
+      "item": "spruce_fence_gate"
+     },
+     {
+      "item": "spruce_door"
+     },
+     {
+      "item": "spruce_trapdoor"
+     },
+     {
+      "item": "spruce_pressure_plate"
+     },
+     {
+      "item": "spruce_button"
+     },
+     {
+      "item": "birch_log"
+     },
+     {
+      "item": "birch_wood"
+     },
+     {
+      "item": "stripped_birch_log"
+     },
+     {
+      "item": "stripped_birch_wood"
+     },
+     {
+      "item": "birch_planks"
+     },
+     {
+      "item": "birch_stairs"
+     },
+     {
+      "item": "birch_slab"
+     },
+     {
+      "item": "birch_fence"
+     },
+     {
+      "item": "birch_fence_gate"
+     },
+     {
+      "item": "birch_door"
+     },
+     {
+      "item": "birch_trapdoor"
+     },
+     {
+      "item": "birch_pressure_plate"
+     },
+     {
+      "item": "birch_button"
+     },
+     {
+      "item": "jungle_log"
+     },
+     {
+      "item": "jungle_wood"
+     },
+     {
+      "item": "stripped_jungle_log"
+     },
+     {
+      "item": "stripped_jungle_wood"
+     },
+     {
+      "item": "jungle_planks"
+     },
+     {
+      "item": "jungle_stairs"
+     },
+     {
+      "item": "jungle_slab"
+     },
+     {
+      "item": "jungle_fence"
+     },
+     {
+      "item": "jungle_fence_gate"
+     },
+     {
+      "item": "jungle_door"
+     },
+     {
+      "item": "jungle_trapdoor"
+     },
+     {
+      "item": "jungle_pressure_plate"
+     },
+     {
+      "item": "jungle_button"
+     },
+     {
+      "item": "acacia_log"
+     },
+     {
+      "item": "acacia_wood"
+     },
+     {
+      "item": "stripped_acacia_log"
+     },
+     {
+      "item": "stripped_acacia_wood"
+     },
+     {
+      "item": "acacia_planks"
+     },
+     {
+      "item": "acacia_stairs"
+     },
+     {
+      "item": "acacia_slab"
+     },
+     {
+      "item": "acacia_fence"
+     },
+     {
+      "item": "acacia_fence_gate"
+     },
+     {
+      "item": "acacia_door"
+     },
+     {
+      "item": "acacia_trapdoor"
+     },
+     {
+      "item": "acacia_pressure_plate"
+     },
+     {
+      "item": "acacia_button"
+     },
+     {
+      "item": "dark_oak_log"
+     },
+     {
+      "item": "dark_oak_wood"
+     },
+     {
+      "item": "stripped_dark_oak_log"
+     },
+     {
+      "item": "stripped_dark_oak_wood"
+     },
+     {
+      "item": "dark_oak_planks"
+     },
+     {
+      "item": "dark_oak_stairs"
+     },
+     {
+      "item": "dark_oak_slab"
+     },
+     {
+      "item": "dark_oak_fence"
+     },
+     {
+      "item": "dark_oak_fence_gate"
+     },
+     {
+      "item": "dark_oak_door"
+     },
+     {
+      "item": "dark_oak_trapdoor"
+     },
+     {
+      "item": "dark_oak_pressure_plate"
+     },
+     {
+      "item": "dark_oak_button"
+     },
+     {
+      "item": "mangrove_log"
+     },
+     {
+      "item": "mangrove_wood"
+     },
+     {
+      "item": "stripped_mangrove_log"
+     },
+     {
+      "item": "stripped_mangrove_wood"
+     },
+     {
+      "item": "mangrove_planks"
+     },
+     {
+      "item": "mangrove_stairs"
+     },
+     {
+      "item": "mangrove_slab"
+     },
+     {
+      "item": "mangrove_fence"
+     },
+     {
+      "item": "mangrove_fence_gate"
+     },
+     {
+      "item": "mangrove_door"
+     },
+     {
+      "item": "mangrove_trapdoor"
+     },
+     {
+      "item": "mangrove_pressure_plate"
+     },
+     {
+      "item": "mangrove_button"
+     },
+     {
+      "item": "cherry_log"
+     },
+     {
+      "item": "cherry_wood"
+     },
+     {
+      "item": "stripped_cherry_log"
+     },
+     {
+      "item": "stripped_cherry_wood"
+     },
+     {
+      "item": "cherry_planks"
+     },
+     {
+      "item": "cherry_stairs"
+     },
+     {
+      "item": "cherry_slab"
+     },
+     {
+      "item": "cherry_fence"
+     },
+     {
+      "item": "cherry_fence_gate"
+     },
+     {
+      "item": "cherry_door"
+     },
+     {
+      "item": "cherry_trapdoor"
+     },
+     {
+      "item": "cherry_pressure_plate"
+     },
+     {
+      "item": "cherry_button"
+     },
+     {
+      "item": "pale_oak_log"
+     },
+     {
+      "item": "pale_oak_wood"
+     },
+     {
+      "item": "stripped_pale_oak_log"
+     },
+     {
+      "item": "stripped_pale_oak_wood"
+     },
+     {
+      "item": "pale_oak_planks"
+     },
+     {
+      "item": "pale_oak_stairs"
+     },
+     {
+      "item": "pale_oak_slab"
+     },
+     {
+      "item": "pale_oak_fence"
+     },
+     {
+      "item": "pale_oak_fence_gate"
+     },
+     {
+      "item": "pale_oak_door"
+     },
+     {
+      "item": "pale_oak_trapdoor"
+     },
+     {
+      "item": "pale_oak_pressure_plate"
+     },
+     {
+      "item": "pale_oak_button"
+     },
+     {
+      "item": "poplar_log"
+     },
+     {
+      "item": "poplar_wood"
+     },
+     {
+      "item": "stripped_poplar_log"
+     },
+     {
+      "item": "stripped_poplar_wood"
+     },
+     {
+      "item": "poplar_planks"
+     },
+     {
+      "item": "poplar_stairs"
+     },
+     {
+      "item": "poplar_slab"
+     },
+     {
+      "item": "poplar_fence"
+     },
+     {
+      "item": "poplar_fence_gate"
+     },
+     {
+      "item": "poplar_door"
+     },
+     {
+      "item": "poplar_trapdoor"
+     },
+     {
+      "item": "poplar_pressure_plate"
+     },
+     {
+      "item": "poplar_button"
+     },
+     {
+      "item": "bamboo_block"
+     },
+     {
+      "item": "stripped_bamboo_block"
+     },
+     {
+      "item": "bamboo_planks"
+     },
+     {
+      "item": "bamboo_mosaic"
+     },
+     {
+      "item": "bamboo_stairs"
+     },
+     {
+      "item": "bamboo_mosaic_stairs"
+     },
+     {
+      "item": "bamboo_slab"
+     },
+     {
+      "item": "bamboo_mosaic_slab"
+     },
+     {
+      "item": "bamboo_fence"
+     },
+     {
+      "item": "bamboo_fence_gate"
+     },
+     {
+      "item": "bamboo_door"
+     },
+     {
+      "item": "bamboo_trapdoor"
+     },
+     {
+      "item": "bamboo_pressure_plate"
+     },
+     {
+      "item": "bamboo_button"
+     },
+     {
+      "item": "crimson_stem"
+     },
+     {
+      "item": "crimson_hyphae"
+     },
+     {
+      "item": "stripped_crimson_stem"
+     },
+     {
+      "item": "stripped_crimson_hyphae"
+     },
+     {
+      "item": "crimson_planks"
+     },
+     {
+      "item": "crimson_stairs"
+     },
+     {
+      "item": "crimson_slab"
+     },
+     {
+      "item": "crimson_fence"
+     },
+     {
+      "item": "crimson_fence_gate"
+     },
+     {
+      "item": "crimson_door"
+     },
+     {
+      "item": "crimson_trapdoor"
+     },
+     {
+      "item": "crimson_pressure_plate"
+     },
+     {
+      "item": "crimson_button"
+     },
+     {
+      "item": "warped_stem"
+     },
+     {
+      "item": "warped_hyphae"
+     },
+     {
+      "item": "stripped_warped_stem"
+     },
+     {
+      "item": "stripped_warped_hyphae"
+     },
+     {
+      "item": "warped_planks"
+     },
+     {
+      "item": "warped_stairs"
+     },
+     {
+      "item": "warped_slab"
+     },
+     {
+      "item": "warped_fence"
+     },
+     {
+      "item": "warped_fence_gate"
+     },
+     {
+      "item": "warped_door"
+     },
+     {
+      "item": "warped_trapdoor"
+     },
+     {
+      "item": "warped_pressure_plate"
+     },
+     {
+      "item": "warped_button"
+     },
+     {
+      "item": "stone"
+     },
+     {
+      "item": "stone_stairs"
+     },
+     {
+      "item": "stone_slab"
+     },
+     {
+      "item": "stone_pressure_plate"
+     },
+     {
+      "item": "stone_button"
+     },
+     {
+      "item": "cobblestone"
+     },
+     {
+      "item": "cobblestone_stairs"
+     },
+     {
+      "item": "cobblestone_slab"
+     },
+     {
+      "item": "cobblestone_wall"
+     },
+     {
+      "item": "mossy_cobblestone"
+     },
+     {
+      "item": "mossy_cobblestone_stairs"
+     },
+     {
+      "item": "mossy_cobblestone_slab"
+     },
+     {
+      "item": "mossy_cobblestone_wall"
+     },
+     {
+      "item": "smooth_stone"
+     },
+     {
+      "item": "smooth_stone_slab"
+     },
+     {
+      "item": "stone_bricks"
+     },
+     {
+      "item": "cracked_stone_bricks"
+     },
+     {
+      "item": "stone_brick_stairs"
+     },
+     {
+      "item": "stone_brick_slab"
+     },
+     {
+      "item": "stone_brick_wall"
+     },
+     {
+      "item": "chiseled_stone_bricks"
+     },
+     {
+      "item": "mossy_stone_bricks"
+     },
+     {
+      "item": "mossy_stone_brick_stairs"
+     },
+     {
+      "item": "mossy_stone_brick_slab"
+     },
+     {
+      "item": "mossy_stone_brick_wall"
+     },
+     {
+      "item": "granite"
+     },
+     {
+      "item": "granite_stairs"
+     },
+     {
+      "item": "granite_slab"
+     },
+     {
+      "item": "granite_wall"
+     },
+     {
+      "item": "polished_granite"
+     },
+     {
+      "item": "polished_granite_stairs"
+     },
+     {
+      "item": "polished_granite_slab"
+     },
+     {
+      "item": "diorite"
+     },
+     {
+      "item": "diorite_stairs"
+     },
+     {
+      "item": "diorite_slab"
+     },
+     {
+      "item": "diorite_wall"
+     },
+     {
+      "item": "polished_diorite"
+     },
+     {
+      "item": "polished_diorite_stairs"
+     },
+     {
+      "item": "polished_diorite_slab"
+     },
+     {
+      "item": "andesite"
+     },
+     {
+      "item": "andesite_stairs"
+     },
+     {
+      "item": "andesite_slab"
+     },
+     {
+      "item": "andesite_wall"
+     },
+     {
+      "item": "polished_andesite"
+     },
+     {
+      "item": "polished_andesite_stairs"
+     },
+     {
+      "item": "polished_andesite_slab"
+     },
+     {
+      "item": "deepslate"
+     },
+     {
+      "item": "cobbled_deepslate"
+     },
+     {
+      "item": "cobbled_deepslate_stairs"
+     },
+     {
+      "item": "cobbled_deepslate_slab"
+     },
+     {
+      "item": "cobbled_deepslate_wall"
+     },
+     {
+      "item": "chiseled_deepslate"
+     },
+     {
+      "item": "polished_deepslate"
+     },
+     {
+      "item": "polished_deepslate_stairs"
+     },
+     {
+      "item": "polished_deepslate_slab"
+     },
+     {
+      "item": "polished_deepslate_wall"
+     },
+     {
+      "item": "deepslate_bricks"
+     },
+     {
+      "item": "cracked_deepslate_bricks"
+     },
+     {
+      "item": "deepslate_brick_stairs"
+     },
+     {
+      "item": "deepslate_brick_slab"
+     },
+     {
+      "item": "deepslate_brick_wall"
+     },
+     {
+      "item": "deepslate_tiles"
+     },
+     {
+      "item": "cracked_deepslate_tiles"
+     },
+     {
+      "item": "deepslate_tile_stairs"
+     },
+     {
+      "item": "deepslate_tile_slab"
+     },
+     {
+      "item": "deepslate_tile_wall"
+     },
+     {
+      "item": "reinforced_deepslate"
+     },
+     {
+      "item": "tuff"
+     },
+     {
+      "item": "tuff_stairs"
+     },
+     {
+      "item": "tuff_slab"
+     },
+     {
+      "item": "tuff_wall"
+     },
+     {
+      "item": "chiseled_tuff"
+     },
+     {
+      "item": "polished_tuff"
+     },
+     {
+      "item": "polished_tuff_stairs"
+     },
+     {
+      "item": "polished_tuff_slab"
+     },
+     {
+      "item": "polished_tuff_wall"
+     },
+     {
+      "item": "tuff_bricks"
+     },
+     {
+      "item": "tuff_brick_stairs"
+     },
+     {
+      "item": "tuff_brick_slab"
+     },
+     {
+      "item": "tuff_brick_wall"
+     },
+     {
+      "item": "chiseled_tuff_bricks"
+     },
+     {
+      "item": "bricks"
+     },
+     {
+      "item": "brick_stairs"
+     },
+     {
+      "item": "brick_slab"
+     },
+     {
+      "item": "brick_wall"
+     },
+     {
+      "item": "packed_mud"
+     },
+     {
+      "item": "mud_bricks"
+     },
+     {
+      "item": "mud_brick_stairs"
+     },
+     {
+      "item": "mud_brick_slab"
+     },
+     {
+      "item": "mud_brick_wall"
+     },
+     {
+      "item": "resin_bricks"
+     },
+     {
+      "item": "resin_brick_stairs"
+     },
+     {
+      "item": "resin_brick_slab"
+     },
+     {
+      "item": "resin_brick_wall"
+     },
+     {
+      "item": "chiseled_resin_bricks"
+     },
+     {
+      "item": "sandstone"
+     },
+     {
+      "item": "sandstone_stairs"
+     },
+     {
+      "item": "sandstone_slab"
+     },
+     {
+      "item": "sandstone_wall"
+     },
+     {
+      "item": "chiseled_sandstone"
+     },
+     {
+      "item": "smooth_sandstone"
+     },
+     {
+      "item": "smooth_sandstone_stairs"
+     },
+     {
+      "item": "smooth_sandstone_slab"
+     },
+     {
+      "item": "cut_sandstone"
+     },
+     {
+      "item": "cut_sandstone_slab"
+     },
+     {
+      "item": "red_sandstone"
+     },
+     {
+      "item": "red_sandstone_stairs"
+     },
+     {
+      "item": "red_sandstone_slab"
+     },
+     {
+      "item": "red_sandstone_wall"
+     },
+     {
+      "item": "chiseled_red_sandstone"
+     },
+     {
+      "item": "smooth_red_sandstone"
+     },
+     {
+      "item": "smooth_red_sandstone_stairs"
+     },
+     {
+      "item": "smooth_red_sandstone_slab"
+     },
+     {
+      "item": "cut_red_sandstone"
+     },
+     {
+      "item": "cut_red_sandstone_slab"
+     },
+     {
+      "item": "cinnabar"
+     },
+     {
+      "item": "cinnabar_stairs"
+     },
+     {
+      "item": "cinnabar_slab"
+     },
+     {
+      "item": "cinnabar_wall"
+     },
+     {
+      "item": "chiseled_cinnabar"
+     },
+     {
+      "item": "polished_cinnabar"
+     },
+     {
+      "item": "polished_cinnabar_stairs"
+     },
+     {
+      "item": "polished_cinnabar_slab"
+     },
+     {
+      "item": "polished_cinnabar_wall"
+     },
+     {
+      "item": "cinnabar_bricks"
+     },
+     {
+      "item": "cinnabar_brick_stairs"
+     },
+     {
+      "item": "cinnabar_brick_slab"
+     },
+     {
+      "item": "cinnabar_brick_wall"
+     },
+     {
+      "item": "sulfur"
+     },
+     {
+      "item": "sulfur_stairs"
+     },
+     {
+      "item": "sulfur_slab"
+     },
+     {
+      "item": "sulfur_wall"
+     },
+     {
+      "item": "chiseled_sulfur"
+     },
+     {
+      "item": "polished_sulfur"
+     },
+     {
+      "item": "polished_sulfur_stairs"
+     },
+     {
+      "item": "polished_sulfur_slab"
+     },
+     {
+      "item": "polished_sulfur_wall"
+     },
+     {
+      "item": "sulfur_bricks"
+     },
+     {
+      "item": "sulfur_brick_stairs"
+     },
+     {
+      "item": "sulfur_brick_slab"
+     },
+     {
+      "item": "sulfur_brick_wall"
+     },
+     {
+      "item": "sea_lantern"
+     },
+     {
+      "item": "prismarine"
+     },
+     {
+      "item": "prismarine_stairs"
+     },
+     {
+      "item": "prismarine_slab"
+     },
+     {
+      "item": "prismarine_wall"
+     },
+     {
+      "item": "prismarine_bricks"
+     },
+     {
+      "item": "prismarine_brick_stairs"
+     },
+     {
+      "item": "prismarine_brick_slab"
+     },
+     {
+      "item": "dark_prismarine"
+     },
+     {
+      "item": "dark_prismarine_stairs"
+     },
+     {
+      "item": "dark_prismarine_slab"
+     },
+     {
+      "item": "netherrack"
+     },
+     {
+      "item": "nether_bricks"
+     },
+     {
+      "item": "cracked_nether_bricks"
+     },
+     {
+      "item": "nether_brick_stairs"
+     },
+     {
+      "item": "nether_brick_slab"
+     },
+     {
+      "item": "nether_brick_wall"
+     },
+     {
+      "item": "nether_brick_fence"
+     },
+     {
+      "item": "chiseled_nether_bricks"
+     },
+     {
+      "item": "red_nether_bricks"
+     },
+     {
+      "item": "red_nether_brick_stairs"
+     },
+     {
+      "item": "red_nether_brick_slab"
+     },
+     {
+      "item": "red_nether_brick_wall"
+     },
+     {
+      "item": "basalt"
+     },
+     {
+      "item": "smooth_basalt"
+     },
+     {
+      "item": "polished_basalt"
+     },
+     {
+      "item": "blackstone"
+     },
+     {
+      "item": "gilded_blackstone"
+     },
+     {
+      "item": "blackstone_stairs"
+     },
+     {
+      "item": "blackstone_slab"
+     },
+     {
+      "item": "blackstone_wall"
+     },
+     {
+      "item": "chiseled_polished_blackstone"
+     },
+     {
+      "item": "polished_blackstone"
+     },
+     {
+      "item": "polished_blackstone_stairs"
+     },
+     {
+      "item": "polished_blackstone_slab"
+     },
+     {
+      "item": "polished_blackstone_wall"
+     },
+     {
+      "item": "polished_blackstone_pressure_plate"
+     },
+     {
+      "item": "polished_blackstone_button"
+     },
+     {
+      "item": "polished_blackstone_bricks"
+     },
+     {
+      "item": "cracked_polished_blackstone_bricks"
+     },
+     {
+      "item": "polished_blackstone_brick_stairs"
+     },
+     {
+      "item": "polished_blackstone_brick_slab"
+     },
+     {
+      "item": "polished_blackstone_brick_wall"
+     },
+     {
+      "item": "end_stone"
+     },
+     {
+      "item": "end_stone_bricks"
+     },
+     {
+      "item": "end_stone_brick_stairs"
+     },
+     {
+      "item": "end_stone_brick_slab"
+     },
+     {
+      "item": "end_stone_brick_wall"
+     },
+     {
+      "item": "purpur_block"
+     },
+     {
+      "item": "purpur_pillar"
+     },
+     {
+      "item": "purpur_stairs"
+     },
+     {
+      "item": "purpur_slab"
+     },
+     {
+      "item": "coal_block"
+     },
+     {
+      "item": "emerald_block"
+     },
+     {
+      "item": "lapis_block"
+     },
+     {
+      "item": "amethyst_block"
+     },
+     {
+      "item": "redstone_block"
+     },
+     {
+      "item": "quartz_block"
+     },
+     {
+      "item": "quartz_stairs"
+     },
+     {
+      "item": "quartz_slab"
+     },
+     {
+      "item": "chiseled_quartz_block"
+     },
+     {
+      "item": "quartz_bricks"
+     },
+     {
+      "item": "quartz_pillar"
+     },
+     {
+      "item": "smooth_quartz"
+     },
+     {
+      "item": "smooth_quartz_stairs"
+     },
+     {
+      "item": "smooth_quartz_slab"
+     },
+     {
+      "item": "iron_block"
+     },
+     {
+      "item": "iron_bars"
+     },
+     {
+      "item": "iron_door"
+     },
+     {
+      "item": "iron_trapdoor"
+     },
+     {
+      "item": "heavy_weighted_pressure_plate"
+     },
+     {
+      "item": "iron_chain"
+     },
+     {
+      "item": "gold_block"
+     },
+     {
+      "item": "light_weighted_pressure_plate"
+     },
+     {
+      "item": "diamond_block"
+     },
+     {
+      "item": "netherite_block"
+     },
+     {
+      "item": "copper_block"
+     },
+     {
+      "item": "exposed_copper"
+     },
+     {
+      "item": "weathered_copper"
+     },
+     {
+      "item": "oxidized_copper"
+     },
+     {
+      "item": "chiseled_copper"
+     },
+     {
+      "item": "exposed_chiseled_copper"
+     },
+     {
+      "item": "weathered_chiseled_copper"
+     },
+     {
+      "item": "oxidized_chiseled_copper"
+     },
+     {
+      "item": "copper_grate"
+     },
+     {
+      "item": "exposed_copper_grate"
+     },
+     {
+      "item": "weathered_copper_grate"
+     },
+     {
+      "item": "oxidized_copper_grate"
+     },
+     {
+      "item": "cut_copper"
+     },
+     {
+      "item": "exposed_cut_copper"
+     },
+     {
+      "item": "weathered_cut_copper"
+     },
+     {
+      "item": "oxidized_cut_copper"
+     },
+     {
+      "item": "cut_copper_stairs"
+     },
+     {
+      "item": "exposed_cut_copper_stairs"
+     },
+     {
+      "item": "weathered_cut_copper_stairs"
+     },
+     {
+      "item": "oxidized_cut_copper_stairs"
+     },
+     {
+      "item": "cut_copper_slab"
+     },
+     {
+      "item": "exposed_cut_copper_slab"
+     },
+     {
+      "item": "weathered_cut_copper_slab"
+     },
+     {
+      "item": "oxidized_cut_copper_slab"
+     },
+     {
+      "item": "copper_bars"
+     },
+     {
+      "item": "exposed_copper_bars"
+     },
+     {
+      "item": "weathered_copper_bars"
+     },
+     {
+      "item": "oxidized_copper_bars"
+     },
+     {
+      "item": "copper_door"
+     },
+     {
+      "item": "exposed_copper_door"
+     },
+     {
+      "item": "weathered_copper_door"
+     },
+     {
+      "item": "oxidized_copper_door"
+     },
+     {
+      "item": "copper_trapdoor"
+     },
+     {
+      "item": "exposed_copper_trapdoor"
+     },
+     {
+      "item": "weathered_copper_trapdoor"
+     },
+     {
+      "item": "oxidized_copper_trapdoor"
+     },
+     {
+      "item": "copper_bulb"
+     },
+     {
+      "item": "exposed_copper_bulb"
+     },
+     {
+      "item": "weathered_copper_bulb"
+     },
+     {
+      "item": "oxidized_copper_bulb"
+     },
+     {
+      "item": "copper_chain"
+     },
+     {
+      "item": "exposed_copper_chain"
+     },
+     {
+      "item": "weathered_copper_chain"
+     },
+     {
+      "item": "oxidized_copper_chain"
+     },
+     {
+      "item": "waxed_copper_block"
+     },
+     {
+      "item": "waxed_exposed_copper"
+     },
+     {
+      "item": "waxed_weathered_copper"
+     },
+     {
+      "item": "waxed_oxidized_copper"
+     },
+     {
+      "item": "waxed_chiseled_copper"
+     },
+     {
+      "item": "waxed_exposed_chiseled_copper"
+     },
+     {
+      "item": "waxed_weathered_chiseled_copper"
+     },
+     {
+      "item": "waxed_oxidized_chiseled_copper"
+     },
+     {
+      "item": "waxed_copper_grate"
+     },
+     {
+      "item": "waxed_exposed_copper_grate"
+     },
+     {
+      "item": "waxed_weathered_copper_grate"
+     },
+     {
+      "item": "waxed_oxidized_copper_grate"
+     },
+     {
+      "item": "waxed_cut_copper"
+     },
+     {
+      "item": "waxed_exposed_cut_copper"
+     },
+     {
+      "item": "waxed_weathered_cut_copper"
+     },
+     {
+      "item": "waxed_oxidized_cut_copper"
+     },
+     {
+      "item": "waxed_cut_copper_stairs"
+     },
+     {
+      "item": "waxed_exposed_cut_copper_stairs"
+     },
+     {
+      "item": "waxed_weathered_cut_copper_stairs"
+     },
+     {
+      "item": "waxed_oxidized_cut_copper_stairs"
+     },
+     {
+      "item": "waxed_cut_copper_slab"
+     },
+     {
+      "item": "waxed_exposed_cut_copper_slab"
+     },
+     {
+      "item": "waxed_weathered_cut_copper_slab"
+     },
+     {
+      "item": "waxed_oxidized_cut_copper_slab"
+     },
+     {
+      "item": "waxed_copper_bars"
+     },
+     {
+      "item": "waxed_exposed_copper_bars"
+     },
+     {
+      "item": "waxed_weathered_copper_bars"
+     },
+     {
+      "item": "waxed_oxidized_copper_bars"
+     },
+     {
+      "item": "waxed_copper_door"
+     },
+     {
+      "item": "waxed_exposed_copper_door"
+     },
+     {
+      "item": "waxed_weathered_copper_door"
+     },
+     {
+      "item": "waxed_oxidized_copper_door"
+     },
+     {
+      "item": "waxed_copper_trapdoor"
+     },
+     {
+      "item": "waxed_exposed_copper_trapdoor"
+     },
+     {
+      "item": "waxed_weathered_copper_trapdoor"
+     },
+     {
+      "item": "waxed_oxidized_copper_trapdoor"
+     },
+     {
+      "item": "waxed_copper_bulb"
+     },
+     {
+      "item": "waxed_exposed_copper_bulb"
+     },
+     {
+      "item": "waxed_weathered_copper_bulb"
+     },
+     {
+      "item": "waxed_oxidized_copper_bulb"
+     },
+     {
+      "item": "waxed_copper_chain"
+     },
+     {
+      "item": "waxed_exposed_copper_chain"
+     },
+     {
+      "item": "waxed_weathered_copper_chain"
+     },
+     {
+      "item": "waxed_oxidized_copper_chain"
+     }
+    ]
+   }
+  },
+  {
+   "id": "colored_blocks",
+   "row": "top",
+   "column": 1,
+   "type": "category",
+   "aligned_right": false,
+   "show_title": true,
+   "can_scroll": true,
+   "title_key": "itemGroup.coloredBlocks",
+   "title": "Colored Blocks",
+   "icon": "cyan_wool",
+   "background": "textures/gui/container/creative_inventory/tab_items.png",
+   "items": {
+    "display": [
+     {
+      "item": "white_wool"
+     },
+     {
+      "item": "light_gray_wool"
+     },
+     {
+      "item": "gray_wool"
+     },
+     {
+      "item": "black_wool"
+     },
+     {
+      "item": "brown_wool"
+     },
+     {
+      "item": "red_wool"
+     },
+     {
+      "item": "orange_wool"
+     },
+     {
+      "item": "yellow_wool"
+     },
+     {
+      "item": "lime_wool"
+     },
+     {
+      "item": "green_wool"
+     },
+     {
+      "item": "cyan_wool"
+     },
+     {
+      "item": "light_blue_wool"
+     },
+     {
+      "item": "blue_wool"
+     },
+     {
+      "item": "purple_wool"
+     },
+     {
+      "item": "magenta_wool"
+     },
+     {
+      "item": "pink_wool"
+     },
+     {
+      "item": "white_wool_stairs"
+     },
+     {
+      "item": "light_gray_wool_stairs"
+     },
+     {
+      "item": "gray_wool_stairs"
+     },
+     {
+      "item": "black_wool_stairs"
+     },
+     {
+      "item": "brown_wool_stairs"
+     },
+     {
+      "item": "red_wool_stairs"
+     },
+     {
+      "item": "orange_wool_stairs"
+     },
+     {
+      "item": "yellow_wool_stairs"
+     },
+     {
+      "item": "lime_wool_stairs"
+     },
+     {
+      "item": "green_wool_stairs"
+     },
+     {
+      "item": "cyan_wool_stairs"
+     },
+     {
+      "item": "light_blue_wool_stairs"
+     },
+     {
+      "item": "blue_wool_stairs"
+     },
+     {
+      "item": "purple_wool_stairs"
+     },
+     {
+      "item": "magenta_wool_stairs"
+     },
+     {
+      "item": "pink_wool_stairs"
+     },
+     {
+      "item": "white_wool_slab"
+     },
+     {
+      "item": "light_gray_wool_slab"
+     },
+     {
+      "item": "gray_wool_slab"
+     },
+     {
+      "item": "black_wool_slab"
+     },
+     {
+      "item": "brown_wool_slab"
+     },
+     {
+      "item": "red_wool_slab"
+     },
+     {
+      "item": "orange_wool_slab"
+     },
+     {
+      "item": "yellow_wool_slab"
+     },
+     {
+      "item": "lime_wool_slab"
+     },
+     {
+      "item": "green_wool_slab"
+     },
+     {
+      "item": "cyan_wool_slab"
+     },
+     {
+      "item": "light_blue_wool_slab"
+     },
+     {
+      "item": "blue_wool_slab"
+     },
+     {
+      "item": "purple_wool_slab"
+     },
+     {
+      "item": "magenta_wool_slab"
+     },
+     {
+      "item": "pink_wool_slab"
+     },
+     {
+      "item": "white_carpet"
+     },
+     {
+      "item": "light_gray_carpet"
+     },
+     {
+      "item": "gray_carpet"
+     },
+     {
+      "item": "black_carpet"
+     },
+     {
+      "item": "brown_carpet"
+     },
+     {
+      "item": "red_carpet"
+     },
+     {
+      "item": "orange_carpet"
+     },
+     {
+      "item": "yellow_carpet"
+     },
+     {
+      "item": "lime_carpet"
+     },
+     {
+      "item": "green_carpet"
+     },
+     {
+      "item": "cyan_carpet"
+     },
+     {
+      "item": "light_blue_carpet"
+     },
+     {
+      "item": "blue_carpet"
+     },
+     {
+      "item": "purple_carpet"
+     },
+     {
+      "item": "magenta_carpet"
+     },
+     {
+      "item": "pink_carpet"
+     },
+     {
+      "item": "terracotta"
+     },
+     {
+      "item": "white_terracotta"
+     },
+     {
+      "item": "light_gray_terracotta"
+     },
+     {
+      "item": "gray_terracotta"
+     },
+     {
+      "item": "black_terracotta"
+     },
+     {
+      "item": "brown_terracotta"
+     },
+     {
+      "item": "red_terracotta"
+     },
+     {
+      "item": "orange_terracotta"
+     },
+     {
+      "item": "yellow_terracotta"
+     },
+     {
+      "item": "lime_terracotta"
+     },
+     {
+      "item": "green_terracotta"
+     },
+     {
+      "item": "cyan_terracotta"
+     },
+     {
+      "item": "light_blue_terracotta"
+     },
+     {
+      "item": "blue_terracotta"
+     },
+     {
+      "item": "purple_terracotta"
+     },
+     {
+      "item": "magenta_terracotta"
+     },
+     {
+      "item": "pink_terracotta"
+     },
+     {
+      "item": "white_concrete"
+     },
+     {
+      "item": "light_gray_concrete"
+     },
+     {
+      "item": "gray_concrete"
+     },
+     {
+      "item": "black_concrete"
+     },
+     {
+      "item": "brown_concrete"
+     },
+     {
+      "item": "red_concrete"
+     },
+     {
+      "item": "orange_concrete"
+     },
+     {
+      "item": "yellow_concrete"
+     },
+     {
+      "item": "lime_concrete"
+     },
+     {
+      "item": "green_concrete"
+     },
+     {
+      "item": "cyan_concrete"
+     },
+     {
+      "item": "light_blue_concrete"
+     },
+     {
+      "item": "blue_concrete"
+     },
+     {
+      "item": "purple_concrete"
+     },
+     {
+      "item": "magenta_concrete"
+     },
+     {
+      "item": "pink_concrete"
+     },
+     {
+      "item": "white_concrete_stairs"
+     },
+     {
+      "item": "light_gray_concrete_stairs"
+     },
+     {
+      "item": "gray_concrete_stairs"
+     },
+     {
+      "item": "black_concrete_stairs"
+     },
+     {
+      "item": "brown_concrete_stairs"
+     },
+     {
+      "item": "red_concrete_stairs"
+     },
+     {
+      "item": "orange_concrete_stairs"
+     },
+     {
+      "item": "yellow_concrete_stairs"
+     },
+     {
+      "item": "lime_concrete_stairs"
+     },
+     {
+      "item": "green_concrete_stairs"
+     },
+     {
+      "item": "cyan_concrete_stairs"
+     },
+     {
+      "item": "light_blue_concrete_stairs"
+     },
+     {
+      "item": "blue_concrete_stairs"
+     },
+     {
+      "item": "purple_concrete_stairs"
+     },
+     {
+      "item": "magenta_concrete_stairs"
+     },
+     {
+      "item": "pink_concrete_stairs"
+     },
+     {
+      "item": "white_concrete_slab"
+     },
+     {
+      "item": "light_gray_concrete_slab"
+     },
+     {
+      "item": "gray_concrete_slab"
+     },
+     {
+      "item": "black_concrete_slab"
+     },
+     {
+      "item": "brown_concrete_slab"
+     },
+     {
+      "item": "red_concrete_slab"
+     },
+     {
+      "item": "orange_concrete_slab"
+     },
+     {
+      "item": "yellow_concrete_slab"
+     },
+     {
+      "item": "lime_concrete_slab"
+     },
+     {
+      "item": "green_concrete_slab"
+     },
+     {
+      "item": "cyan_concrete_slab"
+     },
+     {
+      "item": "light_blue_concrete_slab"
+     },
+     {
+      "item": "blue_concrete_slab"
+     },
+     {
+      "item": "purple_concrete_slab"
+     },
+     {
+      "item": "magenta_concrete_slab"
+     },
+     {
+      "item": "pink_concrete_slab"
+     },
+     {
+      "item": "white_concrete_powder"
+     },
+     {
+      "item": "light_gray_concrete_powder"
+     },
+     {
+      "item": "gray_concrete_powder"
+     },
+     {
+      "item": "black_concrete_powder"
+     },
+     {
+      "item": "brown_concrete_powder"
+     },
+     {
+      "item": "red_concrete_powder"
+     },
+     {
+      "item": "orange_concrete_powder"
+     },
+     {
+      "item": "yellow_concrete_powder"
+     },
+     {
+      "item": "lime_concrete_powder"
+     },
+     {
+      "item": "green_concrete_powder"
+     },
+     {
+      "item": "cyan_concrete_powder"
+     },
+     {
+      "item": "light_blue_concrete_powder"
+     },
+     {
+      "item": "blue_concrete_powder"
+     },
+     {
+      "item": "purple_concrete_powder"
+     },
+     {
+      "item": "magenta_concrete_powder"
+     },
+     {
+      "item": "pink_concrete_powder"
+     },
+     {
+      "item": "white_glazed_terracotta"
+     },
+     {
+      "item": "light_gray_glazed_terracotta"
+     },
+     {
+      "item": "gray_glazed_terracotta"
+     },
+     {
+      "item": "black_glazed_terracotta"
+     },
+     {
+      "item": "brown_glazed_terracotta"
+     },
+     {
+      "item": "red_glazed_terracotta"
+     },
+     {
+      "item": "orange_glazed_terracotta"
+     },
+     {
+      "item": "yellow_glazed_terracotta"
+     },
+     {
+      "item": "lime_glazed_terracotta"
+     },
+     {
+      "item": "green_glazed_terracotta"
+     },
+     {
+      "item": "cyan_glazed_terracotta"
+     },
+     {
+      "item": "light_blue_glazed_terracotta"
+     },
+     {
+      "item": "blue_glazed_terracotta"
+     },
+     {
+      "item": "purple_glazed_terracotta"
+     },
+     {
+      "item": "magenta_glazed_terracotta"
+     },
+     {
+      "item": "pink_glazed_terracotta"
+     },
+     {
+      "item": "glass"
+     },
+     {
+      "item": "tinted_glass"
+     },
+     {
+      "item": "white_stained_glass"
+     },
+     {
+      "item": "light_gray_stained_glass"
+     },
+     {
+      "item": "gray_stained_glass"
+     },
+     {
+      "item": "black_stained_glass"
+     },
+     {
+      "item": "brown_stained_glass"
+     },
+     {
+      "item": "red_stained_glass"
+     },
+     {
+      "item": "orange_stained_glass"
+     },
+     {
+      "item": "yellow_stained_glass"
+     },
+     {
+      "item": "lime_stained_glass"
+     },
+     {
+      "item": "green_stained_glass"
+     },
+     {
+      "item": "cyan_stained_glass"
+     },
+     {
+      "item": "light_blue_stained_glass"
+     },
+     {
+      "item": "blue_stained_glass"
+     },
+     {
+      "item": "purple_stained_glass"
+     },
+     {
+      "item": "magenta_stained_glass"
+     },
+     {
+      "item": "pink_stained_glass"
+     },
+     {
+      "item": "glass_pane"
+     },
+     {
+      "item": "white_stained_glass_pane"
+     },
+     {
+      "item": "light_gray_stained_glass_pane"
+     },
+     {
+      "item": "gray_stained_glass_pane"
+     },
+     {
+      "item": "black_stained_glass_pane"
+     },
+     {
+      "item": "brown_stained_glass_pane"
+     },
+     {
+      "item": "red_stained_glass_pane"
+     },
+     {
+      "item": "orange_stained_glass_pane"
+     },
+     {
+      "item": "yellow_stained_glass_pane"
+     },
+     {
+      "item": "lime_stained_glass_pane"
+     },
+     {
+      "item": "green_stained_glass_pane"
+     },
+     {
+      "item": "cyan_stained_glass_pane"
+     },
+     {
+      "item": "light_blue_stained_glass_pane"
+     },
+     {
+      "item": "blue_stained_glass_pane"
+     },
+     {
+      "item": "purple_stained_glass_pane"
+     },
+     {
+      "item": "magenta_stained_glass_pane"
+     },
+     {
+      "item": "pink_stained_glass_pane"
+     },
+     {
+      "item": "shulker_box"
+     },
+     {
+      "item": "white_shulker_box"
+     },
+     {
+      "item": "light_gray_shulker_box"
+     },
+     {
+      "item": "gray_shulker_box"
+     },
+     {
+      "item": "black_shulker_box"
+     },
+     {
+      "item": "brown_shulker_box"
+     },
+     {
+      "item": "red_shulker_box"
+     },
+     {
+      "item": "orange_shulker_box"
+     },
+     {
+      "item": "yellow_shulker_box"
+     },
+     {
+      "item": "lime_shulker_box"
+     },
+     {
+      "item": "green_shulker_box"
+     },
+     {
+      "item": "cyan_shulker_box"
+     },
+     {
+      "item": "light_blue_shulker_box"
+     },
+     {
+      "item": "blue_shulker_box"
+     },
+     {
+      "item": "purple_shulker_box"
+     },
+     {
+      "item": "magenta_shulker_box"
+     },
+     {
+      "item": "pink_shulker_box"
+     },
+     {
+      "item": "white_bed"
+     },
+     {
+      "item": "light_gray_bed"
+     },
+     {
+      "item": "gray_bed"
+     },
+     {
+      "item": "black_bed"
+     },
+     {
+      "item": "brown_bed"
+     },
+     {
+      "item": "red_bed"
+     },
+     {
+      "item": "orange_bed"
+     },
+     {
+      "item": "yellow_bed"
+     },
+     {
+      "item": "lime_bed"
+     },
+     {
+      "item": "green_bed"
+     },
+     {
+      "item": "cyan_bed"
+     },
+     {
+      "item": "light_blue_bed"
+     },
+     {
+      "item": "blue_bed"
+     },
+     {
+      "item": "purple_bed"
+     },
+     {
+      "item": "magenta_bed"
+     },
+     {
+      "item": "pink_bed"
+     },
+     {
+      "item": "white_cushion"
+     },
+     {
+      "item": "light_gray_cushion"
+     },
+     {
+      "item": "gray_cushion"
+     },
+     {
+      "item": "black_cushion"
+     },
+     {
+      "item": "brown_cushion"
+     },
+     {
+      "item": "red_cushion"
+     },
+     {
+      "item": "orange_cushion"
+     },
+     {
+      "item": "yellow_cushion"
+     },
+     {
+      "item": "lime_cushion"
+     },
+     {
+      "item": "green_cushion"
+     },
+     {
+      "item": "cyan_cushion"
+     },
+     {
+      "item": "light_blue_cushion"
+     },
+     {
+      "item": "blue_cushion"
+     },
+     {
+      "item": "purple_cushion"
+     },
+     {
+      "item": "magenta_cushion"
+     },
+     {
+      "item": "pink_cushion"
+     },
+     {
+      "item": "candle"
+     },
+     {
+      "item": "white_candle"
+     },
+     {
+      "item": "light_gray_candle"
+     },
+     {
+      "item": "gray_candle"
+     },
+     {
+      "item": "black_candle"
+     },
+     {
+      "item": "brown_candle"
+     },
+     {
+      "item": "red_candle"
+     },
+     {
+      "item": "orange_candle"
+     },
+     {
+      "item": "yellow_candle"
+     },
+     {
+      "item": "lime_candle"
+     },
+     {
+      "item": "green_candle"
+     },
+     {
+      "item": "cyan_candle"
+     },
+     {
+      "item": "light_blue_candle"
+     },
+     {
+      "item": "blue_candle"
+     },
+     {
+      "item": "purple_candle"
+     },
+     {
+      "item": "magenta_candle"
+     },
+     {
+      "item": "pink_candle"
+     },
+     {
+      "item": "white_banner"
+     },
+     {
+      "item": "light_gray_banner"
+     },
+     {
+      "item": "gray_banner"
+     },
+     {
+      "item": "black_banner"
+     },
+     {
+      "item": "brown_banner"
+     },
+     {
+      "item": "red_banner"
+     },
+     {
+      "item": "orange_banner"
+     },
+     {
+      "item": "yellow_banner"
+     },
+     {
+      "item": "lime_banner"
+     },
+     {
+      "item": "green_banner"
+     },
+     {
+      "item": "cyan_banner"
+     },
+     {
+      "item": "light_blue_banner"
+     },
+     {
+      "item": "blue_banner"
+     },
+     {
+      "item": "purple_banner"
+     },
+     {
+      "item": "magenta_banner"
+     },
+     {
+      "item": "pink_banner"
+     }
+    ]
+   }
+  },
+  {
+   "id": "natural_blocks",
+   "row": "top",
+   "column": 2,
+   "type": "category",
+   "aligned_right": false,
+   "show_title": true,
+   "can_scroll": true,
+   "title_key": "itemGroup.natural",
+   "title": "Natural Blocks",
+   "icon": "grass_block",
+   "background": "textures/gui/container/creative_inventory/tab_items.png",
+   "items": {
+    "display": [
+     {
+      "item": "grass_block"
+     },
+     {
+      "item": "podzol"
+     },
+     {
+      "item": "mycelium"
+     },
+     {
+      "item": "dirt_path"
+     },
+     {
+      "item": "dirt"
+     },
+     {
+      "item": "coarse_dirt"
+     },
+     {
+      "item": "rooted_dirt"
+     },
+     {
+      "item": "farmland"
+     },
+     {
+      "item": "mud"
+     },
+     {
+      "item": "clay"
+     },
+     {
+      "item": "gravel"
+     },
+     {
+      "item": "sand"
+     },
+     {
+      "item": "sandstone"
+     },
+     {
+      "item": "red_sand"
+     },
+     {
+      "item": "red_sandstone"
+     },
+     {
+      "item": "ice"
+     },
+     {
+      "item": "packed_ice"
+     },
+     {
+      "item": "blue_ice"
+     },
+     {
+      "item": "snow_block"
+     },
+     {
+      "item": "snow"
+     },
+     {
+      "item": "moss_block"
+     },
+     {
+      "item": "moss_carpet"
+     },
+     {
+      "item": "pale_moss_block"
+     },
+     {
+      "item": "pale_moss_carpet"
+     },
+     {
+      "item": "pale_hanging_moss"
+     },
+     {
+      "item": "stone"
+     },
+     {
+      "item": "deepslate"
+     },
+     {
+      "item": "granite"
+     },
+     {
+      "item": "diorite"
+     },
+     {
+      "item": "andesite"
+     },
+     {
+      "item": "calcite"
+     },
+     {
+      "item": "tuff"
+     },
+     {
+      "item": "dripstone_block"
+     },
+     {
+      "item": "pointed_dripstone"
+     },
+     {
+      "item": "prismarine"
+     },
+     {
+      "item": "cinnabar"
+     },
+     {
+      "item": "sulfur"
+     },
+     {
+      "item": "sulfur_spike"
+     },
+     {
+      "item": "potent_sulfur"
+     },
+     {
+      "item": "magma_block"
+     },
+     {
+      "item": "obsidian"
+     },
+     {
+      "item": "crying_obsidian"
+     },
+     {
+      "item": "netherrack"
+     },
+     {
+      "item": "crimson_nylium"
+     },
+     {
+      "item": "warped_nylium"
+     },
+     {
+      "item": "soul_sand"
+     },
+     {
+      "item": "soul_soil"
+     },
+     {
+      "item": "bone_block"
+     },
+     {
+      "item": "blackstone"
+     },
+     {
+      "item": "basalt"
+     },
+     {
+      "item": "smooth_basalt"
+     },
+     {
+      "item": "end_stone"
+     },
+     {
+      "item": "coal_ore"
+     },
+     {
+      "item": "deepslate_coal_ore"
+     },
+     {
+      "item": "emerald_ore"
+     },
+     {
+      "item": "deepslate_emerald_ore"
+     },
+     {
+      "item": "lapis_ore"
+     },
+     {
+      "item": "deepslate_lapis_ore"
+     },
+     {
+      "item": "redstone_ore"
+     },
+     {
+      "item": "deepslate_redstone_ore"
+     },
+     {
+      "item": "iron_ore"
+     },
+     {
+      "item": "deepslate_iron_ore"
+     },
+     {
+      "item": "copper_ore"
+     },
+     {
+      "item": "deepslate_copper_ore"
+     },
+     {
+      "item": "gold_ore"
+     },
+     {
+      "item": "deepslate_gold_ore"
+     },
+     {
+      "item": "diamond_ore"
+     },
+     {
+      "item": "deepslate_diamond_ore"
+     },
+     {
+      "item": "nether_gold_ore"
+     },
+     {
+      "item": "nether_quartz_ore"
+     },
+     {
+      "item": "ancient_debris"
+     },
+     {
+      "item": "raw_iron_block"
+     },
+     {
+      "item": "raw_copper_block"
+     },
+     {
+      "item": "raw_gold_block"
+     },
+     {
+      "item": "glowstone"
+     },
+     {
+      "item": "amethyst_block"
+     },
+     {
+      "item": "budding_amethyst"
+     },
+     {
+      "item": "small_amethyst_bud"
+     },
+     {
+      "item": "medium_amethyst_bud"
+     },
+     {
+      "item": "large_amethyst_bud"
+     },
+     {
+      "item": "amethyst_cluster"
+     },
+     {
+      "item": "oak_log"
+     },
+     {
+      "item": "spruce_log"
+     },
+     {
+      "item": "birch_log"
+     },
+     {
+      "item": "jungle_log"
+     },
+     {
+      "item": "acacia_log"
+     },
+     {
+      "item": "dark_oak_log"
+     },
+     {
+      "item": "mangrove_log"
+     },
+     {
+      "item": "mangrove_roots"
+     },
+     {
+      "item": "muddy_mangrove_roots"
+     },
+     {
+      "item": "cherry_log"
+     },
+     {
+      "item": "pale_oak_log"
+     },
+     {
+      "item": "poplar_log"
+     },
+     {
+      "item": "mushroom_stem"
+     },
+     {
+      "item": "crimson_stem"
+     },
+     {
+      "item": "warped_stem"
+     },
+     {
+      "item": "oak_leaves"
+     },
+     {
+      "item": "spruce_leaves"
+     },
+     {
+      "item": "birch_leaves"
+     },
+     {
+      "item": "jungle_leaves"
+     },
+     {
+      "item": "acacia_leaves"
+     },
+     {
+      "item": "dark_oak_leaves"
+     },
+     {
+      "item": "mangrove_leaves"
+     },
+     {
+      "item": "cherry_leaves"
+     },
+     {
+      "item": "pale_oak_leaves"
+     },
+     {
+      "item": "red_poplar_leaves"
+     },
+     {
+      "item": "orange_poplar_leaves"
+     },
+     {
+      "item": "yellow_poplar_leaves"
+     },
+     {
+      "item": "azalea_leaves"
+     },
+     {
+      "item": "flowering_azalea_leaves"
+     },
+     {
+      "item": "brown_mushroom_block"
+     },
+     {
+      "item": "red_mushroom_block"
+     },
+     {
+      "item": "nether_wart_block"
+     },
+     {
+      "item": "warped_wart_block"
+     },
+     {
+      "item": "shroomlight"
+     },
+     {
+      "item": "oak_sapling"
+     },
+     {
+      "item": "spruce_sapling"
+     },
+     {
+      "item": "birch_sapling"
+     },
+     {
+      "item": "jungle_sapling"
+     },
+     {
+      "item": "acacia_sapling"
+     },
+     {
+      "item": "dark_oak_sapling"
+     },
+     {
+      "item": "mangrove_propagule"
+     },
+     {
+      "item": "cherry_sapling"
+     },
+     {
+      "item": "pale_oak_sapling"
+     },
+     {
+      "item": "poplar_sapling"
+     },
+     {
+      "item": "azalea"
+     },
+     {
+      "item": "flowering_azalea"
+     },
+     {
+      "item": "brown_mushroom"
+     },
+     {
+      "item": "red_mushroom"
+     },
+     {
+      "item": "shelf_mushroom"
+     },
+     {
+      "item": "crimson_fungus"
+     },
+     {
+      "item": "warped_fungus"
+     },
+     {
+      "item": "short_grass"
+     },
+     {
+      "item": "fern"
+     },
+     {
+      "item": "short_dry_grass"
+     },
+     {
+      "item": "bush"
+     },
+     {
+      "item": "red_shrub"
+     },
+     {
+      "item": "dead_bush"
+     },
+     {
+      "item": "dandelion"
+     },
+     {
+      "item": "poppy"
+     },
+     {
+      "item": "blue_orchid"
+     },
+     {
+      "item": "allium"
+     },
+     {
+      "item": "azure_bluet"
+     },
+     {
+      "item": "red_tulip"
+     },
+     {
+      "item": "orange_tulip"
+     },
+     {
+      "item": "white_tulip"
+     },
+     {
+      "item": "pink_tulip"
+     },
+     {
+      "item": "oxeye_daisy"
+     },
+     {
+      "item": "cornflower"
+     },
+     {
+      "item": "lily_of_the_valley"
+     },
+     {
+      "item": "torchflower"
+     },
+     {
+      "item": "cactus_flower"
+     },
+     {
+      "item": "closed_eyeblossom"
+     },
+     {
+      "item": "open_eyeblossom"
+     },
+     {
+      "item": "wither_rose"
+     },
+     {
+      "item": "pink_petals"
+     },
+     {
+      "item": "wildflowers"
+     },
+     {
+      "item": "leaf_litter"
+     },
+     {
+      "item": "spore_blossom"
+     },
+     {
+      "item": "firefly_bush"
+     },
+     {
+      "item": "bamboo"
+     },
+     {
+      "item": "sugar_cane"
+     },
+     {
+      "item": "cactus"
+     },
+     {
+      "item": "vine"
+     },
+     {
+      "item": "glow_lichen"
+     },
+     {
+      "item": "hanging_roots"
+     },
+     {
+      "item": "tall_grass"
+     },
+     {
+      "item": "large_fern"
+     },
+     {
+      "item": "tall_dry_grass"
+     },
+     {
+      "item": "sunflower"
+     },
+     {
+      "item": "lilac"
+     },
+     {
+      "item": "rose_bush"
+     },
+     {
+      "item": "peony"
+     },
+     {
+      "item": "pitcher_plant"
+     },
+     {
+      "item": "big_dripleaf"
+     },
+     {
+      "item": "small_dripleaf"
+     },
+     {
+      "item": "crimson_roots"
+     },
+     {
+      "item": "warped_roots"
+     },
+     {
+      "item": "nether_sprouts"
+     },
+     {
+      "item": "weeping_vines"
+     },
+     {
+      "item": "twisting_vines"
+     },
+     {
+      "item": "chorus_plant"
+     },
+     {
+      "item": "chorus_flower"
+     },
+     {
+      "item": "frogspawn"
+     },
+     {
+      "item": "turtle_egg"
+     },
+     {
+      "item": "sniffer_egg"
+     },
+     {
+      "item": "dried_ghast"
+     },
+     {
+      "item": "wheat_seeds"
+     },
+     {
+      "item": "cocoa_beans"
+     },
+     {
+      "item": "pumpkin_seeds"
+     },
+     {
+      "item": "melon_seeds"
+     },
+     {
+      "item": "beetroot_seeds"
+     },
+     {
+      "item": "torchflower_seeds"
+     },
+     {
+      "item": "pitcher_pod"
+     },
+     {
+      "item": "glow_berries"
+     },
+     {
+      "item": "sweet_berries"
+     },
+     {
+      "item": "nether_wart"
+     },
+     {
+      "item": "lily_pad"
+     },
+     {
+      "item": "seagrass"
+     },
+     {
+      "item": "sea_pickle"
+     },
+     {
+      "item": "kelp"
+     },
+     {
+      "item": "dried_kelp_block"
+     },
+     {
+      "item": "tube_coral_block"
+     },
+     {
+      "item": "brain_coral_block"
+     },
+     {
+      "item": "bubble_coral_block"
+     },
+     {
+      "item": "fire_coral_block"
+     },
+     {
+      "item": "horn_coral_block"
+     },
+     {
+      "item": "dead_tube_coral_block"
+     },
+     {
+      "item": "dead_brain_coral_block"
+     },
+     {
+      "item": "dead_bubble_coral_block"
+     },
+     {
+      "item": "dead_fire_coral_block"
+     },
+     {
+      "item": "dead_horn_coral_block"
+     },
+     {
+      "item": "tube_coral"
+     },
+     {
+      "item": "brain_coral"
+     },
+     {
+      "item": "bubble_coral"
+     },
+     {
+      "item": "fire_coral"
+     },
+     {
+      "item": "horn_coral"
+     },
+     {
+      "item": "dead_tube_coral"
+     },
+     {
+      "item": "dead_brain_coral"
+     },
+     {
+      "item": "dead_bubble_coral"
+     },
+     {
+      "item": "dead_fire_coral"
+     },
+     {
+      "item": "dead_horn_coral"
+     },
+     {
+      "item": "tube_coral_fan"
+     },
+     {
+      "item": "brain_coral_fan"
+     },
+     {
+      "item": "bubble_coral_fan"
+     },
+     {
+      "item": "fire_coral_fan"
+     },
+     {
+      "item": "horn_coral_fan"
+     },
+     {
+      "item": "dead_tube_coral_fan"
+     },
+     {
+      "item": "dead_brain_coral_fan"
+     },
+     {
+      "item": "dead_bubble_coral_fan"
+     },
+     {
+      "item": "dead_fire_coral_fan"
+     },
+     {
+      "item": "dead_horn_coral_fan"
+     },
+     {
+      "item": "sponge"
+     },
+     {
+      "item": "wet_sponge"
+     },
+     {
+      "item": "melon"
+     },
+     {
+      "item": "pumpkin"
+     },
+     {
+      "item": "carved_pumpkin"
+     },
+     {
+      "item": "jack_o_lantern"
+     },
+     {
+      "item": "hay_block"
+     },
+     {
+      "item": "bee_nest"
+     },
+     {
+      "item": "honeycomb_block"
+     },
+     {
+      "item": "slime_block"
+     },
+     {
+      "item": "honey_block"
+     },
+     {
+      "item": "resin_block"
+     },
+     {
+      "item": "ochre_froglight"
+     },
+     {
+      "item": "verdant_froglight"
+     },
+     {
+      "item": "pearlescent_froglight"
+     },
+     {
+      "item": "sculk"
+     },
+     {
+      "item": "sculk_vein"
+     },
+     {
+      "item": "sculk_catalyst"
+     },
+     {
+      "item": "sculk_shrieker"
+     },
+     {
+      "item": "sculk_sensor"
+     },
+     {
+      "item": "cobweb"
+     },
+     {
+      "item": "bedrock"
+     }
+    ]
+   }
+  },
+  {
+   "id": "functional_blocks",
+   "row": "top",
+   "column": 3,
+   "type": "category",
+   "aligned_right": false,
+   "show_title": true,
+   "can_scroll": true,
+   "title_key": "itemGroup.functional",
+   "title": "Functional Blocks",
+   "icon": "oak_sign",
+   "background": "textures/gui/container/creative_inventory/tab_items.png",
+   "items": {
+    "display": [
+     {
+      "item": "torch"
+     },
+     {
+      "item": "soul_torch"
+     },
+     {
+      "item": "copper_torch"
+     },
+     {
+      "item": "redstone_torch"
+     },
+     {
+      "item": "lantern"
+     },
+     {
+      "item": "soul_lantern"
+     },
+     {
+      "item": "copper_lantern"
+     },
+     {
+      "item": "exposed_copper_lantern"
+     },
+     {
+      "item": "weathered_copper_lantern"
+     },
+     {
+      "item": "oxidized_copper_lantern"
+     },
+     {
+      "item": "waxed_copper_lantern"
+     },
+     {
+      "item": "waxed_exposed_copper_lantern"
+     },
+     {
+      "item": "waxed_weathered_copper_lantern"
+     },
+     {
+      "item": "waxed_oxidized_copper_lantern"
+     },
+     {
+      "item": "iron_chain"
+     },
+     {
+      "item": "copper_chain"
+     },
+     {
+      "item": "exposed_copper_chain"
+     },
+     {
+      "item": "weathered_copper_chain"
+     },
+     {
+      "item": "oxidized_copper_chain"
+     },
+     {
+      "item": "waxed_copper_chain"
+     },
+     {
+      "item": "waxed_exposed_copper_chain"
+     },
+     {
+      "item": "waxed_weathered_copper_chain"
+     },
+     {
+      "item": "waxed_oxidized_copper_chain"
+     },
+     {
+      "item": "end_rod"
+     },
+     {
+      "item": "sea_lantern"
+     },
+     {
+      "item": "redstone_lamp"
+     },
+     {
+      "item": "copper_bulb"
+     },
+     {
+      "item": "exposed_copper_bulb"
+     },
+     {
+      "item": "weathered_copper_bulb"
+     },
+     {
+      "item": "oxidized_copper_bulb"
+     },
+     {
+      "item": "waxed_copper_bulb"
+     },
+     {
+      "item": "waxed_exposed_copper_bulb"
+     },
+     {
+      "item": "waxed_weathered_copper_bulb"
+     },
+     {
+      "item": "waxed_oxidized_copper_bulb"
+     },
+     {
+      "item": "glowstone"
+     },
+     {
+      "item": "shroomlight"
+     },
+     {
+      "item": "ochre_froglight"
+     },
+     {
+      "item": "verdant_froglight"
+     },
+     {
+      "item": "pearlescent_froglight"
+     },
+     {
+      "item": "crying_obsidian"
+     },
+     {
+      "item": "glow_lichen"
+     },
+     {
+      "item": "magma_block"
+     },
+     {
+      "item": "crafting_table"
+     },
+     {
+      "item": "stonecutter"
+     },
+     {
+      "item": "cartography_table"
+     },
+     {
+      "item": "fletching_table"
+     },
+     {
+      "item": "smithing_table"
+     },
+     {
+      "item": "grindstone"
+     },
+     {
+      "item": "loom"
+     },
+     {
+      "item": "furnace"
+     },
+     {
+      "item": "smoker"
+     },
+     {
+      "item": "blast_furnace"
+     },
+     {
+      "item": "campfire"
+     },
+     {
+      "item": "soul_campfire"
+     },
+     {
+      "item": "anvil"
+     },
+     {
+      "item": "chipped_anvil"
+     },
+     {
+      "item": "damaged_anvil"
+     },
+     {
+      "item": "composter"
+     },
+     {
+      "item": "note_block"
+     },
+     {
+      "item": "jukebox"
+     },
+     {
+      "item": "enchanting_table"
+     },
+     {
+      "item": "end_crystal"
+     },
+     {
+      "item": "brewing_stand"
+     },
+     {
+      "item": "cauldron"
+     },
+     {
+      "item": "bell"
+     },
+     {
+      "item": "beacon"
+     },
+     {
+      "item": "conduit"
+     },
+     {
+      "item": "lodestone"
+     },
+     {
+      "item": "ladder"
+     },
+     {
+      "item": "scaffolding"
+     },
+     {
+      "item": "bee_nest"
+     },
+     {
+      "item": "beehive"
+     },
+     {
+      "item": "suspicious_sand"
+     },
+     {
+      "item": "suspicious_gravel"
+     },
+     {
+      "item": "lightning_rod"
+     },
+     {
+      "item": "exposed_lightning_rod"
+     },
+     {
+      "item": "weathered_lightning_rod"
+     },
+     {
+      "item": "oxidized_lightning_rod"
+     },
+     {
+      "item": "waxed_lightning_rod"
+     },
+     {
+      "item": "waxed_exposed_lightning_rod"
+     },
+     {
+      "item": "waxed_weathered_lightning_rod"
+     },
+     {
+      "item": "waxed_oxidized_lightning_rod"
+     },
+     {
+      "item": "flower_pot"
+     },
+     {
+      "item": "decorated_pot"
+     },
+     {
+      "item": "armor_stand"
+     },
+     {
+      "item": "item_frame"
+     },
+     {
+      "item": "glow_item_frame"
+     },
+     {
+      "item": "painting"
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "alban"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "aztec"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "aztec2"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "bomb"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "kebab"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "meditative"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "plant"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "wasteland"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "graham"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "prairie_ride"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "wanderer"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "courbet"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "creebet"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "pool"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "sea"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "sunset"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "baroque"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "bust"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "humble"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "match"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "skull_and_roses"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "stage"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "void"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "wither"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "changing"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "fighters"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "finding"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "lowmist"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "passage"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "bouquet"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "cavebird"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "cotan"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "dennis"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "endboss"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "fern"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "owlemons"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "sunflowers"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "tides"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "backyard"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "pond"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "donkey_kong"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "skeleton"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "burning_skull"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "orb"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "pigscene"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "pointer"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "unpacked"
+      }
+     },
+     {
+      "item": "bookshelf"
+     },
+     {
+      "item": "chiseled_bookshelf"
+     },
+     {
+      "item": "oak_shelf"
+     },
+     {
+      "item": "spruce_shelf"
+     },
+     {
+      "item": "birch_shelf"
+     },
+     {
+      "item": "jungle_shelf"
+     },
+     {
+      "item": "acacia_shelf"
+     },
+     {
+      "item": "dark_oak_shelf"
+     },
+     {
+      "item": "mangrove_shelf"
+     },
+     {
+      "item": "cherry_shelf"
+     },
+     {
+      "item": "pale_oak_shelf"
+     },
+     {
+      "item": "poplar_shelf"
+     },
+     {
+      "item": "bamboo_shelf"
+     },
+     {
+      "item": "crimson_shelf"
+     },
+     {
+      "item": "warped_shelf"
+     },
+     {
+      "item": "lectern"
+     },
+     {
+      "item": "tinted_glass"
+     },
+     {
+      "item": "oak_sign"
+     },
+     {
+      "item": "oak_hanging_sign"
+     },
+     {
+      "item": "spruce_sign"
+     },
+     {
+      "item": "spruce_hanging_sign"
+     },
+     {
+      "item": "birch_sign"
+     },
+     {
+      "item": "birch_hanging_sign"
+     },
+     {
+      "item": "jungle_sign"
+     },
+     {
+      "item": "jungle_hanging_sign"
+     },
+     {
+      "item": "acacia_sign"
+     },
+     {
+      "item": "acacia_hanging_sign"
+     },
+     {
+      "item": "dark_oak_sign"
+     },
+     {
+      "item": "dark_oak_hanging_sign"
+     },
+     {
+      "item": "mangrove_sign"
+     },
+     {
+      "item": "mangrove_hanging_sign"
+     },
+     {
+      "item": "cherry_sign"
+     },
+     {
+      "item": "cherry_hanging_sign"
+     },
+     {
+      "item": "pale_oak_sign"
+     },
+     {
+      "item": "pale_oak_hanging_sign"
+     },
+     {
+      "item": "poplar_sign"
+     },
+     {
+      "item": "poplar_hanging_sign"
+     },
+     {
+      "item": "bamboo_sign"
+     },
+     {
+      "item": "bamboo_hanging_sign"
+     },
+     {
+      "item": "crimson_sign"
+     },
+     {
+      "item": "crimson_hanging_sign"
+     },
+     {
+      "item": "warped_sign"
+     },
+     {
+      "item": "warped_hanging_sign"
+     },
+     {
+      "item": "chest"
+     },
+     {
+      "item": "copper_chest"
+     },
+     {
+      "item": "exposed_copper_chest"
+     },
+     {
+      "item": "weathered_copper_chest"
+     },
+     {
+      "item": "oxidized_copper_chest"
+     },
+     {
+      "item": "waxed_copper_chest"
+     },
+     {
+      "item": "waxed_exposed_copper_chest"
+     },
+     {
+      "item": "waxed_weathered_copper_chest"
+     },
+     {
+      "item": "waxed_oxidized_copper_chest"
+     },
+     {
+      "item": "barrel"
+     },
+     {
+      "item": "ender_chest"
+     },
+     {
+      "item": "shulker_box"
+     },
+     {
+      "item": "white_shulker_box"
+     },
+     {
+      "item": "light_gray_shulker_box"
+     },
+     {
+      "item": "gray_shulker_box"
+     },
+     {
+      "item": "black_shulker_box"
+     },
+     {
+      "item": "brown_shulker_box"
+     },
+     {
+      "item": "red_shulker_box"
+     },
+     {
+      "item": "orange_shulker_box"
+     },
+     {
+      "item": "yellow_shulker_box"
+     },
+     {
+      "item": "lime_shulker_box"
+     },
+     {
+      "item": "green_shulker_box"
+     },
+     {
+      "item": "cyan_shulker_box"
+     },
+     {
+      "item": "light_blue_shulker_box"
+     },
+     {
+      "item": "blue_shulker_box"
+     },
+     {
+      "item": "purple_shulker_box"
+     },
+     {
+      "item": "magenta_shulker_box"
+     },
+     {
+      "item": "pink_shulker_box"
+     },
+     {
+      "item": "respawn_anchor"
+     },
+     {
+      "item": "white_bed"
+     },
+     {
+      "item": "light_gray_bed"
+     },
+     {
+      "item": "gray_bed"
+     },
+     {
+      "item": "black_bed"
+     },
+     {
+      "item": "brown_bed"
+     },
+     {
+      "item": "red_bed"
+     },
+     {
+      "item": "orange_bed"
+     },
+     {
+      "item": "yellow_bed"
+     },
+     {
+      "item": "lime_bed"
+     },
+     {
+      "item": "green_bed"
+     },
+     {
+      "item": "cyan_bed"
+     },
+     {
+      "item": "light_blue_bed"
+     },
+     {
+      "item": "blue_bed"
+     },
+     {
+      "item": "purple_bed"
+     },
+     {
+      "item": "magenta_bed"
+     },
+     {
+      "item": "pink_bed"
+     },
+     {
+      "item": "straw_bed"
+     },
+     {
+      "item": "candle"
+     },
+     {
+      "item": "white_candle"
+     },
+     {
+      "item": "light_gray_candle"
+     },
+     {
+      "item": "gray_candle"
+     },
+     {
+      "item": "black_candle"
+     },
+     {
+      "item": "brown_candle"
+     },
+     {
+      "item": "red_candle"
+     },
+     {
+      "item": "orange_candle"
+     },
+     {
+      "item": "yellow_candle"
+     },
+     {
+      "item": "lime_candle"
+     },
+     {
+      "item": "green_candle"
+     },
+     {
+      "item": "cyan_candle"
+     },
+     {
+      "item": "light_blue_candle"
+     },
+     {
+      "item": "blue_candle"
+     },
+     {
+      "item": "purple_candle"
+     },
+     {
+      "item": "magenta_candle"
+     },
+     {
+      "item": "pink_candle"
+     },
+     {
+      "item": "white_banner"
+     },
+     {
+      "item": "light_gray_banner"
+     },
+     {
+      "item": "gray_banner"
+     },
+     {
+      "item": "black_banner"
+     },
+     {
+      "item": "brown_banner"
+     },
+     {
+      "item": "red_banner"
+     },
+     {
+      "item": "orange_banner"
+     },
+     {
+      "item": "yellow_banner"
+     },
+     {
+      "item": "lime_banner"
+     },
+     {
+      "item": "green_banner"
+     },
+     {
+      "item": "cyan_banner"
+     },
+     {
+      "item": "light_blue_banner"
+     },
+     {
+      "item": "blue_banner"
+     },
+     {
+      "item": "purple_banner"
+     },
+     {
+      "item": "magenta_banner"
+     },
+     {
+      "item": "pink_banner"
+     },
+     {
+      "item": "white_banner",
+      "components": {
+       "banner_patterns": [
+        {
+         "pattern": "rhombus",
+         "color": "cyan"
+        },
+        {
+         "pattern": "stripe_bottom",
+         "color": "light_gray"
+        },
+        {
+         "pattern": "stripe_center",
+         "color": "gray"
+        },
+        {
+         "pattern": "border",
+         "color": "light_gray"
+        },
+        {
+         "pattern": "stripe_middle",
+         "color": "black"
+        },
+        {
+         "pattern": "half_horizontal",
+         "color": "light_gray"
+        },
+        {
+         "pattern": "circle",
+         "color": "light_gray"
+        },
+        {
+         "pattern": "border",
+         "color": "black"
+        }
+       ],
+       "tooltip_display": {
+        "hidden_components": [
+         "banner_patterns"
+        ]
+       },
+       "item_name": {
+        "translate": "block.minecraft.ominous_banner"
+       },
+       "rarity": "uncommon"
+      }
+     },
+     {
+      "item": "skeleton_skull"
+     },
+     {
+      "item": "wither_skeleton_skull"
+     },
+     {
+      "item": "player_head"
+     },
+     {
+      "item": "zombie_head"
+     },
+     {
+      "item": "creeper_head"
+     },
+     {
+      "item": "piglin_head"
+     },
+     {
+      "item": "dragon_head"
+     },
+     {
+      "item": "dragon_egg"
+     },
+     {
+      "item": "end_portal_frame"
+     },
+     {
+      "item": "vault"
+     },
+     {
+      "item": "ender_eye"
+     },
+     {
+      "item": "copper_golem_statue"
+     },
+     {
+      "item": "exposed_copper_golem_statue"
+     },
+     {
+      "item": "weathered_copper_golem_statue"
+     },
+     {
+      "item": "oxidized_copper_golem_statue"
+     },
+     {
+      "item": "waxed_copper_golem_statue"
+     },
+     {
+      "item": "waxed_exposed_copper_golem_statue"
+     },
+     {
+      "item": "waxed_weathered_copper_golem_statue"
+     },
+     {
+      "item": "waxed_oxidized_copper_golem_statue"
+     },
+     {
+      "item": "infested_stone"
+     },
+     {
+      "item": "infested_cobblestone"
+     },
+     {
+      "item": "infested_stone_bricks"
+     },
+     {
+      "item": "infested_mossy_stone_bricks"
+     },
+     {
+      "item": "infested_cracked_stone_bricks"
+     },
+     {
+      "item": "infested_chiseled_stone_bricks"
+     },
+     {
+      "item": "infested_deepslate"
+     }
+    ]
+   }
+  },
+  {
+   "id": "redstone_blocks",
+   "row": "top",
+   "column": 4,
+   "type": "category",
+   "aligned_right": false,
+   "show_title": true,
+   "can_scroll": true,
+   "title_key": "itemGroup.redstone",
+   "title": "Redstone Blocks",
+   "icon": "redstone",
+   "background": "textures/gui/container/creative_inventory/tab_items.png",
+   "items": {
+    "display": [
+     {
+      "item": "redstone"
+     },
+     {
+      "item": "redstone_torch"
+     },
+     {
+      "item": "redstone_block"
+     },
+     {
+      "item": "repeater"
+     },
+     {
+      "item": "comparator"
+     },
+     {
+      "item": "target"
+     },
+     {
+      "item": "waxed_copper_bulb"
+     },
+     {
+      "item": "waxed_exposed_copper_bulb"
+     },
+     {
+      "item": "waxed_weathered_copper_bulb"
+     },
+     {
+      "item": "waxed_oxidized_copper_bulb"
+     },
+     {
+      "item": "lever"
+     },
+     {
+      "item": "oak_button"
+     },
+     {
+      "item": "stone_button"
+     },
+     {
+      "item": "oak_pressure_plate"
+     },
+     {
+      "item": "stone_pressure_plate"
+     },
+     {
+      "item": "light_weighted_pressure_plate"
+     },
+     {
+      "item": "heavy_weighted_pressure_plate"
+     },
+     {
+      "item": "sculk_sensor"
+     },
+     {
+      "item": "calibrated_sculk_sensor"
+     },
+     {
+      "item": "sculk_shrieker"
+     },
+     {
+      "item": "amethyst_block"
+     },
+     {
+      "item": "white_wool"
+     },
+     {
+      "item": "tripwire_hook"
+     },
+     {
+      "item": "string"
+     },
+     {
+      "item": "lectern"
+     },
+     {
+      "item": "daylight_detector"
+     },
+     {
+      "item": "waxed_lightning_rod"
+     },
+     {
+      "item": "piston"
+     },
+     {
+      "item": "sticky_piston"
+     },
+     {
+      "item": "slime_block"
+     },
+     {
+      "item": "honey_block"
+     },
+     {
+      "item": "dispenser"
+     },
+     {
+      "item": "dropper"
+     },
+     {
+      "item": "crafter"
+     },
+     {
+      "item": "hopper"
+     },
+     {
+      "item": "chest"
+     },
+     {
+      "item": "waxed_copper_chest"
+     },
+     {
+      "item": "barrel"
+     },
+     {
+      "item": "chiseled_bookshelf"
+     },
+     {
+      "item": "oak_shelf"
+     },
+     {
+      "item": "furnace"
+     },
+     {
+      "item": "trapped_chest"
+     },
+     {
+      "item": "jukebox"
+     },
+     {
+      "item": "decorated_pot"
+     },
+     {
+      "item": "observer"
+     },
+     {
+      "item": "note_block"
+     },
+     {
+      "item": "composter"
+     },
+     {
+      "item": "cauldron"
+     },
+     {
+      "item": "rail"
+     },
+     {
+      "item": "powered_rail"
+     },
+     {
+      "item": "detector_rail"
+     },
+     {
+      "item": "activator_rail"
+     },
+     {
+      "item": "minecart"
+     },
+     {
+      "item": "hopper_minecart"
+     },
+     {
+      "item": "chest_minecart"
+     },
+     {
+      "item": "furnace_minecart"
+     },
+     {
+      "item": "tnt_minecart"
+     },
+     {
+      "item": "oak_chest_boat"
+     },
+     {
+      "item": "bamboo_chest_raft"
+     },
+     {
+      "item": "oak_door"
+     },
+     {
+      "item": "iron_door"
+     },
+     {
+      "item": "oak_fence_gate"
+     },
+     {
+      "item": "oak_trapdoor"
+     },
+     {
+      "item": "iron_trapdoor"
+     },
+     {
+      "item": "tnt"
+     },
+     {
+      "item": "redstone_lamp"
+     },
+     {
+      "item": "bell"
+     },
+     {
+      "item": "big_dripleaf"
+     },
+     {
+      "item": "armor_stand"
+     },
+     {
+      "item": "redstone_ore"
+     }
+    ]
+   }
+  },
+  {
+   "id": "hotbar",
+   "row": "top",
+   "column": 5,
+   "type": "hotbar",
+   "aligned_right": true,
+   "show_title": true,
+   "can_scroll": true,
+   "title_key": "itemGroup.hotbar",
+   "title": "Saved Hotbars",
+   "icon": "bookshelf",
+   "background": "textures/gui/container/creative_inventory/tab_items.png",
+   "items": {
+    "display": []
+   }
+  },
+  {
+   "id": "search",
+   "row": "top",
+   "column": 6,
+   "type": "search",
+   "aligned_right": true,
+   "show_title": true,
+   "can_scroll": true,
+   "title_key": "itemGroup.search",
+   "title": "Search Items",
+   "icon": "compass",
+   "background": "textures/gui/container/creative_inventory/tab_item_search.png",
+   "player": {
+    "display": "union of the other tabs' search stacks",
+    "count": 2000
+   },
+   "operator": {
+    "display": "union of the other tabs' search stacks",
+    "count": 2034
+   }
+  },
+  {
+   "id": "tools_and_utilities",
+   "row": "bottom",
+   "column": 0,
+   "type": "category",
+   "aligned_right": false,
+   "show_title": true,
+   "can_scroll": true,
+   "title_key": "itemGroup.tools",
+   "title": "Tools & Utilities",
+   "icon": "diamond_pickaxe",
+   "background": "textures/gui/container/creative_inventory/tab_items.png",
+   "items": {
+    "display": [
+     {
+      "item": "wooden_shovel"
+     },
+     {
+      "item": "wooden_pickaxe"
+     },
+     {
+      "item": "wooden_axe"
+     },
+     {
+      "item": "wooden_hoe"
+     },
+     {
+      "item": "stone_shovel"
+     },
+     {
+      "item": "stone_pickaxe"
+     },
+     {
+      "item": "stone_axe"
+     },
+     {
+      "item": "stone_hoe"
+     },
+     {
+      "item": "copper_shovel"
+     },
+     {
+      "item": "copper_pickaxe"
+     },
+     {
+      "item": "copper_axe"
+     },
+     {
+      "item": "copper_hoe"
+     },
+     {
+      "item": "iron_shovel"
+     },
+     {
+      "item": "iron_pickaxe"
+     },
+     {
+      "item": "iron_axe"
+     },
+     {
+      "item": "iron_hoe"
+     },
+     {
+      "item": "golden_shovel"
+     },
+     {
+      "item": "golden_pickaxe"
+     },
+     {
+      "item": "golden_axe"
+     },
+     {
+      "item": "golden_hoe"
+     },
+     {
+      "item": "diamond_shovel"
+     },
+     {
+      "item": "diamond_pickaxe"
+     },
+     {
+      "item": "diamond_axe"
+     },
+     {
+      "item": "diamond_hoe"
+     },
+     {
+      "item": "netherite_shovel"
+     },
+     {
+      "item": "netherite_pickaxe"
+     },
+     {
+      "item": "netherite_axe"
+     },
+     {
+      "item": "netherite_hoe"
+     },
+     {
+      "item": "bucket"
+     },
+     {
+      "item": "water_bucket"
+     },
+     {
+      "item": "cod_bucket"
+     },
+     {
+      "item": "salmon_bucket"
+     },
+     {
+      "item": "tropical_fish_bucket"
+     },
+     {
+      "item": "pufferfish_bucket"
+     },
+     {
+      "item": "axolotl_bucket"
+     },
+     {
+      "item": "tadpole_bucket"
+     },
+     {
+      "item": "sulfur_cube_bucket"
+     },
+     {
+      "item": "lava_bucket"
+     },
+     {
+      "item": "powder_snow_bucket"
+     },
+     {
+      "item": "milk_bucket"
+     },
+     {
+      "item": "fishing_rod"
+     },
+     {
+      "item": "flint_and_steel"
+     },
+     {
+      "item": "fire_charge"
+     },
+     {
+      "item": "bone_meal"
+     },
+     {
+      "item": "shears"
+     },
+     {
+      "item": "brush"
+     },
+     {
+      "item": "name_tag"
+     },
+     {
+      "item": "lead"
+     },
+     {
+      "item": "bundle"
+     },
+     {
+      "item": "white_bundle"
+     },
+     {
+      "item": "orange_bundle"
+     },
+     {
+      "item": "magenta_bundle"
+     },
+     {
+      "item": "light_blue_bundle"
+     },
+     {
+      "item": "yellow_bundle"
+     },
+     {
+      "item": "lime_bundle"
+     },
+     {
+      "item": "pink_bundle"
+     },
+     {
+      "item": "gray_bundle"
+     },
+     {
+      "item": "light_gray_bundle"
+     },
+     {
+      "item": "cyan_bundle"
+     },
+     {
+      "item": "purple_bundle"
+     },
+     {
+      "item": "blue_bundle"
+     },
+     {
+      "item": "brown_bundle"
+     },
+     {
+      "item": "green_bundle"
+     },
+     {
+      "item": "red_bundle"
+     },
+     {
+      "item": "black_bundle"
+     },
+     {
+      "item": "compass"
+     },
+     {
+      "item": "recovery_compass"
+     },
+     {
+      "item": "clock"
+     },
+     {
+      "item": "spyglass"
+     },
+     {
+      "item": "map"
+     },
+     {
+      "item": "writable_book"
+     },
+     {
+      "item": "wind_charge"
+     },
+     {
+      "item": "ender_pearl"
+     },
+     {
+      "item": "ender_eye"
+     },
+     {
+      "item": "elytra"
+     },
+     {
+      "item": "firework_rocket"
+     },
+     {
+      "item": "firework_rocket",
+      "components": {
+       "fireworks": {
+        "flight_duration": 2
+       }
+      }
+     },
+     {
+      "item": "firework_rocket",
+      "components": {
+       "fireworks": {
+        "flight_duration": 3
+       }
+      }
+     },
+     {
+      "item": "saddle"
+     },
+     {
+      "item": "white_harness"
+     },
+     {
+      "item": "orange_harness"
+     },
+     {
+      "item": "magenta_harness"
+     },
+     {
+      "item": "light_blue_harness"
+     },
+     {
+      "item": "yellow_harness"
+     },
+     {
+      "item": "lime_harness"
+     },
+     {
+      "item": "pink_harness"
+     },
+     {
+      "item": "gray_harness"
+     },
+     {
+      "item": "light_gray_harness"
+     },
+     {
+      "item": "cyan_harness"
+     },
+     {
+      "item": "purple_harness"
+     },
+     {
+      "item": "blue_harness"
+     },
+     {
+      "item": "brown_harness"
+     },
+     {
+      "item": "green_harness"
+     },
+     {
+      "item": "red_harness"
+     },
+     {
+      "item": "black_harness"
+     },
+     {
+      "item": "carrot_on_a_stick"
+     },
+     {
+      "item": "warped_fungus_on_a_stick"
+     },
+     {
+      "item": "oak_boat"
+     },
+     {
+      "item": "oak_chest_boat"
+     },
+     {
+      "item": "spruce_boat"
+     },
+     {
+      "item": "spruce_chest_boat"
+     },
+     {
+      "item": "birch_boat"
+     },
+     {
+      "item": "birch_chest_boat"
+     },
+     {
+      "item": "jungle_boat"
+     },
+     {
+      "item": "jungle_chest_boat"
+     },
+     {
+      "item": "acacia_boat"
+     },
+     {
+      "item": "acacia_chest_boat"
+     },
+     {
+      "item": "dark_oak_boat"
+     },
+     {
+      "item": "dark_oak_chest_boat"
+     },
+     {
+      "item": "mangrove_boat"
+     },
+     {
+      "item": "mangrove_chest_boat"
+     },
+     {
+      "item": "cherry_boat"
+     },
+     {
+      "item": "cherry_chest_boat"
+     },
+     {
+      "item": "pale_oak_boat"
+     },
+     {
+      "item": "pale_oak_chest_boat"
+     },
+     {
+      "item": "poplar_boat"
+     },
+     {
+      "item": "poplar_chest_boat"
+     },
+     {
+      "item": "bamboo_raft"
+     },
+     {
+      "item": "bamboo_chest_raft"
+     },
+     {
+      "item": "rail"
+     },
+     {
+      "item": "powered_rail"
+     },
+     {
+      "item": "detector_rail"
+     },
+     {
+      "item": "activator_rail"
+     },
+     {
+      "item": "minecart"
+     },
+     {
+      "item": "hopper_minecart"
+     },
+     {
+      "item": "chest_minecart"
+     },
+     {
+      "item": "furnace_minecart"
+     },
+     {
+      "item": "tnt_minecart"
+     },
+     {
+      "item": "goat_horn"
+     },
+     {
+      "item": "goat_horn",
+      "components": {
+       "instrument": "sing_goat_horn"
+      }
+     },
+     {
+      "item": "goat_horn",
+      "components": {
+       "instrument": "seek_goat_horn"
+      }
+     },
+     {
+      "item": "goat_horn",
+      "components": {
+       "instrument": "feel_goat_horn"
+      }
+     },
+     {
+      "item": "goat_horn",
+      "components": {
+       "instrument": "admire_goat_horn"
+      }
+     },
+     {
+      "item": "goat_horn",
+      "components": {
+       "instrument": "call_goat_horn"
+      }
+     },
+     {
+      "item": "goat_horn",
+      "components": {
+       "instrument": "yearn_goat_horn"
+      }
+     },
+     {
+      "item": "goat_horn",
+      "components": {
+       "instrument": "dream_goat_horn"
+      }
+     },
+     {
+      "item": "music_disc_13"
+     },
+     {
+      "item": "music_disc_cat"
+     },
+     {
+      "item": "music_disc_blocks"
+     },
+     {
+      "item": "music_disc_chirp"
+     },
+     {
+      "item": "music_disc_far"
+     },
+     {
+      "item": "music_disc_mall"
+     },
+     {
+      "item": "music_disc_mellohi"
+     },
+     {
+      "item": "music_disc_stal"
+     },
+     {
+      "item": "music_disc_strad"
+     },
+     {
+      "item": "music_disc_ward"
+     },
+     {
+      "item": "music_disc_11"
+     },
+     {
+      "item": "music_disc_creator_music_box"
+     },
+     {
+      "item": "music_disc_wait"
+     },
+     {
+      "item": "music_disc_creator"
+     },
+     {
+      "item": "music_disc_precipice"
+     },
+     {
+      "item": "music_disc_otherside"
+     },
+     {
+      "item": "music_disc_relic"
+     },
+     {
+      "item": "music_disc_5"
+     },
+     {
+      "item": "music_disc_pigstep"
+     },
+     {
+      "item": "music_disc_tears"
+     },
+     {
+      "item": "music_disc_lava_chicken"
+     },
+     {
+      "item": "music_disc_bounce"
+     }
+    ]
+   }
+  },
+  {
+   "id": "combat",
+   "row": "bottom",
+   "column": 1,
+   "type": "category",
+   "aligned_right": false,
+   "show_title": true,
+   "can_scroll": true,
+   "title_key": "itemGroup.combat",
+   "title": "Combat",
+   "icon": "netherite_sword",
+   "background": "textures/gui/container/creative_inventory/tab_items.png",
+   "items": {
+    "display": [
+     {
+      "item": "wooden_sword"
+     },
+     {
+      "item": "stone_sword"
+     },
+     {
+      "item": "copper_sword"
+     },
+     {
+      "item": "iron_sword"
+     },
+     {
+      "item": "golden_sword"
+     },
+     {
+      "item": "diamond_sword"
+     },
+     {
+      "item": "netherite_sword"
+     },
+     {
+      "item": "wooden_spear"
+     },
+     {
+      "item": "stone_spear"
+     },
+     {
+      "item": "copper_spear"
+     },
+     {
+      "item": "iron_spear"
+     },
+     {
+      "item": "golden_spear"
+     },
+     {
+      "item": "diamond_spear"
+     },
+     {
+      "item": "netherite_spear"
+     },
+     {
+      "item": "wooden_axe"
+     },
+     {
+      "item": "stone_axe"
+     },
+     {
+      "item": "copper_axe"
+     },
+     {
+      "item": "iron_axe"
+     },
+     {
+      "item": "golden_axe"
+     },
+     {
+      "item": "diamond_axe"
+     },
+     {
+      "item": "netherite_axe"
+     },
+     {
+      "item": "trident"
+     },
+     {
+      "item": "mace"
+     },
+     {
+      "item": "shield"
+     },
+     {
+      "item": "leather_helmet"
+     },
+     {
+      "item": "leather_chestplate"
+     },
+     {
+      "item": "leather_leggings"
+     },
+     {
+      "item": "leather_boots"
+     },
+     {
+      "item": "copper_helmet"
+     },
+     {
+      "item": "copper_chestplate"
+     },
+     {
+      "item": "copper_leggings"
+     },
+     {
+      "item": "copper_boots"
+     },
+     {
+      "item": "chainmail_helmet"
+     },
+     {
+      "item": "chainmail_chestplate"
+     },
+     {
+      "item": "chainmail_leggings"
+     },
+     {
+      "item": "chainmail_boots"
+     },
+     {
+      "item": "iron_helmet"
+     },
+     {
+      "item": "iron_chestplate"
+     },
+     {
+      "item": "iron_leggings"
+     },
+     {
+      "item": "iron_boots"
+     },
+     {
+      "item": "golden_helmet"
+     },
+     {
+      "item": "golden_chestplate"
+     },
+     {
+      "item": "golden_leggings"
+     },
+     {
+      "item": "golden_boots"
+     },
+     {
+      "item": "diamond_helmet"
+     },
+     {
+      "item": "diamond_chestplate"
+     },
+     {
+      "item": "diamond_leggings"
+     },
+     {
+      "item": "diamond_boots"
+     },
+     {
+      "item": "netherite_helmet"
+     },
+     {
+      "item": "netherite_chestplate"
+     },
+     {
+      "item": "netherite_leggings"
+     },
+     {
+      "item": "netherite_boots"
+     },
+     {
+      "item": "turtle_helmet"
+     },
+     {
+      "item": "leather_horse_armor"
+     },
+     {
+      "item": "copper_horse_armor"
+     },
+     {
+      "item": "iron_horse_armor"
+     },
+     {
+      "item": "golden_horse_armor"
+     },
+     {
+      "item": "diamond_horse_armor"
+     },
+     {
+      "item": "netherite_horse_armor"
+     },
+     {
+      "item": "wolf_armor"
+     },
+     {
+      "item": "copper_nautilus_armor"
+     },
+     {
+      "item": "iron_nautilus_armor"
+     },
+     {
+      "item": "golden_nautilus_armor"
+     },
+     {
+      "item": "diamond_nautilus_armor"
+     },
+     {
+      "item": "netherite_nautilus_armor"
+     },
+     {
+      "item": "totem_of_undying"
+     },
+     {
+      "item": "tnt"
+     },
+     {
+      "item": "end_crystal"
+     },
+     {
+      "item": "snowball"
+     },
+     {
+      "item": "egg"
+     },
+     {
+      "item": "brown_egg"
+     },
+     {
+      "item": "blue_egg"
+     },
+     {
+      "item": "wind_charge"
+     },
+     {
+      "item": "bow"
+     },
+     {
+      "item": "crossbow"
+     },
+     {
+      "item": "firework_rocket"
+     },
+     {
+      "item": "firework_rocket",
+      "components": {
+       "fireworks": {
+        "flight_duration": 2
+       }
+      }
+     },
+     {
+      "item": "firework_rocket",
+      "components": {
+       "fireworks": {
+        "flight_duration": 3
+       }
+      }
+     },
+     {
+      "item": "arrow"
+     },
+     {
+      "item": "spectral_arrow"
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "water"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "mundane"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "thick"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "awkward"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "night_vision"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "long_night_vision"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "invisibility"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "long_invisibility"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "leaping"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "long_leaping"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_leaping"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "fire_resistance"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "long_fire_resistance"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "swiftness"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "long_swiftness"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_swiftness"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "slowness"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "long_slowness"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_slowness"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "turtle_master"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "long_turtle_master"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_turtle_master"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "water_breathing"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "long_water_breathing"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "healing"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_healing"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "harming"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_harming"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "poison"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "long_poison"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_poison"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "regeneration"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "long_regeneration"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_regeneration"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "strength"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "long_strength"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_strength"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "weakness"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "long_weakness"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "luck"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "slow_falling"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "long_slow_falling"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "wind_charged"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "weaving"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "oozing"
+       }
+      }
+     },
+     {
+      "item": "tipped_arrow",
+      "components": {
+       "potion_contents": {
+        "potion": "infested"
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "food_and_drinks",
+   "row": "bottom",
+   "column": 2,
+   "type": "category",
+   "aligned_right": false,
+   "show_title": true,
+   "can_scroll": true,
+   "title_key": "itemGroup.foodAndDrink",
+   "title": "Food & Drinks",
+   "icon": "golden_apple",
+   "background": "textures/gui/container/creative_inventory/tab_items.png",
+   "items": {
+    "display": [
+     {
+      "item": "apple"
+     },
+     {
+      "item": "golden_apple"
+     },
+     {
+      "item": "enchanted_golden_apple"
+     },
+     {
+      "item": "melon_slice"
+     },
+     {
+      "item": "sweet_berries"
+     },
+     {
+      "item": "glow_berries"
+     },
+     {
+      "item": "chorus_fruit"
+     },
+     {
+      "item": "carrot"
+     },
+     {
+      "item": "golden_carrot"
+     },
+     {
+      "item": "potato"
+     },
+     {
+      "item": "baked_potato"
+     },
+     {
+      "item": "poisonous_potato"
+     },
+     {
+      "item": "beetroot"
+     },
+     {
+      "item": "golden_dandelion"
+     },
+     {
+      "item": "dried_kelp"
+     },
+     {
+      "item": "beef"
+     },
+     {
+      "item": "cooked_beef"
+     },
+     {
+      "item": "porkchop"
+     },
+     {
+      "item": "cooked_porkchop"
+     },
+     {
+      "item": "mutton"
+     },
+     {
+      "item": "cooked_mutton"
+     },
+     {
+      "item": "chicken"
+     },
+     {
+      "item": "cooked_chicken"
+     },
+     {
+      "item": "rabbit"
+     },
+     {
+      "item": "cooked_rabbit"
+     },
+     {
+      "item": "cod"
+     },
+     {
+      "item": "cooked_cod"
+     },
+     {
+      "item": "salmon"
+     },
+     {
+      "item": "cooked_salmon"
+     },
+     {
+      "item": "tropical_fish"
+     },
+     {
+      "item": "pufferfish"
+     },
+     {
+      "item": "bread"
+     },
+     {
+      "item": "cookie"
+     },
+     {
+      "item": "cake"
+     },
+     {
+      "item": "pumpkin_pie"
+     },
+     {
+      "item": "rotten_flesh"
+     },
+     {
+      "item": "spider_eye"
+     },
+     {
+      "item": "mushroom_stew"
+     },
+     {
+      "item": "beetroot_soup"
+     },
+     {
+      "item": "rabbit_stew"
+     },
+     {
+      "item": "suspicious_stew",
+      "components": {
+       "suspicious_stew_effects": [
+        {
+         "id": "saturation",
+         "duration": 7
+        }
+       ]
+      }
+     },
+     {
+      "item": "suspicious_stew",
+      "components": {
+       "suspicious_stew_effects": [
+        {
+         "id": "blindness",
+         "duration": 220
+        }
+       ]
+      }
+     },
+     {
+      "item": "suspicious_stew",
+      "components": {
+       "suspicious_stew_effects": [
+        {
+         "id": "nausea",
+         "duration": 140
+        }
+       ]
+      }
+     },
+     {
+      "item": "suspicious_stew",
+      "components": {
+       "suspicious_stew_effects": [
+        {
+         "id": "night_vision",
+         "duration": 100
+        }
+       ]
+      }
+     },
+     {
+      "item": "suspicious_stew",
+      "components": {
+       "suspicious_stew_effects": [
+        {
+         "id": "fire_resistance",
+         "duration": 60
+        }
+       ]
+      }
+     },
+     {
+      "item": "suspicious_stew",
+      "components": {
+       "suspicious_stew_effects": [
+        {
+         "id": "weakness",
+         "duration": 140
+        }
+       ]
+      }
+     },
+     {
+      "item": "suspicious_stew",
+      "components": {
+       "suspicious_stew_effects": [
+        {
+         "id": "regeneration",
+         "duration": 140
+        }
+       ]
+      }
+     },
+     {
+      "item": "suspicious_stew",
+      "components": {
+       "suspicious_stew_effects": [
+        {
+         "id": "jump_boost",
+         "duration": 100
+        }
+       ]
+      }
+     },
+     {
+      "item": "suspicious_stew",
+      "components": {
+       "suspicious_stew_effects": [
+        {
+         "id": "poison",
+         "duration": 220
+        }
+       ]
+      }
+     },
+     {
+      "item": "suspicious_stew",
+      "components": {
+       "suspicious_stew_effects": [
+        {
+         "id": "wither",
+         "duration": 140
+        }
+       ]
+      }
+     },
+     {
+      "item": "milk_bucket"
+     },
+     {
+      "item": "honey_bottle"
+     },
+     {
+      "item": "ominous_bottle"
+     },
+     {
+      "item": "ominous_bottle",
+      "components": {
+       "ominous_bottle_amplifier": 1
+      }
+     },
+     {
+      "item": "ominous_bottle",
+      "components": {
+       "ominous_bottle_amplifier": 2
+      }
+     },
+     {
+      "item": "ominous_bottle",
+      "components": {
+       "ominous_bottle_amplifier": 3
+      }
+     },
+     {
+      "item": "ominous_bottle",
+      "components": {
+       "ominous_bottle_amplifier": 4
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "water"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "mundane"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "thick"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "awkward"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "night_vision"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_night_vision"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "invisibility"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_invisibility"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "leaping"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_leaping"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_leaping"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "fire_resistance"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_fire_resistance"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "swiftness"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_swiftness"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_swiftness"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "slowness"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_slowness"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_slowness"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "turtle_master"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_turtle_master"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_turtle_master"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "water_breathing"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_water_breathing"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "healing"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_healing"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "harming"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_harming"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "poison"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_poison"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_poison"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "regeneration"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_regeneration"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_regeneration"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "strength"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_strength"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_strength"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "weakness"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_weakness"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "luck"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "slow_falling"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_slow_falling"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "wind_charged"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "weaving"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "oozing"
+       }
+      }
+     },
+     {
+      "item": "potion",
+      "components": {
+       "potion_contents": {
+        "potion": "infested"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "water"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "mundane"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "thick"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "awkward"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "night_vision"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_night_vision"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "invisibility"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_invisibility"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "leaping"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_leaping"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_leaping"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "fire_resistance"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_fire_resistance"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "swiftness"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_swiftness"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_swiftness"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "slowness"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_slowness"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_slowness"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "turtle_master"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_turtle_master"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_turtle_master"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "water_breathing"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_water_breathing"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "healing"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_healing"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "harming"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_harming"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "poison"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_poison"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_poison"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "regeneration"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_regeneration"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_regeneration"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "strength"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_strength"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_strength"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "weakness"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_weakness"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "luck"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "slow_falling"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_slow_falling"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "wind_charged"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "weaving"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "oozing"
+       }
+      }
+     },
+     {
+      "item": "splash_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "infested"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "water"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "mundane"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "thick"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "awkward"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "night_vision"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_night_vision"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "invisibility"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_invisibility"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "leaping"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_leaping"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_leaping"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "fire_resistance"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_fire_resistance"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "swiftness"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_swiftness"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_swiftness"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "slowness"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_slowness"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_slowness"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "turtle_master"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_turtle_master"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_turtle_master"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "water_breathing"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_water_breathing"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "healing"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_healing"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "harming"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_harming"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "poison"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_poison"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_poison"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "regeneration"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_regeneration"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_regeneration"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "strength"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_strength"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "strong_strength"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "weakness"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_weakness"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "luck"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "slow_falling"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "long_slow_falling"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "wind_charged"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "weaving"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "oozing"
+       }
+      }
+     },
+     {
+      "item": "lingering_potion",
+      "components": {
+       "potion_contents": {
+        "potion": "infested"
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "ingredients",
+   "row": "bottom",
+   "column": 3,
+   "type": "category",
+   "aligned_right": false,
+   "show_title": true,
+   "can_scroll": true,
+   "title_key": "itemGroup.ingredients",
+   "title": "Ingredients",
+   "icon": "iron_ingot",
+   "background": "textures/gui/container/creative_inventory/tab_items.png",
+   "items": {
+    "display": [
+     {
+      "item": "coal"
+     },
+     {
+      "item": "charcoal"
+     },
+     {
+      "item": "emerald"
+     },
+     {
+      "item": "lapis_lazuli"
+     },
+     {
+      "item": "amethyst_shard"
+     },
+     {
+      "item": "quartz"
+     },
+     {
+      "item": "raw_copper"
+     },
+     {
+      "item": "raw_iron"
+     },
+     {
+      "item": "raw_gold"
+     },
+     {
+      "item": "diamond"
+     },
+     {
+      "item": "ancient_debris"
+     },
+     {
+      "item": "copper_nugget"
+     },
+     {
+      "item": "iron_nugget"
+     },
+     {
+      "item": "gold_nugget"
+     },
+     {
+      "item": "copper_ingot"
+     },
+     {
+      "item": "iron_ingot"
+     },
+     {
+      "item": "gold_ingot"
+     },
+     {
+      "item": "netherite_scrap"
+     },
+     {
+      "item": "netherite_ingot"
+     },
+     {
+      "item": "stick"
+     },
+     {
+      "item": "flint"
+     },
+     {
+      "item": "wheat"
+     },
+     {
+      "item": "bone"
+     },
+     {
+      "item": "bone_meal"
+     },
+     {
+      "item": "string"
+     },
+     {
+      "item": "feather"
+     },
+     {
+      "item": "snowball"
+     },
+     {
+      "item": "egg"
+     },
+     {
+      "item": "brown_egg"
+     },
+     {
+      "item": "blue_egg"
+     },
+     {
+      "item": "leather"
+     },
+     {
+      "item": "rabbit_hide"
+     },
+     {
+      "item": "honeycomb"
+     },
+     {
+      "item": "resin_clump"
+     },
+     {
+      "item": "ink_sac"
+     },
+     {
+      "item": "glow_ink_sac"
+     },
+     {
+      "item": "turtle_scute"
+     },
+     {
+      "item": "armadillo_scute"
+     },
+     {
+      "item": "slime_ball"
+     },
+     {
+      "item": "clay_ball"
+     },
+     {
+      "item": "prismarine_shard"
+     },
+     {
+      "item": "prismarine_crystals"
+     },
+     {
+      "item": "nautilus_shell"
+     },
+     {
+      "item": "heart_of_the_sea"
+     },
+     {
+      "item": "fire_charge"
+     },
+     {
+      "item": "blaze_rod"
+     },
+     {
+      "item": "breeze_rod"
+     },
+     {
+      "item": "heavy_core"
+     },
+     {
+      "item": "nether_star"
+     },
+     {
+      "item": "ender_pearl"
+     },
+     {
+      "item": "ender_eye"
+     },
+     {
+      "item": "shulker_shell"
+     },
+     {
+      "item": "popped_chorus_fruit"
+     },
+     {
+      "item": "echo_shard"
+     },
+     {
+      "item": "disc_fragment_5"
+     },
+     {
+      "item": "white_dye"
+     },
+     {
+      "item": "orange_dye"
+     },
+     {
+      "item": "magenta_dye"
+     },
+     {
+      "item": "light_blue_dye"
+     },
+     {
+      "item": "yellow_dye"
+     },
+     {
+      "item": "lime_dye"
+     },
+     {
+      "item": "pink_dye"
+     },
+     {
+      "item": "gray_dye"
+     },
+     {
+      "item": "light_gray_dye"
+     },
+     {
+      "item": "cyan_dye"
+     },
+     {
+      "item": "purple_dye"
+     },
+     {
+      "item": "blue_dye"
+     },
+     {
+      "item": "brown_dye"
+     },
+     {
+      "item": "green_dye"
+     },
+     {
+      "item": "red_dye"
+     },
+     {
+      "item": "black_dye"
+     },
+     {
+      "item": "bowl"
+     },
+     {
+      "item": "brick"
+     },
+     {
+      "item": "nether_brick"
+     },
+     {
+      "item": "resin_brick"
+     },
+     {
+      "item": "paper"
+     },
+     {
+      "item": "book"
+     },
+     {
+      "item": "firework_star"
+     },
+     {
+      "item": "glass_bottle"
+     },
+     {
+      "item": "nether_wart"
+     },
+     {
+      "item": "redstone"
+     },
+     {
+      "item": "glowstone_dust"
+     },
+     {
+      "item": "gunpowder"
+     },
+     {
+      "item": "dragon_breath"
+     },
+     {
+      "item": "fermented_spider_eye"
+     },
+     {
+      "item": "blaze_powder"
+     },
+     {
+      "item": "sugar"
+     },
+     {
+      "item": "rabbit_foot"
+     },
+     {
+      "item": "glistering_melon_slice"
+     },
+     {
+      "item": "spider_eye"
+     },
+     {
+      "item": "pufferfish"
+     },
+     {
+      "item": "magma_cream"
+     },
+     {
+      "item": "golden_carrot"
+     },
+     {
+      "item": "ghast_tear"
+     },
+     {
+      "item": "turtle_helmet"
+     },
+     {
+      "item": "phantom_membrane"
+     },
+     {
+      "item": "field_masoned_banner_pattern"
+     },
+     {
+      "item": "bordure_indented_banner_pattern"
+     },
+     {
+      "item": "flower_banner_pattern"
+     },
+     {
+      "item": "creeper_banner_pattern"
+     },
+     {
+      "item": "skull_banner_pattern"
+     },
+     {
+      "item": "mojang_banner_pattern"
+     },
+     {
+      "item": "globe_banner_pattern"
+     },
+     {
+      "item": "piglin_banner_pattern"
+     },
+     {
+      "item": "flow_banner_pattern"
+     },
+     {
+      "item": "guster_banner_pattern"
+     },
+     {
+      "item": "angler_pottery_sherd"
+     },
+     {
+      "item": "archer_pottery_sherd"
+     },
+     {
+      "item": "arms_up_pottery_sherd"
+     },
+     {
+      "item": "blade_pottery_sherd"
+     },
+     {
+      "item": "brewer_pottery_sherd"
+     },
+     {
+      "item": "burn_pottery_sherd"
+     },
+     {
+      "item": "danger_pottery_sherd"
+     },
+     {
+      "item": "explorer_pottery_sherd"
+     },
+     {
+      "item": "flow_pottery_sherd"
+     },
+     {
+      "item": "friend_pottery_sherd"
+     },
+     {
+      "item": "guster_pottery_sherd"
+     },
+     {
+      "item": "heart_pottery_sherd"
+     },
+     {
+      "item": "heartbreak_pottery_sherd"
+     },
+     {
+      "item": "howl_pottery_sherd"
+     },
+     {
+      "item": "miner_pottery_sherd"
+     },
+     {
+      "item": "mourner_pottery_sherd"
+     },
+     {
+      "item": "plenty_pottery_sherd"
+     },
+     {
+      "item": "prize_pottery_sherd"
+     },
+     {
+      "item": "scrape_pottery_sherd"
+     },
+     {
+      "item": "sheaf_pottery_sherd"
+     },
+     {
+      "item": "shelter_pottery_sherd"
+     },
+     {
+      "item": "skull_pottery_sherd"
+     },
+     {
+      "item": "snort_pottery_sherd"
+     },
+     {
+      "item": "netherite_upgrade_smithing_template"
+     },
+     {
+      "item": "sentry_armor_trim_smithing_template"
+     },
+     {
+      "item": "vex_armor_trim_smithing_template"
+     },
+     {
+      "item": "wild_armor_trim_smithing_template"
+     },
+     {
+      "item": "coast_armor_trim_smithing_template"
+     },
+     {
+      "item": "dune_armor_trim_smithing_template"
+     },
+     {
+      "item": "wayfinder_armor_trim_smithing_template"
+     },
+     {
+      "item": "raiser_armor_trim_smithing_template"
+     },
+     {
+      "item": "shaper_armor_trim_smithing_template"
+     },
+     {
+      "item": "host_armor_trim_smithing_template"
+     },
+     {
+      "item": "ward_armor_trim_smithing_template"
+     },
+     {
+      "item": "silence_armor_trim_smithing_template"
+     },
+     {
+      "item": "tide_armor_trim_smithing_template"
+     },
+     {
+      "item": "snout_armor_trim_smithing_template"
+     },
+     {
+      "item": "rib_armor_trim_smithing_template"
+     },
+     {
+      "item": "eye_armor_trim_smithing_template"
+     },
+     {
+      "item": "spire_armor_trim_smithing_template"
+     },
+     {
+      "item": "flow_armor_trim_smithing_template"
+     },
+     {
+      "item": "bolt_armor_trim_smithing_template"
+     },
+     {
+      "item": "experience_bottle"
+     },
+     {
+      "item": "trial_key"
+     },
+     {
+      "item": "ominous_trial_key"
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "aqua_affinity": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "bane_of_arthropods": 5
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "binding_curse": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "blast_protection": 4
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "breach": 4
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "channeling": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "density": 5
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "depth_strider": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "efficiency": 5
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "feather_falling": 4
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "fire_aspect": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "fire_protection": 4
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "flame": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "fortune": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "frost_walker": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "impaling": 5
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "infinity": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "knockback": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "looting": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "loyalty": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "luck_of_the_sea": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "lunge": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "lure": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "mending": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "multishot": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "piercing": 4
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "power": 5
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "projectile_protection": 4
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "protection": 4
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "punch": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "quick_charge": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "respiration": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "riptide": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "sharpness": 5
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "silk_touch": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "smite": 5
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "soul_speed": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "sweeping_edge": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "swift_sneak": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "thorns": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "unbreaking": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "vanishing_curse": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "wind_burst": 3
+       }
+      }
+     }
+    ],
+    "search": [
+     {
+      "item": "coal"
+     },
+     {
+      "item": "charcoal"
+     },
+     {
+      "item": "emerald"
+     },
+     {
+      "item": "lapis_lazuli"
+     },
+     {
+      "item": "amethyst_shard"
+     },
+     {
+      "item": "quartz"
+     },
+     {
+      "item": "raw_copper"
+     },
+     {
+      "item": "raw_iron"
+     },
+     {
+      "item": "raw_gold"
+     },
+     {
+      "item": "diamond"
+     },
+     {
+      "item": "ancient_debris"
+     },
+     {
+      "item": "copper_nugget"
+     },
+     {
+      "item": "iron_nugget"
+     },
+     {
+      "item": "gold_nugget"
+     },
+     {
+      "item": "copper_ingot"
+     },
+     {
+      "item": "iron_ingot"
+     },
+     {
+      "item": "gold_ingot"
+     },
+     {
+      "item": "netherite_scrap"
+     },
+     {
+      "item": "netherite_ingot"
+     },
+     {
+      "item": "stick"
+     },
+     {
+      "item": "flint"
+     },
+     {
+      "item": "wheat"
+     },
+     {
+      "item": "bone"
+     },
+     {
+      "item": "bone_meal"
+     },
+     {
+      "item": "string"
+     },
+     {
+      "item": "feather"
+     },
+     {
+      "item": "snowball"
+     },
+     {
+      "item": "egg"
+     },
+     {
+      "item": "brown_egg"
+     },
+     {
+      "item": "blue_egg"
+     },
+     {
+      "item": "leather"
+     },
+     {
+      "item": "rabbit_hide"
+     },
+     {
+      "item": "honeycomb"
+     },
+     {
+      "item": "resin_clump"
+     },
+     {
+      "item": "ink_sac"
+     },
+     {
+      "item": "glow_ink_sac"
+     },
+     {
+      "item": "turtle_scute"
+     },
+     {
+      "item": "armadillo_scute"
+     },
+     {
+      "item": "slime_ball"
+     },
+     {
+      "item": "clay_ball"
+     },
+     {
+      "item": "prismarine_shard"
+     },
+     {
+      "item": "prismarine_crystals"
+     },
+     {
+      "item": "nautilus_shell"
+     },
+     {
+      "item": "heart_of_the_sea"
+     },
+     {
+      "item": "fire_charge"
+     },
+     {
+      "item": "blaze_rod"
+     },
+     {
+      "item": "breeze_rod"
+     },
+     {
+      "item": "heavy_core"
+     },
+     {
+      "item": "nether_star"
+     },
+     {
+      "item": "ender_pearl"
+     },
+     {
+      "item": "ender_eye"
+     },
+     {
+      "item": "shulker_shell"
+     },
+     {
+      "item": "popped_chorus_fruit"
+     },
+     {
+      "item": "echo_shard"
+     },
+     {
+      "item": "disc_fragment_5"
+     },
+     {
+      "item": "white_dye"
+     },
+     {
+      "item": "orange_dye"
+     },
+     {
+      "item": "magenta_dye"
+     },
+     {
+      "item": "light_blue_dye"
+     },
+     {
+      "item": "yellow_dye"
+     },
+     {
+      "item": "lime_dye"
+     },
+     {
+      "item": "pink_dye"
+     },
+     {
+      "item": "gray_dye"
+     },
+     {
+      "item": "light_gray_dye"
+     },
+     {
+      "item": "cyan_dye"
+     },
+     {
+      "item": "purple_dye"
+     },
+     {
+      "item": "blue_dye"
+     },
+     {
+      "item": "brown_dye"
+     },
+     {
+      "item": "green_dye"
+     },
+     {
+      "item": "red_dye"
+     },
+     {
+      "item": "black_dye"
+     },
+     {
+      "item": "bowl"
+     },
+     {
+      "item": "brick"
+     },
+     {
+      "item": "nether_brick"
+     },
+     {
+      "item": "resin_brick"
+     },
+     {
+      "item": "paper"
+     },
+     {
+      "item": "book"
+     },
+     {
+      "item": "firework_star"
+     },
+     {
+      "item": "glass_bottle"
+     },
+     {
+      "item": "nether_wart"
+     },
+     {
+      "item": "redstone"
+     },
+     {
+      "item": "glowstone_dust"
+     },
+     {
+      "item": "gunpowder"
+     },
+     {
+      "item": "dragon_breath"
+     },
+     {
+      "item": "fermented_spider_eye"
+     },
+     {
+      "item": "blaze_powder"
+     },
+     {
+      "item": "sugar"
+     },
+     {
+      "item": "rabbit_foot"
+     },
+     {
+      "item": "glistering_melon_slice"
+     },
+     {
+      "item": "spider_eye"
+     },
+     {
+      "item": "pufferfish"
+     },
+     {
+      "item": "magma_cream"
+     },
+     {
+      "item": "golden_carrot"
+     },
+     {
+      "item": "ghast_tear"
+     },
+     {
+      "item": "turtle_helmet"
+     },
+     {
+      "item": "phantom_membrane"
+     },
+     {
+      "item": "field_masoned_banner_pattern"
+     },
+     {
+      "item": "bordure_indented_banner_pattern"
+     },
+     {
+      "item": "flower_banner_pattern"
+     },
+     {
+      "item": "creeper_banner_pattern"
+     },
+     {
+      "item": "skull_banner_pattern"
+     },
+     {
+      "item": "mojang_banner_pattern"
+     },
+     {
+      "item": "globe_banner_pattern"
+     },
+     {
+      "item": "piglin_banner_pattern"
+     },
+     {
+      "item": "flow_banner_pattern"
+     },
+     {
+      "item": "guster_banner_pattern"
+     },
+     {
+      "item": "angler_pottery_sherd"
+     },
+     {
+      "item": "archer_pottery_sherd"
+     },
+     {
+      "item": "arms_up_pottery_sherd"
+     },
+     {
+      "item": "blade_pottery_sherd"
+     },
+     {
+      "item": "brewer_pottery_sherd"
+     },
+     {
+      "item": "burn_pottery_sherd"
+     },
+     {
+      "item": "danger_pottery_sherd"
+     },
+     {
+      "item": "explorer_pottery_sherd"
+     },
+     {
+      "item": "flow_pottery_sherd"
+     },
+     {
+      "item": "friend_pottery_sherd"
+     },
+     {
+      "item": "guster_pottery_sherd"
+     },
+     {
+      "item": "heart_pottery_sherd"
+     },
+     {
+      "item": "heartbreak_pottery_sherd"
+     },
+     {
+      "item": "howl_pottery_sherd"
+     },
+     {
+      "item": "miner_pottery_sherd"
+     },
+     {
+      "item": "mourner_pottery_sherd"
+     },
+     {
+      "item": "plenty_pottery_sherd"
+     },
+     {
+      "item": "prize_pottery_sherd"
+     },
+     {
+      "item": "scrape_pottery_sherd"
+     },
+     {
+      "item": "sheaf_pottery_sherd"
+     },
+     {
+      "item": "shelter_pottery_sherd"
+     },
+     {
+      "item": "skull_pottery_sherd"
+     },
+     {
+      "item": "snort_pottery_sherd"
+     },
+     {
+      "item": "netherite_upgrade_smithing_template"
+     },
+     {
+      "item": "sentry_armor_trim_smithing_template"
+     },
+     {
+      "item": "vex_armor_trim_smithing_template"
+     },
+     {
+      "item": "wild_armor_trim_smithing_template"
+     },
+     {
+      "item": "coast_armor_trim_smithing_template"
+     },
+     {
+      "item": "dune_armor_trim_smithing_template"
+     },
+     {
+      "item": "wayfinder_armor_trim_smithing_template"
+     },
+     {
+      "item": "raiser_armor_trim_smithing_template"
+     },
+     {
+      "item": "shaper_armor_trim_smithing_template"
+     },
+     {
+      "item": "host_armor_trim_smithing_template"
+     },
+     {
+      "item": "ward_armor_trim_smithing_template"
+     },
+     {
+      "item": "silence_armor_trim_smithing_template"
+     },
+     {
+      "item": "tide_armor_trim_smithing_template"
+     },
+     {
+      "item": "snout_armor_trim_smithing_template"
+     },
+     {
+      "item": "rib_armor_trim_smithing_template"
+     },
+     {
+      "item": "eye_armor_trim_smithing_template"
+     },
+     {
+      "item": "spire_armor_trim_smithing_template"
+     },
+     {
+      "item": "flow_armor_trim_smithing_template"
+     },
+     {
+      "item": "bolt_armor_trim_smithing_template"
+     },
+     {
+      "item": "experience_bottle"
+     },
+     {
+      "item": "trial_key"
+     },
+     {
+      "item": "ominous_trial_key"
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "aqua_affinity": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "bane_of_arthropods": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "bane_of_arthropods": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "bane_of_arthropods": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "bane_of_arthropods": 4
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "bane_of_arthropods": 5
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "binding_curse": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "blast_protection": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "blast_protection": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "blast_protection": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "blast_protection": 4
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "breach": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "breach": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "breach": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "breach": 4
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "channeling": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "density": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "density": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "density": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "density": 4
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "density": 5
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "depth_strider": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "depth_strider": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "depth_strider": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "efficiency": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "efficiency": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "efficiency": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "efficiency": 4
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "efficiency": 5
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "feather_falling": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "feather_falling": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "feather_falling": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "feather_falling": 4
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "fire_aspect": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "fire_aspect": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "fire_protection": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "fire_protection": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "fire_protection": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "fire_protection": 4
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "flame": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "fortune": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "fortune": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "fortune": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "frost_walker": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "frost_walker": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "impaling": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "impaling": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "impaling": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "impaling": 4
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "impaling": 5
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "infinity": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "knockback": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "knockback": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "looting": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "looting": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "looting": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "loyalty": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "loyalty": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "loyalty": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "luck_of_the_sea": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "luck_of_the_sea": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "luck_of_the_sea": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "lunge": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "lunge": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "lunge": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "lure": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "lure": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "lure": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "mending": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "multishot": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "piercing": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "piercing": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "piercing": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "piercing": 4
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "power": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "power": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "power": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "power": 4
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "power": 5
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "projectile_protection": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "projectile_protection": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "projectile_protection": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "projectile_protection": 4
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "protection": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "protection": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "protection": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "protection": 4
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "punch": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "punch": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "quick_charge": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "quick_charge": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "quick_charge": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "respiration": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "respiration": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "respiration": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "riptide": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "riptide": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "riptide": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "sharpness": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "sharpness": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "sharpness": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "sharpness": 4
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "sharpness": 5
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "silk_touch": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "smite": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "smite": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "smite": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "smite": 4
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "smite": 5
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "soul_speed": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "soul_speed": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "soul_speed": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "sweeping_edge": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "sweeping_edge": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "sweeping_edge": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "swift_sneak": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "swift_sneak": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "swift_sneak": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "thorns": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "thorns": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "thorns": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "unbreaking": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "unbreaking": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "unbreaking": 3
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "vanishing_curse": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "wind_burst": 1
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "wind_burst": 2
+       }
+      }
+     },
+     {
+      "item": "enchanted_book",
+      "components": {
+       "stored_enchantments": {
+        "wind_burst": 3
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "spawn_eggs",
+   "row": "bottom",
+   "column": 4,
+   "type": "category",
+   "aligned_right": false,
+   "show_title": true,
+   "can_scroll": true,
+   "title_key": "itemGroup.spawnEggs",
+   "title": "Spawn Eggs",
+   "icon": "creeper_spawn_egg",
+   "background": "textures/gui/container/creative_inventory/tab_items.png",
+   "items": {
+    "display": [
+     {
+      "item": "spawner"
+     },
+     {
+      "item": "trial_spawner"
+     },
+     {
+      "item": "creaking_heart"
+     },
+     {
+      "item": "chicken_spawn_egg"
+     },
+     {
+      "item": "cow_spawn_egg"
+     },
+     {
+      "item": "pig_spawn_egg"
+     },
+     {
+      "item": "sheep_spawn_egg"
+     },
+     {
+      "item": "camel_spawn_egg"
+     },
+     {
+      "item": "donkey_spawn_egg"
+     },
+     {
+      "item": "horse_spawn_egg"
+     },
+     {
+      "item": "mule_spawn_egg"
+     },
+     {
+      "item": "cat_spawn_egg"
+     },
+     {
+      "item": "parrot_spawn_egg"
+     },
+     {
+      "item": "wolf_spawn_egg"
+     },
+     {
+      "item": "armadillo_spawn_egg"
+     },
+     {
+      "item": "bat_spawn_egg"
+     },
+     {
+      "item": "bee_spawn_egg"
+     },
+     {
+      "item": "fox_spawn_egg"
+     },
+     {
+      "item": "goat_spawn_egg"
+     },
+     {
+      "item": "llama_spawn_egg"
+     },
+     {
+      "item": "ocelot_spawn_egg"
+     },
+     {
+      "item": "panda_spawn_egg"
+     },
+     {
+      "item": "polar_bear_spawn_egg"
+     },
+     {
+      "item": "rabbit_spawn_egg"
+     },
+     {
+      "item": "axolotl_spawn_egg"
+     },
+     {
+      "item": "cod_spawn_egg"
+     },
+     {
+      "item": "dolphin_spawn_egg"
+     },
+     {
+      "item": "frog_spawn_egg"
+     },
+     {
+      "item": "glow_squid_spawn_egg"
+     },
+     {
+      "item": "nautilus_spawn_egg"
+     },
+     {
+      "item": "pufferfish_spawn_egg"
+     },
+     {
+      "item": "salmon_spawn_egg"
+     },
+     {
+      "item": "squid_spawn_egg"
+     },
+     {
+      "item": "tadpole_spawn_egg"
+     },
+     {
+      "item": "tropical_fish_spawn_egg"
+     },
+     {
+      "item": "turtle_spawn_egg"
+     },
+     {
+      "item": "allay_spawn_egg"
+     },
+     {
+      "item": "mooshroom_spawn_egg"
+     },
+     {
+      "item": "sniffer_spawn_egg"
+     },
+     {
+      "item": "sulfur_cube_spawn_egg"
+     },
+     {
+      "item": "copper_golem_spawn_egg"
+     },
+     {
+      "item": "iron_golem_spawn_egg"
+     },
+     {
+      "item": "snow_golem_spawn_egg"
+     },
+     {
+      "item": "trader_llama_spawn_egg"
+     },
+     {
+      "item": "villager_spawn_egg"
+     },
+     {
+      "item": "wandering_trader_spawn_egg"
+     },
+     {
+      "item": "bogged_spawn_egg"
+     },
+     {
+      "item": "camel_husk_spawn_egg"
+     },
+     {
+      "item": "drowned_spawn_egg"
+     },
+     {
+      "item": "husk_spawn_egg"
+     },
+     {
+      "item": "parched_spawn_egg"
+     },
+     {
+      "item": "skeleton_spawn_egg"
+     },
+     {
+      "item": "skeleton_horse_spawn_egg"
+     },
+     {
+      "item": "stray_spawn_egg"
+     },
+     {
+      "item": "zombie_spawn_egg"
+     },
+     {
+      "item": "zombie_horse_spawn_egg"
+     },
+     {
+      "item": "zombie_nautilus_spawn_egg"
+     },
+     {
+      "item": "zombie_villager_spawn_egg"
+     },
+     {
+      "item": "cave_spider_spawn_egg"
+     },
+     {
+      "item": "spider_spawn_egg"
+     },
+     {
+      "item": "breeze_spawn_egg"
+     },
+     {
+      "item": "creaking_spawn_egg"
+     },
+     {
+      "item": "creeper_spawn_egg"
+     },
+     {
+      "item": "elder_guardian_spawn_egg"
+     },
+     {
+      "item": "guardian_spawn_egg"
+     },
+     {
+      "item": "phantom_spawn_egg"
+     },
+     {
+      "item": "silverfish_spawn_egg"
+     },
+     {
+      "item": "slime_spawn_egg"
+     },
+     {
+      "item": "warden_spawn_egg"
+     },
+     {
+      "item": "witch_spawn_egg"
+     },
+     {
+      "item": "evoker_spawn_egg"
+     },
+     {
+      "item": "pillager_spawn_egg"
+     },
+     {
+      "item": "ravager_spawn_egg"
+     },
+     {
+      "item": "vex_spawn_egg"
+     },
+     {
+      "item": "vindicator_spawn_egg"
+     },
+     {
+      "item": "blaze_spawn_egg"
+     },
+     {
+      "item": "ghast_spawn_egg"
+     },
+     {
+      "item": "happy_ghast_spawn_egg"
+     },
+     {
+      "item": "hoglin_spawn_egg"
+     },
+     {
+      "item": "magma_cube_spawn_egg"
+     },
+     {
+      "item": "piglin_spawn_egg"
+     },
+     {
+      "item": "piglin_brute_spawn_egg"
+     },
+     {
+      "item": "strider_spawn_egg"
+     },
+     {
+      "item": "wither_skeleton_spawn_egg"
+     },
+     {
+      "item": "zoglin_spawn_egg"
+     },
+     {
+      "item": "zombified_piglin_spawn_egg"
+     },
+     {
+      "item": "enderman_spawn_egg"
+     },
+     {
+      "item": "endermite_spawn_egg"
+     },
+     {
+      "item": "shulker_spawn_egg"
+     }
+    ]
+   }
+  },
+  {
+   "id": "op_blocks",
+   "row": "bottom",
+   "column": 5,
+   "type": "category",
+   "aligned_right": true,
+   "show_title": true,
+   "can_scroll": true,
+   "title_key": "itemGroup.op",
+   "title": "Operator Utilities",
+   "icon": "command_block",
+   "background": "textures/gui/container/creative_inventory/tab_items.png",
+   "player": {
+    "display": []
+   },
+   "operator": {
+    "display": [
+     {
+      "item": "command_block"
+     },
+     {
+      "item": "chain_command_block"
+     },
+     {
+      "item": "repeating_command_block"
+     },
+     {
+      "item": "command_block_minecart"
+     },
+     {
+      "item": "jigsaw"
+     },
+     {
+      "item": "structure_block"
+     },
+     {
+      "item": "structure_void"
+     },
+     {
+      "item": "barrier"
+     },
+     {
+      "item": "debug_stick"
+     },
+     {
+      "item": "test_instance_block"
+     },
+     {
+      "item": "test_block"
+     },
+     {
+      "item": "test_block",
+      "components": {
+       "block_state": {
+        "mode": "log"
+       }
+      }
+     },
+     {
+      "item": "test_block",
+      "components": {
+       "block_state": {
+        "mode": "fail"
+       }
+      }
+     },
+     {
+      "item": "test_block",
+      "components": {
+       "block_state": {
+        "mode": "accept"
+       }
+      }
+     },
+     {
+      "item": "light"
+     },
+     {
+      "item": "light",
+      "components": {
+       "block_state": {
+        "level": "14"
+       }
+      }
+     },
+     {
+      "item": "light",
+      "components": {
+       "block_state": {
+        "level": "13"
+       }
+      }
+     },
+     {
+      "item": "light",
+      "components": {
+       "block_state": {
+        "level": "12"
+       }
+      }
+     },
+     {
+      "item": "light",
+      "components": {
+       "block_state": {
+        "level": "11"
+       }
+      }
+     },
+     {
+      "item": "light",
+      "components": {
+       "block_state": {
+        "level": "10"
+       }
+      }
+     },
+     {
+      "item": "light",
+      "components": {
+       "block_state": {
+        "level": "9"
+       }
+      }
+     },
+     {
+      "item": "light",
+      "components": {
+       "block_state": {
+        "level": "8"
+       }
+      }
+     },
+     {
+      "item": "light",
+      "components": {
+       "block_state": {
+        "level": "7"
+       }
+      }
+     },
+     {
+      "item": "light",
+      "components": {
+       "block_state": {
+        "level": "6"
+       }
+      }
+     },
+     {
+      "item": "light",
+      "components": {
+       "block_state": {
+        "level": "5"
+       }
+      }
+     },
+     {
+      "item": "light",
+      "components": {
+       "block_state": {
+        "level": "4"
+       }
+      }
+     },
+     {
+      "item": "light",
+      "components": {
+       "block_state": {
+        "level": "3"
+       }
+      }
+     },
+     {
+      "item": "light",
+      "components": {
+       "block_state": {
+        "level": "2"
+       }
+      }
+     },
+     {
+      "item": "light",
+      "components": {
+       "block_state": {
+        "level": "1"
+       }
+      }
+     },
+     {
+      "item": "light",
+      "components": {
+       "block_state": {
+        "level": "0"
+       }
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "earth"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "fire"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "water"
+      }
+     },
+     {
+      "item": "painting",
+      "components": {
+       "painting/variant": "wind"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "inventory",
+   "row": "bottom",
+   "column": 6,
+   "type": "inventory",
+   "aligned_right": true,
+   "show_title": false,
+   "can_scroll": false,
+   "title_key": "itemGroup.inventory",
+   "title": "Survival Inventory",
+   "icon": "chest",
+   "background": "textures/gui/container/creative_inventory/tab_inventory.png",
+   "items": {
+    "display": []
+   }
+  }
+ ]
+}
+

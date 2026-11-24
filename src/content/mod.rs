@@ -15,6 +15,7 @@ pub mod harness;
 pub mod interaction;
 pub mod mining;
 pub mod placement;
+pub mod spawn_egg;
 pub mod spyglass;
 pub mod trim;
 // v0.16 Track B: flight and storage.

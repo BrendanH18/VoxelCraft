@@ -248,10 +248,12 @@ impl Game {
         let slots = self.inventory_slots(screen);
         let at = |slot: SlotRef| slots.iter().find(|(r, _, _)| *r == slot).map(|&(_, x, y)| (x, y));
         let (x, y) = match (menu.grid, self.body.container) {
-            (Some(2), _) => {
-                let (gx, gy) = at(SlotRef::Craft(0))?;
-                (gx + 6.0, gy + 2.0 * SLOT + 7.0)
-            }
+            // `InventoryScreen.initButton`: (leftPos + 104, height / 2 - 22),
+            // which is (104, 61) in the 176 x 166 panel whose 2x2 grid's
+            // first item sits at (98, 18). v0.18 Track 4 put the grid at
+            // Java's slot positions (frames a pixel up and left of the
+            // item corners), so the button keeps Java's offset from it.
+            (Some(2), _) => inventory_toggle(at(SlotRef::Craft(0))?),
             (Some(_), _) => {
                 let (gx, gy) = at(SlotRef::Craft(0))?;
                 (gx - 25.0, gy + 17.0)
@@ -954,6 +956,13 @@ fn panel(ui: &mut Ui, r: Rect) {
     ui.rect(r.x + r.w - 1.0, r.y, 1.0, r.h, [0.33, 0.33, 0.33, 1.0]);
 }
 
+/// The survival inventory's book button, from its 2x2 grid's first slot
+/// frame: Java's (104, 61) against the grid's first item at (98, 18), the
+/// frame being a pixel up and left of the item (v0.18 Track 4's layout).
+fn inventory_toggle((gx, gy): (f32, f32)) -> (f32, f32) {
+    (gx + 1.0 + (104.0 - 98.0), gy + 1.0 + (61.0 - 18.0))
+}
+
 /// The recipe book button: a green book with pages.
 fn book_button(ui: &mut Ui, r: Rect, hover: bool) {
     ui.rect(r.x, r.y, r.w, r.h, if hover { [0.95, 0.95, 0.95, 1.0] } else { [0.55, 0.55, 0.55, 1.0] });
@@ -1006,6 +1015,24 @@ pub(super) fn book_from_name(name: &str) -> Option<BookType> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// v0.18 Track 4 moved the survival inventory to Java's slots: the
+    /// button lands at Java's (104, 61) and clears every survival slot frame
+    /// (armour, off-hand, grid, result, main grid).
+    #[test]
+    fn the_inventory_book_button_sits_where_java_puts_it() {
+        let (x, y) = inventory_toggle((97.0, 17.0));
+        assert_eq!((x, y), (104.0, 61.0));
+        let button = Rect { x, y, w: 20.0, h: 18.0 };
+        let mut frames: Vec<(f32, f32)> = (0..4).map(|i| (7.0, 7.0 + 18.0 * i as f32)).collect();
+        frames.extend([(76.0, 61.0), (97.0, 17.0), (115.0, 17.0), (97.0, 35.0), (115.0, 35.0), (153.0, 27.0)]);
+        frames.extend((0..9).map(|c| (7.0 + 18.0 * c as f32, 83.0)));
+        for (fx, fy) in frames {
+            let overlaps =
+                fx < button.x + button.w && fx + 18.0 > button.x && fy < button.y + button.h && fy + 18.0 > button.y;
+            assert!(!overlaps, "the button covers the slot at ({fx}, {fy})");
+        }
+    }
 
     #[test]
     fn overlay_centres_alternatives_on_the_button() {

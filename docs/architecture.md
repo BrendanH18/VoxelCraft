@@ -1364,6 +1364,24 @@ landing order.
 | — | — | — | 0. Foundation; 1. Typography; 2. Shared UI; 5. Recipe book; 7. Title and worlds; 10. Performance |
 | 13968–14335 | 1950–1999 | 1295–1299, 4066–4095 | Integrator |
 
+#### Track 4 allocation
+
+Items 1850–1936 are the 87 spawn eggs VoxelCraft registers
+(`content::spawn_egg`), in the order of
+`tests/fixtures/java/26.3/spawn_eggs.json`: the Spawn Eggs tab's (chicken
+1850 to shulker 1935), then the Wither's egg (1936), which no tab lists.
+Item 1937 is kept for the Ender Dragon's egg, left unregistered (its
+`registry_gaps.json` entry says why); 1938–1949 are unused. No block
+states or block texture layers. Item icons appended after the furnace
+minecart's: 87 layers (`item::icon_count`), one per egg in id order.
+Appended orderings: key bindings `key.saveToolbarActivator` and
+`key.loadToolbarActivator` after `key.swapOffhand` (`app::keys::Action`
+and `options.txt`); LAN slot codes 405 (Destroy Item), 406 (an empty
+creative cell) and 20000 + tab x 1000 + index (a creative stack that isn't
+a plain `Item::creative_palette` entry, which keeps codes 1000+); the
+dispenser output code 5 (`Output::Egg`, saved with pending dispenses); the
+trial spawner's saved `entity` field.
+
 #### Track 9 allocation
 
 Track 9 (sound, subtitles and container lids) uses texture layer 1290 for
