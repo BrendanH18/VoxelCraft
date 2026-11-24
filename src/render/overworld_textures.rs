@@ -20,12 +20,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     match layer {
         t::MOSS => mossy(layer, x, y, MOSS),
         t::PALE_MOSS => mossy(layer, x, y, PALE_MOSS),
-        t::BLUE_ICE => {
-            let crack = rnd(layer, x / 3, y / 3, 8) < 0.2 && (x + y).is_multiple_of(3);
-            let c = if crack { [176, 214, 255] } else { [116, 168, 253] };
-            shade(c, 0.92 + r * 0.1)
-        }
-        t::SNOW_LAYER => noisy(layer, x, y, [240, 246, 250], 0.03),
         t::DRIPSTONE => {
             let band = (y + (rnd(layer, x / 4, 0, 2) * 3.0) as usize).is_multiple_of(5);
             shade(DRIPSTONE, if band { 0.8 } else { 0.92 + r * 0.14 })
