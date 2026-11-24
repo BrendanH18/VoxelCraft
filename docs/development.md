@@ -484,7 +484,8 @@ reproducible before/after scenes for v0.18's visual work, in five groups:
 - `atmosphere`: the seeded landscape at noon, dusk and midnight, in rain and
   a thunderstorm, inside a water tank, and in the Nether and the End. Track
   8's fog, clouds, rain and light are compared on these, and on two scenes
-  it appended: `nether-arrival` (the Nether where its portal arrives, in
+  it appended: `underwater-ocean` (under the ocean beside the seed's
+  monument), `nether-arrival` (the Nether where its portal arrives, in
   open air) and `cave-ceiling-night` (the torch-lit room at midnight)
   ([record](verification/2026-11-23-v0.18-atmosphere.md)).
 
