@@ -375,8 +375,8 @@ fn every_sound_slider_is_reachable_by_keyboard_and_controller() {
         stack.open(MusicAndSounds);
         let (shape, _) = stack.peek(&host, size);
         let sliders: Vec<usize> = (0..shape.slots.len()).filter(|&i| shape.slots[i].focusable).collect();
-        // Ten sliders and Done.
-        assert_eq!(sliders.len(), SoundSource::ALL.len() + 1, "{size:?}");
+        // Ten sliders, Closed Captions (v0.18 Track 9) and Done.
+        assert_eq!(sliders.len(), SoundSource::ALL.len() + 2, "{size:?}");
         for (n, source) in SoundSource::ALL.into_iter().enumerate() {
             // Tab to slider `n`, lower it with the arrow key, raise it with the D-pad.
             let mut tabs = Host::default();
