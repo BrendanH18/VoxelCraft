@@ -9,7 +9,6 @@ const CLEAR: Rgba = [0, 0, 0, 0];
 const MOSS: [u8; 3] = [89, 109, 45];
 const PALE_MOSS: [u8; 3] = [108, 118, 104];
 const DRIPSTONE: [u8; 3] = [134, 107, 92];
-const AMETHYST: [u8; 3] = [133, 97, 191];
 const PRISMARINE: [u8; 3] = [99, 156, 151];
 const STEM: [u8; 3] = [64, 120, 40];
 const CORAL: [[u8; 3]; 5] = [[50, 90, 210], [206, 80, 160], [160, 30, 190], [190, 36, 46], [216, 200, 66]];
@@ -32,19 +31,10 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             shade(DRIPSTONE, if band { 0.8 } else { 0.92 + r * 0.14 })
         }
         l if (t::POINTED..t::POINTED + 10).contains(&l) => pointed(l - t::POINTED, x, y, r),
-        t::AMETHYST => {
-            let facet = super::voronoi(x, y, &super::points(layer, 6)).2;
-            shade(AMETHYST, 0.82 + (facet as f32 * 0.07) + r * 0.08)
-        }
-        t::BUDDING_AMETHYST => {
-            let (d1, _, _) = super::voronoi(x, y, &super::points(layer, 5));
-            if d1 < 1.6 { shade([200, 160, 240], 0.95 + r * 0.05) } else { shade(AMETHYST, 0.8 + r * 0.12) }
-        }
         l if (t::BUDS..t::BUDS + 8).contains(&l) => {
             let i = l - t::BUDS;
             bud(i % 4, i >= 4, x, y, r)
         }
-        t::SMOOTH_BASALT => noisy(layer, x, y, [72, 72, 78], 0.08),
         t::AZALEA_TOP | t::FLOWERING_AZALEA_TOP => {
             let flowers = layer == t::FLOWERING_AZALEA_TOP && rnd(layer, x / 2, y / 2, 3) < 0.25;
             if flowers { shade([206, 112, 196], 0.9 + r * 0.2) } else { shade([96, 126, 46], 0.8 + r * 0.3) }

@@ -2,11 +2,9 @@
 //! original artwork in the palette of Java's crimson, warped, soul and bone
 //! textures.
 
-use super::{Rgba, SIZE, noisy, pixel as base_pixel, rnd, shade, wooden_door};
+use super::{Rgba, SIZE, noisy, rnd, shade, wooden_door};
 use crate::world::block::tex;
 
-const CRIMSON: [u8; 3] = [130, 31, 31];
-const WARPED: [u8; 3] = [43, 114, 101];
 const CRIMSON_PLANKS: [u8; 3] = [101, 48, 70];
 const WARPED_PLANKS: [u8; 3] = [43, 104, 99];
 const CLEAR: Rgba = [0, 0, 0, 0];
@@ -17,12 +15,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
         l if (tex::SOUL_FIRE_0..tex::SOUL_FIRE_0 + tex::FIRE_FRAMES as u16).contains(&l) => {
             soul_fire((l - tex::SOUL_FIRE_0) as usize, x, y, r)
         }
-        tex::CRIMSON_NYLIUM_TOP | tex::WARPED_NYLIUM_TOP => nylium(layer, x, y, r),
-        tex::CRIMSON_NYLIUM_SIDE | tex::WARPED_NYLIUM_SIDE => {
-            // Netherrack with the moss hanging over the top edge.
-            let fringe = 2 + (rnd(layer, x, 0, 7) * 3.0) as usize + (rnd(layer, x / 3, 1, 7) * 2.0) as usize;
-            if y < fringe { nylium(layer - 1, x, y, r) } else { base_pixel(tex::NETHERRACK, x, y) }
-        }
         l if (tex::NETHER_STEM_SIDE..tex::NETHER_STEM_SIDE + 4).contains(&l) => stem_side(l, x, y, r),
         l if (tex::NETHER_STEM_TOP..tex::NETHER_STEM_TOP + 4).contains(&l) => stem_top(l, x, y, r),
         tex::CRIMSON_PLANKS | tex::WARPED_PLANKS => {
@@ -30,32 +22,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             let board = y / 4;
             let seam = y % 4 == 3 || x == (board * 7 + 3) % SIZE;
             shade(colour, if seam { 0.66 } else { 0.9 + rnd(layer, x, board, 2) * 0.14 + r * 0.04 })
-        }
-        tex::NETHER_WART_BLOCK | tex::WARPED_WART_BLOCK => {
-            let colour = if layer == tex::NETHER_WART_BLOCK { [114, 6, 6] } else { [22, 119, 121] };
-            let lump = rnd(layer, x / 2, y / 2, 3);
-            shade(
-                colour,
-                if lump < 0.2 {
-                    0.7
-                } else if lump > 0.85 {
-                    1.25
-                } else {
-                    0.92 + r * 0.14
-                },
-            )
-        }
-        tex::SHROOMLIGHT => {
-            // Warm glowing cells with darker seams.
-            let seam = (x + (y / 4) * 2).is_multiple_of(5) || (y + x / 5).is_multiple_of(4);
-            let hot = rnd(layer, x / 2, y / 2, 4) > 0.7;
-            if seam {
-                shade([206, 104, 44], 0.9 + r * 0.1)
-            } else if hot {
-                shade([255, 214, 140], 0.95 + r * 0.05)
-            } else {
-                shade([240, 150, 72], 0.92 + r * 0.1)
-            }
         }
         tex::CRIMSON_FUNGUS => fungus(x, y, r, [168, 30, 40], [244, 196, 80]),
         tex::WARPED_FUNGUS => fungus(x, y, r, [20, 160, 140], [250, 130, 40]),
@@ -67,10 +33,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             if tuft(4) || tuft(11) { shade([20, 150, 130], 0.8 + r * 0.3) } else { CLEAR }
         }
         l if (tex::NETHER_VINES..tex::NETHER_VINES + 4).contains(&l) => vine(l - tex::NETHER_VINES, x, y, r),
-        tex::SOUL_SOIL => {
-            let pit = rnd(layer, x / 2, y / 2, 9) < 0.18;
-            shade([75, 57, 46], if pit { 0.62 } else { 0.86 + r * 0.26 })
-        }
         tex::SOUL_TORCH => match (x, y) {
             (7..=8, 4) => [200, 255, 255, 255],
             (7..=8, 5) => [93, 232, 236, 255],
@@ -116,23 +78,6 @@ fn soul_fire(frame: usize, x: usize, y: usize, r: f32) -> Rgba {
         let heat = ((y - tip) as f32 / (SIZE - tip) as f32 + r * 0.2).min(1.0);
         [(40.0 + 120.0 * heat * heat) as u8, (170.0 + 85.0 * heat) as u8, (215.0 + 40.0 * heat) as u8, 255]
     }
-}
-
-fn nylium(top: u16, x: usize, y: usize, r: f32) -> Rgba {
-    let (base, dark, bright) = if top == tex::CRIMSON_NYLIUM_TOP {
-        (CRIMSON, [92, 16, 16], [176, 52, 42])
-    } else {
-        (WARPED, [22, 80, 71], [78, 160, 138])
-    };
-    let speck = rnd(top, x, y, 5);
-    let c = if speck < 0.18 {
-        dark
-    } else if speck > 0.9 {
-        bright
-    } else {
-        base
-    };
-    shade(c, 0.9 + r * 0.18)
 }
 
 /// Bark (or stripped wood) with vertical veins.
@@ -220,6 +165,9 @@ mod tests {
 
     #[test]
     fn every_nether_layer_is_drawn_and_cross_sprites_have_holes() {
+        // Through the shared `pixel`: `material_textures` draws the nylium,
+        // wart blocks, shroomlight and soul soil (v0.18 Track 3).
+        use super::super::pixel;
         for layer in tex::SOUL_FIRE_0..=tex::NETHER_BIOME_LAST {
             let px: Vec<Rgba> = (0..SIZE * SIZE).map(|i| pixel(layer, i % SIZE, i / SIZE)).collect();
             assert!(!px.contains(&[255, 0, 255, 255]), "layer {layer} is missing");

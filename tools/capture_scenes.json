@@ -4564,6 +4564,625 @@
    ]
   },
   {
+   "name": "material-copper",
+   "group": "materials",
+   "description": "The copper block, cut, chiseled, grate and bulb at each oxidation stage, then the quartz blocks, as 2 x 2 x 2 cubes in rising rows from above at noon",
+   "matrix": {
+    "size": [
+     [
+      1920,
+      1080
+     ],
+     [
+      1280,
+      720
+     ]
+    ],
+    "gui_scale": [
+     "auto"
+    ]
+   },
+   "pose": [
+    0.5,
+    162,
+    6,
+    90,
+    -32
+   ],
+   "hud": false,
+   "fill": [
+    [
+     -12,
+     150,
+     18,
+     -11,
+     151,
+     19,
+     "block of copper"
+    ],
+    [
+     -9,
+     150,
+     18,
+     -8,
+     151,
+     19,
+     "cut copper"
+    ],
+    [
+     -6,
+     150,
+     18,
+     -5,
+     151,
+     19,
+     "chiseled copper"
+    ],
+    [
+     -3,
+     150,
+     18,
+     -2,
+     151,
+     19,
+     "copper grate"
+    ],
+    [
+     0,
+     150,
+     18,
+     1,
+     151,
+     19,
+     "copper bulb"
+    ],
+    [
+     3,
+     150,
+     18,
+     4,
+     151,
+     19,
+     "exposed copper"
+    ],
+    [
+     6,
+     150,
+     18,
+     7,
+     151,
+     19,
+     "exposed cut copper"
+    ],
+    [
+     9,
+     150,
+     18,
+     10,
+     151,
+     19,
+     "exposed chiseled copper"
+    ],
+    [
+     -12,
+     151,
+     21,
+     -11,
+     152,
+     22,
+     "exposed copper grate"
+    ],
+    [
+     -9,
+     151,
+     21,
+     -8,
+     152,
+     22,
+     "exposed copper bulb"
+    ],
+    [
+     -6,
+     151,
+     21,
+     -5,
+     152,
+     22,
+     "weathered copper"
+    ],
+    [
+     -3,
+     151,
+     21,
+     -2,
+     152,
+     22,
+     "weathered cut copper"
+    ],
+    [
+     0,
+     151,
+     21,
+     1,
+     152,
+     22,
+     "weathered chiseled copper"
+    ],
+    [
+     3,
+     151,
+     21,
+     4,
+     152,
+     22,
+     "weathered copper grate"
+    ],
+    [
+     6,
+     151,
+     21,
+     7,
+     152,
+     22,
+     "weathered copper bulb"
+    ],
+    [
+     9,
+     151,
+     21,
+     10,
+     152,
+     22,
+     "oxidized copper"
+    ],
+    [
+     -12,
+     152,
+     24,
+     -11,
+     153,
+     25,
+     "oxidized cut copper"
+    ],
+    [
+     -9,
+     152,
+     24,
+     -8,
+     153,
+     25,
+     "oxidized chiseled copper"
+    ],
+    [
+     -6,
+     152,
+     24,
+     -5,
+     153,
+     25,
+     "oxidized copper grate"
+    ],
+    [
+     -3,
+     152,
+     24,
+     -2,
+     153,
+     25,
+     "oxidized copper bulb"
+    ],
+    [
+     0,
+     152,
+     24,
+     1,
+     153,
+     25,
+     "block of quartz"
+    ],
+    [
+     3,
+     152,
+     24,
+     4,
+     153,
+     25,
+     "quartz pillar"
+    ],
+    [
+     6,
+     152,
+     24,
+     7,
+     153,
+     25,
+     "chiseled quartz block"
+    ],
+    [
+     9,
+     152,
+     24,
+     10,
+     153,
+     25,
+     "quartz bricks"
+    ],
+    [
+     -12,
+     153,
+     27,
+     -11,
+     154,
+     28,
+     "smooth quartz block"
+    ]
+   ]
+  },
+  {
+   "name": "material-colours",
+   "group": "materials",
+   "description": "The sixteen concretes with their powders resting on them, the sixteen wools behind, and ten ore and raw-ore blocks at the back, from above at noon: dyed surfaces and ore blocks",
+   "matrix": {
+    "size": [
+     [
+      1920,
+      1080
+     ],
+     [
+      1280,
+      720
+     ]
+    ],
+    "gui_scale": [
+     "auto"
+    ]
+   },
+   "pose": [
+    0.5,
+    160,
+    10,
+    90,
+    -30
+   ],
+   "hud": false,
+   "place": [
+    "-15,150,20,white concrete",
+    "-15,151,20,white concrete powder",
+    "-15,151,23,white wool",
+    "-13,150,20,orange concrete",
+    "-13,151,20,orange concrete powder",
+    "-13,151,23,orange wool",
+    "-11,150,20,magenta concrete",
+    "-11,151,20,magenta concrete powder",
+    "-11,151,23,magenta wool",
+    "-9,150,20,light blue concrete",
+    "-9,151,20,light blue concrete powder",
+    "-9,151,23,light blue wool",
+    "-7,150,20,yellow concrete",
+    "-7,151,20,yellow concrete powder",
+    "-7,151,23,yellow wool",
+    "-5,150,20,lime concrete",
+    "-5,151,20,lime concrete powder",
+    "-5,151,23,lime wool",
+    "-3,150,20,pink concrete",
+    "-3,151,20,pink concrete powder",
+    "-3,151,23,pink wool",
+    "-1,150,20,gray concrete",
+    "-1,151,20,gray concrete powder",
+    "-1,151,23,gray wool",
+    "1,150,20,light gray concrete",
+    "1,151,20,light gray concrete powder",
+    "1,151,23,light gray wool",
+    "3,150,20,cyan concrete",
+    "3,151,20,cyan concrete powder",
+    "3,151,23,cyan wool",
+    "5,150,20,purple concrete",
+    "5,151,20,purple concrete powder",
+    "5,151,23,purple wool",
+    "7,150,20,blue concrete",
+    "7,151,20,blue concrete powder",
+    "7,151,23,blue wool",
+    "9,150,20,brown concrete",
+    "9,151,20,brown concrete powder",
+    "9,151,23,brown wool",
+    "11,150,20,green concrete",
+    "11,151,20,green concrete powder",
+    "11,151,23,green wool",
+    "13,150,20,red concrete",
+    "13,151,20,red concrete powder",
+    "13,151,23,red wool",
+    "15,150,20,black concrete",
+    "15,151,20,black concrete powder",
+    "15,151,23,black wool",
+    "-15,152,26,block of iron",
+    "-12,152,26,block of gold",
+    "-9,152,26,block of diamond",
+    "-6,152,26,block of emerald",
+    "-3,152,26,block of lapis lazuli",
+    "0,152,26,block of redstone",
+    "3,152,26,block of coal",
+    "6,152,26,block of raw iron",
+    "9,152,26,block of raw gold",
+    "12,152,26,block of raw copper"
+   ]
+  },
+  {
+   "name": "material-nether",
+   "group": "materials",
+   "description": "The Nether's natural blocks and the block of netherite as 2 x 2 x 2 cubes in rising rows from above at noon",
+   "matrix": {
+    "size": [
+     [
+      1920,
+      1080
+     ],
+     [
+      1280,
+      720
+     ]
+    ],
+    "gui_scale": [
+     "auto"
+    ]
+   },
+   "pose": [
+    0.5,
+    162,
+    6,
+    90,
+    -32
+   ],
+   "hud": false,
+   "fill": [
+    [
+     -12,
+     150,
+     18,
+     -11,
+     151,
+     19,
+     "netherrack"
+    ],
+    [
+     -9,
+     150,
+     18,
+     -8,
+     151,
+     19,
+     "crimson nylium"
+    ],
+    [
+     -6,
+     150,
+     18,
+     -5,
+     151,
+     19,
+     "warped nylium"
+    ],
+    [
+     -3,
+     150,
+     18,
+     -2,
+     151,
+     19,
+     "soul sand"
+    ],
+    [
+     0,
+     150,
+     18,
+     1,
+     151,
+     19,
+     "soul soil"
+    ],
+    [
+     3,
+     150,
+     18,
+     4,
+     151,
+     19,
+     "basalt"
+    ],
+    [
+     6,
+     150,
+     18,
+     7,
+     151,
+     19,
+     "polished basalt"
+    ],
+    [
+     9,
+     150,
+     18,
+     10,
+     151,
+     19,
+     "smooth basalt"
+    ],
+    [
+     -12,
+     151,
+     21,
+     -11,
+     152,
+     22,
+     "magma block"
+    ],
+    [
+     -9,
+     151,
+     21,
+     -8,
+     152,
+     22,
+     "glowstone"
+    ],
+    [
+     -6,
+     151,
+     21,
+     -5,
+     152,
+     22,
+     "nether quartz ore"
+    ],
+    [
+     -3,
+     151,
+     21,
+     -2,
+     152,
+     22,
+     "ancient debris"
+    ],
+    [
+     0,
+     151,
+     21,
+     1,
+     152,
+     22,
+     "nether wart block"
+    ],
+    [
+     3,
+     151,
+     21,
+     4,
+     152,
+     22,
+     "warped wart block"
+    ],
+    [
+     6,
+     151,
+     21,
+     7,
+     152,
+     22,
+     "shroomlight"
+    ],
+    [
+     9,
+     151,
+     21,
+     10,
+     152,
+     22,
+     "block of netherite"
+    ]
+   ]
+  },
+  {
+   "name": "material-end",
+   "group": "materials",
+   "description": "End stone, obsidian, crying obsidian, purpur, end stone bricks and amethyst as 2 x 2 x 2 cubes from above at noon",
+   "matrix": {
+    "size": [
+     [
+      1920,
+      1080
+     ],
+     [
+      1280,
+      720
+     ]
+    ],
+    "gui_scale": [
+     "auto"
+    ]
+   },
+   "pose": [
+    0.5,
+    162,
+    6,
+    90,
+    -32
+   ],
+   "hud": false,
+   "fill": [
+    [
+     -12,
+     150,
+     18,
+     -11,
+     151,
+     19,
+     "end stone"
+    ],
+    [
+     -9,
+     150,
+     18,
+     -8,
+     151,
+     19,
+     "obsidian"
+    ],
+    [
+     -6,
+     150,
+     18,
+     -5,
+     151,
+     19,
+     "crying obsidian"
+    ],
+    [
+     -3,
+     150,
+     18,
+     -2,
+     151,
+     19,
+     "purpur block"
+    ],
+    [
+     0,
+     150,
+     18,
+     1,
+     151,
+     19,
+     "purpur pillar"
+    ],
+    [
+     3,
+     150,
+     18,
+     4,
+     151,
+     19,
+     "end stone bricks"
+    ],
+    [
+     6,
+     150,
+     18,
+     7,
+     151,
+     19,
+     "block of amethyst"
+    ],
+    [
+     9,
+     150,
+     18,
+     10,
+     151,
+     19,
+     "budding amethyst"
+    ]
+   ]
+  },
+  {
    "name": "mobs-uneven-ground",
    "group": "mobs",
    "description": "Nine mobs and a fan of dropped items on grass with one- and two-block bumps, a moment after spawning, at sunrise (time 0.0, held: below the undead sunburn threshold, as in the entities benchmark): silhouettes, faces and ground contact",

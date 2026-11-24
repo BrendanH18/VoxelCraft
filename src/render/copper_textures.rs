@@ -18,43 +18,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     let r = rnd(layer, x, y, 0);
     let rim = x == 0 || y == 0 || x == 15 || y == 15;
     match kind {
-        t::BLOCK => metal(stage, layer, x, y, if rim { 0.75 } else { 0.94 + r * 0.08 }),
-        t::CUT => {
-            // Four plates with a dark seam between them and a lit upper edge.
-            let seam = x.is_multiple_of(8) || y.is_multiple_of(8);
-            let lit = x % 8 == 1 || y % 8 == 1;
-            metal(
-                stage,
-                layer,
-                x,
-                y,
-                if seam {
-                    0.7
-                } else if lit {
-                    1.1
-                } else {
-                    0.94 + r * 0.06
-                },
-            )
-        }
-        t::CHISELED => {
-            // A raised frame around a carved ring and a central boss.
-            let edge = x.min(y).min(15 - x).min(15 - y);
-            let f = match edge {
-                0 => 0.72,
-                1 => 1.08,
-                2 | 3 => 0.95 + r * 0.05,
-                4 => 0.68,
-                5 => 1.12,
-                _ => 0.98 + r * 0.06,
-            };
-            metal(stage, layer, x, y, f)
-        }
-        t::GRATE => {
-            let hole = !rim && !x.is_multiple_of(4) && !y.is_multiple_of(4) && (x % 4 == 2 || y % 4 == 2);
-            if hole { CLEAR } else { metal(stage, layer, x, y, if rim { 0.8 } else { 1.0 + r * 0.08 }) }
-        }
-        k if (t::BULB..t::BULB + 4).contains(&k) => bulb(stage, layer, x, y, k - t::BULB),
         t::DOOR_TOP | t::DOOR_BOTTOM => door(stage, layer, x, y, kind == t::DOOR_TOP),
         t::TRAPDOOR => {
             let frame = x <= 1 || y <= 1 || x >= 14 || y >= 14;
@@ -129,34 +92,6 @@ fn metal(stage: Stage, layer: u16, x: usize, y: usize, f: f32) -> Rgba {
     p
 }
 
-/// A bulb: a thick frame round a glass window; the core glows when lit,
-/// and a red mark shows on the frame while powered.
-fn bulb(stage: Stage, layer: u16, x: usize, y: usize, state: u16) -> Rgba {
-    let (lit, powered) = (state & 1 == 1, state & 2 == 2);
-    let edge = x.min(y).min(15 - x).min(15 - y);
-    let mid = |v: usize| (6..=9).contains(&v);
-    if powered && edge == 1 && (((y == 1 || y == 14) && mid(x)) || ((x == 1 || x == 14) && mid(y))) {
-        return shade([210, 40, 30], 1.0);
-    }
-    match edge {
-        0 => metal(stage, layer, x, y, 0.72),
-        1..=2 => metal(stage, layer, x, y, if edge == 1 { 1.08 } else { 0.92 }),
-        3 => metal(stage, layer, x, y, 0.65),
-        _ => {
-            let (cx, cy) = (x as f32 - 7.5, y as f32 - 7.5);
-            let d = (cx * cx + cy * cy).sqrt();
-            if lit {
-                let glow = (1.0 - d / 6.0).clamp(0.0, 1.0);
-                shade([255, 214, 140], 0.8 + glow * 0.25)
-            } else if d < 2.5 {
-                shade([116, 84, 64], 0.9 + rnd(layer, x, y, 2) * 0.1)
-            } else {
-                shade([70, 60, 58], 0.85 + rnd(layer, x, y, 2) * 0.15)
-            }
-        }
-    }
-}
-
 /// A riveted metal door: frame, a cross rail, and a window in the top half.
 fn door(stage: Stage, layer: u16, x: usize, y: usize, top: bool) -> Rgba {
     let frame = x <= 1 || x >= 14 || (top && y <= 1) || (!top && y >= 14);
@@ -190,6 +125,10 @@ fn torch(x: usize, y: usize) -> Rgba {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Through the shared `pixel`: `material_textures` draws the block, cut,
+    // chiseled, grate and bulb faces (v0.18 Track 3).
+    use super::super::pixel;
 
     fn opaque(layer: u16) -> usize {
         (0..16).flat_map(|y| (0..16).map(move |x| (x, y))).filter(|&(x, y)| pixel(layer, x, y)[3] == 255).count()
