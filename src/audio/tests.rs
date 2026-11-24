@@ -595,7 +595,7 @@ fn blocks_play_their_own_java_sound_types() {
         ("cherry planks", "CHERRY_WOOD"),
         ("bamboo planks", "BAMBOO_WOOD"),
         ("crimson planks", "NETHER_WOOD"),
-        ("amethyst block", "AMETHYST"),
+        ("block of amethyst", "AMETHYST"),
         ("oak planks", "WOOD"),
         ("chest", "WOOD"),
         ("glass", "GLASS"),

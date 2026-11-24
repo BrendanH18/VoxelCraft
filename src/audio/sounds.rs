@@ -678,7 +678,7 @@ impl Sound {
             Sound::Geyser(_) => 2,
             Sound::Minecart(_) => 1,
             Sound::Crafter(_) => 2,
-            Sound::Block(_, BlockCue::Step | BlockCue::Hit | BlockCue::Fall) => 3,
+            // Every cue alike, so a cue can share another's buffers.
             Sound::Block(..) => 2,
             Sound::Container(_) => 2,
             Sound::Warden(_) | Sound::Sculk(_) => 2,

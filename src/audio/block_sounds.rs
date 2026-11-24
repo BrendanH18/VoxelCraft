@@ -193,15 +193,22 @@ pub fn sounds() -> impl Iterator<Item = Sound> {
     Family::all().flat_map(|f| BlockCue::ALL.map(move |c| Sound::Block(f, c)))
 }
 
-/// The step sound a hit or fall shares its buffers with (Java's hit and
-/// fall events play the step event's files).
+/// The sound whose buffers `sound` shares: a family's hit and fall play
+/// its step (Java's hit and fall events play the step files), and a cue no
+/// `SoundType` plays borrows one the family has, so it costs nothing.
 pub fn shares(sound: Sound) -> Option<Sound> {
-    match sound {
-        Sound::Block(f, BlockCue::Hit | BlockCue::Fall) if f.has(BlockCue::Step) => {
-            Some(Sound::Block(f, BlockCue::Step))
-        }
-        _ => None,
+    let Sound::Block(f, cue) = sound else { return None };
+    let rendered = |c: BlockCue| f.has(c) && !(matches!(c, BlockCue::Hit | BlockCue::Fall) && f.has(BlockCue::Step));
+    if rendered(cue) {
+        return None;
     }
+    if f.has(cue) {
+        return Some(Sound::Block(f, BlockCue::Step));
+    }
+    [BlockCue::Step, BlockCue::Break, BlockCue::Place, BlockCue::Hit, BlockCue::Fall]
+        .into_iter()
+        .find(|&c| rendered(c))
+        .map(|c| Sound::Block(f, c))
 }
 
 /// A Java `SoundType` as a block plays it.
@@ -689,15 +696,15 @@ fn metal_tone(out: &mut Vec<f32>, rng: &mut Rng, cue: BlockCue, f: f32, tau: f32
 
 fn crystal_tone(out: &mut Vec<f32>, rng: &mut Rng, cue: BlockCue, f: f32, level: f32) {
     let (count, tau) = match cue {
-        BlockCue::Break => (7, 0.5),
-        BlockCue::Place => (3, 0.4),
-        _ => (2, 0.25),
+        BlockCue::Break => (7, 0.3),
+        BlockCue::Place => (3, 0.22),
+        _ => (2, 0.14),
     };
     let span = if cue == BlockCue::Break { 0.25 } else { 0.05 };
     for i in 0..count {
         let t = if i == 0 { 0.0 } else { rng.range(0.0, span) };
         let start = samples(t);
-        grow(out, start + samples(tau * 4.0));
+        grow(out, start + samples(tau * 3.0));
         // Partials near the harmonic series give the bell its clear pitch.
         let base = f * [1.0, 1.189, 1.335, 1.498][rng.next_u32() as usize % 4];
         let a = if i == 0 { 1.0 } else { rng.range(0.3, 0.6) };
