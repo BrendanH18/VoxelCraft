@@ -462,6 +462,26 @@ impl Shell {
     }
 }
 
+/// The command-line options that override saved options (or, in scripted
+/// runs, the defaults) for this session only: they are never saved.
+fn apply_session_overrides(settings: &mut settings::Settings, args: &Args) {
+    if let Some(rd) = args.render_distance {
+        settings.render_distance = rd;
+    }
+    if let Some(v) = args.volume {
+        settings.volume = v;
+    }
+    settings.vsync &= !args.no_vsync && args.benchmark_scene.is_none();
+    if let Some(enhanced) = args.enhanced_graphics {
+        settings.enhanced_graphics = enhanced;
+    }
+    // `--gui-scale`: scripted captures read no options file, so this is how
+    // they pick a scale; `Ui::gui_scale` still caps it to the window.
+    if let Some(scale) = args.gui_scale {
+        settings.gui_scale = scale;
+    }
+}
+
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.game.is_some() || self.title.is_some() {
@@ -491,16 +511,7 @@ impl ApplicationHandler for App {
         let scripted = self.args.screenshot.is_some() || self.args.bench_render || self.args.benchmark_scene.is_some();
         let settings_path = (!scripted).then(|| self.saves_dir.join("options.txt"));
         let mut settings = settings_path.as_deref().map(settings::Settings::load).unwrap_or_default();
-        if let Some(rd) = self.args.render_distance {
-            settings.render_distance = rd;
-        }
-        if let Some(v) = self.args.volume {
-            settings.volume = v;
-        }
-        settings.vsync &= !self.args.no_vsync && self.args.benchmark_scene.is_none();
-        if let Some(enhanced) = self.args.enhanced_graphics {
-            settings.enhanced_graphics = enhanced;
-        }
+        apply_session_overrides(&mut settings, &self.args);
 
         if !scripted {
             settings.fullscreen.apply(&window);
@@ -1797,6 +1808,7 @@ impl Game {
         self.placed = true;
         if let Some(p) = self.open_block.take() {
             match self.world.get_block(p) {
+                Some(Block::CRAFTING_TABLE) => self.open_crafting_table(),
                 Some(b) if crate::world::furnace::is_furnace(b) => self.open_furnace(p),
                 Some(b) if crate::world::chest::is_chest(b) => self.open_chest(p),
                 Some(Block::BREWING_STAND) => self.open_brewing(p),
