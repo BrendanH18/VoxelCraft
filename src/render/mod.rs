@@ -1185,15 +1185,15 @@ impl Renderer {
         true
     }
 
-    /// v0.18 Track 7: copies the centred square of the next frame's first
-    /// view, drawn without its HUD (as Java takes the icon before the GUI),
-    /// for [`Renderer::poll_icon`]. Ignored while one is being read back.
     /// How many icon requests [`Renderer::clear_world`] has dropped: a
     /// capture that sees this change stops waiting for its frame.
     pub fn icon_cancels(&self) -> u64 {
         self.icon_cancels
     }
 
+    /// v0.18 Track 7: copies the centred square of the next frame's first
+    /// view, drawn without its HUD (as Java takes the icon before the GUI),
+    /// for [`Renderer::poll_icon`]. Ignored while one is being read back.
     pub fn request_icon(&mut self) {
         if self.icon.is_none() {
             self.icon_requested = true;
@@ -1457,6 +1457,9 @@ impl Renderer {
         self.icon_requested = false;
         self.icon = None;
         self.icon_error = None;
+        // Nothing of the new world is drawn yet: an icon retry waits for a
+        // frame of it rather than the last one's chunk count.
+        self.stats.visible = 0;
     }
 
     pub fn remove_mesh(&mut self, pos: IVec3) {
