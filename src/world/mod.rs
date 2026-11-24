@@ -409,6 +409,9 @@ pub struct World {
     /// v0.16 Track E: infested blocks broken this tick that let their
     /// silverfish out (`InfestedBlock.spawnAfterBreak`); the game spawns them.
     pub released_silverfish: Vec<IVec3>,
+    /// Time [`World::update_players`] may spend on light per call (`None`:
+    /// all of it). See [`World::set_stream_light_budget`].
+    stream_light_budget: Option<std::time::Duration>,
     /// Chunks whose stored light changed since the last mesh invalidation
     /// (each listed once, while its `light_mesh_dirty` flag is set).
     light_mesh_changed: Vec<IVec3>,
@@ -577,6 +580,18 @@ impl World {
         world.remote = true;
         world.hold_unloads = true;
         world
+    }
+
+    /// Bounds the light [`World::update_players`] resolves per call to
+    /// `budget` (v0.18 Track 10: installing a burst of generated chunks
+    /// could otherwise spend tens of milliseconds of one frame on light).
+    /// Light then settles over the following calls, and no mesh job is
+    /// queued until it has. A caller that sets a budget must resolve all
+    /// light ([`World::update_block_light`]) before simulating, so gameplay
+    /// reads the same light as without one. `None`, the default, resolves
+    /// everything in each call.
+    pub fn set_stream_light_budget(&mut self, budget: Option<std::time::Duration>) {
+        self.stream_light_budget = budget;
     }
 
     /// Immutable subscription snapshots; pointer identity detects even nonvisual edits.
@@ -818,6 +833,7 @@ impl World {
             contact_source: None,
             released_silverfish: Vec::new(),
             light_mesh_changed: Vec::new(),
+            stream_light_budget: None,
             notes: Vec::new(),
             allay_notes: Vec::new(),
             trip_sounds: Vec::new(),
@@ -928,8 +944,12 @@ impl World {
             && self.sky_updates.is_empty()
     }
 
+    /// Generation and mesh jobs in flight, plus one while a streaming light
+    /// budget holds back meshing until light settles, so "no pending jobs"
+    /// still means every ready chunk has been meshed.
     pub fn pending_jobs(&self) -> usize {
-        self.gen_in_flight.len() + self.mesh_in_flight
+        let held = self.stream_light_budget.is_some() && !self.dirty.is_empty() && !self.light_settled();
+        self.gen_in_flight.len() + self.mesh_in_flight + usize::from(held)
     }
 
     pub fn worker_threads(&self) -> usize {
@@ -1816,10 +1836,19 @@ impl World {
             }
         }
 
-        self.update_block_light();
+        // Light for what streaming installed: all of it, or with a per-frame
+        // budget a slice of it, the rest resuming next frame. New mesh jobs
+        // wait until it settles, so no mesh reads half-spread light.
+        let settled = match self.stream_light_budget {
+            Some(budget) => self.update_block_light_within(budget),
+            None => {
+                self.update_block_light();
+                true
+            }
+        };
 
         // Mesh the nearest ready chunks.
-        if !self.dirty.is_empty() && self.mesh_in_flight < cap {
+        if settled && !self.dirty.is_empty() && self.mesh_in_flight < cap {
             let mut candidates: Vec<(i32, IVec3)> = self.dirty.iter().map(|&p| (self.priority(p), p)).collect();
             candidates.sort_unstable_by_key(|&(k, _)| k);
             for (_, pos) in candidates {
@@ -2018,6 +2047,47 @@ mod tests {
             assert!(Instant::now() < deadline, "world never settled");
             std::thread::sleep(Duration::from_millis(1));
         }
+    }
+
+    /// Streams generation 1 terrain around the origin at render distance 2,
+    /// with `budget` as the streaming light budget, until every job is done
+    /// and light has settled.
+    fn streamed(budget: Option<Duration>) -> World {
+        let generator = Arc::new(Generator::with_generation(7, terrain::Dimension::Overworld, terrain::Generation::V1));
+        let mut world = World::new(generator, Default::default(), 2);
+        world.set_stream_light_budget(budget);
+        let at = DVec3::new(0.5, 80.0, 0.5);
+        let deadline = Instant::now() + Duration::from_secs(60);
+        loop {
+            world.update(at);
+            world.mesh_uploads.clear();
+            if world.loaded_chunks() > 0 && world.pending_jobs() == 0 && world.dirty.is_empty() && world.light_settled()
+            {
+                return world;
+            }
+            assert!(Instant::now() < deadline, "world never settled");
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
+
+    #[test]
+    fn a_streaming_light_budget_settles_to_the_same_light() {
+        let full = streamed(None);
+        // The smallest budget: each call does only the minimum light work.
+        let budgeted = streamed(Some(Duration::ZERO));
+        assert_eq!(full.loaded_chunks(), budgeted.loaded_chunks());
+        let mut lit = 0;
+        for x in (-60..60).step_by(3) {
+            for z in (-60..60).step_by(3) {
+                for y in (40..140).step_by(2) {
+                    let p = IVec3::new(x, y, z);
+                    assert_eq!(full.block_light(p), budgeted.block_light(p), "block light at {p}");
+                    assert_eq!(full.sky_light(p), budgeted.sky_light(p), "sky light at {p}");
+                    lit += usize::from(full.sky_light(p).is_some_and(|l| l > 0 && l < 15));
+                }
+            }
+        }
+        assert!(lit > 0, "the samples include partly lit cells");
     }
 
     #[test]

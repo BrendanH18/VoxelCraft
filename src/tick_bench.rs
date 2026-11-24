@@ -46,6 +46,8 @@ type TickTimes = [f32; TICK_PHASES.len()];
 
 /// Camera height above the generator's surface along the routes, as the live scenes'.
 const ROUTE_CLEARANCE: f64 = 24.0;
+/// The desktop game's per-frame streaming light budget (`app::STREAM_LIGHT_BUDGET`).
+const STREAM_LIGHT_BUDGET: Duration = Duration::from_millis(2);
 /// Mobs in the entities scene, as the live scene's.
 const ENTITY_MOBS: usize = 160;
 
@@ -97,7 +99,10 @@ impl Harness {
         let generator = Arc::new(Generator::new(options.seed));
         let ground = generator.column(0, 0).height;
         let camera = DVec3::new(0.5, f64::from(ground.max(SEA_LEVEL)) + 2.0, 0.5);
-        let world = World::new(generator, Default::default(), options.render_distance);
+        let mut world = World::new(generator, Default::default(), options.render_distance);
+        // As the desktop game streams: light within a per-frame budget,
+        // resolved in full before a frame's first tick.
+        world.set_stream_light_budget(Some(STREAM_LIGHT_BUDGET));
         let entities = Entities::new(options.seed);
         let mut h = Self {
             world,
@@ -358,6 +363,8 @@ fn daylight(day_time: f64) -> f32 {
 #[derive(Clone, Copy, Default)]
 struct Frame {
     stream: f32,
+    /// The light resolved before the frame's first tick.
+    light: f32,
     /// `Entities::mesh`, the CPU side of the entity pass (reported, not in
     /// `total`: the frame loop's render half is outside this harness).
     entity_mesh: f32,
@@ -367,7 +374,7 @@ struct Frame {
 
 impl Frame {
     fn total(&self) -> f32 {
-        self.stream + self.ticks.iter().sum::<f32>()
+        self.stream + self.light + self.ticks.iter().sum::<f32>()
     }
 }
 
@@ -425,6 +432,11 @@ pub fn run(options: &Options) -> Result<Value, String> {
         let a = Instant::now();
         h.stream();
         f.stream = a.elapsed().as_secs_f32() * 1000.0;
+        if next_tick <= Instant::now() {
+            let a = Instant::now();
+            h.world.update_block_light();
+            f.light = a.elapsed().as_secs_f32() * 1000.0;
+        }
         // A fixed 20 Hz clock that never runs more than 10 ticks a frame.
         let mut due = 0;
         while next_tick <= Instant::now() && due < 10 {
@@ -469,6 +481,7 @@ pub fn run(options: &Options) -> Result<Value, String> {
     };
     let mut phases = serde_json::Map::new();
     phases.insert("stream".into(), summary(frames.iter().map(|f| f.stream).collect()));
+    phases.insert("pre_tick_light".into(), summary(frames.iter().map(|f| f.light).collect()));
     phases.insert("entity_mesh".into(), summary(frames.iter().map(|f| f.entity_mesh).collect()));
     for (i, name) in TICK_PHASES.iter().enumerate() {
         phases.insert((*name).into(), summary(ticks.iter().map(|t: &TickTimes| t[i]).collect()));
@@ -489,6 +502,7 @@ pub fn run(options: &Options) -> Result<Value, String> {
     let mut slowest = serde_json::Map::new();
     slowest.insert("total".into(), json!(slow_mean(&|f| f.total())));
     slowest.insert("stream".into(), json!(slow_mean(&|f| f.stream)));
+    slowest.insert("pre_tick_light".into(), json!(slow_mean(&|f| f.light)));
     for (i, name) in TICK_PHASES.iter().enumerate() {
         slowest.insert((*name).into(), json!(slow_mean(&|f| f.ticks[i])));
     }

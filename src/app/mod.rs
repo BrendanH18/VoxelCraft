@@ -88,6 +88,8 @@ use survival::Vitals;
 /// Placement/use repeat; mining timing is owned by the shared session.
 const ACTION_REPEAT: f64 = 0.22;
 const AUTOSAVE_EVERY: Duration = Duration::from_secs(120);
+/// Light [`World::update_players`] may resolve per frame (v0.18 Track 10).
+const STREAM_LIGHT_BUDGET: Duration = Duration::from_millis(2);
 /// How long `--screenshot` waits, once streaming settles, for fluids to
 /// come to rest. Placed water settles well inside it; generation 2's
 /// springs can pour for minutes and would otherwise hold a capture open.
@@ -2027,6 +2029,9 @@ impl Game {
         }
         let viewers: Vec<DVec3> = self.followed().map(|(_, b)| b.agent.session.player.pos).collect();
         self.world.set_viewers(&viewers);
+        // Streaming spends at most this much of a frame on light; the rest
+        // is resolved before the frame's first tick, below.
+        self.world.set_stream_light_budget(Some(STREAM_LIGHT_BUDGET));
         self.world.update_players(self.session.player.pos, &self.agents.positions());
         if self.lan.client.is_none()
             && !self.placed
@@ -2037,6 +2042,11 @@ impl Game {
             self.apply_placements();
         }
         benchmark::mark(&mut self.benchmark, 0);
+        if ticks > 0 {
+            // Ticks read light exactly as when streaming resolved all of it
+            // each frame.
+            self.world.update_block_light();
+        }
         for _ in 0..ticks {
             if self.lan.client.is_some() {
                 self.tick_lan_client();
