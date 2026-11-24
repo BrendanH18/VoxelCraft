@@ -201,8 +201,8 @@ fn item_criteria_unlock_exactly_the_recipes_that_name_the_item() {
 #[test]
 fn chest_needs_ten_occupied_slots_and_boats_need_water() {
     let mut inventory = Inventory::default();
-    for slot in 0..9 {
-        inventory.slots[slot] = Some(Stack::new(Item::from_block(Block::DIRT), 1));
+    for slot in inventory.slots.iter_mut().take(9) {
+        *slot = Some(Stack::new(Item::from_block(Block::DIRT), 1));
     }
     assert!(!ticked(&inventory, false).contains("chest"));
     // Armor and the off-hand count as inventory slots, as in Java.
@@ -387,8 +387,8 @@ fn missing_items_empty_the_grid_and_show_the_ghost() {
 #[test]
 fn a_grid_that_cannot_go_back_stays_unless_creative() {
     let mut inventory = Inventory::default();
-    for slot in 0..36 {
-        inventory.slots[slot] = Some(Stack::new(Item::from_block(Block::STONE), 64));
+    for slot in &mut inventory.slots {
+        *slot = Some(Stack::new(Item::from_block(Block::STONE), 64));
     }
     inventory.slots[35] = Some(Stack::new(item("oak log"), 3));
     let mut grid = Grid::new(2);
@@ -454,7 +454,7 @@ fn a_migrated_player_can_start_from_logs_under_limited_crafting() {
     inventory.slots[0] = Some(Stack::new(item("oak log"), 4));
     let mut book = RecipeBook::deserialize("");
     assert_eq!(book.known_count(), 0);
-    let mut craft = |book: &mut RecipeBook, inventory: &mut Inventory, name: &str, size: usize| {
+    let craft = |book: &mut RecipeBook, inventory: &mut Inventory, name: &str, size: usize| {
         book.tick(inventory, false);
         assert!(book.knows(id(name)), "{name} unlocked");
         let mut grid = Grid::new(size);

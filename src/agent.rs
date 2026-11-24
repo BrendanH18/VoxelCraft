@@ -987,6 +987,28 @@ impl Agent {
         json!({"grid":size,"filtering":filtering,"known":self.session.recipe_book.known_count(),"recipes":entries})
     }
 
+    /// v0.18 Track 5: the recipe book's search tab as one list, for the
+    /// controller's crafting tab: each recipe the book shows for this
+    /// player's grid (the 2x2, or a targeted table's 3x3), with its result
+    /// and whether it can be made now. Craftable only while the crafting
+    /// book filters.
+    pub fn book_entries(&self, world: &World) -> Vec<(crafting::book::RecipeId, Stack, bool)> {
+        use crafting::book::{self, BookType, stacked::Stacked};
+        let size = if self.at_crafting_table(world) { 3 } else { 2 };
+        let book = &self.session.recipe_book;
+        let available = Stacked::of_inventory(&self.session.inventory);
+        let filtering = book.settings(BookType::Crafting).filtering;
+        book::page(book, BookType::Crafting, None, Some(size), "", &available)
+            .iter()
+            .flat_map(|shown| {
+                shown
+                    .entries(filtering)
+                    .iter()
+                    .map(|&id| (id, id.recipe().unwrap().result, shown.craftable.contains(&id)))
+            })
+            .collect()
+    }
+
     /// v0.18 Track 5: what `observe` reports of the recipe book.
     fn recipe_book_state(&self) -> Value {
         use crafting::book::BookType;

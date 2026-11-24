@@ -362,6 +362,7 @@ impl Game {
     /// clears the highlight of recipes it shows (telling a LAN host), and
     /// moves new unlocks to the toast.
     pub(super) fn recipe_book_frame(&mut self) {
+        self.pad_recipe_books_seen();
         let now = Instant::now();
         let fresh = self.session.recipe_book.take_toasts();
         if !fresh.is_empty() {
@@ -929,7 +930,12 @@ impl Game {
         let per = (show / entries.len() as f32).max(1.0);
         let entry = entries[((age / per) as usize) % entries.len()];
         self.stack_ui(ui, x + 7.0, 7.0, Stack { count: 1, ..entry.result });
-        ui.icon(x + 3.0, 3.0, 9.6, entry.station.icon_layer(), WHITE);
+        // The workstation, small in the corner (`RecipeToast`'s 0.6 scale).
+        match (entry.station.icon_layer(), entry.station.block()) {
+            (Some(layer), _) => ui.icon(x + 3.0, 3.0, 9.6, layer, WHITE),
+            (None, Some(block)) => ui.block_icon(x + 3.0, 3.0, 9.6, block),
+            _ => {}
+        }
     }
 }
 

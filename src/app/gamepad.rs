@@ -922,6 +922,29 @@ impl Game {
 
     /// Runs `f` on agent `name`'s open screen: their session with the given
     /// container and crafting grid. Returns its result and requests.
+    /// v0.18 Track 5: recipes a controller player's open recipe book lists
+    /// lose their highlight, as the book shows them (`RecipeButton.init`).
+    pub(super) fn pad_recipe_books_seen(&mut self) {
+        let names: Vec<String> = self
+            .pads
+            .seats
+            .iter()
+            .filter(|s| matches!(s.menu, Some(Menu::Items { tab: Tab::Crafting, .. })))
+            .map(|s| s.name.clone())
+            .collect();
+        for name in names {
+            if self.agents.players.get(&name).is_none_or(|b| b.agent.session.recipe_book.highlighted_count() == 0) {
+                continue;
+            }
+            let ids: Vec<_> = self.pad_crafts(&name).into_iter().map(|(id, ..)| id).collect();
+            if let Some(bot) = self.agents.players.get_mut(&name) {
+                for id in ids {
+                    bot.agent.session.recipe_book.mark_seen(id);
+                }
+            }
+        }
+    }
+
     pub(super) fn agent_screen<R>(
         &mut self,
         name: &str,
