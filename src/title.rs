@@ -200,6 +200,13 @@ pub mod icon {
             self.in_flight = false;
         }
 
+        /// The frame asked for was dropped before it came back (the world
+        /// or dimension was left): stop waiting, and take one again from a
+        /// later frame once the rule's conditions hold.
+        pub fn canceled(&mut self) {
+            self.in_flight = false;
+        }
+
         /// The frame couldn't be taken at all (the surface can't be read
         /// back): stop for this visit, so nothing waits for an icon.
         pub fn give_up(&mut self) {
