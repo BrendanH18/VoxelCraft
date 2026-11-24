@@ -369,10 +369,8 @@ fn draw_icon(ui: &mut Ui, [x, y, w, h]: Rect, hovered: bool, part: Option<[f32; 
     let part = part.unwrap_or([default.x as f32, default.y as f32, default.w as f32, default.h as f32]);
     ui.image(x, y, w, h, part, WHITE);
     if hovered {
-        // `0xA0909090`.
-        let fill = voxelcraft::title::icon::HOVER_FILL;
-        let c = |shift: u32| ((fill >> shift) & 0xFF) as f32 / 255.0;
-        ui.rect(x, y, w, h, [c(16), c(8), c(0), c(24)]);
+        // `0xA0909090`, blended as Java blends it.
+        ui.rect(x, y, w, h, crate::app::gui::style::argb(voxelcraft::title::icon::HOVER_FILL));
         ui.text_scaled(x + 10.0, y + 8.0, ">", WHITE, 2.0);
     }
 }

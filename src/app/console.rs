@@ -476,12 +476,13 @@ impl Game {
 
     pub(super) fn console_ui(&self, ui: &mut Ui) {
         let (w, h) = ui.size();
-        let width = ((w - 24.0) / 8.0).max(8.0) as usize;
+        // Lines wrap at words by the font's measurement, like every text.
+        let width = (w - 20.0).max(40.0);
         let mut rows = Vec::new();
         for line in &self.console.lines {
             let mut row = String::new();
             for word in line.split_whitespace() {
-                if row.chars().count() + word.chars().count() + 1 > width && !row.is_empty() {
+                if !row.is_empty() && Ui::text_width(&format!("{row} {word}")) > width {
                     rows.push(std::mem::take(&mut row));
                 }
                 if !row.is_empty() {
@@ -503,9 +504,10 @@ impl Game {
             "Commands - Enter: run  Esc: close  Tab: complete  Up/Down: history",
             [0.6, 0.75, 0.9, 1.0],
         );
-        let text: String =
-            self.console.input.chars().rev().take(width.saturating_sub(2)).collect::<String>().chars().rev().collect();
-        ui.text_flat(10.0, h - 17.0, &format!("{text}_"), WHITE);
+        // The end of the input that fits, caret included.
+        let input = format!("{}_", self.console.input);
+        let start = input.char_indices().map(|(i, _)| i).find(|&i| Ui::text_width(&input[i..]) <= width).unwrap_or(0);
+        ui.text_flat(10.0, h - 17.0, &input[start..], WHITE);
     }
 }
 

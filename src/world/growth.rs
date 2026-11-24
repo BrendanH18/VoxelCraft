@@ -451,17 +451,31 @@ impl World {
             }) {
                 continue;
             }
+            // The chunk's blocks, read here instead of through a map lookup
+            // per random tick (v0.18 Track 10). Most picks are blocks with
+            // no random rule; the others run as before, and the reference is
+            // dropped first so their edits don't copy the chunk. Every pick
+            // still rolls, so the random sequence is unchanged.
+            let mut data = self.chunks.get(&cpos).map(|s| std::sync::Arc::clone(&s.data));
             for sy in 0..2 {
                 for sz in 0..2 {
                     for sx in 0..2 {
-                        let base = cpos * CHUNK_SIZE_I + IVec3::new(sx, sy, sz) * 16;
+                        let corner = IVec3::new(sx, sy, sz) * 16;
+                        let base = cpos * CHUNK_SIZE_I + corner;
                         if !self.activity.contains(base, true) {
                             continue;
                         }
                         for _ in 0..n {
                             let r = self.roll();
                             let l = IVec3::new((r & 15) as i32, (r >> 4 & 15) as i32, (r >> 8 & 15) as i32);
+                            let c = corner + l;
+                            let b = data.as_ref().map(|d| d.get(c.x as usize, c.y as usize, c.z as usize));
+                            if b.is_none_or(|b| matches!(random_rule(b), RandomRule::None)) {
+                                continue;
+                            }
+                            drop(data.take());
                             self.random_tick_rules(base + l, fire_tick);
+                            data = self.chunks.get(&cpos).map(|s| std::sync::Arc::clone(&s.data));
                         }
                     }
                 }

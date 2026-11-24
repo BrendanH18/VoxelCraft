@@ -22,17 +22,19 @@ const SIDES: [IVec3; 6] = [IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y, IVec3
 const HORIZONTAL: [IVec3; 4] = [IVec3::X, IVec3::NEG_X, IVec3::Z, IVec3::NEG_Z];
 const MAX_LIGHT: u8 = 15;
 
-/// Packed light levels of one chunk, for either layer.
+/// Packed light levels of one chunk, for either layer. The array is shared
+/// copy-on-write, so a mesh job's snapshot is a reference count, not a copy
+/// (v0.18 Track 10); a write after a snapshot copies it first.
 #[derive(Clone, Debug)]
 pub(crate) struct BlockLight {
-    cells: Box<[u8; CHUNK_VOLUME / 2]>,
+    cells: std::sync::Arc<[u8; CHUNK_VOLUME / 2]>,
     lit: usize,
 }
 
 impl BlockLight {
     /// Allocate a dark packed array; the owning chunk drops it again when no cells remain lit.
     fn new() -> Self {
-        Self { cells: Box::new([0; CHUNK_VOLUME / 2]), lit: 0 }
+        Self { cells: std::sync::Arc::new([0; CHUNK_VOLUME / 2]), lit: 0 }
     }
 
     /// Read a light level in 0..=15 at chunk-local coordinates in 0..32.
@@ -50,21 +52,23 @@ impl BlockLight {
         let shift = i % 2 * 4;
         let old = self.cells[i / 2] >> shift & 15;
         self.lit = self.lit + usize::from(level != 0) - usize::from(old != 0);
-        self.cells[i / 2] = (self.cells[i / 2] & !(15 << shift)) | level << shift;
+        let cells = std::sync::Arc::make_mut(&mut self.cells);
+        cells[i / 2] = (cells[i / 2] & !(15 << shift)) | level << shift;
     }
 
     /// Construct packed mesh-reference light for tests, counting its nonzero cells.
     #[cfg(test)]
     pub(crate) fn from_nibbles(cells: Box<[u8; CHUNK_VOLUME / 2]>) -> Self {
         let lit = cells.iter().map(|v| usize::from(v & 15 != 0) + usize::from(v >> 4 != 0)).sum();
-        Self { cells, lit }
+        Self { cells: cells.into(), lit }
     }
 
     /// Initialize light from the chunk's own emitters, allocating nothing for source-free chunks.
     fn emitters(data: &ChunkData) -> Option<Self> {
         if let Some(b) = data.uniform() {
             let e = b.emission();
-            return (e > 0).then(|| Self { cells: Box::new([e | e << 4; CHUNK_VOLUME / 2]), lit: CHUNK_VOLUME });
+            return (e > 0)
+                .then(|| Self { cells: std::sync::Arc::new([e | e << 4; CHUNK_VOLUME / 2]), lit: CHUNK_VOLUME });
         }
         let mut light = None;
         let mut i = 0usize;
@@ -265,7 +269,10 @@ impl World {
         if packed.at(i) == level {
             return;
         }
-        slot.light_mesh_dirty = true;
+        if !slot.light_mesh_dirty {
+            slot.light_mesh_dirty = true;
+            self.light_mesh_changed.push(chunk_of(p));
+        }
         packed.set(i, level);
         if packed.lit == 0 {
             *light = None;
@@ -1034,6 +1041,99 @@ mod tests {
 
     fn square(r: i32) -> Vec<IVec2> {
         (-r..=r).flat_map(|z| (-r..=r).map(move |x| IVec2::new(x, z))).collect()
+    }
+
+    /// The mesh light snapshot as `World::mesh_input` built it cell by cell
+    /// before v0.18 Track 10, kept as the reference for the row-wise fill.
+    fn reference_mesh_light(world: &World, pos: IVec3) -> Vec<u8> {
+        use crate::mesh::{D, MARGIN};
+        let cols: [Option<&crate::world::Column>; 9] =
+            std::array::from_fn(|i| world.columns.get(&IVec2::new(pos.x + i as i32 % 3 - 1, pos.z + i as i32 / 3 - 1)));
+        let slots: [Option<&ChunkSlot>; 27] = std::array::from_fn(|i| {
+            let i = i as i32;
+            world.chunks.get(&(pos + IVec3::new(i % 3 - 1, i / 9 - 1, i / 3 % 3 - 1)))
+        });
+        let mut light = vec![0; D * D * D];
+        for ry in 0..D {
+            let wy = ry + CHUNK_SIZE - MARGIN;
+            let (cy, ly) = (wy / CHUNK_SIZE, wy % CHUNK_SIZE);
+            let world_y = pos.y * CHUNK_SIZE_I + ry as i32 - MARGIN as i32;
+            for rz in 0..D {
+                let wz = rz + CHUNK_SIZE - MARGIN;
+                let (cz, lz) = (wz / CHUNK_SIZE, wz % CHUNK_SIZE);
+                for rx in 0..D {
+                    let wx = rx + CHUNK_SIZE - MARGIN;
+                    let (cx, lx) = (wx / CHUNK_SIZE, wx % CHUNK_SIZE);
+                    let sky = if world.generator.dimension.has_skylight() {
+                        cols[cx + cz * 3].filter(|c| c.sky_lit).map_or(0, |c| {
+                            if world_y > i32::from(c.heights[lx + lz * CHUNK_SIZE]) {
+                                15
+                            } else {
+                                slots[cx + cz * 3 + cy * 9]
+                                    .and_then(|s| s.sky_light.as_ref())
+                                    .map_or(0, |l| l.get(lx, ly, lz))
+                            }
+                        })
+                    } else {
+                        0
+                    };
+                    let block = slots[cx + cz * 3 + cy * 9]
+                        .and_then(|s| s.block_light.as_ref())
+                        .map_or(0, |l| l.get(lx, ly, lz));
+                    light[rx + rz * D + ry * D * D] = sky | block << 4;
+                }
+            }
+        }
+        light
+    }
+
+    #[test]
+    fn mesh_light_snapshots_match_the_cell_by_cell_reference() {
+        // A 4 x 3 patch of columns, so edge chunks have missing neighbours,
+        // with torches on chunk borders and a roof shading the ground.
+        let cols: Vec<IVec2> = (-1..=2).flat_map(|x| (-1..=1).map(move |z| IVec2::new(x, z))).collect();
+        let mut w = flat(cols);
+        for x in -6..=40 {
+            for z in -6..=6 {
+                w.set_block(IVec3::new(x, 70, z), Block::STONE);
+            }
+        }
+        for p in [IVec3::new(31, 64, 0), IVec3::new(32, 64, -1), IVec3::new(0, 64, 0), IVec3::new(5, 95, 31)] {
+            w.set_block(p, Block::TORCH);
+        }
+        w.set_block(IVec3::new(63, 64, 31), Block::GLOWSTONE);
+        w.update_block_light();
+        let mut checked = 0;
+        for x in -2..=3 {
+            for z in -2..=2 {
+                for y in 0..5 {
+                    let pos = IVec3::new(x, y, z);
+                    let input = w.mesh_input(pos);
+                    assert_eq!(input.light.as_slice(), reference_mesh_light(&w, pos).as_slice(), "{pos}");
+                    checked += input.light.iter().filter(|&&l| l != 0).count();
+                }
+            }
+        }
+        assert!(checked > 100_000, "the snapshots hold sky and block light ({checked} lit cells)");
+    }
+
+    #[test]
+    fn queued_mesh_jobs_keep_the_light_of_the_moment_they_were_queued() {
+        let mut w = flat(square(1));
+        let pos = IVec3::new(0, 2, 0);
+        let before = w.mesh_input(pos).light;
+        let mut job = w.mesh_job_input(pos);
+        // Edits after queueing copy the shared light and heights first.
+        w.set_block(IVec3::new(16, 70, 16), Block::TORCH);
+        for x in 0..32 {
+            w.set_block(IVec3::new(x, 80, 5), Block::STONE);
+        }
+        w.update_block_light();
+        let after = w.mesh_input(pos).light;
+        assert_ne!(after, before, "the edits change the chunk's light");
+        job.resolve_light();
+        assert!(job.light_sources.is_none());
+        assert_eq!(job.light, before);
     }
 
     #[test]

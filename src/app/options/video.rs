@@ -1,11 +1,11 @@
 //! Video Settings: Java 26.3's three sections (Display, Quality &
 //! Performance, Preferences) with the options VoxelCraft can honour, in
-//! Java's order. Options that would need renderer work VoxelCraft doesn't
+//! Java's order (Quality & Performance: `tests/fixtures/java/26.3/mipmap_levels.json`). Options that would need renderer work VoxelCraft doesn't
 //! have (Clouds, Biome Blend, Entity Distance and the like) are left out.
 
 use super::{OptionsHost, change, close, frac, lerp};
 use crate::app::gui::{OptionList, Rect, Screen, Size, Step, Widget, on_off};
-use crate::app::settings::{MAX_FPS, RENDER_DISTANCE};
+use crate::app::settings::{MAX_FPS, MIPMAP_LEVELS, RENDER_DISTANCE};
 use crate::render::ui::Ui;
 use crate::world::activity::SIMULATION_DISTANCE_RANGE;
 
@@ -22,12 +22,18 @@ pub(in crate::app) enum Id {
     RenderDistance,
     SimulationDistance,
     Particles,
+    MipmapLevels,
+    MenuBlur,
     PreferencesHeader,
     Fps,
     Done,
 }
 
 fn range((lo, hi): (i32, i32)) -> (f32, f32) {
+    (lo as f32, hi as f32)
+}
+
+fn range_u((lo, hi): (u32, u32)) -> (f32, f32) {
     (lo as f32, hi as f32)
 }
 
@@ -45,6 +51,11 @@ pub(in crate::app) fn brightness_label(v: f32) -> String {
         100 => "Brightness: Bright".into(),
         v => format!("Brightness: {v}"),
     }
+}
+
+/// Java's Mipmap Levels label: OFF at 0, otherwise the number.
+pub(in crate::app) fn mipmap_label(levels: u32) -> String {
+    if levels == 0 { "Mipmap Levels: OFF".into() } else { format!("Mipmap Levels: {levels}") }
 }
 
 /// GUI Scale's top value for this window (Auto picks it).
@@ -118,6 +129,15 @@ impl<H: OptionsHost> Screen<H> for VideoSettings {
                 (sd.1 - sd.0) as u32,
             ),
             Widget::button(Id::Particles, z, format!("Particles: {}", s.particles.name())),
+            Widget::slider(
+                Id::MipmapLevels,
+                z,
+                mipmap_label(s.mipmap_levels),
+                frac(s.mipmap_levels as f32, range_u(MIPMAP_LEVELS)),
+                MIPMAP_LEVELS.1 - MIPMAP_LEVELS.0,
+            ),
+            // v0.18 Track 2: Java lists it after Entity Distance.
+            super::menu_blur_slider(Id::MenuBlur, s.menu_blur),
         ]);
         list.wide(Widget::label(Id::PreferencesHeader, z, "Preferences"));
         list.pair(
@@ -159,6 +179,8 @@ impl<H: OptionsHost> Screen<H> for VideoSettings {
                 change(host, |s| s.max_fps = MAX_FPS.0 + (t * steps).round() as u32 * 10);
             }
             Id::Brightness => change(host, |s| s.brightness = (t * 100.0).round() / 100.0),
+            Id::MipmapLevels => change(host, |s| s.mipmap_levels = lerp(range_u(MIPMAP_LEVELS), t).round() as u32),
+            Id::MenuBlur => change(host, |s| s.menu_blur = super::menu_blur_at(t)),
             _ => {}
         }
     }

@@ -75,11 +75,15 @@ impl Workers {
                                 snow: generator.snow_lines(col.x, col.y),
                                 biome_heights: generator.biome_heights(col),
                             },
-                            Job::Mesh { pos, version, input } => JobResult::Meshed {
-                                pos,
-                                version,
-                                mesh: mesh::build(&input, region.get_or_insert_with(Region::default)),
-                            },
+                            Job::Mesh { pos, version, mut input } => {
+                                // The light snapshot is read here, off the main thread.
+                                input.resolve_light();
+                                JobResult::Meshed {
+                                    pos,
+                                    version,
+                                    mesh: mesh::build(&input, region.get_or_insert_with(Region::default)),
+                                }
+                            }
                         };
                         if res_tx.send(result).is_err() {
                             break;

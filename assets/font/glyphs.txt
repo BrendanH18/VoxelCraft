@@ -1,0 +1,1563 @@
+; VoxelCraft's UI font: original pixel art drawn for this project on
+; 2026-11-23 (v0.18 track 1). MIT OR Apache-2.0, like the rest of the
+; repository. Nothing here is traced from another font. The advance of each
+; character (its ink width plus one) matches Java 26.3's default font, so
+; Java's layouts and the signs' 90-pixel line rule fit the same text; the
+; widths are checked against tests/fixtures/java/26.3/font_metrics.json.
+;
+; Format (read by src/font.rs):
+;   glyph C TOP      a drawn glyph; the rows follow, '#' ink and '.' empty,
+;                    up to the next blank line. TOP is the row of the first
+;                    line: 0 is the top of a capital, 6 the baseline row,
+;                    -3 to -1 hold accents above capitals, 7 and 8 the
+;                    descender and the marks below.
+;   mark NAME PLACE  an accent: PLACE is `above` (one empty row above the
+;                    base's ink), `touch` (directly on it), `below`
+;                    (under the baseline, centred) or `ogonek` (under it,
+;                    at the base's right edge).
+;   compose C BASE MARK [MARK...]   C drawn as BASE with the marks; MARK@X
+;                    puts a mark at column X instead of centring it.
+; C is a character, U+XXXX, or a helper name used only as a base. Columns
+; start at 0 on the left: the advance is the rightmost ink column plus 2.
+; The space (U+0020) and no-break space (U+00A0) have no ink and advance 4.
+
+; ---- Marks -----------------------------------------------------------------
+
+mark grave above
+#.
+.#
+
+mark acute above
+.#
+#.
+
+mark circumflex above
+.#.
+#.#
+
+mark tilde above
+.#.#
+#.#.
+
+mark diaeresis above
+#.#
+
+mark ring touch
+.#.
+#.#
+.#.
+
+mark macron above
+###
+
+mark breve above
+#..#
+.##.
+
+mark dot above
+#
+
+mark double_acute above
+.#..#
+#..#.
+
+mark caron above
+#.#
+.#.
+
+mark comma_above above
+.#
+.#
+
+mark cedilla below
+.#
+#.
+
+mark ogonek ogonek
+#.
+.#
+
+; ---- ASCII -----------------------------------------------------------------
+
+glyph ! 0
+#
+#
+#
+#
+#
+.
+#
+
+glyph " 0
+#.#
+#.#
+
+glyph U+0023 0
+.#.#.
+.#.#.
+#####
+.#.#.
+#####
+.#.#.
+.#.#.
+
+glyph $ 0
+..#..
+.####
+#.#..
+.###.
+..#.#
+####.
+..#..
+
+glyph % 0
+##..#
+##.#.
+...#.
+..#..
+.#...
+.#.##
+#..##
+
+glyph & 0
+.##..
+#..#.
+.##..
+.##.#
+#..#.
+#..#.
+.##.#
+
+glyph ' 0
+#
+#
+
+glyph ( 0
+..#
+.#.
+#..
+#..
+#..
+.#.
+..#
+
+glyph ) 0
+#..
+.#.
+..#
+..#
+..#
+.#.
+#..
+
+glyph * 2
+#.#
+.#.
+#.#
+
+glyph + 1
+..#..
+..#..
+#####
+..#..
+..#..
+
+glyph , 5
+#
+#
+#
+
+glyph - 3
+#####
+
+glyph . 6
+#
+
+glyph / 0
+....#
+....#
+...#.
+..#..
+.#...
+#....
+#....
+
+glyph 0 0
+.###.
+#...#
+#..##
+#.#.#
+##..#
+#...#
+.###.
+
+glyph 1 0
+..#..
+.##..
+..#..
+..#..
+..#..
+..#..
+#####
+
+glyph 2 0
+.###.
+#...#
+....#
+..##.
+.#...
+#....
+#####
+
+glyph 3 0
+.###.
+#...#
+....#
+..##.
+....#
+#...#
+.###.
+
+glyph 4 0
+...#.
+..##.
+.#.#.
+#..#.
+#####
+...#.
+...#.
+
+glyph 5 0
+#####
+#....
+####.
+....#
+....#
+#...#
+.###.
+
+glyph 6 0
+..##.
+.#...
+#....
+####.
+#...#
+#...#
+.###.
+
+glyph 7 0
+#####
+....#
+...#.
+..#..
+..#..
+..#..
+..#..
+
+glyph 8 0
+.###.
+#...#
+#...#
+.###.
+#...#
+#...#
+.###.
+
+glyph 9 0
+.###.
+#...#
+#...#
+.####
+....#
+...#.
+.##..
+
+glyph : 2
+#
+.
+.
+.
+#
+
+glyph U+003B 2
+#
+.
+.
+.
+#
+#
+
+glyph < 0
+...#
+..#.
+.#..
+#...
+.#..
+..#.
+...#
+
+glyph = 2
+#####
+.....
+#####
+
+glyph > 0
+#...
+.#..
+..#.
+...#
+..#.
+.#..
+#...
+
+glyph ? 0
+.###.
+#...#
+....#
+...#.
+..#..
+.....
+..#..
+
+glyph @ 0
+.####.
+#....#
+#..###
+#.#..#
+#..###
+#.....
+.####.
+
+glyph A 0
+.###.
+#...#
+#...#
+#####
+#...#
+#...#
+#...#
+
+glyph B 0
+####.
+#...#
+#...#
+####.
+#...#
+#...#
+####.
+
+glyph C 0
+.###.
+#...#
+#....
+#....
+#....
+#...#
+.###.
+
+glyph D 0
+###..
+#..#.
+#...#
+#...#
+#...#
+#..#.
+###..
+
+glyph E 0
+#####
+#....
+#....
+####.
+#....
+#....
+#####
+
+glyph F 0
+#####
+#....
+#....
+####.
+#....
+#....
+#....
+
+glyph G 0
+.###.
+#...#
+#....
+#.###
+#...#
+#...#
+.###.
+
+glyph H 0
+#...#
+#...#
+#...#
+#####
+#...#
+#...#
+#...#
+
+glyph I 0
+###
+.#.
+.#.
+.#.
+.#.
+.#.
+###
+
+glyph J 0
+..###
+....#
+....#
+....#
+#...#
+#...#
+.###.
+
+glyph K 0
+#...#
+#..#.
+#.#..
+##...
+#.#..
+#..#.
+#...#
+
+glyph L 0
+#....
+#....
+#....
+#....
+#....
+#....
+#####
+
+glyph M 0
+#...#
+##.##
+#.#.#
+#.#.#
+#...#
+#...#
+#...#
+
+glyph N 0
+#...#
+##..#
+#.#.#
+#..##
+#...#
+#...#
+#...#
+
+glyph O 0
+.###.
+#...#
+#...#
+#...#
+#...#
+#...#
+.###.
+
+glyph P 0
+####.
+#...#
+#...#
+####.
+#....
+#....
+#....
+
+glyph Q 0
+.###.
+#...#
+#...#
+#...#
+#.#.#
+#..#.
+.##.#
+
+glyph R 0
+####.
+#...#
+#...#
+####.
+#.#..
+#..#.
+#...#
+
+glyph S 0
+.####
+#....
+#....
+.###.
+....#
+....#
+####.
+
+glyph T 0
+#####
+..#..
+..#..
+..#..
+..#..
+..#..
+..#..
+
+glyph U 0
+#...#
+#...#
+#...#
+#...#
+#...#
+#...#
+.###.
+
+glyph V 0
+#...#
+#...#
+#...#
+#...#
+.#.#.
+.#.#.
+..#..
+
+glyph W 0
+#...#
+#...#
+#...#
+#.#.#
+#.#.#
+##.##
+#...#
+
+glyph X 0
+#...#
+#...#
+.#.#.
+..#..
+.#.#.
+#...#
+#...#
+
+glyph Y 0
+#...#
+#...#
+.#.#.
+..#..
+..#..
+..#..
+..#..
+
+glyph Z 0
+#####
+....#
+...#.
+..#..
+.#...
+#....
+#####
+
+glyph [ 0
+###
+#..
+#..
+#..
+#..
+#..
+###
+
+glyph \ 0
+#....
+#....
+.#...
+..#..
+...#.
+....#
+....#
+
+glyph ] 0
+###
+..#
+..#
+..#
+..#
+..#
+###
+
+glyph ^ 0
+..#..
+.#.#.
+#...#
+
+glyph _ 7
+#####
+
+glyph ` 0
+#.
+.#
+
+glyph a 2
+.###.
+....#
+.####
+#...#
+.####
+
+glyph b 0
+#....
+#....
+#.##.
+##..#
+#...#
+#...#
+####.
+
+glyph c 2
+.###.
+#...#
+#....
+#...#
+.###.
+
+glyph d 0
+....#
+....#
+.##.#
+#..##
+#...#
+#...#
+.####
+
+glyph e 2
+.###.
+#...#
+#####
+#....
+.####
+
+glyph f 0
+..##
+.#..
+####
+.#..
+.#..
+.#..
+.#..
+
+glyph g 2
+.####
+#...#
+#...#
+.####
+....#
+####.
+
+glyph h 0
+#....
+#....
+#.##.
+##..#
+#...#
+#...#
+#...#
+
+glyph i 0
+#
+.
+#
+#
+#
+#
+#
+
+glyph j 0
+....#
+.....
+....#
+....#
+....#
+....#
+#...#
+.###.
+
+glyph k 0
+#...
+#...
+#..#
+#.#.
+##..
+#.#.
+#..#
+
+glyph l 0
+#.
+#.
+#.
+#.
+#.
+#.
+.#
+
+glyph m 2
+##.#.
+#.#.#
+#.#.#
+#...#
+#...#
+
+glyph n 2
+#.##.
+##..#
+#...#
+#...#
+#...#
+
+glyph o 2
+.###.
+#...#
+#...#
+#...#
+.###.
+
+glyph p 2
+#.##.
+##..#
+#...#
+####.
+#....
+#....
+
+glyph q 2
+.##.#
+#..##
+#...#
+.####
+....#
+....#
+
+glyph r 2
+#.##.
+##..#
+#....
+#....
+#....
+
+glyph s 2
+.####
+#....
+.###.
+....#
+####.
+
+glyph t 0
+.#.
+.#.
+###
+.#.
+.#.
+.#.
+..#
+
+glyph u 2
+#...#
+#...#
+#...#
+#..##
+.##.#
+
+glyph v 2
+#...#
+#...#
+#...#
+.#.#.
+..#..
+
+glyph w 2
+#...#
+#...#
+#.#.#
+#.#.#
+.#.#.
+
+glyph x 2
+#...#
+.#.#.
+..#..
+.#.#.
+#...#
+
+glyph y 2
+#...#
+#...#
+#...#
+.####
+....#
+####.
+
+glyph z 2
+#####
+...#.
+..#..
+.#...
+#####
+
+glyph { 0
+..#
+.#.
+.#.
+#..
+.#.
+.#.
+..#
+
+glyph | 0
+#
+#
+#
+#
+#
+#
+#
+#
+
+glyph } 0
+#..
+.#.
+.#.
+..#
+.#.
+.#.
+#..
+
+glyph ~ 2
+.##..#
+#..##.
+
+; ---- Helpers (bases for accented letters) ----------------------------------
+
+glyph dotless_j 2
+....#
+....#
+....#
+....#
+#...#
+.###.
+
+; ---- Latin-1 Supplement ----------------------------------------------------
+
+glyph ¡ 0
+#
+.
+#
+#
+#
+#
+#
+
+glyph ¢ 1
+..#..
+.####
+#.#..
+#.#..
+.####
+..#..
+
+glyph £ 0
+..##.
+.#..#
+.#...
+####.
+.#...
+.#...
+#####
+
+glyph ¤ 0
+#.....#
+.#####.
+.#...#.
+.#...#.
+.#...#.
+.#####.
+#.....#
+
+glyph ¥ 0
+#...#
+.#.#.
+..#..
+#####
+..#..
+#####
+..#..
+
+glyph ¦ 0
+#
+#
+#
+.
+#
+#
+#
+
+glyph § 0
+.####
+#....
+.###.
+#...#
+.###.
+....#
+####.
+
+glyph ¨ 0
+#.#
+
+glyph © 0
+.#####.
+#.....#
+#.###.#
+#.#...#
+#.###.#
+#.....#
+.#####.
+
+glyph ª 0
+.###
+#..#
+.###
+....
+####
+
+glyph « 2
+..#..#
+.#..#.
+#..#..
+.#..#.
+..#..#
+
+glyph ¬ 3
+#####
+....#
+
+glyph U+00AD 3
+###
+
+glyph ® 0
+.#####.
+#.....#
+#.##..#
+#.#.#.#
+#.##..#
+#.#.#.#
+.#####.
+
+glyph ¯ 0
+#####
+
+glyph ° 0
+.##.
+#..#
+.##.
+
+glyph ± 0
+..#..
+..#..
+#####
+..#..
+..#..
+.....
+#####
+
+glyph ² 0
+###.
+...#
+.##.
+#...
+####
+
+glyph ³ 0
+###.
+...#
+.##.
+...#
+###.
+
+glyph ´ 0
+.#
+#.
+
+glyph µ 2
+#...#
+#...#
+#...#
+##.##
+#.##.
+#....
+
+glyph ¶ 0
+.#####
+####.#
+####.#
+.###.#
+...#.#
+...#.#
+...#.#
+
+glyph · 3
+#
+
+glyph ¸ 7
+.#
+#.
+
+glyph ¹ 0
+.#.
+##.
+.#.
+.#.
+###
+
+glyph º 0
+.##.
+#..#
+.##.
+....
+####
+
+glyph » 2
+#..#..
+.#..#.
+..#..#
+.#..#.
+#..#..
+
+glyph ¼ 0
+#....#.
+#...#..
+#..#...
+..#.#.#
+.#..###
+#.....#
+......#
+
+glyph ½ 0
+#....#.
+#...#..
+#..#...
+..#.##.
+.#....#
+#....#.
+....###
+
+glyph ¾ 0
+##...#.
+.#..#..
+##.#...
+..#.#.#
+.#..###
+#.....#
+......#
+
+glyph ¿ 0
+..#..
+.....
+..#..
+.#...
+#....
+#...#
+.###.
+
+compose À A grave
+compose Á A acute
+compose Â A circumflex
+compose Ã A tilde
+compose Ä A diaeresis
+compose Å A ring
+
+glyph Æ 0
+.########
+#...#....
+#...#....
+########.
+#...#....
+#...#....
+#...#####
+
+compose Ç C cedilla
+compose È E grave
+compose É E acute
+compose Ê E circumflex
+compose Ë E diaeresis
+compose Ì I grave
+compose Í I acute
+compose Î I circumflex
+compose Ï I diaeresis
+
+glyph Ð 0
+.###..
+.#..#.
+.#...#
+####.#
+.#...#
+.#..#.
+.###..
+
+compose Ñ N tilde
+compose Ò O grave
+compose Ó O acute
+compose Ô O circumflex
+compose Õ O tilde
+compose Ö O diaeresis
+
+glyph × 1
+#...#
+.#.#.
+..#..
+.#.#.
+#...#
+
+glyph Ø 0
+.###.
+#..##
+#.#.#
+#.#.#
+#.#.#
+##..#
+.###.
+
+compose Ù U grave
+compose Ú U acute
+compose Û U circumflex
+compose Ü U diaeresis
+compose Ý Y acute
+
+glyph Þ 0
+#....
+####.
+#...#
+#...#
+####.
+#....
+#....
+
+glyph ß 0
+.###.
+#...#
+#..#.
+#.##.
+#...#
+#...#
+#.##.
+
+compose à a grave
+compose á a acute
+compose â a circumflex
+compose ã a tilde
+compose ä a diaeresis
+compose å a ring
+
+glyph æ 2
+.###.###.
+....#...#
+.########
+#...#....
+.###.####
+
+compose ç c cedilla
+compose è e grave
+compose é e acute
+compose ê e circumflex
+compose ë e diaeresis
+compose ì ı grave
+compose í ı acute
+compose î ı circumflex
+compose ï ı diaeresis
+
+glyph ð 0
+.#.#.
+..#..
+.#.#.
+.####
+#...#
+#...#
+.###.
+
+compose ñ n tilde
+compose ò o grave
+compose ó o acute
+compose ô o circumflex
+compose õ o tilde
+compose ö o diaeresis
+
+glyph ÷ 1
+..#..
+.....
+#####
+.....
+..#..
+
+glyph ø 2
+.###.
+#..##
+#.#.#
+##..#
+.###.
+
+compose ù u grave
+compose ú u acute
+compose û u circumflex
+compose ü u diaeresis
+compose ý y acute
+
+glyph þ 0
+#....
+#....
+#.##.
+##..#
+#...#
+####.
+#....
+#....
+
+compose ÿ y diaeresis
+
+; ---- Latin Extended-A ------------------------------------------------------
+
+compose Ā A macron
+compose ā a macron
+compose Ă A breve
+compose ă a breve
+compose Ą A ogonek
+compose ą a ogonek
+compose Ć C acute
+compose ć c acute
+compose Ĉ C circumflex
+compose ĉ c circumflex
+compose Ċ C dot
+compose ċ c dot
+compose Č C caron
+compose č c caron
+compose Ď D caron
+
+glyph ď 0
+....#.#
+....#.#
+.##.#..
+#..##..
+#...#..
+#...#..
+.####..
+
+glyph Đ 0
+.###..
+.#..#.
+.#...#
+####.#
+.#...#
+.#..#.
+.###..
+
+glyph đ 0
+....#.
+...###
+.##.#.
+#..##.
+#...#.
+#...#.
+.####.
+
+compose Ē E macron
+compose ē e macron
+compose Ĕ E breve
+compose ĕ e breve
+compose Ė E dot
+compose ė e dot
+compose Ę E ogonek
+compose ę e ogonek
+compose Ě E caron
+compose ě e caron
+compose Ĝ G circumflex
+compose ĝ g circumflex
+compose Ğ G breve
+compose ğ g breve
+compose Ġ G dot
+compose ġ g dot
+compose Ģ G cedilla
+compose ģ g comma_above
+compose Ĥ H circumflex
+compose ĥ h circumflex
+
+glyph Ħ 0
+.#...#.
+#######
+.#...#.
+.#####.
+.#...#.
+.#...#.
+.#...#.
+
+glyph ħ 0
+.#....
+####..
+.#.##.
+.##..#
+.#...#
+.#...#
+.#...#
+
+compose Ĩ I tilde
+compose ĩ ı tilde
+compose Ī I macron
+compose ī ı macron
+compose Ĭ I breve
+compose ĭ ı breve
+compose Į I ogonek
+compose į i ogonek
+compose İ I dot
+
+glyph ı 2
+#
+#
+#
+#
+#
+
+glyph Ĳ 0
+#...#
+#...#
+#...#
+#...#
+#...#
+#...#
+#.##.
+
+glyph ĳ 0
+#..#
+....
+#..#
+#..#
+#..#
+#..#
+#..#
+.##.
+
+compose Ĵ J circumflex
+compose ĵ dotless_j circumflex@2
+compose Ķ K cedilla
+compose ķ k cedilla
+
+glyph ĸ 2
+#..#
+#.#.
+##..
+#.#.
+#..#
+
+compose Ĺ L acute
+compose ĺ l acute
+compose Ļ L cedilla
+compose ļ l cedilla
+
+glyph Ľ 0
+#..#.
+#..#.
+#....
+#....
+#....
+#....
+#####
+
+glyph ľ 0
+#.#
+#.#
+#..
+#..
+#..
+#..
+.#.
+
+glyph Ŀ 0
+#....
+#....
+#....
+#..#.
+#....
+#....
+#####
+
+glyph ŀ 0
+#..
+#..
+#..
+#.#
+#..
+#..
+.#.
+
+glyph Ł 0
+.#....
+.#....
+.##...
+##....
+.#....
+.#....
+.#####
+
+glyph ł 0
+.#..
+.#..
+.#.#
+.##.
+##..
+.#..
+..#.
+
+compose Ń N acute
+compose ń n acute
+compose Ņ N cedilla
+compose ņ n cedilla
+compose Ň N caron
+compose ň n caron
+
+glyph ŉ 0
+#......
+#......
+..#.##.
+..##..#
+..#...#
+..#...#
+..#...#
+
+glyph Ŋ 0
+#...#
+##..#
+#.#.#
+#..##
+#...#
+#...#
+#...#
+..##.
+
+glyph ŋ 2
+#.##.
+##..#
+#...#
+#...#
+#...#
+..##.
+
+compose Ō O macron
+compose ō o macron
+compose Ŏ O breve
+compose ŏ o breve
+compose Ő O double_acute
+compose ő o double_acute
+
+glyph Œ 0
+.########
+#...#....
+#...#....
+#...####.
+#...#....
+#...#....
+.########
+
+glyph œ 2
+.###.###.
+#...#...#
+#...#####
+#...#....
+.###.####
+
+compose Ŕ R acute
+compose ŕ r acute
+compose Ŗ R cedilla
+compose ŗ r cedilla
+compose Ř R caron
+compose ř r caron
+compose Ś S acute
+compose ś s acute
+compose Ŝ S circumflex
+compose ŝ s circumflex
+compose Ş S cedilla
+compose ş s cedilla
+compose Š S caron
+compose š s caron
+compose Ţ T cedilla
+compose ţ t cedilla
+compose Ť T caron
+
+glyph ť 0
+.#.#
+.#.#
+###.
+.#..
+.#..
+.#..
+..#.
+
+glyph Ŧ 0
+#####
+..#..
+..#..
+.###.
+..#..
+..#..
+..#..
+
+glyph ŧ 0
+.#.
+.#.
+###
+.#.
+###
+.#.
+..#
+
+compose Ũ U tilde
+compose ũ u tilde
+compose Ū U macron
+compose ū u macron
+compose Ŭ U breve
+compose ŭ u breve
+compose Ů U ring
+compose ů u ring
+compose Ű U double_acute
+compose ű u double_acute
+compose Ų U ogonek
+compose ų u ogonek
+compose Ŵ W circumflex
+compose ŵ w circumflex
+compose Ŷ Y circumflex
+compose ŷ y circumflex
+compose Ÿ Y diaeresis
+compose Ź Z acute
+compose ź z acute
+compose Ż Z dot
+compose ż z dot
+compose Ž Z caron
+compose ž z caron
+
+glyph ſ 0
+.##
+#..
+#..
+#..
+#..
+#..
+#..
+
+; ---- Missing glyph ---------------------------------------------------------
+; Drawn for any character outside the ranges above.
+
+glyph missing 0
+#####
+#...#
+#...#
+#...#
+#...#
+#...#
+#####

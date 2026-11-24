@@ -47,6 +47,12 @@ pub struct Args {
     pub enhanced_graphics: Option<bool>,
     pub new_world: bool,
     pub bench: bool,
+    /// `--bench-tick SCENE`: the headless tick and streaming benchmark
+    /// (`voxelcraft::tick_bench`), its JSON report on stdout.
+    pub bench_tick: Option<String>,
+    /// `--bench-seconds S` and `--bench-warmup S` for `--bench-tick`.
+    pub bench_seconds: f64,
+    pub bench_warmup: f64,
     pub screenshot: Option<String>,
     /// Session-only perspective for screenshot inspection.
     pub camera: voxelcraft::camera::CameraMode,
@@ -304,6 +310,9 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
         enhanced_graphics: None,
         new_world: false,
         bench: false,
+        bench_tick: None,
+        bench_seconds: 60.0,
+        bench_warmup: 10.0,
         screenshot: None,
         camera: Default::default(),
         ride: None,
@@ -416,6 +425,13 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
             }
             "--new" => args.new_world = true,
             "--bench" => args.bench = true,
+            "--bench-tick" => args.bench_tick = Some(value("--bench-tick")?),
+            "--bench-seconds" => {
+                args.bench_seconds = value("--bench-seconds")?.parse().map_err(|_| "bad --bench-seconds")?
+            }
+            "--bench-warmup" => {
+                args.bench_warmup = value("--bench-warmup")?.parse().map_err(|_| "bad --bench-warmup")?
+            }
             "--bench-render" => args.bench_render = true,
             "--benchmark-scene" => {
                 args.benchmark_scene = Some(voxelcraft::performance::parse_scene(&value("--benchmark-scene")?)?);
@@ -872,6 +888,24 @@ fn main() {
         if let Err(e) = audio::export_sounds("target/sounds") {
             eprintln!("export failed: {e}");
             std::process::exit(1);
+        }
+        return;
+    }
+    if let Some(scene) = args.bench_tick.clone() {
+        let options = voxelcraft::tick_bench::Options {
+            scene,
+            seed: args.seed.unwrap_or(12345),
+            render_distance: args.render_distance.unwrap_or(8),
+            warmup: args.bench_warmup,
+            seconds: args.bench_seconds,
+            ..Default::default()
+        };
+        match voxelcraft::tick_bench::run(&options) {
+            Ok(report) => println!("{report}"),
+            Err(e) => {
+                eprintln!("tick benchmark: {e}");
+                std::process::exit(1);
+            }
         }
         return;
     }

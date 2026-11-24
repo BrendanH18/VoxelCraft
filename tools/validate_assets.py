@@ -10,6 +10,8 @@ import wave
 import zlib
 from pathlib import Path
 
+from texture_from_source import scanlines
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -39,7 +41,8 @@ def validate():
                 if kind == b"IDAT":
                     compressed.extend(data)
                 at += size + 12
-            assert len(zlib.decompress(compressed)) == 16 * (1 + 16 * 4), f"{key}: truncated pixels"
+            pixels = zlib.decompress(compressed)
+            assert len(pixels) == 16 * (1 + 16 * 4), f"{key}: truncated pixels"
             layer = entry["texture_layer"]
             assert 0 <= layer < 4096 and layer not in layers, f"{key}: invalid/duplicate texture layer"
             layers.add(layer)
@@ -47,6 +50,9 @@ def validate():
                 source = json.loads((ROOT / entry["source"]).read_text())
                 assert len(source["pixels"]) == 16 and all(len(r) == 16 for r in source["pixels"]), (
                     f"{key}: invalid authoring source"
+                )
+                assert scanlines(source) == pixels, (
+                    f"{key}: {entry['path']} differs from {entry['source']}; rebuild it with tools/texture_from_source.py"
                 )
         elif entry["kind"] == "panorama":
             # v0.18 Track 7: a title panorama face, an RGB8 square rendered by the game.

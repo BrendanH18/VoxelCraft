@@ -21,6 +21,8 @@ mod copper_golem_statue;
 mod crops;
 #[path = "gen5_textures.rs"]
 mod gen5;
+#[path = "material_textures.rs"]
+mod material;
 #[path = "nether_textures.rs"]
 mod nether;
 #[path = "overworld_textures.rs"]
@@ -109,8 +111,8 @@ fn points(layer: u16, n: usize) -> Vec<(f32, f32)> {
 }
 
 const STONE: [u8; 3] = [125, 125, 125];
-const DIRT: [u8; 3] = [134, 96, 67];
-const GRASS: [u8; 3] = [95, 159, 53];
+/// Tall grass: the grass top's mid shade (v0.18 Track 3 toned both down).
+const GRASS: [u8; 3] = [106, 145, 66];
 
 pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     // v0.18 Track 9: a barrel's open top, while it is in use.
@@ -170,6 +172,10 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
         return super::item_sprites::pixel(crate::item::Sprite::Map(layer > 2945), x, y);
     }
     if let Some(pixel) = voxelcraft::assets::texture_pixel(layer, x, y) {
+        return pixel;
+    }
+    // v0.18 Track 3: the common natural materials, ores and woods.
+    if let Some(pixel) = material::pixel(layer, x, y) {
         return pixel;
     }
     if (crate::world::wood::tex::BASE..crate::world::wood::tex::END).contains(&layer) {
@@ -553,112 +559,9 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             let streak = rnd(layer, x / 3, y, 5) < 0.12;
             shade(STONE, if streak { 0.82 } else { 0.9 + r * 0.18 })
         }
-        tex::DIRT => noisy(layer, x, y, DIRT, 0.14),
-        tex::GRASS_TOP => noisy(layer, x, y, GRASS, 0.13),
-        tex::GRASS_SIDE | tex::SNOWY_GRASS_SIDE => {
-            let edge = 3 + (rnd(layer, x, 0, 7) * 2.2) as usize;
-            if y < edge {
-                if layer == tex::GRASS_SIDE {
-                    noisy(layer, x, y, GRASS, 0.13)
-                } else {
-                    noisy(layer, x, y, [240, 245, 250], 0.03)
-                }
-            } else {
-                noisy(tex::DIRT, x, y, DIRT, 0.14)
-            }
-        }
-        tex::SAND => noisy(layer, x, y, [219, 207, 163], 0.06),
         tex::WATER => {
             let c = noisy(layer, x, y, [44, 90, 200], 0.08);
             [c[0], c[1], c[2], 170]
-        }
-        tex::LOG_SIDE
-        | tex::SPRUCE_LOG_SIDE
-        | tex::JUNGLE_LOG_SIDE
-        | tex::ACACIA_LOG_SIDE
-        | tex::DARK_OAK_LOG_SIDE
-        | tex::MANGROVE_LOG_SIDE
-        | tex::CHERRY_LOG_SIDE => {
-            let bark = match layer {
-                tex::LOG_SIDE => [104, 82, 51],
-                tex::SPRUCE_LOG_SIDE => [70, 50, 30],
-                tex::JUNGLE_LOG_SIDE => [88, 70, 32],
-                tex::DARK_OAK_LOG_SIDE => [58, 40, 22],
-                tex::MANGROVE_LOG_SIDE => [118, 54, 49],
-                tex::CHERRY_LOG_SIDE => [54, 32, 40],
-                _ => [104, 96, 88],
-            };
-            let stripe = (x + (rnd(layer, 0, y / 4, 3) * 2.0) as usize).is_multiple_of(4);
-            // Jungle bark is mottled with moss.
-            if layer == tex::JUNGLE_LOG_SIDE && rnd(layer, x / 2, y / 3, 6) < 0.18 {
-                return shade([84, 100, 40], 0.85 + r * 0.2);
-            }
-            shade(bark, if stripe { 0.72 } else { 0.9 + r * 0.15 })
-        }
-        tex::BIRCH_LOG_SIDE => {
-            // White bark with short dark horizontal marks.
-            let mark = rnd(layer, x / 3, y, 4) < 0.16 && rnd(layer, x, y, 5) < 0.85;
-            if mark { shade([50, 46, 40], 0.8 + r * 0.3) } else { shade([216, 214, 204], 0.9 + r * 0.12) }
-        }
-        tex::LOG_TOP
-        | tex::SPRUCE_LOG_TOP
-        | tex::BIRCH_LOG_TOP
-        | tex::JUNGLE_LOG_TOP
-        | tex::ACACIA_LOG_TOP
-        | tex::DARK_OAK_LOG_TOP
-        | tex::MANGROVE_LOG_TOP
-        | tex::CHERRY_LOG_TOP => {
-            let (bark, light, dark) = match layer {
-                tex::LOG_TOP => ([104, 82, 51], [176, 142, 88], [150, 118, 70]),
-                tex::SPRUCE_LOG_TOP => ([70, 50, 30], [128, 96, 58], [106, 78, 46]),
-                tex::BIRCH_LOG_TOP => ([216, 214, 204], [200, 182, 128], [178, 160, 108]),
-                tex::JUNGLE_LOG_TOP => ([88, 70, 32], [170, 124, 86], [146, 104, 70]),
-                tex::DARK_OAK_LOG_TOP => ([58, 40, 22], [96, 70, 42], [72, 50, 28]),
-                tex::MANGROVE_LOG_TOP => ([118, 54, 49], [150, 90, 74], [120, 68, 58]),
-                tex::CHERRY_LOG_TOP => ([54, 32, 40], [214, 170, 164], [186, 140, 138]),
-                _ => ([104, 96, 88], [176, 96, 54], [150, 80, 44]),
-            };
-            let (dx, dy) = (x as f32 - 7.5, y as f32 - 7.5);
-            let d = (dx * dx + dy * dy).sqrt();
-            if d > 6.6 {
-                shade(bark, 0.9 + r * 0.1)
-            } else {
-                let ring = (d * 1.1) as i32 % 2 == 0;
-                shade(if ring { light } else { dark }, 0.95 + r * 0.08)
-            }
-        }
-        tex::LEAVES | tex::SPRUCE_LEAVES | tex::BIRCH_LEAVES | tex::JUNGLE_LEAVES | tex::ACACIA_LEAVES => {
-            let (base, holes) = match layer {
-                tex::LEAVES => ([58, 128, 38], 0.2),
-                tex::SPRUCE_LEAVES => ([44, 92, 56], 0.2),
-                tex::BIRCH_LEAVES => ([100, 148, 62], 0.22),
-                tex::JUNGLE_LEAVES => ([44, 136, 28], 0.12),
-                _ => ([88, 124, 40], 0.24),
-            };
-            if rnd(layer, x, y, 11) < holes { [0, 0, 0, 0] } else { shade(base, 0.7 + r * 0.45) }
-        }
-        tex::PLANKS
-        | tex::SPRUCE_PLANKS
-        | tex::BIRCH_PLANKS
-        | tex::JUNGLE_PLANKS
-        | tex::ACACIA_PLANKS
-        | tex::DARK_OAK_PLANKS
-        | tex::MANGROVE_PLANKS
-        | tex::CHERRY_PLANKS => {
-            let colour = match layer {
-                tex::PLANKS => [162, 130, 78],
-                tex::SPRUCE_PLANKS => [114, 84, 50],
-                tex::BIRCH_PLANKS => [196, 180, 124],
-                tex::JUNGLE_PLANKS => [160, 114, 80],
-                tex::DARK_OAK_PLANKS => [66, 43, 20],
-                tex::MANGROVE_PLANKS => [117, 54, 48],
-                tex::CHERRY_PLANKS => [226, 178, 172],
-                _ => [170, 92, 50],
-            };
-            let board = y / 4;
-            let seam_x = (board * 7 + 3) % SIZE;
-            let seam = y % 4 == 3 || x == seam_x;
-            shade(colour, if seam { 0.68 } else { 0.92 + rnd(layer, x, board, 2) * 0.12 })
         }
         tex::SKIN => noisy(layer, x, y, [196, 141, 110], 0.05),
         l if (tex::FIRE_0..tex::FIRE_0 + tex::FIRE_FRAMES as u16).contains(&l) => {
@@ -710,7 +613,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
         tex::CHERRY_DOOR_TOP | tex::CHERRY_DOOR_BOTTOM => {
             wooden_door(layer, x, y, r, [226, 178, 172], tex::CHERRY_DOOR_TOP, tex::CHERRY_DOOR_BOTTOM)
         }
-        tex::RED_SAND => noisy(layer, x, y, [190, 102, 36], 0.07),
         l if (tex::TERRACOTTA..tex::TERRACOTTA + 7).contains(&l) => {
             const COLOURS: [[u8; 3]; 7] = [
                 [152, 94, 67],
@@ -814,11 +716,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
                 [0, 0, 0, 0]
             }
         }
-        tex::COBBLESTONE => {
-            let pts = points(layer, 9);
-            let (d1, d2, i) = voronoi(x, y, &pts);
-            if d2 - d1 < 1.1 { shade(STONE, 0.55) } else { shade(STONE, 0.8 + rnd(layer, i, 0, 4) * 0.35 - d1 * 0.03) }
-        }
         tex::MOSSY_COBBLESTONE => {
             let stone = pixel(tex::COBBLESTONE, x, y);
             let moss = rnd(layer, x / 2, y / 2, 1) * 0.7 + rnd(layer, x, y, 2) * 0.3;
@@ -836,68 +733,12 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             }
         }
         tex::BEDROCK => shade([85, 85, 85], 0.45 + r * 0.8),
-        tex::GRAVEL => {
-            let c = if rnd(layer, x, y, 6) < 0.3 { [140, 120, 105] } else { [130, 126, 124] };
-            shade(c, 0.7 + r * 0.45)
-        }
         tex::SNOW => noisy(layer, x, y, [240, 245, 252], 0.03),
-        tex::COAL_ORE
-        | tex::IRON_ORE
-        | tex::GOLD_ORE
-        | tex::DIAMOND_ORE
-        | tex::LAPIS_ORE
-        | tex::COPPER_ORE
-        | tex::REDSTONE_ORE
-        | tex::EMERALD_ORE
-        | tex::DEEPSLATE_COAL_ORE
-        | tex::DEEPSLATE_IRON_ORE
-        | tex::DEEPSLATE_COPPER_ORE
-        | tex::DEEPSLATE_GOLD_ORE
-        | tex::DEEPSLATE_REDSTONE_ORE
-        | tex::DEEPSLATE_EMERALD_ORE
-        | tex::DEEPSLATE_LAPIS_ORE
-        | tex::DEEPSLATE_DIAMOND_ORE => {
-            let ore = match layer {
-                tex::COAL_ORE | tex::DEEPSLATE_COAL_ORE => [40, 40, 40],
-                tex::IRON_ORE | tex::DEEPSLATE_IRON_ORE => [216, 175, 147],
-                tex::GOLD_ORE | tex::DEEPSLATE_GOLD_ORE => [250, 220, 70],
-                tex::LAPIS_ORE | tex::DEEPSLATE_LAPIS_ORE => [30, 70, 185],
-                tex::COPPER_ORE | tex::DEEPSLATE_COPPER_ORE => [184, 99, 62],
-                tex::REDSTONE_ORE | tex::DEEPSLATE_REDSTONE_ORE => [176, 16, 16],
-                tex::EMERALD_ORE | tex::DEEPSLATE_EMERALD_ORE => [20, 168, 72],
-                _ => [95, 230, 225],
-            };
-            let deep = matches!(
-                layer,
-                tex::DEEPSLATE_COAL_ORE
-                    | tex::DEEPSLATE_IRON_ORE
-                    | tex::DEEPSLATE_COPPER_ORE
-                    | tex::DEEPSLATE_GOLD_ORE
-                    | tex::DEEPSLATE_REDSTONE_ORE
-                    | tex::DEEPSLATE_EMERALD_ORE
-                    | tex::DEEPSLATE_LAPIS_ORE
-                    | tex::DEEPSLATE_DIAMOND_ORE
-            );
-            let pts = points(layer, 5);
-            let (d1, _, _) = voronoi(x, y, &pts);
-            if d1 < 1.5 {
-                shade(ore, 0.85 + r * 0.25)
-            } else if deep {
-                pixel(tex::DEEPSLATE, x, y)
-            } else {
-                pixel(tex::STONE, x, y)
-            }
-        }
-        tex::GRANITE
-        | tex::POLISHED_GRANITE
-        | tex::DIORITE
+        tex::POLISHED_GRANITE
         | tex::POLISHED_DIORITE
-        | tex::ANDESITE
         | tex::POLISHED_ANDESITE
-        | tex::TUFF
         | tex::CALCITE
         | tex::SMOOTH_STONE
-        | tex::DEEPSLATE
         | tex::COBBLED_DEEPSLATE
         | tex::POLISHED_DEEPSLATE => rock(layer, x, y, r),
         tex::CACTUS_SIDE => {
@@ -1588,53 +1429,20 @@ fn wooden_door(layer: u16, x: usize, y: usize, r: f32, colour: [u8; 3], top: u16
     }
 }
 
-/// Stone variants in the same noisy style as [`pixel`]'s stone and cobble.
+/// Polished and other stone variants not drawn by `material`.
 fn rock(layer: u16, x: usize, y: usize, r: f32) -> Rgba {
     match layer {
-        tex::GRANITE => {
-            let c = if rnd(layer, x, y, 2) < 0.22 {
-                [112, 68, 58]
-            } else if rnd(layer, x / 2, y / 2, 3) < 0.35 {
-                [176, 128, 108]
-            } else {
-                [149, 103, 86]
-            };
-            shade(c, 0.9 + r * 0.16)
-        }
         tex::POLISHED_GRANITE => {
             let blot = rnd(layer, x / 4, y / 4, 4);
             shade([168, 114, 98], 0.9 + blot * 0.12 + r * 0.04)
         }
-        tex::DIORITE => {
-            let c = if rnd(layer, x, y, 2) < 0.08 {
-                [60, 60, 64]
-            } else if rnd(layer, x, y, 3) < 0.15 {
-                [170, 170, 174]
-            } else {
-                [224, 224, 226]
-            };
-            shade(c, 0.94 + r * 0.08)
-        }
         tex::POLISHED_DIORITE => shade([232, 232, 234], 0.94 + rnd(layer, x / 4, y / 4, 4) * 0.08),
-        tex::ANDESITE => {
-            let c = if rnd(layer, x, y, 2) < 0.2 { [96, 96, 98] } else { [136, 136, 137] };
-            shade(c, 0.88 + r * 0.18)
-        }
         tex::POLISHED_ANDESITE => shade([148, 148, 150], 0.92 + rnd(layer, x / 4, y / 4, 4) * 0.1),
-        tex::TUFF => {
-            let pit = rnd(layer, x, y, 5) < 0.12;
-            shade(if pit { [72, 74, 66] } else { [108, 109, 102] }, if pit { 0.7 } else { 0.9 + r * 0.16 })
-        }
         tex::CALCITE => {
             let crack = (x + y).is_multiple_of(7) && rnd(layer, x, y, 6) < 0.5;
             shade(if crack { [186, 186, 180] } else { [223, 224, 216] }, 0.94 + r * 0.08)
         }
         tex::SMOOTH_STONE => shade([158, 158, 158], 0.96 + r * 0.06),
-        tex::DEEPSLATE => {
-            let band = y.is_multiple_of(4);
-            let c = if band { [58, 58, 64] } else { [80, 80, 86] };
-            shade(c, 0.88 + r * 0.16)
-        }
         tex::COBBLED_DEEPSLATE => {
             let pts = points(layer, 7);
             let (d1, d2, i) = voronoi(x, y, &pts);

@@ -301,6 +301,10 @@ pub struct Chamber {
     pub seed: u64,
     /// Generation 4: placed from the [`catalogue`] library.
     pub v4: bool,
+    /// Every piece's bounds together, so a point outside the chamber is
+    /// rejected without a look at each piece (spawning asks for every
+    /// attempt below y = 64; v0.18 Track 10).
+    extent: Option<Bounds>,
 }
 
 impl Chamber {
@@ -312,7 +316,7 @@ impl Chamber {
     /// Whether `p` lies in one of the pieces (Java's `spawn_overrides`
     /// with `bounding_box: piece`, which empty every category inside).
     pub fn holds(&self, p: IVec3) -> bool {
-        self.pieces.iter().any(|piece| piece.bounds.contains(p))
+        self.extent.is_some_and(|e| e.contains(p)) && self.pieces.iter().any(|piece| piece.bounds.contains(p))
     }
 
     pub fn bounds(&self) -> Bounds {
@@ -366,7 +370,10 @@ impl TrialChambers {
         let found = pieces.first().copied().and_then(|p| {
             let mut at = (p.bounds.min + p.bounds.max) / 2;
             at.y = p.origin.y + 1;
-            allowed(g.biome_at(at)).then(|| Arc::new(Chamber { at, pieces, aliases, seed, v4 }))
+            allowed(g.biome_at(at)).then(|| {
+                let extent = pieces.iter().map(|p| p.bounds).reduce(|a, b| a.union(&b));
+                Arc::new(Chamber { at, pieces, aliases, seed, v4, extent })
+            })
         });
         let mut cache = self.cache.lock().unwrap();
         if cache.len() >= CACHE_LIMIT {

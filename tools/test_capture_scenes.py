@@ -19,8 +19,9 @@ class CaptureScenesTest(unittest.TestCase):
 
     def test_world_scene_records_every_setting_on_its_command_line(self):
         scene = self.scene("stone-ore-wall")
-        [(suffix, settings)] = capture_scenes.variants(self.data, scene)
-        self.assertEqual(suffix, "")
+        # The first variant: the scene's matrix (if any) starts at 1920 x 1080.
+        (suffix, settings) = capture_scenes.variants(self.data, scene)[0]
+        self.assertIn(suffix, ("", "-1920x1080-guiauto"))
         args = capture_scenes.scene_args(scene, settings)
         joined = " ".join(args)
         for part in [

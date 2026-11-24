@@ -27,9 +27,6 @@ pub(in crate::app) struct Host {
 impl super::super::gui::Host for Host {
     type Out = ();
     fn click(&mut self) {}
-    fn in_world(&self) -> bool {
-        self.world.is_some()
-    }
 }
 
 impl OptionsHost for Host {
@@ -252,6 +249,39 @@ fn max_framerate_and_brightness_map_like_java() {
         (host.settings.brightness, label(&video, &host, video::Id::Brightness)),
         (0.37, "Brightness: 37".into())
     );
+}
+
+/// v0.18 Track 3: Mipmap Levels is Java's slider: 0 to 4 in whole steps,
+/// "OFF" at 0, right after Particles.
+#[test]
+fn mipmap_levels_is_javas_slider() {
+    let java: serde_json::Value =
+        serde_json::from_str(include_str!("../../../tests/fixtures/java/26.3/mipmap_levels.json")).unwrap();
+    let m = &java["mipmapLevels"];
+    let format = |n: u32| {
+        let label = m["label"].as_str().unwrap();
+        if n == 0 {
+            m["zero_format"].as_str().unwrap().replacen("%s", label, 1)
+        } else {
+            m["value_format"].as_str().unwrap().replacen("%s", label, 1).replacen("%s", &n.to_string(), 1)
+        }
+    };
+    let mut host = Host::default();
+    let mut video = VideoSettings;
+    assert_eq!(label(&video, &host, video::Id::MipmapLevels), format(4));
+    for (t, n) in [(0.0, 0), (0.24, 1), (0.5, 2), (0.76, 3), (1.0, 4)] {
+        video.slide(&mut host, video::Id::MipmapLevels, t);
+        assert_eq!(host.settings.mipmap_levels, n);
+        assert_eq!(label(&video, &host, video::Id::MipmapLevels), format(n));
+    }
+    assert_eq!(format(0), "Mipmap Levels: OFF");
+    // Java's order: Particles, then Mipmap Levels.
+    let order = java["quality_options"].as_array().unwrap();
+    let at = |k: &str| order.iter().position(|v| v == k).unwrap();
+    assert_eq!(at("mipmapLevels"), at("particles") + 1);
+    let ids: Vec<_> = video.widgets(&host, (640.0, 360.0)).into_iter().map(|w| w.id).collect();
+    let pos = |id| ids.iter().position(|&i| i == id).unwrap();
+    assert_eq!(pos(video::Id::MipmapLevels), pos(video::Id::Particles) + 1);
 }
 
 #[test]

@@ -68,6 +68,25 @@ pub(super) fn lerp((lo, hi): (f32, f32), t: f32) -> f32 {
     lo + (hi - lo) * t.clamp(0.0, 1.0)
 }
 
+/// v0.18 Track 2: Menu Background Blur's label (`Options.genericValueOrOffLabel`).
+pub(in crate::app) fn menu_blur_label(v: u32) -> String {
+    if v == 0 { "Menu Background Blur: OFF".into() } else { format!("Menu Background Blur: {v}") }
+}
+
+/// The Menu Background Blur slider, shared by Video and Accessibility
+/// Settings as in Java.
+pub(in crate::app) fn menu_blur_slider<Id>(id: Id, blur: u32) -> gui::Widget<Id> {
+    let (lo, hi) = crate::app::settings::MENU_BLUR;
+    gui::Widget::slider(id, [0.0; 4], menu_blur_label(blur), (blur - lo) as f32 / (hi - lo) as f32, hi - lo)
+        .tooltip("Changes the blurriness of menu backgrounds.")
+}
+
+/// Menu Background Blur at slider position `t`.
+pub(in crate::app) fn menu_blur_at(t: f32) -> u32 {
+    let (lo, hi) = crate::app::settings::MENU_BLUR;
+    lo + (t.clamp(0.0, 1.0) * (hi - lo) as f32).round() as u32
+}
+
 /// Where `v` lies in `lo..hi`, 0..1.
 pub(super) fn frac(v: f32, (lo, hi): (f32, f32)) -> f32 {
     ((v - lo) / (hi - lo)).clamp(0.0, 1.0)

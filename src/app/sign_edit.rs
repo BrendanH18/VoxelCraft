@@ -28,6 +28,7 @@ pub(super) struct SignEdit {
 }
 
 impl SignEdit {
+    /// The board's text width in font pixels (`getMaxTextLineWidth`).
     fn max_width(&self) -> f32 {
         if self.hanging { 60.0 } else { 90.0 }
     }
@@ -91,21 +92,12 @@ impl Screen<Game> for SignEdit {
         Some(SignId::Line(0))
     }
 
-    /// Lines stop at the sign's width (Java's `SignEditScreen` refuses
-    /// characters past it); the screen closes if the sign goes.
+    /// The screen closes if the sign goes. (Each line refuses typing past
+    /// the sign's width, as Java's `TextFieldHelper` does, but keeps a
+    /// wider line it was opened with.)
     fn tick(&mut self, game: &mut Game) -> Step<Game> {
         if game.world.sign_at(self.cell).is_none() {
             return Step::Close;
-        }
-        let max = self.max_width();
-        for field in &mut self.lines {
-            if Ui::text_width(field.text()) > max {
-                let mut text = field.text().to_string();
-                while Ui::text_width(&text) > max {
-                    text.pop();
-                }
-                field.set(&text);
-            }
         }
         Step::Stay
     }
@@ -140,7 +132,8 @@ impl Game {
             crate::world::wood::Kind::DarkOak | crate::world::wood::Kind::Spruce => [0.30, 0.21, 0.12, 1.0],
             _ => [0.60, 0.47, 0.29, 1.0],
         };
-        let lines = std::array::from_fn(|i| TextField::with_text(&side.lines[i], MAX_LINE_CHARS));
+        let width = sign.max_line_width() as i32;
+        let lines = std::array::from_fn(|i| TextField::with_text(&side.lines[i], MAX_LINE_CHARS).max_width(width));
         let editor = SignEdit { cell, front, hanging: sign.hanging(), board, lines };
         if self.inventory_open {
             self.toggle_inventory();

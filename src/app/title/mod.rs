@@ -185,10 +185,6 @@ impl gui::Host for Title {
     fn click(&mut self) {
         self.shell.audio.ui_click();
     }
-
-    fn in_world(&self) -> bool {
-        false
-    }
 }
 
 impl OptionsHost for Title {
@@ -573,6 +569,12 @@ impl Title {
         false
     }
 
+    /// Java blurs the panorama by Menu Background Blur under every screen
+    /// that blurs but the title menu itself (`TitleScreen` draws it sharp).
+    fn blur(&self) -> u32 {
+        if self.menus.depth() > 1 && self.menus.blurs() { self.shell.settings.menu_blur } else { 0 }
+    }
+
     /// Draws the panorama (or, until it loads, a slowly turning sky) behind
     /// the menus.
     fn frame(&mut self) {
@@ -592,8 +594,7 @@ impl Title {
                 spin = voxelcraft::title::panorama::advance(spin, seconds, self.shell.settings.panorama_speed);
                 SPIN.store(spin.to_bits(), Ordering::Relaxed);
             }
-            // Java blurs the panorama under every screen but the title menu.
-            let blur = if self.menus.depth() > 1 { voxelcraft::title::panorama::DEFAULT_BLUR_RADIUS } else { 0 };
+            let blur = self.blur();
             self.shell.renderer.render_title(panorama::View { spin, blur }, &ui);
             return;
         }
@@ -624,6 +625,10 @@ impl Title {
             ui,
             rain: 0.0,
             night_vision: 0.0,
+            // v0.18 Track 2: Java blurs what is behind the title screens
+            // (`Screen.extractBlurredBackground`) by Menu Background Blur.
+            blur: self.blur(),
+            ui_under_blur: 0,
         };
         self.shell.renderer.render(&params);
     }

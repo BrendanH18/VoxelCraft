@@ -135,7 +135,13 @@ most 1/120 second. Offline menus pause the game clock.
 Gameplay sky and block light belong to `World`, with incremental removal and
 increase queues. Edits, streaming and fixed world steps resolve it without
 waiting for meshes. Render jobs still compute their own light snapshots;
-their results cannot replace gameplay light. Crops, saplings and other growth
+their results cannot replace gameplay light. The chunk light arrays and
+column heights are shared copy-on-write: queueing a mesh job only takes
+references to the 27 chunks' light and the nine columns' heights
+(`LightSources`), and the worker builds the padded light region from them
+(`MeshInput::resolve_light`), so the main thread does no per-cell copy. A
+light write after a job is queued copies the shared array first, so the job
+still sees the light of the moment it was queued (v0.18 Track 10). Crops, saplings and other growth
 read this gameplay sky and block light, including in headless worlds.
 Complete column heightmaps seed gameplay skylight, including in the End.
 Uncertain light at incomplete loaded borders is explicitly unknown.
@@ -305,8 +311,9 @@ runs silently.
 ## Dependencies
 
 wgpu and winit (graphics and windowing), cpal (audio output), glam (math),
-bytemuck, crossbeam-channel, rustc-hash, font8x8, png, pollster, log and
-env_logger.
+bytemuck, crossbeam-channel, rustc-hash, png, pollster, log and
+env_logger. The text font is VoxelCraft's own (`src/font.rs` and
+`assets/font/glyphs.txt`, v0.18); `font8x8` was dropped with it.
 
 ## Release ID reservations (v0.9–v0.19)
 

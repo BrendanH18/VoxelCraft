@@ -41,30 +41,49 @@ to linear in one shared helper before it becomes a vertex colour. Alpha
 stays linear. Texture art is already authored in sRGB bytes and needs no
 change.
 
-**Now:** `ui.rect` and text colours are given as linear floats but were
-picked as if they were sRGB. The GPU encodes them for the sRGB target, so
-every flat UI colour shows lighter than written:
+**Done (v0.18 track 1):** every colour given to the UI, flat or a
+texture tint, is sRGB. `Ui::quad` converts it once with
+[`render::ui::linear`](../src/render/ui.rs) (the exact sRGB curve, so a
+byte value shows on screen as written; alpha untouched), and
+`render::ui::rgb(0xC6C6C6)` writes a constant as its hex. Nothing else
+converts: a track adding a colour writes the sRGB value and passes it to
+the UI as is. Before the helper, the values below were written as sRGB
+but sent as linear, so they showed lighter:
 
-| Constant | Written | On screen (sRGB) | Java's counterpart |
-|---|---|---|---|
-| Inventory panel `[0.78; 3]` | 199 | 229 (`#E5E5E5`) | `#C6C6C6` (198) |
-| Panel title text `[0.25; 3]` | 64 | 137 (`#898989`) | `#404040` (64) |
-| Button `BUTTON` `[0.42; 3]` | 107 | 173 (`#ADADAD`) | the button sprite's grey |
-| Disabled `DISABLED` `[0.2; 3]` | 51 | 124 (`#7C7C7C`) | the disabled button sprite |
-| Panel shadow edge `[0.33; 3]` | 84 | 155 (`#9B9B9B`) | `#555555` (85) |
+| Constant | Written | Showed before (sRGB) | Shows now | Java's counterpart |
+|---|---|---|---|---|
+| Inventory panel `[0.78; 3]` | 199 | 229 (`#E5E5E5`) | 199 | `#C6C6C6` (198) |
+| Panel title text `[0.25; 3]` | 64 | 137 (`#898989`) | 64 | `#404040` (64) |
+| Button `BUTTON` | 107 | 173 (`#ADADAD`) | `#6F6F6F` (track 2's token) | the button sprite's `#6F6F6F` |
+| Disabled `DISABLED` | 51 | 124 (`#7C7C7C`) | `#2C2C2C` (track 2's token) | the disabled sprite's `#2C2C2C` |
+| Panel shadow edge `[0.33; 3]` | 84 | 155 (`#9B9B9B`) | 84 | `#555555` (85) |
 
-All five match the before captures (the inventory, pause menu and Select
-World scenes). The
-[foundation record](verification/2026-11-23-v0.18-foundation.md#colour-path)
-has the samples. The typography track (1) owns the conversion helper and the
-audit item 1 of the scope asks for. Until it lands, a track that adds a
-colour writes the sRGB value and converts it with `x.powf(2.2)`, with a
-comment that it becomes the shared helper.
+The [typography record](verification/2026-11-23-v0.18-typography.md)
+has the before and after samples. Translucent colours still blend in
+linear light on the sRGB surface, where Java blends sRGB values, so a
+dimming overlay at a given alpha looks a little lighter than Java's.
+
+**Track 2 (shared UI):** the guide's tokens live in
+[`gui/style.rs`](../src/app/gui/style.rs) as sRGB `0xRRGGBB` values.
+`style::srgb` hands them to the UI as sRGB and `Ui` converts them, the
+same single conversion as every other UI colour (merged with track 1,
+2026-11-23; `Ui::gradient` converts too). Panels,
+slots, buttons, sliders, tooltips, progress icons, the hotbar, experience
+bar and effect backgrounds, the anvil's name box and the creative and
+recipe book panels use it, so they already show the table's Java values.
+Translucent fills use `style::veil`, which raises the alpha so a scene
+darkens by Java's sRGB factor: Java blends sRGB values, the UI blends
+linear ones. Its alpha and track 1's `render::ui::shade` come from one
+blend model, `render::ui::blend_alpha` (`1 - (1 - a)^2.2`), within a byte
+of Java over bright scenes and a few bytes darker over dark ones. Text colours outside these components
+(F3, chat, captions, menus' grey labels) are the typography track's.
 
 ## Pixel grid
 
 - Block and item textures are 16 × 16 texels. No track adds a higher
-  resolution. Mipmaps (5 levels, 16 to 1) stay.
+  resolution. Mipmaps (5 levels, 16 to 1) stay. The Mipmap Levels option
+  (Java's, 0 to 4, default 4) limits how far down the block sampler may go;
+  every level stays uploaded.
 - One UI pixel is `GUI scale` physical pixels: Java's rule, already in
   `Ui::gui_scale` (Auto is the largest scale that leaves 320 × 240 UI
   pixels: 4 at 1920 × 1080, 3 at 1280 × 720).
@@ -111,22 +130,27 @@ Luminance below is relative luminance (WCAG) of sRGB values from captures.
 | Disabled widget text | `#A0A0A0` with shadow |
 | Hovered slot overlay | white at 50 % alpha over the 16 × 16 item area |
 | Screen dimming behind a menu in a world | `#101010` from 75 % alpha at the top to 82 % at the bottom |
+| Scrolling list backing (track 1) | black at 112/255 across the screen's width (Java's `menu_list_background`), drawn with `render::ui::shade` so it darkens as Java's sRGB blend does |
 
 **Block materials** (**tunable (track 3)**, checked per tile and in the
-`block-palette`, `grass-hillside`, `forest` and `stone-ore-wall` scenes):
+`block-palette`, `grass-hillside`, `forest` and `stone-ore-wall` scenes).
+"Within ±N %" compares each texel's relative luminance with the tile's mean.
+The `material` texture tests (`src/render/material_textures.rs`) check
+every rule below:
 
 - Natural stone: mean relative luminance 0.17–0.24. 90 % of texels lie
   within ±25 % of the tile mean. Ores keep the stone's background exactly,
-  with their mineral clusters the only change.
+  with their mineral clusters the only change. (Stone measures 0.207.)
 - Grass and leaves: at the plains tint, grass tops have HSV saturation of
   at most 0.55 and leaves are 10–25 % darker than grass tops. Biome tints
-  stay distinct (the review found too many strong greens).
+  stay distinct (the review found too many strong greens). (Oak leaves measure
+  23 % darker than grass.) Leaves cut out 8–15 % of their texels.
 - Dirt, sand and gravel: lower texel contrast than stone (90 % within
   ±18 % of the mean), so walls of stone read rougher than the ground.
 - Every tile keeps its family recognisable from 8 blocks away at 1080p:
   the 2 × 2 mip level must still separate stone, cobblestone, andesite,
   dirt and gravel by mean colour (no two within 4 % luminance and the same
-  hue).
+  hue; greys count as the same hue).
 
 ## Natural and manufactured patterns
 
@@ -138,7 +162,9 @@ of the Nether and End):
   sandstone layers, which run horizontally).
 - No frame, inset, bevel or darker border at the tile edge. The review
   found plain stone reading as repeating inset panels. A 3 × 3 repeat of
-  the tile should show no grid.
+  the tile should show no grid. Clusters are placed on a stratified grid
+  (each in its own 4 × 4 cell), so they never clump into a repeating
+  glyph.
 - Tileable in both directions. Logs tile vertically. Leaves keep their
   cut-out holes (8–15 % transparent texels).
 
@@ -167,10 +193,19 @@ Targets for the typography track (1); the metrics are Java's.
 | Shadow | offset (1, 1), the text colour at 25 % brightness |
 | Characters | ASCII plus Latin-1 and Latin Extended-A in user text: world names, signs, name tags, book text. No `?` substitution for those |
 
-**Now:** the font is `font8x8`'s legacy ASCII set in 8 × 8 cells, with
-widths measured from each glyph's ink. It has no consistent baseline or
-descender row and replaces anything outside ASCII with `?`. Sign text must
-load unchanged when metrics change (scope item 8).
+**Done (v0.18 track 1):** VoxelCraft's own pixel font
+([`assets/font/glyphs.txt`](../assets/font/glyphs.txt), read by
+[`src/font.rs`](../src/font.rs)) covers ASCII, Latin-1 and Latin
+Extended-A with these metrics, accents composed from shared marks. Each
+character's advance equals Java 26.3's (checked against
+`tests/fixtures/java/26.3/font_metrics.json`), so Java's layouts and line
+limits fit the same text. x-height is 5. Anything else draws as a 5 × 7
+box and can't be typed. Every measurement goes through the font:
+`font::width` is Java's `Font.width` (the advances, trailing gap
+included) for limits such as a sign's 90 pixels, and `Ui::text_width`
+(`font::ink_width`) is the ink for centring and boxes. Sign text from the
+old font still shows whole (see the record). `font::VERSION` changes
+whenever a glyph does, for caches of laid-out text.
 
 ## Spacing and layout
 
@@ -190,8 +225,12 @@ Java's GUI layout in UI pixels, already used by the
   and output), leave at least one slot pitch or a drawn divider. Don't pad
   with empty grey.
 
-**Now:** container panels are 9 × 18 + 14 = 176 wide with slots 7 pixels in
-and 18 apart, matching. The panel has a 1-pixel bevel and no black outline.
+Container panels are 9 × 18 + 14 = 176 wide with slots 7 pixels in and 18
+apart, matching. Since Track 2 the panel is Java's: a black outline with
+stepped corners, 2-pixel white and `#555555` bevels and the `#C6C6C6` fill
+(`style::panel`); crafting and furnace results sit in a 26 × 26 frame
+(`style::big_slot`), and the anvil's slots moved down to Java's row (46) under
+its name box.
 
 ## Components and states
 
@@ -200,11 +239,11 @@ state by more than colour alone (scope item 8):
 
 | State | Rule |
 |---|---|
-| Normal | Panel or button sprite, white text with shadow |
-| Hovered or focused (mouse, keyboard or controller) | A 1-pixel white outline around the widget, or the 50 % white overlay in a slot. Keyboard and controller focus look the same as hover |
+| Normal | Panel or button sprite (a black outline, `#6F6F6F` fill, `#AAAAAA` top-left light and a 2-pixel `#565656` shade), white text with shadow |
+| Hovered or focused (mouse, keyboard or controller) | A 1-pixel white outline around the widget (Java's button sprite: `#757575` fill, `#AFAFAF` light, `#5C5C5C` shade), or the 50 % white overlay in a slot. Keyboard and controller focus look the same as hover |
 | Selected (current hotbar slot, chosen tab, toggled option) | A 24 × 24 hotbar frame, or a raised tab joined to its panel, or "ON" in the label. Never colour only |
 | Pressed or active | As hovered, for the frame while held |
-| Disabled | Darker sprite with `#A0A0A0` text. It takes no focus with the mouse, but the controller may still land on it to read its tooltip |
+| Disabled | Darker sprite (flat `#2C2C2C`, no bevel) with `#A0A0A0` text. It takes no focus with the mouse or keyboard; the controller can't land on it either (Java's controller support has no such screens to follow) |
 | Error or warning | Red (`#FF5555`) text or a red-tinted 1-pixel outline, with the message in words |
 
 Slots draw their frame even when empty. Equipment slots show an outline
@@ -229,9 +268,33 @@ Pixel-art sprites, never flat rectangles. Each fills in whole UI pixels:
 
 Each sprite has a 1-pixel dark outline or an empty-state sprite behind the
 fill, so progress reads against both the light panel and the world.
-**Now:** the furnace flame and arrow, the experience bar and the effect
-backgrounds are drawn as flat rectangles (`src/app/hud.rs`). Track 2 owns
-the change.
+Track 2 draws them as original pixel art in `gui/style.rs`: the 14 × 14
+flame (`style::flame`, Java's `ceil(left * 13) + 1` rows), the 24 × 16
+arrow (`style::arrow`, 16 × 13 in the survival inventory), the brewing
+stand's 9 × 28 arrow and 18 × 4 fuel gauge, the anvil's plus and the
+error cross, the 182 × 5 experience bar in Java's greens with its dark
+trough, and the 24 × 24 and 120 × 32 effect backgrounds (dark fill in a
+grey frame with stepped corners, cyan for ambient effects). Each empty
+sprite is drawn in `#8B8B8B` behind its fill. Hearts, hunger, armour and air
+keep their existing textures.
+
+## Backgrounds and blur
+
+Behind screens, Java has three backdrops, all now matched
+(`style::backdrop`, colours from the
+[UI fixture](../tests/fixtures/java/26.3/ui_screens.json)):
+
+- Container and workstation screens (`isInGameUi`): the `#101010`
+  gradient from 75 % to 82 % alpha, no blur.
+- Other menus over a world (pause, Options, LAN, books, signs, error
+  notices): the world and HUD blurred by Menu Background Blur (0 to 10,
+  default 5; the renderer's `blur` pass, Java's three box blur pairs), then
+  black at 25 % (`inworld_menu_background`).
+- The death screen and its quit confirmation: `#500000` at 38 % to
+  `#803030` at 63 %, no blur.
+
+Title-screen menus blur what is behind them too; their own darkening stays
+as it was until the title track's panorama lands.
 
 ## Where the code is
 
@@ -242,3 +305,7 @@ the change.
 - Procedural block textures: [`src/render/textures.rs`](../src/render/textures.rs)
   and the `src/render/*_textures.rs` generators, plus the authored
   [stone asset](../assets/textures/stone.source.json) ([asset formats](../assets/README.md)).
+  The common natural materials, ores and woods are in
+  [`material_textures.rs`](../src/render/material_textures.rs) (v0.18 track 3):
+  palettes, soft base patches, stratified clusters lit from the top left,
+  and a pass that breaks straight runs.

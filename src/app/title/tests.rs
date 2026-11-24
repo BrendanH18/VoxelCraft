@@ -72,9 +72,6 @@ impl Drop for Host {
 impl gui::Host for Host {
     type Out = Action;
     fn click(&mut self) {}
-    fn in_world(&self) -> bool {
-        false
-    }
 }
 
 impl OptionsHost for Host {

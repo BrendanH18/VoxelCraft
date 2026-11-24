@@ -5,6 +5,7 @@ use bytemuck::{Pod, Zeroable};
 
 use crate::world::block::Block;
 use crate::world::shape;
+use voxelcraft::font;
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -43,48 +44,68 @@ pub fn icon_slot(slot: usize) -> ImageRect {
     ImageRect { x: (slot % 8) as u32 * 64, y: 64 + (slot / 8) as u32 * 64, w: 64, h: 64 }
 }
 
-/// Font atlas: 16x8 grid of 8x8 glyphs covering ASCII 0..128.
-pub const FONT_ATLAS_W: u32 = 128;
-pub const FONT_ATLAS_H: u32 = 64;
-
 pub type Color = [f32; 4];
 pub const WHITE: Color = [1.0, 1.0, 1.0, 1.0];
 
-/// Rasterises the font atlas as R8 coverage.
-pub fn font_atlas() -> Vec<u8> {
-    let mut px = vec![0u8; (FONT_ATLAS_W * FONT_ATLAS_H) as usize];
-    for (c, rows) in font8x8::legacy::BASIC_LEGACY.iter().enumerate() {
-        let (gx, gy) = ((c % 16) * 8, (c / 16) * 8);
-        for (y, row) in rows.iter().enumerate() {
-            for x in 0..8 {
-                if row >> x & 1 == 1 {
-                    px[(gy + y) * FONT_ATLAS_W as usize + gx + x] = 255;
-                }
-            }
-        }
-    }
-    px
+/// An opaque UI colour from its sRGB hex value, the number a capture shows
+/// (`rgb(0xC6C6C6)` is Java's panel grey).
+pub const fn rgb(hex: u32) -> Color {
+    [((hex >> 16) & 0xFF) as f32 / 255.0, ((hex >> 8) & 0xFF) as f32 / 255.0, (hex & 0xFF) as f32 / 255.0, 1.0]
 }
 
-/// Advance width of a glyph in font pixels (proportional, 1px gap).
-pub(crate) fn glyph_advance(c: char) -> f32 {
-    if c == ' ' {
-        return 4.0;
-    }
-    let rows = font8x8::legacy::BASIC_LEGACY.get(c as usize).copied().unwrap_or([0; 8]);
-    let bits = rows.iter().fold(0u8, |a, r| a | r);
-    if bits == 0 {
-        return 4.0;
-    }
-    let first = bits.trailing_zeros();
-    let last = 7 - bits.leading_zeros();
-    (last - first + 2) as f32
+/// One sRGB channel (0..1) as linear light: the sRGB transfer function the
+/// GPU inverts when it writes to the sRGB surface, so a value converted here
+/// shows on screen as written.
+pub fn srgb_to_linear(v: f32) -> f32 {
+    if v <= 0.04045 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
 }
 
-fn glyph_left(c: char) -> f32 {
-    let rows = font8x8::legacy::BASIC_LEGACY.get(c as usize).copied().unwrap_or([0; 8]);
-    let bits = rows.iter().fold(0u8, |a, r| a | r);
-    if bits == 0 { 0.0 } else { bits.trailing_zeros() as f32 }
+/// The shared UI colour conversion (art guide, "Colour pipeline"): every
+/// UI and HUD colour, flat or a texture tint, is written as sRGB and
+/// becomes linear here, as [`Ui::quad`] does for everything it draws.
+/// Alpha stays linear. A tint multiplies the texture in linear light,
+/// which is close to multiplying the sRGB values as Java's GUI does.
+pub fn linear(c: Color) -> Color {
+    [srgb_to_linear(c[0]), srgb_to_linear(c[1]), srgb_to_linear(c[2]), c[3]]
+}
+
+/// Black at `alpha` as Java blends it: Java's GUI mixes sRGB values, so a
+/// black overlay keeps `1 - alpha` of the sRGB colour behind it. Blending
+/// here is in linear light, where keeping that much takes an alpha of
+/// `1 - (1 - alpha)^2.2`. For screen dimming and list backings given as
+/// Java's alpha.
+pub fn shade(alpha: f32) -> Color {
+    [0.0, 0.0, 0.0, blend_alpha(alpha)]
+}
+
+/// The inverse of [`srgb_to_linear`]: the sRGB value (0..1) the GPU writes
+/// for linear light `v`.
+pub fn linear_to_srgb(v: f32) -> f32 {
+    if v <= 0.003_130_8 { v * 12.92 } else { 1.055 * v.powf(1.0 / 2.4) - 0.055 }
+}
+
+/// The exponent of the blending model below: how a share of sRGB value
+/// becomes a share of linear light (the sRGB curve is close to this power
+/// across the range). It models Java's blending; it converts no colour.
+pub const BLEND_GAMMA: f32 = 2.2;
+
+/// The linear-light alpha at which black darkens what's behind it as
+/// Java's sRGB blend at `alpha` does: Java keeps `1 - alpha` of the sRGB
+/// value, which is `(1 - alpha)^2.2` of its light (within a byte over the
+/// whole range). [`shade`] and the shared UI's veils use it.
+pub fn blend_alpha(alpha: f32) -> f32 {
+    1.0 - (1.0 - alpha.clamp(0.0, 1.0)).powf(BLEND_GAMMA)
+}
+
+/// The font atlas: every glyph of [`voxelcraft::font`] as R8 coverage.
+pub fn font_atlas() -> (Vec<u8>, (u32, u32)) {
+    let f = font::font();
+    (f.atlas(), f.atlas_size())
+}
+
+/// Shadow colour of text: Java's `ARGB.scaleRGB(color, 0.25)`.
+fn shadow(color: Color) -> Color {
+    [color[0] * 0.25, color[1] * 0.25, color[2] * 0.25, color[3]]
 }
 
 pub struct Ui {
@@ -93,12 +114,15 @@ pub struct Ui {
     pub height: f32,
     /// Physical pixels per UI pixel (like Minecraft's GUI scale).
     pub scale: f32,
+    /// The last colour [`linear`] converted and its result: text and panels
+    /// repeat one colour for many quads.
+    converted: (Color, Color),
 }
 
 impl Ui {
     /// A UI with an explicit scale (see [`Ui::gui_scale`] and [`Ui::view_scale`]).
     pub fn with_scale(width: f32, height: f32, scale: f32) -> Self {
-        Self { verts: Vec::with_capacity(4096), width, height, scale }
+        Self { verts: Vec::with_capacity(4096), width, height, scale, converted: (WHITE, WHITE) }
     }
 
     /// The largest GUI scale that leaves at least 320x240 UI pixels, at
@@ -137,13 +161,30 @@ impl Ui {
         (self.width / self.scale, self.height / self.scale)
     }
 
+    #[inline(always)]
     fn ndc(&self, x: f32, y: f32) -> [f32; 2] {
         let (x, y) = ((x * self.scale).round(), (y * self.scale).round());
         [x / self.width * 2.0 - 1.0, 1.0 - y / self.height * 2.0]
     }
 
+    /// Converts a colour [`Ui::quad`] hasn't just seen, kept out of line so
+    /// the quad itself stays small.
+    #[cold]
+    #[inline(never)]
+    fn convert(&mut self, color: Color) {
+        self.converted = (color, linear(color));
+    }
+
     /// Arbitrary quad in UI pixels, corners clockwise from top-left.
+    /// `color` is sRGB (see [`linear`]). Always inlined: callers build
+    /// thousands of quads a frame, and a call per quad costs more than the
+    /// quad (v0.18 track 1 measured 2.5 times the time per text quad).
+    #[inline(always)]
     pub fn quad(&mut self, p: [[f32; 2]; 4], uv: [[f32; 2]; 4], layer: f32, color: Color) {
+        if self.converted.0 != color {
+            self.convert(color);
+        }
+        let color = self.converted.1;
         let v: [UiVertex; 4] =
             std::array::from_fn(|i| UiVertex { pos: self.ndc(p[i][0], p[i][1]), uv: uv[i], layer, color });
         self.verts.extend_from_slice(&[v[0], v[1], v[2], v[0], v[2], v[3]]);
@@ -165,6 +206,22 @@ impl Ui {
 
     pub fn rect(&mut self, x: f32, y: f32, w: f32, h: f32, color: Color) {
         self.quad([[x, y], [x + w, y], [x + w, y + h], [x, y + h]], [[0.0; 2]; 4], SOLID, color);
+    }
+
+    /// A rectangle shading from `top` to `bottom` (Java's `fillGradient`),
+    /// both sRGB like every UI colour.
+    pub fn gradient(&mut self, x: f32, y: f32, w: f32, h: f32, top: Color, bottom: Color) {
+        let p = [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
+        // sRGB in, as for `quad`.
+        let (top, bottom) = (linear(top), linear(bottom));
+        let colour = [top, top, bottom, bottom];
+        let v: [UiVertex; 4] = std::array::from_fn(|i| UiVertex {
+            pos: self.ndc(p[i][0], p[i][1]),
+            uv: [0.0; 2],
+            layer: SOLID,
+            color: colour[i],
+        });
+        self.verts.extend_from_slice(&[v[0], v[1], v[2], v[0], v[2], v[3]]);
     }
 
     /// Square HUD icon (heart, bubble, ...) from a block texture or item icon layer.
@@ -224,50 +281,76 @@ impl Ui {
         }
     }
 
+    /// Width of the ink of `s` in UI pixels: the advances less the last
+    /// gap ([`font::ink_width`]). Every text measurement goes through the
+    /// font, so layout, drawing, carets and clipping agree.
     pub fn text_width(s: &str) -> f32 {
-        s.chars().map(glyph_advance).sum::<f32>() - 1.0
+        font::ink_width(s) as f32
     }
 
     /// Draws text with Minecraft-style drop shadow; returns its width.
     pub fn text(&mut self, x: f32, y: f32, s: &str, color: Color) -> f32 {
-        let shadow = [color[0] * 0.25, color[1] * 0.25, color[2] * 0.25, color[3]];
-        self.text_raw(x + 1.0, y + 1.0, s, shadow);
-        self.text_raw(x, y, s, color)
+        let d = font::SHADOW_OFFSET as f32;
+        self.glyphs(x + d, y + d, s, shadow(color), 1.0, None);
+        self.glyphs(x, y, s, color, 1.0, None)
     }
 
     /// Shadowed text magnified `k` times (titles); returns its width.
     pub fn text_scaled(&mut self, x: f32, y: f32, s: &str, color: Color, k: f32) -> f32 {
-        let shadow = [color[0] * 0.25, color[1] * 0.25, color[2] * 0.25, color[3]];
-        self.glyphs(x + k, y + k, s, shadow, k);
-        self.glyphs(x, y, s, color, k)
+        let d = font::SHADOW_OFFSET as f32 * k;
+        self.glyphs(x + d, y + d, s, shadow(color), k, None);
+        self.glyphs(x, y, s, color, k, None)
     }
 
     /// Text without a shadow (e.g. titles on light panels).
     pub fn text_flat(&mut self, x: f32, y: f32, s: &str, color: Color) -> f32 {
-        self.text_raw(x, y, s, color)
+        self.glyphs(x, y, s, color, 1.0, None)
     }
 
-    fn text_raw(&mut self, x: f32, y: f32, s: &str, color: Color) -> f32 {
-        self.glyphs(x, y, s, color, 1.0)
-    }
-
-    fn glyphs(&mut self, x: f32, y: f32, s: &str, color: Color, k: f32) -> f32 {
+    /// Glyph quads for `s` with the line's top at `y`, magnified `k` times
+    /// and cut to `clip` (min and max x) if given; returns the pen's travel.
+    fn glyphs(&mut self, x: f32, y: f32, s: &str, color: Color, k: f32, clip: Option<(f32, f32)>) -> f32 {
+        let f = font::font();
+        let glyphs = f.glyphs();
+        let (aw, ah) = f.atlas_size();
+        let (du, dv) = (1.0 / aw as f32, 1.0 / ah as f32);
+        let top = y + font::TOP as f32 * k;
+        let bottom = top + font::CELL_H as f32 * k;
         let mut pen = x;
         for c in s.chars() {
-            let c = if (c as u32) < 128 { c } else { '?' };
-            if c != ' ' {
-                let (gx, gy) = ((c as u32 % 16) as f32 * 8.0, (c as u32 / 16) as f32 * 8.0);
-                let (u0, v0) = (gx / FONT_ATLAS_W as f32, gy / FONT_ATLAS_H as f32);
-                let (u1, v1) = ((gx + 8.0) / FONT_ATLAS_W as f32, (gy + 8.0) / FONT_ATLAS_H as f32);
-                let (left, size) = (pen - glyph_left(c) * k, 8.0 * k);
+            let index = f.atlas_index(c);
+            let g = &glyphs[index];
+            let advance = g.advance() as f32 * k;
+            let w = g.width() as f32;
+            if w > 0.0 {
+                let gx = (index as u32 % font::ATLAS_COLUMNS * font::CELL_W) as f32;
+                let gy = (index as u32 / font::ATLAS_COLUMNS * font::CELL_H) as f32;
+                let (mut x0, mut x1) = (pen, pen + w * k);
+                let (mut u0, mut u1) = (gx, gx + w);
+                if let Some((min_x, max_x)) = clip {
+                    if x1 <= min_x || x0 >= max_x {
+                        pen += advance;
+                        continue;
+                    }
+                    if x0 < min_x {
+                        u0 += (min_x - x0) / k;
+                        x0 = min_x;
+                    }
+                    if x1 > max_x {
+                        u1 -= (x1 - max_x) / k;
+                        x1 = max_x;
+                    }
+                }
+                let (u0, u1) = (u0 * du, u1 * du);
+                let (v0, v1) = (gy * dv, (gy + font::CELL_H as f32) * dv);
                 self.quad(
-                    [[left, y], [left + size, y], [left + size, y + size], [left, y + size]],
+                    [[x0, top], [x1, top], [x1, bottom], [x0, bottom]],
                     [[u0, v0], [u1, v0], [u1, v1], [u0, v1]],
                     GLYPH,
                     color,
                 );
             }
-            pen += glyph_advance(c) * k;
+            pen += advance;
         }
         pen - x
     }
@@ -275,37 +358,125 @@ impl Ui {
     /// Shadowed text drawn only between `min_x` and `max_x`, glyphs cut at
     /// the edges (Java's scissored widget labels).
     pub fn text_clipped(&mut self, x: f32, y: f32, s: &str, color: Color, (min_x, max_x): (f32, f32)) {
-        let shadow = [color[0] * 0.25, color[1] * 0.25, color[2] * 0.25, color[3]];
-        self.glyphs_clipped(x + 1.0, y + 1.0, s, shadow, (min_x, max_x));
-        self.glyphs_clipped(x, y, s, color, (min_x, max_x));
-    }
-
-    fn glyphs_clipped(&mut self, x: f32, y: f32, s: &str, color: Color, (min_x, max_x): (f32, f32)) {
-        let mut pen = x;
-        for c in s.chars() {
-            let c = if (c as u32) < 128 { c } else { '?' };
-            let left = pen - glyph_left(c);
-            if c != ' ' && left + 8.0 > min_x && left < max_x {
-                let (gx, gy) = ((c as u32 % 16) as f32 * 8.0, (c as u32 / 16) as f32 * 8.0);
-                let (x0, x1) = (left.max(min_x), (left + 8.0).min(max_x));
-                let (u0, u1) = ((gx + x0 - left) / FONT_ATLAS_W as f32, (gx + x1 - left) / FONT_ATLAS_W as f32);
-                let (v0, v1) = (gy / FONT_ATLAS_H as f32, (gy + 8.0) / FONT_ATLAS_H as f32);
-                self.quad(
-                    [[x0, y], [x1, y], [x1, y + 8.0], [x0, y + 8.0]],
-                    [[u0, v0], [u1, v0], [u1, v1], [u0, v1]],
-                    GLYPH,
-                    color,
-                );
-            }
-            pen += glyph_advance(c);
-        }
+        let d = font::SHADOW_OFFSET as f32;
+        self.glyphs(x + d, y + d, s, shadow(color), 1.0, Some((min_x, max_x)));
+        self.glyphs(x, y, s, color, 1.0, Some((min_x, max_x)));
     }
 
     /// Text on a translucent backing panel, like Minecraft's F3 screen.
     pub fn label(&mut self, x: f32, y: f32, s: &str, color: Color) {
         let w = Self::text_width(s);
-        self.rect(x - 1.0, y - 1.0, w + 2.0, 10.0, [0.0, 0.0, 0.0, 0.4]);
-        self.text_raw(x, y, s, color);
+        self.rect(x - 1.0, y - 1.0, w + 2.0, font::LINE_HEIGHT as f32 + 1.0, [0.0, 0.0, 0.0, 0.4]);
+        self.text_flat(x, y, s, color);
+    }
+}
+
+#[cfg(test)]
+mod text_tests {
+    use super::*;
+
+    #[test]
+    fn colours_are_written_as_srgb_and_shown_as_written() {
+        // The GPU encodes linear output for the sRGB surface with the sRGB
+        // curve; its inverse here brings every byte back unchanged.
+        let encode = linear_to_srgb;
+        for byte in 0..=255u8 {
+            let v = byte as f32 / 255.0;
+            assert_eq!((encode(srgb_to_linear(v)) * 255.0).round() as u8, byte);
+        }
+        assert_eq!(rgb(0xC6C6C6), [198.0 / 255.0, 198.0 / 255.0, 198.0 / 255.0, 1.0]);
+        // Alpha is not converted; the panel grey becomes about 0.57 linear.
+        let panel = linear([0.78, 0.78, 0.78, 0.5]);
+        assert!((panel[0] - 0.5705).abs() < 1e-3 && panel[3] == 0.5, "{panel:?}");
+        // Ui::quad converts what it's given, flat colours and tints alike.
+        let mut ui = Ui::with_scale(100.0, 100.0, 1.0);
+        ui.rect(0.0, 0.0, 1.0, 1.0, rgb(0x404040));
+        ui.icon(0.0, 0.0, 16.0, 3u16, [0.5, 0.5, 0.5, 1.0]);
+        assert_eq!(ui.verts[0].color, linear(rgb(0x404040)));
+        assert_eq!(ui.verts[6].color[0], srgb_to_linear(0.5));
+    }
+
+    #[test]
+    fn shades_darken_as_javas_alpha_does() {
+        // Over a mid grey, Java's 112/255 black leaves 56% of the sRGB value.
+        let behind = 0.5f32;
+        let a = shade(112.0 / 255.0)[3];
+        let blended = srgb_to_linear(behind) * (1.0 - a);
+        let encode = linear_to_srgb;
+        assert!((encode(blended) - behind * (1.0 - 112.0 / 255.0)).abs() < 0.015, "{}", encode(blended));
+        assert_eq!(shade(0.0)[3], 0.0);
+        assert_eq!(shade(1.0)[3], 1.0);
+    }
+
+    #[test]
+    fn text_quads_follow_the_font() {
+        let mut ui = Ui::with_scale(400.0, 300.0, 1.0);
+        let w = ui.text_flat(10.0, 20.0, "Aé ", WHITE);
+        assert_eq!(w, font::width("Aé ") as f32, "the pen moves by the advances");
+        assert_eq!(Ui::text_width("Aé "), font::ink_width("Aé ") as f32);
+        // Two glyph quads (the space has none), each from the line's top
+        // less 3 rows to 12 rows down, as wide as the glyph's ink.
+        assert_eq!(ui.verts.len(), 12);
+        let x = |v: &UiVertex| ((v.pos[0] + 1.0) / 2.0 * 400.0).round();
+        let y = |v: &UiVertex| ((1.0 - v.pos[1]) / 2.0 * 300.0).round();
+        assert_eq!((x(&ui.verts[0]), y(&ui.verts[0])), (10.0, 17.0));
+        assert_eq!((x(&ui.verts[2]), y(&ui.verts[2])), (15.0, 29.0));
+        assert_eq!(x(&ui.verts[6]), 16.0, "é starts after A's advance");
+        // Clipping cuts glyphs at the edges and drops those outside.
+        let mut clipped = Ui::with_scale(400.0, 300.0, 1.0);
+        clipped.text_clipped(0.0, 0.0, "WWWW", WHITE, (3.0, 14.0));
+        let xs: Vec<f32> = clipped.verts.iter().map(x).collect();
+        assert!(xs.iter().all(|&v| (3.0..=14.0).contains(&v)), "{xs:?}");
+    }
+
+    /// Headless cost of the UI paths this track changed (`cargo test
+    /// --profile ci --bin voxelcraft text_cost -- --ignored --nocapture`):
+    /// 40 shadowed lines of 57 characters in alternating colours (each line
+    /// converts two new colours), 3920 rectangles, one colour conversion
+    /// and one line's width.
+    #[test]
+    #[ignore]
+    fn text_cost() {
+        let line = "Simulation Distance: 10 Chunks - Ærøskøbing Łódź Žďár ...";
+        let colours = [WHITE, rgb(0xA0A0A0), rgb(0xFFFFA0), rgb(0x404040)];
+        let runs = 2000;
+        let start = std::time::Instant::now();
+        let mut quads = 0;
+        let mut ui = Ui::with_scale(1920.0, 1080.0, 2.0);
+        for _ in 0..runs {
+            ui.verts.clear();
+            for i in 0..40 {
+                ui.text(4.0, i as f32 * 10.0, line, colours[i % 4]);
+            }
+            quads = ui.verts.len() / 6;
+            std::hint::black_box(&ui.verts);
+        }
+        let per_frame = start.elapsed() / runs;
+        let glyphs = 40 * line.chars().count();
+        let start = std::time::Instant::now();
+        let mut ui = Ui::with_scale(1920.0, 1080.0, 2.0);
+        for _ in 0..runs {
+            ui.verts.clear();
+            for i in 0..3920 {
+                ui.rect((i % 300) as f32, (i / 300) as f32, 5.0, 12.0, colours[i / 98 % 4]);
+            }
+            std::hint::black_box(&ui.verts);
+        }
+        println!("text_cost: 3920 rectangles {:?} per frame", start.elapsed() / runs);
+        let start = std::time::Instant::now();
+        for i in 0..1_000_000u32 {
+            std::hint::black_box(linear(std::hint::black_box([i as f32 * 1e-6, 0.5, 0.25, 1.0])));
+        }
+        let convert = start.elapsed() / 1_000_000;
+        let start = std::time::Instant::now();
+        for _ in 0..runs {
+            std::hint::black_box(Ui::text_width(std::hint::black_box(line)));
+        }
+        println!("text_cost: linear() {convert:?} per colour, text_width {:?} per line", start.elapsed() / runs);
+        println!(
+            "text_cost: {glyphs} characters, {quads} quads: {per_frame:?} per frame, {:.1} ns per character",
+            per_frame.as_nanos() as f64 / glyphs as f64
+        );
     }
 }
 

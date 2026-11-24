@@ -31,9 +31,6 @@ impl Host for TestHost {
     fn click(&mut self) {
         self.clicks += 1;
     }
-    fn in_world(&self) -> bool {
-        false
-    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -263,8 +260,13 @@ fn text_fields_edit_select_and_use_the_clipboard() {
     assert_eq!(field_text(&mut stack, &host), "worlhello ");
     stack.key(&mut host, &cmd(KeyCode::KeyA), SIZE);
     stack.key(&mut host, &cmd(KeyCode::KeyC), SIZE);
-    stack.key(&mut host, &Key::typed("é?"), SIZE);
-    assert_eq!(field_text(&mut stack, &host), "?", "typing replaces the selection; non-ASCII is dropped");
+    stack.key(&mut host, &Key::typed("é\u{3b1}?"), SIZE);
+    assert_eq!(
+        field_text(&mut stack, &host),
+        "é?",
+        "typing replaces the selection; characters the font lacks are dropped"
+    );
+    stack.key(&mut host, &key(KeyCode::Backspace), SIZE);
     stack.key(&mut host, &key(KeyCode::Backspace), SIZE);
     stack.key(&mut host, &cmd(KeyCode::KeyV), SIZE);
     assert_eq!(field_text(&mut stack, &host), "worlhello ");
@@ -306,6 +308,71 @@ fn the_caret_moves_by_characters_words_and_ends() {
     assert_eq!(field.cursor(), 3);
     field.click(1000.0);
     assert_eq!(field.cursor(), 9);
+}
+
+#[test]
+fn accented_text_edits_by_whole_characters() {
+    let mut clip = Memory::default();
+    let k = |code| Key::new(code);
+    let typed = |s: &str| Key { text: Some(s.to_string()), ..Key::new(KeyCode::KeyA) };
+    let mut field = TextField::with_text("Żółw", 32);
+    assert_eq!(field.cursor(), "Żółw".len(), "the caret is a byte index at the end");
+    field.key(&typed("ę"), &mut clip);
+    assert_eq!(field.text(), "Żółwę");
+    // Left, Backspace and Delete step over two-byte characters whole.
+    field.key(&k(KeyCode::ArrowLeft), &mut clip);
+    field.key(&k(KeyCode::ArrowLeft), &mut clip);
+    assert_eq!(field.cursor(), "Żół".len());
+    field.key(&k(KeyCode::Backspace), &mut clip);
+    assert_eq!(field.text(), "Żówę");
+    field.key(&k(KeyCode::Delete), &mut clip);
+    assert_eq!(field.text(), "Żóę");
+    field.key(&Key { shift: true, ..k(KeyCode::Home) }, &mut clip);
+    assert_eq!(field.selected(), "Żó");
+    field.key(&Key { command: true, ..k(KeyCode::KeyX) }, &mut clip);
+    assert_eq!((field.text(), clip.0.as_deref()), ("ę", Some("Żó")));
+    field.key(&k(KeyCode::End), &mut clip);
+    field.key(&Key { command: true, ..k(KeyCode::KeyV) }, &mut clip);
+    assert_eq!(field.text(), "ęŻó");
+    // Characters the font lacks and controls are dropped; the limit counts characters.
+    let mut short = TextField::new(3);
+    short.insert("a\u{3b1}§\nßŒđx");
+    assert_eq!(short.text(), "aßŒ");
+    // Clicks land on character boundaries, by the shared measurement.
+    short.click(4.0 + Ui::text_width("aß") + 1.0);
+    assert_eq!(short.cursor(), "aß".len());
+    short.click(4.0 + Ui::text_width("a") + 2.0);
+    assert_eq!(short.cursor(), "a".len());
+    // Drawing a field wider than its text area cuts on boundaries too.
+    let mut ui = Ui::with_scale(800.0, 600.0, 2.0);
+    let long = TextField::with_text(&"Ðé".repeat(40), 100);
+    long.draw(&mut ui, [0.0, 0.0, 60.0, 20.0], true, true, true);
+}
+
+#[test]
+fn a_width_limited_field_refuses_text_past_it_but_keeps_what_it_was_given() {
+    let mut clip = Memory::default();
+    let typed = |s: &str| Key { text: Some(s.to_string()), ..Key::new(KeyCode::KeyA) };
+    // A sign line: 90 pixels by Java's `Font.width`. 15 letters of 6 fit.
+    let mut line = TextField::new(384).max_width(90);
+    for _ in 0..20 {
+        line.key(&typed("É"), &mut clip);
+    }
+    assert_eq!(line.text().chars().count(), 15);
+    assert_eq!(voxelcraft::font::width(line.text()), 90);
+    // A paste that would overflow is refused whole, as Java's `TextFieldHelper`.
+    let mut line = TextField::new(384).max_width(90);
+    line.insert("Hello");
+    line.insert(" there, a much longer greeting");
+    assert_eq!(line.text(), "Hello");
+    // Text opened from a sign that is already wider stays whole.
+    let wide = "W".repeat(16);
+    let mut line = TextField::with_text(&wide, 384).max_width(90);
+    assert_eq!(line.text(), wide);
+    line.key(&typed("i"), &mut clip);
+    assert_eq!(line.text(), wide, "but grows no wider");
+    line.key(&Key::new(KeyCode::Backspace), &mut clip);
+    assert_eq!(line.text().len(), 15);
 }
 
 #[test]

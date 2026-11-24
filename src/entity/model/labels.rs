@@ -48,45 +48,37 @@ fn nameplate(m: &Mob, forward: Vec3, rel: Vec3, out: &mut EntityMesh) {
 }
 
 /// Draws `text` centred above `bottom` (camera-relative), facing a camera looking along `forward`,
-/// as Java's dark-backed white name tag.
+/// as Java's dark-backed white name tag, in the shared font (`crate::font`).
 #[cfg(feature = "client")]
 pub(crate) fn label(text: &str, bottom: Vec3, forward: Vec3, out: &mut EntityMesh) {
+    use crate::font;
     let right = forward.cross(Vec3::Y).normalize_or(Vec3::X);
     let pixel = 0.022;
-    let origin = bottom - right * (text.chars().count() as f32 * 8.0 * pixel * 0.5);
+    // Java centres on `-font.width(text) / 2` in whole font pixels.
+    let width = font::width(text);
+    let origin = bottom - right * ((width / 2) as f32 * pixel);
     let emissive = [255, 255, 0, 255];
-    let w = text.chars().count() as f32 * 8.0 * pixel;
+    // Font rows run down from the line's top: row `r` spans heights
+    // `8 - r` to `9 - r` pixels, so row 8, under the descenders, sits on
+    // `bottom`. The backing covers rows -1 to 8, as Java's.
+    let at = |x: f32, row: f32| origin + right * (x * pixel) + Vec3::Y * ((8.0 - row) * pixel);
     let behind = forward * 0.003;
+    let (left, right_edge) = (-1.0, font::ink_width(text) as f32 + 1.0);
     quad(
         out,
-        [
-            origin - right * pixel + behind,
-            origin + right * (w + pixel) + behind,
-            origin + right * (w + pixel) + Vec3::Y * 9.0 * pixel + behind,
-            origin - right * pixel + Vec3::Y * 9.0 * pixel + behind,
-        ],
+        [at(left, 8.0) + behind, at(right_edge, 8.0) + behind, at(right_edge, -2.0) + behind, at(left, -2.0) + behind],
         [25, 25, 25],
         emissive,
         0,
     );
-    for (n, ch) in text.chars().enumerate() {
-        let code = if ch.is_ascii() { ch as usize } else { '?' as usize };
-        let glyph = font8x8::legacy::BASIC_LEGACY[code];
-        for (y, row) in glyph.into_iter().enumerate() {
-            for x in 0..8 {
-                if row & (1 << x) == 0 {
-                    continue;
-                }
-                let p = origin + right * ((n * 8 + x) as f32 * pixel) + Vec3::Y * ((7 - y) as f32 * pixel);
-                quad(
-                    out,
-                    [p, p + right * pixel, p + right * pixel + Vec3::Y * pixel, p + Vec3::Y * pixel],
-                    [255; 3],
-                    emissive,
-                    0,
-                );
-            }
+    let mut pen = 0.0;
+    for c in text.chars() {
+        let glyph = font::glyph(c);
+        for (x, y, n) in glyph.runs() {
+            let (x0, x1, row) = (pen + x as f32, pen + (x + n) as f32, y as f32);
+            quad(out, [at(x0, row), at(x1, row), at(x1, row - 1.0), at(x0, row - 1.0)], [255; 3], emissive, 0);
         }
+        pen += glyph.advance() as f32;
     }
 }
 #[cfg(not(feature = "client"))]
