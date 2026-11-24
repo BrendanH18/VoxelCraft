@@ -128,3 +128,53 @@ The formulas were also checked against the decompiled **1.21.1** client:
 - https://raw.githubusercontent.com/Soumeh/1.21.1-Deobfuscated/main/minecraft/src/net/minecraft/entity/player/PlayerEntity.java
 - https://raw.githubusercontent.com/Soumeh/1.21.1-Deobfuscated/main/minecraft/src/net/minecraft/client/render/Camera.java
 - https://raw.githubusercontent.com/Soumeh/1.21.1-Deobfuscated/main/minecraft/src/net/minecraft/client/render/entity/model/BipedEntityModel.java
+
+## Mob art, ground shadows and motion (v0.18 Track 6)
+
+The [v0.18 mobs record](verification/2026-11-23-v0.18-mobs.md) has the
+sources, captures, measurements and differences from Java.
+
+**Ground shadows** (`entity/shadow.rs`) follow Java 26.3's
+`EntityRenderer.extractShadow` and `ShadowFeatureRenderer`. Each mob,
+player, dropped item and experience orb within 16 blocks of the camera
+darkens the top of every block under its radius that is drawn and has a
+full-block collision shape (none on slabs, stairs or other blocks with a
+lower collision box), scanning down by `min(power / 0.5 - 1, radius)` blocks. A piece's
+alpha is `(power - 0.5 * blocks below the feet) * 0.5 * brightness`, where
+power is `(1 - distance² / 256) * strength` and brightness is
+`Lightmap.getBrightness` of the raw light above the block (none at light 3
+or below). The radius is the Java renderer's: 0.7 for a pig or cow, 0.5
+for a zombie or player, 0.15 (strength 0.75) for items and orbs, a slime's
+size × 0.25, a pufferfish's 0.1 + 0.1 × puff, and babies by their age
+scale (with the villager's and strider's extra half and the turtle's
+0.83). Invisible mobs and players and spectators cast none. The quads are
+camera-relative triangles in the entity mesh's blended list, pulled toward
+the camera by Java's view-offset scale, and `entity.wgsl` (material 5)
+draws an original 16-step disc, black and fogged. The **Entity Shadows**
+option (`entityShadows`, on, after Particles in Video Settings) switches
+them off. They change no hitbox, simulation or light.
+
+**Material patterns.** A box can carry one of ten original 16 × 16 grey
+patterns (`entity::model::Pattern`, texture layers 1280–1289, drawn by
+`render/mob_textures.rs`): wool, fur, hide, feather, mottle, bone,
+speckle, bristle, cloth and rot. The shader (material 6) multiplies the
+box colour by twice the sampled linear value, one texel per model pixel,
+so the mipmaps fade a pattern to the plain colour with distance. The
+pattern number rides in a spare byte of `BoxInstance`, so patterned boxes
+stay GPU instances. The farm animals, villagers, zombies (husks and
+drowned share the macro), skeletons (strays, bogged and wither
+skeletons), creepers, spiders, endermen and wolves use them, with new
+faces and markings: eye whites, hooves, an udder and more hide patches,
+teeth, torn shirts, eight spider eyes, a villager belt and hem, darker
+wing edges. Silhouettes and cuboid construction are unchanged apart from
+the cow's udder.
+
+**Motion.** Mobs simulate at 20 Hz. Their position was already
+interpolated per frame; their body and head yaw, head pitch and walk
+cycle now are too (`Mob::render_pose`, angles the short way round), as
+Java's renderers lerp them with the partial tick. `Entities::mesh` draws
+the interpolated pose and restores the simulation's values; LAN replicas
+interpolate from the previous snapshot's pose.
+
+**Cost.** `cargo run --profile ci --example entity_submission_bench`
+times the per-frame entity build headless; see the record for numbers.

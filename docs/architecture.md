@@ -1382,6 +1382,17 @@ a plain `Item::creative_palette` entry, which keeps codes 1000+); the
 dispenser output code 5 (`Output::Egg`, saved with pending dispenses); the
 trial spawner's saved `entity` field.
 
+#### Track 6 allocation
+
+Track 6 (mobs) uses texture layers 1280–1289 for its ten mob material
+patterns, in `entity::model::Pattern` order from `PATTERN_TEX` (1280):
+wool, fur, hide, feather, mottle, bone, speckle, bristle, cloth and rot
+(`render/mob_textures.rs`). It allocates no block states or items. Appended
+orderings: the option `entityShadows` (Java's key) at the end of
+`options.txt`; entity shader materials 5 (ground shadow) and 6 (patterned
+box) after the slime shell's 4; byte 6 of `BoxInstance::shade`, which was
+spare, now holds the box's pattern. Nothing new is saved.
+
 #### Track 9 allocation
 
 Track 9 (sound, subtitles and container lids) uses texture layer 1290 for

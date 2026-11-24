@@ -384,7 +384,10 @@ reproducible before/after scenes for v0.18's visual work, in five groups:
   above the terrain, so they don't change when world generation does.
 - `mobs`: nine mobs and dropped items on uneven grass at sunrise (held
   below the sunburn threshold, so the undead survive the wait) and at
-  midnight.
+  midnight, and two close-ups pinned with `--still-mobs` (v0.18 Track 6):
+  `mobs-still-farm` (chicken, pig, cow, sheep and wolf on one- and
+  two-block steps, with dropped items) and `mobs-still-hostile` (villager,
+  zombie, skeleton, creeper, enderman and spider) at noon.
 - `ui`: the survival HUD, inventory, recipe book, a crafting table with the
   recipe book, a furnace, the creative inventory on two tabs, the pause menu,
   Video Settings, the death screen and the Hardcore death, each at
@@ -403,8 +406,11 @@ scene holds the time and weather with game rules. `python3
 tools/capture_scenes.py list` prints them, and `args NAME` prints the
 command line of each variant. `scripts/boat-capture.sh` puts one folder of
 PNGs per commit under `target/captures/`. Mobs move during the 1.5 seconds
-the mob scenes wait, so those two scenes are the only ones that differ
-between runs of one build.
+the first two mob scenes wait, so those two scenes are the only ones that
+differ between runs of one build. `--still-mobs` (capture-only) pins them
+instead: a mob that has landed stops updating (no AI, movement, sunlight
+burning or sounds), turns to face the starting camera and keeps its
+lighting current, so the two pinned scenes show the same poses every run.
 
 To add a scene, append it to the JSON with a new name, rather than changing
 an existing scene, so earlier captures keep comparing like with like. The

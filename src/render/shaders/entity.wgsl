@@ -238,7 +238,10 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         let disc = 1.0 - smoothstep(0.55, 1.0, d);
         let f = clamp((in.dist - g.params.x) / (g.params.y - g.params.x), 0.0, 1.0);
         let fog = f * f * (3.0 - 2.0 * f);
-        return vec4<f32>(0.0, 0.0, 0.0, disc * in.color.a * (1.0 - fog));
+        // Java blends in gamma space, darkening the on-screen colour by
+        // (1 - a); this target blends in linear light, where that is (1 - a)^2.2.
+        let a = disc * in.color.a * (1.0 - fog);
+        return vec4<f32>(0.0, 0.0, 0.0, 1.0 - pow(1.0 - a, 2.2));
     }
     if in.material == 1u {
         let tex = textureLoad(skin, texel, 0, 0);
