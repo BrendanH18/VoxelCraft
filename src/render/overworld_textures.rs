@@ -19,12 +19,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     let r = rnd(layer, x, y, 0);
     let (fx, fy) = (x as f32 + 0.5, y as f32 + 0.5);
     match layer {
-        t::MUD => noisy(layer, x, y, [60, 57, 60], 0.12),
-        t::PACKED_MUD => {
-            let straw = rnd(layer, x, y / 2, 7) < 0.12;
-            if straw { shade([180, 150, 92], 0.85 + r * 0.2) } else { noisy(layer, x, y, [142, 107, 80], 0.1) }
-        }
-        t::MUD_BRICKS => bricks(layer, x, y, [137, 103, 79], [116, 88, 66]),
         t::MOSS => mossy(layer, x, y, MOSS),
         t::PALE_MOSS => mossy(layer, x, y, PALE_MOSS),
         t::BLUE_ICE => {
@@ -64,15 +58,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
                 shade([96, 74, 44], 0.85 + r * 0.2)
             } else {
                 CLEAR
-            }
-        }
-        t::AZALEA_LEAVES | t::FLOWERING_AZALEA_LEAVES => {
-            if rnd(layer, x, y, 11) < 0.18 {
-                CLEAR
-            } else if layer == t::FLOWERING_AZALEA_LEAVES && rnd(layer, x / 2, y / 2, 12) < 0.22 {
-                shade([214, 120, 200], 0.9 + r * 0.2)
-            } else {
-                shade([90, 122, 44], 0.75 + r * 0.4)
             }
         }
         l if (t::CAVE_VINES..t::CAVE_VINES + 4).contains(&l) => {
@@ -171,7 +156,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             let c = [PRISMARINE, [86, 140, 150], [110, 170, 140]][tint];
             shade(c, 0.88 + r * 0.16)
         }
-        t::PRISMARINE_BRICKS => bricks(layer, x, y, [99, 171, 158], [76, 140, 128]),
         t::DARK_PRISMARINE => {
             let seam = x.is_multiple_of(8) || y.is_multiple_of(8);
             shade([51, 92, 75], if seam { 0.7 } else { 0.9 + r * 0.12 })
@@ -344,16 +328,6 @@ fn mossy(layer: u16, x: usize, y: usize, c: [u8; 3]) -> Rgba {
             0.92 + rnd(layer, x, y, 0) * 0.14
         },
     )
-}
-
-fn bricks(layer: u16, x: usize, y: usize, c: [u8; 3], mortar: [u8; 3]) -> Rgba {
-    let row = y / 4;
-    let offset = if row.is_multiple_of(2) { 0 } else { 4 };
-    if y % 4 == 3 || (x + offset) % 8 == 7 {
-        shade(mortar, 0.9 + rnd(layer, x, y, 1) * 0.1)
-    } else {
-        noisy(layer, x, y, c, 0.08)
-    }
 }
 
 fn planks(layer: u16, x: usize, y: usize, colour: [u8; 3]) -> Rgba {
