@@ -166,8 +166,12 @@ stay GPU instances. The farm animals, villagers, zombies (husks and
 drowned share the macro), skeletons (strays, bogged and wither
 skeletons), creepers, spiders, endermen and wolves choose them box by box;
 every other mob's surface boxes take `model::default_pattern`'s choice for
-its kind (iron golems, witches, illagers, horses and ghasts also have new
-details). The first group also has new
+its kind. All of them also have hand-drawn faces and markings (the
+second to fourth rounds), and some follow their variants: a panda's
+personality on its face, frog spots, each axolotl variant's own vivid gill
+colour (`aquatic::AXOLOTL_GILLS`, pinned by a test), a wolf's mane and
+muzzle, a white rabbit's red eyes, the copper golem's rivets with its
+oxidation. The first group also has new
 faces and markings: eye whites, hooves, an udder and more hide patches,
 teeth, torn shirts, eight spider eyes, a villager belt and hem, darker
 wing edges. Silhouettes and cuboid construction are unchanged apart from

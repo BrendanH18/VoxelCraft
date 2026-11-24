@@ -334,6 +334,9 @@ static MAGMA_GLOW: &[Cuboid] = &[
     cube([-4.1, 5.8, -4.1], [4.1, 6.1, 4.1], [245, 99, 16], 0),
     cube([-2.6, 4.5, 4.1], [-1.1, 6.0, 4.15], [255, 205, 55], 0),
     cube([1.1, 4.5, 4.1], [2.6, 6.0, 4.15], [255, 205, 55], 0),
+    // v0.18 Track 6: dark pupils in the burning eyes.
+    cube([-2.0, 4.8, 4.15], [-1.5, 5.6, 4.2], [80, 20, 6], 0),
+    cube([1.5, 4.8, 4.15], [2.0, 5.6, 4.2], [80, 20, 6], 0),
 ];
 // v0.18 Track 6: grey tear streaks under the eyes (the hide takes the
 // default pattern).
@@ -344,8 +347,16 @@ const GHAST_BODY: &[Cuboid] = &[
     cube([-3.5, 34.0, 18.0], [3.5, 38.0, 18.4], [120, 36, 40], 0),
     cube([-6.0, 36.0, 18.0], [-5.0, 42.0, 18.2], [170, 170, 176], 0),
     cube([5.0, 37.0, 18.0], [6.0, 42.0, 18.2], [170, 170, 176], 0),
+    // v0.18 Track 6 round 4: heavy grey brows and pale rims round the eyes.
+    cube([-7.5, 48.5, 18.0], [-1.5, 49.5, 18.3], [196, 196, 202], 0),
+    cube([1.5, 48.5, 18.0], [7.5, 49.5, 18.3], [196, 196, 202], 0),
+    cube([-7.5, 41.5, 18.0], [-1.5, 42.0, 18.55], [214, 120, 120], 0),
+    cube([1.5, 41.5, 18.0], [7.5, 42.0, 18.55], [214, 120, 120], 0),
 ];
-const GHAST_TENTACLE: &[Cuboid] = &[cube([-2.0, -24.0, -2.0], [2.0, 0.0, 2.0], [214, 214, 214], 12)];
+const GHAST_TENTACLE: &[Cuboid] = &[
+    cube([-2.0, -24.0, -2.0], [2.0, 0.0, 2.0], [214, 214, 214], 12),
+    cube([-2.05, -24.0, -2.05], [2.05, -21.0, 2.05], [186, 186, 192], 0),
+];
 // Java's slime: an opaque 6-unit core with the face, inside a translucent
 // 8-unit shell (`SlimeOuterLayer`).
 const SLIME_BODY: &[Cuboid] = &[
@@ -353,6 +364,9 @@ const SLIME_BODY: &[Cuboid] = &[
     cube([-2.0, 4.0, 3.0], [-0.6, 5.4, 3.1], [20, 44, 16], 0),
     cube([0.6, 4.0, 3.0], [2.0, 5.4, 3.1], [20, 44, 16], 0),
     cube([-0.4, 2.2, 3.0], [0.4, 3.0, 3.1], [20, 44, 16], 0),
+    // v0.18 Track 6: eye glints in the core.
+    cube([-1.3, 4.9, 3.1], [-0.9, 5.3, 3.15], [180, 220, 160], 0),
+    cube([1.3, 4.9, 3.1], [1.7, 5.3, 3.15], [180, 220, 160], 0),
     glass([-4.08, 0.0, -4.08], [4.08, 8.16, 4.08], [105, 180, 78], 55),
 ];
 
@@ -540,6 +554,13 @@ const SNOW_HEAD: &[Cuboid] = &[
     cube([-1.0, 2.0, 4.0], [1.0, 5.0, 7.0], [90, 50, 16], 8),
     cube([-2.0, 5.0, 4.0], [-0.6, 6.2, 4.2], [40, 24, 12], 0),
     cube([0.6, 5.0, 4.0], [2.0, 6.2, 4.2], [40, 24, 12], 0),
+    // v0.18 Track 6 round 4: a carved, gap-toothed mouth and the pumpkin's ribs.
+    cube([-3.0, 1.0, 4.0], [3.0, 2.0, 4.1], [52, 28, 10], 0),
+    cube([-1.5, 1.5, 4.1], [-0.5, 2.0, 4.15], [226, 140, 28], 0),
+    cube([0.8, 1.0, 4.1], [1.8, 1.5, 4.15], [226, 140, 28], 0),
+    cube([-2.9, 0.0, 4.0], [-2.6, 8.0, 4.03], [192, 112, 20], 0),
+    cube([2.6, 0.0, 4.0], [2.9, 8.0, 4.03], [192, 112, 20], 0),
+    cube([-4.03, 0.0, -0.2], [4.03, 8.0, 0.2], [192, 112, 20], 0),
 ];
 const SNOW_STICK: &[Cuboid] = &[cube([-0.5, -8.0, -0.5], [0.5, 2.0, 0.5], [120, 78, 42], 16)];
 const FARMER_HAT: &[Cuboid] = &[
@@ -857,10 +878,19 @@ const SILVERFISH: Rgb = [138, 138, 146];
 const fn segment(w: f32, h: f32, d: f32) -> Cuboid {
     cube([-w / 2.0, 0.0, -d / 2.0], [w / 2.0, h, d / 2.0], SILVERFISH, 34)
 }
+// v0.18 Track 6 round 4: eyes and mandibles on the head, darker plate
+// edges on the widest segments.
+const SILVERFISH_EDGE: Rgb = [104, 104, 112];
 const SILVERFISH_SEGMENTS: [&[Cuboid]; 7] = [
-    &[segment(3.0, 2.0, 2.0)],
-    &[segment(4.0, 3.0, 2.0)],
-    &[segment(6.0, 4.0, 3.0)],
+    &[
+        segment(3.0, 2.0, 2.0),
+        cube([-1.3, 1.0, 1.0], [-0.6, 1.6, 1.05], [24, 24, 30], 0),
+        cube([0.6, 1.0, 1.0], [1.3, 1.6, 1.05], [24, 24, 30], 0),
+        cube([-1.0, 0.0, 1.0], [-0.6, 0.5, 1.5], [96, 96, 104], 0),
+        cube([0.6, 0.0, 1.0], [1.0, 0.5, 1.5], [96, 96, 104], 0),
+    ],
+    &[segment(4.0, 3.0, 2.0), cube([-2.05, 2.5, -1.05], [2.05, 3.05, -0.6], SILVERFISH_EDGE, 0)],
+    &[segment(6.0, 4.0, 3.0), cube([-3.05, 3.5, -1.55], [3.05, 4.05, -1.0], SILVERFISH_EDGE, 0)],
     &[segment(3.0, 3.0, 3.0)],
     &[segment(2.0, 2.0, 3.0)],
     &[segment(2.0, 1.0, 2.0)],
@@ -879,6 +909,11 @@ const BLAZE_HEAD: &[Cuboid] = &[
     cube([-3.0, 3.0, 4.0], [-1.0, 4.0, 4.1], BLAZE_FACE, 0),
     cube([1.0, 3.0, 4.0], [3.0, 4.0, 4.1], BLAZE_FACE, 0),
     cube([-2.0, 1.0, 4.0], [2.0, 1.5, 4.05], BLAZE_FACE, 0),
+    // v0.18 Track 6: hot pupils, a heavy brow and a smoky crown.
+    cube([-2.0, 3.0, 4.1], [-1.5, 4.0, 4.15], [255, 236, 150], 0),
+    cube([1.5, 3.0, 4.1], [2.0, 4.0, 4.15], [255, 236, 150], 0),
+    cube([-3.5, 4.4, 4.0], [3.5, 5.0, 4.05], [176, 96, 24], 0),
+    cube([-4.05, 7.0, -4.05], [4.05, 8.05, 4.05], [150, 96, 40], 20),
 ];
 const BLAZE_ROD_BOX: &[Cuboid] = &[cube([-1.0, -4.0, -1.0], [1.0, 4.0, 1.0], BLAZE_ROD, 30)];
 
@@ -1440,6 +1475,14 @@ pub fn build(
                 if m.kind == MobKind::GlowSquid && c.color == [49, 71, 80] {
                     cuboid.color = [44, 161, 151];
                 }
+                // v0.18 Track 6: the glow squid's paler stripes.
+                if m.kind == MobKind::GlowSquid && c.color == aquatic::SQUID_STRIPE {
+                    cuboid.color = [118, 214, 200];
+                }
+                // v0.18 Track 6: each axolotl variant's own gill colour.
+                if m.kind == MobKind::Axolotl && c.color == aquatic::AXOLOTL_GILL {
+                    cuboid.color = aquatic::AXOLOTL_GILLS[m.aquatic.as_ref().map_or(0, |a| a.variant as usize) % 5];
+                }
                 if m.kind == MobKind::ElderGuardian && c.color == [105, 138, 129] {
                     cuboid.color = [173, 170, 146];
                 }
@@ -1462,9 +1505,7 @@ pub fn build(
                 }
                 if m.kind == MobKind::Axolotl && matches!(c.color, [237, 160, 184] | [243, 179, 198] | [235, 151, 183])
                 {
-                    const COLORS: [[u8; 3]; 5] =
-                        [[237, 160, 184], [139, 104, 81], [225, 186, 66], [184, 217, 221], [89, 101, 184]];
-                    cuboid.color = COLORS[m.aquatic.as_ref().map_or(0, |a| a.variant as usize) % 5];
+                    cuboid.color = aquatic::AXOLOTL_BODIES[m.aquatic.as_ref().map_or(0, |a| a.variant as usize) % 5];
                 }
                 // v0.15 Track D: warm and cold chickens, cows and pigs take
                 // their variant's original colouring.
@@ -2358,6 +2399,37 @@ mod tests {
         assert!(slime[first..].iter().all(|v| v.torch[1] == 4), "shell is emitted after the core and face");
         for kind in [MobKind::MagmaCube, MobKind::Pig, MobKind::Zombie] {
             assert!(build_one(kind).iter().all(|v| v.torch[1] != 4), "{kind:?}");
+        }
+    }
+
+    /// v0.18 Track 6: every axolotl variant's side gills and frill are its
+    /// own colour, pinned here, clearly apart from its body and more
+    /// saturated than it (round three had painted the wild one's gills
+    /// nearly its body brown).
+    #[test]
+    fn every_axolotl_variant_has_its_own_vivid_gills() {
+        assert_eq!(
+            aquatic::AXOLOTL_GILLS,
+            [[222, 70, 136], [218, 120, 124], [244, 120, 30], [232, 140, 200], [176, 98, 222]]
+        );
+        let saturation = |c: [u8; 3]| i32::from(*c.iter().max().unwrap()) - i32::from(*c.iter().min().unwrap());
+        let apart = |a: [u8; 3], b: [u8; 3]| (0..3).map(|i| (i32::from(a[i]) - i32::from(b[i])).abs()).sum::<i32>();
+        for variant in 0..5u8 {
+            let mut mob = Mob::new(MobKind::Axolotl, DVec3::new(3.0, 0.0, 0.0), 0.0);
+            mob.aquatic.as_mut().unwrap().variant = variant;
+            let mut out = EntityMesh::default();
+            build(std::slice::from_ref(&mob), DVec3::ZERO, Vec3::X, 100.0, 0.0, 1.0, &mut out);
+            let colours: Vec<[u8; 3]> = out.boxes().iter().map(|b| [b.color[0], b.color[1], b.color[2]]).collect();
+            let (body, gills) = (aquatic::AXOLOTL_BODIES[variant as usize], aquatic::AXOLOTL_GILLS[variant as usize]);
+            assert_eq!(
+                colours.iter().filter(|&&c| c == gills).count(),
+                3,
+                "variant {variant}: two gills and the frill"
+            );
+            assert!(colours.contains(&body), "variant {variant}");
+            assert!(!colours.contains(&aquatic::AXOLOTL_GILL), "variant {variant}: no unpainted marker");
+            assert!(apart(gills, body) > 100, "variant {variant}: gills stand out from the body");
+            assert!(saturation(gills) > saturation(body), "variant {variant}: gills are the vivid part");
         }
     }
 

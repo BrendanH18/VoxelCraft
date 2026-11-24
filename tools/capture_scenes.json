@@ -6529,6 +6529,153 @@
    "args": [
     "--still-mobs"
    ]
+  },
+  {
+   "name": "mobs-still-variants",
+   "group": "mobs",
+   "description": "Pinned close-up (v0.18 Track 6 round 3): two rows of mobs whose look varies by spawn roll (cats, pandas, rabbits, axolotls, parrots, foxes, frogs), at noon, facing the camera",
+   "pose": [
+    0.5,
+    154.2,
+    13.5,
+    90,
+    -16
+   ],
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "fill": [
+    [
+     -11,
+     150,
+     13,
+     11,
+     150,
+     30,
+     "grass"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "cat,-8,151,19",
+    "cat,-6,151,19",
+    "cat,-4,151,19",
+    "rabbit,-2,151,19",
+    "rabbit,0,151,19",
+    "rabbit,2,151,19",
+    "axolotl,4,151,19",
+    "axolotl,6,151,19",
+    "frog,8,151,19",
+    "panda,-7,151,23",
+    "panda,-3,151,23",
+    "panda,1,151,23",
+    "panda,5,151,23",
+    "fox,8,151,22",
+    "fox,-9,151,22",
+    "parrot,3,151,21",
+    "parrot,-1,151,21"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
+  },
+  {
+   "name": "mobs-still-rest",
+   "group": "mobs",
+   "description": "Pinned close-up (v0.18 Track 6 round 4): endermite, silverfish, allay, shulker, nautilus, copper golem, creaking, snow golem, sulfur cube and tadpole at noon, facing the camera",
+   "pose": [
+    0.5,
+    153.4,
+    14.0,
+    90,
+    -14
+   ],
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "fill": [
+    [
+     -14,
+     150,
+     10,
+     14,
+     150,
+     34,
+     "grass"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "endermite,-8,151,19",
+    "silverfish,-6,151,19",
+    "allay,-4,152,19",
+    "shulker,-2,151,20",
+    "nautilus,0,151,20",
+    "copper_golem,2,151,19",
+    "creaking,4,151,21",
+    "snow_golem,6,151,21",
+    "sulfur_cube,8,151,20",
+    "tadpole,-9,151,18"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
+  },
+  {
+   "name": "mobs-still-big",
+   "group": "mobs",
+   "description": "Pinned scene (v0.18 Track 6 round 4): ghast, Wither and elder guardian behind, zoglin, skeleton horse, zombie horse, mooshroom, parched and camel husk in front, at noon, facing the camera",
+   "pose": [
+    0.5,
+    156.0,
+    10.0,
+    90,
+    -8
+   ],
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "fill": [
+    [
+     -14,
+     150,
+     10,
+     14,
+     150,
+     34,
+     "grass"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "ghast,-8,151,28",
+    "wither,0,151,28",
+    "elder_guardian,7,151,27",
+    "zoglin,-9,151,21",
+    "skeleton_horse,-5,151,21",
+    "zombie_horse,-2,151,21",
+    "mooshroom,1,151,21",
+    "parched,4,151,21",
+    "camel_husk,8,151,22"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
   }
  ]
 }
