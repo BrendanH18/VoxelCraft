@@ -1,0 +1,249 @@
+{
+ "reference": "Minecraft Java Edition 26.3",
+ "client_sha1": "e877b6a07acd633fb3bb475002175cec036e7b87",
+ "sources": [
+  "net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen (constructor, init, insideScrollbar, mouseDragged, extractBackground, getTabX/getTabY, checkTabClicked, checkTabHovering, extractTabButton, extractLabels, selectTab)",
+  "net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen$ItemPickerMenu",
+  "net.minecraft.client.gui.screens.inventory.InventoryScreen (extractBackground, extractEntityInInventoryFollowsMouse)",
+  "net.minecraft.client.gui.screens.inventory.AbstractContainerScreen (init: leftPos = (width - imageWidth) / 2)",
+  "net.minecraft.client.HotbarManager, net.minecraft.client.Options",
+  "assets/minecraft/lang/en_us.json"
+ ],
+ "creative": {
+  "size": [
+   195,
+   136
+  ],
+  "grid": {
+   "columns": 9,
+   "rows": 5,
+   "origin": [
+    9,
+    18
+   ],
+   "pitch": 18,
+   "hotbar": [
+    9,
+    112
+   ]
+  },
+  "title": {
+   "at": [
+    8,
+    6
+   ],
+   "colour": "#404040"
+  },
+  "search_box": {
+   "at": [
+    82,
+    6
+   ],
+   "size": [
+    80,
+    9
+   ],
+   "max_length": 50
+  },
+  "scrollbar": {
+   "at": [
+    175,
+    18
+   ],
+   "size": [
+    14,
+    112
+   ],
+   "thumb": [
+    12,
+    15
+   ],
+   "travel": 95,
+   "drag_centre": 7.5
+  },
+  "tabs": {
+   "size": [
+    26,
+    32
+   ],
+   "spacing": 27,
+   "right_columns": 7,
+   "right_offset": 1,
+   "top_y": -32,
+   "bottom_y": 136,
+   "drawn_top_y": -28,
+   "drawn_bottom_y": 132,
+   "icon": {
+    "centre": [
+     13,
+     16
+    ],
+    "top_nudge": 1,
+    "bottom_nudge": -1
+   },
+   "hover_box": [
+    3,
+    3,
+    21,
+    27
+   ]
+  },
+  "inventory_tab": {
+   "armor": {
+    "origin": [
+     54,
+     6
+    ],
+    "column_pitch": 54,
+    "row_pitch": 27
+   },
+   "offhand": [
+    35,
+    20
+   ],
+   "main": {
+    "origin": [
+     9,
+     54
+    ],
+    "pitch": 18
+   },
+   "hotbar_y": 112,
+   "destroy_slot": [
+    173,
+    112
+   ],
+   "preview": {
+    "box": [
+     73,
+     6,
+     105,
+     49
+    ],
+    "size": 20,
+    "offset_y": 0.0625
+   }
+  },
+  "scroll": {
+   "rows_visible": 5,
+   "rows_scrolled": "ceil(items / 9) - 5",
+   "row_rounding": 0.5,
+   "scrolls_past": 45
+  }
+ },
+ "survival": {
+  "size": [
+   176,
+   166
+  ],
+  "preview": {
+   "box": [
+    26,
+    8,
+    75,
+    78
+   ],
+   "size": 30,
+   "offset_y": 0.0625
+  }
+ },
+ "follow_mouse": {
+  "divisor": 40.0,
+  "degrees_per_radian_step": 20.0,
+  "body_yaw": "atan((centre_x - mouse_x) / 40) * 20 degrees",
+  "head_yaw": "atan((centre_x - mouse_x) / 40) * 20 degrees, relative to the body",
+  "head_pitch": "-atan((centre_y - mouse_y) / 40) * 20 degrees",
+  "tilt": "atan((centre_y - mouse_y) / 40) * 20 degrees about x"
+ },
+ "hotbars": {
+  "groups": 9,
+  "slots": 9,
+  "file": "hotbar.nbt",
+  "keys": {
+   "key.saveToolbarActivator": {
+    "label": "Save Hotbar Activator",
+    "default": "C"
+   },
+   "key.loadToolbarActivator": {
+    "label": "Load Hotbar Activator",
+    "default": "X"
+   }
+  },
+  "info": "Save hotbar with %1$s + %2$s",
+  "saved": "Item hotbar saved (restore with %1$s + %2$s)"
+ },
+ "labels": {
+  "destroy_item": "Destroy Item",
+  "search_hint": "Search..."
+ },
+ "gui_scales": {
+  "1920x1080": [
+   {
+    "scale": 1,
+    "left": 862,
+    "top": 472,
+    "gui": [
+     1920,
+     1080
+    ]
+   },
+   {
+    "scale": 2,
+    "left": 382,
+    "top": 202,
+    "gui": [
+     960,
+     540
+    ]
+   },
+   {
+    "scale": 3,
+    "left": 222,
+    "top": 112,
+    "gui": [
+     640,
+     360
+    ]
+   },
+   {
+    "scale": 4,
+    "left": 142,
+    "top": 67,
+    "gui": [
+     480,
+     270
+    ]
+   }
+  ],
+  "1280x720": [
+   {
+    "scale": 1,
+    "left": 542,
+    "top": 292,
+    "gui": [
+     1280,
+     720
+    ]
+   },
+   {
+    "scale": 2,
+    "left": 222,
+    "top": 112,
+    "gui": [
+     640,
+     360
+    ]
+   },
+   {
+    "scale": 3,
+    "left": 115,
+    "top": 52,
+    "gui": [
+     426,
+     240
+    ]
+   }
+  ]
+ }
+}
+

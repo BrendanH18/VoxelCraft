@@ -219,6 +219,40 @@ impl Agents {
     }
 }
 
+/// The agent CLI's `catalog`: `tabs` lists Java's creative tabs; `tab:<id>`
+/// lists one tab's stacks in Java's order (optionally filtered by the rest
+/// of the query); anything else is the flat creative palette as before.
+fn catalog_reply(query: &str) -> Result<serde_json::Value, String> {
+    let c = voxelcraft::creative::catalogue();
+    let entry = |s: &crate::inventory::Stack| {
+        json!({"id":s.item.0,"name":s.display_name(),"command_name":s.item.name().replace(' ',"_"),"max_stack":s.max()})
+    };
+    if query.trim() == "tabs" {
+        let tabs: Vec<_> = c
+            .shown()
+            .map(|i| &c.tabs[i])
+            .map(|t| json!({"id":t.id,"title":t.title,"items":c.items(c.index(&t.id).unwrap_or(0)).len()}))
+            .collect();
+        return Ok(json!({"ok":true,"version":VERSION,"tabs":tabs}));
+    }
+    if let Some(rest) = query.trim().strip_prefix("tab:") {
+        let (id, filter) = rest.split_once(' ').unwrap_or((rest, ""));
+        let tab = c.index(id).filter(|&i| c.tabs[i].shown()).ok_or_else(|| format!("unknown creative tab: {id}"))?;
+        let items: Vec<_> = c
+            .items(tab)
+            .iter()
+            .filter(|s| filter.trim().is_empty() || voxelcraft::creative::matches(s, filter))
+            .map(entry)
+            .collect();
+        return Ok(json!({"ok":true,"version":VERSION,"tab":id,"items":items}));
+    }
+    let items: Vec<_> = crate::item::Item::creative_palette()
+        .filter(|i| i.matches_query(query))
+        .map(|i| json!({"id":i.0,"name":i.name(),"command_name":i.name().replace(' ',"_"),"max_stack":i.max_stack()}))
+        .collect();
+    Ok(json!({"ok":true,"version":VERSION,"items":items}))
+}
+
 impl Game {
     fn agent_response(&self, agent: &Agent, radius: i32) -> Value {
         let mut state = agent.observe(&self.world, radius);
@@ -304,10 +338,20 @@ impl Game {
                     bot.active = true;
                     let radius = if let Command::Observe(r) = command { r } else { 0 };
                     match command {
-                        Command::Catalog(query) => {
-                            return Ok(Some(
-                                json!({"ok":true,"version":VERSION,"items":crate::item::Item::creative_palette().filter(|i|i.matches_query(&query)).map(|i|json!({"id":i.0,"name":i.name(),"command_name":i.name().replace(' ',"_"),"max_stack":i.max_stack()})).collect::<Vec<_>>()}),
-                            ));
+                        // v0.18 Track 4: `catalog tabs` and `catalog tab:<id> [query]`
+                        // read Java's creative tabs; a plain query keeps the old list.
+                        Command::Catalog(query) => return Ok(Some(catalog_reply(&query)?)),
+                        Command::Hotbar(load, row) => {
+                            if !bot.agent.session.mode.is_creative() {
+                                return Err("saved hotbars need creative mode".into());
+                            }
+                            if load {
+                                self.hotbars.load(row as usize, &mut bot.agent.session.inventory);
+                            } else {
+                                self.hotbars.store(row as usize, &bot.agent.session.inventory);
+                                self.save_hotbars();
+                            }
+                            return Ok(Some(json!({"ok":true,"version":VERSION})));
                         }
                         Command::Help => {
                             return Ok(Some(json!({"ok":true,"version":VERSION,"help":voxelcraft::agent::HELP})));

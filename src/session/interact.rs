@@ -48,6 +48,15 @@ pub enum Used {
     CushionPlaced {
         at: DVec3,
     },
+    /// v0.18 Track 4: a spawn egg made a mob, now standing here.
+    SpawnedMob {
+        at: DVec3,
+    },
+    /// v0.18 Track 4: a spawn egg set the mob of the spawner or trial
+    /// spawner in this cell.
+    SpawnerSet {
+        cell: IVec3,
+    },
     /// v0.15 Track B: a lectern holding a book was used; its reading
     /// screen opens (`LecternMenu`).
     Lectern {
@@ -532,6 +541,18 @@ impl PlayerSession {
             }
             return Ok(Some(Used::FurnaceCart { fuelled, at: entities.minecarts[i].pos }));
         }
+        // v0.18 Track 4: `Mob.checkAndHandleImportantInteractions` (after
+        // name tags, before every other mob use): a spawn egg on a mob of its
+        // own type makes a baby (`spawnOffspringFromSpawnEgg`).
+        if let Some(egg) = self.inventory.get(slot).map(|s| s.item).filter(|&i| crate::content::spawn_egg::is_spawn_egg(i))
+            && let Some(index) = self.mob_target(world, entities)
+            && entities.spawn_baby_from_egg(index, egg).is_some()
+        {
+            if !creative {
+                self.inventory.take_one(slot);
+            }
+            return Ok(Some(Used::Mob));
+        }
         // Leads, name tags, food and taming come before mounting.
         if survival_items::use_animal_target(
             &self.player,
@@ -658,6 +679,10 @@ impl PlayerSession {
             }
             return Ok(Some(Used::MapCreated));
         }
+        // v0.18 Track 4: `SpawnEggItem.useOn` and `use`.
+        if let Some(kind) = self.inventory.get(slot).and_then(|s| crate::content::spawn_egg::mob(s.item)) {
+            return self.use_spawn_egg(slot, kind, world, entities);
+        }
         let creative = self.mode.is_creative();
         let survival = self.mode.is_survival();
         let reach = self.block_reach();
@@ -767,6 +792,77 @@ impl PlayerSession {
             return Ok(Some(Used::Rod { from: eye, broke }));
         }
         Ok(None)
+    }
+
+    /// v0.18 Track 4: a spawn egg used on the targeted block
+    /// (`SpawnEggItem.useOn`) or, with no block or mob in reach, on a water
+    /// or lava source (`SpawnEggItem.use`, `ClipContext.Fluid.SOURCE_ONLY`).
+    /// Blocks that take the use (containers, doors) have had it already.
+    fn use_spawn_egg(
+        &mut self,
+        slot: usize,
+        kind: crate::entity::MobKind,
+        world: &mut World,
+        entities: &mut Entities,
+    ) -> Result<Option<Used>, &'static str> {
+        use crate::world::vibration::GameEvent as E;
+        // `mayUseItemAt` and `mayInteract`: Adventure and Spectator can't.
+        if !self.mode.can_build() {
+            return Ok(None);
+        }
+        const PEACEFUL: &str = "that mob can't spawn on Peaceful";
+        let source = self.event_source();
+        let consume = |s: &mut Self| {
+            // `ItemStack.consume` / `shrink`: creative keeps its eggs.
+            if !s.mode.is_creative() {
+                s.inventory.take_one(slot);
+            }
+        };
+        // With a mob under the crosshair, Java's client skips `useOn`.
+        let mob = self.mob_target(world, entities).is_some();
+        if !mob && let Some((pos, normal)) = self.block_target(world) {
+            if !entities.egg_can_spawn(kind) {
+                return Err(PEACEFUL);
+            }
+            let block = world.get_block(pos).ok_or("that block isn't loaded")?;
+            if block == Block::SPAWNER || crate::world::trial::spawner(block).is_some() {
+                // `Spawner.setEntityId`, unless `spawner_blocks_work` is off.
+                if !entities.spawner_blocks {
+                    return Err("Spawner blocks are not enabled");
+                }
+                let set = if block == Block::SPAWNER {
+                    world.set_spawner(pos, kind)
+                } else {
+                    world.override_trial_spawner_entity(pos, kind)
+                };
+                if !set {
+                    return Ok(None);
+                }
+                consume(self);
+                world.emit_block_event(pos, E::BlockChange, source, None);
+                return Ok(Some(Used::SpawnerSet { cell: pos }));
+            }
+            // Into a cell without collision (grass, flowers, water), else
+            // in front of the clicked face; dropped onto what's below.
+            let mut empty = true;
+            crate::physics::block_collision_boxes(block, |_, _| empty = false);
+            let at = if empty { pos } else { pos + normal };
+            let moved_up = at != pos && normal == IVec3::Y;
+            let index = entities.spawn_from_egg(world, kind, at, true, moved_up).ok_or(PEACEFUL)?;
+            consume(self);
+            world.emit_block_event(at, E::EntityPlace, source, None);
+            return Ok(Some(Used::SpawnedMob { at: entities.mobs[index].pos }));
+        }
+        let (eye, dir) = (self.player.eye(), self.player.forward().as_dvec3());
+        let Some((pos, _)) = world.raycast_sources(eye, dir, self.block_reach()) else { return Ok(None) };
+        // `instanceof LiquidBlock`: a water or lava source, not a waterlogged block.
+        if !matches!(world.get_block(pos), Some(Block::WATER | Block::LAVA)) {
+            return Ok(None);
+        }
+        let index = entities.spawn_from_egg(world, kind, pos, false, false).ok_or(PEACEFUL)?;
+        consume(self);
+        world.emit_block_event(pos, E::EntityPlace, source, None);
+        Ok(Some(Used::SpawnedMob { at: entities.mobs[index].pos }))
     }
 
     /// [`Self::use_block_inner`], then the game event Java's block posts
@@ -1161,6 +1257,11 @@ impl PlayerSession {
                 self.inventory.take_one(slot);
             }
             return Ok(Some(Used::Decor { at: pos.as_dvec3() + DVec3::splat(0.5) + normal.as_dvec3() * 0.5, effect }));
+        }
+        // v0.18 Track 4: a spawn egg that didn't spawn (a mob under the
+        // crosshair it can't breed) does nothing more.
+        if held.is_some_and(crate::content::spawn_egg::is_spawn_egg) {
+            return Ok(None);
         }
         let result = self.place_held(slot, world, ctx.others)?;
         Ok(Some(Used::Placed(result)))

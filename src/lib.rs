@@ -8,6 +8,7 @@ pub mod color;
 pub mod content;
 pub mod control;
 pub mod crafting;
+pub mod creative;
 pub mod enchant;
 pub mod entity;
 pub mod equipment;

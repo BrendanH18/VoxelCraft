@@ -11,6 +11,7 @@ use crate::world::block::Block;
 
 use super::{Container, Game};
 use crate::entity::PlayerId;
+use crate::inventory::Stack;
 
 /// Dropped items farther away than this aren't drawn.
 const DRAW_DIST: f64 = 64.0;
@@ -156,6 +157,14 @@ impl Game {
         let slot = if self.inventory_open {
             match self.slot_under_cursor() {
                 Some(super::hud::SlotRef::Inventory(i)) => i,
+                // v0.18 Track 4: `THROW` on a creative cell drops one, or a
+                // full stack with the modifier, without touching the cell.
+                Some(super::hud::SlotRef::Palette(s)) => {
+                    let stack = Stack { count: if whole_stack { s.max() } else { 1 }, ..s };
+                    let (eye, dir) = (self.session.player.eye(), self.session.player.forward().as_dvec3());
+                    self.mobs.entities.throw(stack, eye, dir);
+                    return;
+                }
                 // v0.17 Track D2: over a storage slot the drop key throws
                 // from it, with nothing held (`THROW`).
                 Some(s) => {
@@ -186,6 +195,16 @@ impl Game {
     /// swaps that slot with hotbar slot `hotbar` (`SWAP`). Returns whether
     /// a slot was under the mouse.
     pub(super) fn swap_under_cursor(&mut self, hotbar: usize) -> bool {
+        // v0.18 Track 4: `SWAP` on a creative cell puts a full stack of it
+        // in that hotbar slot; an empty cell does nothing.
+        match self.slot_under_cursor() {
+            Some(super::hud::SlotRef::Palette(s)) => {
+                self.session.inventory.slots[hotbar] = Some(Stack { count: s.max(), ..s });
+                return true;
+            }
+            Some(super::hud::SlotRef::PaletteEmpty | super::hud::SlotRef::Destroy) => return true,
+            _ => {}
+        }
         let Some(slot) = self.slot_under_cursor().and_then(super::screen::storage_slot) else { return false };
         self.with_screen(|screen| match screen.storage() {
             Some(mut storage) => storage.swap(slot, hotbar),

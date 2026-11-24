@@ -208,11 +208,20 @@ impl Screen<'_> {
             | SlotRef::BeaconPower(_)
             | SlotRef::BeaconDone
             | SlotRef::BeaconCancel => {}
-            SlotRef::Palette(item) => {
-                if self.session.mode.is_creative() {
-                    self.session.inventory.add(item, item.max_stack());
-                }
+            // v0.18 Track 4: shift on a creative cell takes a full stack,
+            // or fills the held one (`slotClicked` with `QUICK_MOVE`).
+            SlotRef::Palette(stack) if self.session.mode.is_creative() => {
+                voxelcraft::creative::click(&mut self.session.inventory.cursor, Some(stack), false, true)
             }
+            // Shift on Destroy Item empties the whole inventory.
+            SlotRef::Destroy if self.session.mode.is_creative() => {
+                let inv = &mut self.session.inventory;
+                inv.slots.fill(None);
+                inv.armor.fill(None);
+                inv.offhand = None;
+                let _ = self.craft.take_all();
+            }
+            SlotRef::Palette(_) | SlotRef::PaletteEmpty | SlotRef::Destroy => {}
         }
     }
 
@@ -403,13 +412,16 @@ impl Screen<'_> {
                 | SlotRef::BeaconDone
                 | SlotRef::BeaconCancel,
             ) => {}
-            Some(SlotRef::Palette(item)) => {
-                // Creative palette: take a full stack, or trash the held one.
-                self.session.inventory.cursor = match self.session.inventory.cursor {
-                    Some(_) => None,
-                    None => Some(Stack::new(item, item.max_stack())),
-                };
+            // v0.18 Track 4: Java's creative cell rules (`creative::click`).
+            Some(SlotRef::Palette(stack)) if self.session.mode.is_creative() => {
+                voxelcraft::creative::click(&mut self.session.inventory.cursor, Some(stack), right, false)
             }
+            Some(SlotRef::PaletteEmpty) if self.session.mode.is_creative() => {
+                voxelcraft::creative::click(&mut self.session.inventory.cursor, None, right, false)
+            }
+            // Destroy Item deletes the held stack.
+            Some(SlotRef::Destroy) if self.session.mode.is_creative() => self.session.inventory.cursor = None,
+            Some(SlotRef::Palette(_) | SlotRef::PaletteEmpty | SlotRef::Destroy) => {}
             None => {}
         }
     }

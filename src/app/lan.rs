@@ -2,7 +2,7 @@
 //! controller hands (`hands::Actor`); screens still borrow host container code.
 use super::{Container, Game, GameMode, gamepad::Body, hud::SlotRef};
 use crate::crafting::Grid;
-use crate::inventory::{stack_from_str, stack_to_string};
+use crate::inventory::{Stack, stack_from_str, stack_to_string};
 use crate::knockback;
 use crate::world::{
     World,
@@ -952,7 +952,9 @@ impl Game {
             return;
         }
         let Some(slot) = decode_slot(encoded, peer.body.container, session.mode, peer.grid.size) else { return };
-        let quick = shift && session.inventory.cursor.is_none();
+        // v0.18 Track 4: creative cells take shift with a stack held too.
+        let quick = shift
+            && (session.inventory.cursor.is_none() || matches!(slot, SlotRef::Palette(_) | SlotRef::Destroy));
         let mut container = peer.body.container;
         let done = self.agent_screen(&name, &mut container, &mut peer.grid, |s| {
             if quick { s.quick_move(slot) } else { s.click_slot(slot, right) }
@@ -2060,7 +2062,24 @@ pub(super) fn encode_slot(slot: SlotRef) -> Option<u16> {
         SlotRef::BeaconPower(i) if i < 7 => 561 + u16::from(i),
         SlotRef::BeaconDone => 568,
         SlotRef::BeaconCancel => 569,
-        SlotRef::Palette(item) => 1000 + crate::item::Item::creative_palette().position(|i| i == item)? as u16,
+        // A plain creative stack keeps the code older hosts read: its place
+        // in `Item::creative_palette`. v0.18 Track 4: other stacks (potions,
+        // enchanted books, rockets) are 20000 + tab x 1000 + their place in
+        // that tab of `creative::catalogue`.
+        SlotRef::Palette(stack) => match crate::item::Item::creative_palette().position(|i| Stack::new(i, 1) == stack) {
+            Some(i) if i < 19_000 => 1000 + i as u16,
+            _ => {
+                let c = voxelcraft::creative::catalogue();
+                let (t, i) = (0..c.tabs.len())
+                    .find_map(|t| c.tabs[t].items.iter().position(|&s| s == stack).map(|i| (t, i)))?;
+                if i >= 1000 {
+                    return None;
+                }
+                20_000 + t as u16 * 1000 + i as u16
+            }
+        },
+        SlotRef::Destroy => 405,
+        SlotRef::PaletteEmpty => 406,
         _ => return None,
     })
 }
@@ -2129,9 +2148,16 @@ fn decode_slot(slot: u16, container: Container, mode: GameMode, grid_size: usize
             _ => crate::item::ArmorPiece::Boots,
         })),
         404 if container == Container::Inventory => Some(SlotRef::Offhand),
-        1000.. if mode.is_creative() && container == Container::Inventory => {
-            crate::item::Item::creative_palette().nth((slot - 1000) as usize).map(SlotRef::Palette)
+        405 if mode.is_creative() && container == Container::Inventory => Some(SlotRef::Destroy),
+        406 if mode.is_creative() && container == Container::Inventory => Some(SlotRef::PaletteEmpty),
+        20_000.. if mode.is_creative() && container == Container::Inventory => {
+            let (t, i) = ((slot - 20_000) / 1000, (slot - 20_000) % 1000);
+            let tab = voxelcraft::creative::catalogue().tabs.get(t as usize)?;
+            tab.items.get(i as usize).copied().map(SlotRef::Palette)
         }
+        1000.. if mode.is_creative() && container == Container::Inventory => crate::item::Item::creative_palette()
+            .nth((slot - 1000) as usize)
+            .map(|item| SlotRef::Palette(Stack::new(item, 1))),
         _ => None,
     }
 }
@@ -2749,9 +2775,9 @@ mod tests {
         assert!(decode_slot(1000, inventory, GameMode::Survival, 2).is_none());
         assert!(decode_slot(u16::MAX, inventory, GameMode::Creative, 2).is_none());
         let item = crate::item::Item::from(Block::DIRT);
-        let slot = encode_slot(SlotRef::Palette(item)).unwrap();
+        let slot = encode_slot(SlotRef::Palette(Stack::new(item, 1))).unwrap();
         assert!(
-            matches!(decode_slot(slot,inventory,GameMode::Creative,2),Some(SlotRef::Palette(decoded)) if decoded==item)
+            matches!(decode_slot(slot,inventory,GameMode::Creative,2),Some(SlotRef::Palette(decoded)) if decoded==Stack::new(item, 1))
         );
     }
 }

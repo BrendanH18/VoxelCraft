@@ -11,6 +11,8 @@ impl Game {
         new: Option<title::NewWorld>,
     ) -> Game {
         let Shell { renderer, audio, settings, settings_path, updates, gilrs } = shell;
+        // v0.18 Track 4: saved hotbars live beside `options.txt`, like Java's `hotbar.nbt`.
+        let hotbars_path = settings_path.as_ref().map(|_| saves_dir.join("hotbars.txt"));
         let storage = Storage::new(saves_dir.join(world_dir));
         let existing = if args.join.is_some() || args.new_world || new.is_some() || !storage.exists() {
             None
@@ -274,7 +276,13 @@ impl Game {
             inventory_open: args.open_inventory,
             craft: crate::crafting::Grid::new(2),
             recipe_book: recipe_book::RecipeBook::default(),
-            creative_scroll: 0,
+            creative: Default::default(),
+            hotbars: hotbars_path
+                .as_deref()
+                .and_then(|p| std::fs::read_to_string(p).ok())
+                .map(|t| voxelcraft::creative::Hotbars::deserialize(&t))
+                .unwrap_or_default(),
+            hotbars_path,
             work_scroll: 0,
             cursor_px: (0.0, 0.0),
             body: Default::default(),

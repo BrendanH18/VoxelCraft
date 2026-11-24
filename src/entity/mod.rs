@@ -84,6 +84,7 @@ pub mod shulker;
 pub mod silverfish;
 mod slime;
 pub mod sniffer;
+pub mod spawn_egg;
 mod spawn_lists;
 mod spawn_rules;
 mod spawning;

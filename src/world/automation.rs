@@ -66,10 +66,12 @@ pub(super) enum Output {
     Boat,
     Cart,
     Stand,
+    /// v0.18 Track 4: `SpawnEggItemBehavior`.
+    Egg,
 }
 
 impl Output {
-    const ALL: [Output; 5] = [Output::Item, Output::Shot, Output::Boat, Output::Cart, Output::Stand];
+    const ALL: [Output; 6] = [Output::Item, Output::Shot, Output::Boat, Output::Cart, Output::Stand, Output::Egg];
     /// The saved code: 0 and 1 are the item and shot flags of older saves.
     fn code(self) -> u8 {
         Output::ALL.iter().position(|&o| o == self).unwrap() as u8
@@ -779,6 +781,19 @@ impl World {
                 self.queue_dispensed(p, facing, Output::Stand, one);
                 return;
             }
+            // v0.18 Track 4: `SpawnEggItemBehavior` spawns the egg's mob in
+            // front (dropped onto the floor unless facing up) and posts
+            // `entity_place` at the dispenser; on Peaceful a hostile's egg
+            // can't spawn and stays.
+            Behaviour::SpawnEgg => {
+                let peaceful = self.rules.difficulty == 0;
+                if crate::content::spawn_egg::egg_of(stack.item).is_some_and(|e| e.peaceful || !peaceful) {
+                    self.set_container_stack(p, slot, rest);
+                    self.queue_dispensed(p, facing, Output::Egg, one);
+                    self.emit_block_event(p, GameEvent::EntityPlace, EventSource::NONE, None);
+                }
+                return;
+            }
             _ => {}
         }
         // v0.16 Track H: `SulfurCubeBlockDispenseItemBehavior`: a swallowable
@@ -970,6 +985,11 @@ impl World {
                     }
                 }
                 Output::Stand => entities.dispense_armor_stand(p + step, step),
+                Output::Egg => {
+                    if let Some(kind) = crate::content::spawn_egg::mob(stack.item) {
+                        entities.spawn_from_egg(self, kind, p + step, step != IVec3::Y, false);
+                    }
+                }
                 _ => entities.dispense_item(stack, p, step),
             }
         }

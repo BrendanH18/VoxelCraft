@@ -447,6 +447,19 @@ impl super::World {
         true
     }
 
+    /// v0.18 Track 4: `TrialSpawnerBlockEntity.setEntityId` from a spawn
+    /// egg (`TrialSpawner.overrideEntityToSpawn`): its state data resets,
+    /// both configurations spawn only `kind`, and it goes inactive. Returns
+    /// whether a trial spawner is at `p`.
+    pub fn override_trial_spawner_entity(&mut self, p: IVec3, kind: crate::entity::MobKind) -> bool {
+        let Some((_, ominous)) = self.get_block(p).and_then(spawner) else { return false };
+        let Some(s) = self.trial.spawners.get_mut(&p.to_array()) else { return false };
+        s.reset();
+        s.entity = Some(kind);
+        self.set_block(p, spawner_block(SpawnerState::Inactive, ominous));
+        true
+    }
+
     /// `trial` level property: every trial spawner and vault.
     pub fn trial_to_string(&self) -> String {
         let spawners: Vec<Value> = self.trial.spawners.iter().map(|(p, s)| json!([p, s.save()])).collect();

@@ -615,7 +615,12 @@ impl Game {
             "pause" => seat.open(Menu::Pause { choice: 0 }),
             "inventory" => seat.open(Menu::items(Tab::Inventory)),
             "crafting" => seat.open(Menu::items(Tab::Crafting)),
-            "palette" => seat.open(Menu::items(Tab::Palette)),
+            // v0.18 Track 4: the first creative tab, Building Blocks.
+            "palette" => {
+                if let Some(&t) = super::pad_menu::creative_tabs().first() {
+                    seat.open(Menu::items(Tab::Palette(t)));
+                }
+            }
             _ => {}
         }
     }

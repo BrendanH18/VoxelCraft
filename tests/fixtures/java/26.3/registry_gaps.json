@@ -55,49 +55,17 @@
     }
   },
   "items": {
-    "allay_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
     "archer_pottery_sherd": {
       "release": "deferred",
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
-    },
-    "armadillo_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
     },
     "arms_up_pottery_sherd": {
       "release": "deferred",
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
     },
-    "axolotl_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
     "barrier": {
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
-    },
-    "bat_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "bee_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "blaze_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "bogged_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "breeze_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
     },
     "brewer_pottery_sherd": {
       "release": "deferred",
@@ -107,33 +75,9 @@
       "release": "deferred",
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
     },
-    "camel_husk_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "camel_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "cat_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "cave_spider_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
     "chain_command_block": {
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
-    },
-    "chicken_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "cod_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
     },
     "command_block": {
       "release": "none",
@@ -143,22 +87,6 @@
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
     },
-    "copper_golem_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "cow_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "creaking_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "creeper_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
     "danger_pottery_sherd": {
       "release": "deferred",
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
@@ -167,77 +95,21 @@
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
     },
-    "dolphin_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "donkey_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "drowned_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "elder_guardian_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
     "ender_dragon_spawn_egg": {
       "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "enderman_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "endermite_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "evoker_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
+      "reason": "Track 4 left it unregistered: VoxelCraft's Ender Dragon exists only as the End fight's boss (entity::dragon), so an egg-spawned dragon has nothing to run; item id 1937 is kept for it. The integrator decides whether it moves."
     },
     "flow_pottery_sherd": {
       "release": "deferred",
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
     },
-    "fox_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
     "friend_pottery_sherd": {
       "release": "deferred",
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
     },
-    "frog_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "ghast_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "glow_squid_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "goat_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "guardian_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
     "guster_pottery_sherd": {
       "release": "deferred",
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
-    },
-    "happy_ghast_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
     },
     "heart_pottery_sherd": {
       "release": "deferred",
@@ -247,25 +119,9 @@
       "release": "deferred",
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
     },
-    "hoglin_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "horse_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
     "howl_pottery_sherd": {
       "release": "deferred",
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
-    },
-    "husk_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "iron_golem_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
     },
     "jigsaw": {
       "release": "none",
@@ -279,97 +135,21 @@
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
     },
-    "llama_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "magma_cube_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
     "miner_pottery_sherd": {
       "release": "deferred",
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
-    },
-    "mooshroom_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "mule_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "nautilus_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "ocelot_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "panda_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "parched_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "parrot_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
     },
     "petrified_oak_slab": {
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
     },
-    "phantom_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "pig_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "piglin_brute_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "piglin_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "pillager_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "polar_bear_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
     "prize_pottery_sherd": {
       "release": "deferred",
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
     },
-    "pufferfish_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "rabbit_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "ravager_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
     "repeating_command_block": {
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
-    },
-    "salmon_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
     },
     "scrape_pottery_sherd": {
       "release": "deferred",
@@ -379,57 +159,9 @@
       "release": "deferred",
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
     },
-    "sheep_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "shulker_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "silverfish_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "skeleton_horse_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "skeleton_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
     "skull_pottery_sherd": {
       "release": "deferred",
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
-    },
-    "slime_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "sniffer_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "snow_golem_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "spider_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "squid_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "stray_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "strider_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
     },
     "structure_block": {
       "release": "none",
@@ -439,14 +171,6 @@
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
     },
-    "sulfur_cube_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "tadpole_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
     "test_block": {
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
@@ -454,78 +178,6 @@
     "test_instance_block": {
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
-    },
-    "trader_llama_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "tropical_fish_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "turtle_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "vex_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "villager_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "vindicator_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "wandering_trader_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "warden_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "witch_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "wither_skeleton_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "wither_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "wolf_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "zoglin_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "zombie_horse_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "zombie_nautilus_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "zombie_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "zombie_villager_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
-    },
-    "zombified_piglin_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Creative spawn-egg catalogue, polish release."
     }
   },
   "potions": {
