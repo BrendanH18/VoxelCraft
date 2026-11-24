@@ -243,20 +243,22 @@ work with no window or GPU, so it runs on Boat (v0.18 Track 10,
 the scene, then paces itself to 240 frames a second for `--bench-warmup`
 (default 10) and `--bench-seconds` (default 60) seconds. Each frame streams
 the world around the camera with the real generation and mesh workers
-(`World::update_players`) and builds the entity mesh; every 50 ms of wall
-time it runs one game tick: the world rules, the automation entity pass,
+(`World::update_players`, with the desktop game's 2 ms light budget) and
+builds the entity mesh; before a frame's first tick it resolves the rest of
+the light, as the game does; every 50 ms of wall time it runs one game
+tick: the world rules, the automation entity pass,
 piston pushes and the mob update with natural spawning, in `Game::tick`'s
 order. It prints one JSON report: frame work (`frame_ms`, streaming plus
 the ticks it ran), frames over 8.33 and 50 ms, the tick, each phase
-(`stream`, `entity_mesh`, and the tick's `setup`, `world_rules`,
-`automation`, `mobs` and `drops`) and the phases of the slowest 1% of
-frames.
+(`stream`, `pre_tick_light`, `entity_mesh`, and the tick's `setup`, `world_rules`,
+`automation`, `mobs` and `drops`), each world-rule step
+(`world_rule_steps_ms`) and the phases of the slowest 1% of frames.
 
 | Scene | What it holds |
 |---|---|
 | `streaming` | The live scene's route: 12 blocks/s with lateral turns, 24 blocks above the generated surface |
 | `survival` | The live scene's 12-block orbit at spawn |
-| `entities` | The live scene's 160 mobs on a stone platform at dawn, no natural spawning |
+| `entities` | The live scene's 160 mobs on a stone platform at dawn, no natural spawning (generation herds are kept, unlike the live scene) |
 | `automation` | The live scene's 85 lit furnaces beside powered dust |
 | `hoppers` | 100 chest–hopper–hopper–chest chains and ten hopper minecarts on a rail |
 | `village` | The nearest plains village to the origin, with natural spawning |
