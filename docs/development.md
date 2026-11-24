@@ -382,7 +382,8 @@ reproducible before/after scenes for v0.18's visual work, in five groups:
   ceiling, a stepped grass and dirt hillside, a small forest, sand dunes and
   a palette wall of 32 common blocks. All are built with `--place` high
   above the terrain, so they don't change when world generation does.
-- `mobs`: nine mobs and dropped items on uneven grass, at noon and at
+- `mobs`: nine mobs and dropped items on uneven grass at sunrise (held
+  below the sunburn threshold, so the undead survive the wait) and at
   midnight.
 - `ui`: the survival HUD, inventory, recipe book, a crafting table with the
   recipe book, a furnace, the creative inventory on two tabs, the pause menu,

@@ -134,7 +134,7 @@ def select(data, names):
     return picked
 
 
-def capture(binary, out, name, args, saves=()):
+def capture(binary, out, name, args, commit, saves=()):
     """One screenshot run in its own data folder; returns the manifest entry."""
     data_dir = out / ".data" / name
     if data_dir.exists():
@@ -157,7 +157,7 @@ def capture(binary, out, name, args, saves=()):
     print("{} {} ({} s)".format("captured" if ok else "FAILED", name, seconds), file=sys.stderr)
     if ok:
         log.unlink()
-    entry = {"png": png.name if ok else None, "exit": code, "seconds": seconds, "args": args}
+    entry = {"png": png.name if ok else None, "exit": code, "seconds": seconds, "args": args, "commit": commit}
     if not ok:
         entry["log"] = log.name
     return entry
@@ -181,7 +181,7 @@ def run(opts):
         args = opts.game_args
         if args and args[0] == "--":
             args = args[1:]
-        entry = capture(opts.binary, out, opts.adhoc, args)
+        entry = capture(opts.binary, out, opts.adhoc, args, opts.commit)
         manifest["captures"][opts.adhoc] = dict(entry, adhoc=True)
         failed += entry["png"] is None
     else:
@@ -189,7 +189,7 @@ def run(opts):
             for suffix, settings in variants(data, scene):
                 name = scene["name"] + suffix
                 args = scene_args(scene, settings)
-                entry = capture(opts.binary, out, name, args, scene.get("saves", ()))
+                entry = capture(opts.binary, out, name, args, opts.commit, scene.get("saves", ()))
                 entry.update(scene=scene["name"], group=scene.get("group"), settings=settings)
                 entry["placements"] = len(scene.get("place", [])) + sum(
                     len(fill_cells(f)) for f in scene.get("fill", [])

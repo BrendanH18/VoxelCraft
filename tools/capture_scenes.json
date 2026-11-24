@@ -3534,7 +3534,7 @@
   {
    "name": "mobs-uneven-ground",
    "group": "mobs",
-   "description": "Nine mobs and a fan of dropped items on grass with one- and two-block bumps, a moment after spawning, at noon (daylight cycle held; monsters burn): silhouettes, faces and ground contact",
+   "description": "Nine mobs and a fan of dropped items on grass with one- and two-block bumps, a moment after spawning, at sunrise (time 0.0, held: below the undead sunburn threshold, as in the entities benchmark): silhouettes, faces and ground contact",
    "pose": [
     0.5,
     155,
@@ -3775,7 +3775,8 @@
     "torch,4",
     "--drop",
     "iron_ingot,5"
-   ]
+   ],
+   "time": 0.0
   },
   {
    "name": "mobs-night",
