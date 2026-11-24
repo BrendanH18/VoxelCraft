@@ -5183,6 +5183,582 @@
    ]
   },
   {
+   "name": "material-fixtures",
+   "group": "materials",
+   "description": "Copper bars, chains, lanterns, trapdoors and lightning rods at each oxidation stage, then the iron bars, chain, lanterns and trapdoor, as 2 x 2 x 2 groups in rising rows from above at noon",
+   "matrix": {
+    "size": [
+     [
+      1920,
+      1080
+     ],
+     [
+      1280,
+      720
+     ]
+    ],
+    "gui_scale": [
+     "auto"
+    ]
+   },
+   "pose": [
+    0.5,
+    162,
+    6,
+    90,
+    -32
+   ],
+   "hud": false,
+   "fill": [
+    [
+     -12,
+     150,
+     18,
+     -11,
+     151,
+     19,
+     "copper bars"
+    ],
+    [
+     -9,
+     150,
+     18,
+     -8,
+     151,
+     19,
+     "copper chain"
+    ],
+    [
+     -6,
+     150,
+     18,
+     -5,
+     151,
+     19,
+     "copper lantern"
+    ],
+    [
+     -3,
+     150,
+     18,
+     -2,
+     151,
+     19,
+     "copper trapdoor"
+    ],
+    [
+     0,
+     150,
+     18,
+     1,
+     151,
+     19,
+     "lightning rod"
+    ],
+    [
+     3,
+     150,
+     18,
+     4,
+     151,
+     19,
+     "exposed copper bars"
+    ],
+    [
+     6,
+     150,
+     18,
+     7,
+     151,
+     19,
+     "exposed copper chain"
+    ],
+    [
+     9,
+     150,
+     18,
+     10,
+     151,
+     19,
+     "exposed copper lantern"
+    ],
+    [
+     -12,
+     151,
+     21,
+     -11,
+     152,
+     22,
+     "exposed copper trapdoor"
+    ],
+    [
+     -9,
+     151,
+     21,
+     -8,
+     152,
+     22,
+     "exposed lightning rod"
+    ],
+    [
+     -6,
+     151,
+     21,
+     -5,
+     152,
+     22,
+     "weathered copper bars"
+    ],
+    [
+     -3,
+     151,
+     21,
+     -2,
+     152,
+     22,
+     "weathered copper chain"
+    ],
+    [
+     0,
+     151,
+     21,
+     1,
+     152,
+     22,
+     "weathered copper lantern"
+    ],
+    [
+     3,
+     151,
+     21,
+     4,
+     152,
+     22,
+     "weathered copper trapdoor"
+    ],
+    [
+     6,
+     151,
+     21,
+     7,
+     152,
+     22,
+     "weathered lightning rod"
+    ],
+    [
+     9,
+     151,
+     21,
+     10,
+     152,
+     22,
+     "oxidized copper bars"
+    ],
+    [
+     -12,
+     152,
+     24,
+     -11,
+     153,
+     25,
+     "oxidized copper chain"
+    ],
+    [
+     -9,
+     152,
+     24,
+     -8,
+     153,
+     25,
+     "oxidized copper lantern"
+    ],
+    [
+     -6,
+     152,
+     24,
+     -5,
+     153,
+     25,
+     "oxidized copper trapdoor"
+    ],
+    [
+     -3,
+     152,
+     24,
+     -2,
+     153,
+     25,
+     "oxidized lightning rod"
+    ],
+    [
+     0,
+     152,
+     24,
+     1,
+     153,
+     25,
+     "iron bars"
+    ],
+    [
+     3,
+     152,
+     24,
+     4,
+     153,
+     25,
+     "chain"
+    ],
+    [
+     6,
+     152,
+     24,
+     7,
+     153,
+     25,
+     "lantern"
+    ],
+    [
+     9,
+     152,
+     24,
+     10,
+     153,
+     25,
+     "soul lantern"
+    ],
+    [
+     -12,
+     153,
+     27,
+     -11,
+     154,
+     28,
+     "iron trapdoor"
+    ]
+   ]
+  },
+  {
+   "name": "material-nether-wood-ice",
+   "group": "materials",
+   "description": "Crimson and warped stems, stripped stems, hyphae and planks, bone block, then ice, blue ice, snow, powder snow and frosted ice, as 2 x 2 x 2 cubes from above at noon",
+   "matrix": {
+    "size": [
+     [
+      1920,
+      1080
+     ],
+     [
+      1280,
+      720
+     ]
+    ],
+    "gui_scale": [
+     "auto"
+    ]
+   },
+   "pose": [
+    0.5,
+    162,
+    6,
+    90,
+    -32
+   ],
+   "hud": false,
+   "fill": [
+    [
+     -12,
+     150,
+     18,
+     -11,
+     151,
+     19,
+     "crimson stem"
+    ],
+    [
+     -9,
+     150,
+     18,
+     -8,
+     151,
+     19,
+     "warped stem"
+    ],
+    [
+     -6,
+     150,
+     18,
+     -5,
+     151,
+     19,
+     "stripped crimson stem"
+    ],
+    [
+     -3,
+     150,
+     18,
+     -2,
+     151,
+     19,
+     "stripped warped stem"
+    ],
+    [
+     0,
+     150,
+     18,
+     1,
+     151,
+     19,
+     "crimson hyphae"
+    ],
+    [
+     3,
+     150,
+     18,
+     4,
+     151,
+     19,
+     "warped hyphae"
+    ],
+    [
+     6,
+     150,
+     18,
+     7,
+     151,
+     19,
+     "crimson planks"
+    ],
+    [
+     9,
+     150,
+     18,
+     10,
+     151,
+     19,
+     "warped planks"
+    ],
+    [
+     -12,
+     151,
+     21,
+     -11,
+     152,
+     22,
+     "bone block"
+    ],
+    [
+     -9,
+     151,
+     21,
+     -8,
+     152,
+     22,
+     "ice"
+    ],
+    [
+     -6,
+     151,
+     21,
+     -5,
+     152,
+     22,
+     "blue ice"
+    ],
+    [
+     -3,
+     151,
+     21,
+     -2,
+     152,
+     22,
+     "snow"
+    ],
+    [
+     0,
+     151,
+     21,
+     1,
+     152,
+     22,
+     "powder snow"
+    ],
+    [
+     3,
+     151,
+     21,
+     4,
+     152,
+     22,
+     "frosted ice"
+    ]
+   ]
+  },
+  {
+   "name": "material-workstations",
+   "group": "materials",
+   "description": "Fifteen workstations and bookshelves as 2 x 2 x 2 groups in rising rows from above at noon",
+   "matrix": {
+    "size": [
+     [
+      1920,
+      1080
+     ],
+     [
+      1280,
+      720
+     ]
+    ],
+    "gui_scale": [
+     "auto"
+    ]
+   },
+   "pose": [
+    0.5,
+    162,
+    6,
+    90,
+    -32
+   ],
+   "hud": false,
+   "fill": [
+    [
+     -12,
+     150,
+     18,
+     -11,
+     151,
+     19,
+     "crafting table"
+    ],
+    [
+     -9,
+     150,
+     18,
+     -8,
+     151,
+     19,
+     "furnace"
+    ],
+    [
+     -6,
+     150,
+     18,
+     -5,
+     151,
+     19,
+     "blast furnace"
+    ],
+    [
+     -3,
+     150,
+     18,
+     -2,
+     151,
+     19,
+     "smoker"
+    ],
+    [
+     0,
+     150,
+     18,
+     1,
+     151,
+     19,
+     "smithing table"
+    ],
+    [
+     3,
+     150,
+     18,
+     4,
+     151,
+     19,
+     "fletching table"
+    ],
+    [
+     6,
+     150,
+     18,
+     7,
+     151,
+     19,
+     "cartography table"
+    ],
+    [
+     9,
+     150,
+     18,
+     10,
+     151,
+     19,
+     "loom"
+    ],
+    [
+     -12,
+     151,
+     21,
+     -11,
+     152,
+     22,
+     "stonecutter"
+    ],
+    [
+     -9,
+     151,
+     21,
+     -8,
+     152,
+     22,
+     "grindstone"
+    ],
+    [
+     -6,
+     151,
+     21,
+     -5,
+     152,
+     22,
+     "barrel"
+    ],
+    [
+     -3,
+     151,
+     21,
+     -2,
+     152,
+     22,
+     "composter"
+    ],
+    [
+     0,
+     151,
+     21,
+     1,
+     152,
+     22,
+     "lectern"
+    ],
+    [
+     3,
+     151,
+     21,
+     4,
+     152,
+     22,
+     "bookshelf"
+    ],
+    [
+     6,
+     151,
+     21,
+     7,
+     152,
+     22,
+     "chiseled bookshelf"
+    ]
+   ]
+  },
+  {
    "name": "mobs-uneven-ground",
    "group": "mobs",
    "description": "Nine mobs and a fan of dropped items on grass with one- and two-block bumps, a moment after spawning, at sunrise (time 0.0, held: below the undead sunburn threshold, as in the entities benchmark): silhouettes, faces and ground contact",
