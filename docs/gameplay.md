@@ -17,7 +17,7 @@ Sprint can be set to Toggle there.
 | Left Ctrl | Sprint |
 | R | Toggle flying (creative); the old `F` binding moved so `F` can match Java |
 | F | Swap the selected item with the off-hand (controller: D-pad down; CLI/LAN: `swap`) |
-| Left / right click | Break / place block (hold to repeat); left click on a mob attacks it; respawn on the death screen |
+| Left / right click | Break / place block (hold to repeat); left click on a mob attacks it; the death screen's buttons |
 | Middle click | Pick block |
 | Q / Ctrl+Q | Drop one of the selected item / the whole stack (with the inventory open: from the slot under the mouse) |
 | E | Inventory (click to move stacks; creative opens Java's creative inventory, see below) |
@@ -79,10 +79,13 @@ Java 26.3's screens with the options VoxelCraft can honour: FOV and, in a
 world, Difficulty with Java's lock; Music & Sounds (Master Volume and a
 slider per sound category); Video Settings
 (Max Framerate, VSync, GUI Scale, Fullscreen, Brightness, Graphics, Render
-and Simulation Distance, Particles, FPS Counter); Controls (Mouse Settings
+and Simulation Distance, Particles, Menu Background Blur, FPS Counter);
+Controls (Mouse Settings
 with Sensitivity, Scroll Sensitivity, Discrete Scrolling and Invert Mouse;
-Key Binds; Sneak and Sprint Hold/Toggle); Accessibility Settings (View
-Bobbing, Distortion Effects, FOV Effects, Damage Tilt); Credits &
+Key Binds; Sneak and Sprint Hold/Toggle); Accessibility Settings (Closed
+Captions, Menu Background Blur, Text Background Opacity and Text
+Background, View Bobbing, Distortion Effects, FOV Effects, Damage Tilt);
+Credits &
 Attribution; and Check for Updates. Render Distance is shown in Java's
 16-block chunks. Changes apply immediately and are saved to
 `saves/options.txt` inside the
@@ -96,10 +99,17 @@ caves. Water reflects the sky rather than nearby objects; geometry shadows,
 PBR materials and screen-space reflections remain future work. Classic
 keeps the original lighting and water appearance.
 
-A compact FPS counter is on by default at the top left. It averages
-presented frames over half a second and stays readable in inventories and
-menus. Options → FPS Counter hides it; F1 hides the HUD, and F3 shows the
-full performance display instead of duplicating the compact counter.
+Menu Background Blur (Java's 0 to 10, default 5; 0 is OFF) blurs the
+world and HUD behind the pause menu, Options and the other menus, with
+Java's light in-world backdrop over it; inventories and workstations darken
+the world instead, and the death screen has its own red backdrop.
+
+A compact FPS counter can show at the top left (Options → Video Settings →
+FPS Counter). It is off for a new options file; an existing
+`options.txt` keeps whatever it saved. It averages presented frames over
+half a second and stays readable in inventories and menus; F1 hides the
+HUD, and F3 shows the full performance display instead of duplicating the
+compact counter.
 
 ![F3 debug screen](images/debug.jpg)
 
@@ -297,8 +307,14 @@ full performance display instead of duplicating the compact counter.
 - Survival health: 10 hearts, fall damage (1 per block beyond 3; water
   breaks falls), 15 s of air then drowning, a red hurt flash and shaking
   hearts. Dying shows
-  a death screen; everything you carried drops where you died, and clicking
-  respawns at the world spawn with full health. Creative is immune to damage.
+  Java's death screen ("You Died!", the cause and your score); everything
+  you carried drops where you died. After a second its Respawn button
+  brings you back at your bed or the world spawn with full health, and
+  Title Screen asks "Are you sure you want to quit?" first. In Hardcore it
+  says "Game Over!" and offers Spectate World (respawn as a spectator) and
+  Title Screen, which leaves without asking. Escape does nothing there, and
+  the game keeps running behind it. With `immediate_respawn` on you respawn
+  at once, in Hardcore as a spectator. Creative is immune to damage.
   Health and air are saved with the world
 - Hunger, like Minecraft: 10 drumsticks plus a hidden saturation buffer
   (5 at spawn). Exhaustion from sprinting (0.1 per block), swimming (0.01
@@ -411,8 +427,10 @@ full performance display instead of duplicating the compact counter.
   prior-work penalty both items carry, which doubles plus one with each
   use; at 40 levels survival says "Too Expensive!". Renaming costs one
   level more (a rename alone is capped at 39 levels and adds no prior
-  work); agents rename with `anvil name <text>`, but the desktop and
-  controller screens have no name box yet. Each survival use
+  work). The screen's name box takes the left item's name; type over it
+  (a blank box clears a custom name). On a controller, the anvil row's
+  last entry opens a keyboard for the name; agents rename with
+  `anvil name <text>`, and LAN guests' names go to the host. Each survival use
   has a 12% chance to chip the anvil (chipped, damaged, then it breaks),
   and an anvil that falls more than a block lands worn one step with a
   chance of 5% plus 5% per block fallen.

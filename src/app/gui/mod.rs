@@ -1007,7 +1007,7 @@ pub(super) fn draw_slider(ui: &mut Ui, rect: Rect, label: &str, value: f32, look
     // Java's slider: a dark track, outlined white when focused, with a
     // button-like handle that lights up while the mouse is over it or the
     // keys adjust it.
-    style::track(ui, rect, look.enabled && look.focused);
+    style::track(ui, rect, look.hot());
     let hx = (x + (w - HANDLE_W) * value.clamp(0.0, 1.0)).floor();
     let handle = match look.state() {
         style::State::Disabled => style::State::Disabled,

@@ -356,6 +356,7 @@ impl Game {
             menu_action: None,
             death: Default::default(),
             anvil_name: Default::default(),
+            death_respawn_sent: None,
             had_focus: false,
             settings,
             settings_path,

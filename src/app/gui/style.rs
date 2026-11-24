@@ -100,15 +100,20 @@ pub(in crate::app) fn srgba(hex: u32, alpha: f32) -> Color {
 /// A translucent fill that looks like Java's `0xAARRGGBB` over a scene:
 /// Java blends sRGB values, the UI blends linear ones, so the alpha is
 /// raised until the scene behind darkens by Java's factor, `1 - alpha`
-/// in sRGB, and the colour is picked so the result over black matches too.
-/// Exact for black veils; within a few levels for Java's tinted ones.
+/// in sRGB, and the colour is picked so the result over a mid-grey scene
+/// matches Java's too. Exact for black veils; tinted ones (the death
+/// screen's red) match at mid-grey and run a little strong over black.
 pub(in crate::app) fn veil(hex: u32, alpha: f32) -> Color {
     let a = alpha.clamp(0.0, 1.0);
     let la = 1.0 - (1.0 - a).powf(2.2);
     if la <= 0.0 {
         return [0.0; 4];
     }
-    let c = |byte: u32| ((byte as f32 / 255.0 * a).powf(2.2) / la).min(1.0);
+    const MID: f32 = 0.5;
+    let c = |byte: u32| {
+        let java = (byte as f32 / 255.0 * a + MID * (1.0 - a)).powf(2.2);
+        ((java - MID.powf(2.2) * (1.0 - la)) / la).clamp(0.0, 1.0)
+    };
     [c(hex >> 16 & 255), c(hex >> 8 & 255), c(hex & 255), la]
 }
 
@@ -442,9 +447,12 @@ mod tests {
             let java = (under as f32 * (1.0 - alpha)).round() as u32;
             assert!(blended.abs_diff(java) <= 1, "{alpha} over {under}: {blended} vs {java}");
         }
-        // Over black, a tinted veil shows Java's colour times its alpha.
-        let [r, _, _, la] = argb(DEATH_VEIL_BOTTOM);
-        assert_eq!(shown(r * la), (128.0f32 * 160.0 / 255.0).round() as u32);
+        // Over a mid-grey scene, a tinted veil shows Java's result.
+        let [r, g, _, la] = argb(DEATH_VEIL_BOTTOM);
+        let grey = 0.5f32.powf(2.2);
+        let java = |c: f32| ((c / 255.0 * 160.0 / 255.0 + 0.5 * (1.0 - 160.0 / 255.0)) * 255.0).round() as u32;
+        assert!(shown(r * la + grey * (1.0 - la)).abs_diff(java(128.0)) <= 1);
+        assert!(shown(g * la + grey * (1.0 - la)).abs_diff(java(48.0)) <= 1);
     }
 
     /// Runs of one non-clear character in a mask row.

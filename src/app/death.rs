@@ -45,6 +45,9 @@ impl DeathHost for Game {
 pub(super) const DELAY_TICKS: u32 = 20;
 /// [`DELAY_TICKS`] at Java's 20 client ticks a second.
 pub(super) const DELAY: Duration = Duration::from_millis(DELAY_TICKS as u64 * 50);
+/// How long a LAN guest's death screen stays away after Respawn while the
+/// host's answer is on its way.
+const RESPAWN_WAIT: Duration = Duration::from_secs(2);
 /// `DeathScreen`'s title scale and positions, in UI pixels.
 const TITLE_SCALE: f32 = 2.0;
 const TITLE_Y: f32 = 30.0 * TITLE_SCALE;
@@ -250,7 +253,13 @@ impl Game {
     /// immediate respawn is due, and closes it once they're alive.
     pub(super) fn sync_death_screen(&mut self) {
         let dead = self.session.vitals.is_dead();
-        if dead && !self.respawn_due && !self.death.is_open() && self.credits.is_none() {
+        // A LAN guest's respawn waits for the host: don't reopen the screen
+        // meanwhile, unless the host hasn't answered for a while.
+        let waiting = self.death_respawn_sent.is_some_and(|t| t.elapsed() < RESPAWN_WAIT);
+        if !dead {
+            self.death_respawn_sent = None;
+        }
+        if dead && !self.respawn_due && !waiting && !self.death.is_open() && self.credits.is_none() {
             self.death.open(DeathScreen::new(self.hardcore));
         } else if !dead && self.death.is_open() {
             self.death.close();
@@ -267,6 +276,9 @@ impl Game {
         self.respawn();
         if self.hardcore && self.lan.client.is_none() && self.session.mode != GameMode::Spectator {
             self.set_mode(GameMode::Spectator);
+        }
+        if self.session.vitals.is_dead() {
+            self.death_respawn_sent = Some(Instant::now());
         }
     }
 

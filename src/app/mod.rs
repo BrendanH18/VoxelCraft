@@ -294,6 +294,9 @@ struct Game {
     /// v0.18 Track 2: the death screen and its quit confirmation, apart
     /// from `menu` because they don't pause the game.
     death: gui::Stack<Game>,
+    /// When a LAN guest last asked the host to respawn it (the death
+    /// screen stays closed meanwhile).
+    death_respawn_sent: Option<Instant>,
     /// v0.18 Track 2: the anvil screen's name box.
     anvil_name: anvil::NameBox,
     /// The window has had keyboard focus at some point (losing focus only

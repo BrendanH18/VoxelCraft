@@ -720,7 +720,8 @@ fn pad_keyboard_ui(ui: &mut Ui, mut y: f32, key: (usize, usize), shift: bool) ->
             for col in 0..count {
                 let x = x0 + col as f32 * (w + 2.0);
                 let lit = (col, row) == key;
-                ui.rect(x, y, w, 14.0, if lit { [0.45, 0.5, 0.75, 0.95] } else { [0.2, 0.2, 0.2, 0.9] });
+                // v0.18 Track 2: the lit key is the hot button, outlined white.
+                style::button(ui, [x, y, w, 14.0], if lit { style::State::Hot } else { style::State::Normal });
                 let label = match key_char(col, row, shift) {
                     Some(c) => c.to_string(),
                     None if col == 0 && shift => "SHIFT".to_string(),
@@ -762,7 +763,7 @@ impl Game {
                     let (w, y) = (100.0, (sh / 2.0 - 10.0 + 22.0 * i as f32).floor());
                     let x = ((sw - w) / 2.0).floor();
                     let lit = i == choice;
-                    ui.rect(x, y, w, 18.0, if lit { [0.45, 0.5, 0.75, 0.95] } else { [0.2, 0.2, 0.2, 0.9] });
+                    style::button(ui, [x, y, w, 18.0], if lit { style::State::Hot } else { style::State::Normal });
                     ui.text(((sw - Ui::text_width(label)) / 2.0).floor(), y + 5.0, label, WHITE);
                 }
                 return;
@@ -820,6 +821,7 @@ impl Game {
         let ph = 18.0 * shown.max(1) as f32 + gap(n.saturating_sub(1)) + 26.0;
         let (px, py) = (((sw - pw) / 2.0).floor(), ((sh - ph - footer) / 2.0).floor().max(0.0));
         ui.rect(px, py, pw, ph, [0.12, 0.12, 0.14, 0.92]);
+        style::outline(ui, [px - 1.0, py - 1.0, pw + 2.0, ph + 2.0], style::srgb(style::token::OUTLINE));
         let creative = bot.agent.creative;
         // v0.18 Track 5: the crafting tab is the recipe book, with its filter.
         let filter = {
@@ -929,7 +931,9 @@ impl Game {
                     0.0
                 };
                 let (x, y) = (px + 6.0 + offset + 18.0 * c as f32, py + 18.0 + 18.0 * (r - first) as f32 + gap(r));
+                // v0.18 Track 2: slots keep a frame on the dark panel.
                 ui.rect(x, y, 17.0, 17.0, [0.3, 0.3, 0.32, 0.95]);
+                style::outline(ui, [x, y, 17.0, 17.0], style::veil(style::token::SLOT, 0.5));
                 let stack = match slot(tab, c, r, lists) {
                     Slot::Ref(SlotRef::Armor(p)) => inv.armor[p as usize],
                     Slot::Ref(SlotRef::Trade(i)) => {
@@ -1014,7 +1018,10 @@ impl Game {
                     super::crafter::draw_disabled(ui, x, y, 17.0);
                 }
                 if (c, r) == (col, row) {
+                    // The cursor: the hover veil and a white frame, so it
+                    // shows without colour.
                     ui.rect(x, y, 17.0, 17.0, [1.0, 1.0, 1.0, 0.35]);
+                    style::outline(ui, [x - 1.0, y - 1.0, 19.0, 19.0], WHITE);
                     hovered = Some((stack, x, y));
                 }
             }
@@ -1035,13 +1042,10 @@ impl Game {
         }
         if let Some(f) = furnace {
             // Flame (fuel left) and arrow (cooking) beside the furnace slots.
-            let (x, y) = (px + 6.0 + 18.0 * 3.0 + 6.0, py + 18.0);
-            let burn = f.burn_progress();
-            ui.rect(x, y + 2.0, 40.0, 5.0, [0.0, 0.0, 0.0, 0.7]);
-            ui.rect(x + 1.0, y + 3.0, 38.0 * burn.clamp(0.0, 1.0), 3.0, [1.0, 0.55, 0.1, 1.0]);
-            let cook = f.cook_progress();
-            ui.rect(x, y + 10.0, 40.0, 5.0, [0.0, 0.0, 0.0, 0.7]);
-            ui.rect(x + 1.0, y + 11.0, 38.0 * cook.clamp(0.0, 1.0), 3.0, WHITE);
+            // v0.18 Track 2: the desktop screen's pixel flame and arrow.
+            let (x, y) = (px + 6.0 + 18.0 * 3.0 + 4.0, py + 18.0);
+            style::flame(ui, x, y + 1.0, f.burn_progress());
+            style::arrow(ui, x + 16.0, y, f.cook_progress());
         }
         if n == 0 {
             ui.text(px + 6.0, py + 20.0, "Nothing to craft", [0.7, 0.7, 0.7, 1.0]);
