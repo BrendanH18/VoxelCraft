@@ -92,6 +92,7 @@ impl Game {
         );
         let moved = (self.session.player.pos - before).with_y(0.0).length();
         self.session.tick_lodestones(&self.world);
+        self.session.tick_recipe_book(&self.world);
         for stack in [self.session.inventory.get(self.body.actions.selected), self.session.inventory.offhand]
             .into_iter()
             .flatten()

@@ -410,9 +410,13 @@ impl StorageScreen<'_> {
     /// Java's result slot.
     pub fn award_furnace_xp(&mut self, pos: IVec3, before: u8) {
         let entities = &mut *self.entities;
-        let Some(xp) = self.world.furnace_mut(pos).and_then(|f| f.take_output_xp(before, || entities.roll())) else {
+        let Some(furnace) = self.world.furnace_mut(pos) else { return };
+        // v0.18 Track 5: the same take teaches the recipes the tally holds.
+        let (kind, used): (_, Vec<Item>) = (furnace.kind, furnace.recipes_used.iter().map(|r| r.recipe).collect());
+        let Some(xp) = furnace.take_output_xp(before, || entities.roll()) else {
             return;
         };
+        self.session.recipe_book.cooked(kind, &used);
         self.entities.spawn_xp(self.session.player.pos, xp);
     }
 

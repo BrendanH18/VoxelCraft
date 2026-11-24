@@ -188,11 +188,14 @@ impl Agent {
             1 => f.fuel = next,
             _ => f.output = next,
         }
-        if take
-            && slot == 2
-            && let Some(xp) = world.furnace_mut(pos).unwrap().take_output_xp(before_output, || entities.roll())
-        {
-            entities.spawn_xp(self.session.player.pos, xp);
+        if take && slot == 2 {
+            let furnace = world.furnace_mut(pos).unwrap();
+            let (kind, used): (_, Vec<Item>) = (furnace.kind, furnace.recipes_used.iter().map(|r| r.recipe).collect());
+            if let Some(xp) = furnace.take_output_xp(before_output, || entities.roll()) {
+                // v0.18 Track 5: the take teaches the recipes the tally holds.
+                self.session.recipe_book.cooked(kind, &used);
+                entities.spawn_xp(self.session.player.pos, xp);
+            }
         }
         Ok(())
     }
@@ -921,6 +924,7 @@ impl Agent {
     ) {
         self.session.settle_wake(world);
         self.session.tick_lodestones(world);
+        self.session.tick_recipe_book(world);
         for stack in [self.session.inventory.get(self.selected), self.session.inventory.offhand].into_iter().flatten() {
             world.tick_map(stack, self.session.player.pos, self.session.id.0 as u64);
         }
