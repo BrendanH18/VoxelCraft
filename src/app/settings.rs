@@ -456,7 +456,7 @@ mod tests {
         let back = Settings::parse(&text);
         assert_eq!(back, s);
         assert_eq!(back.background_opacity(0.8), 0.25, "Everywhere uses the opacity");
-        assert_eq!(Settings::parse("fov=80\n").show_subtitles, false);
+        assert!(!Settings::parse("fov=80\n").show_subtitles);
         assert_eq!(Settings::parse("textBackgroundOpacity=7\n").text_background_opacity, 1.0);
     }
 
