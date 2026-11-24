@@ -271,3 +271,26 @@ fn eggs_keep_their_ids_through_save_and_reload() {
     assert_eq!(voxelcraft::inventory::stack_to_string(Some(Stack::new(first, 2))), "1850:2");
     assert_eq!(spawn_egg::mob(last), Some(MobKind::Wither));
 }
+
+/// Java's `useItemOn` runs the block's own use before the item's `useOn`:
+/// an egg on a ripe sweet berry bush picks the berries
+/// (`SweetBerryBushBlock.useWithoutItem`) and spawns nothing, while a chest
+/// still opens and a spawner still takes the egg (above).
+#[test]
+fn blocks_that_take_the_use_come_before_the_egg() {
+    use voxelcraft::world::overworld_blocks::berry_bush;
+    let (mut w, mut s, mut e) = scene(MobKind::Pig);
+    w.set_block(WALL, Block::AIR);
+    let bush = IVec3::new(6, 145, 4);
+    w.set_block(bush, berry_bush(3));
+    s.player.pitch = -0.6;
+    let used = use_egg(&mut s, &mut w, &mut e).unwrap();
+    assert_eq!(used, Some(Used::Harvested { cell: bush }));
+    assert!(e.mobs.is_empty(), "no pig in the bush");
+    assert_eq!(count(&s), 3);
+
+    let (mut w, mut s, mut e) = scene(MobKind::Pig);
+    w.set_block(WALL, Block::CHEST);
+    assert!(matches!(use_egg(&mut s, &mut w, &mut e).unwrap(), Some(Used::Screen { .. })));
+    assert!(e.mobs.is_empty());
+}
