@@ -575,6 +575,7 @@ fn recipe(f: Family) -> Option<Spec> {
 }
 
 /// Whether a family has a recipe of its own (every one should).
+#[cfg(test)]
 pub fn has_recipe(f: Family) -> bool {
     recipe(f).is_some()
 }

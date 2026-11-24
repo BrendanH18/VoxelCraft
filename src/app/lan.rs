@@ -740,10 +740,10 @@ impl Game {
         peer.body.let_go();
         peer.body.container = container;
         peer.open = true;
-        if let Container::Chest(pos) | Container::EnderChest(pos) = container {
-            if self.world.get_block(pos).is_some_and(crate::entity::nether::guarded_by_piglins) {
-                self.mobs.entities.piglins_notice(id, at, true, &self.world);
-            }
+        if let Container::Chest(pos) | Container::EnderChest(pos) = container
+            && self.world.get_block(pos).is_some_and(crate::entity::nether::guarded_by_piglins)
+        {
+            self.mobs.entities.piglins_notice(id, at, true, &self.world);
         }
     }
 

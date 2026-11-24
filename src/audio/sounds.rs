@@ -307,7 +307,7 @@ impl ContainerCue {
     ];
 
     pub fn is_open(self) -> bool {
-        self as usize % 2 == 0
+        (self as usize).is_multiple_of(2)
     }
 }
 

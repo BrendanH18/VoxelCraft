@@ -61,6 +61,7 @@ fn texts() -> &'static Texts {
 }
 
 /// The subtitle `sound` shows, if its Java event has one.
+#[cfg(test)]
 pub fn subtitle(sound: Sound) -> Option<&'static str> {
     let t = texts();
     t.by_sound.get(sound.key()).copied().flatten().map(|(i, _)| t.texts[i as usize])
