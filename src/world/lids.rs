@@ -343,7 +343,7 @@ pub fn chest_quads(facing: Facing, bounds: Bounds, faces: [u16; 6], openness: f3
     // The lid turns about the horizontal axis along the back edge, opening
     // away from the front: a point's front-to-back offset rises.
     let axis = Vec3::Y.cross(back).normalize();
-    let rotation = glam::Quat::from_axis_angle(axis, -angle);
+    let rotation = glam::Quat::from_axis_angle(axis, angle);
     let pivot = {
         let mut p = Vec3::new(0.5, hinge_y, 0.5);
         if back.x != 0.0 {

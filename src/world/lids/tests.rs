@@ -19,7 +19,7 @@ fn fixture() -> serde_json::Value {
 #[test]
 fn the_lid_moves_by_javas_step_and_eases() {
     let java = fixture();
-    assert_eq!(java["lids"]["chest_lid_step_per_tick"].as_f64(), Some(f64::from(LID_STEP) as f32 as f64));
+    assert_eq!(java["lids"]["chest_lid_step_per_tick"].as_f64().map(|v| v as f32), Some(LID_STEP));
     let mut lid = Lid { should_be_open: true, ..Default::default() };
     for i in 1..=12 {
         lid.tick();
@@ -74,7 +74,8 @@ fn a_double_chest_sounds_once_between_its_halves_and_lifts_both_lids() {
     // Facing north: the left half's partner is east of it.
     w.set_block(P, Block(PLAIN_DOUBLE));
     w.set_block(P + IVec3::X, Block(PLAIN_DOUBLE + 4));
-    assert_eq!(w.chest_halves(P).1, Some(P + IVec3::X), "the halves pair");
+    let (first, second) = w.chest_halves(P);
+    assert_eq!([first, second.unwrap()], [P + IVec3::X, P], "the halves pair, right half first");
     w.set_container_viewers(&[P + IVec3::X]);
     let cues = w.take_lid_cues();
     assert_eq!(cues.len(), 1, "{cues:?}");
