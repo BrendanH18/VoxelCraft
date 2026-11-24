@@ -234,6 +234,57 @@ cargo run --release -- --bench-render --rd 8 --pose 0,100,0,0,-10
 Render distance uses **32-block chunks**: `--rd 8` spans 256 blocks,
 `--rd 16` spans 512 blocks. See [recorded results and rendering design](architecture.md#performance-design).
 
+### Headless tick and streaming benchmark
+
+`--bench-tick SCENE` measures the main thread's simulation and streaming
+work with no window or GPU, so it runs on Boat (v0.18 Track 10,
+`src/tick_bench.rs`). It loads a world of the seed (default 12345) at
+`--rd` (default 8) and the default 160-block simulation distance, builds
+the scene, then paces itself to 240 frames a second for `--bench-warmup`
+(default 10) and `--bench-seconds` (default 60) seconds. Each frame streams
+the world around the camera with the real generation and mesh workers
+(`World::update_players`, with the desktop game's 2 ms light budget) and
+builds the entity mesh; before a frame's first tick it resolves the rest of
+the light, as the game does; every 50 ms of wall time it runs one game
+tick: the world rules, the automation entity pass,
+piston pushes and the mob update with natural spawning, in `Game::tick`'s
+order. It prints one JSON report: frame work (`frame_ms`, streaming plus
+the ticks it ran), frames over 8.33 and 50 ms, the tick, each phase
+(`stream`, `pre_tick_light`, `entity_mesh`, and the tick's `setup`, `world_rules`,
+`automation`, `mobs` and `drops`), each world-rule step
+(`world_rule_steps_ms`) and the phases of the slowest 1% of frames.
+
+| Scene | What it holds |
+|---|---|
+| `streaming` | The live scene's route: 12 blocks/s with lateral turns, 24 blocks above the generated surface |
+| `survival` | The live scene's 12-block orbit at spawn |
+| `entities` | The live scene's 160 mobs on a stone platform at dawn, no natural spawning (generation herds are kept, unlike the live scene) |
+| `automation` | The live scene's 85 lit furnaces beside powered dust |
+| `hoppers` | 100 chest–hopper–hopper–chest chains and ten hopper minecarts on a rail |
+| `village` | The nearest plains village to the origin, with natural spawning |
+
+```sh
+scripts/boat-check.sh -- 'cargo build --profile ci --locked --bin voxelcraft && /home/user/target/ci/voxelcraft --bench-tick streaming'
+```
+
+The player's own movement and vitals, audio, particles, agents, LAN and
+rendering are not in it, and its times are CPU time on the machine that
+runs it: compare runs from one sandbox only, never with the reference Mac's
+frame times. Worker threads share the sandbox's cores with the main thread,
+so expect run-to-run noise; run each build at least twice. To profile, build
+with frame pointers in a separate target directory and record the main
+thread (`perf` installs in the sandbox with `apt-get install
+linux-tools-common linux-tools-generic`):
+
+```sh
+CARGO_TARGET_DIR=/home/user/target-prof RUSTFLAGS="-C force-frame-pointers=yes" cargo build --profile ci --locked --bin voxelcraft
+perf record -F 999 -g -- /home/user/target-prof/ci/voxelcraft --bench-tick streaming --bench-seconds 60
+perf report --comm voxelcraft --children --percentage relative
+```
+
+The [v0.18 performance record](verification/2026-11-23-v0.18-performance.md)
+has the measurements taken with it.
+
 ## Screenshots and scripted scenes
 
 `--screenshot` waits for the world to load, writes a PNG, then exits.
@@ -268,7 +319,8 @@ and a stand wears it.
 `--dye colour[,colour...]` mixes those dyes (`DyedItemColor.applyDyes`) into
 the first hotbar stack and every worn piece that is dyeable, after `--give`
 and `--wear`: leather armor, leather horse armor and wolf armor.
-`--open-menu title --screenshot <file>` captures the title screen instead;
+`--open-menu title --screenshot <file>` captures the title screen instead
+(the panorama holds still at its starting angle, so captures compare);
 `select`, `create`, `multiplayer` and `direct` capture Select World, Create New
 World, Play Multiplayer and Direct Connection, and `edit`, `recreate` and
 `backup` capture Edit World, Re-Create and the newer-version backup prompt for
@@ -373,29 +425,67 @@ Differences from Metal seen so far (2026-11-23,
   distance 6 for world scenes, 4 for in-world UI scenes and 2 for the title
   screens.
 
+### The title panorama
+
+The title screen's panorama is six 1024 x 1024 faces in
+[`assets/panorama/`](../assets/panorama/), rendered by the game itself
+(v0.18 Track 7, [record](verification/2026-11-23-v0.18-title.md)): a
+savanna village with a pond and a river, seed 1234, seen from
+-942, 78, 190 at time 0.2. `--panorama DIR` with `--screenshot`, a square
+`--size` and a `--pose` renders the faces from the pose once the scene has
+settled, one 90-degree view a frame (north, east, south, west, up, down,
+`panorama_0` to `panorama_5`, Java's order), writes them as RGB PNGs and
+then takes the screenshot. To regenerate them on Boat:
+
+```sh
+scripts/boat-capture.sh --out target/captures/panorama --name preview -- \
+    --world w --new --seed 1234 --creative --pose -942,78,190,0,0 --rd 8 \
+    --size 1024x1024 --no-hud --time 0.2 --gamerule advance_time=false \
+    --weather clear --gamerule advance_weather=false --animation-time 7.3 \
+    --panorama /home/user/captures/panorama
+cp target/captures/panorama/panorama/panorama_*.png assets/panorama/
+```
+
+(`/home/user/captures` is the folder the script copies back.) Look at
+every face before committing it, and keep `assets/manifest.json`'s
+provenance in step with the seed and pose. A different size needs equal
+power-of-two squares and `FACE_SIZE` in `src/title.rs`. The faces are
+embedded in the executable (3.5 MB) and decoded on a thread when the title
+first opens; the title shows the old turning sky until they are on the GPU.
+
 ### Comparison scenes
 
 [`tools/capture_scenes.json`](../tools/capture_scenes.json) lists named,
 reproducible before/after scenes for v0.18's visual work, in five groups:
 
 - `materials`: a stone and ore wall over deepslate, a torch-lit stone room's
-  ceiling, a stepped grass and dirt hillside, a small forest, sand dunes and
-  a palette wall of 32 common blocks. All are built with `--place` high
-  above the terrain, so they don't change when world generation does.
+  ceiling, a stepped grass and dirt hillside, a small forest, sand dunes, a
+  palette wall of 32 common blocks, and `material-items`: material blocks
+  in the hotbar (stone held) and nine dropped blocks on grass and stone.
+  All are built with `--place` high above the terrain, so they don't change
+  when world generation does, and each is captured at 1920 × 1080 and
+  1280 × 720 with Auto GUI scale.
 - `mobs`: nine mobs and dropped items on uneven grass at sunrise (held
   below the sunburn threshold, so the undead survive the wait) and at
   midnight, and two close-ups pinned with `--still-mobs` (v0.18 Track 6):
   `mobs-still-farm` (chicken, pig, cow, sheep and wolf on one- and
   two-block steps, with dropped items) and `mobs-still-hostile` (villager,
-  zombie, skeleton, creeper, enderman and spider) at noon.
+  zombie, skeleton, creeper, enderman and spider) at noon, and four more
+  pinned rows of the other mobs: `mobs-still-village-nether`,
+  `mobs-still-animals`, `mobs-still-small` and `mobs-still-large`.
 - `ui`: the survival HUD, inventory, recipe book, a crafting table with the
   recipe book, a furnace, the creative inventory on two tabs, the pause menu,
-  Video Settings, the death screen and the Hardcore death, each at
-  1920 × 1080 and 1280 × 720 with Auto and fixed scale-2 GUI scales. Auto
-  is already the largest scale that fits (4 and 3), so it is the "large"
-  case.
+  Video Settings, Accessibility Settings, the death screen and the
+  Hardcore death, each at 1920 × 1080 and 1280 × 720 with Auto and fixed
+  scale-2 GUI scales. Auto is already the largest scale that fits (4 and
+  3), so it is the "large" case. `sign-text` (one 1080p capture) shows
+  three signs with accented, ASCII and full-width lines.
 - `title`: the title screen, Select World with four fixed saves and empty,
-  and Create New World, at the same four sizes.
+  and Create New World, at the same four sizes. `world-list-icons` repeats
+  the four saves with real icons: before its captures, the tool opens three
+  of the saves once each with `--world-icon` (a scripted run that takes the
+  world's icon by the game's usual first-visit rule and waits for it), and
+  the pre-0.6 world keeps the default icon.
 - `atmosphere`: the seeded landscape at noon, dusk and midnight, in rain and
   a thunderstorm, inside a water tank, and in the Nether and the End.
 
@@ -410,7 +500,14 @@ the first two mob scenes wait, so those two scenes are the only ones that
 differ between runs of one build. `--still-mobs` (capture-only) pins them
 instead: a mob that has landed stops updating (no AI, movement, sunlight
 burning or sounds), turns to face the starting camera and keeps its
-lighting current, so the two pinned scenes show the same poses every run.
+lighting current; fliers hold still after ten ticks. The flag also restarts
+the entity random sequence from the world seed before the scene's
+scripted throws and spawns, so wool colours, babies and variants come out
+the same every run, and the pinned scenes compare like with like.
+
+`python3 tools/compare_captures.py target/captures/<before> target/captures/<after>`
+puts each capture the two folders share side by side (before on the left)
+in `target/captures/compare-<before>-<after>/`.
 
 To add a scene, append it to the JSON with a new name, rather than changing
 an existing scene, so earlier captures keep comparing like with like. The

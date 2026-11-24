@@ -51,9 +51,11 @@ pub const fn text_color(c: DyeColor) -> [u8; 3] {
 /// the renderer's).
 pub const MAX_LINE_CHARS: usize = 384;
 
-/// Characters a sign line can hold: printable ASCII, what the font draws.
+/// Characters a sign line can hold: Java's allowed chat characters that
+/// the font draws ([`crate::font::allowed`]). Signs saved before v0.18 held
+/// printable ASCII, which is still allowed.
 pub fn allowed(c: char) -> bool {
-    c.is_ascii() && !c.is_ascii_control()
+    crate::font::allowed(c)
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

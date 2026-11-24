@@ -10,6 +10,8 @@ import wave
 import zlib
 from pathlib import Path
 
+from texture_from_source import scanlines
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -39,7 +41,8 @@ def validate():
                 if kind == b"IDAT":
                     compressed.extend(data)
                 at += size + 12
-            assert len(zlib.decompress(compressed)) == 16 * (1 + 16 * 4), f"{key}: truncated pixels"
+            pixels = zlib.decompress(compressed)
+            assert len(pixels) == 16 * (1 + 16 * 4), f"{key}: truncated pixels"
             layer = entry["texture_layer"]
             assert 0 <= layer < 4096 and layer not in layers, f"{key}: invalid/duplicate texture layer"
             layers.add(layer)
@@ -48,6 +51,29 @@ def validate():
                 assert len(source["pixels"]) == 16 and all(len(r) == 16 for r in source["pixels"]), (
                     f"{key}: invalid authoring source"
                 )
+                assert scanlines(source) == pixels, (
+                    f"{key}: {entry['path']} differs from {entry['source']}; rebuild it with tools/texture_from_source.py"
+                )
+        elif entry["kind"] == "panorama":
+            # v0.18 Track 7: a title panorama face, an RGB8 square rendered by the game.
+            side = entry["width"]
+            assert side == entry["height"] and side & (side - 1) == 0, f"{key}: faces are power-of-two squares"
+            assert entry["face"] in range(6) and ("face", entry["face"]) not in layers, f"{key}: invalid face"
+            layers.add(("face", entry["face"]))
+            blob = path.read_bytes()
+            assert blob[:8] == b"\x89PNG\r\n\x1a\n", f"{key}: not PNG"
+            at, compressed = 8, bytearray()
+            while at < len(blob):
+                size = struct.unpack(">I", blob[at : at + 4])[0]
+                kind, data = blob[at + 4 : at + 8], blob[at + 8 : at + 8 + size]
+                crc = struct.unpack(">I", blob[at + 8 + size : at + 12 + size])[0]
+                assert zlib.crc32(kind + data) & 0xFFFFFFFF == crc, f"{key}: invalid PNG checksum"
+                if kind == b"IHDR":
+                    assert struct.unpack(">IIBBBBB", data) == (side, side, 8, 2, 0, 0, 0), f"{key}: require RGB8"
+                if kind == b"IDAT":
+                    compressed.extend(data)
+                at += size + 12
+            assert len(zlib.decompress(compressed)) == side * (1 + side * 3), f"{key}: truncated pixels"
         elif entry["kind"] == "model":
             model = json.loads(path.read_text())
             assert model["schema"] == 1 and model["texture"] in entries, f"{key}: invalid model reference"

@@ -137,7 +137,8 @@ sources, captures, measurements and differences from Java.
 **Ground shadows** (`entity/shadow.rs`) follow Java 26.3's
 `EntityRenderer.extractShadow` and `ShadowFeatureRenderer`. Each mob,
 player, dropped item and experience orb within 16 blocks of the camera
-darkens the top of every block under its radius that is drawn and has a
+(and, in the second round, every minecart, boat, primed TNT, falling
+block, End crystal and the dragon) darkens the top of every block under its radius that is drawn and has a
 full-block collision shape (none on slabs, stairs or other blocks with a
 lower collision box), scanning down by `min(power / 0.5 - 1, radius)` blocks. A piece's
 alpha is `(power - 0.5 * blocks below the feet) * 0.5 * brightness`, where
@@ -163,7 +164,10 @@ so the mipmaps fade a pattern to the plain colour with distance. The
 pattern number rides in a spare byte of `BoxInstance`, so patterned boxes
 stay GPU instances. The farm animals, villagers, zombies (husks and
 drowned share the macro), skeletons (strays, bogged and wither
-skeletons), creepers, spiders, endermen and wolves use them, with new
+skeletons), creepers, spiders, endermen and wolves choose them box by box;
+every other mob's surface boxes take `model::default_pattern`'s choice for
+its kind (iron golems, witches, illagers, horses and ghasts also have new
+details). The first group also has new
 faces and markings: eye whites, hooves, an udder and more hide patches,
 teeth, torn shirts, eight spider eyes, a villager belt and hem, darker
 wing edges. Silhouettes and cuboid construction are unchanged apart from

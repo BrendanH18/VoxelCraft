@@ -348,7 +348,13 @@ impl Game {
             let shadows = self.settings.entity_shadows;
             let verts = self.mobs.entities.shadows(&self.world, camera, scene.alpha, &casters, shadows);
             super::push_avatars(&self.world, &others, camera, fog.end, scene.time, verts);
-            crate::render::signs::text(&self.world, camera, verts);
+            crate::render::signs::text(
+                &mut self.mobs.sign_text,
+                crate::render::signs::FONT_VERSION,
+                &self.world,
+                camera,
+                verts,
+            );
             crate::entity::model::build_beacon_beams(&self.world, camera, scene.time, fog.end, verts);
             crate::entity::model::build_conduits(&self.world, camera, fog.end, verts);
             if !bot.camera.first_person() {
@@ -443,6 +449,9 @@ impl Game {
                 rain: scene.rain,
                 night_vision: a.vitals.effects.vision(scene.time, a.player.head_in_water(&self.world)),
                 ui,
+                // Controller players' screens are in-game panels: no blur.
+                blur: 0,
+                ui_under_blur: 0,
             };
             self.renderer.set_particles(&self.particles.pool, &self.world, camera, forward, scene.alpha);
             self.renderer.draw_view(frame, &params, vp);

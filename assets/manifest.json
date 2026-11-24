@@ -9,7 +9,7 @@
       "path": "assets/textures/stone.png",
       "source": "assets/textures/stone.source.json",
       "license": "MIT OR Apache-2.0",
-      "provenance": "Original VoxelCraft hand-authored 16 x 16 pixel composition, 2026-10-12",
+      "provenance": "Original VoxelCraft 16 x 16 pixel composition, hand-authored 2026-10-12; redrawn 2026-11-23 (v0.18 track 3) as natural stone with no inset panels, laid out with the material generator's cluster rules and finished by hand; PNG built from the source by tools/texture_from_source.py",
       "texture_layer": 0,
       "width": 16,
       "height": 16
@@ -30,12 +30,81 @@
       "provenance": "Original VoxelCraft swept resonator composition, no external samples",
       "sound": "pop",
       "sample_rate": 48000
+    },
+    {
+      "key": "voxelcraft:panorama_0",
+      "kind": "panorama",
+      "path": "assets/panorama/panorama_0.png",
+      "license": "MIT OR Apache-2.0",
+      "provenance": "Rendered by VoxelCraft itself (--panorama), v0.18 Track 7, 2026-11-23: the north face of a savanna village, seed 1234, from -942,78,190 at time 0.2; see docs/development.md#the-title-panorama",
+      "face": 0,
+      "width": 1024,
+      "height": 1024
+    },
+    {
+      "key": "voxelcraft:panorama_1",
+      "kind": "panorama",
+      "path": "assets/panorama/panorama_1.png",
+      "license": "MIT OR Apache-2.0",
+      "provenance": "Rendered by VoxelCraft itself (--panorama), v0.18 Track 7, 2026-11-23: the east face of a savanna village, seed 1234, from -942,78,190 at time 0.2; see docs/development.md#the-title-panorama",
+      "face": 1,
+      "width": 1024,
+      "height": 1024
+    },
+    {
+      "key": "voxelcraft:panorama_2",
+      "kind": "panorama",
+      "path": "assets/panorama/panorama_2.png",
+      "license": "MIT OR Apache-2.0",
+      "provenance": "Rendered by VoxelCraft itself (--panorama), v0.18 Track 7, 2026-11-23: the south face of a savanna village, seed 1234, from -942,78,190 at time 0.2; see docs/development.md#the-title-panorama",
+      "face": 2,
+      "width": 1024,
+      "height": 1024
+    },
+    {
+      "key": "voxelcraft:panorama_3",
+      "kind": "panorama",
+      "path": "assets/panorama/panorama_3.png",
+      "license": "MIT OR Apache-2.0",
+      "provenance": "Rendered by VoxelCraft itself (--panorama), v0.18 Track 7, 2026-11-23: the west face of a savanna village, seed 1234, from -942,78,190 at time 0.2; see docs/development.md#the-title-panorama",
+      "face": 3,
+      "width": 1024,
+      "height": 1024
+    },
+    {
+      "key": "voxelcraft:panorama_4",
+      "kind": "panorama",
+      "path": "assets/panorama/panorama_4.png",
+      "license": "MIT OR Apache-2.0",
+      "provenance": "Rendered by VoxelCraft itself (--panorama), v0.18 Track 7, 2026-11-23: the up face of a savanna village, seed 1234, from -942,78,190 at time 0.2; see docs/development.md#the-title-panorama",
+      "face": 4,
+      "width": 1024,
+      "height": 1024
+    },
+    {
+      "key": "voxelcraft:panorama_5",
+      "kind": "panorama",
+      "path": "assets/panorama/panorama_5.png",
+      "license": "MIT OR Apache-2.0",
+      "provenance": "Rendered by VoxelCraft itself (--panorama), v0.18 Track 7, 2026-11-23: the down face of a savanna village, seed 1234, from -942,78,190 at time 0.2; see docs/development.md#the-title-panorama",
+      "face": 5,
+      "width": 1024,
+      "height": 1024
     }
   ],
   "procedural_resources": {
     "textures": "Unmapped texture layers retain the Rust generators",
     "models": "Unmapped entity/block geometry retains Rust model builders",
     "audio": "Unmapped sound keys retain Bank synthesis",
-    "music": "Original Rust music compositions remain procedural"
+    "music": "Original Rust music compositions remain procedural",
+    "material_art": {
+      "generator": "src/render/material_textures.rs",
+      "provenance": "Original VoxelCraft procedural pixel art, v0.18 track 3 (2026-11-23): deepslate, andesite, diorite, granite, tuff, cobblestone, gravel, dirt, grass top and sides, sand, red sand, the sixteen stone and deepslate ores, six leaves, and the logs, log ends and planks of oak, spruce, birch, jungle, acacia, dark oak, mangrove and cherry. Integer palette-and-cluster rules from docs/art-and-ui.md; no Minecraft texture was copied or traced",
+      "layers": 59,
+      "new_layers": 0,
+      "cpu_cache_bytes": 65536,
+      "block_array_bytes": 5546024,
+      "runtime": "Built once on first use, before the block texture array uploads; see docs/verification/2026-11-23-v0.18-materials.md for the measured time"
+    }
   }
 }

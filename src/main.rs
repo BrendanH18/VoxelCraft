@@ -47,6 +47,12 @@ pub struct Args {
     pub enhanced_graphics: Option<bool>,
     pub new_world: bool,
     pub bench: bool,
+    /// `--bench-tick SCENE`: the headless tick and streaming benchmark
+    /// (`voxelcraft::tick_bench`), its JSON report on stdout.
+    pub bench_tick: Option<String>,
+    /// `--bench-seconds S` and `--bench-warmup S` for `--bench-tick`.
+    pub bench_seconds: f64,
+    pub bench_warmup: f64,
     pub screenshot: Option<String>,
     /// Session-only perspective for screenshot inspection.
     pub camera: voxelcraft::camera::CameraMode,
@@ -117,6 +123,12 @@ pub struct Args {
     pub animation_time: Option<f32>,
     /// `--still-mobs`: landed mobs hold still facing the camera, for comparable captures.
     pub still_mobs: bool,
+    /// v0.18 Track 7: `--panorama DIR`, with `--screenshot`: render the six
+    /// title panorama faces from the pose into DIR before the screenshot.
+    pub panorama: Option<std::path::PathBuf>,
+    /// v0.18 Track 7: `--world-icon`: take the world's icon in a scripted
+    /// run too (by the usual rule), waiting for it before `--screenshot` exits.
+    pub world_icon: bool,
     /// x,y,z,yaw_deg,pitch_deg
     pub pose: Option<[f64; 5]>,
     /// Starting health / air overrides (debugging/screenshots).
@@ -246,6 +258,10 @@ voxelcraft [options]
   --wait <secs>     with --screenshot: keep simulating this long first
   --animation-time <secs>  hold the animation clock (idle animations, clouds, water) at this time, for comparable captures
   --still-mobs      landed mobs stop moving and face the starting camera, for comparable captures
+  --panorama <dir>  with --screenshot and a square --size: render the title
+                    panorama's six faces (panorama_0..5.png) from the --pose
+                    position into dir first
+  --world-icon      take the world's icon.png even in a scripted run
   --time <0..1>     starting time of day (0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight)
   --weather <w>     start with clear skies, rain or a thunderstorm (clear,
                     rain, thunder)
@@ -297,6 +313,9 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
         enhanced_graphics: None,
         new_world: false,
         bench: false,
+        bench_tick: None,
+        bench_seconds: 60.0,
+        bench_warmup: 10.0,
         screenshot: None,
         camera: Default::default(),
         ride: None,
@@ -337,6 +356,8 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
         wait: 0.0,
         animation_time: None,
         still_mobs: false,
+        panorama: None,
+        world_icon: false,
         pose: None,
         health: None,
         air: None,
@@ -408,6 +429,13 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
             }
             "--new" => args.new_world = true,
             "--bench" => args.bench = true,
+            "--bench-tick" => args.bench_tick = Some(value("--bench-tick")?),
+            "--bench-seconds" => {
+                args.bench_seconds = value("--bench-seconds")?.parse().map_err(|_| "bad --bench-seconds")?
+            }
+            "--bench-warmup" => {
+                args.bench_warmup = value("--bench-warmup")?.parse().map_err(|_| "bad --bench-warmup")?
+            }
             "--bench-render" => args.bench_render = true,
             "--benchmark-scene" => {
                 args.benchmark_scene = Some(voxelcraft::performance::parse_scene(&value("--benchmark-scene")?)?);
@@ -702,6 +730,8 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
                 }
             }
             "--screenshot" => args.screenshot = Some(value("--screenshot")?),
+            "--panorama" => args.panorama = Some(value("--panorama")?.into()),
+            "--world-icon" => args.world_icon = true,
             "--pose" => {
                 let v: Vec<f64> = value("--pose")?.split(',').filter_map(|s| s.trim().parse().ok()).collect();
                 args.pose = Some(v.try_into().map_err(|_| "--pose needs x,y,z,yaw,pitch")?);
@@ -864,6 +894,24 @@ fn main() {
         if let Err(e) = audio::export_sounds("target/sounds") {
             eprintln!("export failed: {e}");
             std::process::exit(1);
+        }
+        return;
+    }
+    if let Some(scene) = args.bench_tick.clone() {
+        let options = voxelcraft::tick_bench::Options {
+            scene,
+            seed: args.seed.unwrap_or(12345),
+            render_distance: args.render_distance.unwrap_or(8),
+            warmup: args.bench_warmup,
+            seconds: args.bench_seconds,
+            ..Default::default()
+        };
+        match voxelcraft::tick_bench::run(&options) {
+            Ok(report) => println!("{report}"),
+            Err(e) => {
+                eprintln!("tick benchmark: {e}");
+                std::process::exit(1);
+            }
         }
         return;
     }

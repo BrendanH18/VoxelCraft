@@ -16,6 +16,7 @@ mod containers;
 mod crafter;
 mod creative;
 mod credits;
+mod death;
 mod dimension;
 mod distortion;
 mod doors;
@@ -60,6 +61,7 @@ pub use voxelcraft::rules::GameMode;
 mod title;
 mod weather;
 mod wither;
+mod world_icon;
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -90,6 +92,8 @@ use survival::Vitals;
 /// Placement/use repeat; mining timing is owned by the shared session.
 const ACTION_REPEAT: f64 = 0.22;
 const AUTOSAVE_EVERY: Duration = Duration::from_secs(120);
+/// Light [`World::update_players`] may resolve per frame (v0.18 Track 10).
+const STREAM_LIGHT_BUDGET: Duration = Duration::from_millis(2);
 /// How long `--screenshot` waits, once streaming settles, for fluids to
 /// come to rest. Placed water settles well inside it; generation 2's
 /// springs can pour for minutes and would otherwise hold a capture open.
@@ -259,6 +263,12 @@ struct Game {
     /// Why the last save failed, until it succeeds again.
     save_error: Option<String>,
     screenshot: Option<String>,
+    /// v0.18 Track 7: the world icon's capture (`None` for LAN clients and
+    /// scripted runs without `--world-icon`).
+    world_icon: Option<world_icon::WorldIcon>,
+    /// v0.18 Track 7: `--panorama DIR` and the face being rendered.
+    panorama_out: Option<std::path::PathBuf>,
+    panorama_face: Option<usize>,
     screenshot_state: u32,
     /// When `--screenshot` first found streaming settled (see [`SCREENSHOT_FLUID_WAIT`]).
     screenshot_settled: Option<Instant>,
@@ -290,6 +300,14 @@ struct Game {
     menu: gui::Stack<Game>,
     /// What a controller asked the menus for during the frame, for the app.
     menu_action: Option<menu::MenuAction>,
+    /// v0.18 Track 2: the death screen and its quit confirmation, apart
+    /// from `menu` because they don't pause the game.
+    death: gui::Stack<Game>,
+    /// When a LAN guest last asked the host to respawn it (the death
+    /// screen stays closed meanwhile).
+    death_respawn_sent: Option<Instant>,
+    /// v0.18 Track 2: the anvil screen's name box.
+    anvil_name: anvil::NameBox,
     /// The window has had keyboard focus at some point (losing focus only
     /// pauses after that, not when the game starts in the background).
     had_focus: bool,
@@ -457,6 +475,7 @@ impl Shell {
             self.renderer.set_vsync(s.vsync);
         }
         self.renderer.set_brightness(s.brightness);
+        self.renderer.set_mipmap_levels(s.mipmap_levels);
         self.audio.set_volumes(|source| s.sound_volume(source));
         self.audio.set_subtitles(s.show_subtitles);
     }
@@ -636,6 +655,9 @@ impl ApplicationHandler for App {
             WindowEvent::CursorMoved { position, .. } => {
                 game.cursor_px = (position.x as f32, position.y as f32);
                 game.menu_cursor_moved();
+                if game.death.is_open() {
+                    game.death_cursor_moved();
+                }
                 game.creative_drag();
             }
             WindowEvent::Focused(true) => game.had_focus = true,
@@ -662,6 +684,7 @@ impl ApplicationHandler for App {
                 match event.state {
                     ElementState::Pressed => {
                         if game.console_key(&event)
+                            || (!game.menu.is_open() && game.anvil_key(&event))
                             || game.search_key(&event)
                             || (game.inventory_open && !game.menu.is_open() && game.recipe_book_key(&event))
                         {
@@ -669,6 +692,14 @@ impl ApplicationHandler for App {
                         }
                         if game.menu.is_open() {
                             if game.menu_key(&event) == Some(menu::MenuAction::Quit) {
+                                self.quit_to_title();
+                            }
+                            return;
+                        }
+                        // v0.18 Track 2: the death screen takes the keys
+                        // (Tab, arrows, Enter; Escape does nothing).
+                        if game.death.is_open() {
+                            if game.death_key(&event) == Some(menu::MenuAction::Quit) {
                                 self.quit_to_title();
                             }
                             return;
@@ -708,8 +739,9 @@ impl ApplicationHandler for App {
                     return;
                 }
                 if game.session.vitals.is_dead() {
-                    if pressed && button == MouseButton::Left {
-                        game.respawn();
+                    // v0.18 Track 2: Java's death screen buttons.
+                    if game.death.is_open() && game.death_click(button, pressed) == Some(menu::MenuAction::Quit) {
+                        self.quit_to_title();
                     }
                     return;
                 }
@@ -1216,13 +1248,13 @@ impl Game {
         if self.gamerules.bool("ender_pearls_vanish_on_death") {
             self.mobs.entities.discard_pearls_of_dead(|owner| owner == crate::entity::PlayerId::HOST);
         }
-        if self.hardcore {
-            self.session.vitals.respawn();
-            self.set_mode(GameMode::Spectator);
-            self.show_popup("Game over - Spectator mode");
-        }
+        // v0.18 Track 2: Java's client respawns at once when the game rule
+        // hides the death screen (`shouldShowDeathScreen`), in Hardcore
+        // too, where the respawn then makes the player a spectator;
+        // otherwise the death screen offers Respawn or Spectate World.
+        let immediate = self.gamerules.bool("immediate_respawn");
         // An immediate respawn keeps the mouse; the death screen frees it.
-        if !self.gamerules.respawns_immediately(self.hardcore) {
+        if !immediate {
             self.set_grab(false);
         }
         self.keys.clear();
@@ -1235,9 +1267,7 @@ impl Game {
         self.jump_pressed = false;
         self.body.mine_pressed = false;
         self.body.actions.reset();
-        if self.hardcore {
-            self.set_grab(true);
-        } else if self.gamerules.respawns_immediately(self.hardcore) {
+        if immediate {
             self.respawn_due = true;
         }
     }
@@ -1246,7 +1276,7 @@ impl Game {
     /// killed the player (a tick, a save's settling) is over.
     fn respawn_if_due(&mut self) {
         if std::mem::take(&mut self.respawn_due) && self.session.vitals.is_dead() {
-            self.respawn();
+            self.respawn_from_death();
             // A teleport: the camera snaps instead of gliding from the death spot.
             self.previous_eye = self.session.player.eye();
         }
@@ -1905,6 +1935,28 @@ impl Game {
                 self.screenshot_state = 1;
                 false
             }
+            // v0.18 Track 7: `--panorama`: the six faces first, one per frame.
+            // Each face is drawn and captured on the frame after it is set.
+            1 if let Some(dir) = self.panorama_out.clone() => {
+                if self.renderer.capture_pending() {
+                    return false;
+                }
+                let face = self.panorama_face.map_or(0, |f| f + 1);
+                if face < 6 {
+                    if let Err(e) = std::fs::create_dir_all(&dir) {
+                        log::error!("--panorama: can't create {}: {e}", dir.display());
+                    }
+                    self.panorama_face = Some(face);
+                    self.renderer.request_capture(dir.join(format!("panorama_{face}.png")));
+                } else {
+                    finish_panorama(&dir);
+                    self.panorama_face = None;
+                    self.panorama_out = None;
+                }
+                false
+            }
+            // `--world-icon` waits for the icon before the screenshot.
+            1 if self.world_icon.as_ref().is_some_and(|i| !i.done()) && self.screenshot.is_some() => false,
             // Settled for one frame (uploads applied); capture on the next.
             1 => {
                 self.renderer.request_capture(path);
@@ -2083,13 +2135,18 @@ impl Game {
             self.agents.host.is_some() || self.lan.host.is_some() || self.lan.client.is_some(),
         );
         self.respawn_if_due();
+        self.sync_death_screen();
         let elapsed = now - self.last_frame;
         self.last_frame = now;
         let ticks = self.clock.advance(elapsed, paused);
         let dt = if paused { 0.0 } else { elapsed.as_secs_f64().min(0.25) };
         self.update_credits(elapsed.as_secs_f32().min(0.25));
         self.menu_tick();
+        if let Some(action) = self.death_tick() {
+            self.menu_action = Some(action);
+        }
         self.recipe_book_frame();
+        self.anvil_frame();
         // Benchmark scenes take no controller input (a stray Start would pause sampling).
         if self.lan.client.is_none() && self.benchmark.is_none() {
             self.poll_pads(dt as f32, paused);
@@ -2107,6 +2164,9 @@ impl Game {
         }
         let viewers: Vec<DVec3> = self.followed().map(|(_, b)| b.agent.session.player.pos).collect();
         self.world.set_viewers(&viewers);
+        // Streaming spends at most this much of a frame on light; the rest
+        // is resolved before the frame's first tick, below.
+        self.world.set_stream_light_budget(Some(STREAM_LIGHT_BUDGET));
         self.world.update_players(self.session.player.pos, &self.agents.positions());
         if self.lan.client.is_none()
             && !self.placed
@@ -2117,6 +2177,11 @@ impl Game {
             self.apply_placements();
         }
         benchmark::mark(&mut self.benchmark, 0);
+        if ticks > 0 {
+            // Ticks read light exactly as when streaming resolved all of it
+            // each frame.
+            self.world.update_block_light();
+        }
         for _ in 0..ticks {
             if self.lan.client.is_some() {
                 self.tick_lan_client();
@@ -2257,7 +2322,13 @@ impl Game {
         }
         let verts = self.mobs.entities.shadows(&self.world, camera, alpha, &casters, self.settings.entity_shadows);
         push_avatars(&self.world, &others, camera, fog_end, scene.time, verts);
-        crate::render::signs::text(&self.world, camera, verts);
+        crate::render::signs::text(
+            &mut self.mobs.sign_text,
+            crate::render::signs::FONT_VERSION,
+            &self.world,
+            camera,
+            verts,
+        );
         crate::entity::model::build_beacon_beams(&self.world, camera, scene.time, fog_end, verts);
         crate::entity::model::build_conduits(&self.world, camera, fog_end, verts);
         if !self.camera.first_person() {
@@ -2298,7 +2369,17 @@ impl Game {
             let right = forward.cross(glam::DVec3::Y).normalize_or_zero();
             self.captions = self.audio.subtitles(self.session.player.eye(), forward, right);
         }
-        let params = FrameParams {
+        let (ui, blur_from) = if self.show_hud
+            || self.session.vitals.is_dead()
+            || self.menu.is_open()
+            || self.console.open
+            || self.credits.is_some()
+        {
+            self.build_ui(now)
+        } else {
+            (Vec::new(), None)
+        };
+        let mut params = FrameParams {
             camera,
             forward,
             view_effect: voxelcraft::camera::view_effect(
@@ -2366,17 +2447,28 @@ impl Game {
                 .vitals
                 .effects
                 .vision(scene.time, self.session.player.head_in_water(&self.world)),
-            ui: if self.show_hud
-                || self.session.vitals.is_dead()
-                || self.menu.is_open()
-                || self.console.open
-                || self.credits.is_some()
-            {
-                self.build_ui(now)
-            } else {
-                Vec::new()
-            },
+            ui,
+            // v0.18 Track 2: a menu over the world blurs what is under it.
+            blur: blur_from.map_or(0, |_| self.settings.menu_blur),
+            ui_under_blur: blur_from.unwrap_or(0),
         };
+        // v0.18 Track 7: `--panorama` renders each face as a square 90-degree view.
+        if let Some(face) = self.panorama_face {
+            let (forward, view_effect) = panorama_face_view(face);
+            params.forward = forward;
+            params.view_effect = view_effect;
+            params.fov_y = std::f32::consts::FRAC_PI_2;
+            params.hand = None;
+            params.highlight = None;
+            params.ui = Vec::new();
+            params.blur = 0;
+            params.ui_under_blur = 0;
+        }
+        if let Some(icon) = self.world_icon.as_mut() {
+            let drawn = self.renderer.stats.visible;
+            let settled = self.world.loaded_chunks() > 0 && self.world.pending_jobs() == 0;
+            icon.before_frame(&mut self.renderer, drawn, settled);
+        }
         benchmark::mark(&mut self.benchmark, 4);
         let Some(mut frame) = self.renderer.begin_frame() else {
             return; // hidden window: don't count this frame in the stats
@@ -2403,6 +2495,48 @@ impl Game {
         if self.settings_path.is_some() && self.benchmark.is_none() {
             self.frame_limit.wait(self.settings.frame_cap());
         }
+    }
+}
+
+/// v0.18 Track 7: rewrites the six captured faces as RGB PNGs (the captures
+/// are RGBA with an opaque alpha), the form `assets/panorama/` keeps.
+fn finish_panorama(dir: &std::path::Path) {
+    for face in 0..6 {
+        let path = dir.join(format!("panorama_{face}.png"));
+        let result = (|| -> Result<(), String> {
+            let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
+            let mut reader = png::Decoder::new(std::io::BufReader::new(file)).read_info().map_err(|e| e.to_string())?;
+            let mut buf = vec![0; reader.output_buffer_size().ok_or("too large")?];
+            let info = reader.next_frame(&mut buf).map_err(|e| e.to_string())?;
+            if info.width != info.height {
+                return Err(format!("{} x {} isn't square: give --size a square", info.width, info.height));
+            }
+            let rgb: Vec<u8> =
+                buf[..info.buffer_size()].as_chunks::<4>().0.iter().flat_map(|p| [p[0], p[1], p[2]]).collect();
+            let file = std::fs::File::create(&path).map_err(|e| e.to_string())?;
+            let mut enc = png::Encoder::new(std::io::BufWriter::new(file), info.width, info.height);
+            enc.set_color(png::ColorType::Rgb);
+            enc.set_depth(png::BitDepth::Eight);
+            enc.set_compression(png::Compression::High);
+            enc.write_header().and_then(|mut w| w.write_image_data(&rgb)).map_err(|e| e.to_string())
+        })();
+        match result {
+            Ok(()) => log::info!("panorama face {}", path.display()),
+            Err(e) => log::error!("--panorama: {}: {e}", path.display()),
+        }
+    }
+}
+
+/// v0.18 Track 7: the camera for panorama face `face`: its forward
+/// direction, and for the up and down faces (which the camera's Y-up view
+/// can't look along) a turn of view space from a northward view, so each
+/// face comes out with `voxelcraft::title::panorama::FACES`' up.
+fn panorama_face_view(face: usize) -> (glam::Vec3, glam::Mat4) {
+    use voxelcraft::title::panorama::FACES;
+    match face {
+        4 => (glam::Vec3::NEG_Z, glam::Mat4::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
+        5 => (glam::Vec3::NEG_Z, glam::Mat4::from_rotation_x(std::f32::consts::FRAC_PI_2)),
+        _ => (FACES[face].forward, glam::Mat4::IDENTITY),
     }
 }
 
@@ -2523,6 +2657,30 @@ fn pauses_simulation(screen_open: bool, shared: bool) -> bool {
     screen_open && !shared
 }
 
+/// v0.18 Track 6: whether a player's body casts a ground shadow: drawn
+/// (`Vitals::visible`), not Invisible and not a spectator (Java's
+/// `isInvisible` hides both).
+pub(crate) fn casts_shadow(
+    vitals: &voxelcraft::simulation::survival::Vitals,
+    mode: voxelcraft::rules::GameMode,
+) -> bool {
+    vitals.visible()
+        && !vitals.effects.has(voxelcraft::simulation::effects::Effect::Invisibility)
+        && mode != voxelcraft::rules::GameMode::Spectator
+}
+
+/// v0.18 Track 6: the shadow casters the entity list doesn't hold: the
+/// players drawn in this view (at `players`' feet) and the falling blocks.
+pub(crate) fn shadow_casters(
+    world: &voxelcraft::world::World,
+    players: impl Iterator<Item = DVec3>,
+    alpha: f64,
+) -> Vec<voxelcraft::entity::shadow::Caster> {
+    use voxelcraft::entity::shadow;
+    let falling = world.falling_blocks().iter().map(|f| shadow::falling_block(f.previous_pos.lerp(f.pos, alpha)));
+    players.map(shadow::player).chain(falling).collect()
+}
+
 #[cfg(test)]
 mod pause_tests {
     use super::*;
@@ -2556,28 +2714,4 @@ mod pause_tests {
         assert_eq!(unreadable_level(&storage, true), None, "--new and new worlds replace it on purpose");
         std::fs::remove_dir_all(dir).unwrap();
     }
-}
-
-/// v0.18 Track 6: whether a player's body casts a ground shadow: drawn
-/// (`Vitals::visible`), not Invisible and not a spectator (Java's
-/// `isInvisible` hides both).
-pub(crate) fn casts_shadow(
-    vitals: &voxelcraft::simulation::survival::Vitals,
-    mode: voxelcraft::rules::GameMode,
-) -> bool {
-    vitals.visible()
-        && !vitals.effects.has(voxelcraft::simulation::effects::Effect::Invisibility)
-        && mode != voxelcraft::rules::GameMode::Spectator
-}
-
-/// v0.18 Track 6: the shadow casters the entity list doesn't hold: the
-/// players drawn in this view (at `players`' feet) and the falling blocks.
-pub(crate) fn shadow_casters(
-    world: &voxelcraft::world::World,
-    players: impl Iterator<Item = DVec3>,
-    alpha: f64,
-) -> Vec<voxelcraft::entity::shadow::Caster> {
-    use voxelcraft::entity::shadow;
-    let falling = world.falling_blocks().iter().map(|f| shadow::falling_block(f.previous_pos.lerp(f.pos, alpha)));
-    players.map(shadow::player).chain(falling).collect()
 }

@@ -11,12 +11,11 @@ use voxelcraft::content::banner_patterns as bp;
 use voxelcraft::inventory::components::BannerLayer;
 use voxelcraft::world::workstations::pattern_layer;
 
-/// A dye as a UI colour: the overlay blends in linear space, so the sRGB
-/// colour is decoded (as `components::dye_tint_f32` does).
+/// A dye as a UI colour: its sRGB value, which `Ui` converts to linear
+/// like every UI colour (`render::ui::linear`).
 pub(super) fn dye_color(c: DyeColor) -> Color {
-    let [r, g, b] = c.rgb();
-    let linear = |v: u8| (f32::from(v) / 255.0).powf(2.2);
-    [linear(r), linear(g), linear(b), 1.0]
+    let [r, g, b] = c.rgb().map(|v| f32::from(v) / 255.0);
+    [r, g, b, 1.0]
 }
 
 /// A flag `w` × `h` at (`x`, `y`): the base colour, then each layer's mask.

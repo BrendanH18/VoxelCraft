@@ -91,7 +91,7 @@ impl BookEdit {
     }
 
     fn insert(&mut self, text: &str) {
-        for c in text.chars().filter(|&c| c == '\n' || (c.is_ascii() && !c.is_ascii_control())) {
+        for c in text.chars().filter(|&c| c == '\n' || voxelcraft::font::allowed(c)) {
             let mut next = self.current().clone();
             next.push(c);
             if Self::fits(&next) {
