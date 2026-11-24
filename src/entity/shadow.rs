@@ -1,5 +1,6 @@
-//! v0.18 Track 6: ground shadows under mobs, players, dropped items and
-//! experience orbs, as Java 26.3's `EntityRenderer.extractShadow` and
+//! v0.18 Track 6: ground shadows under mobs, players, dropped items,
+//! experience orbs, minecarts, boats, primed TNT, falling blocks, End
+//! crystals and the dragon, as Java 26.3's `EntityRenderer.extractShadow` and
 //! `ShadowFeatureRenderer` draw them (Entity Shadows option).
 //!
 //! Each caster darkens the top of every full-collision block under its
@@ -152,6 +153,37 @@ pub fn mob_radius(m: &Mob) -> f32 {
 pub const ITEM: (f32, f32) = (0.15, 0.75);
 /// Players (`AvatarRenderer`).
 pub const PLAYER_RADIUS: f32 = 0.5;
+/// Primed TNT and falling blocks (`TntRenderer`, `FallingBlockRenderer`).
+pub const BLOCK_RADIUS: f32 = 0.5;
+/// End crystals (`EndCrystalRenderer`).
+pub const CRYSTAL_RADIUS: f32 = 0.5;
+/// The Ender Dragon (`EnderDragonRenderer`), whose renderer keeps the
+/// default-sized shadow however big the dragon is.
+pub const DRAGON_RADIUS: f32 = 0.5;
+/// Minecarts of every kind (`AbstractMinecartRenderer`).
+pub const MINECART_RADIUS: f32 = 0.7;
+/// Boats and rafts (`AbstractBoatRenderer`).
+pub const BOAT_RADIUS: f32 = 0.8;
+
+/// A minecart, boat or cushion's shadow radius; cushions (`CushionRenderer`) have none.
+pub fn cart_radius(kind: super::minecart::CartKind) -> f32 {
+    use super::minecart::CartKind;
+    match kind {
+        CartKind::Boat { .. } => BOAT_RADIUS,
+        CartKind::Cushion { .. } => 0.0,
+        _ => MINECART_RADIUS,
+    }
+}
+
+/// A falling block's shadow: `pos` is its minimum corner.
+pub fn falling_block(pos: DVec3) -> Caster {
+    Caster { pos: pos + DVec3::new(0.5, 0.0, 0.5), radius: BLOCK_RADIUS, strength: 1.0 }
+}
+
+/// A player's shadow at its interpolated feet.
+pub fn player(pos: DVec3) -> Caster {
+    Caster { pos, radius: PLAYER_RADIUS, strength: 1.0 }
+}
 
 /// The shadow casters among `mobs` within the fade distance of `camera`:
 /// drawn and not invisible.

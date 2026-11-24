@@ -2264,14 +2264,15 @@ impl Entities {
 
     /// v0.18 Track 6: adds ground shadows to the mesh [`Entities::mesh`]
     /// built for this view, when `enabled` (the Entity Shadows option): for
-    /// the mobs, dropped items and experience orbs here and for the players
-    /// whose interpolated feet are `players`. Returns the mesh.
+    /// the mobs, dropped items, experience orbs, minecarts and boats, primed
+    /// TNT, End crystals and the dragon here, and for `others` (players and
+    /// falling blocks, which live elsewhere). Returns the mesh.
     pub fn shadows<G: shadow::Ground + ?Sized>(
         &mut self,
         ground: &G,
         camera: DVec3,
         alpha: f64,
-        players: &[DVec3],
+        others: &[shadow::Caster],
         enabled: bool,
     ) -> &mut model::EntityMesh {
         if !enabled {
@@ -2280,16 +2281,21 @@ impl Entities {
         let mut casters = std::mem::take(&mut self.casters);
         casters.clear();
         shadow::mob_casters(&self.mobs, camera, alpha, &mut casters);
-        let near = |pos: DVec3| pos.distance_squared(camera) < shadow::FADE_DISTANCE_SQ;
+        let near = |c: &shadow::Caster| c.pos.distance_squared(camera) < shadow::FADE_DISTANCE_SQ;
+        let at = |radius: f32, strength: f32| move |pos: DVec3| shadow::Caster { pos, radius, strength };
         let (radius, strength) = shadow::ITEM;
-        let items = self.items.iter().map(|i| i.previous_pos.lerp(i.pos, alpha));
-        let orbs = self.orbs.iter().map(|o| o.previous_pos.lerp(o.pos, alpha));
-        casters.extend(items.chain(orbs).filter(|&p| near(p)).map(|pos| shadow::Caster { pos, radius, strength }));
-        casters.extend(players.iter().filter(|&&p| near(p)).map(|&pos| shadow::Caster {
-            pos,
-            radius: shadow::PLAYER_RADIUS,
-            strength: 1.0,
-        }));
+        let items = self.items.iter().map(|i| i.previous_pos.lerp(i.pos, alpha)).map(at(radius, strength));
+        let orbs = self.orbs.iter().map(|o| o.previous_pos.lerp(o.pos, alpha)).map(at(radius, strength));
+        let carts = self.minecarts.iter().map(|c| {
+            let pos = c.previous_pos.lerp(c.pos, alpha);
+            shadow::Caster { pos, radius: shadow::cart_radius(c.kind), strength: 1.0 }
+        });
+        let tnt = self.tnt.iter().map(|t| t.previous_pos.lerp(t.pos, alpha)).map(at(shadow::BLOCK_RADIUS, 1.0));
+        let crystals = self.crystals.list.iter().map(|c| c.pos).map(at(shadow::CRYSTAL_RADIUS, 1.0));
+        let dragon = self.fight.as_ref().and_then(|f| f.dragon.as_ref());
+        let dragon = dragon.map(|d| d.previous_pos.lerp(d.pos, alpha)).map(at(shadow::DRAGON_RADIUS, 1.0));
+        let all = items.chain(orbs).chain(carts).chain(tnt).chain(crystals).chain(dragon);
+        casters.extend(all.chain(others.iter().copied()).filter(|c| c.radius > 0.0 && near(c)));
         shadow::build(ground, &casters, camera, &mut self.mesh);
         self.casters = casters;
         &mut self.mesh

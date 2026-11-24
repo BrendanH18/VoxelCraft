@@ -101,6 +101,34 @@ fn items_orbs_and_players_cast_javas_shadows() {
 }
 
 #[test]
+fn carts_boats_tnt_falling_blocks_crystals_and_the_dragon_cast_javas_shadows() {
+    use voxelcraft::entity::minecart::CartKind;
+    let java = fixture();
+    let radius = |id: &str| {
+        assert_eq!(java["entities"][id]["strength"].as_f64(), Some(1.0), "{id}");
+        java["entities"][id]["radius"].as_f64().unwrap_or_else(|| panic!("{id}"))
+    };
+    for (id, kind) in [
+        ("minecart", CartKind::Rideable),
+        ("chest_minecart", CartKind::Chest),
+        ("hopper_minecart", CartKind::Hopper),
+        ("tnt_minecart", CartKind::Tnt),
+        ("furnace_minecart", CartKind::Furnace),
+        ("oak_boat", CartKind::Boat { wood: 0, chest: false }),
+        ("oak_chest_boat", CartKind::Boat { wood: 0, chest: true }),
+        ("cushion", CartKind::Cushion { colour: 0 }),
+    ] {
+        assert!(close(shadow::cart_radius(kind), radius(id)), "{id}");
+    }
+    assert!(close(shadow::BLOCK_RADIUS, radius("tnt")));
+    assert!(close(shadow::falling_block(DVec3::ZERO).radius, radius("falling_block")));
+    assert_eq!(shadow::falling_block(DVec3::ZERO).pos, DVec3::new(0.5, 0.0, 0.5), "centred on the block");
+    assert!(close(shadow::CRYSTAL_RADIUS, radius("end_crystal")));
+    assert!(close(shadow::DRAGON_RADIUS, radius("ender_dragon")));
+    assert!(close(shadow::player(DVec3::ZERO).radius, radius("player")));
+}
+
+#[test]
 fn shadow_constants_and_option_match_java() {
     let java = fixture();
     let c = &java["constants"];

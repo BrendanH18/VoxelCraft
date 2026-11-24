@@ -2250,11 +2250,12 @@ impl Game {
         benchmark::mark(&mut self.benchmark, 2);
         self.mobs.entities.mesh(camera, forward, fog_end, scene.time, alpha);
         // v0.18 Track 6: ground shadows, for the players drawn in this view too.
-        let mut feet: Vec<DVec3> = others.iter().map(|o| o.1).collect();
+        let mut casters = shadow_casters(&self.world, others.iter().map(|o| o.1), alpha);
         if !self.camera.first_person() && casts_shadow(&self.session.vitals, self.session.mode) {
-            feet.push(eye - (self.session.player.eye() - self.session.player.pos));
+            casters
+                .push(voxelcraft::entity::shadow::player(eye - (self.session.player.eye() - self.session.player.pos)));
         }
-        let verts = self.mobs.entities.shadows(&self.world, camera, alpha, &feet, self.settings.entity_shadows);
+        let verts = self.mobs.entities.shadows(&self.world, camera, alpha, &casters, self.settings.entity_shadows);
         push_avatars(&self.world, &others, camera, fog_end, scene.time, verts);
         crate::render::signs::text(&self.world, camera, verts);
         crate::entity::model::build_beacon_beams(&self.world, camera, scene.time, fog_end, verts);
@@ -2567,4 +2568,16 @@ pub(crate) fn casts_shadow(
     vitals.visible()
         && !vitals.effects.has(voxelcraft::simulation::effects::Effect::Invisibility)
         && mode != voxelcraft::rules::GameMode::Spectator
+}
+
+/// v0.18 Track 6: the shadow casters the entity list doesn't hold: the
+/// players drawn in this view (at `players`' feet) and the falling blocks.
+pub(crate) fn shadow_casters(
+    world: &voxelcraft::world::World,
+    players: impl Iterator<Item = DVec3>,
+    alpha: f64,
+) -> Vec<voxelcraft::entity::shadow::Caster> {
+    use voxelcraft::entity::shadow;
+    let falling = world.falling_blocks().iter().map(|f| shadow::falling_block(f.previous_pos.lerp(f.pos, alpha)));
+    players.map(shadow::player).chain(falling).collect()
 }

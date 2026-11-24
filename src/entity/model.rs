@@ -265,6 +265,37 @@ impl Pattern {
 /// The entity shader's material number for a patterned box.
 pub const PATTERN_MATERIAL: u8 = 6;
 
+/// v0.18 Track 6: the pattern a mob's plain surface boxes take when its
+/// model doesn't choose one box by box (the boxes with surface noise, so
+/// eyes, mouths and other flat details stay crisp). The mobs whose models
+/// set patterns themselves get none here.
+pub fn default_pattern(kind: MobKind) -> Option<Pattern> {
+    use MobKind::*;
+    use Pattern::*;
+    Some(match kind {
+        Pig | Cow | Sheep | Chicken | Zombie | Husk | Drowned | Skeleton | Stray | Bogged | WitherSkeleton
+        | Creeper | Spider | CaveSpider | Enderman | Wolf | Villager | ZombieVillager => return None,
+        // Woven clothes and robes.
+        Witch | Pillager | Vindicator | Evoker | Illusioner | WanderingTrader => Cloth,
+        // Fur and hair.
+        Horse | Donkey | Mule | Camel | Cat | Ocelot | Fox | Rabbit | Panda | PolarBear | Bee | Bat | Sniffer
+        | Mooshroom | Creaking => Fur,
+        Llama | TraderLlama | Goat | SnowGolem => Wool,
+        Hoglin => Bristle,
+        // Smooth skin.
+        Piglin | PiglinBrute | Strider | Squid | GlowSquid | Dolphin | Axolotl | Frog | Tadpole | Slime | Ghast
+        | HappyGhast | Phantom | Ravager | Allay => Hide,
+        // Rot and bone.
+        ZombifiedPiglin | Zoglin | ZombieHorse | CamelHusk | ZombieNautilus => Rot,
+        SkeletonHorse | Parched | IronGolem | Wither => Bone,
+        // Scales and plates.
+        Cod | Salmon | TropicalFish | Pufferfish | Parrot | Silverfish => Feather,
+        Turtle | Guardian | ElderGuardian | Armadillo | Shulker | Blaze | SulfurCube | Nautilus => Mottle,
+        // Glints and sculk.
+        MagmaCube | Endermite | Vex | Breeze | Warden | CopperGolem => Speckle,
+    })
+}
+
 #[derive(Clone, Copy)]
 pub(super) struct Cuboid {
     min: [f32; 3],
@@ -304,11 +335,15 @@ static MAGMA_GLOW: &[Cuboid] = &[
     cube([-2.6, 4.5, 4.1], [-1.1, 6.0, 4.15], [255, 205, 55], 0),
     cube([1.1, 4.5, 4.1], [2.6, 6.0, 4.15], [255, 205, 55], 0),
 ];
+// v0.18 Track 6: grey tear streaks under the eyes (the hide takes the
+// default pattern).
 const GHAST_BODY: &[Cuboid] = &[
     cube([-18.0, 24.0, -18.0], [18.0, 64.0, 18.0], [236, 236, 236], 16),
     cube([-7.0, 42.0, 18.0], [-2.0, 48.0, 18.5], [176, 32, 32], 0),
     cube([2.0, 42.0, 18.0], [7.0, 48.0, 18.5], [176, 32, 32], 0),
     cube([-3.5, 34.0, 18.0], [3.5, 38.0, 18.4], [120, 36, 40], 0),
+    cube([-6.0, 36.0, 18.0], [-5.0, 42.0, 18.2], [170, 170, 176], 0),
+    cube([5.0, 37.0, 18.0], [6.0, 42.0, 18.2], [170, 170, 176], 0),
 ];
 const GHAST_TENTACLE: &[Cuboid] = &[cube([-2.0, -24.0, -2.0], [2.0, 0.0, 2.0], [214, 214, 214], 12)];
 // Java's slime: an opaque 6-unit core with the face, inside a translucent
@@ -420,9 +455,12 @@ const WITCH_ROBE: Rgb = [84, 44, 118];
 const WITCH_HAT: Rgb = [38, 28, 52];
 const WITCH_NOSE: Rgb = [118, 96, 78];
 
+// v0.18 Track 6: a sash, a hat band, a mouth (the robe and skin take the
+// default patterns).
 const WITCH_BODY: &[Cuboid] = &[
     cube([-4.0, 8.0, -3.0], [4.0, 19.0, 3.0], WITCH_ROBE, 36),
     cube([-4.5, 5.0, -3.5], [4.5, 10.0, 3.5], WITCH_ROBE, 36),
+    cube([-4.02, 10.0, -3.02], [4.02, 11.0, 3.02], [58, 30, 82], 10),
     // Crossed arms.
     cube([-7.0, 11.0, 3.0], [7.0, 15.0, 6.0], WITCH_ROBE, 30),
     cube([-1.5, 11.0, 5.5], [1.5, 14.0, 6.5], WITCH_SKIN, 30),
@@ -434,9 +472,11 @@ const WITCH_HEAD: &[Cuboid] = &[
     cube([0.2, 2.0, 5.5], [1.2, 3.0, 6.4], [90, 130, 80], 0),
     cube([-3.0, 4.5, 4.0], [-1.0, 6.0, 4.1], [30, 40, 24], 0),
     cube([1.0, 4.5, 4.0], [3.0, 6.0, 4.1], [30, 40, 24], 0),
-    // The pointed hat.
+    cube([-1.5, 0.6, 4.0], [1.5, 1.0, 4.05], [70, 86, 60], 0),
+    // The pointed hat, with a band.
     cube([-5.0, 8.0, -5.0], [5.0, 9.0, 5.0], WITCH_HAT, 24),
     cube([-3.5, 9.0, -3.5], [3.5, 10.5, 3.5], WITCH_HAT, 24),
+    cube([-3.55, 9.0, -3.55], [3.55, 9.6, 3.55], [96, 70, 40], 8),
     cube([-2.5, 10.5, -2.5], [2.5, 11.5, 2.5], WITCH_HAT, 24),
     cube([-1.5, 11.5, -1.5], [1.5, 12.0, 1.5], WITCH_HAT, 24),
 ];
@@ -469,14 +509,26 @@ const ZOMBIE_VILLAGER_HEAD: &[Cuboid] = &[
     cube([1.0, 4.0, 4.0], [3.0, 5.0, 4.1], [160, 40, 36], 0),
     cube([-3.0, 5.5, 4.0], [3.0, 6.5, 4.1], [40, 28, 22], 0),
 ];
+// v0.18 Track 6: vines climbing the chest, side and one arm, and a heavy
+// brow (the iron takes the default pattern's seams and cracks).
+const VINE: Rgb = [70, 112, 46];
 const IRON_BODY: &[Cuboid] = &[
     cube([-9.0, 0.0, -6.0], [9.0, 18.0, 6.0], [188, 188, 192], 18),
     cube([-4.0, 16.0, 6.0], [4.0, 20.0, 8.0], [160, 160, 164], 12),
+    cube([4.0, 2.0, 6.0], [5.0, 15.0, 6.08], VINE, 0),
+    cube([3.0, 9.0, 6.0], [6.0, 11.0, 6.1], VINE, 0),
+    cube([5.0, 5.0, 6.0], [7.0, 6.0, 6.1], [90, 140, 58], 0),
+    cube([-9.08, 3.0, -2.0], [-9.0, 14.0, -1.0], VINE, 0),
+    cube([-9.1, 8.0, -3.0], [-9.0, 10.0, 0.0], [90, 140, 58], 0),
 ];
 const IRON_LEG: &[Cuboid] = &[cube([-3.0, -12.0, -3.0], [3.0, 0.0, 3.0], [168, 168, 172], 16)];
-const IRON_ARM: &[Cuboid] = &[cube([-3.0, -16.0, -3.0], [3.0, 2.0, 3.0], [176, 176, 180], 16)];
+const IRON_ARM: &[Cuboid] = &[
+    cube([-3.0, -16.0, -3.0], [3.0, 2.0, 3.0], [176, 176, 180], 16),
+    cube([-3.06, -4.0, -3.06], [3.06, -3.0, 3.06], VINE, 0),
+];
 const IRON_HEAD: &[Cuboid] = &[
     cube([-4.0, 0.0, -4.0], [4.0, 10.0, 4.0], [200, 200, 204], 14),
+    cube([-4.0, 7.0, 4.0], [4.0, 8.0, 4.15], [150, 150, 156], 0),
     cube([-1.0, 2.0, 4.0], [1.0, 6.0, 8.0], [150, 150, 154], 10),
     cube([-2.0, 6.0, 4.0], [-0.5, 7.0, 4.2], [120, 36, 32], 0),
     cube([0.5, 6.0, 4.0], [2.0, 7.0, 4.2], [120, 36, 32], 0),
@@ -1375,6 +1427,13 @@ pub fn build(
                     hostiles::colour(m, &mut cuboid);
                 }
                 passive::colour(m, &mut cuboid);
+                if cuboid.pattern == 0
+                    && !cuboid.translucent
+                    && cuboid.noise >= 12
+                    && let Some(p) = default_pattern(m.kind)
+                {
+                    cuboid = cuboid.with(p);
+                }
                 copper_golem::colour(m, &mut cuboid);
                 new_mobs::colour(m, &mut cuboid);
                 shulker::colour(m, &mut cuboid);
