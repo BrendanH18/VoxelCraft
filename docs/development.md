@@ -500,7 +500,8 @@ the first two mob scenes wait, so those two scenes are the only ones that
 differ between runs of one build. `--still-mobs` (capture-only) pins them
 instead: a mob that has landed stops updating (no AI, movement, sunlight
 burning or sounds), turns to face the starting camera and keeps its
-lighting current; fliers hold still after ten ticks. The flag also restarts
+lighting current; a mob placed standing on a full block is held from its
+first tick, and fliers hold still after ten ticks. The flag also restarts
 the entity random sequence from the world seed before the scene's
 scripted throws and spawns, so wool colours, babies and variants come out
 the same every run, and the pinned scenes compare like with like.
