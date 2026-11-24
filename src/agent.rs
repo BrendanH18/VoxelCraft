@@ -203,6 +203,21 @@ impl Agent {
         Ok(())
     }
 
+    /// [`Agent::execute`] with the world's rules as they are now. A request
+    /// can arrive before this profile's first rules tick (a restored or new
+    /// player), and crafting must still honour `limited_crafting`.
+    pub fn execute_with_rules(
+        &mut self,
+        command: Command,
+        rules: &crate::rules::GameRules,
+        world: &mut World,
+        entities: &mut Entities,
+        others: &[DVec3],
+    ) -> Result<(), String> {
+        self.limited_crafting = rules.bool("limited_crafting");
+        self.execute(command, world, entities, others)
+    }
+
     /// Execute immediate actions on the authority; timed inputs complete after real game ticks.
     /// Container transfers and crafting validate capacity before committing either side.
     pub fn execute(
@@ -956,6 +971,11 @@ impl Agent {
         }
         for stack in grid.take_all() {
             place::place_back(&mut self.session.inventory, stack, self.selected);
+        }
+        // What doesn't fit drops, as Java's `placeItemBackInInventory` does.
+        let (eye, forward) = (self.session.player.eye(), self.session.player.forward().as_dvec3());
+        for stack in self.session.inventory.take_spill() {
+            entities.throw(stack, eye, forward);
         }
         if made == 0 { Err("no room for the result".into()) } else { Ok(()) }
     }

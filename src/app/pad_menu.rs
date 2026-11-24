@@ -619,8 +619,14 @@ impl Game {
                     let filtering = book.settings(BookType::Crafting).filtering;
                     book.set_filtering(BookType::Crafting, !filtering);
                 } else if let Some(id) = entry {
-                    let _ =
-                        bot.agent.execute(Command::Recipe(id, quick), &mut self.world, &mut self.mobs.entities, &[]);
+                    let recipe = Command::Recipe(id, quick);
+                    let _ = bot.agent.execute_with_rules(
+                        recipe,
+                        &self.gamerules,
+                        &mut self.world,
+                        &mut self.mobs.entities,
+                        &[],
+                    );
                 }
                 self.audio.ui_click();
                 return true;
