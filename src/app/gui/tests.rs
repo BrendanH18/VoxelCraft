@@ -347,6 +347,10 @@ fn accented_text_edits_by_whole_characters() {
     let mut ui = Ui::with_scale(800.0, 600.0, 2.0);
     let long = TextField::with_text(&"Ðé".repeat(40), 100);
     long.draw(&mut ui, [0.0, 0.0, 60.0, 20.0], true, true, true);
+    // So does the anvil's plain box, with the caret at the start (Home).
+    let mut name = TextField::with_text(&"é".repeat(30), 50);
+    name.key(&k(KeyCode::Home), &mut clip);
+    name.draw_plain(&mut ui, [0.0, 0.0, 103.0, 12.0], true);
 }
 
 #[test]

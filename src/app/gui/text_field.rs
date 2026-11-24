@@ -292,7 +292,7 @@ impl TextField {
         let shown = &self.text[start..];
         let mut end = shown.len();
         while end > 0 && Ui::text_width(&shown[..end]) > w {
-            end -= 1;
+            end = shown[..end].char_indices().next_back().map_or(0, |(j, _)| j);
         }
         ui.text(x, y, &shown[..end], WHITE);
         if caret {
