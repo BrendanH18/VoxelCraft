@@ -15,7 +15,7 @@ use crate::simulation::{self, TICK_SECONDS};
 use crate::world::{World, block::Block};
 use command::CartographyAction;
 
-pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink, or hold a brush for 200 ticks) | draw [ticks] (hold use with a bow or crossbow: a bow shoots at that draw, a crossbow loads after 25 ticks; a charged crossbow fires at once) | sleep | place (throws a selected ender pearl, splash potion or eye of ender, puts the eye in a targeted End portal frame, or launches a firework rocket, which boosts a glide; a fresh jump in mid-air with elytra worn glides) | attack | select 1..9 | fly on/off | craft item | chest take/put slot (an aimed ender chest holds your own items) | crafter toggle 0..8 (turn an empty slot of an aimed crafter off or on; observe shows its slots, result and power) | sign x y z front|back [\"line\", ...] (write one side of a sign within reach) | furnace take/put input/fuel/output | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | grindstone [1..9] (disenchant or combine held gear) | trade [1..10] (inspect or buy a targeted villager offer) | smithing (upgrade held diamond gear using a template and ingot) | stonecut item (cut the held stack at an aimed stonecutter) | loom pattern dye (weave onto the held banner at an aimed loom) | cartography copy|zoom|lock (the held map at an aimed cartography table) | book write [offhand] [\"page\", ...] | book sign [offhand] \"title\" [\"page\", ...] (the book and quill in the selected slot, or the off-hand) | lectern x y z page n|take | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp|teleport [@s] x y z, tp @s x y z yaw pitch|facing x y z|facing entity @s [eyes|feet], rotate @s yaw pitch|facing x y z|facing entity @s [eyes|feet] (Java degrees: yaw 0 south, 90 west; pitch -90 up; ~ is relative), spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
+pub const HELP: &str = "observe [0..2] | catalog [query] | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink, or hold a brush for 200 ticks) | draw [ticks] (hold use with a bow or crossbow: a bow shoots at that draw, a crossbow loads after 25 ticks; a charged crossbow fires at once) | sleep | place (throws a selected ender pearl, splash potion or eye of ender, puts the eye in a targeted End portal frame, or launches a firework rocket, which boosts a glide; a fresh jump in mid-air with elytra worn glides) | attack | select 1..9 | fly on/off | craft item | recipe id [max] (the recipe book's click on an unlocked recipe: fills the 2x2 grid, or an aimed crafting table's 3x3, from the inventory, one set or every set with max, and takes the results) | recipes [all|craftable] [query] (the unlocked recipes the book shows, craftable and new marked) | chest take/put slot (an aimed ender chest holds your own items) | crafter toggle 0..8 (turn an empty slot of an aimed crafter off or on; observe shows its slots, result and power) | sign x y z front|back [\"line\", ...] (write one side of a sign within reach) | furnace take/put input/fuel/output | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | grindstone [1..9] (disenchant or combine held gear) | trade [1..10] (inspect or buy a targeted villager offer) | smithing (upgrade held diamond gear using a template and ingot) | stonecut item (cut the held stack at an aimed stonecutter) | loom pattern dye (weave onto the held banner at an aimed loom) | cartography copy|zoom|lock (the held map at an aimed cartography table) | book write [offhand] [\"page\", ...] | book sign [offhand] \"title\" [\"page\", ...] (the book and quill in the selected slot, or the off-hand) | lectern x y z page n|take | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp|teleport [@s] x y z, tp @s x y z yaw pitch|facing x y z|facing entity @s [eyes|feet], rotate @s yaw pitch|facing x y z|facing entity @s [eyes|feet] (Java degrees: yaw 0 south, 90 west; pitch -90 up; ~ is relative), spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
 
 /// Something an agent did that players nearby should hear.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -72,6 +72,8 @@ pub struct Agent {
     pearls_vanish: bool,
     /// The fall, fire and drowning rules as of the latest tick.
     immunity: crate::rules::DamageImmunity,
+    /// v0.18 Track 5: the `limited_crafting` rule as of the last rules tick.
+    limited_crafting: bool,
 }
 
 impl std::ops::Deref for Agent {
@@ -106,6 +108,7 @@ impl Agent {
             keep_inventory: false,
             pearls_vanish: true,
             immunity: Default::default(),
+            limited_crafting: false,
         }
     }
 
@@ -188,11 +191,14 @@ impl Agent {
             1 => f.fuel = next,
             _ => f.output = next,
         }
-        if take
-            && slot == 2
-            && let Some(xp) = world.furnace_mut(pos).unwrap().take_output_xp(before_output, || entities.roll())
-        {
-            entities.spawn_xp(self.session.player.pos, xp);
+        if take && slot == 2 {
+            let furnace = world.furnace_mut(pos).unwrap();
+            let (kind, used): (_, Vec<Item>) = (furnace.kind, furnace.recipes_used.iter().map(|r| r.recipe).collect());
+            if let Some(xp) = furnace.take_output_xp(before_output, || entities.roll()) {
+                // v0.18 Track 5: the take teaches the recipes the tally holds.
+                self.session.recipe_book.cooked(kind, &used);
+                entities.spawn_xp(self.session.player.pos, xp);
+            }
         }
         Ok(())
     }
@@ -216,6 +222,7 @@ impl Agent {
                     | Command::Observe(_)
                     | Command::Players
                     | Command::Catalog(_)
+                    | Command::Recipes(..)
                     | Command::Look(..)
                     | Command::Run(..)
                     | Command::Fly(..)
@@ -238,6 +245,7 @@ impl Agent {
             | Command::Help
             | Command::Players
             | Command::Catalog(_)
+            | Command::Recipes(..)
             | Command::Sleep
             | Command::XpQuery => true,
             Command::Run(input, _, mine) => !mine && input.forward == 0.0 && input.right == 0.0 && !input.jump,
@@ -492,6 +500,7 @@ impl Agent {
                 }
             }
             Command::Craft(item) => self.craft(item, world, entities)?,
+            Command::Recipe(id, max) => self.craft_recipe(id, max, world, entities)?,
             Command::Furnace(take, slot) => self.furnace_transfer(take, slot, world, entities)?,
             Command::Chest(take, slot) => {
                 let eye = self.session.player.eye();
@@ -724,7 +733,7 @@ impl Agent {
                     .unwrap_or_else(|| world.generator.find_spawn().as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
                 self.session.respawn(at, personal.yaw, self.keep_inventory);
             }
-            Command::Observe(_) | Command::Help | Command::XpQuery | Command::Say(_) => {}
+            Command::Observe(_) | Command::Help | Command::XpQuery | Command::Say(_) | Command::Recipes(..) => {}
             _ => return Err("command requires host console".into()),
         }
         Ok(())
@@ -732,12 +741,14 @@ impl Agent {
 
     fn craft(&mut self, item: Item, world: &World, entities: &mut Entities) -> Result<(), String> {
         let at_table = self.at_crafting_table(world);
-        let (inventory, remainders, _) = crafting::recipes()
+        let (inventory, remainders, _, grid) = crafting::recipes()
             .iter()
             .filter(|r| r.result.item == item)
             .find_map(|r| self.crafted(r, at_table))
-            .ok_or("missing ingredients, inventory space or targeted crafting table")?;
+            .ok_or("missing ingredients, inventory space, targeted crafting table or unlocked recipe")?;
         self.session.inventory = inventory;
+        // v0.18 Track 5: taking the result teaches the recipe.
+        self.session.recipe_book.crafted(&grid);
         for remainder in remainders {
             entities.throw(remainder, self.session.player.eye(), self.session.player.forward().as_dvec3());
         }
@@ -850,7 +861,11 @@ impl Agent {
 
     /// The inventory after crafting `recipe` once, if the ingredients and
     /// room are there (3x3 recipes need a targeted crafting table).
-    fn crafted(&self, recipe: &crafting::Recipe, at_table: bool) -> Option<(Inventory, Vec<Stack>, Stack)> {
+    fn crafted(
+        &self,
+        recipe: &crafting::Recipe,
+        at_table: bool,
+    ) -> Option<(Inventory, Vec<Stack>, Stack, crafting::Grid)> {
         let mut grid = recipe.preview();
         if grid.size == 3 && !at_table {
             return None;
@@ -870,6 +885,10 @@ impl Agent {
                 remainders.push(Stack::new(rest, 1));
             }
         }
+        // v0.18 Track 5: `limited_crafting` hides recipes the player doesn't know.
+        if !self.session.recipe_book.allows(&grid, self.limited_crafting) {
+            return None;
+        }
         let result = grid.result()?;
         if inventory.add_stack(result) != 0 {
             return None;
@@ -878,7 +897,131 @@ impl Agent {
             stack.count = inventory.add_stack(*stack);
             stack.count != 0
         });
-        Some((inventory, remainders, result))
+        Some((inventory, remainders, result, grid))
+    }
+
+    /// v0.18 Track 5 `recipe <id> [max]`: the recipe book's click on a
+    /// known recipe. Java's placement fills a grid (the 2x2, or the
+    /// targeted crafting table's 3x3) from the inventory, one set or every
+    /// set with `max` (shift), and the results are taken through the shared
+    /// grid as a shift-click on the result would; what's left in the grid
+    /// goes back to the inventory.
+    fn craft_recipe(
+        &mut self,
+        id: crafting::book::RecipeId,
+        max: bool,
+        world: &World,
+        entities: &mut Entities,
+    ) -> Result<(), String> {
+        use crafting::book::place::{self, Outcome};
+        let recipe = id.recipe().ok_or("VoxelCraft can't make that recipe yet")?;
+        if !self.session.recipe_book.knows(id) {
+            return Err("that recipe isn't unlocked".into());
+        }
+        if !recipe.kind.is_crafting() {
+            return Err("only crafting recipes; furnaces take their input with furnace put".into());
+        }
+        let size = if self.at_crafting_table(world) { 3 } else { 2 };
+        if !recipe.fits(size) {
+            return Err("that recipe needs a targeted crafting table".into());
+        }
+        let mut grid = crafting::Grid::new(size);
+        let creative = self.session.mode.is_creative();
+        match place::place_in_grid(recipe, &mut grid, &mut self.session.inventory, self.selected, max, creative) {
+            Outcome::Filled => {}
+            Outcome::Ghost => return Err("missing ingredients".into()),
+            Outcome::Unchanged => return Err("no room to place the recipe".into()),
+        }
+        let mut made = 0;
+        while self.session.recipe_book.allows(&grid, self.limited_crafting)
+            && let Some(result) = grid.result()
+        {
+            let mut inventory = self.session.inventory.clone();
+            if inventory.add_stack(result) != 0 {
+                break;
+            }
+            self.session.inventory = inventory;
+            self.session.recipe_book.crafted(&grid);
+            for rest in grid.consume_with_remainders() {
+                let left = self.session.inventory.add_stack(rest);
+                if left > 0 {
+                    let (eye, forward) = (self.session.player.eye(), self.session.player.forward().as_dvec3());
+                    entities.throw(Stack { count: left, ..rest }, eye, forward);
+                }
+            }
+            made += 1;
+            if !max {
+                break;
+            }
+        }
+        for stack in grid.take_all() {
+            place::place_back(&mut self.session.inventory, stack, self.selected);
+        }
+        if made == 0 { Err("no room for the result".into()) } else { Ok(()) }
+    }
+
+    /// v0.18 Track 5 `recipes [all|craftable] [query]`: the known recipes the
+    /// book would show for the 2x2 grid (or the targeted crafting table's),
+    /// as the search tab lists them, with whether each can be made now and
+    /// whether it is new. Craftable only with `craftable`, or when the
+    /// book's crafting filter is on and neither is given.
+    pub fn recipe_list(&self, world: &World, filter: Option<bool>, query: &str) -> Value {
+        use crafting::book::{self, BookType, stacked::Stacked};
+        let size = if self.at_crafting_table(world) { 3 } else { 2 };
+        let mut book = self.session.recipe_book.clone();
+        if let Some(filtering) = filter {
+            book.set_filtering(BookType::Crafting, filtering);
+        }
+        let available = Stacked::of_inventory(&self.session.inventory);
+        let page = book::page(&book, BookType::Crafting, None, Some(size), query, &available);
+        let filtering = book.settings(BookType::Crafting).filtering;
+        let entries: Vec<Value> = page
+            .iter()
+            .flat_map(|shown| shown.entries(filtering).iter().map(move |&id| (id, shown.craftable.contains(&id))))
+            .map(|(id, craftable)| {
+                let r = id.recipe().unwrap();
+                json!({"id":format!("minecraft:{}", id.name()),"result":r.result.item.name(),"count":r.result.count,
+                    "category":r.category.id(),"craftable":craftable,"new":self.session.recipe_book.highlighted(id)})
+            })
+            .collect();
+        json!({"grid":size,"filtering":filtering,"known":self.session.recipe_book.known_count(),"recipes":entries})
+    }
+
+    /// v0.18 Track 5: the recipe book's search tab as one list, for the
+    /// controller's crafting tab: each recipe the book shows for this
+    /// player's grid (the 2x2, or a targeted table's 3x3), with its result
+    /// and whether it can be made now. Craftable only while the crafting
+    /// book filters.
+    pub fn book_entries(&self, world: &World) -> Vec<(crafting::book::RecipeId, Stack, bool)> {
+        use crafting::book::{self, BookType, stacked::Stacked};
+        let size = if self.at_crafting_table(world) { 3 } else { 2 };
+        let book = &self.session.recipe_book;
+        let available = Stacked::of_inventory(&self.session.inventory);
+        let filtering = book.settings(BookType::Crafting).filtering;
+        book::page(book, BookType::Crafting, None, Some(size), "", &available)
+            .iter()
+            .flat_map(|shown| {
+                shown
+                    .entries(filtering)
+                    .iter()
+                    .map(|&id| (id, id.recipe().unwrap().result, shown.craftable.contains(&id)))
+            })
+            .collect()
+    }
+
+    /// v0.18 Track 5: what `observe` reports of the recipe book.
+    fn recipe_book_state(&self) -> Value {
+        use crafting::book::BookType;
+        let book = &self.session.recipe_book;
+        let settings: serde_json::Map<String, Value> = BookType::ALL
+            .into_iter()
+            .flat_map(|b| {
+                let (open, filtering) = b.settings_keys();
+                let s = book.settings(b);
+                [(open.to_string(), json!(s.open)), (filtering.to_string(), json!(s.filtering))]
+            })
+            .collect();
+        json!({"known":book.known_count(),"new":book.highlighted_count(),"settings":settings})
     }
 
     /// Every result that `craft` would make right now, once each, in recipe
@@ -888,7 +1031,7 @@ impl Agent {
         let mut out: Vec<Stack> = Vec::new();
         for recipe in crafting::recipes() {
             if !out.iter().any(|s| s.item == recipe.result.item)
-                && let Some((_, _, result)) = self.crafted(recipe, at_table)
+                && let Some((_, _, result, _)) = self.crafted(recipe, at_table)
             {
                 out.push(result);
             }
@@ -921,6 +1064,7 @@ impl Agent {
     ) {
         self.session.settle_wake(world);
         self.session.tick_lodestones(world);
+        self.session.tick_recipe_book(world);
         for stack in [self.session.inventory.get(self.selected), self.session.inventory.offhand].into_iter().flatten() {
             world.tick_map(stack, self.session.player.pos, self.session.id.0 as u64);
         }
@@ -931,6 +1075,7 @@ impl Agent {
         entities.neutral_forgive_dead_players = rules.bool("forgive_dead_players");
         entities.neutral_universal_anger = rules.bool("universal_anger");
         self.immunity = rules.damage_immunity();
+        self.limited_crafting = rules.bool("limited_crafting");
         // Movement alone returning early is not enough: survival, mining,
         // pickups and timed commands must also wait for local terrain.
         let feet = self.session.player.pos.floor().as_ivec3();
@@ -1516,7 +1661,7 @@ impl Agent {
             });
             json!({"position":p.to_array(),"face":n.to_array(),"block":world.get_block(p).map(|b|b.name()),"enchanting_offers":offers,"crafter":crafter})
         });
-        json!({"position":self.session.player.pos.to_array(),"yaw":self.session.player.yaw.to_degrees(),"pitch":self.session.player.pitch.to_degrees(),"loaded":world.is_loaded(center),"dimension":world.generator.dimension.name(),"health":self.session.vitals.health,"absorption":self.session.vitals.effects.absorption(),"food":self.session.vitals.hunger.food,"level":self.session.vitals.xp.level,"xp_progress":self.session.vitals.xp.progress(),"dead":self.session.vitals.is_dead(),"mode":self.session.mode.name(),"creative":self.creative,"flying":self.session.player.flying,"gliding":self.session.player.fall_flying,"sleeping":self.session.sleeping.is_some(),"spawn_bed":self.session.spawn_bed.map(|p|p.to_array()),"spawn_point":self.session.spawn_point.map(|p|p.to_array()),"selected":self.selected+1,"inventory":inventory,"target":target,"blocks":blocks})
+        json!({"position":self.session.player.pos.to_array(),"yaw":self.session.player.yaw.to_degrees(),"pitch":self.session.player.pitch.to_degrees(),"loaded":world.is_loaded(center),"dimension":world.generator.dimension.name(),"health":self.session.vitals.health,"absorption":self.session.vitals.effects.absorption(),"food":self.session.vitals.hunger.food,"level":self.session.vitals.xp.level,"xp_progress":self.session.vitals.xp.progress(),"dead":self.session.vitals.is_dead(),"mode":self.session.mode.name(),"creative":self.creative,"flying":self.session.player.flying,"gliding":self.session.player.fall_flying,"sleeping":self.session.sleeping.is_some(),"spawn_bed":self.session.spawn_bed.map(|p|p.to_array()),"spawn_point":self.session.spawn_point.map(|p|p.to_array()),"selected":self.selected+1,"inventory":inventory,"target":target,"blocks":blocks,"recipe_book":self.recipe_book_state()})
     }
 }
 
@@ -2157,7 +2302,7 @@ mod tests {
         assert_eq!(a.inventory, before);
         a.inventory.slots[2] = Some(Stack::new(Item::ARROW, 1));
         assert!(a.crafted(recipe, false).is_none());
-        let (inventory, remainders, result) = a.crafted(recipe, true).unwrap();
+        let (inventory, remainders, result, _) = a.crafted(recipe, true).unwrap();
         assert!(remainders.is_empty());
         assert_eq!(result, Stack::tipped_arrow(potion, 8));
         assert_eq!(inventory.slots.iter().flatten().copied().collect::<Vec<_>>(), vec![result]);

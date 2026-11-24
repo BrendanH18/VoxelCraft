@@ -65,7 +65,9 @@ positive pitch looks up. Wait until `state.loaded` is true before moving.
 | `sleep` | Make the targeted bed the respawn point and lie down in it at night or in rain, with no monsters within 8 blocks; any action other than `observe`, `wait` or a still `move` gets up, as does damage |
 | `select 1..9`, `fly on/off` | Choose hotbar slot or toggle creative flight |
 | `place`, `attack`, `drop` | Place selected block, hit a targeted mob, or drop selected stack |
-| `craft item` | Craft once with available recipe alternatives; larger recipes require targeting a crafting table |
+| `craft item` | Craft once with available recipe alternatives; larger recipes require targeting a crafting table. Under `limited_crafting` only unlocked recipes craft; crafting unlocks the recipe |
+| `recipe id [max]` | The recipe book's click on an unlocked recipe (Java ID such as `oak_planks` or `minecraft:oak_planks`): Java's placement fills the 2x2 grid (or the targeted crafting table's 3x3) from the inventory, one set or every set with `max`, takes the results and returns what's left |
+| `recipes [all\|craftable] [query]` | The unlocked recipes the book shows for the current grid, each with `craftable` and `new` (highlighted) flags; `craftable` lists only those, `all` ignores the book's filter. `observe` reports `recipe_book` (known and new counts, open and filter settings) |
 | `chest take/put slot` | Transfer a stack using chest slot 0–26; put uses selected hotbar slot |
 | `sign x y z front\|back ["line", ...]` | Write up to four lines on one side of a sign within reach, as the sign editor's Done does (a JSON array keeps spaces) |
 | `furnace take/put slot` | Slot is `input`, `fuel` or `output`; move items through the aimed furnace; put uses the selected hotbar slot, output is take-only and taking releases stored XP |

@@ -11,7 +11,7 @@ use crate::simulation::experience::Experience;
 use crate::world::block::tex;
 use crate::world::chunk::{chunk_of, local_of};
 
-use super::recipe_book::{self, Control, Layout, Rect};
+use super::recipe_book::Rect;
 use super::survival::{self, AIR_BUBBLES, MAX_AIR, MAX_HEALTH};
 use super::{Container, Game, GameMode};
 
@@ -235,6 +235,10 @@ impl Game {
             ui.rect(0.0, 0.0, sw, sh, [0.0, 0.0, 0.0, 0.35]);
             let msg = "Click to play  -  Esc for the menu";
             ui.text((sw - Ui::text_width(msg)) / 2.0, sh / 2.0 - 24.0, msg, WHITE);
+        }
+        // v0.18 Track 5: the "New Recipe(s) Unlocked!" toast, over the screen.
+        if !self.menu.is_open() {
+            self.recipe_toast_ui(&mut ui, now);
         }
         self.lan_ui(&mut ui);
         if self.console.open {
@@ -814,25 +818,6 @@ impl Game {
         self.session.mode.is_creative() && self.body.container == Container::Inventory
     }
 
-    pub(super) fn shows_recipes(&self) -> bool {
-        self.has_top_section()
-            && !matches!(
-                self.body.container,
-                Container::Furnace(_)
-                    | Container::Chest(_)
-                    | Container::Minecart(_)
-                    | Container::Enchanting(_)
-                    | Container::Anvil(_)
-                    | Container::Grindstone(_)
-                    | Container::Trading(_)
-                    | Container::Smithing(_)
-                    | Container::Stonecutter(_)
-                    | Container::Loom(_)
-                    | Container::Cartography(_)
-                    | Container::Beacon(_)
-            )
-    }
-
     /// Whether the search bar shows: on the inventory and storage screens,
     /// not on workstations where it would only add clutter.
     pub(super) fn shows_search(&self) -> bool {
@@ -846,12 +831,8 @@ impl Game {
     /// Top-left corner and height of the inventory panel.
     fn panel(&self, screen: (f32, f32)) -> (f32, f32, f32) {
         let h = PANEL_H + self.top_h() + self.search_h();
-        let extra = if self.recipe_book.open && self.shows_recipes() && recipe_book::fits_beside(screen.0, PANEL_W) {
-            recipe_book::WIDTH + recipe_book::GAP
-        } else {
-            0.0
-        };
-        (((screen.0 - PANEL_W - extra) / 2.0).floor(), ((screen.1 - h) / 2.0).floor(), h)
+        // v0.18 Track 5: beside an open recipe book, as Java moves the menu.
+        (self.panel_left(screen.0), ((screen.1 - h) / 2.0).floor(), h)
     }
 
     pub(super) fn search_bounds(&self, screen: (f32, f32)) -> (f32, f32, f32) {
@@ -859,26 +840,11 @@ impl Game {
         (x + 7.0, y + 4.0, PANEL_W - 14.0)
     }
 
-    fn recipe_layout(&self, screen: (f32, f32)) -> Layout {
-        let (x, y, h) = self.panel(screen);
-        Layout::new(screen.0, Rect { x, y: y + self.search_h(), w: PANEL_W, h: h - self.search_h() })
-    }
-
-    pub(super) fn recipe_control_under_cursor(&self) -> Option<Control> {
-        if !self.shows_recipes() {
-            return None;
-        }
-        let scale = self.ui_scale();
-        let (w, h) = self.ui_size();
-        self.recipe_layout((w as f32 / scale, h as f32 / scale))
-            .control((self.cursor_px.0 / scale, self.cursor_px.1 / scale), self.recipe_book.open)
-    }
-
     /// Screen positions of every slot on the inventory screen: the open
     /// container's slots (a crafting grid and its result outside creative, a
     /// furnace or a chest), a 3x9 grid (main inventory, or the block palette
     /// in creative) and the hotbar.
-    fn inventory_slots(&self, screen: (f32, f32)) -> Vec<(SlotRef, f32, f32)> {
+    pub(super) fn inventory_slots(&self, screen: (f32, f32)) -> Vec<(SlotRef, f32, f32)> {
         let (px, py, _) = self.panel(screen);
         let py = py + self.search_h();
         let mut out = Vec::with_capacity(46);
@@ -1013,19 +979,18 @@ impl Game {
         let screen = (w as f32 / scale, h as f32 / scale);
         let mouse = (self.cursor_px.0 / scale, self.cursor_px.1 / scale);
         let (x, y, h) = self.panel(screen);
-        let on_book =
-            self.shows_recipes() && self.recipe_book.open && self.recipe_layout(screen).bounds.contains(mouse);
-        !Rect { x, y, w: PANEL_W, h }.contains(mouse) && !on_book
+        // `AbstractRecipeBookScreen.hasClickedOutside`: the book and its
+        // tabs aren't outside.
+        let on_book = self.book_control().is_some();
+        !Rect { x, y, w: PANEL_W, h }.contains(mouse) && !on_book && !self.book_covers_menu()
     }
 
     pub(super) fn slot_under_cursor(&self) -> Option<SlotRef> {
         let scale = self.ui_scale();
         let (w, h) = self.ui_size();
         let (mx, my) = (self.cursor_px.0 / scale, self.cursor_px.1 / scale);
-        if self.shows_recipes()
-            && self.recipe_book.open
-            && self.recipe_layout((w as f32 / scale, h as f32 / scale)).overlay
-        {
+        // A narrow screen's open recipe book covers the menu.
+        if self.book_covers_menu() {
             return None;
         }
         if super::workstations::is_workstation(self.body.container) {
@@ -1086,10 +1051,6 @@ impl Game {
             (Container::Inventory, GameMode::Spectator) => "Spectator",
         };
         ui.text_flat(px + 8.0, py + 6.0, title, [0.25, 0.25, 0.25, 1.0]);
-        if self.shows_recipes() {
-            let layout = self.recipe_layout((sw, sh));
-            self.recipe_button(ui, layout.toggle, if self.recipe_book.open { "Hide" } else { "Recipes" });
-        }
         if let Container::Trading(id) = self.body.container {
             self.trading_ui(ui, id, px, py);
         } else if let Container::Brewing(p) = self.body.container
@@ -1159,7 +1120,12 @@ impl Game {
                 SlotRef::Inventory(i) => self.session.inventory.get(i),
                 SlotRef::Palette(b) => Some(Stack::new(b, 1)),
                 SlotRef::Craft(i) => self.craft.cells[i],
-                SlotRef::CraftResult => self.craft.result_in(&self.world.maps),
+                SlotRef::CraftResult => super::screen::crafting_result(
+                    &self.craft,
+                    &self.world,
+                    &self.session,
+                    self.gamerules.bool("limited_crafting"),
+                ),
                 SlotRef::Armor(p) => self.session.inventory.armor[p as usize],
                 SlotRef::Offhand => self.session.inventory.offhand,
                 f => self.container_slot(f),
@@ -1212,15 +1178,32 @@ impl Game {
             Some(SlotRef::Inventory(i)) => self.session.inventory.get(i),
             Some(SlotRef::Palette(item)) => Some(Stack::new(item, 1)),
             Some(SlotRef::Craft(i)) => self.craft.cells[i],
-            Some(SlotRef::CraftResult) => self.craft.result_in(&self.world.maps),
+            Some(SlotRef::CraftResult) => super::screen::crafting_result(
+                &self.craft,
+                &self.world,
+                &self.session,
+                self.gamerules.bool("limited_crafting"),
+            ),
             Some(SlotRef::Armor(p)) => self.session.inventory.armor[p as usize],
             Some(SlotRef::Offhand) => self.session.inventory.offhand,
             Some(f) => self.container_slot(f),
             None => None,
         };
-        let recipe_hint = if self.recipe_book.open && self.shows_recipes() { self.recipe_book_ui(ui) } else { None };
+        // v0.18 Track 5: the recipe book, its button and the ghost recipe.
+        let recipe_hint = self
+            .recipe_book_ui(ui, Instant::now())
+            .or_else(|| hovered_stack.is_none().then(|| self.ghost_tooltip(hovered)).flatten());
         if let Some(hint) = recipe_hint {
-            self.tooltip(ui, &hint);
+            for (k, line) in hint.lines().enumerate() {
+                if k == 0 {
+                    self.tooltip(ui, line);
+                } else {
+                    let scale = ui.scale;
+                    let (x, y) = (self.cursor_px.0 / scale + 10.0, self.cursor_px.1 / scale - 12.0 + 12.0 * k as f32);
+                    ui.rect(x - 3.0, y - 1.0, Ui::text_width(line) + 6.0, 12.0, [0.08, 0.02, 0.12, 0.92]);
+                    ui.text(x, y, line, [0.66, 0.66, 0.66, 1.0]);
+                }
+            }
         } else if let (Some(p), Some(SlotRef::Chest(i)), None, None) =
             (crafter, hovered, hovered_stack, self.session.inventory.cursor)
             && !self.world.crafter_slot_disabled(p, i)
@@ -1267,73 +1250,6 @@ impl Game {
             let scale = ui.scale;
             self.stack_ui(ui, self.cursor_px.0 / scale - 9.0, self.cursor_px.1 / scale - 9.0, stack);
         }
-    }
-
-    fn recipe_button(&self, ui: &mut Ui, rect: Rect, label: &str) {
-        let hover = rect.contains((self.cursor_px.0 / ui.scale, self.cursor_px.1 / ui.scale));
-        ui.rect(rect.x, rect.y, rect.w, rect.h, if hover { [0.95, 0.9, 0.65, 1.0] } else { [0.6, 0.6, 0.6, 1.0] });
-        ui.text_flat(rect.x + (rect.w - Ui::text_width(label)) / 2.0, rect.y + 2.0, label, [0.15, 0.15, 0.15, 1.0]);
-    }
-
-    /// Draws ingredient hints, never editable slots or an automatic craft.
-    fn recipe_book_ui(&self, ui: &mut Ui) -> Option<String> {
-        let layout = self.recipe_layout(ui.size());
-        let Rect { x, y, w, h } = layout.bounds;
-        ui.rect(x, y, w, h, [0.72, 0.75, 0.69, 1.0]);
-        ui.rect(x, y, w, 1.0, WHITE);
-        ui.rect(x, y, 1.0, h, WHITE);
-        ui.rect(x + w - 1.0, y, 1.0, h, [0.3, 0.35, 0.28, 1.0]);
-        ui.rect(x, y + h - 1.0, w, 1.0, [0.3, 0.35, 0.28, 1.0]);
-        ui.text_flat(x + 8.0, y + 6.0, "Recipes", [0.2, 0.25, 0.15, 1.0]);
-        if layout.overlay {
-            self.recipe_button(ui, layout.toggle, "Back");
-        }
-        self.recipe_button(ui, layout.previous, "<");
-        self.recipe_button(ui, layout.next, ">");
-        let recipes = crate::crafting::recipes();
-        let recipe = &recipes[self.recipe_book.selected];
-        let page = format!("{} / {}", self.recipe_book.selected + 1, recipes.len());
-        ui.text_flat(x + (w - Ui::text_width(&page)) / 2.0, y + 22.0, &page, [0.25, 0.25, 0.25, 1.0]);
-        let name = capitalize(recipe.result.item.name());
-        ui.text_flat(x + (w - Ui::text_width(&name)) / 2.0, y + 42.0, &name, [0.15, 0.2, 0.1, 1.0]);
-
-        let preview = recipe.preview();
-        let (gx, gy) = (x + 10.0, y + 60.0);
-        let mouse = (self.cursor_px.0 / ui.scale, self.cursor_px.1 / ui.scale);
-        let mut hint = None;
-        for i in 0..preview.size * preview.size {
-            let rect = Rect {
-                x: gx + (i % preview.size) as f32 * SLOT,
-                y: gy + (i / preview.size) as f32 * SLOT,
-                w: SLOT,
-                h: SLOT,
-            };
-            ui.rect(rect.x, rect.y, SLOT - 1.0, SLOT - 1.0, [0.4, 0.45, 0.37, 1.0]);
-            if let Some(stack) = preview.cells[i] {
-                self.stack_ui(ui, rect.x, rect.y, stack);
-                if rect.contains(mouse) {
-                    hint = recipe
-                        .alternatives(i)
-                        .map(|options| options.iter().map(|i| i.name()).collect::<Vec<_>>().join(" or "));
-                }
-            }
-        }
-        let output = Rect { x: x + w - 28.0, y: gy + (preview.size - 1) as f32 * SLOT / 2.0, w: SLOT, h: SLOT };
-        ui.text_flat(output.x - 20.0, output.y + 5.0, "->", [0.25, 0.3, 0.2, 1.0]);
-        ui.rect(output.x, output.y, SLOT, SLOT, [0.4, 0.45, 0.37, 1.0]);
-        self.stack_ui(ui, output.x, output.y, recipe.result);
-        if output.contains(mouse) {
-            hint = Some(format!("Makes {} {}", recipe.result.count, recipe.result.item.name()));
-        }
-        let (line1, line2) = if preview.size > self.craft.size {
-            ("Use a crafting table", "for this recipe")
-        } else {
-            ("Copy to your grid", "Click your result")
-        };
-        for (text, dy) in [(line1, 122.0), (line2, 134.0), ("Preview only", 150.0)] {
-            ui.text_flat(x + (w - Ui::text_width(text)) / 2.0, y + dy, text, [0.25, 0.3, 0.2, 1.0]);
-        }
-        hint
     }
 
     /// Contents of a furnace or chest slot on the open screen.

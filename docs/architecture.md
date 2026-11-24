@@ -183,7 +183,8 @@ src/
   app/
     mod.rs           window, input, fixed game ticks, rendering, damage entry point
     actions.rs       hotbar/mining state and consumption presentation mirror
-    recipe_book.rs   recipe navigation, responsive layout and hit testing
+    recipe_book.rs   Java's recipe book view: tabs, search, filter, pages,
+                     ghost recipe, toast, layout and hit testing
     hud.rs           HUD: hotbar, hearts/food/bubbles, containers, death and F3
     gui/             menu toolkit: screen stack, focus and navigation for mouse,
                      keyboard and controller, sliders, text fields and clipboard,
@@ -207,6 +208,8 @@ src/
     hand.rs          first-person hand animation: swings, item switches, bob
   inventory.rs       inventory slots, stacking, saved container overflow
   crafting.rs        crafting grids and recipes
+  crafting/book/     v0.18 recipe book: Java recipe IDs and categories,
+                     unlock criteria, per-player state and saves, placement
   mining.rs          mining speed, harvest rules, tool wear, melee damage
   item.rs            item registry: blocks, materials, food and tools
   enchant.rs         enchantments: Java's definitions, effects, table offers,

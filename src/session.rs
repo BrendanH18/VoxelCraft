@@ -17,6 +17,7 @@ pub mod mining;
 pub mod placement;
 pub mod raid;
 pub mod ranged;
+mod recipes;
 mod recovery;
 pub mod storage;
 mod weapons;
@@ -82,6 +83,9 @@ pub struct PlayerSession {
     /// v0.15 Track E: where Bad Omen became Raid Omen (Java's saved
     /// `raid_omen_position`); the raid starts there when the omen ends.
     pub raid_omen_pos: Option<IVec3>,
+    /// v0.18 Track 5: known and highlighted recipes and the book's
+    /// settings (Java's saved `recipeBook`).
+    pub recipe_book: crate::crafting::book::RecipeBook,
 }
 
 /// Where a sleeper lay down: the bed's head block and the spot on it.
@@ -198,6 +202,7 @@ impl PlayerSession {
             weapons: Default::default(),
             frost_last: None,
             raid_omen_pos: None,
+            recipe_book: Default::default(),
         }
     }
 
@@ -230,6 +235,7 @@ impl PlayerSession {
             weapons: Default::default(),
             frost_last: None,
             raid_omen_pos: None,
+            recipe_book: Default::default(),
         }
     }
 

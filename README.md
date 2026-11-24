@@ -95,8 +95,8 @@ reference: recipes, loot and mob behaviour are built to match it, and the
   badlands and frozen peaks, with lush caves and dripstone caverns down to
   y=-64. World generation uses its own noise, so a Java seed won't give
   you the same world.
-- 🧱 **Over 1,100 of Java's blocks** and hundreds of its recipes, with a
-  recipe book that shows every layout.
+- 🧱 **Over 1,100 of Java's blocks** and hundreds of its recipes, with
+  Java's recipe book: recipes unlock as you play and fill the grid in a click.
 - ⚗️ **Brewing, enchanting, anvils and smithing**, from wooden tools to
   netherite, plus tridents, maces and spears 🆕.
 - 🎮 **All five game modes**, Hardcore included.
