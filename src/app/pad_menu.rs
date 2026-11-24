@@ -12,6 +12,7 @@
 
 use glam::IVec3;
 
+use super::gui::{self, style};
 use super::hud::{SlotRef, draw_stack};
 use super::{Container, Game};
 use crate::inventory::Stack;
@@ -141,6 +142,14 @@ pub(super) enum Menu {
         key: (usize, usize),
         shift: bool,
     },
+    /// v0.18 Track 2: the anvil's name box at `pos`, typed on the sign
+    /// editor's keyboard: A types, X erases, Y shifts, B or Start goes back
+    /// to the anvil.
+    Rename {
+        pos: IVec3,
+        key: (usize, usize),
+        shift: bool,
+    },
 }
 
 /// A slot under the menu cursor.
@@ -152,6 +161,8 @@ pub(super) enum Slot {
     Recipe(usize),
     /// The nth creative palette item.
     Palette(usize),
+    /// v0.18 Track 2: the anvil's name box (A opens the keyboard).
+    AnvilName,
 }
 
 /// What a button press asks the game to do.
@@ -242,34 +253,23 @@ impl Menu {
                 _ => Action::None,
             },
             Menu::Sign { line, key, shift, .. } => {
-                let rows = KEYS.len() + 1;
-                let (col, row) = key;
                 match nav {
-                    Nav::Up | Nav::Down => {
-                        *row = if nav == Nav::Up { (*row + rows - 1) % rows } else { (*row + 1) % rows };
-                        *col = (*col).min(key_count(*row) - 1);
-                    }
-                    Nav::Left => *col = (*col + key_count(*row) - 1) % key_count(*row),
-                    Nav::Right => *col = (*col + 1) % key_count(*row),
                     // `AbstractSignEditScreen.keyPressed`: up and down wrap through the four lines.
                     Nav::Lb => *line = (*line + 3) % 4,
                     Nav::Rb => *line = (*line + 1) % 4,
-                    Nav::Y => *shift = !*shift,
-                    Nav::X => return Action::Erase,
-                    Nav::B | Nav::Start => return Action::Close,
-                    Nav::A => {
-                        if let Some(c) = key_char(*col, *row, *shift) {
-                            return Action::Type(c);
-                        }
-                        match *col {
-                            0 => *shift = !*shift,
-                            1 => return Action::Type(' '),
-                            2 => return Action::Erase,
-                            _ => return Action::Close,
-                        }
-                    }
+                    _ => return keyboard(nav, key, shift),
                 }
                 Action::None
+            }
+            Menu::Rename { pos, key, shift } => {
+                let pos = *pos;
+                match keyboard(nav, key, shift) {
+                    Action::Close => {
+                        *self = Menu::Items { tab: Tab::Anvil(pos), col: ANVIL.len(), row: 0 };
+                        Action::None
+                    }
+                    action => action,
+                }
             }
             Menu::Items { tab, col, row } => {
                 let rows = rows(*tab, lists);
@@ -282,6 +282,12 @@ impl Menu {
                     Nav::Down => *row = (*row + 1) % rows,
                     Nav::Left => *col = (*col + len(*row) - 1) % len(*row),
                     Nav::Right => *col = (*col + 1) % len(*row),
+                    Nav::A if slot(*tab, *col, *row, lists) == Slot::AnvilName => {
+                        if let Tab::Anvil(pos) = *tab {
+                            *self = Menu::Rename { pos, key: (0, 0), shift: false };
+                        }
+                        return Action::None;
+                    }
                     Nav::A => return Action::Click(slot(*tab, *col, *row, lists), false),
                     Nav::X => return Action::Click(slot(*tab, *col, *row, lists), true),
                     Nav::Y => return Action::QuickMove(slot(*tab, *col, *row, lists)),
@@ -317,6 +323,37 @@ impl Menu {
             _ => None,
         }
     }
+}
+
+/// The on-screen keyboard shared by the sign editor and the anvil's name
+/// box: the cursor moves over the keys, A types the key under it (or
+/// Shift, Space, Delete, Done), X erases, Y shifts, B or Start is Done.
+fn keyboard(nav: Nav, (col, row): &mut (usize, usize), shift: &mut bool) -> Action {
+    let rows = KEYS.len() + 1;
+    match nav {
+        Nav::Up | Nav::Down => {
+            *row = if nav == Nav::Up { (*row + rows - 1) % rows } else { (*row + 1) % rows };
+            *col = (*col).min(key_count(*row) - 1);
+        }
+        Nav::Left => *col = (*col + key_count(*row) - 1) % key_count(*row),
+        Nav::Right => *col = (*col + 1) % key_count(*row),
+        Nav::Y => *shift = !*shift,
+        Nav::X => return Action::Erase,
+        Nav::B | Nav::Start => return Action::Close,
+        Nav::A => {
+            if let Some(c) = key_char(*col, *row, *shift) {
+                return Action::Type(c);
+            }
+            match *col {
+                0 => *shift = !*shift,
+                1 => return Action::Type(' '),
+                2 => return Action::Erase,
+                _ => return Action::Close,
+            }
+        }
+        Nav::Lb | Nav::Rb => {}
+    }
+    Action::None
 }
 
 /// Inventory and furnace: a top row (armor, or the furnace's input, fuel
@@ -356,7 +393,9 @@ fn row_len(tab: Tab, row: usize, lists: Lists) -> usize {
         Tab::Furnace(_) if row == 0 => return FURNACE.len(),
         Tab::Brewing(_) if row == 0 => return BREWING.len(),
         Tab::Enchanting(_) if row == 0 => return ENCHANTING.len(),
-        Tab::Anvil(_) | Tab::Grindstone(_) if row == 0 => return ANVIL.len(),
+        // v0.18 Track 2: the anvil's row ends with its name box.
+        Tab::Anvil(_) if row == 0 => return ANVIL.len() + 1,
+        Tab::Grindstone(_) if row == 0 => return ANVIL.len(),
         Tab::Smithing(_) if row == 0 => return SMITHING.len(),
         Tab::Stonecutter(_) if row == 0 => return STONECUTTER.len(),
         Tab::Loom(_) if row == 0 => return LOOM.len(),
@@ -382,6 +421,7 @@ fn slot(tab: Tab, col: usize, row: usize, lists: Lists) -> Slot {
         Tab::Furnace(_) if row == 0 => Slot::Ref(FURNACE[col]),
         Tab::Brewing(_) if row == 0 => Slot::Ref(BREWING[col]),
         Tab::Enchanting(_) if row == 0 => Slot::Ref(ENCHANTING[col]),
+        Tab::Anvil(_) if row == 0 && col == ANVIL.len() => Slot::AnvilName,
         Tab::Anvil(_) | Tab::Grindstone(_) if row == 0 => Slot::Ref(ANVIL[col]),
         Tab::Smithing(_) if row == 0 => Slot::Ref(SMITHING[col]),
         Tab::Stonecutter(_) if row == 0 => Slot::Ref(STONECUTTER[col]),
@@ -512,6 +552,14 @@ impl Game {
     /// Do what a menu press asked for seat `seat`, playing `name`. Returns
     /// false to close the menu.
     pub(super) fn apply_menu(&mut self, seat: usize, name: &str, menu: Menu, action: Action) -> bool {
+        if let Menu::Rename { .. } = menu {
+            match action {
+                Action::Type(c) => self.pad_rename_type(name, Some(c)),
+                Action::Erase => self.pad_rename_type(name, None),
+                _ => {}
+            }
+            return true;
+        }
         if let Menu::Sign { cell, front, hanging, line, .. } = menu {
             match action {
                 Action::Type(c) => self.pad_sign_type(seat, line, hanging, Some(c)),
@@ -557,6 +605,8 @@ impl Game {
                 },
                 _ => return true,
             },
+            // The name box opens on A ([`Menu::press`]); X and Y do nothing.
+            Slot::AnvilName => return true,
             Slot::Recipe(i) => {
                 // v0.18 Track 5: A places one set through the recipe book and
                 // takes it, Y every set (the book's shift-click); X toggles
@@ -611,7 +661,58 @@ impl Game {
             let x = ((sw - Ui::text_width(&shown)) / 2.0).floor();
             ui.text_flat(x, y, &shown, [0.0, 0.0, 0.0, 1.0]);
         }
-        let mut y = top + 4.0 * 12.0 + 30.0;
+        let y = pad_keyboard_ui(ui, top + 4.0 * 12.0 + 30.0, key, shift);
+        let help = "A type  X delete  Y shift  LB/RB line  B done";
+        ui.text(((sw - Ui::text_width(help)) / 2.0).floor(), y + 4.0, help, WHITE);
+    }
+
+    /// v0.18 Track 2: the controller's anvil name box: the text (or the
+    /// item's own name) and the keyboard.
+    fn pad_rename_ui(&self, ui: &mut Ui, name: &str, key: (usize, usize), shift: bool) {
+        let (sw, sh) = ui.size();
+        let title = "Repair & Name";
+        let top = (sh / 2.0 - 80.0).max(4.0).floor();
+        ui.text(((sw - Ui::text_width(title)) / 2.0).floor(), top, title, WHITE);
+        let text = self.pad_anvil_name(name).unwrap_or_default();
+        let (w, left) = (110.0, ((sw - 110.0) / 2.0).floor());
+        style::inset(ui, left, top + 14.0, w, 16.0, 0x000000);
+        let shown = gui::fit(&format!("{text}_"), w - 8.0);
+        ui.text(left + 4.0, top + 18.0, &shown, WHITE);
+        let y = pad_keyboard_ui(ui, top + 40.0, key, shift);
+        let help = "A type  X delete  Y shift  B done";
+        ui.text(((sw - Ui::text_width(help)) / 2.0).floor(), y + 4.0, help, WHITE);
+    }
+
+    /// The text the anvil's name box shows for controller player `name`:
+    /// what they typed, or the left item's own name; `None` without one.
+    pub(super) fn pad_anvil_name(&self, name: &str) -> Option<String> {
+        let session = &self.agents.players.get(name)?.agent.session;
+        let left = session.work[0]?;
+        Some(session.anvil_name().map_or_else(|| left.display_name().to_string(), str::to_string))
+    }
+
+    /// A controller player typed or erased a character in the anvil's name box.
+    fn pad_rename_type(&mut self, name: &str, typed: Option<char>) {
+        let Some(mut text) = self.pad_anvil_name(name) else { return };
+        match typed {
+            Some(c) => text.push(c),
+            None => {
+                text.pop();
+            }
+        }
+        if let Some(bot) = self.agents.players.get_mut(name)
+            && bot.agent.session.set_anvil_name(&text)
+        {
+            self.audio.ui_click();
+        }
+    }
+}
+
+/// The on-screen keyboard from `y`, centred, with key `key` lit; returns
+/// the y under it.
+fn pad_keyboard_ui(ui: &mut Ui, mut y: f32, key: (usize, usize), shift: bool) -> f32 {
+    let sw = ui.size().0;
+    {
         for row in 0..=KEYS.len() {
             let count = key_count(row);
             let w = if row < KEYS.len() { 16.0 } else { 40.0 };
@@ -629,10 +730,11 @@ impl Game {
             }
             y += 16.0;
         }
-        let help = "A type  X delete  Y shift  LB/RB line  B done";
-        ui.text(((sw - Ui::text_width(help)) / 2.0).floor(), y + 4.0, help, WHITE);
     }
+    y
+}
 
+impl Game {
     /// Draws `menu` over a controller player's view.
     pub(super) fn pad_menu_ui(&self, ui: &mut Ui, name: &str, menu: Menu) {
         let (sw, sh) = ui.size();
@@ -668,6 +770,10 @@ impl Game {
             Menu::Items { tab, col, row } => (tab, col, row),
             Menu::Sign { hanging, line, key, shift, .. } => {
                 self.pad_sign_ui(ui, name, hanging, line, key, shift);
+                return;
+            }
+            Menu::Rename { key, shift, .. } => {
+                self.pad_rename_ui(ui, name, key, shift);
                 return;
             }
         };
@@ -779,7 +885,9 @@ impl Game {
         };
         let anvil = match (tab, work[0]) {
             (Tab::Grindstone(_), _) => voxelcraft::grindstone::result(work[0], work[1]),
-            (Tab::Anvil(_), Some(left)) => crate::enchant::anvil_any_cost(left, work[1], bot.agent.creative),
+            (Tab::Anvil(_), Some(left)) => {
+                crate::enchant::anvil_menu(left, work[1], bot.agent.session.anvil_name(), bot.agent.creative)
+            }
             _ => None,
         };
         let smithing = match (tab, work[0], work[1], work[2]) {
@@ -796,7 +904,12 @@ impl Game {
             } else {
                 (format!("Cost: {}", r.cost), if short { [1.0, 0.38, 0.38, 1.0] } else { [0.5, 1.0, 0.13, 1.0] })
             };
-            ui.text(px + 6.0 + 18.0 * 3.0 + 6.0, py + 23.0, &text, colour);
+            ui.text(px + 6.0 + 18.0 * 4.0 + 6.0, py + 28.0, &text, colour);
+        }
+        // v0.18 Track 2: the name box's text beside the anvil's row.
+        if let (Tab::Anvil(_), Some(text)) = (tab, self.pad_anvil_name(name)) {
+            let x = px + 6.0 + 18.0 * 4.0 + 6.0;
+            ui.text(x, py + 19.0, &gui::fit(&text, px + pw - x - 4.0), WHITE);
         }
         let mut hovered = None;
         let mut clue = None;
@@ -858,6 +971,13 @@ impl Game {
                     Slot::Ref(_) => None,
                     Slot::Recipe(i) => crafts.get(i).map(|&(_, result, _)| result),
                     Slot::Palette(i) => items.get(i).copied().flatten(),
+                    Slot::AnvilName => {
+                        // A name tag's shape marks the name box.
+                        if let Some(layer) = crate::item::Item::NAME_TAG.icon_layer() {
+                            ui.icon_shape(x, y, 16.0, layer, [0.0, 0.0, 1.0, 1.0], style::srgba(0xE0E0E0, 0.6));
+                        }
+                        None
+                    }
                 };
                 if let Some(stack) = stack {
                     draw_stack(ui, x - 0.5, y - 0.5, stack, true, dial);

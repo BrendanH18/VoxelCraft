@@ -22,6 +22,7 @@ pub(in crate::app) enum Id {
     RenderDistance,
     SimulationDistance,
     Particles,
+    MenuBlur,
     PreferencesHeader,
     Fps,
     Done,
@@ -118,6 +119,8 @@ impl<H: OptionsHost> Screen<H> for VideoSettings {
                 (sd.1 - sd.0) as u32,
             ),
             Widget::button(Id::Particles, z, format!("Particles: {}", s.particles.name())),
+            // v0.18 Track 2: Java lists it after Entity Distance.
+            super::menu_blur_slider(Id::MenuBlur, s.menu_blur),
         ]);
         list.wide(Widget::label(Id::PreferencesHeader, z, "Preferences"));
         list.pair(
@@ -159,6 +162,7 @@ impl<H: OptionsHost> Screen<H> for VideoSettings {
                 change(host, |s| s.max_fps = MAX_FPS.0 + (t * steps).round() as u32 * 10);
             }
             Id::Brightness => change(host, |s| s.brightness = (t * 100.0).round() / 100.0),
+            Id::MenuBlur => change(host, |s| s.menu_blur = super::menu_blur_at(t)),
             _ => {}
         }
     }

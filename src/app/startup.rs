@@ -354,6 +354,8 @@ impl Game {
             particles: crate::particles::System::new(seed),
             menu: menu::startup_menu(args.open_menu.as_deref()),
             menu_action: None,
+            death: Default::default(),
+            anvil_name: Default::default(),
             had_focus: false,
             settings,
             settings_path,

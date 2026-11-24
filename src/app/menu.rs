@@ -304,6 +304,9 @@ impl Game {
 
     /// Controller navigation from a controller that hasn't joined as a player.
     pub(super) fn menu_nav(&mut self, nav: Nav) -> Option<MenuAction> {
+        if !self.menu.is_open() && self.death.is_open() {
+            return self.death_nav(nav);
+        }
         self.with_menu(|stack, game, size| stack.nav(game, nav, size))
     }
 

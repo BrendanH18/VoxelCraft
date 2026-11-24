@@ -436,6 +436,9 @@ impl Game {
                 rain: scene.rain,
                 night_vision: a.vitals.effects.vision(scene.time, a.player.head_in_water(&self.world)),
                 ui,
+                // Controller players' screens are in-game panels: no blur.
+                blur: 0,
+                ui_under_blur: 0,
             };
             self.renderer.set_particles(&self.particles.pool, &self.world, camera, forward, scene.alpha);
             self.renderer.draw_view(frame, &params, vp);
