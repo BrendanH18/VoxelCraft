@@ -65,6 +65,13 @@ pub(super) fn colour(m: &Mob, c: &mut Cuboid) {
             c.color = color.map(|v| (i16::from(v) + shade).clamp(0, 255) as u8);
         }
     }
+    if m.kind == MobKind::Frog && c.color == FROG_SPOT {
+        c.color = match m.frog.as_ref().map_or(0, |s| s.variant) {
+            1 => [52, 98, 44],
+            2 => [168, 156, 126],
+            _ => FROG_SPOT,
+        };
+    }
     if m.kind == MobKind::Frog && c.color == FROG_SKIN {
         c.color = match m.frog.as_ref().map_or(0, |s| s.variant) {
             1 => [83, 143, 69],
@@ -82,6 +89,8 @@ pub(super) fn colour(m: &Mob, c: &mut Cuboid) {
 }
 
 const FROG_SKIN: Rgb = [192, 112, 54];
+/// v0.18 Track 6: the spots on a frog's back, recoloured per variant.
+const FROG_SPOT: Rgb = [150, 78, 38];
 const FROG_BODY: &[Cuboid] = &[
     cube([-3.4, 1.0, -3.0], [3.4, 5.0, 3.5], FROG_SKIN, 25),
     cube([-3.5, 4.0, -0.8], [3.5, 6.3, 4.3], FROG_SKIN, 20),
@@ -92,6 +101,13 @@ const FROG_BODY: &[Cuboid] = &[
     cube([-2.8, 6.5, 3.9], [-2.2, 7.4, 4.0], [21, 29, 20], 0),
     cube([2.2, 6.5, 3.9], [2.8, 7.4, 4.0], [21, 29, 20], 0),
     cube([-2.8, 2.3, 3.5], [2.8, 4.0, 4.6], [226, 208, 155], 15),
+    // v0.18 Track 6: a wide mouth, nostrils and spots on the back.
+    cube([-3.0, 4.4, 4.3], [3.0, 4.65, 4.35], [92, 54, 32], 0),
+    cube([-1.2, 5.6, 4.3], [-0.6, 5.9, 4.35], [60, 36, 22], 0),
+    cube([0.6, 5.6, 4.3], [1.2, 5.9, 4.35], [60, 36, 22], 0),
+    cube([-2.4, 5.0, -2.0], [-0.8, 5.05, -0.6], FROG_SPOT, 0),
+    cube([0.9, 5.0, -1.2], [2.3, 5.05, 0.2], FROG_SPOT, 0),
+    cube([-1.0, 6.3, 0.6], [0.4, 6.35, 1.8], FROG_SPOT, 0),
 ];
 const FROG_LEG: &[Cuboid] =
     &[cube([-0.7, 0.0, -1.5], [0.7, 2.2, 1.5], FROG_SKIN, 20), cube([-0.8, 0.0, 0.5], [0.8, 0.6, 2.0], FROG_SKIN, 14)];
@@ -159,6 +175,13 @@ const BAT_BODY: &[Cuboid] = &[
     cube([-1.8, 10.5, 2.0], [-0.9, 11.5, 2.1], [24, 20, 17], 0),
     cube([0.9, 10.5, 2.0], [1.8, 11.5, 2.1], [24, 20, 17], 0),
     cube([-0.6, 9.5, 2.0], [0.6, 10.3, 2.6], [176, 115, 102], 16),
+    // v0.18 Track 6: eye glints, inner ears and two small fangs.
+    cube([-1.5, 11.1, 2.1], [-1.2, 11.4, 2.15], [214, 208, 196], 0),
+    cube([1.2, 11.1, 2.1], [1.5, 11.4, 2.15], [214, 208, 196], 0),
+    cube([-2.2, 12.4, 0.5], [-1.4, 14.0, 0.55], [150, 96, 86], 0),
+    cube([1.4, 12.4, 0.5], [2.2, 14.0, 0.55], [150, 96, 86], 0),
+    cube([-0.55, 9.1, 2.0], [-0.25, 9.5, 2.05], [236, 232, 222], 0),
+    cube([0.25, 9.1, 2.0], [0.55, 9.5, 2.05], [236, 232, 222], 0),
 ];
 const BAT_WING: &[Cuboid] = &[
     cube([0.0, -3.0, -0.4], [5.0, 1.0, 0.4], [79, 51, 43], 25),
@@ -190,6 +213,13 @@ const BEAR_HEAD: &[Cuboid] = &[
     cube([-2.1, -0.5, 13.7], [2.1, 1.0, 14.1], [43, 44, 39], 0),
     cube([-4.8, 1.4, 9.8], [-3.2, 2.6, 10.1], [31, 33, 28], 0),
     cube([3.2, 1.4, 9.8], [4.8, 2.6, 10.1], [31, 33, 28], 0),
+    // v0.18 Track 6: eye glints, inner ears and a mouth under the nose.
+    cube([-4.4, 2.0, 10.1], [-4.0, 2.4, 10.15], [222, 222, 212], 0),
+    cube([4.0, 2.0, 10.1], [4.4, 2.4, 10.15], [222, 222, 212], 0),
+    cube([-4.6, 4.8, 4.0], [-3.2, 6.0, 4.05], [170, 160, 140], 0),
+    cube([3.2, 4.8, 4.0], [4.6, 6.0, 4.05], [170, 160, 140], 0),
+    cube([-2.0, -2.2, 14.0], [2.0, -1.9, 14.05], [96, 92, 80], 0),
+    cube([-0.3, -1.9, 14.0], [0.3, -0.5, 14.05], [96, 92, 80], 0),
 ];
 const BEAR_LEG: &[Cuboid] = &[
     cube([-2.3, -8.0, -2.3], [2.3, 0.0, 2.3], BEAR_FUR, 18),
@@ -241,6 +271,33 @@ const PANDA_BAMBOO: &[Cuboid] = &[
     cube([-0.6, -5.0, -0.6], [0.6, 5.0, 0.6], [112, 146, 51], 16),
     cube([-0.8, 0.0, -0.8], [0.8, 0.6, 0.8], [69, 105, 34], 8),
 ];
+/// v0.18 Track 6: the personality on a panda's face, over its head.
+const PANDA_LAZY: &[Cuboid] = &[
+    // Heavy lids over the eye glints.
+    cube([-3.3, 2.0, 7.5], [-2.0, 2.6, 7.55], [35, 33, 32], 0),
+    cube([2.0, 2.0, 7.5], [3.3, 2.6, 7.55], [35, 33, 32], 0),
+];
+const PANDA_WORRIED: &[Cuboid] = &[
+    // Brows raised toward the middle.
+    cube([-2.6, 4.4, 7.0], [-1.4, 4.9, 7.05], [70, 66, 62], 0),
+    cube([-4.2, 4.0, 7.0], [-2.6, 4.5, 7.05], [70, 66, 62], 0),
+    cube([1.4, 4.4, 7.0], [2.6, 4.9, 7.05], [70, 66, 62], 0),
+    cube([2.6, 4.0, 7.0], [4.2, 4.5, 7.05], [70, 66, 62], 0),
+];
+const PANDA_PLAYFUL: &[Cuboid] = &[cube([-0.7, -2.9, 8.8], [0.7, -2.0, 9.4], [222, 120, 132], 0)];
+const PANDA_AGGRESSIVE: &[Cuboid] = &[
+    // Brows lowered toward the middle.
+    cube([-2.6, 3.9, 7.0], [-1.4, 4.4, 7.05], [40, 36, 34], 0),
+    cube([-4.2, 4.3, 7.0], [-2.6, 4.8, 7.05], [40, 36, 34], 0),
+    cube([1.4, 3.9, 7.0], [2.6, 4.4, 7.05], [40, 36, 34], 0),
+    cube([2.6, 4.3, 7.0], [4.2, 4.8, 7.05], [40, 36, 34], 0),
+];
+const PANDA_WEAK: &[Cuboid] = &[
+    // A runny nose and watery eyes.
+    cube([0.5, -2.4, 9.2], [1.1, -1.0, 9.3], [176, 206, 150], 0),
+    cube([-3.0, 0.4, 7.3], [-2.4, 1.4, 7.35], [150, 190, 214], 0),
+    cube([2.4, 0.4, 7.3], [3.0, 1.4, 7.35], [150, 190, 214], 0),
+];
 pub(super) fn panda(m: &Mob, time: f32) -> Parts {
     let s = m.panda.as_ref().unwrap();
     let sit = if s.sitting { 1.0 } else { 0.0 };
@@ -266,6 +323,18 @@ pub(super) fn panda(m: &Mob, time: f32) -> Parts {
                 },
         );
     let mut p = parts![part(PANDA_BODY, at([0.0, 7.0, 0.0]), rot), part(PANDA_HEAD, at([0.0, 13.0, 8.0]), rot * head)];
+    use crate::entity::panda::Gene;
+    let face: &'static [Cuboid] = match s.variant() {
+        Gene::Lazy => PANDA_LAZY,
+        Gene::Worried => PANDA_WORRIED,
+        Gene::Playful => PANDA_PLAYFUL,
+        Gene::Aggressive => PANDA_AGGRESSIVE,
+        Gene::Weak => PANDA_WEAK,
+        Gene::Normal | Gene::Brown => &[],
+    };
+    if !face.is_empty() {
+        p.push(part(face, at([0.0, 13.0, 8.0]), rot * head));
+    }
     for (x, z, phase) in [(-5.0, -6.0, swing), (5.0, -6.0, -swing), (-5.0, 5.0, -swing), (5.0, 5.0, swing)] {
         p.push(part(
             PANDA_LEG,
@@ -301,6 +370,10 @@ const ARMADILLO_HEAD: &[Cuboid] = &[
     cube([0.5, 4.6, -0.3], [1.8, 7.0, 0.6], [176, 126, 108], 16),
     cube([-2.7, 2.6, 2.0], [-2.5, 3.5, 3.0], [27, 24, 21], 0),
     cube([2.5, 2.6, 2.0], [2.7, 3.5, 3.0], [27, 24, 21], 0),
+    // v0.18 Track 6: a dark nose tip and pink inner ears.
+    cube([-0.7, 1.2, 6.0], [0.7, 2.0, 6.05], [92, 60, 52], 0),
+    cube([-1.6, 5.0, 0.6], [-0.7, 6.6, 0.65], [214, 150, 140], 0),
+    cube([0.7, 5.0, 0.6], [1.6, 6.6, 0.65], [214, 150, 140], 0),
 ];
 const ARMADILLO_LEG: &[Cuboid] = &[
     cube([-1.1, -3.0, -1.1], [1.1, 0.0, 1.1], [152, 102, 89], 16),

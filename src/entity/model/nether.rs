@@ -55,6 +55,10 @@ const HEAD: &[Cuboid] = &[
     cube([-3.0, 4.0, 4.0], [-2.0, 5.0, 4.1], DARK, 0),
     cube([3.0, 4.0, 4.0], [4.0, 5.0, 4.1], WHITE, 0),
     cube([2.0, 4.0, 4.0], [3.0, 5.0, 4.1], DARK, 0),
+    // v0.18 Track 6: brows, and a mouth along the foot of the snout.
+    cube([-4.0, 5.2, 4.0], [-2.0, 5.7, 4.05], [176, 110, 104], 0),
+    cube([2.0, 5.2, 4.0], [4.0, 5.7, 4.05], [176, 110, 104], 0),
+    cube([-1.8, 0.3, 5.0], [1.8, 0.6, 5.05], [150, 90, 84], 0),
 ];
 /// Brutes wear a black tunic trimmed with gold over the same build.
 const BRUTE_CLOTH: Rgb = [38, 34, 40];
@@ -134,6 +138,9 @@ macro_rules! strider {
             // Eyes, a wide mouth and bristles along the top edges.
             cube([-5.0, 21.0, 8.0], [-2.0, 23.0, 8.1], DARK, 0),
             cube([2.0, 21.0, 8.0], [5.0, 23.0, 8.1], DARK, 0),
+            // v0.18 Track 6: eye glints.
+            cube([-4.5, 22.0, 8.1], [-3.5, 23.0, 8.15], [236, 226, 214], 0),
+            cube([3.5, 22.0, 8.1], [4.5, 23.0, 8.15], [236, 226, 214], 0),
             cube([-6.0, 17.0, 8.0], [6.0, 18.0, 8.1], $dark, 0),
             cube([-8.5, 26.0, -6.0], [-7.5, 29.0, -5.0], $dark, 10),
             cube([-8.5, 26.0, 0.0], [-7.5, 29.0, 1.0], $dark, 10),

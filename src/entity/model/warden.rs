@@ -28,6 +28,13 @@ const HEAD: &[Cuboid] = &[
     // A wide jaw with a pale lip and no eyes at all.
     cube([-6.5, 1., 5.], [6.5, 4., 5.6], RIB, 15),
     cube([-7., 8., 5.], [7., 11., 5.4], DEEP, 15),
+    // v0.18 Track 6: teeth in the jaw and glowing sculk on the cheeks.
+    cube([-5., 4., 5.], [-4., 5., 5.4], RIB, 0),
+    cube([-1.5, 4., 5.], [-0.5, 5., 5.4], RIB, 0),
+    cube([0.5, 4., 5.], [1.5, 5., 5.4], RIB, 0),
+    cube([4., 4., 5.], [5., 5., 5.4], RIB, 0),
+    cube([-8.05, 5., -2.], [-8., 8., 1.], SOUL, 0),
+    cube([8., 5., -2.], [8.05, 8., 1.], SOUL, 0),
 ];
 const TENDRIL_L: &[Cuboid] = &[cube([-1., 0., -0.5], [1., 7., 0.5], TENDRIL, 20)];
 const ARM: &[Cuboid] =

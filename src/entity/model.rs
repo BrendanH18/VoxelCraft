@@ -334,6 +334,9 @@ static MAGMA_GLOW: &[Cuboid] = &[
     cube([-4.1, 5.8, -4.1], [4.1, 6.1, 4.1], [245, 99, 16], 0),
     cube([-2.6, 4.5, 4.1], [-1.1, 6.0, 4.15], [255, 205, 55], 0),
     cube([1.1, 4.5, 4.1], [2.6, 6.0, 4.15], [255, 205, 55], 0),
+    // v0.18 Track 6: dark pupils in the burning eyes.
+    cube([-2.0, 4.8, 4.15], [-1.5, 5.6, 4.2], [80, 20, 6], 0),
+    cube([1.5, 4.8, 4.15], [2.0, 5.6, 4.2], [80, 20, 6], 0),
 ];
 // v0.18 Track 6: grey tear streaks under the eyes (the hide takes the
 // default pattern).
@@ -353,6 +356,9 @@ const SLIME_BODY: &[Cuboid] = &[
     cube([-2.0, 4.0, 3.0], [-0.6, 5.4, 3.1], [20, 44, 16], 0),
     cube([0.6, 4.0, 3.0], [2.0, 5.4, 3.1], [20, 44, 16], 0),
     cube([-0.4, 2.2, 3.0], [0.4, 3.0, 3.1], [20, 44, 16], 0),
+    // v0.18 Track 6: eye glints in the core.
+    cube([-1.3, 4.9, 3.1], [-0.9, 5.3, 3.15], [180, 220, 160], 0),
+    cube([1.3, 4.9, 3.1], [1.7, 5.3, 3.15], [180, 220, 160], 0),
     glass([-4.08, 0.0, -4.08], [4.08, 8.16, 4.08], [105, 180, 78], 55),
 ];
 
@@ -879,6 +885,11 @@ const BLAZE_HEAD: &[Cuboid] = &[
     cube([-3.0, 3.0, 4.0], [-1.0, 4.0, 4.1], BLAZE_FACE, 0),
     cube([1.0, 3.0, 4.0], [3.0, 4.0, 4.1], BLAZE_FACE, 0),
     cube([-2.0, 1.0, 4.0], [2.0, 1.5, 4.05], BLAZE_FACE, 0),
+    // v0.18 Track 6: hot pupils, a heavy brow and a smoky crown.
+    cube([-2.0, 3.0, 4.1], [-1.5, 4.0, 4.15], [255, 236, 150], 0),
+    cube([1.5, 3.0, 4.1], [2.0, 4.0, 4.15], [255, 236, 150], 0),
+    cube([-3.5, 4.4, 4.0], [3.5, 5.0, 4.05], [176, 96, 24], 0),
+    cube([-4.05, 7.0, -4.05], [4.05, 8.05, 4.05], [150, 96, 40], 20),
 ];
 const BLAZE_ROD_BOX: &[Cuboid] = &[cube([-1.0, -4.0, -1.0], [1.0, 4.0, 1.0], BLAZE_ROD, 30)];
 
@@ -1439,6 +1450,16 @@ pub fn build(
                 shulker::colour(m, &mut cuboid);
                 if m.kind == MobKind::GlowSquid && c.color == [49, 71, 80] {
                     cuboid.color = [44, 161, 151];
+                }
+                // v0.18 Track 6: the glow squid's paler stripes.
+                if m.kind == MobKind::GlowSquid && c.color == aquatic::SQUID_STRIPE {
+                    cuboid.color = [118, 214, 200];
+                }
+                // v0.18 Track 6: each axolotl's gills a deeper shade of its colour.
+                if m.kind == MobKind::Axolotl && c.color == [197, 83, 132] {
+                    const GILLS: [[u8; 3]; 5] =
+                        [[197, 83, 132], [96, 66, 48], [196, 142, 30], [120, 170, 178], [52, 62, 142]];
+                    cuboid.color = GILLS[m.aquatic.as_ref().map_or(0, |a| a.variant as usize) % 5];
                 }
                 if m.kind == MobKind::ElderGuardian && c.color == [105, 138, 129] {
                     cuboid.color = [173, 170, 146];
