@@ -115,6 +115,8 @@ pub struct Args {
     pub wait: f64,
     /// `--animation-time`: hold the animation clock here, so captures can be compared.
     pub animation_time: Option<f32>,
+    /// `--still-mobs`: landed mobs hold still facing the camera, for comparable captures.
+    pub still_mobs: bool,
     /// x,y,z,yaw_deg,pitch_deg
     pub pose: Option<[f64; 5]>,
     /// Starting health / air overrides (debugging/screenshots).
@@ -243,6 +245,7 @@ voxelcraft [options]
                     an allay an item to hold
   --wait <secs>     with --screenshot: keep simulating this long first
   --animation-time <secs>  hold the animation clock (idle animations, clouds, water) at this time, for comparable captures
+  --still-mobs      landed mobs stop moving and face the starting camera, for comparable captures
   --time <0..1>     starting time of day (0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight)
   --weather <w>     start with clear skies, rain or a thunderstorm (clear,
                     rain, thunder)
@@ -333,6 +336,7 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
         spawn_held: Vec::new(),
         wait: 0.0,
         animation_time: None,
+        still_mobs: false,
         pose: None,
         health: None,
         air: None,
@@ -630,6 +634,7 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
                 args.spawn.push((kind, glam::IVec3::new(n[0], n[1], n[2]), armor));
             }
             "--wait" => args.wait = value("--wait")?.parse().map_err(|_| "bad --wait")?,
+            "--still-mobs" => args.still_mobs = true,
             "--animation-time" => {
                 args.animation_time = Some(value("--animation-time")?.parse().map_err(|_| "bad --animation-time")?);
             }
@@ -761,6 +766,7 @@ impl Args {
         self.open_block = None;
         self.spawn.clear();
         self.spawn_held.clear();
+        self.still_mobs = false;
         self.pose = None;
         self.health = None;
         self.air = None;

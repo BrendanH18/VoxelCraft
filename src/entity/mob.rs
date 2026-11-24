@@ -2118,6 +2118,18 @@ impl Mob {
     }
 
     /// Advances the mob by `dt` seconds.
+    /// v0.18 Track 6: `--still-mobs`. Holds a landed mob in place facing
+    /// `face`, its limbs and head at rest and its lighting current.
+    pub fn hold_still<W: MobWorld + ?Sized>(&mut self, world: &W, face: DVec3) {
+        let to = face - self.pos;
+        self.yaw = to.z.atan2(to.x) as f32;
+        (self.head_yaw, self.head_pitch, self.limb_amp, self.vel) = (0.0, 0.0, 0.0, DVec3::ZERO);
+        self.burning = false;
+        let at = self.pos + DVec3::new(0.0, self.shape().height * 0.6, 0.0);
+        self.sky_light = sky_light(world, at);
+        self.block_light = world.block_light(at.floor().as_ivec3()) as f32 / 15.0;
+    }
+
     pub fn update<W: MobWorld + ?Sized>(
         &mut self,
         dt: f64,

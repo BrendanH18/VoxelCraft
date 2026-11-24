@@ -1255,6 +1255,10 @@ pub struct Entities {
     /// Mobs drawn last frame (F3).
     pub rendered: usize,
     mesh: model::EntityMesh,
+    /// v0.18 Track 6: `--still-mobs`, for comparison captures. A mob that has
+    /// landed stops updating (no AI, movement, burning or sounds), faces this
+    /// point and keeps its lighting fresh, so its pose is the same in every run.
+    pub still: Option<DVec3>,
 }
 
 impl Entities {
@@ -1355,6 +1359,7 @@ impl Entities {
             structure_timer: 0.0,
             rendered: 0,
             mesh: model::EntityMesh::default(),
+            still: None,
         }
     }
 

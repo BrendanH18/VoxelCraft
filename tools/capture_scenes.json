@@ -4873,6 +4873,111 @@
    "name": "end",
    "description": "The End's main island from 60 blocks east, facing its centre",
    "dimension": "end"
+  },
+  {
+   "name": "mobs-still-farm",
+   "group": "mobs",
+   "description": "Close-up of a chicken, pig, cow, sheep and wolf at noon, pinned with --still-mobs (each mob lands, then holds still facing the camera), with dropped items in front and one- and two-block steps under the sheep and wolf: faces, markings and ground shadows on uneven terrain",
+   "pose": [
+    0.5,
+    153.4,
+    14.5,
+    90,
+    -14
+   ],
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "fill": [
+    [
+     -9,
+     150,
+     13,
+     9,
+     150,
+     28,
+     "grass"
+    ]
+   ],
+   "place": [
+    "2,151,20,grass",
+    "2,151,21,grass",
+    "5,151,20,grass",
+    "5,152,20,grass",
+    "6,151,20,grass",
+    "-1,151,22,grass"
+   ],
+   "spawn": [
+    "chicken,-6,151,19",
+    "pig,-4,151,20",
+    "cow,-1,151,20",
+    "sheep,2,152,20",
+    "wolf,5,153,20"
+   ],
+   "args": [
+    "--still-mobs",
+    "--drop",
+    "diamond_sword",
+    "--drop",
+    "oak_planks,8",
+    "--drop",
+    "apple,3",
+    "--drop",
+    "iron_ingot,5"
+   ]
+  },
+  {
+   "name": "mobs-still-hostile",
+   "group": "mobs",
+   "description": "Close-up of a villager, zombie, skeleton, creeper, enderman and spider at noon, pinned with --still-mobs (landed mobs hold still facing the camera and don't burn), on flat grass with a one-block step: faces, markings, material contrast and ground shadows",
+   "pose": [
+    0.5,
+    154.0,
+    13.5,
+    90,
+    -12
+   ],
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "fill": [
+    [
+     -9,
+     150,
+     13,
+     9,
+     150,
+     28,
+     "grass"
+    ]
+   ],
+   "place": [
+    "5,151,21,grass",
+    "6,151,21,grass",
+    "5,151,22,grass",
+    "6,151,22,grass"
+   ],
+   "spawn": [
+    "villager,-6,151,21",
+    "zombie,-4,151,21",
+    "skeleton,-2,151,21",
+    "creeper,0,151,21",
+    "enderman,2,151,22",
+    "spider,5,152,21"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
   }
  ]
 }

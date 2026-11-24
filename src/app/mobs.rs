@@ -24,15 +24,21 @@ pub(super) struct Mobs {
     /// `--wait`: seconds to keep simulating before a `--screenshot`.
     wait: f64,
     wait_start: Option<Instant>,
+    /// `--still-mobs` (see `Entities::still`).
+    still: bool,
 }
 
 impl Mobs {
     pub fn new(seed: u64, spawn: Vec<(MobKind, IVec3, Option<crate::entity::armor::Equipped>)>, wait: f64) -> Self {
-        Self { entities: Entities::new(seed), pending: spawn, held: Vec::new(), wait, wait_start: None }
+        Self { entities: Entities::new(seed), pending: spawn, held: Vec::new(), wait, wait_start: None, still: false }
     }
 
     pub fn holding(self, held: Vec<(usize, crate::item::Item)>) -> Self {
         Self { held, ..self }
+    }
+
+    pub fn still(self, still: bool) -> Self {
+        Self { still, ..self }
     }
 
     /// For `--screenshot`: true once `--wait` seconds have passed since the
@@ -89,6 +95,9 @@ impl Game {
 
     /// Applies `--spawn` requests (with the other `--place` edits).
     pub(super) fn spawn_pending_mobs(&mut self) {
+        if self.mobs.still {
+            self.mobs.entities.still = Some(self.session.player.eye());
+        }
         let held = std::mem::take(&mut self.mobs.held);
         for (i, (kind, mut pos, armor)) in std::mem::take(&mut self.mobs.pending).into_iter().enumerate() {
             if pos.y == i32::MIN {

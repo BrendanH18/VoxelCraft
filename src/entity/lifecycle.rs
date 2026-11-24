@@ -235,6 +235,12 @@ impl Entities {
                 }
                 continue;
             }
+            if let Some(face) = self.still
+                && self.mobs[i].on_ground
+            {
+                self.mobs[i].hold_still(world, face);
+                continue;
+            }
             let before_tame = self.mobs[i].mount.as_ref().map(|s| (s.tame, s.rider));
             let grounded = self.mobs[i].on_ground;
             self.mobs[i].difficulty = difficulty;
