@@ -68,6 +68,9 @@ pub struct MeshInput {
     pub neighbors: Neighborhood,
     /// Region light copied from World, sky in the low nibble, block in the high.
     pub light: Box<[u8; REGION_VOLUME]>,
+    /// Where `light` is still to be read from, for a job queued on the main
+    /// thread; [`MeshInput::resolve_light`] fills it on the worker.
+    pub light_sources: Option<Box<crate::world::LightSources>>,
     /// World Y of the chunk's lowest block.
     pub base_y: i32,
     /// The dimension's lowest block y: missing chunks below it are bedrock.
@@ -75,6 +78,15 @@ pub struct MeshInput {
     /// Foliage colour group of each of the chunk's columns, indexed
     /// `x + z * CHUNK_SIZE` (see `block::tex::tinted`).
     pub foliage: Box<[u8; CHUNK_SIZE * CHUNK_SIZE]>,
+}
+
+impl MeshInput {
+    /// Fills `light` from `light_sources`, if they are still pending.
+    pub fn resolve_light(&mut self) {
+        if let Some(sources) = self.light_sources.take() {
+            sources.fill(&mut self.light);
+        }
+    }
 }
 
 /// Render passes, in the order their quads are stored.
@@ -314,6 +326,7 @@ fn shaped_boxes(blocks: &[Block], i: usize, b: Block) -> Boxes {
 
 /// Lights and meshes one chunk.
 pub fn build(input: &MeshInput, region: &mut Region) -> MeshData {
+    debug_assert!(input.light_sources.is_none(), "mesh input light not resolved");
     region.fill(&input.neighbors, input.base_y, input.min_y);
     region.copy_light(&input.light);
     let mesh = mesh_region(region, &input.foliage);

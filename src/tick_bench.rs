@@ -86,6 +86,7 @@ pub struct Harness {
     day_count: i64,
     ticks: u64,
     spawning: bool,
+    heights: rustc_hash::FxHashMap<(i32, i32), i32>,
 }
 
 impl Harness {
@@ -106,6 +107,7 @@ impl Harness {
             day_count: 0,
             ticks: 0,
             spawning: true,
+            heights: Default::default(),
         };
         if h.scene == "village" {
             let g = Arc::clone(&h.world.generator);
@@ -230,15 +232,28 @@ impl Harness {
             _ => return,
         };
         let mut pos = self.origin + offset;
-        let g = &self.world.generator;
         let ground = (-2..=4)
             .map(|k| {
                 let p = pos + dir * f64::from(k * 8);
-                f64::from(g.column(p.x.floor() as i32, p.z.floor() as i32).height)
+                self.surface(p.x, p.z)
             })
             .fold(f64::from(SEA_LEVEL), f64::max);
         pos.y = ground + ROUTE_CLEARANCE;
         self.camera = pos;
+    }
+
+    /// The generator's surface height, bilinear between samples on an
+    /// 8-block lattice that are computed once, as the live scenes' routes.
+    fn surface(&mut self, x: f64, z: f64) -> f64 {
+        let (gx, gz) = ((x / 8.0).floor(), (z / 8.0).floor());
+        let (fx, fz) = (x / 8.0 - gx, z / 8.0 - gz);
+        let g = &self.world.generator;
+        let mut at = |dx: i32, dz: i32| {
+            let key = (gx as i32 + dx, gz as i32 + dz);
+            f64::from(*self.heights.entry(key).or_insert_with(|| g.column(key.0 * 8, key.1 * 8).height))
+        };
+        let (a, b, c, d) = (at(0, 0), at(1, 0), at(0, 1), at(1, 1));
+        (a * (1. - fx) + b * fx) * (1. - fz) + (c * (1. - fx) + d * fx) * fz
     }
 
     /// One frame's streaming: install finished chunks, submit jobs and drop
@@ -334,6 +349,9 @@ fn daylight(day_time: f64) -> f32 {
 #[derive(Clone, Copy, Default)]
 struct Frame {
     stream: f32,
+    /// `Entities::mesh`, the CPU side of the entity pass (reported, not in
+    /// `total`: the frame loop's render half is outside this harness).
+    entity_mesh: f32,
     ticks: TickTimes,
     ticked: u8,
 }
@@ -415,6 +433,11 @@ pub fn run(options: &Options) -> Result<Value, String> {
             late_ticks += 1;
         }
         f.ticked = due as u8;
+        let a = Instant::now();
+        let forward = glam::Vec3::new(1.0, -0.2, 0.0).normalize();
+        let mesh = h.entities.mesh(h.camera, forward, 256.0, t as f32, 1.0);
+        std::hint::black_box(mesh.len());
+        f.entity_mesh = a.elapsed().as_secs_f32() * 1000.0;
         if t >= options.warmup {
             frames.push(f);
             mobs = mobs.max(h.entities.mobs.len());
@@ -435,6 +458,7 @@ pub fn run(options: &Options) -> Result<Value, String> {
     };
     let mut phases = serde_json::Map::new();
     phases.insert("stream".into(), summary(frames.iter().map(|f| f.stream).collect()));
+    phases.insert("entity_mesh".into(), summary(frames.iter().map(|f| f.entity_mesh).collect()));
     for (i, name) in TICK_PHASES.iter().enumerate() {
         phases.insert((*name).into(), summary(ticks.iter().map(|t: &TickTimes| t[i]).collect()));
     }

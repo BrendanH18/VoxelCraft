@@ -657,6 +657,43 @@ mod tests {
         assert!(cache.is_empty());
     }
 
+    /// The frame cost of sign text with and without the cache: 100 signs
+    /// with four 15-character lines on both sides, every other one glowing.
+    /// A cold cache lays every side out, as each frame did before the cache.
+    /// `cargo test --profile ci --bin voxelcraft sign_text_frame_cost -- --ignored --nocapture`
+    #[test]
+    #[ignore = "timing report, run by hand"]
+    fn sign_text_frame_cost() {
+        let mut w = world();
+        let line = || "Fifteen letters".to_string();
+        for i in 0..100 {
+            let at = AT + IVec3::new(i % 10 * 2 - 6, 0, i / 10 * 2 - 6);
+            w.set_block(at - IVec3::Y, Block::STONE);
+            let sign = Sign { kind: Kind::Oak, mount: Mount::Standing { rotation: (i % 16) as u8 }, wet: false };
+            w.set_block(at, sign.block());
+            for front in [true, false] {
+                w.set_sign_text(at, front, [line(), line(), line(), line()]).unwrap();
+                w.update_sign(at, front, |t| t.glowing = i % 2 == 0);
+            }
+        }
+        let camera = AT.as_dvec3() + DVec3::new(0.5, 2.0, 0.5);
+        let mut out = Vec::new();
+        fn time(runs: u32, out: &mut Vec<EntityVertex>, f: &mut dyn FnMut(&mut Vec<EntityVertex>)) -> f64 {
+            let start = std::time::Instant::now();
+            for _ in 0..runs {
+                out.clear();
+                f(out);
+            }
+            start.elapsed().as_secs_f64() * 1000.0 / f64::from(runs)
+        }
+        let cold = time(50, &mut out, &mut |out| text(&mut TextCache::default(), FONT_VERSION, &w, camera, out));
+        let mut cache = TextCache::default();
+        text(&mut cache, FONT_VERSION, &w, camera, &mut Vec::new());
+        let warm = time(200, &mut out, &mut |out| text(&mut cache, FONT_VERSION, &w, camera, out));
+        println!("sign text: {} vertices; laid out every frame {cold:.3} ms, cached {warm:.3} ms", out.len());
+        assert_eq!(cache.builds, 200, "both sides of 100 signs, laid out once");
+    }
+
     #[test]
     fn shelf_items_sit_on_the_shelf_a_quarter_block_each() {
         use crate::inventory::Stack;
