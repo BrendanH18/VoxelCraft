@@ -693,12 +693,6 @@ impl Game {
                     self.stack_ui(ui, r.x + dx - 1.0, r.y + 5.0, Stack::new(item, 1));
                 }
             }
-            if r.contains(mouse) && tip.is_none() {
-                tip = Some(match menu.book.tabs()[i].category {
-                    None => "Search".to_string(),
-                    Some(c) => capitalize_words(c.id()),
-                });
-            }
         }
         // Search box with its hint.
         let s = l.search;
@@ -995,16 +989,6 @@ fn arrow(ui: &mut Ui, r: Rect, forward: bool, hover: bool) {
     }
 }
 
-fn capitalize_words(id: &str) -> String {
-    id.split('_')
-        .map(|w| {
-            let mut c = w.chars();
-            c.next().map_or_else(String::new, |f| f.to_uppercase().collect::<String>() + c.as_str())
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
 /// The book names LAN commands use.
 pub(super) fn book_name(book: BookType) -> &'static str {
     match book {
@@ -1037,6 +1021,5 @@ mod tests {
         for b in BookType::ALL {
             assert_eq!(book_from_name(book_name(b)), Some(b));
         }
-        assert_eq!(capitalize_words("crafting_building_blocks"), "Crafting Building Blocks");
     }
 }
