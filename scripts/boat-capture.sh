@@ -65,7 +65,8 @@ remote='status=0
     rm -rf "$out"; mkdir -p "$out"
     # One virtual screen larger than any capture; without a window manager each window
     # gets exactly the size it asks for.
-    pkill -f "Xvfb :91" 2>/dev/null || true
+    # A server left by a killed run; the bracket keeps pkill from matching this script.
+    pkill -f "[X]vfb :91" 2>/dev/null || true
     Xvfb :91 -screen 0 3840x2160x24 -nolisten tcp >/dev/null 2>&1 &
     xvfb=$!
     trap "kill $xvfb 2>/dev/null || true" EXIT

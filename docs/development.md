@@ -243,7 +243,12 @@ builds pixel for pixel, capture a paused scene with the animation clock held:
 `--open-menu pause --animation-time 7.3`. Idle animations, clouds and water
 follow the wall clock even while the game is paused, so without the held
 clock two captures of one build differ. Scripted runs
-(`--screenshot`, `--bench-render`) ignore saved options. Saves and logs normally
+(`--screenshot`, `--bench-render`) ignore saved options, so `--gui-scale auto|N`
+sets the GUI Scale for the run (capped at what fits the window, as in the
+options) and `--size WxH` the window's size in physical pixels.
+`--gamerule advance_time=false` holds `--time` for the run, and
+`--gamerule advance_weather=false` holds `--weather` (`clear`, `rain` or
+`thunder`); any game rule the game enforces works. Saves and logs normally
 use the [per-user data folder](releases.md#player-data-and-old-saves); add
 `--data-dir target/screenshots` to isolate a scripted run. In `--place` and
 `--spawn`, `~` for the y coordinate means the terrain surface
@@ -289,10 +294,15 @@ cargo run --release -- --world screenshots --new --seed 42 --creative \
 ```
 
 For UI captures, add `--f3` for the debug overlay, `--open-inventory` for
-the inventory or `--open-menu pause|options|video|sound|controls|mouse|keybinds|accessibility|lan` for the menus, `--weather rain` for rain (snow in cold biomes), and `--give iron_pickaxe --give coal,16` to fill it (`--drop` throws items
+the inventory, `--open-recipe-book` for the recipe book (in the inventory, or
+beside a crafting table opened with `--open-block`), `--creative-tab <id>` for
+the creative inventory on one of Java's tabs (`building_blocks`, `search`,
+`combat`, ...; today every tab shows the one creative palette) or `--open-menu pause|options|video|sound|controls|mouse|keybinds|accessibility|lan` for the menus, `--weather rain` for rain (snow in cold biomes), and `--give iron_pickaxe --give coal,16` to fill it (`--drop` throws items
 in front of the player instead). In
 survival, `--health 5 --air 6 --food 8` sets the vitals; `--health 0` opens the death
-screen. `--xp 30` sets the experience level and `--orbs 40` spawns orbs worth 40
+screen, and with `--hardcore` (which makes a world the run creates a Hardcore
+world) it is the Hardcore death. `--open-block` opens any workstation or
+container block, the crafting table included. `--xp 30` sets the experience level and `--orbs 40` spawns orbs worth 40
 points four blocks ahead. `cargo test --release icon_sheet -- --ignored` writes every item icon
 to `target/item_icons.png`.
 
@@ -315,6 +325,90 @@ takes `ambient`, `hideparticles` and `hideicon` after the amplifier, as in
 inventory, so leave it off for UI captures. The
 [2026-11-09 stabilisation pass](verification/2026-11-09-stabilisation-pass.md)
 lists the poses it used.
+
+### Screenshots on Boat
+
+`scripts/boat-capture.sh` renders captures in this worktree's
+[Boat sandbox](#boat-checks) and copies the PNGs back, so an agent can see a
+visual change without running the game on the Mac:
+
+```sh
+scripts/boat-capture.sh --scene materials          # a group from the comparison scenes
+scripts/boat-capture.sh --scene inventory --scene day
+scripts/boat-capture.sh                            # every comparison scene
+scripts/boat-capture.sh --name water -- --world w --new --seed 42 --creative \
+    --place 0,~,0,water --pose 0,120,-10,90,-30 --rd 4 --size 1280x720
+```
+
+It runs through `scripts/boat-check.sh -- CMD`, so it uses the same sandbox,
+slot (`VC_BOAT_SLOT`), lock and warm `ci` build, and the sandbox stops when
+it ends. The first run on a sandbox installs Xvfb and Mesa's software Vulkan
+driver (lavapipe). Each run builds the game with the `ci` profile, starts one
+virtual X screen of 3840 × 2160 and runs
+[`tools/capture_scenes.py`](../tools/capture_scenes.py), one game per capture
+with its own data folder. The PNGs, `manifest.json` (the commit, the
+renderer and every capture's settings and arguments) and the log of any
+capture that failed land in `target/captures/<commit>[-dirty]/` (`--out`
+picks another folder). The game sees `llvmpipe (LLVM …) (Vulkan)` as its GPU.
+
+**Software captures show appearance only, never performance.** They run at
+a few frames per second, and nothing about their timing says anything about
+the Mac. The FPS counter that shows in UI captures is not a measurement.
+The frame-time gate stays on the reference Mac
+([§6.1](roadmap.md#61-reference-configuration-and-frame-time-gate)).
+
+Differences from Metal seen so far (2026-11-23,
+[record](verification/2026-11-23-v0.18-foundation.md)):
+
+- Colour: the surface is an sRGB format on both, and textures are sRGB, so
+  colours match to within rounding. UI flat colours are encoded the same
+  way on both (see the [colour pipeline](art-and-ui.md#colour-pipeline)).
+- Anti-aliasing: the game requests no MSAA, so edges are aliased on both.
+- Precision: llvmpipe computes in 32-bit floats like the Mac's GPU, but its
+  texture filtering and derivative maths are not bit-identical: compare
+  captures from one renderer with each other, never a Boat capture with a
+  Mac capture pixel for pixel.
+- Speed: a world at render distance 8 took about 5½ minutes to settle and
+  capture on a `large` sandbox, so the comparison scenes use render
+  distance 6 for world scenes, 4 for in-world UI scenes and 2 for the title
+  screens.
+
+### Comparison scenes
+
+[`tools/capture_scenes.json`](../tools/capture_scenes.json) lists named,
+reproducible before/after scenes for v0.18's visual work, in five groups:
+
+- `materials`: a stone and ore wall over deepslate, a torch-lit stone room's
+  ceiling, a stepped grass and dirt hillside, a small forest, sand dunes and
+  a palette wall of 32 common blocks. All are built with `--place` high
+  above the terrain, so they don't change when world generation does.
+- `mobs`: nine mobs and dropped items on uneven grass, at noon and at
+  midnight.
+- `ui`: the survival HUD, inventory, recipe book, a crafting table with the
+  recipe book, a furnace, the creative inventory on two tabs, the pause menu,
+  Video Settings, the death screen and the Hardcore death, each at
+  1920 × 1080 and 1280 × 720 with Auto and fixed scale-2 GUI scales. Auto
+  is already the largest scale that fits (4 and 3), so it is the "large"
+  case.
+- `title`: the title screen, Select World with four fixed saves and empty,
+  and Create New World, at the same four sizes.
+- `atmosphere`: the seeded landscape at noon, dusk and midnight, in rain and
+  a thunderstorm, inside a water tank, and in the Nether and the End.
+
+Each scene records its seed, game mode, pose, placements, spawned mobs,
+time, weather, dimension, resolution, GUI scale, render distance and held
+animation time; `defaults` fills in what a scene leaves out, and every
+scene holds the time and weather with game rules. `python3
+tools/capture_scenes.py list` prints them, and `args NAME` prints the
+command line of each variant. `scripts/boat-capture.sh` puts one folder of
+PNGs per commit under `target/captures/`. Mobs move during the 1.5 seconds
+the mob scenes wait, so those two scenes are the only ones that differ
+between runs of one build.
+
+To add a scene, append it to the JSON with a new name, rather than changing
+an existing scene, so earlier captures keep comparing like with like. The
+`capture_scenes` integration test checks that every block, item, mob,
+effect and setting it names exists.
 
 ## Hands-on runs
 
