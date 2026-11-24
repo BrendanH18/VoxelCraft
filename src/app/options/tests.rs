@@ -755,3 +755,42 @@ fn closed_captions_and_text_background_use_javas_labels() {
     assert!(at(accessibility::Id::TextBackgroundOpacity) < at(accessibility::Id::TextBackground));
     assert!(at(accessibility::Id::TextBackground) < at(accessibility::Id::ViewBobbing));
 }
+
+/// v0.18 Track 8: Clouds and Cloud Distance sit in Video Settings' Quality
+/// section in Java's order, and Hide Sky Flashes in Accessibility Settings,
+/// with Java 26.3's labels, values and defaults.
+#[test]
+fn cloud_and_sky_flash_options_use_javas_labels_and_order() {
+    use voxelcraft::atmosphere::Clouds;
+    let mut host = Host::default();
+    let mut video = VideoSettings;
+    assert_eq!(label(&video, &host, video::Id::Clouds), "Clouds: Fancy");
+    for (want, caption) in [(Clouds::Off, "OFF"), (Clouds::Fast, "Fast"), (Clouds::Fancy, "Fancy")] {
+        video.activate(&mut host, video::Id::Clouds);
+        assert_eq!(host.settings.clouds, want);
+        assert_eq!(label(&video, &host, video::Id::Clouds), format!("Clouds: {caption}"));
+    }
+    assert_eq!(label(&video, &host, video::Id::CloudDistance), "Cloud Distance: 128 Chunks");
+    video.slide(&mut host, video::Id::CloudDistance, 0.0);
+    assert_eq!(label(&video, &host, video::Id::CloudDistance), "Cloud Distance: 2 Chunks");
+    video.slide(&mut host, video::Id::CloudDistance, 0.5);
+    assert_eq!(host.settings.cloud_range, 65);
+    let ids: Vec<_> = video.widgets(&host, (640.0, 360.0)).into_iter().map(|w| w.id).collect();
+    let at = |id| ids.iter().position(|&i| i == id).unwrap();
+    assert!(at(video::Id::SimulationDistance) < at(video::Id::Clouds));
+    assert!(at(video::Id::Clouds) < at(video::Id::Particles));
+    // Java: Particles, Mipmap Levels, (Entity Shadows), Menu Background Blur, Cloud Distance.
+    assert!(at(video::Id::Particles) < at(video::Id::MipmapLevels));
+    assert!(at(video::Id::MipmapLevels) < at(video::Id::MenuBlur));
+    assert!(at(video::Id::MenuBlur) < at(video::Id::CloudDistance));
+    assert!(at(video::Id::CloudDistance) < at(video::Id::PreferencesHeader));
+
+    let mut screen = Accessibility;
+    assert_eq!(label(&screen, &host, accessibility::Id::HideSkyFlashes), "Hide Sky Flashes: OFF");
+    screen.activate(&mut host, accessibility::Id::HideSkyFlashes);
+    assert!(host.settings.hide_lightning_flashes);
+    assert_eq!(label(&screen, &host, accessibility::Id::HideSkyFlashes), "Hide Sky Flashes: ON");
+    let ids: Vec<_> = screen.widgets(&host, (640.0, 360.0)).into_iter().map(|w| w.id).collect();
+    let at = |id| ids.iter().position(|&i| i == id).unwrap();
+    assert!(at(accessibility::Id::DamageTilt) < at(accessibility::Id::HideSkyFlashes));
+}

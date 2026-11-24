@@ -42,8 +42,11 @@ pub(super) fn sheets(world: &World, camera: DVec3, strength: f32, out: &mut Vec<
             } else {
                 DVec3::X * 0.5
             };
-            let fade = 1.0 - (d2 as f32).sqrt() / (RADIUS as f32 + 1.0);
-            let alpha = (strength * fade.sqrt() * 255.0) as u8;
+            // Java's `WeatherEffectRenderer.prepareInstances`: from full
+            // (snow 0.8) at the camera to half at the weather radius.
+            let max = if kind == Precipitation::Snow { 0.8 } else { 1.0 };
+            let near = (d2 as f32 / (RADIUS * RADIUS) as f32).min(1.0);
+            let alpha = ((max + (0.5 - max) * near) * strength * 255.0) as u8;
             let snow = if kind == Precipitation::Snow { 255 } else { 0 };
             let seed = (hash3(x, 0, z, 0x5EED) % 1000) as f32 / 10.0;
             let rel = |p: DVec3| (p - camera).as_vec3().to_array();

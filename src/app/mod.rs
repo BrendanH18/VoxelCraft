@@ -107,8 +107,6 @@ const ZENITH: [f32; 3] = [0.10, 0.27, 0.80];
 const NIGHT_SKY: [f32; 3] = [0.008, 0.012, 0.035];
 const NIGHT_ZENITH: [f32; 3] = [0.002, 0.003, 0.012];
 const SUNSET: [f32; 3] = [0.95, 0.42, 0.18];
-const WATER_FOG: [f32; 3] = [0.05, 0.14, 0.35];
-const LAVA_FOG: [f32; 3] = [0.75, 0.25, 0.03];
 
 fn window_icon() -> Icon {
     let decoder = png::Decoder::new(std::io::Cursor::new(include_bytes!("../../packaging/icons/VoxelCraft.png")));
@@ -230,9 +228,9 @@ struct Game {
     clock: crate::simulation::FixedClock,
     previous_eye: DVec3,
     rendered_eye: DVec3,
-    /// Biome-blended Nether fog colour (Java's cubic Gaussian sampler).
-    /// One sampler per split-screen view.
-    nether_fog: std::cell::RefCell<Vec<crate::world::nether_biome::FogSampler>>,
+    /// Each split-screen view's atmosphere state (v0.18 Track 8): the
+    /// biome blend Java's fog reads, its rain fog and water vision.
+    atmosphere_views: std::cell::RefCell<Vec<split::ViewAtmosphere>>,
     /// Fraction of the day: 0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight.
     day_time: f64,
     /// Completed daylight cycles for `/time query day`.
@@ -2244,24 +2242,15 @@ impl Game {
         }
 
         // --- Render ---------------------------------------------------------
+        // v0.18 Track 8: the sky, fog and clouds are Java 26.3's environment
+        // attributes (`voxelcraft::atmosphere`); `sky_state` keeps the sun's
+        // direction. Both other dimensions set `visual/sky_light_factor` to 0,
+        // so their terrain is lit by block light and the dimension's ambient
+        // light term only (see `Dimension::ambient_light`).
         let mut sky = sky_state(self.day_time);
-        sky.daylight = self.weather.dim(sky.daylight);
-        sky.horizon = self.weather.overcast(sky.horizon);
-        sky.zenith = self.weather.overcast(sky.zenith);
-        if self.mobs.entities.lightning.iter().any(|b| b.visible()) {
-            sky.horizon = [0.7, 0.72, 0.85];
-            sky.zenith = [0.6, 0.63, 0.8];
-            sky.daylight = 1.;
-        }
         let nether = !self.dimension.has_sky();
         if nether {
-            // No sun, no weather. Both dimension types set `visual/sky_light_factor`
-            // to 0, so terrain is lit by block light and the dimension's
-            // ambient light term only (see `Dimension::ambient_light`).
             sky.daylight = self.dimension.visual_sky_light_factor();
-            let fog = self.nether_haze(0, camera);
-            sky.horizon = if self.dimension == Dimension::End { [0.045, 0.025, 0.065] } else { fog };
-            sky.zenith = if self.dimension == Dimension::End { [0.018, 0.009, 0.03] } else { fog };
         }
         let scene = split::Scene {
             sky,
@@ -2269,18 +2258,11 @@ impl Game {
             time: self.animation_time.unwrap_or_else(|| (now - self.started).as_secs_f32()),
             alpha,
             now,
+            ticks: (dt * 20.0) as f32,
         };
-        let split::Fog { color: fog_color, zenith, start: fog_start, end: fog_end, .. } = self
-            .fog(&scene, 0, camera)
-            .darkened(
-                self.session.vitals.effects.get(voxelcraft::simulation::effects::Effect::Darkness).map(|e| e.ticks),
-                self.settings.render_distance as f32 * 32.0,
-                scene.time,
-            )
-            .blinded(
-                self.session.vitals.effects.get(voxelcraft::simulation::effects::Effect::Blindness).map(|e| e.ticks),
-                self.settings.render_distance as f32 * 32.0,
-            );
+        let atmosphere =
+            self.atmosphere(&scene, 0, camera, forward, &self.session.vitals, self.session.mode == GameMode::Spectator);
+        let fog_end = atmosphere.end();
         let dial = self.dial_of(&self.session.player);
         let others: Vec<(&Player, DVec3, crate::entity::model::PlayerAppearance, &str)> = self
             .agents
@@ -2388,12 +2370,19 @@ impl Game {
                         self.settings.fov_effects,
                     )
                 },
-            sky_color: fog_color.map(|c| c as f64),
-            fog_color,
-            fog_start,
-            fog_end,
-            daylight: scene.sky.daylight,
-            zenith_color: zenith,
+            sky_color: [0.0; 3],
+            fog_color: [0.0; 3],
+            fog_start: 0.0,
+            fog_end: 0.0,
+            fog_render: [0.0; 2],
+            sky_end: 0.0,
+            cloud_end: 0.0,
+            sunrise: [0.0; 4],
+            sky_light_color: [1.0; 3],
+            clouds: self.cloud_params(&scene, atmosphere.cloud_color),
+            cloud_color: [0.0; 4],
+            daylight: if self.dimension.has_sky() { atmosphere.sky_light.0 } else { scene.sky.daylight },
+            zenith_color: [0.0; 3],
             sun_dir: scene.sky.sun_dir,
             dimension: self.dimension,
             enhanced_graphics: self.settings.enhanced_graphics,
@@ -2440,6 +2429,7 @@ impl Game {
             blur: blur_from.map_or(0, |_| self.settings.menu_blur),
             ui_under_blur: blur_from.unwrap_or(0),
         };
+        atmosphere.apply(&mut params);
         // v0.18 Track 7: `--panorama` renders each face as a square 90-degree view.
         if let Some(face) = self.panorama_face {
             let (forward, view_effect) = panorama_face_view(face);

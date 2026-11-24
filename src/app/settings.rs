@@ -80,6 +80,13 @@ pub struct Settings {
     /// v0.18 Track 7: Panorama Scroll Speed (`panoramaScrollSpeed`, 0..1,
     /// 1): how fast the title panorama turns.
     pub panorama_speed: f64,
+    /// v0.18 Track 8: Java's Clouds (`renderClouds`: Fancy).
+    pub clouds: voxelcraft::atmosphere::Clouds,
+    /// Cloud Distance (`cloudRange`) in Java chunks, 2..128 (128).
+    pub cloud_range: u32,
+    /// Hide Sky Flashes (`hideLightningFlashes`, off): lightning no longer
+    /// lights up the sky; the bolts still show.
+    pub hide_lightning_flashes: bool,
     pub keys: super::keys::Bindings,
 }
 
@@ -139,6 +146,9 @@ impl Default for Settings {
             mipmap_levels: MIPMAP_LEVELS.1,
             menu_blur: MENU_BLUR_DEFAULT,
             panorama_speed: voxelcraft::title::options::PANORAMA_SPEED_DEFAULT,
+            clouds: voxelcraft::atmosphere::Clouds::Fancy,
+            cloud_range: voxelcraft::atmosphere::DEFAULT_CLOUD_RANGE,
+            hide_lightning_flashes: false,
             keys: Default::default(),
         }
     }
@@ -269,6 +279,12 @@ impl Settings {
             "mipmapLevels" => self.mipmap_levels = value.parse().unwrap_or(self.mipmap_levels),
             "menuBackgroundBlurriness" => self.menu_blur = value.parse().unwrap_or(self.menu_blur),
             "panoramaScrollSpeed" => self.panorama_speed = num().unwrap_or(self.panorama_speed),
+            // Java also reads a boolean here (true: Fancy, false: OFF).
+            "renderClouds" => {
+                self.clouds = voxelcraft::atmosphere::Clouds::parse(value).unwrap_or(self.clouds);
+            }
+            "cloudRange" => self.cloud_range = value.parse().unwrap_or(self.cloud_range),
+            "hideLightningFlashes" => flag(&mut self.hide_lightning_flashes),
             _ => return self.keys.parse_line(key, value),
         }
         true
@@ -276,7 +292,7 @@ impl Settings {
 
     fn serialize_display_controls(&self, out: &mut String) {
         out.push_str(&format!(
-            "guiScale={}\nmaxFps={}\ngamma={}\nfovEffectScale={}\nscreenEffectScale={}\ndamageTiltStrength={}\ntoggleCrouch={}\ntoggleSprint={}\ninvertXMouse={}\ninvertYMouse={}\nmouseWheelSensitivity={:.4}\ndiscrete_mouse_scroll={}\nshowSubtitles={}\ntextBackgroundOpacity={}\nbackgroundForChatOnly={}\nmipmapLevels={}\nmenuBackgroundBlurriness={}\npanoramaScrollSpeed={}\n",
+            "guiScale={}\nmaxFps={}\ngamma={}\nfovEffectScale={}\nscreenEffectScale={}\ndamageTiltStrength={}\ntoggleCrouch={}\ntoggleSprint={}\ninvertXMouse={}\ninvertYMouse={}\nmouseWheelSensitivity={:.4}\ndiscrete_mouse_scroll={}\nshowSubtitles={}\ntextBackgroundOpacity={}\nbackgroundForChatOnly={}\nmipmapLevels={}\nmenuBackgroundBlurriness={}\npanoramaScrollSpeed={}\nrenderClouds={}\ncloudRange={}\nhideLightningFlashes={}\n",
             self.gui_scale,
             self.max_fps,
             self.brightness,
@@ -295,6 +311,9 @@ impl Settings {
             self.mipmap_levels,
             self.menu_blur,
             self.panorama_speed,
+            self.clouds.saved(),
+            self.cloud_range,
+            self.hide_lightning_flashes,
         ));
         self.keys.serialize(out);
     }
@@ -353,6 +372,8 @@ impl Settings {
         self.panorama_speed = self.panorama_speed.clamp(0.0, 1.0);
         let (lo, hi) = SCROLL_STEPS;
         self.scroll_sensitivity = self.scroll_sensitivity.clamp(scroll_sensitivity(lo), scroll_sensitivity(hi));
+        let (lo, hi) = voxelcraft::atmosphere::CLOUD_RANGE;
+        self.cloud_range = self.cloud_range.clamp(lo, hi);
         self
     }
 
@@ -395,6 +416,28 @@ pub fn scroll_step(value: f64) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cloud_and_sky_flash_options_save_load_and_default_like_java() {
+        use voxelcraft::atmosphere::Clouds;
+        // An options file from before v0.18 has none of them: Java's defaults.
+        let old = Settings::parse("render_distance=12\nshowSubtitles=true\n");
+        assert_eq!((old.clouds, old.cloud_range, old.hide_lightning_flashes), (Clouds::Fancy, 128, false));
+        for clouds in Clouds::ALL {
+            let s = Settings { clouds, cloud_range: 37, hide_lightning_flashes: true, ..Settings::default() };
+            let text = s.serialize();
+            assert!(text.contains(&format!("renderClouds={}\n", clouds.saved())), "{text}");
+            assert_eq!(Settings::parse(&text), s);
+        }
+        // Java's legacy booleans, and the range's ends.
+        assert_eq!(Settings::parse("renderClouds=false").clouds, Clouds::Off);
+        assert_eq!(Settings::parse("renderClouds=true").clouds, Clouds::Fancy);
+        assert_eq!(Settings::parse("renderClouds=fast").clouds, Clouds::Fast);
+        assert_eq!(Settings::parse("renderClouds=junk").clouds, Clouds::Fancy);
+        assert_eq!(Settings::parse("cloudRange=1").cloud_range, 2);
+        assert_eq!(Settings::parse("cloudRange=500").cloud_range, 128);
+        assert!(Settings::parse("hideLightningFlashes=true").hide_lightning_flashes);
+    }
 
     #[test]
     fn round_trips_and_clamps() {

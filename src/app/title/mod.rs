@@ -611,6 +611,20 @@ impl Title {
             fog_color: sky.horizon,
             fog_start: 200.0,
             fog_end: 400.0,
+            fog_render: [400.0, 400.0],
+            sky_end: 400.0,
+            cloud_end: 400.0,
+            sunrise: [0.0; 4],
+            sky_light_color: [1.0; 3],
+            // The title keeps a cloud layer over its sky (v0.18 Track 8's
+            // clouds, white like Java's daytime clouds).
+            clouds: Some(crate::render::clouds::CloudParams {
+                mode: self.shell.settings.clouds,
+                range: self.shell.settings.cloud_range,
+                ticks: f64::from(t) * 20.0,
+                height: voxelcraft::atmosphere::CLOUD_HEIGHT,
+            }),
+            cloud_color: [1.0, 1.0, 1.0, 0.8],
             daylight: sky.daylight,
             zenith_color: sky.zenith,
             dimension: crate::world::terrain::Dimension::Overworld,

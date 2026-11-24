@@ -29,6 +29,13 @@ const ROUTE_CLEARANCE: f64 = 24.0;
 const HEIGHT_GRID: i32 = 8;
 /// Entity scene time of day: dawn, below the undead sunburn threshold, held fixed.
 const ENTITY_SCENE_TIME: f64 = 0.0;
+/// Weather scene time of day: noon, held fixed with the storm.
+const WEATHER_SCENE_TIME: f64 = 0.25;
+/// The underwater scene's tank: half-width and water depth in blocks, and
+/// the camera's height above its floor.
+const TANK_HALF: i32 = 16;
+const TANK_DEPTH: i32 = 12;
+const TANK_EYE: f64 = 5.5;
 /// Block states the materials scene draws from: the v0.12 track reservations
 /// (docs/architecture.md), below the unassigned reserve.
 const MATERIALS_STATES: (u16, u16) = (16384, 29696);
@@ -129,7 +136,8 @@ fn route(scene: &str, t: f64) -> Option<(DVec3, DVec3)> {
             DVec3::new(t * 12., 0., (t * 0.08).sin() * 32.),
             DVec3::new(12., 0., (t * 0.08).cos() * 0.08 * 32.).normalize(),
         )),
-        "survival" => Some((
+        // The weather scene orbits like survival, in a held thunderstorm.
+        "survival" | "weather" => Some((
             DVec3::new((t * 0.1).sin() * 12., 0., (t * 0.1).cos() * 12.),
             DVec3::new((t * 0.1).cos(), 0., -(t * 0.1).sin()),
         )),
@@ -185,13 +193,23 @@ impl Game {
                 }
                 self.day_time = ENTITY_SCENE_TIME;
             }
+            if run.scene == "weather" {
+                // A full-strength thunderstorm at noon, held: rain, its fog,
+                // darkened sky and clouds, and lightning bolts and flashes.
+                for rule in ["advance_time", "advance_weather"] {
+                    self.gamerules.set(rule, "false").expect("benchmark gamerule");
+                }
+                self.day_time = WEATHER_SCENE_TIME;
+                self.weather.set_thunder(true);
+            }
         }
         if !run.prepared
             && self.world.pending_jobs() == 0
             && self.world.is_loaded(self.session.player.pos.floor().as_ivec3())
         {
             run.origin = self.session.player.pos;
-            if !matches!(run.scene.as_str(), "survival" | "streaming" | "menus") {
+            // The Nether scene turns in place where its portal arrived.
+            if !matches!(run.scene.as_str(), "survival" | "streaming" | "menus" | "weather" | "nether") {
                 let at = run.origin.floor().as_ivec3();
                 // A compact inspection platform, built on the actual seed's surface.
                 for x in -12..=12 {
@@ -253,6 +271,11 @@ impl Game {
                 }
                 self.session.player.pos = run.origin + DVec3::new(0., 10., -18.);
                 self.session.player.pitch = -0.28;
+                if run.scene == "underwater" {
+                    self.build_underwater_scene(at);
+                    self.session.player.pos = run.origin.floor() + DVec3::new(0.5, TANK_EYE, 0.5);
+                    self.session.player.pitch = -0.12;
+                }
             }
             self.session.player.can_fly = true;
             self.session.player.flying = true;
@@ -387,6 +410,31 @@ impl Game {
         }
     }
 
+    /// The underwater scene: a glass-walled tank of still water around the
+    /// camera, on a sand floor with seagrass, with the terrain and trees over
+    /// it cleared, so the view is water, its surface from below and the sky.
+    fn build_underwater_scene(&mut self, at: IVec3) {
+        let (h, d) = (TANK_HALF, TANK_DEPTH);
+        for x in -h - 1..=h + 1 {
+            for z in -h - 1..=h + 1 {
+                let wall = x.abs() > h || z.abs() > h;
+                self.world.set_block(at + IVec3::new(x, -1, z), if wall { Block::GLASS } else { Block::SAND });
+                for y in 0..d + 24 {
+                    let block = match (wall, y < d) {
+                        (true, true) => Block::GLASS,
+                        (false, true) => Block::WATER,
+                        _ => Block::AIR,
+                    };
+                    self.world.set_block(at + IVec3::new(x, y, z), block);
+                }
+                // A fixed scatter of seagrass, the same every run.
+                if !wall && (x * 7 + z * 13).rem_euclid(11) == 0 {
+                    self.world.set_block(at + IVec3::new(x, 0, z), crate::world::overworld_blocks::SEAGRASS);
+                }
+            }
+        }
+    }
+
     fn finish_benchmark(&mut self, run: &mut Run, start: Instant) {
         self.renderer.wait_idle();
         let stats = voxelcraft::performance::FrameStats::from_milliseconds(&run.frames)
@@ -440,7 +488,14 @@ impl Game {
             "frame_latency": self.renderer.options().frame_latency,
             "metal_maximum_drawable_count": metal_drawables(&self.renderer),
             "display": super::fullscreen::describe(&self.renderer.window, run.window_mode == "exclusive"),
-            "day_time_start": if run.scene == "entities" { Some(ENTITY_SCENE_TIME) } else { None },
+            "day_time_start": match run.scene.as_str() {
+                "entities" => Some(ENTITY_SCENE_TIME),
+                "weather" => Some(WEATHER_SCENE_TIME),
+                _ => None,
+            },
+            "dimension": self.dimension.name(),
+            "rain_level": self.weather.rain_level(),
+            "thunder_level": self.weather.thunder_level(),
             "day_cycle": self.gamerules.bool("advance_time"),
             "natural_spawning": self.gamerules.bool("spawn_mobs"),
             "camera_route_clearance_blocks": route(&run.scene, 0.).map(|_| ROUTE_CLEARANCE),
@@ -805,7 +860,7 @@ mod tests {
 
     #[test]
     fn routes_face_their_direction_of_travel() {
-        for scene in ["streaming", "survival"] {
+        for scene in ["streaming", "survival", "weather"] {
             for t in [0.0, 7.5, 40.0, 123.0] {
                 let (a, dir) = route(scene, t).unwrap();
                 let (b, _) = route(scene, t + 1e-4).unwrap();

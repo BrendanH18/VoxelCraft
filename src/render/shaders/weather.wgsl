@@ -12,9 +12,49 @@ struct Globals {
     params: vec4<f32>,
     clouds: vec4<f32>,
     environment: vec4<f32>,
+    effects: vec4<f32>,
+    ambient: vec4<f32>,
+    // Java's fog: environmental start/end (spherical), render-distance start/end (cylindrical).
+    fog: vec4<f32>,
+    // x: sky fog end, y: cloud fog end.
+    fog_ends: vec4<f32>,
+    // rgb: sRGB visual/sky_light_color (Java's gamma-space lightmap).
+    sky_light: vec4<f32>,
+    sunrise: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> g: Globals;
+
+// The exact sRGB transfer the target encodes with, so a colour taken
+// from linear to sRGB and back is unchanged and a fully fogged pixel
+// shows Java's fog colour byte for byte.
+fn to_srgb(c: vec3<f32>) -> vec3<f32> {
+    let x = max(c, vec3<f32>(0.0));
+    return select(1.055 * pow(x, vec3<f32>(1.0 / 2.4)) - 0.055, x * 12.92, x <= vec3<f32>(0.0031308));
+}
+fn from_srgb(c: vec3<f32>) -> vec3<f32> {
+    let x = max(c, vec3<f32>(0.0));
+    return select(pow((x + 0.055) / 1.055, vec3<f32>(2.4)), x / 12.92, x <= vec3<f32>(0.04045));
+}
+// Java 26.3's fog.glsl: spherical and cylindrical distance, and the larger
+// of the environmental and render-distance fogs, blended in sRGB as Java
+// blends it (exact sRGB, matching the fog colour's conversion).
+fn fog_distances(rel: vec3<f32>) -> vec2<f32> {
+    return vec2<f32>(length(rel), max(length(rel.xz), abs(rel.y)));
+}
+fn linear_fog(d: f32, start: f32, end: f32) -> f32 {
+    if d <= start { return 0.0; }
+    if d >= end { return 1.0; }
+    return (d - start) / (end - start);
+}
+fn fog_value(d: vec2<f32>) -> f32 {
+    return max(linear_fog(d.x, g.fog.x, g.fog.y), linear_fog(d.y, g.fog.z, g.fog.w));
+}
+fn apply_fog(color: vec3<f32>, d: vec2<f32>) -> vec3<f32> {
+    let f = fog_value(d);
+    if f <= 0.0 { return color; }
+    return from_srgb(mix(to_srgb(color), to_srgb(g.fog_color.rgb), f));
+}
 
 struct VsOut {
     @builtin(position) clip: vec4<f32>,
@@ -22,7 +62,7 @@ struct VsOut {
     @location(1) seed: f32,
     // x: snow, y: sky light, z: opacity
     @location(2) params: vec4<f32>,
-    @location(3) dist: f32,
+    @location(3) dist: vec2<f32>,
 };
 
 @vertex
@@ -37,7 +77,7 @@ fn vs_main(
     out.uv = uv;
     out.seed = seed;
     out.params = params;
-    out.dist = length(pos);
+    out.dist = fog_distances(pos);
     return out;
 }
 
@@ -73,24 +113,29 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
             color = vec3<f32>(0.95, 0.97, 1.0);
         }
     } else {
-        // Long thin streaks falling fast.
-        let fall = (in.uv.y + t * (11.0 + h * 4.0)) * 0.5 + h * 7.0;
+        // Thin streaks falling fast, on a 64-texel grid across the sheet as
+        // Java's rain texture is (v0.18 Track 8: the old 16-texel streaks
+        // were four times as wide and crowded the view near the camera).
+        let rain_lanes = 8.0;
+        let rain_lane = floor(in.uv.x * rain_lanes);
+        let rh = hash1(in.seed * 13.7 + rain_lane * 3.1);
+        let rx = floor(fract(in.uv.x * rain_lanes) * 8.0);
+        let fall = (in.uv.y + t * (11.0 + rh * 4.0)) * 0.75 + rh * 7.0;
         let cell = floor(fall);
-        let ch = hash1(cell * 5.9 + in.seed + lane * 17.0);
+        let ch = hash1(cell * 5.9 + in.seed + rain_lane * 17.0);
         let ty = fract(fall);
-        if ch > 0.55 && tx == floor(fract(ch * 7.0) * 4.0) && ty < 0.3 {
-            alpha = 0.45 * (1.0 - ty / 0.3 * 0.5);
+        if ch > 0.5 && rx == floor(fract(ch * 7.0) * 8.0) && ty < 0.22 {
+            alpha = 0.6 * (1.0 - ty / 0.22 * 0.5);
             color = vec3<f32>(0.62, 0.7, 0.85);
         }
     }
     // Thin out right in front of the eyes.
-    alpha *= smoothstep(0.8, 3.0, in.dist);
+    alpha *= smoothstep(0.8, 3.0, in.dist.x);
     if alpha <= 0.0 {
         discard;
     }
     let light = curve(in.params.y) * g.params.z * 0.9 + 0.1;
     var c = pow(color, vec3<f32>(2.2)) * light;
-    let f = clamp((in.dist - g.params.x) / (g.params.y - g.params.x), 0.0, 1.0);
-    c = mix(c, g.fog_color.rgb, f);
+    c = apply_fog(c, in.dist);
     return vec4<f32>(c, alpha * in.params.z);
 }

@@ -160,15 +160,21 @@ compact counter.
   while it rains) and fade in or out over 5 seconds. The day lasts Java's
   24000 ticks (20 minutes). Rain falls as snow in cold
   biomes and on high ground (biomes cool above y = 80, as in Java), and not at all in deserts, savannas and
-  badlands. It greys and darkens the sky, hides the sun, moon and stars
-  behind thicker clouds, stops at the first block overhead, waters
+  badlands. It greys and darkens the sky and clouds and draws the fog in
+  (Java 26.3's weather layers and rain fog), hides the sun, moon and stars,
+  stops at the first block overhead, waters
   farmland under open sky, keeps zombies and skeletons from burning, and
   can be heard drumming on the roof. The time of day and the weather are
   saved with the world
 - Torches give off light level 14 (glowstone 15)
 - Flood-fill sky and block light with smooth lighting and ambient occlusion
 - Day/night cycle with a procedural sky: square sun and moon, sunset glow,
-  rotating stars and drifting blocky clouds; distance and underwater fog
+  rotating stars. Sky, fog and cloud colours, fog distances and clouds follow
+  Java 26.3 (v0.18 Track 8): each biome's sky, fog and water fog colours
+  blended around the eye, the day timeline, rain and thunder, the lava,
+  powder snow, water, Blindness and Darkness fogs, and Java's flat (Fast)
+  and block-shaped (Fancy) clouds drifting east, with the Clouds, Cloud
+  Distance and Hide Sky Flashes options ([atmosphere record](verification/2026-11-23-v0.18-atmosphere.md))
 - Flowing water: falls, spreads up to 7 blocks toward the nearest drop,
   dries up without a source, and forms infinite sources; lowered surfaces
 - Lava: flows like water but six times slower and only 3 blocks, glows

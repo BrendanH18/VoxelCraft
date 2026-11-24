@@ -1071,7 +1071,7 @@ impl World {
     /// Gameplay biome, using worker-computed terrain heights while loaded.
     /// Before those arrive (or outside loaded columns), preserve the generator
     /// query rather than changing a spawning decision at the frontier.
-    pub(crate) fn biome_at(&self, p: IVec3) -> terrain::Biome {
+    pub fn biome_at(&self, p: IVec3) -> terrain::Biome {
         let key = column_of(chunk_of(p));
         if let Some(heights) = self.columns.get(&key).and_then(|c| c.biome_heights.as_ref()) {
             let l = local_of(p);

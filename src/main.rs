@@ -757,6 +757,10 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
     if args.open_recipe_book && args.open_block.is_none() {
         args.open_inventory = true;
     }
+    // The Nether benchmark scene starts there, arriving through a portal.
+    if args.benchmark_scene.as_deref() == Some("nether") {
+        args.dimension = Some(world::terrain::Dimension::Nether);
+    }
     Ok(args)
 }
 

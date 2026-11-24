@@ -13,6 +13,7 @@ pub mod arena;
 pub mod block_model;
 mod blur;
 pub mod brushable;
+pub mod clouds;
 pub mod entity;
 mod gpu_timer;
 pub mod hand;
@@ -52,10 +53,11 @@ struct Globals {
     zenith_color: [f32; 4],
     /// xyz: direction to the sun, w: time in seconds.
     sun: [f32; 4],
-    /// x: fog start, y: fog end, z: daylight.
+    /// x, y: unused (the fog is in `fog`), z: daylight (Java's visual sky
+    /// light factor), w: rain level.
     params: [f32; 4],
-    /// xy: wrapped cloud pattern origin, z: cloud plane y relative to the
-    /// camera, w: cloud radius.
+    /// xyz: the cloud layer's offset from the camera (`CloudRenderer`'s
+    /// `-x in cell, base y, -z in cell`).
     clouds: [f32; 4],
     /// x: dimension (0 Overworld, 1 Nether, 2 End); y: enhanced graphics; zw: camera xz wrapped at 128 blocks.
     environment: [f32; 4],
@@ -63,12 +65,18 @@ struct Globals {
     effects: [f32; 4],
     /// rgb: `visual/ambient_light_color`; w: use the skyless dimension lightmap.
     ambient: [f32; 4],
+    /// Java 26.3's fog (`FogData`): environmental start and end on
+    /// spherical distance, render-distance start and end on cylindrical.
+    fog: [f32; 4],
+    /// x: sky fog end, y: cloud fog end.
+    fog_ends: [f32; 4],
+    /// rgb: sRGB `visual/sky_light_color`; w: unused.
+    sky_light: [f32; 4],
+    /// rgb: linear sunrise/sunset glow colour, w: its strength.
+    sunrise: [f32; 4],
+    /// sRGB cloud colour and alpha (Java's `visual/cloud_color`).
+    cloud_color: [f32; 4],
 }
-
-const CLOUD_HEIGHT: f64 = 192.0;
-/// Cloud pattern wraps after this many blocks (keeps shader math precise).
-const CLOUD_PERIOD: f64 = 12.0 * 5.0 * 1024.0;
-const CLOUD_SPEED: f64 = 1.2;
 
 struct ChunkMesh {
     /// Where the quads live in the arena.
@@ -107,9 +115,23 @@ pub struct FrameParams {
     pub view_effect: glam::Mat4,
     pub fov_y: f32,
     pub sky_color: [f64; 3],
+    /// Linear fog colour (Java's sRGB fog colour through [`crate::atmosphere::linear`]).
     pub fog_color: [f32; 3],
+    /// Java's environmental fog start and end (spherical distance).
     pub fog_start: f32,
     pub fog_end: f32,
+    /// Java's render-distance fog start and end (cylindrical distance).
+    pub fog_render: [f32; 2],
+    /// Fog ends for the sky and the clouds.
+    pub sky_end: f32,
+    pub cloud_end: f32,
+    /// Linear sunrise/sunset glow colour and strength.
+    pub sunrise: [f32; 4],
+    /// sRGB `visual/sky_light_color` (the lightmap works in Java's gamma space).
+    pub sky_light_color: [f32; 3],
+    /// The clouds to draw, if any, and their sRGB colour.
+    pub clouds: Option<clouds::CloudParams>,
+    pub cloud_color: [f32; 4],
     /// Skylight multiplier, 1 at noon.
     pub daylight: f32,
     pub zenith_color: [f32; 3],
@@ -301,7 +323,6 @@ pub struct Renderer {
     decal_pipeline: wgpu::RenderPipeline,
     decal_buf: wgpu::Buffer,
     sky_pipeline: wgpu::RenderPipeline,
-    cloud_pipeline: wgpu::RenderPipeline,
     ui_pipeline: wgpu::RenderPipeline,
     entities: entity::EntityPass,
     /// v0.15 Track D: the Glowing outline.
@@ -311,6 +332,7 @@ pub struct Renderer {
     particles: particles::ParticlePass,
     block_models: block_model::BlockModelPass,
     weather: weather::WeatherPass,
+    clouds: clouds::CloudPass,
     quad_indices: wgpu::Buffer,
     instances: wgpu::Buffer,
     instance_capacity: usize,
@@ -844,13 +866,6 @@ impl Renderer {
         };
         // The sky only fills pixels still at the cleared far depth.
         let sky_pipeline = make_sky_pipeline("sky", "vs_sky", "fs_sky", wgpu::CompareFunction::GreaterEqual, None);
-        let cloud_pipeline = make_sky_pipeline(
-            "clouds",
-            "vs_clouds",
-            "fs_clouds",
-            wgpu::CompareFunction::Greater,
-            Some(wgpu::BlendState::ALPHA_BLENDING),
-        );
 
         let ui_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("hud"),
@@ -895,6 +910,7 @@ impl Renderer {
         let blur = blur::Blur::new(&device, format);
         let block_models = block_model::BlockModelPass::new(&device, &layout, format, paged_blocks);
         let weather = weather::WeatherPass::new(&device, &layout, format);
+        let clouds = clouds::CloudPass::new(&device, &layout, format);
         let panorama = panorama::PanoramaPass::new(&device, format);
 
         // --- Shared buffers ----------------------------------------------
@@ -941,7 +957,6 @@ impl Renderer {
             decal_pipeline,
             decal_buf,
             sky_pipeline,
-            cloud_pipeline,
             ui_pipeline,
             entities,
             outline,
@@ -949,6 +964,7 @@ impl Renderer {
             particles,
             block_models,
             weather,
+            clouds,
             quad_indices,
             instances,
             instance_capacity,
@@ -1579,8 +1595,7 @@ impl Renderer {
             self.queue.write_buffer(&self.instances, 0, bytemuck::cast_slice(&self.instance_scratch));
         }
 
-        let cloud_origin = (DVec3::new(p.camera.x + p.time as f64 * CLOUD_SPEED, 0.0, p.camera.z))
-            .rem_euclid(DVec3::splat(CLOUD_PERIOD));
+        let cloud_offset = self.clouds.prepare(&self.device, &self.queue, p.camera, p.clouds);
         let globals = Globals {
             view_proj: view_proj.to_cols_array_2d(),
             inv_view_proj: view_proj.inverse().to_cols_array_2d(),
@@ -1603,12 +1618,12 @@ impl Renderer {
                 let [r, g, b] = p.dimension.ambient_light_color();
                 [r, g, b, if p.dimension.has_sky() { 0.0 } else { 1.0 }]
             },
-            clouds: [
-                cloud_origin.x as f32,
-                cloud_origin.z as f32,
-                (CLOUD_HEIGHT - p.camera.y) as f32,
-                p.fog_end.max(64.0) * 1.6,
-            ],
+            clouds: [cloud_offset[0], cloud_offset[1], cloud_offset[2], 0.0],
+            fog: [p.fog_start, p.fog_end, p.fog_render[0], p.fog_render[1]],
+            fog_ends: [p.sky_end, p.cloud_end, 0.0, 0.0],
+            sky_light: [p.sky_light_color[0], p.sky_light_color[1], p.sky_light_color[2], 0.0],
+            sunrise: p.sunrise,
+            cloud_color: p.cloud_color,
         };
         self.queue.write_buffer(&self.globals_buf, 0, bytemuck::bytes_of(&globals));
 
@@ -1773,10 +1788,7 @@ impl Renderer {
             // Sky after terrain so early-z skips covered pixels.
             pass.set_pipeline(&self.sky_pipeline);
             pass.draw(0..3, 0..1);
-            if p.dimension.has_sky() {
-                pass.set_pipeline(&self.cloud_pipeline);
-                pass.draw(0..6, 0..1);
-            }
+            self.clouds.draw(&mut pass);
 
             if cracks > 0 {
                 pass.set_pipeline(&self.decal_pipeline);
@@ -1997,6 +2009,7 @@ mod tests {
             ("sky", include_str!("shaders/sky.wgsl")),
             ("weather", include_str!("shaders/weather.wgsl")),
             ("outline", include_str!("shaders/outline.wgsl")),
+            ("clouds", include_str!("shaders/clouds.wgsl")),
             ("panorama", include_str!("shaders/panorama.wgsl")),
         ];
         for (name, source) in shaders {

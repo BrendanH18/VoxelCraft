@@ -18,9 +18,47 @@ struct Globals {
     effects: vec4<f32>,
     // rgb: visual/ambient_light_color; w: use the skyless dimension lightmap.
     ambient: vec4<f32>,
+    // Java's fog: environmental start/end (spherical), render-distance start/end (cylindrical).
+    fog: vec4<f32>,
+    // x: sky fog end, y: cloud fog end.
+    fog_ends: vec4<f32>,
+    // rgb: sRGB visual/sky_light_color (Java's gamma-space lightmap).
+    sky_light: vec4<f32>,
+    sunrise: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> g: Globals;
+
+// The exact sRGB transfer the target encodes with, so a colour taken
+// from linear to sRGB and back is unchanged and a fully fogged pixel
+// shows Java's fog colour byte for byte.
+fn to_srgb(c: vec3<f32>) -> vec3<f32> {
+    let x = max(c, vec3<f32>(0.0));
+    return select(1.055 * pow(x, vec3<f32>(1.0 / 2.4)) - 0.055, x * 12.92, x <= vec3<f32>(0.0031308));
+}
+fn from_srgb(c: vec3<f32>) -> vec3<f32> {
+    let x = max(c, vec3<f32>(0.0));
+    return select(pow((x + 0.055) / 1.055, vec3<f32>(2.4)), x / 12.92, x <= vec3<f32>(0.04045));
+}
+// Java 26.3's fog.glsl: spherical and cylindrical distance, and the larger
+// of the environmental and render-distance fogs, blended in sRGB as Java
+// blends it (exact sRGB, matching the fog colour's conversion).
+fn fog_distances(rel: vec3<f32>) -> vec2<f32> {
+    return vec2<f32>(length(rel), max(length(rel.xz), abs(rel.y)));
+}
+fn linear_fog(d: f32, start: f32, end: f32) -> f32 {
+    if d <= start { return 0.0; }
+    if d >= end { return 1.0; }
+    return (d - start) / (end - start);
+}
+fn fog_value(d: vec2<f32>) -> f32 {
+    return max(linear_fog(d.x, g.fog.x, g.fog.y), linear_fog(d.y, g.fog.z, g.fog.w));
+}
+fn apply_fog(color: vec3<f32>, d: vec2<f32>) -> vec3<f32> {
+    let f = fog_value(d);
+    if f <= 0.0 { return color; }
+    return from_srgb(mix(to_srgb(color), to_srgb(g.fog_color.rgb), f));
+}
 
 // Night vision (Java's lightmap): brightens every light level toward full,
 // keeping its hue; g.effects.x is its strength. Brightness follows.
@@ -75,7 +113,8 @@ struct VsOut {
     @location(0) uv: vec2<f32>,
     @location(1) @interpolate(flat) layer: u32,
     @location(2) shade: f32,
-    @location(3) dist: f32,
+    // Spherical and cylindrical distance, for the fog.
+    @location(3) dist: vec2<f32>,
     // x: sky light, y: block light (0..1), interpolated for smooth lighting.
     @location(4) light: vec2<f32>,
     @location(5) rel: vec3<f32>,
@@ -189,7 +228,7 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>) -> Vs
         detail);
     out.layer = (w1 & 255u) | (layer_high << 8u);
     out.shade = face_shade[face] * ao_curve[ao];
-    out.dist = length(rel);
+    out.dist = fog_distances(rel);
     out.rel = rel;
     var normals = array<vec3<f32>, 8>(
         vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(-1.0, 0.0, 0.0),
@@ -209,19 +248,21 @@ fn curve(l: vec2<f32>) -> vec2<f32> {
 fn lighting(in: VsOut) -> vec3<f32> {
     let l = curve(in.light);
     let sky = l.x * g.params.z * daylight_tint(in.normal);
-    let torch = l.y * vec3<f32>(1.0, 0.86, 0.66);
-    return night_vision(dimension_light(sky, torch)) * in.shade;
+    if g.ambient.w > 0.0 {
+        let torch = l.y * vec3<f32>(1.0, 0.86, 0.66);
+        return night_vision(dimension_light(sky, torch)) * in.shade;
+    }
+    return overworld_light(in.light.x, in.light.y, in.normal, in.shade);
 }
 
-fn apply_fog(color: vec3<f32>, dist: f32) -> vec3<f32> {
-    let f = clamp((dist - g.params.x) / (g.params.y - g.params.x), 0.0, 1.0);
-    return mix(color, g.fog_color.rgb, f * f * (3.0 - 2.0 * f));
-}
 
 // Directional skylight; caves retain their block lighting and dimensions
 // without a sun keep their steady ambient illumination.
 fn daylight_tint(normal: vec3<f32>) -> vec3<f32> {
-    if g.environment.y < 0.5 || g.environment.x > 0.5 {
+    if g.environment.x > 0.5 {
+        return vec3<f32>(1.0);
+    }
+    if g.environment.y < 0.5 {
         return vec3<f32>(1.0);
     }
     let moon = g.sun.y < 0.0;
@@ -229,9 +270,34 @@ fn daylight_tint(normal: vec3<f32>) -> vec3<f32> {
     let elevation = abs(dir.y);
     let dusk = 1.0 - smoothstep(0.05, 0.45, elevation);
     let warm = mix(vec3<f32>(1.0), vec3<f32>(1.12, 0.80, 0.58), dusk);
-    let tint = select(warm, vec3<f32>(0.72, 0.82, 1.05), moon);
+    // Moonlight takes its blue from `visual/sky_light_color` (overworld_light).
+    let tint = select(warm, vec3<f32>(1.0), moon);
     let diffuse = max(dot(normal, dir), 0.0);
     return mix(tint * (0.62 + 0.38 * diffuse), vec3<f32>(0.85), g.params.w);
+}
+
+// v0.18 Track 8: Java 26.3's lightmap (`lightmap.fsh`) for the Overworld,
+// in Java's gamma space: the dimension's ambient colour, plus sky light
+// (the brightness curve times `visual/sky_light_factor` and
+// `visual/sky_light_color`, blue at night), plus block light
+// (`visual/block_light_tint` #FFD88C mixed toward white by
+// 0.9 * (2l - 1)^2, times the curve and Java's block factor 1.4), clamped,
+// with night vision and the Brightness option; then converted once for the
+// sRGB target. Face and corner shading and VoxelCraft's sun-facing tint stay
+// outside the conversion (the tint weighted by the sky's share), so fully
+// sunlit faces look as before while shade, night and torch-lit interiors
+// take Java's darkness and warmth.
+fn overworld_light(sky_level: f32, block_level: f32, normal: vec3<f32>, shade: f32) -> vec3<f32> {
+    let sky = (sky_level / (4.0 - 3.0 * sky_level)) * g.params.z * g.sky_light.rgb;
+    let p = (2.0 * block_level - 1.0) * (2.0 * block_level - 1.0);
+    let hue = mix(vec3<f32>(1.0, 0.847, 0.549), vec3<f32>(1.0), 0.9 * p);
+    let block = hue * (block_level / (4.0 - 3.0 * block_level)) * 1.4;
+    let java = clamp(g.ambient.rgb + sky + block, vec3<f32>(0.0), vec3<f32>(1.0));
+    let s = max(max(sky.r, sky.g), sky.b);
+    let b = max(max(block.r, block.g), block.b);
+    let share = clamp(s / max(s + b, 1e-4), 0.0, 1.0);
+    let sun = mix(vec3<f32>(1.0), daylight_tint(normal), share);
+    return from_srgb(night_vision(java)) * shade * sun;
 }
 
 // Java 26.3 adds the environment ambient colour to sky and block light.
@@ -241,6 +307,20 @@ fn dimension_light(sky: vec3<f32>, torch: vec3<f32>) -> vec3<f32> {
         return clamp(g.ambient.rgb + sky + torch, vec3<f32>(0.0), vec3<f32>(1.0));
     }
     return max(sky, torch) * 0.96 + 0.04;
+}
+
+// The sky's colour in direction `dir`, as sky.wgsl draws it: Java's sky
+// plane 16 blocks up, fogged toward the horizon by distance up to the sky
+// fog end, in sRGB.
+fn sky_at(dir: vec3<f32>) -> vec3<f32> {
+    var fogged = 1.0;
+    if dir.y > 1e-4 {
+        let end = max(g.fog_ends.x, 1.0);
+        let spherical = 16.0 / dir.y;
+        let horizontal = spherical * sqrt(max(1.0 - dir.y * dir.y, 0.0));
+        fogged = select(clamp(spherical / end, 0.0, 1.0), 1.0, horizontal >= end);
+    }
+    return from_srgb(mix(to_srgb(g.zenith_color.rgb), to_srgb(g.fog_color.rgb), fogged));
 }
 
 @fragment
@@ -270,7 +350,9 @@ fn fs_translucent(in: VsOut) -> @location(0) vec4<f32> {
     if g.environment.y > 0.5 && in.layer == 5u && in.normal.y > 0.5 && in.rel.y < 0.0 {
         // Analytic normals keep greedy quad edges joined. Spatial periods
         // divide the camera wrap; temporal periods divide the time wrap.
-        let p = in.rel.xz + g.environment.zw;
+        // Sampled per texel (16 per block), so the ripples' highlights
+        // keep the block art's pixel grid instead of smooth bands.
+        let p = (floor((in.rel.xz + g.environment.zw) * 16.0) + 0.5) / 16.0;
         let t = g.sun.w;
         let a = dot(p, vec2<f32>(0.785398, 0.392699)) + t * 1.047198;
         let b = dot(p, vec2<f32>(-0.392699, 0.785398)) + t * 0.628319;
@@ -285,7 +367,7 @@ fn fs_translucent(in: VsOut) -> @location(0) vec4<f32> {
         let access = curve(in.light).x;
         // Reflect the analytic sky, not scene geometry. Underground water
         // gets no sky reflection; underwater and side faces keep base shading.
-        let reflection = mix(g.fog_color.rgb, g.zenith_color.rgb, smoothstep(0.0, 0.7, reflected.y));
+        let reflection = sky_at(reflected);
         color = mix(color, reflection, fresnel * access);
         if g.environment.x < 0.5 {
             let moon = g.sun.y < 0.0;
