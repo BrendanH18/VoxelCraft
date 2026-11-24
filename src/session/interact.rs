@@ -544,7 +544,8 @@ impl PlayerSession {
         // v0.18 Track 4: `Mob.checkAndHandleImportantInteractions` (after
         // name tags, before every other mob use): a spawn egg on a mob of its
         // own type makes a baby (`spawnOffspringFromSpawnEgg`).
-        if let Some(egg) = self.inventory.get(slot).map(|s| s.item).filter(|&i| crate::content::spawn_egg::is_spawn_egg(i))
+        if let Some(egg) =
+            self.inventory.get(slot).map(|s| s.item).filter(|&i| crate::content::spawn_egg::is_spawn_egg(i))
             && let Some(index) = self.mob_target(world, entities)
             && entities.spawn_baby_from_egg(index, egg).is_some()
         {

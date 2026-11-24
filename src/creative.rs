@@ -6,11 +6,10 @@
 //! The tabs come straight from `tests/fixtures/java/26.3/creative_tabs.json`
 //! (`tools/extract_java_creative_fixtures.py` builds every tab with Java's
 //! own `CreativeModeTabs` code): each entry is resolved to a VoxelCraft
-//! stack once, on first use. Items the game doesn't register are skipped,
-//! and so are stack variants it can't express (painting variants, goat
-//! horn instruments, the ominous banner and the operator tab's blocks),
-//! which leave their plain item once; `tests/creative_inventory.rs` lists
-//! every skip against `registry_gaps.json`.
+//! stack once, on first use. Items the game doesn't register are skipped;
+//! stack variants it can't express (painting variants and goat horn
+//! instruments) leave their plain item once; `tests/creative_inventory.rs`
+//! lists every skip against `registry_gaps.json`.
 //!
 //! Saved hotbars (`HotbarManager`): nine rows of nine stacks per install,
 //! kept by the desktop game in `saves/hotbars.txt` (Java's `hotbar.nbt`
@@ -73,6 +72,9 @@ pub struct Catalogue {
     /// The search tab's list: every other tab's search stacks in tab order,
     /// each stack once (`ItemStackLinkedSet.createTypeAndComponentsSet`).
     pub search: Vec<Stack>,
+    /// Each search stack's lower-case name and enchantment lines, which
+    /// [`Catalogue::search_hits`] matches against.
+    pub search_text: Vec<String>,
     /// `(tab, java item id)` of every entry left out, each once per tab.
     pub skipped: Vec<(String, String)>,
 }
@@ -91,6 +93,16 @@ impl Catalogue {
     /// The tabs a player sees (`CreativeModeTabs.tabs`), as indices.
     pub fn shown(&self) -> impl Iterator<Item = usize> + '_ {
         (0..self.tabs.len()).filter(|&i| self.tabs[i].shown())
+    }
+
+    /// Indices into [`Catalogue::search`] of the stacks matching `query`
+    /// (every word in the name or enchantment lines).
+    pub fn search_hits(&self, query: &str) -> Vec<u16> {
+        let query = query.to_lowercase().replace('_', " ");
+        let words: Vec<&str> = query.split_whitespace().collect();
+        (0..self.search.len() as u16)
+            .filter(|&i| words.iter().all(|w| self.search_text[i as usize].contains(w)))
+            .collect()
     }
 
     /// What tab `i` lists: its items, the search results, or nothing.
@@ -113,10 +125,11 @@ pub fn catalogue() -> &'static Catalogue {
 /// such item. Components it can't express leave the plain item.
 pub fn resolve(entry: &Value) -> Option<Stack> {
     let id = entry["item"].as_str()?;
-    let item = crate::java_registry::item(id, "")?;
+    let item = java_item(id)?;
     let c = &entry["components"];
-    let potion = c["potion_contents"]["potion"].as_str().and_then(crate::potion::Potion::from_id);
-    if let Some(p) = potion {
+    if let Some(id_of_potion) = c["potion_contents"]["potion"].as_str() {
+        // A potion the game lacks is a registry gap, not a water bottle.
+        let p = crate::potion::Potion::from_id(id_of_potion)?;
         return match id {
             "potion" => Some(Stack::new(Item::potion(p), 1)),
             "splash_potion" => Some(Stack::new(Item::splash_potion(p), 1)),
@@ -145,11 +158,23 @@ pub fn resolve(entry: &Value) -> Option<Stack> {
         let code = crate::entity::mooshroom::stew_code(effect["id"].as_str()?, effect["duration"].as_u64()? as u32)?;
         return Some(Stack { entity_data: code, ..Stack::new(Item::SUSPICIOUS_STEW, 1) });
     }
-    // The ominous banner is not a plain white banner.
+    // `Raid.getOminousBannerInstance`: Java's raid banner.
     if c.get("banner_patterns").is_some() {
-        return None;
+        return (c["item_name"]["translate"] == "block.minecraft.ominous_banner")
+            .then(crate::content::banner_patterns::ominous_banner);
     }
     Some(Stack::new(item, 1))
+}
+
+/// A Java item id as the game's item, by id or (as `tests/java_registry.rs`
+/// resolves them) by its English name from `registry_names.json`.
+fn java_item(id: &str) -> Option<Item> {
+    static NAMES: OnceLock<Value> = OnceLock::new();
+    let names = NAMES.get_or_init(|| {
+        serde_json::from_str(include_str!("../tests/fixtures/java/26.3/registry_names.json")).unwrap_or_default()
+    });
+    let english = names["items"][id].as_str().or_else(|| names["blocks"][id].as_str()).unwrap_or_default();
+    crate::java_registry::item(id, english)
 }
 
 /// The player's contents of a fixture tab (`items`, else `player`).
@@ -193,7 +218,8 @@ fn build(json: &str) -> Catalogue {
         } else {
             (Vec::new(), Vec::new())
         };
-        let icon = t["icon"].as_str().and_then(|i| crate::java_registry::item(i, "")).unwrap_or(Item::STICK);
+        // A tab whose icon the game lacks (the operator tab's command block) shows a stick.
+        let icon = t["icon"].as_str().and_then(java_item).unwrap_or(Item::STICK);
         tabs.push(Tab {
             title: t["title"].as_str().unwrap_or_default().to_string(),
             row: if t["row"] == "top" { Row::Top } else { Row::Bottom },
@@ -216,20 +242,27 @@ fn build(json: &str) -> Catalogue {
             }
         }
     }
-    Catalogue { tabs, search, skipped }
+    let search_text = search.iter().map(haystack).collect();
+    Catalogue { tabs, search, search_text, skipped }
 }
 
 /// The search tab's filter: every word of `query` appears in the stack's
 /// name or its tooltip's enchantment lines (Java's name search tree reads
 /// the whole tooltip, and its id search the registry id).
 pub fn matches(stack: &Stack, query: &str) -> bool {
+    let text = haystack(stack);
+    let query = query.to_lowercase().replace('_', " ");
+    query.split_whitespace().all(|word| text.contains(word))
+}
+
+/// What the search tab matches a stack by.
+fn haystack(stack: &Stack) -> String {
     let mut text = stack.display_name().to_lowercase();
     for (line, _) in stack.enchants.lines() {
         text.push(' ');
         text.push_str(&line.to_lowercase());
     }
-    let query = query.to_lowercase().replace('_', " ");
-    query.split_whitespace().all(|word| text.contains(word))
+    text
 }
 
 /// `ItemPickerMenu` scrolling over a list of `len` stacks: Java keeps a

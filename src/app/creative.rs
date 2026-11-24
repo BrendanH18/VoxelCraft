@@ -29,11 +29,44 @@ const TITLE: Color = [0.25, 0.25, 0.25, 1.0];
 /// Where the creative screen stands: the tab Java remembers between
 /// openings (`selectedTab` is static), the scroll fraction and whether the
 /// scrollbar is held.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Debug, Default)]
 pub(super) struct State {
     tab: Option<usize>,
     pub scroll: f32,
     pub dragging: bool,
+    /// The last search and its hits, so drawing and hit tests don't filter
+    /// every stack again each frame.
+    hits: std::cell::RefCell<Option<(String, std::rc::Rc<Vec<u16>>)>>,
+}
+
+/// What the grid scrolls through: a tab's stacks, the search hits, or the
+/// saved hotbars' 81 cells.
+pub(super) enum Cells {
+    Items(&'static [Stack]),
+    Hits(std::rc::Rc<Vec<u16>>),
+    Hotbar(Vec<Option<Stack>>),
+}
+
+impl Cells {
+    pub fn len(&self) -> usize {
+        match self {
+            Cells::Items(s) => s.len(),
+            Cells::Hits(h) => h.len(),
+            Cells::Hotbar(c) => c.len(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn get(&self, i: usize) -> Option<Stack> {
+        match self {
+            Cells::Items(s) => s.get(i).copied(),
+            Cells::Hits(h) => h.get(i).and_then(|&j| cv::catalogue().search.get(j as usize)).copied(),
+            Cells::Hotbar(c) => c.get(i).copied().flatten(),
+        }
+    }
 }
 
 impl State {
@@ -64,8 +97,8 @@ fn tab_y(t: &cv::Tab, drawn: bool) -> f32 {
 }
 
 /// The 45 cells of a list scrolled to `offs`: the stack in each, if any.
-fn visible(list: &[Option<Stack>], offs: f32) -> [Option<Stack>; 45] {
-    std::array::from_fn(|cell| scroll::at(list.len(), offs, cell).and_then(|i| list[i]))
+fn visible(list: &Cells, offs: f32) -> [Option<Stack>; 45] {
+    std::array::from_fn(|cell| scroll::at(list.len(), offs, cell).and_then(|i| list.get(i)))
 }
 
 impl Game {
@@ -77,17 +110,27 @@ impl Game {
     /// Every cell of the selected tab's list, for the grid: category tabs
     /// list their stacks, the search tab its matches, Saved Hotbars its
     /// nine rows (an empty row shows nothing here; its placeholder is drawn).
-    pub(super) fn creative_list(&self) -> Vec<Option<Stack>> {
+    pub(super) fn creative_list(&self) -> Cells {
         let c = cv::catalogue();
-        let tab = self.creative.tab();
         match self.creative.kind() {
-            Kind::Category => c.items(tab).iter().copied().map(Some).collect(),
+            Kind::Category => Cells::Items(c.items(self.creative.tab())),
             Kind::Search => {
                 let query = self.search.query.trim();
-                c.search.iter().filter(|s| query.is_empty() || cv::matches(s, query)).copied().map(Some).collect()
+                if query.is_empty() {
+                    return Cells::Items(&c.search);
+                }
+                let mut cache = self.creative.hits.borrow_mut();
+                if let Some((q, hits)) = cache.as_ref()
+                    && q == query
+                {
+                    return Cells::Hits(hits.clone());
+                }
+                let hits = std::rc::Rc::new(c.search_hits(query));
+                *cache = Some((query.to_string(), hits.clone()));
+                Cells::Hits(hits)
             }
-            Kind::Hotbar => self.hotbars.cells(),
-            Kind::Inventory => Vec::new(),
+            Kind::Hotbar => Cells::Hotbar(self.hotbars.cells()),
+            Kind::Inventory => Cells::Items(&[]),
         }
     }
 
@@ -291,6 +334,8 @@ impl Game {
         let mouse = (self.cursor_px.0 / ui.scale, self.cursor_px.1 / ui.scale);
         let c = cv::catalogue();
         let selected = self.creative.tab();
+        // `EffectsInInventory`: active effects to the panel's left.
+        super::hud::effect_list_ui(ui, &self.session.vitals.effects, x0, y0);
         // Unselected tabs behind the panel, then the panel, then the selected tab.
         for i in c.shown().filter(|&i| i != selected) {
             self.creative_tab_ui(ui, (x0, y0), i, false);
@@ -331,7 +376,13 @@ impl Game {
             let enabled = self.creative_can_scroll();
             let top = y0 + 18.0 + scroll::thumb(self.creative.scroll);
             ui.rect(x0 + 175.0, top, 12.0, 15.0, if enabled { WHITE } else { [0.68, 0.68, 0.68, 1.0] });
-            ui.rect(x0 + 176.0, top + 1.0, 10.0, 13.0, if enabled { [0.78, 0.78, 0.78, 1.0] } else { [0.6, 0.6, 0.6, 1.0] });
+            ui.rect(
+                x0 + 176.0,
+                top + 1.0,
+                10.0,
+                13.0,
+                if enabled { [0.78, 0.78, 0.78, 1.0] } else { [0.6, 0.6, 0.6, 1.0] },
+            );
         }
         if tab.kind == Kind::Hotbar {
             // Empty rows' placeholders: a paper, labelled on hover.
@@ -387,20 +438,70 @@ impl Game {
 mod tests {
     use super::*;
 
+    fn layout() -> serde_json::Value {
+        serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/creative_layout.json")).unwrap()
+    }
+
     #[test]
-    fn tabs_sit_where_java_puts_them() {
+    fn the_panel_and_tabs_sit_where_java_puts_them() {
+        let l = layout();
+        let cr = &l["creative"];
+        assert_eq!((cr["size"][0].as_f64().unwrap() as f32, cr["size"][1].as_f64().unwrap() as f32), (W, H));
+        let tabs = &cr["tabs"];
+        let f = |v: &serde_json::Value| v.as_f64().unwrap() as f32;
         let c = cv::catalogue();
-        let at = |id: &str| {
-            let t = &c.tabs[c.index(id).unwrap()];
-            (tab_x(t), tab_y(t, false), tab_y(t, true))
-        };
-        assert_eq!(at("building_blocks"), (0.0, -32.0, -28.0));
-        assert_eq!(at("redstone_blocks"), (108.0, -32.0, -28.0));
-        // Aligned right: 195 - 27 * (7 - column) + 1.
-        assert_eq!(at("hotbar"), (142.0, -32.0, -28.0));
-        assert_eq!(at("search"), (169.0, -32.0, -28.0));
-        assert_eq!(at("tools_and_utilities"), (0.0, 136.0, 132.0));
-        assert_eq!(at("spawn_eggs"), (108.0, 136.0, 132.0));
-        assert_eq!(at("inventory"), (169.0, 136.0, 132.0));
+        for t in c.tabs.iter() {
+            let column = f32::from(t.column);
+            // `getTabX`: 27 a column, or from the right edge.
+            let x = if t.aligned_right {
+                W - f(&tabs["spacing"]) * (f(&tabs["right_columns"]) - column) + f(&tabs["right_offset"])
+            } else {
+                f(&tabs["spacing"]) * column
+            };
+            assert_eq!(tab_x(t), x, "{}", t.id);
+            let (hit, drawn) = match t.row {
+                Row::Top => (f(&tabs["top_y"]), f(&tabs["drawn_top_y"])),
+                Row::Bottom => (f(&tabs["bottom_y"]), f(&tabs["drawn_bottom_y"])),
+            };
+            assert_eq!((tab_y(t, false), tab_y(t, true)), (hit, drawn), "{}", t.id);
+        }
+        let at = |id: &str| tab_x(&c.tabs[c.index(id).unwrap()]);
+        assert_eq!((at("building_blocks"), at("hotbar"), at("search"), at("inventory")), (0.0, 142.0, 169.0, 169.0));
+        // Tabs don't overlap within a row.
+        for row in [Row::Top, Row::Bottom] {
+            let mut xs: Vec<f32> = c.shown().map(|i| &c.tabs[i]).filter(|t| t.row == row).map(tab_x).collect();
+            xs.sort_by(f32::total_cmp);
+            assert!(xs.windows(2).all(|w| w[1] - w[0] >= 26.0), "{xs:?}");
+        }
+    }
+
+    #[test]
+    fn the_inventory_tab_and_grid_use_javas_slot_positions() {
+        let l = layout();
+        let inv = &l["creative"]["inventory_tab"];
+        let n = |v: &serde_json::Value| v.as_f64().unwrap() as f32;
+        // The values `creative_slots` draws with (Java's item corners).
+        assert_eq!((n(&inv["armor"]["origin"][0]), n(&inv["armor"]["origin"][1])), (54.0, 6.0));
+        assert_eq!((n(&inv["armor"]["column_pitch"]), n(&inv["armor"]["row_pitch"])), (54.0, 27.0));
+        assert_eq!((n(&inv["offhand"][0]), n(&inv["offhand"][1])), (35.0, 20.0));
+        assert_eq!((n(&inv["main"]["origin"][0]), n(&inv["main"]["origin"][1])), (9.0, 54.0));
+        assert_eq!((n(&inv["destroy_slot"][0]), n(&inv["destroy_slot"][1])), (173.0, 112.0));
+        assert_eq!(n(&inv["hotbar_y"]), 112.0);
+        let p = &inv["preview"];
+        assert_eq!(
+            (n(&p["box"][0]), n(&p["box"][1]), n(&p["box"][2]), n(&p["box"][3]), n(&p["size"])),
+            (73.0, 6.0, 105.0, 49.0, 20.0)
+        );
+        let grid = &l["creative"]["grid"];
+        assert_eq!((n(&grid["origin"][0]), n(&grid["origin"][1]), n(&grid["pitch"])), (9.0, 18.0, SLOT));
+        assert_eq!((n(&grid["hotbar"][0]), n(&grid["hotbar"][1])), (9.0, 112.0));
+        let sb = &l["creative"]["scrollbar"];
+        assert_eq!((n(&sb["at"][0]), n(&sb["at"][1]), n(&sb["size"][1])), (175.0, 18.0, 112.0));
+        let s = &l["creative"]["search_box"];
+        assert_eq!((n(&s["at"][0]), n(&s["at"][1]), n(&s["max_length"])), (82.0, 6.0, 50.0));
+        // The survival inventory's preview and main grid.
+        let sv = &l["survival"]["preview"];
+        assert_eq!((n(&sv["box"][0]), n(&sv["box"][1]), n(&sv["box"][2]), n(&sv["box"][3])), (26.0, 8.0, 75.0, 78.0));
+        assert_eq!(n(&sv["size"]), 30.0);
     }
 }

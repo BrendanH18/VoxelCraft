@@ -94,7 +94,7 @@ enforced.
 | `send_command_feedback` | `sendCommandFeedback` | boolean | `true` | Implemented | - | Quiet successful console commands; failures still print. CLI agents always receive results. |
 | `show_advancement_messages` | `announceAdvancements` | boolean | `true` | Not applicable | n/a | There are no advancements (side feature, roadmap section 1.4). |
 | `show_death_messages` | `showDeathMessages` | boolean | `true` | Partial | - | VoxelCraft writes death messages to the log only; there is no chat, so the rule has nothing visible to hide. |
-| `spawner_blocks_work` | `spawnerBlocksEnabled` | boolean | `true` | Implemented | - | Stops monster cages from ticking (`BaseSpawner.serverTick`); spawn eggs on spawners are not modelled. |
+| `spawner_blocks_work` | `spawnerBlocksEnabled` | boolean | `true` | Implemented | - | Stops monster cages from ticking (`BaseSpawner.serverTick`), and spawn eggs then fail on spawners and trial spawners ("Spawner blocks are not enabled", v0.18). |
 | `spawn_mobs` | `doMobSpawning` | boolean | `true` | Implemented | - | Natural spawning and custom spawners; chunk-generation herds are not gated, as in Java. |
 | `spawn_monsters` | `spawnMonsters` | boolean | `true` | Implemented | - | Hostile spawn categories only; animals and water creatures still spawn. |
 | `spawn_patrols` | `doPatrolSpawning` | boolean | `true` | Implemented | - | Gates the pillager patrol spawner (`PatrolSpawner.tick`). v0.15 Track E. |

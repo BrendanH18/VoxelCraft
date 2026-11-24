@@ -153,6 +153,21 @@ mod tests {
         assert!(far.to_degrees() < 31.5 && far.to_degrees() > 31.0);
     }
 
+    /// Headless cost of the preview's vertices (reported, not enforced).
+    #[test]
+    fn preview_cost_is_reported() {
+        let mut ui = Ui::with_scale(400.0, 300.0, 1.0);
+        let start = std::time::Instant::now();
+        let runs = 2000;
+        for i in 0..runs {
+            ui.verts.clear();
+            player(&mut ui, (26.0, 8.0, 75.0, 78.0), 30.0, 0.0625, (i as f32 % 80.0, 40.0));
+        }
+        let per = start.elapsed().as_secs_f64() / f64::from(runs) * 1e6;
+        println!("preview: {} vertices, {per:.1} us per draw", ui.verts.len());
+        assert!(ui.verts.len() < 12_000);
+    }
+
     #[test]
     fn the_preview_draws_inside_a_reasonable_area() {
         let mut ui = Ui::with_scale(400.0, 300.0, 1.0);

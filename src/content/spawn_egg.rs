@@ -175,7 +175,12 @@ pub fn all() -> impl Iterator<Item = Item> {
 
 pub(crate) fn item_info(item: Item) -> Option<ItemInfo> {
     let e = egg_of(item)?;
-    Some(ItemInfo { name: e.name, kind: ItemKind::Material, max_stack: MAX_STACK, sprite: Sprite::SpawnEgg(e.base, e.spots) })
+    Some(ItemInfo {
+        name: e.name,
+        kind: ItemKind::Material,
+        max_stack: MAX_STACK,
+        sprite: Sprite::SpawnEgg(e.base, e.spots),
+    })
 }
 
 #[cfg(test)]

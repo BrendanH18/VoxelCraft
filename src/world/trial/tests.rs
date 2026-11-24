@@ -89,6 +89,8 @@ fn block_entities_save_and_reload() {
         total_mobs_spawned: 3,
         next_spawn: Some(1),
         ejecting_loot: Some(0),
+        // v0.18 Track 4: a spawn egg's mob is saved too.
+        entity: Some(crate::entity::MobKind::Slime),
     };
     let v = vault::Vault {
         rewarded: vec![0, 9],

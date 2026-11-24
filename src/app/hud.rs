@@ -634,7 +634,7 @@ fn effects_ui(ui: &mut Ui, effects: &Effects) {
 /// Java's effect panels beside the inventory (`EffectsInInventory`), in
 /// `compareTo` order: icon, name and level, and time left; just icons when
 /// the screen is too narrow.
-fn effect_list_ui(ui: &mut Ui, effects: &Effects, right: f32, top: f32) {
+pub(super) fn effect_list_ui(ui: &mut Ui, effects: &Effects, right: f32, top: f32) {
     let label = effects::list_label;
     let sorted = effects.sorted();
     let text_w = sorted.iter().map(|a| Ui::text_width(&label(a))).fold(0.0, f32::max);

@@ -248,7 +248,10 @@ def egg_colours(rows):
         groups = [[], []]
         for p in pixels:
             groups[0 if dist(p, centres[0]) <= dist(p, centres[1]) else 1].append(p)
-        new = [tuple(round(sum(c[i] for c in g) / len(g)) for i in range(3)) if g else centres[k] for k, g in enumerate(groups)]
+        new = [
+            tuple(round(sum(c[i] for c in g) / len(g)) for i in range(3)) if g else centres[k]
+            for k, g in enumerate(groups)
+        ]
         if new == centres:
             break
         centres = new
@@ -296,7 +299,9 @@ def baby_rule(entity_class, server_path, cache):
     names = [n for n, _ in chain]
     if "net.minecraft.world.entity.AgeableMob" in names:
         for _, code in chain:
-            blocks = [b for b in code.split("\n\n") if " getBreedOffspring(net.minecraft.server.level.ServerLevel, " in b]
+            blocks = [
+                b for b in code.split("\n\n") if " getBreedOffspring(net.minecraft.server.level.ServerLevel, " in b
+            ]
             blocks = [b for b in blocks if "abstract" not in b.split("\n")[0] and "bridge" not in b]
             if blocks:
                 steps = re.findall(r"^\s+\d+: (\w+)", blocks[0], re.M)
@@ -331,7 +336,9 @@ def eggs_fixture(lines, client, lang, tabs, server_path):
             "max_stack": line["max_stack"],
             "in_tab": line["item"] in [s["item"] for s in spawn_tab["items"]["display"]],
             "class": classes[line["entity"]].rsplit(".", 1)[-1],
-            "baby": "none" if line["entity"] == "ender_dragon" else baby_rule(classes[line["entity"]], server_path, cache),
+            "baby": "none"
+            if line["entity"] == "ender_dragon"
+            else baby_rule(classes[line["entity"]], server_path, cache),
             "base": base,
             "spots": spots,
         }
@@ -373,17 +380,40 @@ def layout_fixture(client_path, client, lang):
         [0, 9, 0, 9, 2, 0, 1, 0, 5, 9, 5, 2, 2, 54, 54, 6, 27, 5, -2000, -2000, 45, 35, 20, 9, 9, 9, 9, 18, 36, 112]
         + [54, 18, 0, 173, 112, 1, 0, 1, 0, 1, 0, 0.0, 0.0],
     )
-    grid = expect("picker grid", literals(method(picker, "ItemPickerMenu(net.")), [0, 0, 5, 0, 9, 9, 9, 18, 18, 18, 9, 112, 0.0])
+    grid = expect(
+        "picker grid", literals(method(picker, "ItemPickerMenu(net.")), [0, 0, 5, 0, 9, 9, 9, 18, 18, 18, 9, 112, 0.0]
+    )
     expect("rows past the grid", literals(method(picker, "calculateRowCount(")), [9, 5])
     expect("scrolls past 45", literals(method(picker, "canScroll(")), [45, 1, 0])
     expect("row rounding", literals(method(picker, "getRowIndexForScroll(")), [0.5, 0])
     survival = expect(
-        "survival preview", literals(method(inventory, "extractBackground(")), [0.0, 0.0, 256, 256, 26, 8, 75, 78, 30, 0.0625]
+        "survival preview",
+        literals(method(inventory, "extractBackground(")),
+        [0.0, 0.0, 256, 256, 26, 8, 75, 78, 30, 0.0625],
     )
     follow = expect(
         "follow mouse",
-        literals(method(inventory, "extractEntityInInventoryFollowsMouse(net.minecraft.client.gui.GuiGraphicsExtractor, int")),
-        [2.0, 2.0, 40.0, 40.0, 3.1415927410125732, 20.0, 0.01745329238474369, 180.0, 20.0, 20.0, 20.0, 0.0, 1.0, 0.0, 2.0, 0.0],
+        literals(
+            method(inventory, "extractEntityInInventoryFollowsMouse(net.minecraft.client.gui.GuiGraphicsExtractor, int")
+        ),
+        [
+            2.0,
+            2.0,
+            40.0,
+            40.0,
+            3.1415927410125732,
+            20.0,
+            0.01745329238474369,
+            180.0,
+            20.0,
+            20.0,
+            20.0,
+            0.0,
+            1.0,
+            0.0,
+            2.0,
+            0.0,
+        ],
     )
     expect("centred panel", literals(method(container, " init()")), [2, 2])
     groups = constant(hotbars, "NUM_HOTBAR_GROUPS")
@@ -399,8 +429,13 @@ def layout_fixture(client_path, client, lang):
     # the size `InventoryScreen` keeps.
     default = expect(
         "container default size",
-        literals(method(container, "AbstractContainerScreen(T, net.minecraft.world.entity.player.Inventory, "
-                        "net.minecraft.network.chat.Component);")),
+        literals(
+            method(
+                container,
+                "AbstractContainerScreen(T, net.minecraft.world.entity.player.Inventory, "
+                "net.minecraft.network.chat.Component);",
+            )
+        ),
         [176, 166],
     )
 
@@ -430,13 +465,22 @@ def layout_fixture(client_path, client, lang):
         ],
         "creative": {
             "size": size,
-            "grid": {"columns": constant(screen, "NUM_COLS"), "rows": constant(screen, "NUM_ROWS"),
-                     "origin": [grid[5], grid[8]], "pitch": grid[7], "hotbar": [grid[10], grid[11]]},
+            "grid": {
+                "columns": constant(screen, "NUM_COLS"),
+                "rows": constant(screen, "NUM_ROWS"),
+                "origin": [grid[5], grid[8]],
+                "pitch": grid[7],
+                "hotbar": [grid[10], grid[11]],
+            },
             "title": {"at": label[:2], "colour": "#%06x" % (int(label[2]) & 0xFFFFFF)},
             "search_box": {"at": search[:2], "size": search[2:4], "max_length": search[4]},
-            "scrollbar": {"at": bar[:2], "size": [bar[2], bar[3]], "thumb": [constant(screen, "SCROLLER_WIDTH"),
-                          constant(screen, "SCROLLER_HEIGHT")], "travel": bar[3] - background[7],
-                          "drag_centre": drag[2]},
+            "scrollbar": {
+                "at": bar[:2],
+                "size": [bar[2], bar[3]],
+                "thumb": [constant(screen, "SCROLLER_WIDTH"), constant(screen, "SCROLLER_HEIGHT")],
+                "travel": bar[3] - background[7],
+                "drag_centre": drag[2],
+            },
             "tabs": {
                 "size": [constant(screen, "TAB_WIDTH"), constant(screen, "TAB_HEIGHT")],
                 "spacing": tab_x[0],
@@ -457,8 +501,12 @@ def layout_fixture(client_path, client, lang):
                 "destroy_slot": select[33:35],
                 "preview": {"box": background[10:14], "size": background[14], "offset_y": background[15]},
             },
-            "scroll": {"rows_visible": 5, "rows_scrolled": "ceil(items / 9) - 5", "row_rounding": 0.5,
-                       "scrolls_past": 45},
+            "scroll": {
+                "rows_visible": 5,
+                "rows_scrolled": "ceil(items / 9) - 5",
+                "row_rounding": 0.5,
+                "scrolls_past": 45,
+            },
         },
         "survival": {
             "size": default,
@@ -472,8 +520,14 @@ def layout_fixture(client_path, client, lang):
             "head_pitch": "-atan((centre_y - mouse_y) / 40) * 20 degrees",
             "tilt": "atan((centre_y - mouse_y) / 40) * 20 degrees about x",
         },
-        "hotbars": {"groups": groups, "slots": 9, "file": "hotbar.nbt", "keys": keys,
-                    "info": lang["inventory.hotbarInfo"], "saved": lang["inventory.hotbarSaved"]},
+        "hotbars": {
+            "groups": groups,
+            "slots": 9,
+            "file": "hotbar.nbt",
+            "keys": keys,
+            "info": lang["inventory.hotbarInfo"],
+            "saved": lang["inventory.hotbarSaved"],
+        },
         "labels": {"destroy_item": lang["inventory.binSlot"], "search_hint": lang["gui.recipebook.search_hint"]},
         "gui_scales": {"1920x1080": scale_rows(1920, 1080), "1280x720": scale_rows(1280, 720)},
     }

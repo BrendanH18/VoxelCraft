@@ -330,7 +330,10 @@ resolves an item as `DispenserBlock.getDispenseMethod` does (the
   minecarts onto a rail in front or over one (through the cart API); an
   armour stand stands in front turned the dispenser's way; a chest goes
   onto a tamed donkey, mule or llama. Otherwise each pops out.
-- Spawn eggs don't exist yet (v0.18).
+- A spawn egg (v0.18) spawns its mob in front, dropped at most a block
+  onto the floor unless the dispenser faces up, and posts `entity_place`
+  at the dispenser; on Peaceful a monster's egg stays in the dispenser
+  ([record](verification/2026-11-23-v0.18-creative.md)).
 
 Behaviours that look for entities finish in `tick_automation_entities`
 later in the same game tick, with the slot they came from; the app lends

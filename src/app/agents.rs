@@ -224,9 +224,7 @@ impl Agents {
 /// of the query); anything else is the flat creative palette as before.
 fn catalog_reply(query: &str) -> Result<serde_json::Value, String> {
     let c = voxelcraft::creative::catalogue();
-    let entry = |s: &crate::inventory::Stack| {
-        json!({"id":s.item.0,"name":s.display_name(),"command_name":s.item.name().replace(' ',"_"),"max_stack":s.max()})
-    };
+    let entry = |s: &crate::inventory::Stack| json!({"id":s.item.0,"name":s.display_name(),"command_name":s.item.name().replace(' ',"_"),"max_stack":s.max()});
     if query.trim() == "tabs" {
         let tabs: Vec<_> = c
             .shown()
@@ -458,6 +456,27 @@ impl Game {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_catalog_lists_javas_creative_tabs() {
+        let tabs = super::catalog_reply("tabs").unwrap();
+        let ids: Vec<&str> = tabs["tabs"].as_array().unwrap().iter().map(|t| t["id"].as_str().unwrap()).collect();
+        assert_eq!(ids.first(), Some(&"building_blocks"));
+        assert!(ids.contains(&"spawn_eggs") && !ids.contains(&"op_blocks"));
+        let eggs = super::catalog_reply("tab:spawn_eggs creeper").unwrap();
+        let names: Vec<&str> = eggs["items"].as_array().unwrap().iter().map(|i| i["name"].as_str().unwrap()).collect();
+        assert_eq!(names, ["creeper spawn egg"]);
+        assert!(super::catalog_reply("tab:nothing").is_err());
+        // A plain query is the old flat list.
+        assert!(super::catalog_reply("stone").unwrap()["items"].as_array().unwrap().len() > 1);
+        assert_eq!(
+            voxelcraft::agent::Command::parse("hotbar save 3")
+                .ok()
+                .map(|c| matches!(c, voxelcraft::agent::Command::Hotbar(false, 2))),
+            Some(true)
+        );
+        assert!(voxelcraft::agent::Command::parse("hotbar load 10").is_err());
+    }
+
     use super::*;
     #[test]
     fn saving_returns_work_inputs_without_mutating_live_slots() {

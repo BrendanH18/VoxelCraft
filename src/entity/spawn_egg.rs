@@ -17,8 +17,8 @@ use glam::{DVec3, IVec3};
 
 use super::{Entities, Mob, MobKind};
 use crate::content::spawn_egg::{self, Baby};
-use crate::simulation::difficulty::Difficulty;
 use crate::physics::BlockSource;
+use crate::simulation::difficulty::Difficulty;
 
 /// `AgeableMob.BABY_START_AGE`, which `setBaby(true)` gives.
 pub const BABY_START_AGE: i32 = -24000;
@@ -62,6 +62,8 @@ impl Entities {
         let y = if try_move_down { y_offset(world, kind, cell, moved_up) } else { 0.0 };
         let at = DVec3::new(cell.x as f64 + 0.5, cell.y as f64 + y, cell.z as f64 + 0.5);
         self.spawn(kind, at);
+        // `EntityType.spawn` then `Mob.playAmbientSound`.
+        self.pending_sounds.push(super::EntityEvent::Sound { sound: super::MobSound::Ambient(kind), pos: at });
         Some(self.mobs.len() - 1)
     }
 

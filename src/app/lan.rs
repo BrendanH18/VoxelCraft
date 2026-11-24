@@ -953,8 +953,8 @@ impl Game {
         }
         let Some(slot) = decode_slot(encoded, peer.body.container, session.mode, peer.grid.size) else { return };
         // v0.18 Track 4: creative cells take shift with a stack held too.
-        let quick = shift
-            && (session.inventory.cursor.is_none() || matches!(slot, SlotRef::Palette(_) | SlotRef::Destroy));
+        let quick =
+            shift && (session.inventory.cursor.is_none() || matches!(slot, SlotRef::Palette(_) | SlotRef::Destroy));
         let mut container = peer.body.container;
         let done = self.agent_screen(&name, &mut container, &mut peer.grid, |s| {
             if quick { s.quick_move(slot) } else { s.click_slot(slot, right) }
@@ -2066,18 +2066,20 @@ pub(super) fn encode_slot(slot: SlotRef) -> Option<u16> {
         // in `Item::creative_palette`. v0.18 Track 4: other stacks (potions,
         // enchanted books, rockets) are 20000 + tab x 1000 + their place in
         // that tab of `creative::catalogue`.
-        SlotRef::Palette(stack) => match crate::item::Item::creative_palette().position(|i| Stack::new(i, 1) == stack) {
-            Some(i) if i < 19_000 => 1000 + i as u16,
-            _ => {
-                let c = voxelcraft::creative::catalogue();
-                let (t, i) = (0..c.tabs.len())
-                    .find_map(|t| c.tabs[t].items.iter().position(|&s| s == stack).map(|i| (t, i)))?;
-                if i >= 1000 {
-                    return None;
+        SlotRef::Palette(stack) => {
+            match crate::item::Item::creative_palette().position(|i| Stack::new(i, 1) == stack) {
+                Some(i) if i < 19_000 => 1000 + i as u16,
+                _ => {
+                    let c = voxelcraft::creative::catalogue();
+                    let (t, i) = (0..c.tabs.len())
+                        .find_map(|t| c.tabs[t].items.iter().position(|&s| s == stack).map(|i| (t, i)))?;
+                    if i >= 1000 {
+                        return None;
+                    }
+                    20_000 + t as u16 * 1000 + i as u16
                 }
-                20_000 + t as u16 * 1000 + i as u16
             }
-        },
+        }
         SlotRef::Destroy => 405,
         SlotRef::PaletteEmpty => 406,
         _ => return None,

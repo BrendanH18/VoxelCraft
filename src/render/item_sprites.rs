@@ -296,8 +296,7 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 let spot = |cx: f32, cy: f32, r: f32| (px - cx).powi(2) + (py - cy).powi(2) <= r * r;
                 if (x, y) == (6, 4) || (x, y) == (6, 5) {
                     tint(base, 1.35)
-                } else if spot(10.0, 6.0, 1.6) || spot(6.5, 10.5, 1.9) || spot(10.5, 12.0, 1.2) || spot(5.0, 7.5, 0.8)
-                {
+                } else if spot(10.0, 6.0, 1.6) || spot(6.5, 10.5, 1.9) || spot(10.5, 12.0, 1.2) || spot(5.0, 7.5, 0.8) {
                     let edge = !egg(x + 1, y) || !egg(x, y + 1);
                     tint(spots, if edge { 0.7 } else { 1.0 })
                 } else {
