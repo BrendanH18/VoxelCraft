@@ -54,15 +54,21 @@ published the same day as the latest. The v0.14 release was also published
 that day, a little earlier; the v0.15 tag has no release. Rows stay
 Implemented, unverified.
 
-**Release (owner, 2026-11-23): v0.17 is to ship.** The owner played the
+**Release (owner, 2026-11-23): v0.17 is released.** The owner played the
 v0.17 build ([#115](https://github.com/BrendanH18/VoxelCraft/pull/115),
 ten parallel tracks, [scope](#v017-scope-redstone-and-automation)) and
-reported that it plays well. Like v0.16, it is tagged from the merge of
-its release notes without its offscreen frame-time run, which needs the
-reference Mac (an owner exception, recorded in the
-[release plan](#release-plan)). Rows stay Implemented, unverified. The
-next version, v0.18 (polish and performance), starts once the owner
-approves its plan.
+reported that it plays well. Like v0.16, it was released without its
+offscreen frame-time run, which needs the reference Mac (an owner
+exception, recorded in the [release plan](#release-plan)). The first tag
+build's Windows job hit its 45-minute limit, so the limit became 90 minutes
+([#117](https://github.com/BrendanH18/VoxelCraft/pull/117)) and the
+unpublished `v0.17` tag moved to that merge, `d5c1fee`. Its packages built,
+their checksums and signature were checked, and it was published as the
+latest release on 2026-11-24 (UTC). Rows stay Implemented, unverified.
+
+**Next (owner, 2026-11-23): v0.18, polish and performance,** in eleven
+parallel tracks ([scope](#v020-scope-presentation-and-performance), plan
+below it).
 
 **Versions (owner, 2026-11-13): the next release is v0.14.** The owner
 asked for everything built since v0.13 to ship as one release, v0.14,
@@ -609,8 +615,8 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 | — | Stabilisation | Gate before the v0.14 tag | No new content: the entity frame-time fix and a full scene run, terrain blending for generation 3 structures, the audit's data fixes, the owner's play, and one tag for v0.14. See the [stabilisation gate](#stabilisation-gate-before-v017) | In progress (2026-11-09). The owner lifted its content freeze on 2026-11-12; the frame-time gate passed and v0.14 was tagged on 2026-11-16 ([record](verification/2026-11-16-tag-gate-run.md)). Done (owner, 2026-11-23): the owner played the v0.16 build, which carries generation 3's structures, and asked for v0.16 to be released |
 | v0.15 | Villages and raids | Close M4 | Working lecterns, looms, cartography tables and stonecutters; illagers, woodland mansions, raids; remaining villager behaviour; the M4 exit checks. Added by the 2026-11-09 audit ([list](#content-assigned-by-the-2026-11-09-audit)): the remaining Java 26.3 mobs (happy ghasts, nautiluses, camel husks, parched), mobs holding and picking up equipment, chainmail, books, bundles, spyglasses, armor trims, the remaining status effects and potions, and the village template catalogue | Implemented, unverified (2026-11-18): scope approved by the owner, all eight tracks merged and checked together ([v0.15 scope](#v015-scope-villages-and-raids), [integration](verification/2026-11-18-v0.15-integration.md)); the offscreen frame-time suite passes ([run](verification/2026-11-18-v0.15-frame-time.md)); the owner played it in the v0.16 build on 2026-11-23, and it reaches players in the v0.16 release. Tagged `v0.15` at `b16fe0b5` on 2026-11-18, but its release build stopped at the version check because `Cargo.toml` still said 0.14.0, so no draft release exists. Version 0.15.0 and its release notes were added on 2026-11-19; the tag moves to that commit to build the draft. Part of its list was built early by [build-5000 wave 1](verification/2026-11-12-build-5000/wave-1.md) and ships in v0.14 (see the [assigned content](#content-assigned-by-the-2026-11-09-audit)) |
 | v0.16 | The End and the Wither | Close M3; M5 | End cities and ships (the last GEN-05 structures, then the M3 exit checks), shulkers and shulker boxes, elytra and fireworks, dragon respawn; Wither summoning, Nether stars and beacons; the no-cheat progression playthrough. Added by the 2026-11-09 audit ([list](#content-assigned-by-the-2026-11-09-audit)): poplar, cinnabar and sulfur with their terrain and the sulfur cube, abandoned camps, mob heads, infested blocks, nether gold ore, conduits, and the reassessment of dungeons, mineshafts, strongholds, shipwrecks and monuments | Released (owner, 2026-11-23): played by the owner, tagged `v0.16` at `0848508` ([#113](https://github.com/BrendanH18/VoxelCraft/pull/113)) and published as the latest release, without its offscreen frame-time run (owner exception above). Rows stay Implemented, unverified. Implemented (2026-11-21): scope approved by the owner, eight tracks in two waves, all merged and integrated: wave 1 (Outer End, flight and storage, Wither and beacons, generation 5 Overworld) on 2026-11-20, wave 2 (classic and ocean structures, dragon respawn and the M5 audit, wave 1 leftovers, the M3 exit audit) on 2026-11-21. The offscreen frame-time run remains. See the [v0.16 scope](#v016-scope-the-end-and-the-wither) |
-| v0.17 | Redstone and automation | M6 | Java update order, pistons with entity push and slime/honey, the crafter, remaining sensors and workstations; reference farms, clocks and sorters across save/reload. Added by the 2026-11-09 audit: the furnace minecart | Played by the owner (2026-11-23); to be tagged and released without its offscreen frame-time run (owner exception above). The tag and the published release follow this record's merge. Rows stay Implemented, unverified. Implemented (2026-11-23): scope approved by the owner; all ten tracks merged and integrated ([#115](https://github.com/BrendanH18/VoxelCraft/pull/115)), and every reference contraption matches Java. The offscreen frame-time run remains. See the [v0.17 scope](#v017-scope-redstone-and-automation) |
-| v0.18 | Polish and performance | M7: UX, §6 | Typography/contrast, material and mob art, inventory/recipe navigation, HUD/workstations, title/world identity, atmosphere and accessibility ([scope](#v020-scope-presentation-and-performance)); subtitles, asset and sound review in play (including the v0.12 blocks' own sounds), and menu fixes found since v0.11; the 120 FPS gate in every scene, including v0.8's streaming budget (PERF-03), and the performance check for the v0.8 and v0.9 rows, v0.11's menu and title frame-time run and v0.12's `materials` runs, which moved here unverified ([v0.12 profile](verification/2026-10-29-v0.12-finish.md#frame-time)). The per-frame entity model rebuild that profile found was removed on 2026-11-09 ([record](verification/2026-11-09-entity-frame-time.md)); the streaming route's main-thread terrain column rebuilds from mob biome queries were addressed in the [streaming follow-up](verification/2026-11-09-streaming-biomes-and-gen07.md); the remaining tick work and per-frame sign text are still owed, and the gate is measured again here (v0.14 passed it on 2026-11-16, [record](verification/2026-11-16-tag-gate-run.md)) | Planned; presentation scope expanded by the owner on 2026-11-05. Each release now records its own frame-time run ([§6.1](#61-reference-configuration-and-frame-time-gate)), so what stays here is the final gate, not every release's first measurement |
+| v0.17 | Redstone and automation | M6 | Java update order, pistons with entity push and slime/honey, the crafter, remaining sensors and workstations; reference farms, clocks and sorters across save/reload. Added by the 2026-11-09 audit: the furnace minecart | Released (owner, 2026-11-23): played by the owner, tagged `v0.17` at `d5c1fee` after [#116](https://github.com/BrendanH18/VoxelCraft/pull/116) and [#117](https://github.com/BrendanH18/VoxelCraft/pull/117) and published as the latest release, without its offscreen frame-time run (owner exception above). Rows stay Implemented, unverified. Implemented (2026-11-23): scope approved by the owner; all ten tracks merged and integrated ([#115](https://github.com/BrendanH18/VoxelCraft/pull/115)), and every reference contraption matches Java. The offscreen frame-time run remains. See the [v0.17 scope](#v017-scope-redstone-and-automation) |
+| v0.18 | Polish and performance | M7: UX, §6 | Typography/contrast, material and mob art, inventory/recipe navigation, HUD/workstations, title/world identity, atmosphere and accessibility ([scope](#v020-scope-presentation-and-performance)); subtitles, asset and sound review in play (including the v0.12 blocks' own sounds), and menu fixes found since v0.11; the 120 FPS gate in every scene, including v0.8's streaming budget (PERF-03), and the performance check for the v0.8 and v0.9 rows, v0.11's menu and title frame-time run and v0.12's `materials` runs, which moved here unverified ([v0.12 profile](verification/2026-10-29-v0.12-finish.md#frame-time)). The per-frame entity model rebuild that profile found was removed on 2026-11-09 ([record](verification/2026-11-09-entity-frame-time.md)); the streaming route's main-thread terrain column rebuilds from mob biome queries were addressed in the [streaming follow-up](verification/2026-11-09-streaming-biomes-and-gen07.md); the remaining tick work and per-frame sign text are still owed, and the gate is measured again here (v0.14 passed it on 2026-11-16, [record](verification/2026-11-16-tag-gate-run.md)) | In progress (2026-11-23): the owner approved an eleven-track plan ([v0.18 plan](#v018-plan-2026-11-23)). Presentation scope expanded by the owner on 2026-11-05. Each release now records its own frame-time run ([§6.1](#61-reference-configuration-and-frame-time-gate)), so what stays here is the final gate, not every release's first measurement |
 | v1.0 | Acceptance | M7 exit, §8 | Every mandatory row Verified; fresh-world and long-session playthroughs; save-compatibility policy; installer and update checks; current stable Java scope reconciled | Planned |
 
 Notes:
@@ -1960,6 +1966,41 @@ over 50 ms (owner, 2026-11-14; it was 240 FPS and 4.17 ms when this was
 written). FPS displayed in a screenshot or a passing build does not satisfy it. Update the existing
 [requirement rows](requirements.md#ux--presentation-usability-and-distribution)
 as work lands; none is promoted by this plan addition.
+
+<a id="v018-plan-2026-11-23"></a>
+
+**v0.18 plan (owner, 2026-11-23).** The owner approved eleven parallel
+tracks, each in its own worktree with IDs from the
+[architecture reservations](architecture.md#v018-polish-and-performance-track-reservations).
+The art tracks (3, 6 and 7) show the owner before-and-after captures and
+merge only once the owner approves the look.
+
+0. **Foundation** (first): `docs/art-and-ui.md`, the capture harness's
+   GUI-scale override and recipe-book and Hardcore-death set-ups, and
+   screenshots rendered on Boat with a software GPU so agents can see their
+   visual changes (appearance only, never performance).
+1. **Typography** (items 1 and 8): an original pixel font with measured
+   glyphs, accented user text, and signs that load unchanged.
+2. **Shared UI, HUD and screens** (item 5): one component style, Java's
+   death actions, the FPS counter default, and the anvil's rename box left
+   from v0.17.
+3. **Core material art** (item 2), with Mipmap Levels.
+4. **Creative inventory** (item 3): Java's tabs, ordering and scrolling,
+   and spawn eggs.
+5. **Recipe book** (item 3): unlocking, search, craftable filter, grid
+   fill, `limited_crafting`, per-player storage and migration.
+6. **Mobs** (item 4): art, ground shadows and Entity Shadows.
+7. **Title and worlds** (item 6): wordmark, panorama and world thumbnails.
+8. **Atmosphere** (item 7): fog, clouds, water, rain, interior light, and
+   the weather, underwater and Nether benchmark scenes.
+9. **Sound and subtitles** (item 8 and the carried sound review):
+   directional subtitles, the v0.12 blocks' own sounds and container lids.
+10. **Performance code**: the remaining tick work, per-frame sign text and
+    PERF-03 streaming stalls, profiled headless on Boat. The gate itself
+    is the owner's run on the reference Mac.
+
+Tracks 4, 5, 9 and 10 don't depend on the foundation's guide, so they start
+with it; the visual tracks start once it lands.
 
 **v0.18 exit:** UX-01/02, UX-03c–g, MOB-06 and BLD-05c meet their recorded
 scope, with the owner's ordinary-play evidence and applicable reference,

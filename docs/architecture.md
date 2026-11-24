@@ -1336,6 +1336,31 @@ nothing using 13952 or above:
 No item, texture layer or appended ordering: every age is named, drawn,
 dropped and picked as sugar cane.
 
+### v0.18 Polish and performance track reservations
+
+Reserved on 2026-11-23 when the owner approved the v0.18 plan (milestone
+M7), for eleven parallel tracks after `examples/id_map.rs` at `d5c1fee`
+showed states 13968–14335, items 1850–1999 and texture layers 1211–1299
+and 4066–4095 unregistered. Layers 1211–1299 were v0.17 reservations that
+no track used, and nothing references them; layers 4066–4095 are the 30
+above the current count, which is 30 short of the 4096 a quad can address,
+so new block textures should replace layers rather than add them. Each
+track allocates only inside its own row, records what it used under its own
+heading below, and leaves unused IDs unregistered. Texture layers are never
+saved and may be repacked at integration. The integrator makes appended
+orderings (sounds, particle kinds, item icons, options) contiguous in
+landing order.
+
+| Block states | Item IDs | Texture layers | Track |
+| --- | --- | --- | --- |
+| — | 1850–1949 | — | 4. Creative inventory and spawn eggs (item icons sit after layer 4096 and need no block layer) |
+| — | — | 1211–1259 | 3. Core material art |
+| — | — | 1260–1279 | 8. Atmosphere |
+| — | — | 1280–1289 | 6. Mobs |
+| — | — | 1290–1294 | 9. Sound, subtitles and container lids |
+| — | — | — | 0. Foundation; 1. Typography; 2. Shared UI; 5. Recipe book; 7. Title and worlds; 10. Performance |
+| 13968–14335 | 1950–1999 | 1295–1299, 4066–4095 | Integrator |
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating
