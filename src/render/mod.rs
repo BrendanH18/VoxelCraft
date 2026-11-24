@@ -1037,6 +1037,10 @@ impl Renderer {
         }
         let Some(mut frame) = self.begin_frame() else { return false };
         self.panorama.prepare(&self.queue, view, self.size());
+        let blurred = view.blur > 0;
+        if blurred {
+            self.panorama.ensure_blur_target(&self.device, self.size());
+        }
         if ui.len() > self.ui_capacity {
             self.ui_capacity = ui.len().next_power_of_two();
             self.ui_buf = Self::create_ui_buffer(&self.device, self.ui_capacity);
@@ -1045,6 +1049,25 @@ impl Renderer {
             self.queue.write_buffer(&self.ui_buf, 0, bytemuck::cast_slice(ui));
         }
         let mut encoder = self.device.create_command_encoder(&Default::default());
+        if let Some(target) = self.panorama.blur_view().filter(|_| blurred) {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("title blur"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: target,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            self.panorama.draw_blur(&mut pass);
+        }
         let timed = self.gpu_timer.as_mut().and_then(|timer| timer.next_pass());
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -1073,7 +1096,11 @@ impl Renderer {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            self.panorama.draw(&mut pass);
+            if blurred {
+                self.panorama.draw_upscale(&mut pass);
+            } else {
+                self.panorama.draw(&mut pass);
+            }
             if !ui.is_empty() {
                 pass.set_pipeline(&self.ui_pipeline);
                 pass.set_bind_group(0, &self.globals_bg, &[]);
@@ -1085,7 +1112,7 @@ impl Renderer {
         }
         self.last_submission = Some(self.queue.submit([encoder.finish()]));
         frame.drawn = true;
-        self.stats.draw_calls = 1 + usize::from(!ui.is_empty());
+        self.stats.draw_calls = 1 + usize::from(blurred) + usize::from(!ui.is_empty());
         self.end_frame(frame);
         true
     }

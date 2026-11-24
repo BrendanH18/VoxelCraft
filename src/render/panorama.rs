@@ -141,8 +141,39 @@ pub struct View {
     pub blur: u32,
 }
 
+/// The blurred panorama is drawn at this fraction of the window's width
+/// and height, then stretched over it: a blur hides the lost detail, and
+/// the thirteen samples per pixel cost a sixteenth as much.
+pub const BLUR_DOWNSCALE: u32 = 4;
+
+/// Stretches the small blurred panorama over the window.
+const UPSCALE_SHADER: &str = "
+@group(0) @binding(0) var small: texture_2d<f32>;
+@group(0) @binding(1) var small_sampler: sampler;
+struct Out { @builtin(position) clip: vec4<f32>, @location(0) uv: vec2<f32> };
+@vertex
+fn vs_upscale(@builtin(vertex_index) i: u32) -> Out {
+    let xy = vec2<f32>(f32((i << 1u) & 2u), f32(i & 2u)) * 2.0 - 1.0;
+    var out: Out;
+    out.clip = vec4<f32>(xy, 0.0, 1.0);
+    out.uv = vec2<f32>(xy.x * 0.5 + 0.5, 0.5 - xy.y * 0.5);
+    return out;
+}
+@fragment
+fn fs_upscale(in: Out) -> @location(0) vec4<f32> {
+    return vec4<f32>(textureSampleLevel(small, small_sampler, in.uv, 0.0).rgb, 1.0);
+}
+";
+
 pub(super) struct PanoramaPass {
     pipeline: wgpu::RenderPipeline,
+    /// The same shader into the small blur target, which has no depth.
+    blur_pipeline: wgpu::RenderPipeline,
+    upscale_pipeline: wgpu::RenderPipeline,
+    upscale_layout: wgpu::BindGroupLayout,
+    /// The small target, its bind group for the upscale, and its size.
+    blur_target: Option<(wgpu::TextureView, wgpu::BindGroup, (u32, u32))>,
+    format: wgpu::TextureFormat,
     layout: wgpu::BindGroupLayout,
     uniform: wgpu::Buffer,
     sampler: wgpu::Sampler,
@@ -221,6 +252,84 @@ impl PanoramaPass {
             multiview_mask: None,
             cache: None,
         });
+        let blur_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("panorama blur"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_panorama"),
+                compilation_options: Default::default(),
+                buffers: &[],
+            },
+            primitive: Default::default(),
+            depth_stencil: None,
+            multisample: Default::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_panorama"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState { format, blend: None, write_mask: wgpu::ColorWrites::ALL })],
+            }),
+            multiview_mask: None,
+            cache: None,
+        });
+        let upscale_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("panorama upscale layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
+        let upscale_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("panorama upscale shader"),
+            source: wgpu::ShaderSource::Wgsl(UPSCALE_SHADER.into()),
+        });
+        let upscale_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("panorama upscale pipeline layout"),
+            bind_group_layouts: &[Some(&upscale_layout)],
+            immediate_size: 0,
+        });
+        let upscale_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("panorama upscale"),
+            layout: Some(&upscale_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &upscale_shader,
+                entry_point: Some("vs_upscale"),
+                compilation_options: Default::default(),
+                buffers: &[],
+            },
+            primitive: Default::default(),
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH_FORMAT,
+                depth_write_enabled: Some(false),
+                depth_compare: Some(wgpu::CompareFunction::Always),
+                stencil: Default::default(),
+                bias: Default::default(),
+            }),
+            multisample: Default::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: &upscale_shader,
+                entry_point: Some("fs_upscale"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState { format, blend: None, write_mask: wgpu::ColorWrites::ALL })],
+            }),
+            multiview_mask: None,
+            cache: None,
+        });
         let uniform = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("panorama uniform"),
             size: std::mem::size_of::<Uniform>() as u64,
@@ -235,7 +344,19 @@ impl PanoramaPass {
             mipmap_filter: wgpu::MipmapFilterMode::Linear,
             ..Default::default()
         });
-        Self { pipeline, layout, uniform, sampler, bound: None, bytes: 0 }
+        Self {
+            pipeline,
+            blur_pipeline,
+            upscale_pipeline,
+            upscale_layout,
+            blur_target: None,
+            format,
+            layout,
+            uniform,
+            sampler,
+            bound: None,
+            bytes: 0,
+        }
     }
 
     pub(super) fn loaded(&self) -> bool {
@@ -284,7 +405,42 @@ impl PanoramaPass {
         self.bound = Some((bind, faces.size));
     }
 
-    /// Writes this frame's camera; false if no faces are loaded.
+    /// The small target a blurred frame is drawn into, made for a window of
+    /// `size` when first needed.
+    pub(super) fn ensure_blur_target(&mut self, device: &wgpu::Device, (w, h): (u32, u32)) {
+        let small = (w.div_ceil(BLUR_DOWNSCALE).max(1), h.div_ceil(BLUR_DOWNSCALE).max(1));
+        if self.blur_target.as_ref().is_none_or(|t| t.2 != small) {
+            let view = device
+                .create_texture(&wgpu::TextureDescriptor {
+                    label: Some("panorama blur"),
+                    size: wgpu::Extent3d { width: small.0, height: small.1, depth_or_array_layers: 1 },
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: self.format,
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+                    view_formats: &[],
+                })
+                .create_view(&Default::default());
+            let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("panorama blur"),
+                layout: &self.upscale_layout,
+                entries: &[
+                    wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&view) },
+                    wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&self.sampler) },
+                ],
+            });
+            self.blur_target = Some((view, bind, small));
+        }
+    }
+
+    /// The small target [`PanoramaPass::ensure_blur_target`] made.
+    pub(super) fn blur_view(&self) -> Option<&wgpu::TextureView> {
+        self.blur_target.as_ref().map(|t| &t.0)
+    }
+
+    /// Writes this frame's camera for a window of `(width, height)`; false
+    /// if no faces are loaded. A blurred frame is drawn into the small target.
     pub(super) fn prepare(&self, queue: &wgpu::Queue, view: View, (width, height): (u32, u32)) -> bool {
         let Some((_, size)) = &self.bound else { return false };
         let aspect = width.max(1) as f32 / height.max(1) as f32;
@@ -297,7 +453,8 @@ impl PanoramaPass {
         let look = glam::camera::rh::view::look_to_mat4(Vec3::ZERO, forward, up);
         // A fixed level: texels per screen pixel at the centre; under a blur,
         // a softer level matching the spacing of the blur's samples.
-        let focal = height as f32 * 0.5 / (panorama::FOV_DEGREES.to_radians() * 0.5).tan();
+        let drawn_height = if view.blur == 0 { height } else { height.div_ceil(BLUR_DOWNSCALE) };
+        let focal = drawn_height as f32 * 0.5 / (panorama::FOV_DEGREES.to_radians() * 0.5).tan();
         let sharp = (*size as f32 * 0.5 / focal).max(1.0).log2();
         let (lod, disc) = if view.blur == 0 {
             (sharp, [0.0, 0.0])
@@ -312,9 +469,26 @@ impl PanoramaPass {
         true
     }
 
+    /// The sharp panorama straight into the frame.
     pub(super) fn draw(&self, pass: &mut wgpu::RenderPass<'_>) {
         let Some((bind, _)) = &self.bound else { return };
         pass.set_pipeline(&self.pipeline);
+        pass.set_bind_group(0, bind, &[]);
+        pass.draw(0..3, 0..1);
+    }
+
+    /// The blurred panorama into the small target (a pass of its own).
+    pub(super) fn draw_blur(&self, pass: &mut wgpu::RenderPass<'_>) {
+        let Some((bind, _)) = &self.bound else { return };
+        pass.set_pipeline(&self.blur_pipeline);
+        pass.set_bind_group(0, bind, &[]);
+        pass.draw(0..3, 0..1);
+    }
+
+    /// The small target stretched over the frame.
+    pub(super) fn draw_upscale(&self, pass: &mut wgpu::RenderPass<'_>) {
+        let Some((_, bind, _)) = &self.blur_target else { return };
+        pass.set_pipeline(&self.upscale_pipeline);
         pass.set_bind_group(0, bind, &[]);
         pass.draw(0..3, 0..1);
     }
@@ -346,6 +520,14 @@ mod tests {
             faces.size,
             faces.gpu_bytes()
         );
+    }
+
+    #[test]
+    fn upscale_shader_validates() {
+        let module = naga::front::wgsl::parse_str(UPSCALE_SHADER).unwrap();
+        naga::valid::Validator::new(naga::valid::ValidationFlags::all(), naga::valid::Capabilities::all())
+            .validate(&module)
+            .unwrap();
     }
 
     #[test]

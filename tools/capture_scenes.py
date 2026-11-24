@@ -150,6 +150,8 @@ def take_icons(binary, out, scene_name, saves):
             shutil.copyfile(icon, kept)
             print("took the icon of {}".format(save["dir"]), file=sys.stderr)
         else:
+            # Keep the run's log beside the captures.
+            shutil.copyfile(folder / (save["dir"] + ".log"), out / "{}-{}-icon.log".format(scene_name, save["dir"]))
             print("FAILED to take the icon of {}".format(save["dir"]), file=sys.stderr)
         shutil.rmtree(data_dir, ignore_errors=True)
 
