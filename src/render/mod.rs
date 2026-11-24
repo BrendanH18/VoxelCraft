@@ -295,6 +295,9 @@ pub struct Renderer {
     backend: wgpu::Backend,
     /// (distance², chunk, camera-relative origin, faces that can face the camera).
     visible: Vec<(f32, IVec3, [f32; 3], u8)>,
+    /// The visible chunks' origins for the instance buffer, kept between
+    /// frames so drawing allocates nothing once it has grown.
+    instance_scratch: Vec<[f32; 3]>,
     capture: Option<std::path::PathBuf>,
     offscreen: Option<wgpu::Texture>,
     /// Render to `offscreen` instead of the window (benchmarks).
@@ -904,6 +907,7 @@ impl Renderer {
             adapter_name: info.name.clone(),
             backend: info.backend,
             visible: Vec::new(),
+            instance_scratch: Vec::new(),
             capture: None,
             offscreen: None,
             offscreen_frames: [None, None],
@@ -1348,9 +1352,10 @@ impl Renderer {
             self.instance_capacity = self.visible.len().next_power_of_two();
             self.instances = Self::create_instance_buffer(&self.device, self.instance_capacity);
         }
-        let instance_data: Vec<[f32; 3]> = self.visible.iter().map(|v| v.2).collect();
-        if !instance_data.is_empty() {
-            self.queue.write_buffer(&self.instances, 0, bytemuck::cast_slice(&instance_data));
+        self.instance_scratch.clear();
+        self.instance_scratch.extend(self.visible.iter().map(|v| v.2));
+        if !self.instance_scratch.is_empty() {
+            self.queue.write_buffer(&self.instances, 0, bytemuck::cast_slice(&self.instance_scratch));
         }
 
         let cloud_origin = (DVec3::new(p.camera.x + p.time as f64 * CLOUD_SPEED, 0.0, p.camera.z))
