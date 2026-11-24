@@ -293,4 +293,28 @@ fn blocks_that_take_the_use_come_before_the_egg() {
     w.set_block(WALL, Block::CHEST);
     assert!(matches!(use_egg(&mut s, &mut w, &mut e).unwrap(), Some(Used::Screen { .. })));
     assert!(e.mobs.is_empty());
+
+    // Blocks whose use passes let the egg act: `CakeBlock.eat` for a full
+    // survival player, and `DoorBlock.useWithoutItem` for an iron door.
+    let (mut w, mut s, mut e) = scene(MobKind::Pig);
+    w.set_block(WALL, Block::AIR);
+    let cake = IVec3::new(6, 145, 4);
+    w.set_block(cake, Block::cake(0));
+    s.vitals.hunger.food = 20.0;
+    assert!(!s.vitals.hunger.can_eat());
+    s.player.pitch = -0.6;
+    let used = use_egg(&mut s, &mut w, &mut e).unwrap();
+    assert!(matches!(used, Some(Used::SpawnedMob { .. })), "{used:?}");
+    assert_eq!(w.get_block(cake), Some(Block::cake(0)), "the cake is untouched");
+    assert_eq!(e.mobs.len(), 1);
+    assert!(e.mobs[0].pos.y > 145.0, "on top of the cake");
+
+    use voxelcraft::world::{block::Facing, redstone_blocks::iron_door};
+    let (mut w, mut s, mut e) = scene(MobKind::Pig);
+    w.set_block(WALL - IVec3::Y, iron_door(Facing::East, false, false));
+    w.set_block(WALL, iron_door(Facing::East, false, true));
+    let used = use_egg(&mut s, &mut w, &mut e).unwrap();
+    assert!(matches!(used, Some(Used::SpawnedMob { .. })), "{used:?}");
+    assert_eq!(w.get_block(WALL), Some(iron_door(Facing::East, false, true)), "still shut");
+    assert_eq!(e.mobs.len(), 1);
 }

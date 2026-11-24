@@ -1091,7 +1091,13 @@ impl PlayerSession {
             || world.bell_hit_rings(pos, self.player.eye(), self.player.forward().as_dvec3());
         // `use_redstone_by` posts the use's game event from this player.
         let source = crate::world::vibration::EventSource::player(self.id, self.player.sneaking);
-        if !ctx.sneaking && rings && world.use_redstone_by(pos, source) {
+        // Iron doors and trapdoors pass (`canOpenByHand`), so with an item
+        // held its use follows (`redstone_usable` leaves them out).
+        if !ctx.sneaking
+            && rings
+            && (held.is_none() || world.redstone_usable(pos))
+            && world.use_redstone_by(pos, source)
+        {
             return Ok(Some(Used::Redstone { cell: pos }));
         }
         world.touch_redstone_ore(pos);
@@ -1187,17 +1193,34 @@ impl PlayerSession {
                 Some(Block::DRAGON_EGG) => {
                     return Ok(Some(Used::EggTeleported { destination: world.teleport_egg(pos) }));
                 }
-                Some(b) if b.cake_bites().is_some() => {
+                // `CakeBlock.eat` passes when the player can't eat; with an
+                // item held, that item's use follows (a spawn egg, a block).
+                Some(b) if b.cake_bites().is_some() && held.is_none() => {
                     if !survival_items::bite_cake(world, pos, &mut self.vitals, creative) {
                         return Ok(None);
                     }
+                    return Ok(Some(Used::CakeBitten { cell: pos }));
+                }
+                Some(b)
+                    if b.cake_bites().is_some()
+                        && survival_items::bite_cake(world, pos, &mut self.vitals, creative) =>
+                {
                     return Ok(Some(Used::CakeBitten { cell: pos }));
                 }
                 Some(b) if b.is_bed() => return Ok(Some(Used::Bed { cell: pos })),
                 Some(_) if held != Some(Item::BONE_MEAL) && world.harvest(pos) => {
                     return Ok(Some(Used::Harvested { cell: pos }));
                 }
-                Some(b) if b.is_door() || b.is_gate() => {
+                // `DoorBlock.useWithoutItem` passes for a door hands can't
+                // open (iron); with an item held, that item's use follows.
+                Some(b)
+                    if (b.is_door() || b.is_gate())
+                        && (held.is_none()
+                            || !matches!(
+                                crate::world::redstone_blocks::component(b),
+                                Some(crate::world::redstone_blocks::Component::IronDoor { .. })
+                            )) =>
+                {
                     let open = toggle_door(world, pos, self.player.forward());
                     return Ok(Some(Used::Door { cell: pos, open }));
                 }
