@@ -3,7 +3,7 @@ use std::sync::{Arc, OnceLock};
 use super::dsp::{self, RATE};
 use super::export::{stats, wav_bytes};
 use super::mixer::{Command, FAR, MAX_OTHERS, MAX_VOICES, Mixer, NEAR, attenuation, pan_gains};
-use super::sounds::{Call, Voice};
+use super::sounds::{Call, ContainerCue, Material, Voice, material};
 use super::*;
 use crate::world::gadgets::Instrument;
 
@@ -293,7 +293,12 @@ fn synthesis_is_fast() {
     let start = std::time::Instant::now();
     let bank = Bank::synthesize();
     let ms = start.elapsed().as_secs_f64() * 1000.0;
-    println!("synthesized {} buffers in {ms:.1} ms", bank.buffers.len());
+    println!(
+        "synthesized {} buffers ({:.1} s of audio, {:.1} MB) in {ms:.1} ms",
+        bank.buffers.len(),
+        bank.total_samples() as f32 / RATE,
+        bank.total_samples() as f32 * 4.0 / 1e6
+    );
     assert!(ms < 1000.0, "synthesis took {ms} ms");
 }
 
@@ -531,6 +536,10 @@ fn every_sound_has_a_java_event_and_unplayed_subtitles_are_listed() {
     let mut unmapped = Vec::new();
     let mut unknown = Vec::new();
     for sound in Sound::all() {
+        // A block family's cue that no `SoundType` plays is never played.
+        if matches!(sound, Sound::Block(f, c) if !f.has(c)) {
+            continue;
+        }
         match sound.java_event() {
             None => unmapped.push(sound.name()),
             Some(e) if java["subtitles"].get(&e).is_none() && !silent.contains(e.as_str()) => {

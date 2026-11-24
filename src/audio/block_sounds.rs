@@ -186,9 +186,11 @@ impl Family {
     }
 }
 
-/// [`Sound`]s of every family's existing cues.
+/// [`Sound`]s of every family and cue. Keys stay dense, so the few pairs
+/// no `SoundType` plays (`block.crop.place` is `item.crop.plant` in Java)
+/// are synthesized too, though nothing plays them.
 pub fn sounds() -> impl Iterator<Item = Sound> {
-    Family::all().flat_map(|f| BlockCue::ALL.into_iter().filter(move |&c| f.has(c)).map(move |c| Sound::Block(f, c)))
+    Family::all().flat_map(|f| BlockCue::ALL.map(move |c| Sound::Block(f, c)))
 }
 
 /// The step sound a hit or fall shares its buffers with (Java's hit and

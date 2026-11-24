@@ -40,7 +40,7 @@ use crate::world::terrain::SEA_LEVEL;
 use dsp::Rng;
 pub use export::{export_music, export_sounds};
 use mixer::{Command, Mixer};
-pub use sounds::{Bank, BlockCue, ContainerCue, Material, Sound, material};
+pub use sounds::{Bank, BlockCue, Sound};
 pub use source::SoundSource;
 use voxelcraft::music::{Context, MusicReader, MusicStream};
 

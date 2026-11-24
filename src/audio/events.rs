@@ -133,7 +133,10 @@ impl Sound {
                     C::Fail => "block.crafter.fail",
                 })
             }
-            Sound::Block(recipe, cue) => Some(format!("block.{}.{}", recipe.java_family(), block_cue_event(cue))),
+            // Pairs no `SoundType` plays have no event (and never play).
+            Sound::Block(family, cue) => {
+                family.has(cue).then(|| format!("block.{}.{}", family.name(), block_cue_event(cue)))
+            }
             Sound::Container(c) => s(match c {
                 ContainerCue::ChestOpen => "block.chest.open",
                 ContainerCue::ChestClose => "block.chest.close",
