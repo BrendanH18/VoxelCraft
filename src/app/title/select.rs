@@ -4,6 +4,10 @@
 //! As in Java, the focused row is the selected one, so the arrow keys, Tab
 //! and the controller's D-pad move the selection; a click selects, and a
 //! double click, Enter or the controller's A plays.
+//!
+//! v0.18 Track 7: each row shows its world's own icon (`icon.png`, taken on
+//! the first visit), or the default icon for worlds without a usable one,
+//! and an empty list says why it is empty and what to do.
 
 use std::cell::Cell;
 use std::rc::Rc;
@@ -11,7 +15,7 @@ use std::time::Instant;
 
 use super::worlds::{self, Summary};
 use super::{Action, TitleHost, create, edit, prompts};
-use crate::app::gui::{self, BUTTON_H, Confirm, Look, Notice, Rect, Screen, Size, Step, TextField, Widget, fit};
+use crate::app::gui::{BUTTON_H, Confirm, Look, Notice, Rect, Screen, Size, Step, TextField, Widget, fit};
 use crate::render::ui::{Color, Ui, WHITE};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -58,6 +62,7 @@ impl SelectWorld {
     }
 
     fn with_search<H: TitleHost>(host: &H, search: &str) -> Self {
+        host.forget_icons();
         Self {
             search: TextField::with_text(search, SEARCH_MAX).hint("Search..."),
             worlds: worlds::list(host.saves_dir()),
@@ -79,6 +84,7 @@ impl SelectWorld {
     }
 
     fn reload<H: TitleHost>(&mut self, host: &H) {
+        host.forget_icons();
         self.worlds = worlds::list(host.saves_dir());
         self.last_click = None;
     }
@@ -264,7 +270,22 @@ impl<H: TitleHost> Screen<H> for SelectWorld {
         8.0
     }
 
-    fn draw_custom(&self, _: &H, ui: &mut Ui, id: Id, rect: Rect, look: Look) {
+    /// v0.18 Track 7: an empty list says why, and what to do (Java's list
+    /// shows nothing).
+    fn draw(&self, _: &H, ui: &mut Ui, size: Size, _: f32) {
+        if !self.shown().is_empty() {
+            return;
+        }
+        let [x, top, w, _] = Self::list_rect(size);
+        let cx = x + ROW_W / 2.0;
+        let lines = empty_message(self.worlds.len(), self.search.text());
+        for (i, (line, color)) in lines.iter().enumerate() {
+            let line = fit(line, w.min(ROW_W + 40.0));
+            ui.text((cx - Ui::text_width(&line) / 2.0).floor(), top + 24.0 + i as f32 * 12.0, &line, *color);
+        }
+    }
+
+    fn draw_custom(&self, host: &H, ui: &mut Ui, id: Id, rect: Rect, look: Look) {
         let Id::Row(i) = id else { return };
         let Some(world) = self.worlds.get(i) else { return };
         let [x, y, w, h] = rect;
@@ -275,7 +296,7 @@ impl<H: TitleHost> Screen<H> for SelectWorld {
             ui.rect(x + 1.0, y + 1.0, w - 2.0, h - 2.0, [0.0, 0.0, 0.0, 1.0]);
         }
         let (cx, cy) = (x + 2.0, y + 2.0);
-        draw_icon(ui, [cx, cy, 32.0, 32.0], look.hovered);
+        draw_icon(ui, [cx, cy, 32.0, 32.0], look.hovered, host.world_icon(&world.dir));
         let text_x = cx + 35.0;
         let room = x + w - 2.0 - text_x;
         ui.text(text_x, cy + 1.0, &fit(&world.name, room), WHITE);
@@ -331,12 +352,25 @@ fn draw_segments(ui: &mut Ui, x: f32, y: f32, room: f32, parts: &[(String, Color
     }
 }
 
-/// VoxelCraft has no world icons: Java's blank icon, with its play overlay
-/// while the row is hovered.
-fn draw_icon(ui: &mut Ui, [x, y, w, h]: Rect, hovered: bool) {
-    gui::bevel(ui, [x, y, w, h], [0.24, 0.24, 0.24, 1.0], false);
+/// The lines an empty list shows: none saved yet, or none matching.
+pub(super) fn empty_message(worlds: usize, search: &str) -> Vec<(String, Color)> {
+    if worlds == 0 {
+        vec![("No worlds yet".into(), WHITE), ("Choose Create New World to make one.".into(), LINE_GREY)]
+    } else {
+        let n = if worlds == 1 { "1 world".to_string() } else { format!("{worlds} worlds") };
+        vec![(format!("No worlds match \"{search}\""), WHITE), (format!("Clear the search to see all {n}."), LINE_GREY)]
+    }
+}
+
+/// The world's icon (`part` of the UI image atlas), else the default icon,
+/// with Java's hover wash and play arrow while the row is hovered.
+fn draw_icon(ui: &mut Ui, [x, y, w, h]: Rect, hovered: bool, part: Option<[f32; 4]>) {
+    let default = crate::render::ui::DEFAULT_ICON_RECT;
+    let part = part.unwrap_or([default.x as f32, default.y as f32, default.w as f32, default.h as f32]);
+    ui.image(x, y, w, h, part, WHITE);
     if hovered {
-        ui.rect(x, y, w, h, [0.565, 0.565, 0.565, 0.627]);
+        // `0xA0909090`, blended as Java blends it.
+        ui.rect(x, y, w, h, crate::app::gui::style::argb(voxelcraft::title::icon::HOVER_FILL));
         ui.text_scaled(x + 10.0, y + 8.0, ">", WHITE, 2.0);
     }
 }

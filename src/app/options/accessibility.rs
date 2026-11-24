@@ -1,9 +1,11 @@
 //! Accessibility Settings: Java 26.3's screen with the options VoxelCraft
-//! has, in Java's order. Narrator, high contrast, chat, notification
-//! time, darkness, glint, panorama, splash and minecart options are left out
-//! until VoxelCraft has what they change. v0.18 Track 9 adds Closed Captions
-//! and the text background pair the captions use, Track 2 Menu Background
-//! Blur and Track 8 Hide Sky Flashes.
+//! has, in Java's order. Narrator, high contrast, chat, notification time,
+//! darkness, glint, splash and minecart options are left out until
+//! VoxelCraft has what they change; Monochrome Logo changes a loading screen
+//! VoxelCraft doesn't have. v0.18 Track 9 adds Closed Captions and the text
+//! background pair the captions use, Track 2 Menu Background Blur, Track 8
+//! Hide Sky Flashes and Track 7 Panorama Scroll Speed with the title
+//! panorama.
 
 use super::{Controls, OptionsHost, change, close, percent_label};
 use crate::app::gui::{OptionList, Rect, Screen, Size, Step, Widget, on_off};
@@ -20,6 +22,7 @@ pub(in crate::app) enum Id {
     FovEffects,
     DamageTilt,
     HideSkyFlashes,
+    PanoramaSpeed,
     Done,
 }
 
@@ -79,6 +82,18 @@ impl<H: OptionsHost> Screen<H> for Accessibility {
             .tooltip(
                 "Prevents Lightning Bolts or other environmental effects from making the sky flash. The sources of flashes themselves will still be visible.",
             ),
+            // `Options.percentValueLabel`, like the text background's.
+            Widget::slider(
+                Id::PanoramaSpeed,
+                z,
+                format!(
+                    "{}: {}%",
+                    voxelcraft::title::options::PANORAMA_SPEED_LABEL,
+                    (s.panorama_speed * 100.0).round() as i32
+                ),
+                s.panorama_speed as f32,
+                100,
+            ),
         ]);
         list.done(Widget::button(Id::Done, z, "Done"), size)
     }
@@ -104,6 +119,7 @@ impl<H: OptionsHost> Screen<H> for Accessibility {
             Id::DamageTilt => change(host, |s| s.damage_tilt = t),
             Id::TextBackgroundOpacity => change(host, |s| s.text_background_opacity = t),
             Id::MenuBlur => change(host, |s| s.menu_blur = super::menu_blur_at(t)),
+            Id::PanoramaSpeed => change(host, |s| s.panorama_speed = f64::from(t)),
             _ => {}
         }
     }

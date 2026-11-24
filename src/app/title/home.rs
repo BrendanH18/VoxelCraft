@@ -3,9 +3,12 @@
 //! bottom-left corner. VoxelCraft has no Realms, so its row and the icon row
 //! under it (Friends, Language, Accessibility) are left out and Options...
 //! moves up beneath Multiplayer. The update offer sits in the bottom-right
-//! corner, where Java puts its copyright line.
+//! corner, where Java puts its copyright line. v0.18 Track 7: VoxelCraft's
+//! own pixel-art wordmark (`art.rs`) takes Java's logo place, 30 GUI pixels
+//! down and centred, over the panorama with no overlay (Java 26.3's
+//! `panorama_overlay.png` is a single transparent pixel).
 
-use super::{TitleHost, create, select, worlds};
+use super::{TitleHost, art, create, select, worlds};
 use crate::app::gui::{BUTTON_H, BUTTON_W, Screen, Size, Step, Widget};
 use crate::app::options;
 use crate::render::ui::{Ui, WHITE};
@@ -22,7 +25,8 @@ pub(in crate::app) enum Id {
 /// Java's half-width buttons (Options... and Quit Game).
 const HALF_W: f32 = 98.0;
 const UPDATE_W: f32 = 100.0;
-const LOGO: &str = "VoxelCraft";
+/// `LogoRenderer.DEFAULT_HEIGHT_OFFSET`.
+const LOGO_Y: f32 = 30.0;
 
 pub(in crate::app) struct Home;
 
@@ -31,11 +35,6 @@ impl Home {
     /// stay clear of the version line and the update button.
     fn top((_, sh): Size) -> f32 {
         (sh / 4.0 + 48.0).min(sh - 112.0).max(64.0).floor()
-    }
-
-    /// The logo's scale: Java's 256-pixel logo is about 4x the font.
-    fn logo_scale(sw: f32) -> f32 {
-        if Ui::text_width(LOGO) * 4.0 <= sw - 16.0 { 4.0 } else { 3.0 }
     }
 }
 
@@ -79,13 +78,13 @@ impl<H: TitleHost> Screen<H> for Home {
         Step::Stay
     }
 
-    fn background(&self, _: &H, ui: &mut Ui, (sw, sh): Size) {
-        ui.rect(0.0, 0.0, sw, sh, [0.0, 0.0, 0.0, 0.25]);
-    }
+    /// Nothing over the panorama, as in Java.
+    fn background(&self, _: &H, _: &mut Ui, _: Size) {}
 
     fn draw(&self, host: &H, ui: &mut Ui, (sw, sh): Size, _: f32) {
-        let k = Self::logo_scale(sw);
-        ui.text_scaled(((sw - Ui::text_width(LOGO) * k) / 2.0).floor(), 30.0, LOGO, WHITE, k);
+        let (w, h) = art::wordmark_size();
+        let (w, h) = (w as f32, h as f32);
+        ui.image(((sw - w) / 2.0).floor(), LOGO_Y, w, h, [0.0, 0.0, w, h], WHITE);
         let version = format!("VoxelCraft {}", crate::update::Version::current().short());
         ui.text(2.0, sh - 10.0, &version, WHITE);
         if let Some(notice) = host.update_notice() {

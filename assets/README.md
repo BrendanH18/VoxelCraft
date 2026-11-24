@@ -17,8 +17,10 @@ it is not a manifest resource. Its widths are Java's, checked by
 `tests/typography.rs`.
 
 Supported formats are 16 x 16 RGBA8 PNG textures, schema-1 static box models
-(up to ten boxes in sixteenths, with a texture key), and mono PCM16 WAV at
-48 kHz. Entity animations and the original background compositions retain their
+(up to ten boxes in sixteenths, with a texture key), mono PCM16 WAV at
+48 kHz, and the title panorama's six faces (`panorama`: equal power-of-two
+RGB8 PNG squares, `face` 0 to 5, rendered by the game itself with
+`--panorama`; see [the title panorama](../docs/development.md#the-title-panorama)). Entity animations and the original background compositions retain their
 existing Rust implementations. Add format/schema and runtime support together
 before introducing an unsupported animation or file kind.
 

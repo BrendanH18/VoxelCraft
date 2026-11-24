@@ -333,6 +333,12 @@ impl Game {
             popup: (String::new(), now - Duration::from_secs(10)),
             save_error: None,
             screenshot: args.screenshot.clone(),
+            // v0.18 Track 7: a world this game hosts takes its icon; scripted
+            // runs only when asked (`--world-icon`), LAN clients never.
+            world_icon: (args.join.is_none() && (settings_path.is_some() || args.world_icon))
+                .then(|| world_icon::WorldIcon::new(saves_dir.join(world_dir))),
+            panorama_out: args.panorama.clone(),
+            panorama_face: None,
             screenshot_state: 0,
             screenshot_settled: None,
             open_trading: args.open_trading,

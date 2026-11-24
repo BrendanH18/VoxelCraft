@@ -4923,6 +4923,103 @@
    ]
   },
   {
+   "group": "title",
+   "matrix": {
+    "size": [
+     [
+      1920,
+      1080
+     ],
+     [
+      1280,
+      720
+     ]
+    ],
+    "gui_scale": [
+     "auto",
+     2
+    ]
+   },
+   "title_screen": true,
+   "render_distance": 2,
+   "name": "world-list-icons",
+   "description": "Select World with the same four saves, three with the icon the game takes on a first visit from their spawn (v0.18 track 7); the pre-0.6 world keeps the default icon",
+   "saves": [
+    {
+     "dir": "Survival_Island",
+     "seed": 42,
+     "props": {
+      "name": "Survival Island",
+      "mode": "survival",
+      "difficulty": "normal",
+      "terrain": "2",
+      "version": "0.17.0"
+     },
+     "icon": {
+      "size": [
+       640,
+       360
+      ],
+      "render_distance": 4,
+      "time": 0.25
+     }
+    },
+    {
+     "dir": "Creative_Builds",
+     "seed": 7,
+     "props": {
+      "name": "Creative Builds",
+      "mode": "creative",
+      "difficulty": "peaceful",
+      "terrain": "2",
+      "version": "0.17.0"
+     },
+     "icon": {
+      "size": [
+       640,
+       360
+      ],
+      "render_distance": 4,
+      "time": 0.25
+     }
+    },
+    {
+     "dir": "Hardcore",
+     "seed": 1234,
+     "props": {
+      "name": "Hardcore",
+      "mode": "survival",
+      "hardcore": "true",
+      "difficulty": "hard",
+      "terrain": "2",
+      "version": "0.16.0"
+     },
+     "icon": {
+      "size": [
+       640,
+       360
+      ],
+      "render_distance": 4,
+      "time": 0.25
+     }
+    },
+    {
+     "dir": "Old_World",
+     "seed": 99,
+     "props": {
+      "name": "Old World",
+      "mode": "survival",
+      "difficulty": "easy",
+      "terrain": "1"
+     }
+    }
+   ],
+   "args": [
+    "--open-menu",
+    "select"
+   ]
+  },
+  {
    "group": "atmosphere",
    "hud": false,
    "pose": [

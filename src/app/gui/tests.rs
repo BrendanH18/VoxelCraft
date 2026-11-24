@@ -31,9 +31,6 @@ impl Host for TestHost {
     fn click(&mut self) {
         self.clicks += 1;
     }
-    fn in_world(&self) -> bool {
-        false
-    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
