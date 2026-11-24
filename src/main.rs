@@ -79,6 +79,18 @@ pub struct Args {
     pub time: Option<f64>,
     /// `--weather`: start raining (true) or clear (false).
     pub weather: Option<bool>,
+    /// `--weather thunder`: start a thunderstorm (with `weather` raining).
+    pub thunder: bool,
+    /// `--gui-scale`: the GUI Scale option for this session (0 is Auto).
+    pub gui_scale: Option<u32>,
+    /// `--open-recipe-book`: start with the recipe book open (screenshots).
+    pub open_recipe_book: bool,
+    /// `--creative-tab`: open the creative inventory on this Java tab id (screenshots).
+    pub creative_tab: Option<&'static str>,
+    /// `--hardcore`: a new world is a Hardcore world.
+    pub hardcore: bool,
+    /// `--gamerule name=value`: rules set on the world once loaded (repeatable).
+    pub gamerules: Vec<(String, String)>,
     /// `--dimension`: start in the Overworld, Nether or End.
     pub dimension: Option<world::terrain::Dimension>,
     /// Blocks to set once the world has loaded (debugging/screenshots).
@@ -169,6 +181,16 @@ voxelcraft [options]
   --inventory-search <text>  initial inventory search query
   --open-trading    open a targeted villager once it claims a job (screenshots)
   --open-inventory  start with the inventory screen open (screenshots)
+  --open-recipe-book  start with the recipe book open, in the inventory or
+                    beside --open-block's crafting table (screenshots)
+  --creative-tab <id>  open the creative inventory on this Java tab
+                    (building_blocks ... search ... inventory; screenshots)
+  --gui-scale <auto|n>  GUI Scale for this session (scripted runs ignore
+                    saved options; n is capped at what fits the window)
+  --hardcore        a new world is a Hardcore world (with --health 0, the
+                    Hardcore death)
+  --gamerule r=v    set a game rule once the world loads (repeatable; e.g.
+                    advance_time=false holds --time for captures)
   --pad-player <s>  seat a controller player holding a copy of your
                     inventory, with play, pause, inventory, crafting or
                     palette (creative) open
@@ -178,8 +200,9 @@ voxelcraft [options]
                     select, create, edit, recreate, backup, multiplayer or direct on the
                     title screens (edit, recreate and backup use --world's save, else
                     the last played)
-  --open-block x,y,z  open the furnace, chest, brewing stand, enchanting
-                    table, anvil or smithing table once loaded (screenshots)
+  --open-block x,y,z  open the crafting table, furnace, chest, brewing stand,
+                    enchanting table, anvil, smithing table or another
+                    workstation once loaded (screenshots)
   --place x,y,z,b   set a block once loaded (repeatable; y may be ~ for the
                     terrain surface, e.g. 0,~,0,water; b may be a raw block id)
   --sign x,y,z,text write a sign's front text once placed, lines split by |
@@ -221,7 +244,8 @@ voxelcraft [options]
   --wait <secs>     with --screenshot: keep simulating this long first
   --animation-time <secs>  hold the animation clock (idle animations, clouds, water) at this time, for comparable captures
   --time <0..1>     starting time of day (0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight)
-  --weather <w>     start with clear skies or rain (clear, rain)
+  --weather <w>     start with clear skies, rain or a thunderstorm (clear,
+                    rain, thunder)
   --dimension <d>   start in overworld, nether or end (arriving through a
                     portal unless --pose is given)
   --screenshot <f>  wait for the world to load, save a PNG and exit
@@ -242,6 +266,11 @@ voxelcraft [options]
   --validate-assets validate embedded original resources and exit\n  --export-music    render original seeded music to target/music/*.wav with stats, and exit";
 
 fn parse_args() -> Result<Args, String> {
+    parse_args_from(std::env::args().skip(1))
+}
+
+/// Parses command-line arguments (without the program name).
+pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Result<Args, String> {
     let mut args = Args {
         seed: None,
         host_lan: None,
@@ -287,6 +316,12 @@ fn parse_args() -> Result<Args, String> {
         open_menu: None,
         time: None,
         weather: None,
+        thunder: false,
+        gui_scale: None,
+        open_recipe_book: false,
+        creative_tab: None,
+        hardcore: false,
+        gamerules: Vec::new(),
         dimension: None,
         place: Vec::new(),
         signs: Vec::new(),
@@ -316,7 +351,7 @@ fn parse_args() -> Result<Args, String> {
         export_sounds: false,
         export_music: false,
     };
-    let mut it = std::env::args().skip(1);
+    let mut it = arguments.into_iter();
     while let Some(a) = it.next() {
         let mut value = |name: &str| it.next().ok_or(format!("{name} needs a value"));
         match a.as_str() {
@@ -600,12 +635,17 @@ fn parse_args() -> Result<Args, String> {
             }
             "--time" => args.time = Some(value("--time")?.parse::<f64>().map_err(|_| "bad --time")?.rem_euclid(1.0)),
             "--weather" => {
-                args.weather = Some(match value("--weather")?.as_str() {
-                    "rain" => true,
-                    "clear" => false,
-                    _ => return Err("--weather needs clear or rain".into()),
-                })
+                let weather = voxelcraft::capture::parse_weather(&value("--weather")?)?;
+                args.weather = Some(weather != voxelcraft::capture::Weather::Clear);
+                args.thunder = weather == voxelcraft::capture::Weather::Thunder;
             }
+            "--gui-scale" => args.gui_scale = Some(voxelcraft::capture::parse_gui_scale(&value("--gui-scale")?)?),
+            "--open-recipe-book" => args.open_recipe_book = true,
+            "--creative-tab" => {
+                args.creative_tab = Some(voxelcraft::capture::parse_creative_tab(&value("--creative-tab")?)?);
+            }
+            "--hardcore" => args.hardcore = true,
+            "--gamerule" => args.gamerules.push(voxelcraft::capture::parse_gamerule(&value("--gamerule")?)?),
             "--dimension" => {
                 let v = value("--dimension")?;
                 let dim = world::terrain::Dimension::from_name(&v);
@@ -675,6 +715,18 @@ fn parse_args() -> Result<Args, String> {
     if let Some(world) = &args.world {
         data::validate_world_name(world)?;
     }
+    // A creative tab is a creative inventory screen; the recipe book opens
+    // in the inventory unless a block's screen (a crafting table) is asked for.
+    if args.creative_tab.is_some() {
+        if args.mode.is_some_and(|mode| mode != app::GameMode::Creative) {
+            return Err("--creative-tab needs creative mode".into());
+        }
+        args.mode = Some(app::GameMode::Creative);
+        args.open_inventory = true;
+    }
+    if args.open_recipe_book && args.open_block.is_none() {
+        args.open_inventory = true;
+    }
     Ok(args)
 }
 
@@ -695,6 +747,11 @@ impl Args {
         self.open_menu = None;
         self.time = None;
         self.weather = None;
+        self.thunder = false;
+        self.open_recipe_book = false;
+        self.creative_tab = None;
+        self.hardcore = false;
+        self.gamerules.clear();
         self.dimension = None;
         self.place.clear();
         self.carts.clear();

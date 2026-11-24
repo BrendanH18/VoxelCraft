@@ -320,7 +320,7 @@ pub fn save_or_report(settings: &Settings, path: &Path) -> Result<(), String> {
 
 /// The largest fixed GUI Scale kept in the file (Java's encodable maximum is
 /// far larger; no display reaches this).
-pub const MAX_GUI_SCALE: u32 = 64;
+pub const MAX_GUI_SCALE: u32 = voxelcraft::capture::MAX_GUI_SCALE;
 
 /// Java's `logMouse`: a Scroll Sensitivity slider step to its value.
 pub fn scroll_sensitivity(step: i32) -> f64 {
