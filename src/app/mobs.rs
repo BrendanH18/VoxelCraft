@@ -119,6 +119,14 @@ impl Game {
                 pos.y = self.world.generator.column(pos.x, pos.z).height + 1;
             }
             self.mobs.entities.spawn(kind, pos.as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
+            // v0.18 Track 6: a pinned mob placed standing on a full block is
+            // held from its first tick, before it can hop, swing or wander.
+            if self.mobs.still
+                && crate::physics::full_collision(&self.world, pos - IVec3::Y)
+                && let Some(mob) = self.mobs.entities.mobs.last_mut()
+            {
+                mob.on_ground = true;
+            }
             if let Some(equipped) = armor
                 && let Some(mob) = self.mobs.entities.mobs.last_mut()
             {

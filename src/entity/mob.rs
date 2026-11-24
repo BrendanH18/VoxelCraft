@@ -2158,7 +2158,7 @@ impl Mob {
         let to = face - self.pos;
         self.yaw = to.z.atan2(to.x) as f32;
         (self.head_yaw, self.head_pitch, self.limb_amp, self.vel) = (0.0, 0.0, 0.0, DVec3::ZERO);
-        self.burning = false;
+        (self.burning, self.hurt) = (false, 0.0);
         let at = self.pos + DVec3::new(0.0, self.shape().height * 0.6, 0.0);
         self.sky_light = sky_light(world, at);
         self.block_light = world.block_light(at.floor().as_ivec3()) as f32 / 15.0;
