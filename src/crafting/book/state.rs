@@ -232,7 +232,10 @@ impl RecipeBook {
         let cooking = BookType::of_furnace(kind).cooking();
         for recipe in recipes().iter().filter(|r| Some(r.kind) == cooking) {
             let result = recipe.result.item;
-            if recipe.ingredients[0].iter().any(|&input| keys.contains(&crate::world::furnace::recipe_key(input, result))) {
+            if recipe.ingredients[0]
+                .iter()
+                .any(|&input| keys.contains(&crate::world::furnace::recipe_key(input, result)))
+            {
                 self.unlock(recipe.id);
             }
         }
@@ -243,6 +246,25 @@ impl RecipeBook {
     /// (`RecipeCraftingHolder.setRecipeUsed`).
     pub fn allows(&self, grid: &Grid, limited: bool) -> bool {
         !limited || grid_recipe(grid).is_none_or(|id| self.knows(id))
+    }
+
+    /// A LAN guest's copy from the host's [`RecipeBook::serialize`]: the
+    /// known and highlighted recipes are replaced, and newly known ones
+    /// queue their toasts. The settings are taken only with `settings`,
+    /// since the guest changes its own and tells the host.
+    pub fn sync_from(&mut self, text: &str, settings: bool) {
+        let other = Self::deserialize(text);
+        for id in other.known() {
+            if !self.knows(id) && id.raw().notify && id.toast().is_some() {
+                self.toasts.push(id);
+            }
+        }
+        self.known = other.known;
+        self.highlight = other.highlight;
+        if settings {
+            self.settings = other.settings;
+        }
+        self.revision = self.revision.wrapping_add(1);
     }
 
     /// Java's `recipeBook` player data as JSON: the settings keys, then

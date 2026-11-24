@@ -938,6 +938,7 @@ impl Game {
             entities: &mut self.mobs.entities,
             audio: &mut self.audio,
             requests: Vec::new(),
+            limited_crafting: self.gamerules.bool("limited_crafting"),
         };
         let result = f(&mut screen);
         let requests = std::mem::take(&mut screen.requests);

@@ -208,12 +208,8 @@ fn embed_recipe_book() {
             None => t.alts[slots[usize::from(kind == "smithing_trim")] as usize][0],
         };
         let count = recipe.get("count").and_then(Value::as_u64).unwrap_or(1);
-        let category: String = fact["category"]
-            .as_str()
-            .expect("category")
-            .split('_')
-            .map(|w| w[..1].to_uppercase() + &w[1..])
-            .collect();
+        let category: String =
+            fact["category"].as_str().expect("category").split('_').map(|w| w[..1].to_uppercase() + &w[1..]).collect();
         let group = fact.get("group").and_then(Value::as_str).map_or("None".to_string(), |g| format!("Some({g:?})"));
         let notify = fact.get("notify").and_then(Value::as_bool).unwrap_or(true);
         let unlock = &book["unlocks"][id];
@@ -243,13 +239,16 @@ fn embed_recipe_book() {
             !enter.is_empty(),
         ));
     }
-    let mut generated =
-        String::from("/// Java item IDs and English names the book names.\npub(super) static NAMES: &[(&str, &str)] = &[\n");
+    let mut generated = String::from(
+        "/// Java item IDs and English names the book names.\npub(super) static NAMES: &[(&str, &str)] = &[\n",
+    );
     for n in &t.names {
         let display = english.get(n).and_then(Value::as_str).unwrap_or("");
         generated.push_str(&format!("({n:?}, {display:?}),\n"));
     }
-    generated.push_str("];\n/// Ingredient alternatives, as indices into `NAMES`.\npub(super) static ALTS: &[&[u16]] = &[\n");
+    generated.push_str(
+        "];\n/// Ingredient alternatives, as indices into `NAMES`.\npub(super) static ALTS: &[&[u16]] = &[\n",
+    );
     for a in &t.alts {
         generated.push_str(&format!("&{a:?},\n"));
     }

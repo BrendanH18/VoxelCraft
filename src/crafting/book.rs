@@ -351,7 +351,13 @@ fn table() -> &'static Table {
         for (i, raw) in data::LEARNABLE.iter().enumerate() {
             if !matches!(
                 raw.kind,
-                Kind::Shaped | Kind::Shapeless | Kind::Transmute | Kind::Dye | Kind::Smelting | Kind::Blasting | Kind::Smoking
+                Kind::Shaped
+                    | Kind::Shapeless
+                    | Kind::Transmute
+                    | Kind::Dye
+                    | Kind::Smelting
+                    | Kind::Blasting
+                    | Kind::Smoking
             ) {
                 continue;
             }
@@ -372,6 +378,17 @@ fn table() -> &'static Table {
             if !complete {
                 continue;
             }
+            let (mut width, mut height) = (raw.width as usize, raw.height as usize);
+            if raw.kind == Kind::Shaped {
+                // `ShapedRecipePattern.shrink`: empty outer rows and columns go.
+                let cell = |x: usize, y: usize| slots[y * width + x].is_some();
+                let cols: Vec<usize> = (0..width).filter(|&x| (0..height).any(|y| cell(x, y))).collect();
+                let rows: Vec<usize> = (0..height).filter(|&y| (0..width).any(|x| cell(x, y))).collect();
+                let (x0, x1, y0, y1) = (cols[0], cols[cols.len() - 1], rows[0], rows[rows.len() - 1]);
+                slots =
+                    (y0..=y1).flat_map(|y| (x0..=x1).map(move |x| (x, y))).map(|(x, y)| slots[y * width + x]).collect();
+                (width, height) = (x1 - x0 + 1, y1 - y0 + 1);
+            }
             let group = raw.group.map(|g| match groups.iter().position(|&h| h == g) {
                 Some(p) => p as u16,
                 None => {
@@ -385,8 +402,8 @@ fn table() -> &'static Table {
                 kind: raw.kind,
                 category: raw.category,
                 group,
-                width: raw.width as usize,
-                height: raw.height as usize,
+                width,
+                height,
                 ingredients,
                 slots,
                 result: Stack::new(result, raw.count),
@@ -684,9 +701,7 @@ pub fn matches_query(id: RecipeId, query: &str) -> bool {
     let item = recipe.result.item;
     let name = recipe.result.display_name().to_lowercase();
     let java = table().items.iter().position(|&i| i == Some(item)).map(|i| data::NAMES[i].0).unwrap_or("");
-    query
-        .split_whitespace()
-        .all(|word| name.contains(word) || java.contains(word) || item.matches_query(word))
+    query.split_whitespace().all(|word| name.contains(word) || java.contains(word) || item.matches_query(word))
 }
 
 #[cfg(test)]

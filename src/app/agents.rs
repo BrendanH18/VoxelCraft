@@ -114,7 +114,7 @@ impl Agents {
             let mut inventory = b.agent.session.inventory.clone();
             inventory.return_stacks(b.agent.session.work.into_iter().flatten());
             let mode = if b.agent.creative { voxelcraft::rules::GameMode::Creative } else { b.agent.session.mode };
-            json!({"name":name,"id":b.id.0,"position":b.agent.session.player.pos.to_array(),"yaw":b.agent.session.player.yaw,"pitch":b.agent.session.player.pitch,"mode":mode.name(),"creative":b.agent.creative,"selected":b.agent.selected,"flying":b.agent.session.player.flying,"time_since_rest":b.agent.session.vitals.time_since_rest,"ticks_frozen":b.agent.session.vitals.ticks_frozen,"warden_spawn_tracker":b.agent.session.vitals.warden.save(),"health":b.agent.session.vitals.health,"air":b.agent.session.vitals.air,"food":b.agent.session.vitals.hunger.food,"saturation":b.agent.session.vitals.hunger.saturation,"exhaustion":b.agent.session.vitals.hunger.exhaustion,"xp":b.agent.session.vitals.xp.serialize(),"effects":b.agent.session.vitals.effects.serialize(),"inventory":inventory.serialize(),"ender_chest":b.agent.session.ender.serialize(),"bed":b.agent.session.spawn_bed.map(|p|p.to_array()),"spawn_point":b.agent.session.spawn_point.map(|p|p.to_array()),"last_death":b.agent.session.last_death_to_string(),"raid_omen_position":b.agent.session.raid_omen_to_string(),"dimension":dimension})
+            json!({"name":name,"id":b.id.0,"position":b.agent.session.player.pos.to_array(),"yaw":b.agent.session.player.yaw,"pitch":b.agent.session.player.pitch,"mode":mode.name(),"creative":b.agent.creative,"selected":b.agent.selected,"flying":b.agent.session.player.flying,"time_since_rest":b.agent.session.vitals.time_since_rest,"ticks_frozen":b.agent.session.vitals.ticks_frozen,"warden_spawn_tracker":b.agent.session.vitals.warden.save(),"health":b.agent.session.vitals.health,"air":b.agent.session.vitals.air,"food":b.agent.session.vitals.hunger.food,"saturation":b.agent.session.vitals.hunger.saturation,"exhaustion":b.agent.session.vitals.hunger.exhaustion,"xp":b.agent.session.vitals.xp.serialize(),"effects":b.agent.session.vitals.effects.serialize(),"inventory":inventory.serialize(),"ender_chest":b.agent.session.ender.serialize(),"bed":b.agent.session.spawn_bed.map(|p|p.to_array()),"spawn_point":b.agent.session.spawn_point.map(|p|p.to_array()),"last_death":b.agent.session.last_death_to_string(),"raid_omen_position":b.agent.session.raid_omen_to_string(),"recipe_book":b.agent.session.recipe_book.serialize(),"dimension":dimension})
         }).collect();
         json!(profiles).to_string()
     }
@@ -162,6 +162,11 @@ impl Agents {
             }
             if let Some(text) = p["raid_omen_position"].as_str() {
                 agent.session.load_raid_omen(text);
+            }
+            // v0.18 Track 5: profiles saved before the recipe book start from
+            // Java's initial book; the first tick checks the loaded inventory.
+            if let Some(text) = p["recipe_book"].as_str() {
+                agent.session.recipe_book = crate::crafting::book::RecipeBook::deserialize(text);
             }
             agent.selected = p["selected"].as_u64().filter(|n| *n < 9).unwrap_or(0) as usize;
             agent.session.player.yaw = p["yaw"].as_f64().unwrap_or(0.0) as f32;
@@ -297,7 +302,7 @@ impl Game {
                         return Err("eight agent players already active".into());
                     }
                     let observation =
-                        matches!(command, Command::Observe(_) | Command::Players | Command::Catalog(_) | Command::Help);
+                        matches!(command, Command::Observe(_) | Command::Players | Command::Catalog(_) | Command::Recipes(..) | Command::Help);
                     if bot.reply.is_some() && !observation && !matches!(command, Command::Leave) {
                         return Err("player has a timed action in progress".into());
                     }
@@ -308,6 +313,11 @@ impl Game {
                             return Ok(Some(
                                 json!({"ok":true,"version":VERSION,"items":crate::item::Item::creative_palette().filter(|i|i.matches_query(&query)).map(|i|json!({"id":i.0,"name":i.name(),"command_name":i.name().replace(' ',"_"),"max_stack":i.max_stack()})).collect::<Vec<_>>()}),
                             ));
+                        }
+                        // v0.18 Track 5: the agent's recipe book page.
+                        Command::Recipes(filter, query) => {
+                            let page = bot.agent.recipe_list(&self.world, filter, &query);
+                            return Ok(Some(json!({"ok":true,"version":VERSION,"recipe_book":page})));
                         }
                         Command::Help => {
                             return Ok(Some(json!({"ok":true,"version":VERSION,"help":voxelcraft::agent::HELP})));

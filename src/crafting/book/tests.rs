@@ -75,10 +75,13 @@ fn grid_recipe_finds_the_learnable_recipe_and_skips_specials() {
     };
     assert_eq!(planks("oak log"), Some("oak_planks"));
     assert_eq!(planks("birch log"), Some("birch_planks"));
-    // A firework rocket is a special recipe: no learnable recipe matches.
+    // Paper and one gunpowder is the learnable `firework_rocket_simple`;
+    // a second gunpowder makes it the special `firework_rocket`.
     let mut rocket = Grid::new(2);
     rocket.cells[0] = Some(Stack::new(Item::PAPER, 1));
     rocket.cells[1] = Some(Stack::new(Item::GUNPOWDER, 1));
+    assert_eq!(grid_recipe(&rocket).map(RecipeId::name), Some("firework_rocket_simple"));
+    rocket.cells[2] = Some(Stack::new(Item::GUNPOWDER, 1));
     assert!(rocket.result().is_some());
     assert_eq!(grid_recipe(&rocket), None);
     assert_eq!(grid_recipe(&Grid::new(3)), None);

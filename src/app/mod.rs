@@ -200,7 +200,8 @@ struct Game {
     /// Crafting grid of the open screen: 2x2 in the inventory, 3x3 at a
     /// crafting table. Emptied back into the inventory when it closes.
     craft: crate::crafting::Grid,
-    recipe_book: recipe_book::RecipeBook,
+    /// v0.18 Track 5: the recipe book's view (tab, page, search, ghost, toasts).
+    recipe_book: recipe_book::View,
     /// First visible row of the creative palette.
     creative_scroll: usize,
     /// Rows scrolled in the stonecutter's recipe list or the loom's
@@ -638,7 +639,10 @@ impl ApplicationHandler for App {
                 let PhysicalKey::Code(code) = event.physical_key else { return };
                 match event.state {
                     ElementState::Pressed => {
-                        if game.console_key(&event) || game.search_key(&event) {
+                        if game.console_key(&event)
+                            || game.search_key(&event)
+                            || (game.inventory_open && !game.menu.is_open() && game.recipe_book_key(&event))
+                        {
                             return;
                         }
                         if game.menu.is_open() {
@@ -1018,11 +1022,7 @@ impl Game {
                 self.scroll -= notches;
                 let step = if notches > 0.0 { -1 } else { 1 };
                 for _ in 0..(notches.abs() as usize).min(64) {
-                    if self.recipe_book.open && self.shows_recipes() {
-                        self.recipe_book.step(step);
-                    } else {
-                        self.scroll_palette(step);
-                    }
+                    self.scroll_palette(step);
                 }
             }
         } else {
@@ -1350,18 +1350,15 @@ impl Game {
             if self.search_click() {
                 return;
             }
-            if !right && let Some(control) = self.recipe_control_under_cursor() {
-                match control {
-                    recipe_book::Control::Toggle => self.recipe_book.open = !self.recipe_book.open,
-                    recipe_book::Control::Previous => self.recipe_book.step(-1),
-                    recipe_book::Control::Next => self.recipe_book.step(1),
-                }
-                self.audio.ui_click();
+            if self.recipe_book_click(right) {
                 return;
             }
             if self.session.inventory.cursor.is_some() && self.cursor_off_panel() {
                 self.lan_command(if right { "toss_one" } else { "toss" });
                 return;
+            }
+            if let Some(slot) = self.slot_under_cursor() {
+                self.recipe_slot_clicked(slot);
             }
             if let Some(slot) = self.slot_under_cursor().and_then(lan::encode_slot) {
                 self.audio.ui_click();
@@ -1375,17 +1372,12 @@ impl Game {
         if self.throw_cursor(right) {
             return;
         }
-        if !right && let Some(control) = self.recipe_control_under_cursor() {
-            match control {
-                recipe_book::Control::Toggle => self.recipe_book.open = !self.recipe_book.open,
-                recipe_book::Control::Previous => self.recipe_book.step(-1),
-                recipe_book::Control::Next => self.recipe_book.step(1),
-            }
-            self.audio.ui_click();
+        if self.recipe_book_click(right) {
             return;
         }
         let slot = self.slot_under_cursor();
-        if slot.is_some() {
+        if let Some(slot) = slot {
+            self.recipe_slot_clicked(slot);
             self.audio.ui_click();
         }
         if self.modifiers.shift_key() && self.session.inventory.cursor.is_none() {
@@ -1409,6 +1401,7 @@ impl Game {
             entities: &mut self.mobs.entities,
             audio: &mut self.audio,
             requests: Vec::new(),
+            limited_crafting: self.gamerules.bool("limited_crafting"),
         };
         let result = f(&mut s);
         let mut close = false;
@@ -2010,6 +2003,7 @@ impl Game {
         let dt = if paused { 0.0 } else { elapsed.as_secs_f64().min(0.25) };
         self.update_credits(elapsed.as_secs_f32().min(0.25));
         self.menu_tick();
+        self.recipe_book_frame();
         // Benchmark scenes take no controller input (a stray Start would pause sampling).
         if self.lan.client.is_none() && self.benchmark.is_none() {
             self.poll_pads(dt as f32, paused);

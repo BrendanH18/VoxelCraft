@@ -63,7 +63,8 @@ pub fn place_in_grid(
     let matches = recipe.matches_grid(grid);
     let n = grid.size;
     let all: Vec<usize> = (0..n * n).collect();
-    let mut menu = Menu { slots: &mut grid.cells[..n * n], width: n, height: n, inputs: &all, clear: &all, furnace: false };
+    let mut menu =
+        Menu { slots: &mut grid.cells[..n * n], width: n, height: n, inputs: &all, clear: &all, furnace: false };
     place(recipe, &mut menu, inventory, selected, max, creative, matches)
 }
 
@@ -211,9 +212,8 @@ pub fn arrange(
 /// or `None` when no stack is left.
 fn move_to_grid(inventory: &mut Inventory, target: &mut Option<Stack>, item: Item, count: u32) -> Option<u32> {
     let slot = (0..SLOTS).find(|&i| {
-        inventory.slots[i].is_some_and(|s| {
-            s.item == item && usable_for_crafting(&s) && target.is_none_or(|t| t.stacks_with(&s))
-        })
+        inventory.slots[i]
+            .is_some_and(|s| s.item == item && usable_for_crafting(&s) && target.is_none_or(|t| t.stacks_with(&s)))
     })?;
     let stack = inventory.slots[slot]?;
     let taken = count.min(u32::from(stack.count)) as u8;
