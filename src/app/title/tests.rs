@@ -397,7 +397,7 @@ fn edit_world_backs_up_opens_folders_and_copies_the_seed() {
     let world = worlds::summary(&host.saves, "base").unwrap();
     let mut stack = over_title(EditWorld::new(&world, Default::default()));
     let ids: Vec<usize> = buttons(&stack, &host).into_iter().map(|(i, _)| i).collect();
-    let [folder, backup, backups, seed, ..] = ids[..] else { panic!("{ids:?}") };
+    let [_reset_icon, folder, backup, backups, seed, ..] = ids[..] else { panic!("{ids:?}") };
     click(&mut stack, &mut host, folder);
     click(&mut stack, &mut host, backups);
     assert_eq!(host.opened, [host.saves.join("base"), host.root.join("backups")]);
@@ -422,6 +422,103 @@ fn edit_world_backs_up_opens_folders_and_copies_the_seed() {
     tick_until(&mut stack, &mut host, |s, h| !s.peek(h, SIZE).0.slots.is_empty());
     assert_eq!(stack.depth(), 3, "the error is over Edit World");
     drop(held);
+}
+
+/// A 64 x 64 icon written the way the game writes one.
+fn write_icon(host: &Host, dir: &str) -> PathBuf {
+    let path = host.saves.join(dir).join(voxelcraft::title::icon::FILE);
+    let pixels: Vec<u8> = (0..64 * 64).flat_map(|i| [(i % 64 * 4) as u8, (i / 64 * 4) as u8, 90, 255]).collect();
+    voxelcraft::title::icon::write(&path, &pixels).unwrap();
+    path
+}
+
+/// v0.18 Track 7: Edit World's Reset Icon, Java's second row: greyed out
+/// without an icon file; with one, it deletes the file and greys out.
+#[test]
+fn reset_icon_deletes_the_icon_and_greys_out() {
+    let mut host = Host::new("reset-icon");
+    three_worlds(&host);
+    let world = worlds::summary(&host.saves, "base").unwrap();
+    let stack = over_title(EditWorld::new(&world, Default::default()));
+    let [(reset, enabled), ..] = buttons(&stack, &host)[..] else { panic!() };
+    assert!(!enabled, "no icon yet: nothing to reset");
+    let label = |stack: &Stack<Host>, host: &Host| stack.peek(host, SIZE).0.slots[reset].rect;
+    let first = label(&stack, &host);
+    // It sits right under the name field, above Open World Folder.
+    let (shape, _) = stack.peek(&host, SIZE);
+    let field = shape.slots.iter().position(|s| s.field).unwrap();
+    assert!(shape.slots[field].rect[1] < first[1] && first[1] < shape.slots[reset + 1].rect[1]);
+
+    let icon = write_icon(&host, "base");
+    let mut stack = over_title(EditWorld::new(&world, Default::default()));
+    assert!(buttons(&stack, &host)[0].1, "an icon file: Reset Icon works");
+    click(&mut stack, &mut host, reset);
+    assert!(!icon.exists(), "the icon is deleted");
+    assert!(!buttons(&stack, &host)[0].1, "and the button greys out");
+    assert_eq!(stack.depth(), 2, "Edit World stays open");
+    assert!(host.level("base").props["name"] == "Survival Base", "nothing else changes");
+}
+
+/// v0.18 Track 7: an empty world list says why, and what to do.
+#[test]
+fn empty_world_lists_say_why() {
+    let lines = |n, s| select::empty_message(n, s).into_iter().map(|(t, _)| t).collect::<Vec<_>>();
+    assert_eq!(lines(0, ""), ["No worlds yet", "Choose Create New World to make one."]);
+    assert_eq!(lines(3, "zz"), ["No worlds match \"zz\"", "Clear the search to see all 3 worlds."]);
+    assert_eq!(lines(1, "q")[1], "Clear the search to see all 1 world.");
+    // The screen draws them when the search hides every world.
+    let mut host = Host::new("empty-list");
+    three_worlds(&host);
+    let mut stack = over_title(SelectWorld::new(&host));
+    typed(&mut stack, &mut host, "nothing like it");
+    assert_eq!(rows(&stack, &host), 0);
+    let mut ui = Ui::with_scale(SIZE.0, SIZE.1, 1.0);
+    stack.draw(&host, &mut ui);
+    assert!(!ui.verts.is_empty());
+}
+
+/// v0.18 Track 7: icons load from each world's `icon.png` into atlas slots,
+/// a few per frame; missing, corrupt, wrong-sized, linked or huge files
+/// fall back to the default icon, and nothing in the world changes.
+#[test]
+fn world_icons_load_bounded_and_fall_back_safely() {
+    use voxelcraft::title::icon::{FILE, MAX_FILE_BYTES};
+    let host = Host::new("icons");
+    for dir in ["good", "missing", "corrupt", "small", "huge", "folder", "linked"] {
+        host.world(dir, "name=W\n", 10);
+    }
+    write_icon(&host, "good");
+    std::fs::write(host.saves.join("corrupt").join(FILE), b"\x89PNG\r\n\x1a\nnot really").unwrap();
+    // A valid PNG of the wrong size (Java refuses anything but 64 x 64).
+    let small = host.saves.join("small").join(FILE);
+    let mut enc = png::Encoder::new(std::fs::File::create(&small).unwrap(), 32, 32);
+    enc.set_color(png::ColorType::Rgb);
+    enc.write_header().unwrap().write_image_data(&[7; 32 * 32 * 3]).unwrap();
+    std::fs::write(host.saves.join("huge").join(FILE), vec![0u8; MAX_FILE_BYTES as usize + 1]).unwrap();
+    std::fs::create_dir(host.saves.join("folder").join(FILE)).unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(host.saves.join("good").join(FILE), host.saves.join("linked").join(FILE)).unwrap();
+    let before: Vec<_> =
+        ["good", "corrupt"].iter().map(|d| std::fs::read(host.saves.join(d).join("level.txt")).unwrap()).collect();
+
+    let mut icons = Icons { budget: 100, ..Default::default() };
+    assert!(icons.get(&host.saves, "good").is_some());
+    assert_eq!(icons.uploads.len(), 1);
+    assert_eq!(icons.uploads[0].1.len(), 64 * 64 * 4);
+    for dir in ["missing", "corrupt", "small", "huge", "folder", "linked"] {
+        assert_eq!(icons.get(&host.saves, dir), None, "{dir} shows the default icon");
+    }
+    assert_eq!(icons.uploads.len(), 1, "nothing else is uploaded");
+    // Known worlds aren't read again; a new frame's budget bounds new reads.
+    let mut icons = Icons { budget: 2, ..Default::default() };
+    assert!(icons.get(&host.saves, "good").is_some());
+    icons.get(&host.saves, "missing");
+    assert_eq!(icons.get(&host.saves, "corrupt"), None);
+    assert!(!icons.slots.contains_key("corrupt"), "over budget: left for a later frame");
+    assert!(icons.get(&host.saves, "good").is_some(), "cached, no budget needed");
+    let after: Vec<_> =
+        ["good", "corrupt"].iter().map(|d| std::fs::read(host.saves.join(d).join("level.txt")).unwrap()).collect();
+    assert_eq!(before, after, "reading icons never touches a world's save");
 }
 
 #[test]

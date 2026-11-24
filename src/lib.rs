@@ -33,6 +33,7 @@ pub mod session;
 pub mod simulation;
 pub mod smithing;
 pub mod survival_items;
+pub mod title;
 pub mod weapons;
 mod workers;
 pub mod world;

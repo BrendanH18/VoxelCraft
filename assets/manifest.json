@@ -30,6 +30,66 @@
       "provenance": "Original VoxelCraft swept resonator composition, no external samples",
       "sound": "pop",
       "sample_rate": 48000
+    },
+    {
+      "key": "voxelcraft:panorama_0",
+      "kind": "panorama",
+      "path": "assets/panorama/panorama_0.png",
+      "license": "MIT OR Apache-2.0",
+      "provenance": "Rendered by VoxelCraft itself (--panorama), v0.18 Track 7, 2026-11-23: the north face of a savanna village, seed 1234, from -942,78,190 at time 0.2; see docs/development.md#the-title-panorama",
+      "face": 0,
+      "width": 1024,
+      "height": 1024
+    },
+    {
+      "key": "voxelcraft:panorama_1",
+      "kind": "panorama",
+      "path": "assets/panorama/panorama_1.png",
+      "license": "MIT OR Apache-2.0",
+      "provenance": "Rendered by VoxelCraft itself (--panorama), v0.18 Track 7, 2026-11-23: the east face of a savanna village, seed 1234, from -942,78,190 at time 0.2; see docs/development.md#the-title-panorama",
+      "face": 1,
+      "width": 1024,
+      "height": 1024
+    },
+    {
+      "key": "voxelcraft:panorama_2",
+      "kind": "panorama",
+      "path": "assets/panorama/panorama_2.png",
+      "license": "MIT OR Apache-2.0",
+      "provenance": "Rendered by VoxelCraft itself (--panorama), v0.18 Track 7, 2026-11-23: the south face of a savanna village, seed 1234, from -942,78,190 at time 0.2; see docs/development.md#the-title-panorama",
+      "face": 2,
+      "width": 1024,
+      "height": 1024
+    },
+    {
+      "key": "voxelcraft:panorama_3",
+      "kind": "panorama",
+      "path": "assets/panorama/panorama_3.png",
+      "license": "MIT OR Apache-2.0",
+      "provenance": "Rendered by VoxelCraft itself (--panorama), v0.18 Track 7, 2026-11-23: the west face of a savanna village, seed 1234, from -942,78,190 at time 0.2; see docs/development.md#the-title-panorama",
+      "face": 3,
+      "width": 1024,
+      "height": 1024
+    },
+    {
+      "key": "voxelcraft:panorama_4",
+      "kind": "panorama",
+      "path": "assets/panorama/panorama_4.png",
+      "license": "MIT OR Apache-2.0",
+      "provenance": "Rendered by VoxelCraft itself (--panorama), v0.18 Track 7, 2026-11-23: the up face of a savanna village, seed 1234, from -942,78,190 at time 0.2; see docs/development.md#the-title-panorama",
+      "face": 4,
+      "width": 1024,
+      "height": 1024
+    },
+    {
+      "key": "voxelcraft:panorama_5",
+      "kind": "panorama",
+      "path": "assets/panorama/panorama_5.png",
+      "license": "MIT OR Apache-2.0",
+      "provenance": "Rendered by VoxelCraft itself (--panorama), v0.18 Track 7, 2026-11-23: the down face of a savanna village, seed 1234, from -942,78,190 at time 0.2; see docs/development.md#the-title-panorama",
+      "face": 5,
+      "width": 1024,
+      "height": 1024
     }
   ],
   "procedural_resources": {

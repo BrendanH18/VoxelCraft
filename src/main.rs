@@ -115,6 +115,12 @@ pub struct Args {
     pub wait: f64,
     /// `--animation-time`: hold the animation clock here, so captures can be compared.
     pub animation_time: Option<f32>,
+    /// v0.18 Track 7: `--panorama DIR`, with `--screenshot`: render the six
+    /// title panorama faces from the pose into DIR before the screenshot.
+    pub panorama: Option<std::path::PathBuf>,
+    /// v0.18 Track 7: `--world-icon`: take the world's icon in a scripted
+    /// run too (by the usual rule), waiting for it before `--screenshot` exits.
+    pub world_icon: bool,
     /// x,y,z,yaw_deg,pitch_deg
     pub pose: Option<[f64; 5]>,
     /// Starting health / air overrides (debugging/screenshots).
@@ -243,6 +249,10 @@ voxelcraft [options]
                     an allay an item to hold
   --wait <secs>     with --screenshot: keep simulating this long first
   --animation-time <secs>  hold the animation clock (idle animations, clouds, water) at this time, for comparable captures
+  --panorama <dir>  with --screenshot and a square --size: render the title
+                    panorama's six faces (panorama_0..5.png) from the --pose
+                    position into dir first
+  --world-icon      take the world's icon.png even in a scripted run
   --time <0..1>     starting time of day (0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight)
   --weather <w>     start with clear skies, rain or a thunderstorm (clear,
                     rain, thunder)
@@ -333,6 +343,8 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
         spawn_held: Vec::new(),
         wait: 0.0,
         animation_time: None,
+        panorama: None,
+        world_icon: false,
         pose: None,
         health: None,
         air: None,
@@ -697,6 +709,8 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
                 }
             }
             "--screenshot" => args.screenshot = Some(value("--screenshot")?),
+            "--panorama" => args.panorama = Some(value("--panorama")?.into()),
+            "--world-icon" => args.world_icon = true,
             "--pose" => {
                 let v: Vec<f64> = value("--pose")?.split(',').filter_map(|s| s.trim().parse().ok()).collect();
                 args.pose = Some(v.try_into().map_err(|_| "--pose needs x,y,z,yaw,pitch")?);

@@ -1,8 +1,10 @@
 //! Accessibility Settings: Java 26.3's screen with the options VoxelCraft
 //! has, in Java's order. Narrator, high contrast, chat, menu blur, notification
-//! time, darkness, glint, lightning flash, panorama, splash and minecart
-//! options are left out until VoxelCraft has what they change. v0.18 Track 9
-//! adds Closed Captions and the text background pair the captions use.
+//! time, darkness, glint, lightning flash, splash and minecart options are
+//! left out until VoxelCraft has what they change; Monochrome Logo changes
+//! a loading screen VoxelCraft doesn't have. v0.18 Track 9 adds Closed
+//! Captions and the text background pair the captions use; Track 7 adds
+//! Panorama Scroll Speed with the title panorama.
 
 use super::{Controls, OptionsHost, change, close, percent_label};
 use crate::app::gui::{OptionList, Rect, Screen, Size, Step, Widget, on_off};
@@ -17,6 +19,7 @@ pub(in crate::app) enum Id {
     Distortion,
     FovEffects,
     DamageTilt,
+    PanoramaSpeed,
     Done,
 }
 
@@ -65,6 +68,18 @@ impl<H: OptionsHost> Screen<H> for Accessibility {
                 .tooltip("Controls how much the field of view can change with gameplay effects."),
             Widget::slider(Id::DamageTilt, z, percent_label("Damage Tilt", s.damage_tilt), s.damage_tilt, 100)
                 .tooltip("The amount of camera shake caused by being hurt."),
+            // `Options.percentValueLabel`, like the text background's.
+            Widget::slider(
+                Id::PanoramaSpeed,
+                z,
+                format!(
+                    "{}: {}%",
+                    voxelcraft::title::options::PANORAMA_SPEED_LABEL,
+                    (s.panorama_speed * 100.0).round() as i32
+                ),
+                s.panorama_speed as f32,
+                100,
+            ),
         ]);
         list.done(Widget::button(Id::Done, z, "Done"), size)
     }
@@ -88,6 +103,7 @@ impl<H: OptionsHost> Screen<H> for Accessibility {
             Id::FovEffects => change(host, |s| s.fov_effects = t * t),
             Id::DamageTilt => change(host, |s| s.damage_tilt = t),
             Id::TextBackgroundOpacity => change(host, |s| s.text_background_opacity = t),
+            Id::PanoramaSpeed => change(host, |s| s.panorama_speed = f64::from(t)),
             _ => {}
         }
     }

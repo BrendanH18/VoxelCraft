@@ -59,6 +59,8 @@ fn sample_block_level(uv: vec2<f32>, layer: u32) -> vec4<f32> {
 // Item icons, addressed as layers from 4096 on (see `tex::ITEM_BASE`).
 @group(1) @binding(2) var items: texture_2d_array<f32>;
 @group(2) @binding(0) var font: texture_2d<f32>;
+// v0.18 Track 7: the UI image atlas (wordmark, world icons).
+@group(2) @binding(1) var ui_images: texture_2d<f32>;
 
 @vertex
 fn vs_line(@location(0) pos: vec3<f32>) -> @builtin(position) vec4<f32> {
@@ -114,7 +116,7 @@ fn vs_ui(
 
 @fragment
 fn fs_ui(in: UiOut) -> @location(0) vec4<f32> {
-    // layer -2: font glyph, -1: flat colour, >= 0: tinted block texture,
+    // layer -3: UI image, -2: font glyph, -1: flat colour, >= 0: tinted block texture,
     // >= 4096: tinted item icon. A negative alpha fills the texture's shape
     // with the colour instead (the enchantment glint).
     if in.layer >= 0.0 && in.color.a < 0.0 {
@@ -126,6 +128,9 @@ fn fs_ui(in: UiOut) -> @location(0) vec4<f32> {
             a = sample_block_level(in.uv, u32(layer)).a;
         }
         return vec4<f32>(in.color.rgb, -in.color.a * a);
+    }
+    if in.layer < -2.5 {
+        return textureSampleLevel(ui_images, blocks_sampler, in.uv, 0.0) * in.color;
     }
     if in.layer < -1.5 {
         let coverage = textureSampleLevel(font, blocks_sampler, in.uv, 0.0).r;

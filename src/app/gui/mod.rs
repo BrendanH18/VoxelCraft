@@ -784,8 +784,8 @@ impl<H: Host> Stack<H> {
         }
     }
 
-    /// How many screens are open, for tests.
-    #[cfg(test)]
+    /// How many screens are open (the title draws its panorama sharp only
+    /// under the title menu alone).
     pub fn depth(&self) -> usize {
         self.entries.len()
     }

@@ -290,6 +290,12 @@ fn accessibility_sliders_use_javas_labels_and_curves() {
     assert_eq!(label(&screen, &host, accessibility::Id::FovEffects), "FOV Effects: 25%");
     screen.slide(&mut host, accessibility::Id::DamageTilt, 0.5);
     assert_eq!(label(&screen, &host, accessibility::Id::DamageTilt), "Damage Tilt: 50%");
+    // v0.18 Track 7: Panorama Scroll Speed, a percentage with no OFF.
+    assert_eq!(label(&screen, &host, accessibility::Id::PanoramaSpeed), "Panorama Scroll Speed: 100%");
+    screen.slide(&mut host, accessibility::Id::PanoramaSpeed, 0.0);
+    assert_eq!(label(&screen, &host, accessibility::Id::PanoramaSpeed), "Panorama Scroll Speed: 0%");
+    screen.slide(&mut host, accessibility::Id::PanoramaSpeed, 0.25);
+    assert_eq!(host.settings.panorama_speed, 0.25);
     screen.activate(&mut host, accessibility::Id::ViewBobbing);
     assert!(!host.settings.view_bobbing);
     assert_eq!(crate::app::fov_effects(1.2, 0.0), 1.0, "FOV Effects OFF keeps the FOV");

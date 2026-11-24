@@ -18,6 +18,30 @@ pub struct UiVertex {
 
 pub const SOLID: f32 = -1.0;
 pub const GLYPH: f32 = -2.0;
+/// v0.18 Track 7: a picture from the UI image atlas (the wordmark, world
+/// icons), uv in atlas units.
+pub const IMAGE: f32 = -3.0;
+
+/// The UI image atlas's side in pixels: the wordmark in the top-left
+/// 256 x 64, the default world icon beside it, then [`ICON_SLOTS`] world
+/// icons in 64-pixel cells.
+pub const IMAGE_ATLAS: u32 = 512;
+/// Where an image sits in the atlas, in pixels.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ImageRect {
+    pub x: u32,
+    pub y: u32,
+    pub w: u32,
+    pub h: u32,
+}
+pub const WORDMARK_RECT: ImageRect = ImageRect { x: 0, y: 0, w: 256, h: 64 };
+pub const DEFAULT_ICON_RECT: ImageRect = ImageRect { x: 256, y: 0, w: 64, h: 64 };
+/// World icon cells below the wordmark row.
+pub const ICON_SLOTS: usize = 56;
+pub fn icon_slot(slot: usize) -> ImageRect {
+    let slot = slot % ICON_SLOTS;
+    ImageRect { x: (slot % 8) as u32 * 64, y: 64 + (slot / 8) as u32 * 64, w: 64, h: 64 }
+}
 
 /// Font atlas: 16x8 grid of 8x8 glyphs covering ASCII 0..128.
 pub const FONT_ATLAS_W: u32 = 128;
@@ -123,6 +147,20 @@ impl Ui {
         let v: [UiVertex; 4] =
             std::array::from_fn(|i| UiVertex { pos: self.ndc(p[i][0], p[i][1]), uv: uv[i], layer, color });
         self.verts.extend_from_slice(&[v[0], v[1], v[2], v[0], v[2], v[3]]);
+    }
+
+    /// Draws `part` of the UI image atlas (in atlas pixels) over x, y, w, h.
+    pub fn image(&mut self, x: f32, y: f32, w: f32, h: f32, part: [f32; 4], color: Color) {
+        let a = IMAGE_ATLAS as f32;
+        let [px, py, pw, ph] = part;
+        // A hair inside the edges, so nearest sampling never takes a neighbour.
+        let (u0, v0, u1, v1) = ((px + 0.01) / a, (py + 0.01) / a, (px + pw - 0.01) / a, (py + ph - 0.01) / a);
+        self.quad(
+            [[x, y], [x + w, y], [x + w, y + h], [x, y + h]],
+            [[u0, v0], [u1, v0], [u1, v1], [u0, v1]],
+            IMAGE,
+            color,
+        );
     }
 
     pub fn rect(&mut self, x: f32, y: f32, w: f32, h: f32, color: Color) {

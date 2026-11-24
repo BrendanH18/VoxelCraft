@@ -72,6 +72,23 @@ class CaptureScenesTest(unittest.TestCase):
             self.assertTrue(text.startswith("seed=42\n"), text)
             self.assertIn("name=Survival Island\n", text)
 
+    def test_icon_saves_take_their_icon_on_a_first_visit(self):
+        scene = self.scene("world-list-icons")
+        saves = [s for s in scene["saves"] if "icon" in s]
+        self.assertEqual([s["dir"] for s in saves], ["Survival_Island", "Creative_Builds", "Hardcore"])
+        args = capture_scenes.icon_args(saves[0], Path("d"), Path("p.png"))
+        joined = " ".join(args)
+        for part in ["--world Survival_Island", "--world-icon", "--size 640x360", "--rd 4", "--screenshot p.png"]:
+            self.assertIn(part, joined)
+        self.assertNotIn("--new", args, "the run opens the save written for it")
+        with tempfile.TemporaryDirectory() as tmp:
+            icons = Path(tmp) / "icons"
+            icons.mkdir()
+            (icons / "Survival_Island.png").write_bytes(b"png")
+            capture_scenes.write_saves(Path(tmp) / "saves", scene["saves"], icons)
+            self.assertEqual((Path(tmp) / "saves" / "Survival_Island" / "icon.png").read_bytes(), b"png")
+            self.assertFalse((Path(tmp) / "saves" / "Old_World" / "icon.png").exists())
+
     def test_select_by_name_or_group(self):
         picked = [s["name"] for s in capture_scenes.select(self.data, ["day", "mobs"])]
         self.assertEqual(picked, ["mobs-uneven-ground", "mobs-night", "day"])

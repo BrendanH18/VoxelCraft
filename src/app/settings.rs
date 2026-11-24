@@ -69,6 +69,9 @@ pub struct Settings {
     /// Text Background (`backgroundForChatOnly`): Chat (true, the default)
     /// keeps each overlay's own backing; Everywhere uses the opacity above.
     pub background_for_chat_only: bool,
+    /// v0.18 Track 7: Panorama Scroll Speed (`panoramaScrollSpeed`, 0..1,
+    /// 1): how fast the title panorama turns.
+    pub panorama_speed: f64,
     pub keys: super::keys::Bindings,
 }
 
@@ -120,6 +123,7 @@ impl Default for Settings {
             show_subtitles: false,
             text_background_opacity: 0.5,
             background_for_chat_only: true,
+            panorama_speed: voxelcraft::title::options::PANORAMA_SPEED_DEFAULT,
             keys: Default::default(),
         }
     }
@@ -247,6 +251,7 @@ impl Settings {
                 self.text_background_opacity = num().map_or(self.text_background_opacity, |v| v as f32)
             }
             "backgroundForChatOnly" => flag(&mut self.background_for_chat_only),
+            "panoramaScrollSpeed" => self.panorama_speed = num().unwrap_or(self.panorama_speed),
             _ => return self.keys.parse_line(key, value),
         }
         true
@@ -254,7 +259,7 @@ impl Settings {
 
     fn serialize_display_controls(&self, out: &mut String) {
         out.push_str(&format!(
-            "guiScale={}\nmaxFps={}\ngamma={}\nfovEffectScale={}\nscreenEffectScale={}\ndamageTiltStrength={}\ntoggleCrouch={}\ntoggleSprint={}\ninvertXMouse={}\ninvertYMouse={}\nmouseWheelSensitivity={:.4}\ndiscrete_mouse_scroll={}\nshowSubtitles={}\ntextBackgroundOpacity={}\nbackgroundForChatOnly={}\n",
+            "guiScale={}\nmaxFps={}\ngamma={}\nfovEffectScale={}\nscreenEffectScale={}\ndamageTiltStrength={}\ntoggleCrouch={}\ntoggleSprint={}\ninvertXMouse={}\ninvertYMouse={}\nmouseWheelSensitivity={:.4}\ndiscrete_mouse_scroll={}\nshowSubtitles={}\ntextBackgroundOpacity={}\nbackgroundForChatOnly={}\npanoramaScrollSpeed={}\n",
             self.gui_scale,
             self.max_fps,
             self.brightness,
@@ -270,6 +275,7 @@ impl Settings {
             self.show_subtitles,
             self.text_background_opacity,
             self.background_for_chat_only,
+            self.panorama_speed,
         ));
         self.keys.serialize(out);
     }
@@ -323,6 +329,7 @@ impl Settings {
         ] {
             *v = v.clamp(0.0, 1.0);
         }
+        self.panorama_speed = self.panorama_speed.clamp(0.0, 1.0);
         let (lo, hi) = SCROLL_STEPS;
         self.scroll_sensitivity = self.scroll_sensitivity.clamp(scroll_sensitivity(lo), scroll_sensitivity(hi));
         self
@@ -458,6 +465,24 @@ mod tests {
         assert_eq!(back.background_opacity(0.8), 0.25, "Everywhere uses the opacity");
         assert!(!Settings::parse("fov=80\n").show_subtitles);
         assert_eq!(Settings::parse("textBackgroundOpacity=7\n").text_background_opacity, 1.0);
+    }
+
+    /// v0.18 Track 7: Panorama Scroll Speed keeps Java's key, default and
+    /// 0..1 range, survives a save, and old files get the default.
+    #[test]
+    fn panorama_speed_round_trips_with_javas_key_and_default() {
+        use voxelcraft::title::options::{PANORAMA_SPEED_DEFAULT, PANORAMA_SPEED_KEY};
+        assert_eq!(Settings::default().panorama_speed, PANORAMA_SPEED_DEFAULT);
+        assert_eq!(PANORAMA_SPEED_KEY, "panoramaScrollSpeed");
+        let s = Settings { panorama_speed: 0.37, ..Settings::default() };
+        let text = s.serialize();
+        assert!(text.contains("\npanoramaScrollSpeed=0.37\n"), "{text}");
+        assert_eq!(Settings::parse(&text), s);
+        assert_eq!(Settings::parse("fov=80\n").panorama_speed, 1.0, "old files keep the default");
+        assert_eq!(Settings::parse("panoramaScrollSpeed=4\n").panorama_speed, 1.0);
+        assert_eq!(Settings::parse("panoramaScrollSpeed=-1\n").panorama_speed, 0.0);
+        assert_eq!(Settings::parse("panoramaScrollSpeed=nan\n").panorama_speed, 1.0);
+        assert_eq!(Settings::parse("panoramaScrollSpeed=0\n").panorama_speed, 0.0, "zero stops it");
     }
 
     #[test]
