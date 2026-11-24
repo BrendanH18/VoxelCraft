@@ -323,6 +323,7 @@ impl Game {
             self.renderer.set_vsync(s.vsync);
         }
         self.renderer.set_brightness(s.brightness);
+        self.renderer.set_mipmap_levels(s.mipmap_levels);
         self.audio.set_volumes(|source| s.sound_volume(source));
         self.audio.set_subtitles(s.show_subtitles);
     }

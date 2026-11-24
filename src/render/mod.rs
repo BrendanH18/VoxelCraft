@@ -256,6 +256,10 @@ pub struct Renderer {
     globals_buf: wgpu::Buffer,
     globals_bg: wgpu::BindGroup,
     blocks_bg: wgpu::BindGroup,
+    /// What `blocks_bg` binds, kept to rebuild it when Mipmap Levels changes.
+    block_textures: BlockTextures,
+    /// The Mipmap Levels option: the smallest level samplers may reach.
+    mipmap_levels: u32,
     font_bg: wgpu::BindGroup,
     opaque_pipeline: wgpu::RenderPipeline,
     cutout_pipeline: wgpu::RenderPipeline,
@@ -386,6 +390,45 @@ fn block_shader(source: &'static str, page_layers: Option<u32>) -> wgpu::ShaderS
     wgpu::ShaderSource::Wgsl(source)
 }
 
+/// The block texture pages and item icons that `blocks_bg` binds.
+struct BlockTextures {
+    layout: wgpu::BindGroupLayout,
+    pages: Vec<wgpu::TextureView>,
+    items: wgpu::TextureView,
+}
+
+impl BlockTextures {
+    /// The bind group with a sampler that reaches mip level `levels` at
+    /// most (the Mipmap Levels option; 0 samples only the full-size level).
+    fn bind_group(&self, device: &wgpu::Device, levels: u32) -> wgpu::BindGroup {
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("blocks sampler"),
+            address_mode_u: wgpu::AddressMode::Repeat,
+            address_mode_v: wgpu::AddressMode::Repeat,
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
+            lod_max_clamp: levels as f32,
+            ..Default::default()
+        });
+        let mut entries = vec![
+            wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&self.pages[0]) },
+            wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&sampler) },
+            wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&self.items) },
+        ];
+        // Empty pages share page zero rather than allocating unused GPU storage.
+        entries.extend((1..tex::PAGES).map(|page| wgpu::BindGroupEntry {
+            binding: page as u32 + 2,
+            resource: wgpu::BindingResource::TextureView(self.pages.get(page).unwrap_or(&self.pages[0])),
+        }));
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("blocks"),
+            layout: &self.layout,
+            entries: &entries,
+        })
+    }
+}
+
 impl Renderer {
     pub async fn new(window: Arc<Window>, vsync: bool, options: Options) -> Self {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
@@ -498,15 +541,6 @@ impl Renderer {
             textures::item_layers(),
             textures::generate_item_mips(),
         );
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("blocks sampler"),
-            address_mode_u: wgpu::AddressMode::Repeat,
-            address_mode_v: wgpu::AddressMode::Repeat,
-            mag_filter: wgpu::FilterMode::Nearest,
-            min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::MipmapFilterMode::Linear,
-            ..Default::default()
-        });
         let texture_entry = |binding| wgpu::BindGroupLayoutEntry {
             binding,
             visibility: wgpu::ShaderStages::FRAGMENT,
@@ -532,21 +566,9 @@ impl Renderer {
             label: Some("blocks layout"),
             entries: &layout_entries,
         });
-        let mut block_entries = vec![
-            wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&block_views[0]) },
-            wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&sampler) },
-            wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&items_view) },
-        ];
-        // Empty pages share page zero rather than allocating unused GPU storage.
-        block_entries.extend((1..tex::PAGES).map(|page| wgpu::BindGroupEntry {
-            binding: page as u32 + 2,
-            resource: wgpu::BindingResource::TextureView(block_views.get(page).unwrap_or(&block_views[0])),
-        }));
-        let blocks_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("blocks"),
-            layout: &blocks_layout,
-            entries: &block_entries,
-        });
+        let block_textures = BlockTextures { layout: blocks_layout.clone(), pages: block_views, items: items_view };
+        let mipmap_levels = textures::MIP_LEVELS - 1;
+        let blocks_bg = block_textures.bind_group(&device, mipmap_levels);
 
         let font_view = Self::create_font_texture(&device, &queue);
         let font_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -849,6 +871,8 @@ impl Renderer {
             globals_buf,
             globals_bg,
             blocks_bg,
+            block_textures,
+            mipmap_levels,
             font_bg,
             opaque_pipeline,
             cutout_pipeline,
@@ -1123,6 +1147,17 @@ impl Renderer {
     /// `notGamma` curve (0 Moody, 0.5 Default, 1 Bright).
     pub fn set_brightness(&mut self, brightness: f32) {
         self.brightness = brightness.clamp(0.0, 1.0);
+    }
+
+    /// Java's Mipmap Levels (0 to 4): how many of the textures' smaller
+    /// levels distant surfaces may sample. Every level stays uploaded, so a
+    /// change only replaces the sampler and its bind group: no texture work.
+    pub fn set_mipmap_levels(&mut self, levels: u32) {
+        let levels = levels.min(textures::MIP_LEVELS - 1);
+        if levels != self.mipmap_levels {
+            self.mipmap_levels = levels;
+            self.blocks_bg = self.block_textures.bind_group(&self.device, levels);
+        }
     }
 
     pub fn set_vsync(&mut self, vsync: bool) {

@@ -69,6 +69,9 @@ pub struct Settings {
     /// Text Background (`backgroundForChatOnly`): Chat (true, the default)
     /// keeps each overlay's own backing; Everywhere uses the opacity above.
     pub background_for_chat_only: bool,
+    /// v0.18 Track 3: Java's Mipmap Levels (`mipmapLevels`, 0..=4, 4): how
+    /// many of the block textures' smaller levels distant surfaces may use.
+    pub mipmap_levels: u32,
     pub keys: super::keys::Bindings,
 }
 
@@ -79,6 +82,8 @@ pub const SENSITIVITY: (f32, f32) = (0.25, 3.0);
 pub const MAX_FPS: (u32, u32) = (10, 260);
 /// Java's Scroll Sensitivity slider: 10^(n/100) for n in -200..=100.
 pub const SCROLL_STEPS: (i32, i32) = (-200, 100);
+/// Mipmap Levels' range (Java 26.3; `tests/fixtures/java/26.3/mipmap_levels.json`).
+pub const MIPMAP_LEVELS: (u32, u32) = (0, 4);
 
 impl Default for Settings {
     fn default() -> Self {
@@ -120,6 +125,7 @@ impl Default for Settings {
             show_subtitles: false,
             text_background_opacity: 0.5,
             background_for_chat_only: true,
+            mipmap_levels: MIPMAP_LEVELS.1,
             keys: Default::default(),
         }
     }
@@ -247,6 +253,7 @@ impl Settings {
                 self.text_background_opacity = num().map_or(self.text_background_opacity, |v| v as f32)
             }
             "backgroundForChatOnly" => flag(&mut self.background_for_chat_only),
+            "mipmapLevels" => self.mipmap_levels = value.parse().unwrap_or(self.mipmap_levels),
             _ => return self.keys.parse_line(key, value),
         }
         true
@@ -254,7 +261,7 @@ impl Settings {
 
     fn serialize_display_controls(&self, out: &mut String) {
         out.push_str(&format!(
-            "guiScale={}\nmaxFps={}\ngamma={}\nfovEffectScale={}\nscreenEffectScale={}\ndamageTiltStrength={}\ntoggleCrouch={}\ntoggleSprint={}\ninvertXMouse={}\ninvertYMouse={}\nmouseWheelSensitivity={:.4}\ndiscrete_mouse_scroll={}\nshowSubtitles={}\ntextBackgroundOpacity={}\nbackgroundForChatOnly={}\n",
+            "guiScale={}\nmaxFps={}\ngamma={}\nfovEffectScale={}\nscreenEffectScale={}\ndamageTiltStrength={}\ntoggleCrouch={}\ntoggleSprint={}\ninvertXMouse={}\ninvertYMouse={}\nmouseWheelSensitivity={:.4}\ndiscrete_mouse_scroll={}\nshowSubtitles={}\ntextBackgroundOpacity={}\nbackgroundForChatOnly={}\nmipmapLevels={}\n",
             self.gui_scale,
             self.max_fps,
             self.brightness,
@@ -270,6 +277,7 @@ impl Settings {
             self.show_subtitles,
             self.text_background_opacity,
             self.background_for_chat_only,
+            self.mipmap_levels,
         ));
         self.keys.serialize(out);
     }
@@ -312,6 +320,7 @@ impl Settings {
             self.set_sound_volume(source, self.sound_volume(source).clamp(0.0, 1.0));
         }
         self.gui_scale = self.gui_scale.min(MAX_GUI_SCALE);
+        self.mipmap_levels = self.mipmap_levels.clamp(MIPMAP_LEVELS.0, MIPMAP_LEVELS.1);
         // Java stores the framerate in steps of ten.
         self.max_fps = (self.max_fps.clamp(MAX_FPS.0, MAX_FPS.1) + 5) / 10 * 10;
         for v in [
@@ -524,5 +533,24 @@ mod tests {
         assert!(!wild.toggle_sneak);
         assert_eq!(wild.keys, d.keys);
         assert_eq!(Settings::parse("maxFps=33").max_fps, 30, "steps of ten");
+    }
+
+    /// v0.18 Track 3: Mipmap Levels has Java's key, range and default, and
+    /// an options file from before it loads with the default.
+    #[test]
+    fn mipmap_levels_match_java_and_persist() {
+        let java: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/mipmap_levels.json")).unwrap();
+        let m = &java["mipmapLevels"];
+        assert_eq!(m["key"], "mipmapLevels");
+        assert_eq!((m["min"].as_u64().unwrap() as u32, m["max"].as_u64().unwrap() as u32), MIPMAP_LEVELS);
+        assert_eq!(Settings::default().mipmap_levels as u64, m["default"].as_u64().unwrap());
+        let s = Settings { mipmap_levels: 2, ..Settings::default() };
+        assert!(s.serialize().contains("mipmapLevels=2\n"));
+        assert_eq!(Settings::parse(&s.serialize()), s);
+        assert_eq!(Settings::parse("render_distance=12\n").mipmap_levels, 4, "older files get the default");
+        assert_eq!(Settings::parse("mipmapLevels=9").mipmap_levels, 4);
+        assert_eq!(Settings::parse("mipmapLevels=-1").mipmap_levels, 4);
+        assert_eq!(Settings::parse("mipmapLevels=0").mipmap_levels, 0);
     }
 }
