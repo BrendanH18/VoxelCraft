@@ -299,6 +299,14 @@ fn synthesis_is_fast() {
         bank.total_samples() as f32 / RATE,
         bank.total_samples() as f32 * 4.0 / 1e6
     );
+    let block_samples: usize = Sound::all()
+        .filter(|s| matches!(s, Sound::Block(..)) && super::block_sounds::shares(*s).is_none())
+        .map(|s| {
+            let (first, count) = bank.variants(s);
+            bank.buffers[first..first + count].iter().map(Vec::len).sum::<usize>()
+        })
+        .sum();
+    println!("of which the blocks' own sounds: {:.1} s", block_samples as f32 / RATE);
     assert!(ms < 1000.0, "synthesis took {ms} ms");
 }
 
@@ -583,7 +591,7 @@ fn blocks_play_their_own_java_sound_types() {
         ("tuff", "TUFF"),
         ("mud", "MUD"),
         ("mud bricks", "MUD_BRICKS"),
-        ("copper block", "COPPER"),
+        ("block of copper", "COPPER"),
         ("cherry planks", "CHERRY_WOOD"),
         ("bamboo planks", "BAMBOO_WOOD"),
         ("crimson planks", "NETHER_WOOD"),
@@ -593,7 +601,11 @@ fn blocks_play_their_own_java_sound_types() {
         ("glass", "GLASS"),
         ("white wool", "WOOL"),
     ] {
-        let block = Block::from_name(name).unwrap_or_else(|| panic!("{name} is registered"));
+        let block = if name == "block of copper" {
+            Block(231)
+        } else {
+            Block::from_name(name).unwrap_or_else(|| panic!("{name} is registered"))
+        };
         assert_eq!(sound_type(block).map(|t| t.0), Some(java), "{name}");
     }
     let mut resolved = 0;

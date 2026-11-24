@@ -623,6 +623,8 @@ pub fn render(f: Family, cue: BlockCue, rng: &mut Rng) -> Vec<f32> {
             mix_into(&mut out, &body, 1.0, 0);
         }
     }
+    // A short fade-in: the first grains and modes start at full strength.
+    dsp::fade(&mut out, samples(0.003), 0);
     dsp::finish(out, peak * spec.level)
 }
 

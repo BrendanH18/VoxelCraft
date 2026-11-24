@@ -106,6 +106,8 @@ impl Sound {
                     C::Deactivate => "block.beacon.deactivate",
                 })
             }
+            // The small cube's eating is its own entity's event.
+            Sound::SulfurCube(crate::entity::sulfur_cube::Cue::Eat) => s("entity.small_sulfur_cube.eat"),
             Sound::SulfurCube(c) => s(c.key()),
             Sound::Conduit(c) => {
                 use crate::world::conduit::Cue as C;
