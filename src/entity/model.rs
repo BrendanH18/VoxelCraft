@@ -1356,9 +1356,12 @@ pub fn build(
         if matches!(m.kind, MobKind::Pig | MobKind::Strider) {
             mounts::equipment(m, &mut posed);
         }
+        let model_scale = animals::model_scale(m);
         for (pi, p) in posed.iter().enumerate() {
             let rot = body * p.rot;
-            let xf = |v: Vec3| origin + body * ((p.pivot + p.rot * v) * animals::model_scale(m)) * scale / 16.0;
+            let xf = |v: Vec3| origin + body * ((p.pivot + p.rot * v) * model_scale) * scale / 16.0;
+            // v0.18 Track 6: the part's map and shades, once for all its boxes.
+            let frame = (!out.flat).then(|| BoxFrame::new(&xf, rot));
             // Endermen eyes and blazes glow at full brightness.
             let glow = std::ptr::eq(p.boxes, ENDERMAN_EYES)
                 || std::ptr::eq(p.boxes, MAGMA_GLOW)
@@ -1415,7 +1418,11 @@ pub fn build(
                         cuboid.noise = 14;
                     }
                 }
-                push_cuboid(out, &cuboid, &xf, rot, (light, torch), tint, (pi * 8 + ci) as f32);
+                let seed = (pi * 8 + ci) as f32;
+                match &frame {
+                    Some(frame) if !cuboid.translucent => push_framed(out, &cuboid, frame, (light, torch), tint, seed),
+                    _ => push_cuboid(out, &cuboid, &xf, rot, (light, torch), tint, seed),
+                }
             }
         }
         // Zombie villagers use the villager mesh, which is not the six-limb armor rig.
@@ -1934,25 +1941,51 @@ pub(super) fn push_cuboid(
     if out.flat {
         return push_cuboid_flat(&mut out.verts, c, xf, rot, (light, torch), tint, seed);
     }
-    let origin = xf(Vec3::ZERO);
-    let (x, y, z) = (xf(Vec3::X) - origin, xf(Vec3::Y) - origin, xf(Vec3::Z) - origin);
-    let mut shade = [0; 8];
-    shade[6] = c.pattern;
-    for axis in 0..3 {
-        let mut n = Vec3::ZERO;
-        n[axis] = 1.0;
-        // The -axis face's normal is exactly the negative of this one.
-        let wn = rot * n;
-        shade[axis * 2] = face_shade(-wn);
-        shade[axis * 2 + 1] = face_shade(wn);
+    push_framed(out, c, &BoxFrame::new(xf, rot), (light, torch), tint, seed);
+}
+
+/// v0.18 Track 6: what every plain box of one part shares, its map to
+/// camera-relative blocks and its faces' shades, worked out once per part
+/// instead of once per box.
+pub(super) struct BoxFrame {
+    rows: [[f32; 4]; 3],
+    shade: [u8; 6],
+}
+
+impl BoxFrame {
+    pub(super) fn new(xf: &impl Fn(Vec3) -> Vec3, rot: Quat) -> Self {
+        let origin = xf(Vec3::ZERO);
+        let (x, y, z) = (xf(Vec3::X) - origin, xf(Vec3::Y) - origin, xf(Vec3::Z) - origin);
+        let mut shade = [0; 6];
+        for axis in 0..3 {
+            let mut n = Vec3::ZERO;
+            n[axis] = 1.0;
+            // The -axis face's normal is exactly the negative of this one.
+            let wn = rot * n;
+            shade[axis * 2] = face_shade(-wn);
+            shade[axis * 2 + 1] = face_shade(wn);
+        }
+        Self { rows: [[x.x, y.x, z.x, origin.x], [x.y, y.y, z.y, origin.y], [x.z, y.z, z.z, origin.z]], shade }
     }
+}
+
+/// One plain, opaque box of a part whose [`BoxFrame`] is `frame`, as an instance.
+fn push_framed(
+    out: &mut EntityMesh,
+    c: &Cuboid,
+    frame: &BoxFrame,
+    (light, torch): ([u8; 4], u8),
+    tint: ([f32; 3], f32),
+    seed: f32,
+) {
+    let s = frame.shade;
     out.boxes.push(BoxInstance {
-        rows: [[x.x, y.x, z.x, origin.x], [x.y, y.y, z.y, origin.y], [x.z, y.z, z.z, origin.z]],
+        rows: frame.rows,
         min: [c.min[0], c.min[1], c.min[2], seed * 7.0],
         max: [c.max[0], c.max[1], c.max[2], seed * 3.0],
         color: tinted(c, tint),
         light: [light[0], torch, light[2], light[3]],
-        shade,
+        shade: [s[0], s[1], s[2], s[3], s[4], s[5], c.pattern, 0],
     });
 }
 
