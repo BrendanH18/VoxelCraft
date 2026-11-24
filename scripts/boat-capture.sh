@@ -65,10 +65,11 @@ remote='status=0
     rm -rf "$out"; mkdir -p "$out"
     # One virtual screen larger than any capture; without a window manager each window
     # gets exactly the size it asks for.
-    # A server left by a killed run; the bracket keeps pkill from matching this script.
-    pkill -f "[X]vfb :91" 2>/dev/null || true
+    # A server left by a killed run goes first (by its pid: pkill -f would match this script).
+    if [ -f "$HOME/.capture-xvfb.pid" ]; then kill "$(cat "$HOME/.capture-xvfb.pid")" 2>/dev/null || true; sleep 1; fi
     Xvfb :91 -screen 0 3840x2160x24 -nolisten tcp >/dev/null 2>&1 &
     xvfb=$!
+    echo "$xvfb" > "$HOME/.capture-xvfb.pid"
     trap "kill $xvfb 2>/dev/null || true" EXIT
     sleep 1
     # Dates in the world list are shown in UTC.
@@ -89,5 +90,6 @@ if [ -s "$tmp" ]; then
     echo "boat-capture: $(find "$out" -name '*.png' | wc -l | tr -d ' ') PNGs in $out (manifest.json lists each capture's settings)" >&2
 else
     echo "boat-capture: no captures came back" >&2
+    [ "$status" != 0 ] || status=1
 fi
 exit "$status"
