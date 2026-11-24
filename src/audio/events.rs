@@ -9,7 +9,7 @@
 //! through [`super::Audio::play`].
 
 use super::sounds::{BlockCue, ContainerCue, Material, Sound};
-use super::voices::Voice;
+use super::voices::{Call, Voice};
 use crate::world::gadgets::Instrument;
 
 /// Java's entity name for a voice's events (`entity.<name>.<call>`).
@@ -52,7 +52,7 @@ impl Sound {
             Sound::Pop => s("entity.item.pickup"),
             Sound::Hurt => s("entity.player.hurt"),
             Sound::Hit => s("entity.player.attack.strong"),
-            Sound::Mob(v, c) => Some(format!("entity.{}.{}", voice_entity(v), c.name())),
+            Sound::Mob(v, c) => Some(mob_event(v, c)),
             Sound::Rain => s("weather.rain"),
             Sound::Door(open) => s(if open { "block.wooden_door.open" } else { "block.wooden_door.close" }),
             Sound::Orb => s("entity.experience_orb.pickup"),
@@ -146,6 +146,26 @@ impl Sound {
             }),
         }
     }
+}
+
+/// A voice's call: `entity.<mob>.<call>`, or the event Java plays where the
+/// mob has no plain one (no ambient call, an idle sound instead, or the
+/// creaking's twitch for its hurt).
+fn mob_event(v: Voice, c: Call) -> String {
+    let special = match (v, c) {
+        (Voice::Allay, Call::Ambient) => Some("entity.allay.ambient_without_item"),
+        (Voice::Sniffer, Call::Ambient) => Some("entity.sniffer.idle"),
+        (Voice::Breeze, Call::Ambient) => Some("entity.breeze.idle_ground"),
+        (Voice::Axolotl, Call::Ambient) => Some("entity.axolotl.idle_water"),
+        (Voice::Bee, Call::Ambient) => Some("entity.bee.loop"),
+        (Voice::Slime, Call::Ambient) => Some("entity.slime.squish"),
+        (Voice::SulfurCube, Call::Ambient) => Some("entity.sulfur_cube.squish"),
+        // The creeper's ambient voice stands in for its fuse hiss.
+        (Voice::Creeper, Call::Ambient) => Some("entity.creeper.primed"),
+        (Voice::Creaking, Call::Hurt) => Some("entity.creaking.twitch"),
+        _ => None,
+    };
+    special.map_or_else(|| format!("entity.{}.{}", voice_entity(v), c.name()), str::to_string)
 }
 
 fn block_cue_event(cue: BlockCue) -> &'static str {

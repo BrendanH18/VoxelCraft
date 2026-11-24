@@ -132,7 +132,7 @@ impl World {
     /// the first viewer's arrival and the last one's leaving sound.
     pub fn set_container_viewers(&mut self, open: &[IVec3]) {
         let mut now: FxHashSet<IVec3> = FxHashSet::default();
-        let golems: Vec<IVec3> = self.utilities.golem_viewers.keys().copied().collect();
+        let golems = self.golem_chest_cells();
         for &p in open.iter().chain(&golems) {
             let Some(container) = self.get_block(p).and_then(Container::of) else { continue };
             if matches!(container, Container::Chest | Container::CopperChest(_)) {
@@ -152,10 +152,10 @@ impl World {
             for p in cells {
                 let Some(block) = self.get_block(p) else { continue };
                 let Some(container) = Container::of(block) else { continue };
-                if let Some(pos) = sound_position(block, p) {
-                    if self.lids.cues.len() < 64 {
-                        self.lids.cues.push(Cue { pos, container, open });
-                    }
+                if let Some(pos) = sound_position(block, p)
+                    && self.lids.cues.len() < 64
+                {
+                    self.lids.cues.push(Cue { pos, container, open });
                 }
                 let entered = !self.lids.lids.contains_key(&p);
                 self.lids.lids.entry(p).or_default().should_be_open = open;
@@ -288,9 +288,12 @@ fn sound_position(b: Block, p: IVec3) -> Option<DVec3> {
     Some(centre)
 }
 
+/// A model's box in pixels: lowest and highest corners.
+pub type Bounds = ([u8; 3], [u8; 3]);
+
 /// The facing and shape (pixels) of a chest, trapped, copper or ender
 /// chest drawn as a model.
-pub fn chest_model(b: Block) -> Option<(Facing, ([u8; 3], [u8; 3]))> {
+pub fn chest_model(b: Block) -> Option<(Facing, Bounds)> {
     if let Some(s) = super::double_chest::state(b) {
         let bx = super::double_chest::shape(b)?;
         return Some((s.facing, (bx.min, bx.max)));
@@ -322,13 +325,7 @@ pub type Quad = super::colour_blocks::banner::Quad;
 /// the body and the lid, which turns up about its back edge 9 pixels up,
 /// drawn with the block's own face textures. `faces` are the block's
 /// texture layers (+X, -X, +Y, -Y, +Z, -Z) and `bounds` its shape in pixels.
-pub fn chest_quads(
-    facing: Facing,
-    bounds: ([u8; 3], [u8; 3]),
-    faces: [u16; 6],
-    openness: f32,
-    mut emit: impl FnMut(Quad),
-) {
+pub fn chest_quads(facing: Facing, bounds: Bounds, faces: [u16; 6], openness: f32, mut emit: impl FnMut(Quad)) {
     let angle = eased(openness) * std::f32::consts::FRAC_PI_2;
     let back = -facing.offset().as_vec3();
     // The hinge: the back edge of the lid's underside, 9 pixels up.
@@ -359,7 +356,7 @@ pub fn chest_quads(
     let parts: [(f32, f32, bool); 2] = [(lo[1], 10.0 / 16.0, false), (hinge_y, hi[1], true)];
     for (y0, y1, lid) in parts {
         let (a, b) = (Vec3::new(lo[0], y0, lo[2]), Vec3::new(hi[0], y1, hi[2]));
-        for face in 0..6 {
+        for (face, &layer) in faces.iter().enumerate() {
             let (d, positive) = (face / 2, face % 2 == 0);
             // The body's top and the lid's underside are hidden by each other.
             if d == 1 && ((positive && !lid) || (!positive && lid)) && openness <= 0.0 {
@@ -388,7 +385,7 @@ pub fn chest_quads(
             normal[d] = if positive { 1.0 } else { -1.0 };
             let (corners, normal) =
                 if lid { (model.map(|p| pivot + rotation * (p - pivot)), rotation * normal) } else { (model, normal) };
-            emit(Quad { corners, uv, layer: faces[face], normal, tint: None });
+            emit(Quad { corners, uv, layer, normal, tint: None });
         }
     }
 }

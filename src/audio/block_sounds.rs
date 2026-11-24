@@ -4,7 +4,7 @@
 //! `tools/extract_java_sound_fixtures.py`) names each Java block's
 //! `SoundType`, and each `SoundType`'s volume, pitch and five events. A
 //! VoxelCraft state finds its Java block by name
-//! ([`crate::java_registry::state_java_ids`]), so no block's sound is
+//! ([`voxelcraft::java_registry::state_java_ids`]), so no block's sound is
 //! guessed; states with no Java block keep the shared [`Material`] sounds.
 //!
 //! Each Java event family (`block.<family>.break` and its siblings) has its
@@ -248,8 +248,9 @@ fn table() -> &'static Table {
             types.push((name.clone(), SoundType { families, volume: number("volume"), pitch: number("pitch") }));
         }
         let names = fixture["block_names"].as_object().expect("block names");
-        let ids =
-            crate::java_registry::state_java_ids(names.iter().map(|(id, n)| (id.as_str(), n.as_str().unwrap_or(""))));
+        let ids = voxelcraft::java_registry::state_java_ids(
+            names.iter().map(|(id, n)| (id.as_str(), n.as_str().unwrap_or(""))),
+        );
         let blocks = &fixture["block_sound_types"];
         let by_state = (0..STATE_CAPACITY)
             .map(|i| {

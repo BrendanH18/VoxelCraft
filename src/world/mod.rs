@@ -1387,7 +1387,7 @@ impl World {
             }
         }
         let foliage = cols[4].and_then(|c| c.foliage.clone()).unwrap_or_else(|| Box::new([0; CHUNK_SIZE * CHUNK_SIZE]));
-        let models = self.lidded_in_chunk(pos).into_iter().map(|p| local_of(p)).collect();
+        let models = self.lidded_in_chunk(pos).into_iter().map(local_of).collect();
         Box::new(MeshInput { neighbors, light, base_y: pos.y * CHUNK_SIZE_I, min_y: self.min_y(), foliage, models })
     }
 
