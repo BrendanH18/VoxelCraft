@@ -200,6 +200,19 @@ pub mod icon {
             self.in_flight = false;
         }
 
+        /// The frame couldn't be taken at all (the surface can't be read
+        /// back): stop for this visit, so nothing waits for an icon.
+        pub fn give_up(&mut self) {
+            self.in_flight = false;
+            self.done = true;
+        }
+
+        /// Whether this rule asked for a frame that hasn't come back: only
+        /// then is a read-back frame this world's.
+        pub fn awaiting(&self) -> bool {
+            self.in_flight
+        }
+
         pub fn is_done(&self) -> bool {
             self.done
         }
