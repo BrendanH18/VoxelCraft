@@ -42,6 +42,8 @@ impl WorldIcon {
         }
         if let Some(result) = renderer.poll_icon() {
             match result {
+                // Not asked for by this world (left over from another): dropped.
+                _ if !self.rule.awaiting() => log::warn!("dropped a world icon this world didn't ask for"),
                 Ok((pixels, side)) => {
                     let path = self.path.clone();
                     self.writer = Some(std::thread::spawn(move || {
@@ -49,8 +51,8 @@ impl WorldIcon {
                     }));
                 }
                 Err(e) => {
-                    log::warn!("couldn't take the world icon: {e}");
-                    self.rule.finished();
+                    log::warn!("couldn't take the world icon, giving up for this visit: {e}");
+                    self.rule.give_up();
                 }
             }
         }
@@ -61,7 +63,8 @@ impl WorldIcon {
         }
     }
 
-    /// The world has its icon (found on disk after it was written).
+    /// The world has its icon (found on disk after it was written), or
+    /// taking one is impossible this visit.
     pub fn done(&self) -> bool {
         self.rule.is_done()
     }

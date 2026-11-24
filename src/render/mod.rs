@@ -357,6 +357,9 @@ pub struct Renderer {
     capture: Option<std::path::PathBuf>,
     /// v0.18 Track 7: the next frame's first view is copied for a world icon.
     icon_requested: bool,
+    /// v0.18 Track 7: why the requested icon couldn't be copied, for
+    /// [`Renderer::poll_icon`] to report.
+    icon_error: Option<String>,
     offscreen: Option<wgpu::Texture>,
     /// Render to `offscreen` instead of the window (benchmarks).
     pub force_offscreen: bool,
@@ -983,6 +986,7 @@ impl Renderer {
             instance_scratch: Vec::new(),
             capture: None,
             icon_requested: false,
+            icon_error: None,
             offscreen: None,
             offscreen_frames: [None, None],
             last_submission: None,
@@ -1192,6 +1196,9 @@ impl Renderer {
     /// Never waits for the GPU.
     pub fn poll_icon(&mut self) -> Option<Result<(Vec<u8>, u32), String>> {
         use std::sync::atomic::Ordering;
+        if let Some(e) = self.icon_error.take() {
+            return Some(Err(e));
+        }
         let state = self.icon.as_ref()?.state.load(Ordering::Acquire);
         if state == 0 {
             let _ = self.device.poll(wgpu::PollType::Poll);
@@ -1432,6 +1439,11 @@ impl Renderer {
         }
         self.set_entities(&Default::default());
         self.set_weather(&[]);
+        // v0.18 Track 7: an icon asked for or being read back belongs to the
+        // world being left; the next world must never write it.
+        self.icon_requested = false;
+        self.icon = None;
+        self.icon_error = None;
     }
 
     pub fn remove_mesh(&mut self, pos: IVec3) {
@@ -1909,7 +1921,8 @@ impl Renderer {
             None => self.offscreen.as_ref().unwrap(),
         };
         if !target.usage().contains(wgpu::TextureUsages::COPY_SRC) {
-            log::warn!("surface doesn't support COPY_SRC; can't take the world icon");
+            // A result all the same, so the capture isn't left waiting.
+            self.icon_error = Some("the window's surface can't be copied (no COPY_SRC)".into());
             return;
         }
         let (dx, dy, side) = voxelcraft::title::icon::square_crop(vp.width, vp.height);
