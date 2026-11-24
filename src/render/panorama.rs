@@ -295,12 +295,19 @@ impl PanoramaPass {
         );
         let (forward, up) = panorama::view(view.spin);
         let look = glam::camera::rh::view::look_to_mat4(Vec3::ZERO, forward, up);
-        // A fixed level: texels per screen pixel at the centre, or the blur's.
+        // A fixed level: texels per screen pixel at the centre; under a blur,
+        // a softer level matching the spacing of the blur's samples.
         let focal = height as f32 * 0.5 / (panorama::FOV_DEGREES.to_radians() * 0.5).tan();
         let sharp = (*size as f32 * 0.5 / focal).max(1.0).log2();
-        let lod = sharp.max(panorama::blur_lod(view.blur, height as f32, *size));
+        let (lod, disc) = if view.blur == 0 {
+            (sharp, [0.0, 0.0])
+        } else {
+            let r = view.blur as f32 * panorama::BLUR_SPREAD;
+            let lod = sharp.max(panorama::blur_lod(view.blur, height as f32, *size) - 1.5);
+            (lod, [2.0 * r / width.max(1) as f32, 2.0 * r / height.max(1) as f32])
+        };
         let uniform =
-            Uniform { inv_view_proj: (proj * look).inverse().to_cols_array_2d(), params: [lod, 1.0, 0.0, 0.0] };
+            Uniform { inv_view_proj: (proj * look).inverse().to_cols_array_2d(), params: [lod, 1.0, disc[0], disc[1]] };
         queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&uniform));
         true
     }

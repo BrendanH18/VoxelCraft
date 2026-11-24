@@ -2,10 +2,12 @@
 // view direction picks one of the six faces (`voxelcraft::title::panorama`,
 // north, east, south, west, up, down) and samples it at a fixed mip level,
 // so face seams never pick up the derivative jump of a cube's edges.
+// Screens over the panorama blur it: a disc of samples around the pixel,
+// each from a softer mip level, standing in for Java's screen blur.
 
 struct Panorama {
     inv_view_proj: mat4x4<f32>,
-    // x: mip level, y: opacity, zw: unused
+    // x: mip level, y: opacity, zw: the blur disc's radius in NDC (0: sharp)
     params: vec4<f32>,
 };
 
@@ -61,11 +63,30 @@ fn lookup(d: vec3<f32>) -> vec3<f32> {
     return vec3<f32>((dot(q, right) + 1.0) * 0.5, (1.0 - dot(q, up)) * 0.5, f32(face));
 }
 
+fn sample_at(ndc: vec2<f32>) -> vec3<f32> {
+    let far = p.inv_view_proj * vec4<f32>(ndc, 0.5, 1.0);
+    let hit = lookup(normalize(far.xyz / far.w));
+    return textureSampleLevel(faces, faces_sampler, hit.xy, u32(hit.z), p.params.x).rgb;
+}
+
+// The centre, then two rings of six (the outer turned by 30 degrees).
+const TAPS = array<vec2<f32>, 13>(
+    vec2<f32>(0.0, 0.0),
+    vec2<f32>(0.45, 0.0), vec2<f32>(0.225, 0.39), vec2<f32>(-0.225, 0.39),
+    vec2<f32>(-0.45, 0.0), vec2<f32>(-0.225, -0.39), vec2<f32>(0.225, -0.39),
+    vec2<f32>(0.779, 0.45), vec2<f32>(0.0, 0.9), vec2<f32>(-0.779, 0.45),
+    vec2<f32>(-0.779, -0.45), vec2<f32>(0.0, -0.9), vec2<f32>(0.779, -0.45),
+);
+
 @fragment
 fn fs_panorama(in: Out) -> @location(0) vec4<f32> {
-    let far = p.inv_view_proj * vec4<f32>(in.ndc, 0.5, 1.0);
-    let d = normalize(far.xyz / far.w);
-    let hit = lookup(d);
-    let c = textureSampleLevel(faces, faces_sampler, hit.xy, u32(hit.z), p.params.x);
-    return vec4<f32>(c.rgb, p.params.y);
+    if p.params.z <= 0.0 {
+        return vec4<f32>(sample_at(in.ndc), p.params.y);
+    }
+    var taps = TAPS;
+    var sum = vec3<f32>(0.0);
+    for (var i = 0u; i < 13u; i++) {
+        sum += sample_at(in.ndc + taps[i] * p.params.zw);
+    }
+    return vec4<f32>(sum / 13.0, p.params.y);
 }

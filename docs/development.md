@@ -268,7 +268,8 @@ and a stand wears it.
 `--dye colour[,colour...]` mixes those dyes (`DyedItemColor.applyDyes`) into
 the first hotbar stack and every worn piece that is dyeable, after `--give`
 and `--wear`: leather armor, leather horse armor and wolf armor.
-`--open-menu title --screenshot <file>` captures the title screen instead;
+`--open-menu title --screenshot <file>` captures the title screen instead
+(the panorama holds still at its starting angle, so captures compare);
 `select`, `create`, `multiplayer` and `direct` capture Select World, Create New
 World, Play Multiplayer and Direct Connection, and `edit`, `recreate` and
 `backup` capture Edit World, Re-Create and the newer-version backup prompt for
@@ -373,6 +374,34 @@ Differences from Metal seen so far (2026-11-23,
   distance 6 for world scenes, 4 for in-world UI scenes and 2 for the title
   screens.
 
+### The title panorama
+
+The title screen's panorama is six 1024 x 1024 faces in
+[`assets/panorama/`](../assets/panorama/), rendered by the game itself
+(v0.18 Track 7, [record](verification/2026-11-23-v0.18-title.md)): a
+savanna village with a pond and a river, seed 1234, seen from
+-942, 78, 190 at time 0.2. `--panorama DIR` with `--screenshot`, a square
+`--size` and a `--pose` renders the faces from the pose once the scene has
+settled, one 90-degree view a frame (north, east, south, west, up, down,
+`panorama_0` to `panorama_5`, Java's order), writes them as RGB PNGs and
+then takes the screenshot. To regenerate them on Boat:
+
+```sh
+scripts/boat-capture.sh --out target/captures/panorama --name preview -- \
+    --world w --new --seed 1234 --creative --pose -942,78,190,0,0 --rd 8 \
+    --size 1024x1024 --no-hud --time 0.2 --gamerule advance_time=false \
+    --weather clear --gamerule advance_weather=false --animation-time 7.3 \
+    --panorama /home/user/captures/panorama
+cp target/captures/panorama/panorama/panorama_*.png assets/panorama/
+```
+
+(`/home/user/captures` is the folder the script copies back.) Look at
+every face before committing it, and keep `assets/manifest.json`'s
+provenance in step with the seed and pose. A different size needs equal
+power-of-two squares and `FACE_SIZE` in `src/title.rs`. The faces are
+embedded in the executable (3.5 MB) and decoded on a thread when the title
+first opens; the title shows the old turning sky until they are on the GPU.
+
 ### Comparison scenes
 
 [`tools/capture_scenes.json`](../tools/capture_scenes.json) lists named,
@@ -392,7 +421,11 @@ reproducible before/after scenes for v0.18's visual work, in five groups:
   is already the largest scale that fits (4 and 3), so it is the "large"
   case.
 - `title`: the title screen, Select World with four fixed saves and empty,
-  and Create New World, at the same four sizes.
+  and Create New World, at the same four sizes. `world-list-icons` repeats
+  the four saves with real icons: before its captures, the tool opens three
+  of the saves once each with `--world-icon` (a scripted run that takes the
+  world's icon by the game's usual first-visit rule and waits for it), and
+  the pre-0.6 world keeps the default icon.
 - `atmosphere`: the seeded landscape at noon, dusk and midnight, in rain and
   a thunderstorm, inside a water tank, and in the Nether and the End.
 

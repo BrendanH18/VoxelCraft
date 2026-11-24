@@ -102,6 +102,10 @@ pub mod panorama {
         (forward, right.cross(forward).normalize())
     }
 
+    /// How far the blur's samples reach, in screen pixels per unit of Menu
+    /// Background Blur (VoxelCraft's match by eye of Java's default of 5).
+    pub const BLUR_SPREAD: f32 = 2.0;
+
     /// The mip level that blurs the panorama by about `radius` screen pixels
     /// in a window `height` pixels tall: an approximation of Java's
     /// two-pass blur of the screen (see the verification record).
