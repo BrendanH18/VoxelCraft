@@ -217,7 +217,7 @@ fn sign_text_saves_and_loads_any_printable_line() {
     let s = Sign { kind: Kind::Warped, mount: Mount::Standing { rotation: 9 }, wet: false };
     w.set_block(AT, s.block());
     let tricky = "a|b=c;d:e.f,g\\h".to_string();
-    w.set_sign_text(AT, true, [tricky.clone(), "é dropped".into(), "x".repeat(500), String::new()]).unwrap();
+    w.set_sign_text(AT, true, [tricky.clone(), "é kept, ☃ dropped".into(), "x".repeat(500), String::new()]).unwrap();
     w.set_sign_text(AT, false, ["back".into(), String::new(), String::new(), String::new()]).unwrap();
     assert!(w.update_sign(AT, true, |t| t.color = DyeColor::Red));
     assert!(w.update_sign(AT, false, |t| t.glowing = true));
@@ -229,7 +229,10 @@ fn sign_text_saves_and_loads_any_printable_line() {
     other.load_wood(&saved);
     let (_, e) = other.sign_at(AT).unwrap();
     assert_eq!(e.front.lines[0], tricky);
-    assert_eq!(e.front.lines[1], " dropped", "unprintable characters are dropped");
+    assert_eq!(
+        e.front.lines[1], "é kept,  dropped",
+        "accented letters stay (v0.18 font); characters the font lacks are dropped"
+    );
     assert_eq!(e.front.lines[2].len(), entities::MAX_LINE_CHARS);
     assert_eq!((e.front.color, e.front.glowing), (DyeColor::Red, false));
     assert_eq!((e.back.lines[0].as_str(), e.back.color, e.back.glowing), ("back", DyeColor::Black, true));
