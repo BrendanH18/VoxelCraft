@@ -529,7 +529,7 @@ mod tests {
         for scene in SCENES {
             assert_eq!(parse_scene(scene).unwrap(), scene);
         }
-        for bad in ["", "Survival", "nether", "survival "] {
+        for bad in ["", "Survival", "the_nether", "survival "] {
             assert!(parse_scene(bad).is_err(), "{bad:?}");
         }
         assert_eq!(parse_duration("1"), Ok(1.0));
