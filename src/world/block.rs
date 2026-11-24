@@ -1356,8 +1356,33 @@ impl Block {
         }
     }
 
-    /// This block without its orientation (itself if it has none).
+    /// This block without its orientation (itself if it has none). A table
+    /// over every state, built once from [`Block::base_uncached`] (v0.18
+    /// Track 10: the chain of family checks runs for every block the tick
+    /// classifies).
     pub fn base(self) -> Block {
+        static TABLE: std::sync::OnceLock<Box<[Block]>> = std::sync::OnceLock::new();
+        thread_local! {
+            // Set while this thread builds the table: family helpers that ask
+            // for a base meanwhile compute it directly.
+            static BUILDING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+        }
+        let table = match TABLE.get() {
+            Some(table) => table,
+            None if BUILDING.with(|b| b.get()) => return self.base_uncached(),
+            None => {
+                BUILDING.with(|b| b.set(true));
+                let table =
+                    TABLE.get_or_init(|| (0..STATE_CAPACITY as u16).map(|id| Block(id).base_uncached()).collect());
+                BUILDING.with(|b| b.set(false));
+                table
+            }
+        };
+        table.get(self.0 as usize).copied().unwrap_or_else(|| self.base_uncached())
+    }
+
+    /// [`Block::base`] worked out from the block families.
+    fn base_uncached(self) -> Block {
         if let Some(b) = super::trial::base(self) {
             return b;
         }
@@ -4041,6 +4066,13 @@ mod tests {
         }
         for id in 0..STATE_CAPACITY as u16 {
             assert_eq!(Block(id).emission(), reference(Block(id)), "state {id}");
+        }
+    }
+
+    #[test]
+    fn the_base_table_matches_the_family_checks_for_every_state() {
+        for id in 0..STATE_CAPACITY as u16 {
+            assert_eq!(Block(id).base(), Block(id).base_uncached(), "state {id}");
         }
     }
 

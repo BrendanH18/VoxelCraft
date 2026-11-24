@@ -51,7 +51,26 @@ pub fn linear(c: Color) -> Color {
 /// `1 - (1 - alpha)^2.2`. For screen dimming and list backings given as
 /// Java's alpha.
 pub fn shade(alpha: f32) -> Color {
-    [0.0, 0.0, 0.0, 1.0 - (1.0 - alpha.clamp(0.0, 1.0)).powf(2.2)]
+    [0.0, 0.0, 0.0, blend_alpha(alpha)]
+}
+
+/// The inverse of [`srgb_to_linear`]: the sRGB value (0..1) the GPU writes
+/// for linear light `v`.
+pub fn linear_to_srgb(v: f32) -> f32 {
+    if v <= 0.003_130_8 { v * 12.92 } else { 1.055 * v.powf(1.0 / 2.4) - 0.055 }
+}
+
+/// The exponent of the blending model below: how a share of sRGB value
+/// becomes a share of linear light (the sRGB curve is close to this power
+/// across the range). It models Java's blending; it converts no colour.
+pub const BLEND_GAMMA: f32 = 2.2;
+
+/// The linear-light alpha at which black darkens what's behind it as
+/// Java's sRGB blend at `alpha` does: Java keeps `1 - alpha` of the sRGB
+/// value, which is `(1 - alpha)^2.2` of its light (within a byte over the
+/// whole range). [`shade`] and the shared UI's veils use it.
+pub fn blend_alpha(alpha: f32) -> f32 {
+    1.0 - (1.0 - alpha.clamp(0.0, 1.0)).powf(BLEND_GAMMA)
 }
 
 /// The font atlas: every glyph of [`voxelcraft::font`] as R8 coverage.
@@ -149,6 +168,22 @@ impl Ui {
 
     pub fn rect(&mut self, x: f32, y: f32, w: f32, h: f32, color: Color) {
         self.quad([[x, y], [x + w, y], [x + w, y + h], [x, y + h]], [[0.0; 2]; 4], SOLID, color);
+    }
+
+    /// A rectangle shading from `top` to `bottom` (Java's `fillGradient`),
+    /// both sRGB like every UI colour.
+    pub fn gradient(&mut self, x: f32, y: f32, w: f32, h: f32, top: Color, bottom: Color) {
+        let p = [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
+        // sRGB in, as for `quad`.
+        let (top, bottom) = (linear(top), linear(bottom));
+        let colour = [top, top, bottom, bottom];
+        let v: [UiVertex; 4] = std::array::from_fn(|i| UiVertex {
+            pos: self.ndc(p[i][0], p[i][1]),
+            uv: [0.0; 2],
+            layer: SOLID,
+            color: colour[i],
+        });
+        self.verts.extend_from_slice(&[v[0], v[1], v[2], v[0], v[2], v[3]]);
     }
 
     /// Square HUD icon (heart, bubble, ...) from a block texture or item icon layer.
@@ -306,7 +341,7 @@ mod text_tests {
     fn colours_are_written_as_srgb_and_shown_as_written() {
         // The GPU encodes linear output for the sRGB surface with the sRGB
         // curve; its inverse here brings every byte back unchanged.
-        let encode = |l: f32| if l <= 0.003_130_8 { l * 12.92 } else { 1.055 * l.powf(1.0 / 2.4) - 0.055 };
+        let encode = linear_to_srgb;
         for byte in 0..=255u8 {
             let v = byte as f32 / 255.0;
             assert_eq!((encode(srgb_to_linear(v)) * 255.0).round() as u8, byte);
@@ -329,7 +364,7 @@ mod text_tests {
         let behind = 0.5f32;
         let a = shade(112.0 / 255.0)[3];
         let blended = srgb_to_linear(behind) * (1.0 - a);
-        let encode = |l: f32| 1.055 * l.powf(1.0 / 2.4) - 0.055;
+        let encode = linear_to_srgb;
         assert!((encode(blended) - behind * (1.0 - 112.0 / 255.0)).abs() < 0.015, "{}", encode(blended));
         assert_eq!(shade(0.0)[3], 0.0);
         assert_eq!(shade(1.0)[3], 1.0);

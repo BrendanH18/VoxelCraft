@@ -154,7 +154,22 @@
     "-10,168,24,iron ore",
     "-7,168,24,coal ore",
     "6,168,24,iron ore"
-   ]
+   ],
+   "matrix": {
+    "size": [
+     [
+      1920,
+      1080
+     ],
+     [
+      1280,
+      720
+     ]
+    ],
+    "gui_scale": [
+     "auto"
+    ]
+   }
   },
   {
    "name": "cave-ceiling",
@@ -305,7 +320,22 @@
     "-6,141,6,torch",
     "6,141,6,torch",
     "0,141,0,torch"
-   ]
+   ],
+   "matrix": {
+    "size": [
+     [
+      1920,
+      1080
+     ],
+     [
+      1280,
+      720
+     ]
+    ],
+    "gui_scale": [
+     "auto"
+    ]
+   }
   },
   {
    "name": "grass-hillside",
@@ -1746,7 +1776,22 @@
     "15,158,39,dirt",
     "16,159,39,grass",
     "16,158,39,dirt"
-   ]
+   ],
+   "matrix": {
+    "size": [
+     [
+      1920,
+      1080
+     ],
+     [
+      1280,
+      720
+     ]
+    ],
+    "gui_scale": [
+     "auto"
+    ]
+   }
   },
   {
    "name": "forest",
@@ -2301,7 +2346,22 @@
     "11,151,20,tall grass",
     "13,151,17,tall grass",
     "14,151,24,tall grass"
-   ]
+   ],
+   "matrix": {
+    "size": [
+     [
+      1920,
+      1080
+     ],
+     [
+      1280,
+      720
+     ]
+    ],
+    "gui_scale": [
+     "auto"
+    ]
+   }
   },
   {
    "name": "sand-dunes",
@@ -3226,7 +3286,22 @@
     "-11,153,30,dead bush",
     "1,153,24,dead bush",
     "8,153,40,dead bush"
-   ]
+   ],
+   "matrix": {
+    "size": [
+     [
+      1920,
+      1080
+     ],
+     [
+      1280,
+      720
+     ]
+    ],
+    "gui_scale": [
+     "auto"
+    ]
+   }
   },
   {
    "name": "block-palette",
@@ -3529,6 +3604,108 @@
      24,
      "bricks"
     ]
+   ],
+   "matrix": {
+    "size": [
+     [
+      1920,
+      1080
+     ],
+     [
+      1280,
+      720
+     ]
+    ],
+    "gui_scale": [
+     "auto"
+    ]
+   }
+  },
+  {
+   "name": "material-items",
+   "group": "materials",
+   "description": "Material blocks as hotbar icons (stone held in first person) and as nine dropped items fanned out on a grass and stone floor at noon: icon, held and dropped material art",
+   "matrix": {
+    "size": [
+     [
+      1920,
+      1080
+     ],
+     [
+      1280,
+      720
+     ]
+    ],
+    "gui_scale": [
+     "auto"
+    ]
+   },
+   "mode": "survival",
+   "pose": [
+    0.5,
+    151,
+    0.5,
+    90,
+    -35
+   ],
+   "wait": 1.5,
+   "fill": [
+    [
+     -6,
+     150,
+     -2,
+     6,
+     150,
+     12,
+     "grass"
+    ],
+    [
+     -6,
+     150,
+     6,
+     6,
+     150,
+     12,
+     "stone"
+    ]
+   ],
+   "args": [
+    "--give",
+    "stone,64",
+    "--give",
+    "grass,64",
+    "--give",
+    "dirt,64",
+    "--give",
+    "oak_log,64",
+    "--give",
+    "oak_leaves,64",
+    "--give",
+    "sand,64",
+    "--give",
+    "spruce_planks,64",
+    "--give",
+    "iron_ore,16",
+    "--give",
+    "deepslate_diamond_ore,3",
+    "--drop",
+    "stone",
+    "--drop",
+    "coal_ore",
+    "--drop",
+    "dirt",
+    "--drop",
+    "grass",
+    "--drop",
+    "oak_log",
+    "--drop",
+    "birch_log",
+    "--drop",
+    "oak_leaves",
+    "--drop",
+    "oak_planks",
+    "--drop",
+    "sand"
    ]
   },
   {

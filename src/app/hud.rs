@@ -11,6 +11,7 @@ use crate::simulation::experience::Experience;
 use crate::world::block::tex;
 use crate::world::chunk::{chunk_of, local_of};
 
+use super::gui::style::{self, token};
 use super::recipe_book::Rect;
 use super::survival::{self, AIR_BUBBLES, MAX_AIR, MAX_HEALTH};
 use super::{Container, Game, GameMode};
@@ -106,7 +107,9 @@ pub(super) struct HudPlayer<'a> {
 }
 
 impl Game {
-    pub(super) fn build_ui(&self, now: Instant) -> Vec<UiVertex> {
+    /// The frame's UI, and where a blurring menu's vertices start (the
+    /// HUD before them is blurred with the world; see `FrameParams::blur`).
+    pub(super) fn build_ui(&self, now: Instant) -> (Vec<UiVertex>, Option<usize>) {
         let (w, h) = self.ui_size();
         let mut ui = Ui::with_scale(w as f32, h as f32, self.ui_scale());
         let (sw, sh) = ui.size();
@@ -130,7 +133,7 @@ impl Game {
 
         if let Some(t) = self.credits {
             self.credits_ui(&mut ui, t);
-            return ui.verts;
+            return (ui.verts, None);
         }
         if self.camera.first_person() && self.session.scoping() {
             spyglass_overlay(&mut ui, sw, sh, self.session.scoping_ticks());
@@ -213,26 +216,15 @@ impl Game {
         if self.menu.is_open() {
             self.captions_ui(&mut ui);
         }
-        // An immediate respawn due next frame skips the death screen.
-        if let Some(cause) = &self.session.vitals.death
-            && !self.respawn_due
-        {
-            // Blending is in linear space: it takes a high alpha to look dark.
-            ui.rect(0.0, 0.0, sw, sh, [0.18, 0.0, 0.0, 0.9]);
-            let title = "You died!";
-            let k = 3.0;
-            let y = (sh * 0.3).floor();
-            ui.text_scaled(((sw - Ui::text_width(title) * k) / 2.0).floor(), y, title, WHITE, k);
-            let msg = format!("Player {cause}");
-            ui.text(((sw - Ui::text_width(&msg)) / 2.0).floor(), y + 36.0, &msg, WHITE);
-            let score = format!("Score: {}", self.session.vitals.xp.total);
-            let x = ((sw - Ui::text_width(&score)) / 2.0).floor();
-            let n = x + Ui::text_width("Score: ") + 1.0;
-            ui.text(x, y + 48.0, "Score: ", WHITE);
-            ui.text(n, y + 48.0, &self.session.vitals.xp.total.to_string(), [1.0, 1.0, 0.33, 1.0]);
-            let hint = "Click to respawn";
-            ui.text(((sw - Ui::text_width(hint)) / 2.0).floor(), y + 64.0, hint, [1.0, 1.0, 0.6, 1.0]);
+        // v0.18 Track 2: Java's death screen (`death.rs`); an immediate
+        // respawn due next frame skips it.
+        let mut blur_from = None;
+        if self.session.vitals.is_dead() && !self.respawn_due {
+            self.death_ui(&mut ui);
         } else if self.menu.is_open() {
+            if self.menu.blurs() && self.settings.menu_blur > 0 {
+                blur_from = Some(ui.verts.len());
+            }
             self.menu_ui(&mut ui);
         } else if self.inventory_open {
             self.inventory_ui(&mut ui);
@@ -256,10 +248,10 @@ impl Game {
         // compact counter stays readable above menus and screen effects.
         if self.settings.show_fps && self.show_hud && !self.show_debug {
             let text = if self.fps > 0.0 { format!("{:.0} FPS", self.fps) } else { "-- FPS".into() };
-            ui.rect(3.0, 3.0, Ui::text_width(&text) + 6.0, 13.0, [0.0, 0.0, 0.0, 0.65]);
+            ui.rect(3.0, 3.0, Ui::text_width(&text) + 6.0, 13.0, style::veil(0, 0.5));
             ui.text(6.0, 6.0, &text, WHITE);
         }
-        ui.verts
+        (ui.verts, blur_from)
     }
 
     /// v0.18 Track 9: `SubtitleOverlay`'s captions, stacked up from 35
@@ -328,18 +320,15 @@ impl Game {
         let slot = 20.0;
         let total = slot * 9.0 + 2.0;
         let (x0, y0) = (((sw - total) / 2.0).floor(), sh - slot - 4.0);
-        ui.rect(x0, y0, total, slot + 2.0, [0.0, 0.0, 0.0, 0.5]);
+        // v0.18 Track 2: a dark strip in a black frame, each slot in its
+        // own grey frame so the slots stay apart over any scene.
+        hotbar_strip(ui, x0, y0, total, slot + 2.0);
         for i in 0..HOTBAR_SLOTS {
             let sx = x0 + 1.0 + i as f32 * slot;
-            ui.rect(sx + 1.0, y0 + 2.0, slot - 2.0, slot - 2.0, [0.35, 0.35, 0.35, 0.5]);
-            if i == hud.selected {
-                let (x, y, s) = (sx - 1.0, y0 - 1.0, slot + 2.0);
-                for (rx, ry, rw, rh) in
-                    [(x, y, s, 2.0), (x, y + s, s, 2.0), (x, y, 2.0, s + 2.0), (x + s - 2.0, y, 2.0, s + 2.0)]
-                {
-                    ui.rect(rx, ry, rw, rh, WHITE);
-                }
-            }
+            style::outline(ui, [sx, y0 + 1.0, slot, slot], style::veil(token::SLOT, 0.6));
+        }
+        for i in 0..HOTBAR_SLOTS {
+            let sx = x0 + 1.0 + i as f32 * slot;
             if let Some(stack) = hud.inventory.get(i) {
                 draw_stack(ui, sx + 1.0, y0 + 2.0, stack, hud.survival, hud.dial);
                 // Java's item cooldown: a pale veil that drains downward.
@@ -361,11 +350,14 @@ impl Game {
                 shield_veil(ui, stack, hud.shield_cooldown, sx + 2.0, y0 + 3.0);
             }
         }
+        // The selected slot's 24 x 24 frame, over its neighbours' frames.
+        let sel = x0 + 1.0 + hud.selected as f32 * slot;
+        hotbar_selection(ui, sel - 2.0, y0 - 1.0);
         // The off-hand slot sits left of the hotbar, as Java's does on the left.
         if let Some(stack) = hud.inventory.offhand {
             let sx = x0 - slot - 4.0;
-            ui.rect(sx, y0, slot + 2.0, slot + 2.0, [0.0, 0.0, 0.0, 0.5]);
-            ui.rect(sx + 2.0, y0 + 2.0, slot - 2.0, slot - 2.0, [0.35, 0.35, 0.35, 0.5]);
+            hotbar_strip(ui, sx, y0, slot + 2.0, slot + 2.0);
+            style::outline(ui, [sx + 1.0, y0 + 1.0, slot, slot], style::veil(token::SLOT, 0.6));
             draw_stack(ui, sx + 2.0, y0 + 2.0, stack, hud.survival, hud.dial);
             shield_veil(ui, stack, hud.shield_cooldown, sx + 3.0, y0 + 3.0);
         }
@@ -609,27 +601,21 @@ pub(super) fn container_title(block: Option<crate::world::block::Block>) -> &'st
 
 fn brewing_ui(ui: &mut Ui, b: &crate::world::brewing::BrewingStand, px: f32, py: f32, frame: u32) {
     use crate::world::brewing::FUEL_USES;
-    let dark = [0.45, 0.45, 0.45, 1.0];
-    // Blaze fuel left, under the fuel slot.
-    let (fx, fy) = (px + 16.0, py + 39.0);
-    ui.rect(fx, fy, 18.0, 4.0, dark);
-    let fuel = (18.0 * b.fuel_left as f32 / FUEL_USES as f32).ceil();
-    ui.rect(fx, fy, fuel, 4.0, [0.95, 0.6, 0.15, 1.0]);
+    let dark = style::srgb(token::PROGRESS_EMPTY);
+    // Blaze fuel left, under the fuel slot (Java's 18 x 4 bar).
+    style::gauge(ui, px + 16.0, py + 39.0, 18.0, 4.0, b.fuel_left as f32 / FUEL_USES as f32, 0xF09020);
     // Pipes from the ingredient down to the three bottles.
-    ui.rect(px + 86.0, py + 36.0, 2.0, 23.0, dark);
+    ui.rect(px + 86.0, py + 38.0, 2.0, 21.0, dark);
     ui.rect(px + 63.0, py + 41.0, 48.0, 2.0, dark);
     ui.rect(px + 63.0, py + 41.0, 2.0, 11.0, dark);
     ui.rect(px + 109.0, py + 41.0, 2.0, 11.0, dark);
-    // Progress: an arrow filling downward right of the ingredient.
-    let (ax, ay) = (px + 99.0, py + 18.0);
-    ui.rect(ax, ay, 6.0, 18.0, dark);
+    // Progress: Java's 9 x 28 arrow filling downward right of the ingredient.
+    style::arrow_down(ui, px + 98.0, py + 16.0, if b.is_brewing() { b.brew_progress() } else { 0.0 });
     if b.is_brewing() {
-        let h = (18.0 * b.brew_progress()).floor();
-        ui.rect(ax, ay, 6.0, h, WHITE);
         // Bubbles rising on the left of the ingredient.
         for i in 0..3u32 {
             let y = py + 34.0 - ((frame + i * 6) % 17) as f32;
-            ui.rect(px + 64.0 + i as f32 * 4.0, y, 2.0, 2.0, [0.85, 0.9, 1.0, 1.0]);
+            ui.rect(px + 64.0 + i as f32 * 4.0, y, 2.0, 2.0, style::srgb(0xD8E4FF));
         }
     }
 }
@@ -653,17 +639,6 @@ pub(super) fn enchant_offer_rect(px: f32, py: f32, i: usize) -> (f32, f32, f32, 
     (px + 60.0, py + 13.0 + 19.0 * i as f32, 108.0, 19.0)
 }
 
-/// The background of an effect icon or panel: Java's ambient sprite (a
-/// beacon's or conduit's effect) has a pale blue frame.
-fn effect_background(ui: &mut Ui, (x, y, w, h): (f32, f32, f32, f32), ambient: bool, fill: [f32; 4]) {
-    if ambient {
-        ui.rect(x, y, w, h, [0.55, 0.7, 0.85, fill[3]]);
-        ui.rect(x + 1.0, y + 1.0, w - 2.0, h - 2.0, fill);
-    } else {
-        ui.rect(x, y, w, h, fill);
-    }
-}
-
 /// Java's status effect icons in the top right corner
 /// ([`effects::hud_layout`]): beneficial ones in the first row, harmful and
 /// neutral ones below (`isBeneficial`), in reverse `compareTo` order,
@@ -672,7 +647,7 @@ fn effects_ui(ui: &mut Ui, effects: &Effects) {
     let sw = ui.size().0;
     for (a, column, row) in effects::hud_layout(effects) {
         let (x, y) = (sw - 25.0 * column as f32, row as f32 * 26.0 + 1.0);
-        effect_background(ui, (x, y, 24.0, 24.0), a.ambient, [0.1, 0.1, 0.12, 0.7]);
+        style::effect_background(ui, (x, y, 24.0, 24.0), a.ambient, 1.0);
         ui.icon(x + 3.0, y + 3.0, 18.0, crate::item::effect_icon_layer(a.effect), [1.0, 1.0, 1.0, a.hud_alpha()]);
     }
 }
@@ -690,11 +665,11 @@ pub(super) fn effect_list_ui(ui: &mut Ui, effects: &Effects, right: f32, top: f3
     let x = (right - w - 4.0).max(0.0);
     for (i, a) in sorted.iter().enumerate() {
         let y = top + i as f32 * 33.0;
-        effect_background(ui, (x, y, w, 32.0), a.ambient, [0.12, 0.12, 0.14, 0.85]);
+        style::effect_background(ui, (x, y, w, 32.0), a.ambient, 1.0);
         ui.icon(x + 7.0, y + 7.0, 18.0, crate::item::effect_icon_layer(a.effect), WHITE);
         if wide {
             ui.text(x + 28.0, y + 7.0, &label(a), WHITE);
-            ui.text(x + 28.0, y + 18.0, &effects::duration_text(a.ticks), [0.5, 0.5, 0.5, 1.0]);
+            ui.text(x + 28.0, y + 18.0, &effects::duration_text(a.ticks), style::srgb(0x7F7F7F));
         }
     }
 }
@@ -731,14 +706,17 @@ fn raid_bar_ui(ui: &mut Ui, name: &str, progress: f32, sw: f32, y: f32) {
     }
 }
 
+/// v0.18 Track 2: the experience bar, 182 x 5 in Java's colours: a dark
+/// outlined trough and a green fill with a lighter top row, filled in whole
+/// pixels (`(int)(progress * 183)`), the level outlined above it.
 fn xp_bar_ui(ui: &mut Ui, xp: Experience, x: f32, y: f32, w: f32) {
-    const GREEN: [f32; 4] = [0.5, 1.0, 0.125, 1.0];
-    ui.rect(x, y, w, 5.0, [0.0, 0.0, 0.0, 0.8]);
-    ui.rect(x + 1.0, y + 1.0, w - 2.0, 3.0, [0.12, 0.16, 0.1, 0.9]);
-    let fill = ((w - 2.0) * xp.progress()).round();
+    ui.rect(x, y, w, 5.0, style::srgb(token::XP_EDGE));
+    ui.rect(x + 1.0, y + 1.0, w - 2.0, 3.0, style::srgb(token::XP_BACK));
+    let fill = ((w + 1.0) * xp.progress()).floor().min(w);
     if fill > 0.0 {
-        ui.rect(x + 1.0, y + 1.0, fill, 3.0, GREEN);
-        ui.rect(x + 1.0, y + 1.0, fill, 1.0, [0.75, 1.0, 0.5, 1.0]);
+        ui.rect(x, y, fill, 5.0, style::srgb(0x081C11));
+        ui.rect(x + 1.0, y + 1.0, (fill - 2.0).max(1.0), 3.0, style::srgb(token::XP_FILL));
+        ui.rect(x + 1.0, y + 1.0, (fill - 2.0).max(1.0), 1.0, style::srgb(token::XP_LIGHT));
     }
     if xp.level > 0 {
         let text = xp.level.to_string();
@@ -746,8 +724,23 @@ fn xp_bar_ui(ui: &mut Ui, xp: Experience, x: f32, y: f32, w: f32) {
         for (dx, dy) in [(-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0)] {
             ui.text_flat(tx + dx, ty + dy, &text, [0.0, 0.0, 0.0, 1.0]);
         }
-        ui.text_flat(tx, ty, &text, GREEN);
+        ui.text_flat(tx, ty, &text, style::srgb(token::XP_TEXT));
     }
+}
+
+/// The hotbar's backing: a translucent dark strip in a black frame.
+fn hotbar_strip(ui: &mut Ui, x: f32, y: f32, w: f32, h: f32) {
+    ui.rect(x, y, w, h, style::veil(0x101010, 0.55));
+    style::outline(ui, [x, y, w, h], style::veil(0, 0.8));
+}
+
+/// The selected hotbar slot: Java's 24 x 24 frame, two white pixels thick
+/// inside a black edge, so the selection shows without colour.
+fn hotbar_selection(ui: &mut Ui, x: f32, y: f32) {
+    style::outline(ui, [x, y, 24.0, 24.0], style::srgb(token::OUTLINE));
+    let white = style::srgb(token::SELECTION);
+    style::outline(ui, [x + 1.0, y + 1.0, 22.0, 22.0], white);
+    style::outline(ui, [x + 2.0, y + 2.0, 20.0, 20.0], white);
 }
 
 /// Item icon, durability bar and (when `counts`) stack size in an 18x18
@@ -948,10 +941,11 @@ impl Game {
             out.push((SlotRef::EnchantLapis, px + 34.0, py + 44.0));
             CRAFT_H
         } else if let Container::Anvil(_) | Container::Grindstone(_) = self.body.container {
-            // Java's layout: input + input -> result.
-            out.push((SlotRef::AnvilLeft, px + 26.0, py + 36.0));
-            out.push((SlotRef::AnvilRight, px + 75.0, py + 36.0));
-            out.push((SlotRef::AnvilResult, px + 133.0, py + 36.0));
+            // Java's layout: input + input -> result (`AnvilMenu`'s slots at
+            // y 47, frames a pixel up and left), under the name box.
+            out.push((SlotRef::AnvilLeft, px + 26.0, py + 46.0));
+            out.push((SlotRef::AnvilRight, px + 75.0, py + 46.0));
+            out.push((SlotRef::AnvilResult, px + 133.0, py + 46.0));
             CRAFT_H
         } else if let Container::Smithing(_) = self.body.container {
             // Java 1.21: template, base, addition -> result.
@@ -1068,18 +1062,15 @@ impl Game {
 
     fn inventory_ui(&self, ui: &mut Ui) {
         let (sw, sh) = ui.size();
-        ui.rect(0.0, 0.0, sw, sh, [0.0, 0.0, 0.0, 0.45]);
+        // v0.18 Track 2: Java's in-game screen darkening (no blur).
+        style::container_backdrop(ui);
         if self.shows_palette() {
             self.creative_ui(ui);
             return;
         }
         let (px, py, panel_h) = self.panel((sw, sh));
         effect_list_ui(ui, &self.session.vitals.effects, px, py);
-        ui.rect(px, py, PANEL_W, panel_h, [0.78, 0.78, 0.78, 1.0]);
-        ui.rect(px, py, PANEL_W, 1.0, WHITE);
-        ui.rect(px, py, 1.0, panel_h, WHITE);
-        ui.rect(px, py + panel_h - 1.0, PANEL_W, 1.0, [0.33, 0.33, 0.33, 1.0]);
-        ui.rect(px + PANEL_W - 1.0, py, 1.0, panel_h, [0.33, 0.33, 0.33, 1.0]);
+        style::panel(ui, px, py, PANEL_W, panel_h);
         if self.shows_search() {
             self.search_ui(ui);
         }
@@ -1094,7 +1085,8 @@ impl Game {
             (Container::Minecart(id), _) => self.mobs.entities.vehicle_title(id),
             (Container::Brewing(_), _) => "Brewing Stand",
             (Container::Enchanting(_), _) => "Enchant",
-            (Container::Anvil(_), _) => "Anvil",
+            // `container.repair`.
+            (Container::Anvil(_), _) => "Repair & Name",
             (Container::Grindstone(_), _) => "Repair & Disenchant",
             (Container::Smithing(_), _) => "Upgrade Gear",
             (Container::Stonecutter(_) | Container::Loom(_) | Container::Cartography(_) | Container::Beacon(_), _) => {
@@ -1108,9 +1100,12 @@ impl Game {
         };
         if self.shows_armor() {
             // `InventoryScreen`: only the crafting grid is labelled, at (97, 8).
-            ui.text_flat(px + 97.0, py + 7.0, "Crafting", [0.25, 0.25, 0.25, 1.0]);
+            style::title(ui, px + 97.0, py + 7.0, "Crafting");
+        } else if let Container::Anvil(_) = self.body.container {
+            // `AnvilScreen`'s title sits right of the hammer, at x 60.
+            style::title(ui, px + 60.0, py + 6.0, title);
         } else {
-            ui.text_flat(px + 8.0, py + 6.0, title, [0.25, 0.25, 0.25, 1.0]);
+            style::title(ui, px + 8.0, py + 6.0, title);
         }
         if let Container::Trading(id) = self.body.container {
             self.trading_ui(ui, id, px, py);
@@ -1128,47 +1123,34 @@ impl Game {
             self.workstation_ui(ui, px, py);
         } else if self.has_top_section() && !matches!(self.body.container, Container::Chest(_) | Container::Minecart(_))
         {
-            // Arrow toward the result; in a furnace it fills with progress
-            // and a flame between input and fuel shows the fuel left.
-            let (ax, ay) = if self.shows_armor() {
-                // Between Java's 2x2 grid and its result.
-                (px + 135.0, py + 31.0)
-            } else {
-                (px + 7.0 + 4.0 * SLOT + 9.0, py + 18.0 + self.top_mid() + 5.0)
-            };
+            // v0.18 Track 2: the arrow toward the result (Java's 24 x 16,
+            // the survival inventory's smaller), filling with a furnace's
+            // progress, and the furnace's flame between input and fuel.
             let furnace = match self.body.container {
                 Container::Furnace(p) => self.world.furnace(p).cloned(),
                 _ => None,
             };
             let progress = furnace.as_ref().map_or(0.0, |f| f.cook_progress());
-            let dark = [0.45, 0.45, 0.45, 1.0];
-            let lit = [1.0, 1.0, 1.0, 1.0];
-            let filled = |x: f32| if (x - ax) / 17.0 < progress { lit } else { dark };
-            for i in 0..12 {
-                let x = ax + i as f32;
-                ui.rect(x, ay + 3.0, 1.0, 2.0, filled(x));
-            }
-            for i in 0..5 {
-                let x = ax + 12.0 + i as f32;
-                ui.rect(x, ay + i as f32 - 1.0, 1.0, 10.0 - 2.0 * i as f32, filled(x));
+            if self.shows_armor() {
+                // Between Java's 2x2 grid and its result.
+                style::arrow_sized(ui, (px + 135.0, py + 29.0, 16, 13), 0.0);
+            } else {
+                let result_y = py + 18.0 + self.top_mid();
+                style::arrow(ui, px + 7.0 + 4.0 * SLOT + 6.0, result_y + 1.0, progress);
             }
             if let Some(f) = furnace {
-                let (fx, fy) = (px + 7.0 + 3.0 * SLOT + 4.0, py + 18.0 + SLOT + 2.0);
-                let left = f.burn_progress();
-                ui.rect(fx, fy, 10.0, 13.0, [0.6, 0.6, 0.6, 1.0]);
-                let h = (13.0 * left).ceil();
-                ui.rect(fx + 1.0, fy + 13.0 - h, 8.0, h, [1.0, 0.55, 0.1, 1.0]);
-                ui.rect(fx + 3.0, fy + 13.0 - h * 0.6, 4.0, h * 0.6, [1.0, 0.9, 0.3, 1.0]);
+                let (fx, fy) = (px + 7.0 + 3.0 * SLOT + 2.0, py + 18.0 + SLOT + 2.0);
+                style::flame(ui, fx, fy, f.burn_progress());
             }
         }
         let py = py + self.top_h();
         if matches!(self.body.container, Container::Chest(_) | Container::Minecart(_)) {
-            ui.text_flat(px + 8.0, py + 6.0, "Inventory", [0.25, 0.25, 0.25, 1.0]);
+            style::title(ui, px + 8.0, py + 6.0, "Inventory");
         }
         if self.shows_armor() {
             // v0.18 Track 4: `InventoryScreen`'s player, turning toward the pointer.
             let mouse = (self.cursor_px.0 / ui.scale, self.cursor_px.1 / ui.scale);
-            ui.rect(px + 25.0, top_py + 7.0, 50.0, 71.0, [0.0, 0.0, 0.0, 1.0]);
+            ui.rect(px + 25.0, top_py + 7.0, 50.0, 71.0, style::srgb(token::OUTLINE));
             super::preview::player(ui, (px + 26.0, top_py + 8.0, px + 75.0, top_py + 78.0), 30.0, 0.0625, mouse);
         }
         self.slots_ui(ui, px, top_py);
@@ -1181,8 +1163,12 @@ impl Game {
         let (sw, sh) = ui.size();
         let hovered = self.slot_under_cursor();
         for (r, x, y) in self.inventory_slots((sw, sh)) {
-            ui.rect(x, y, SLOT, SLOT, [0.55, 0.55, 0.55, 1.0]);
-            ui.rect(x + 1.0, y + 1.0, SLOT - 1.0, SLOT - 1.0, [0.45, 0.45, 0.45, 1.0]);
+            // v0.18 Track 2: Java's slot frame, and the bigger frame of a
+            // crafting or furnace result.
+            if matches!(r, SlotRef::CraftResult | SlotRef::FurnaceOutput) && !self.shows_armor() {
+                style::big_slot(ui, x, y);
+            }
+            style::slot(ui, x, y);
             let stack = match r {
                 SlotRef::Inventory(i) => self.session.inventory.get(i),
                 SlotRef::Palette(stack) => Some(stack),
@@ -1209,8 +1195,10 @@ impl Game {
                 (s, None) => Self::workstation_outline(s),
                 _ => None,
             };
+            // The guide's equipment hint: the expected piece's silhouette
+            // at half alpha, pale on the slot's grey.
             if let Some(layer) = outline {
-                ui.icon(x + 1.0, y + 1.0, 16.0, layer, [0.0, 0.0, 0.0, 0.25]);
+                ui.icon_shape(x + 1.0, y + 1.0, 16.0, layer, [0.0, 0.0, 1.0, 1.0], style::srgba(0xE0E0E0, 0.5));
             }
             if let Some(stack) = stack {
                 if matches!(self.body.container, Container::Trading(_)) {
@@ -1226,12 +1214,12 @@ impl Game {
                 if stack.item.matches_query(&self.search.query) {
                     ui.rect(x, y, SLOT, 1.0, [1.0, 0.85, 0.2, 1.0]);
                 } else {
-                    ui.rect(x + 1.0, y + 1.0, SLOT - 2.0, SLOT - 2.0, [0.1, 0.1, 0.1, 0.7]);
+                    ui.rect(x + 1.0, y + 1.0, SLOT - 2.0, SLOT - 2.0, style::veil(0x101010, 0.7));
                 }
             }
 
             if hovered == Some(r) {
-                ui.rect(x + 1.0, y + 1.0, SLOT - 2.0, SLOT - 2.0, [1.0, 1.0, 1.0, 0.35]);
+                style::slot_highlight(ui, x, y);
             }
         }
         // v0.17 Track C1: the crafter's slot covers, indicator and preview.
@@ -1273,8 +1261,8 @@ impl Game {
                 } else {
                     let scale = ui.scale;
                     let (x, y) = (self.cursor_px.0 / scale + 10.0, self.cursor_px.1 / scale - 12.0 + 12.0 * k as f32);
-                    ui.rect(x - 3.0, y - 1.0, Ui::text_width(line) + 6.0, 12.0, [0.08, 0.02, 0.12, 0.92]);
-                    ui.text(x, y, line, [0.66, 0.66, 0.66, 1.0]);
+                    style::tooltip_box(ui, x, y, Ui::text_width(line), 8.0);
+                    ui.text(x, y, line, style::srgb(token::GREY_TEXT));
                 }
             }
         } else if let (Some(p), Some(SlotRef::Chest(i)), None, None) =
@@ -1377,9 +1365,9 @@ impl Game {
     fn tooltip_coloured(&self, ui: &mut Ui, text: &str, colour: Color) {
         let text = capitalize(text);
         let (sw, sh) = ui.size();
-        let x = (self.cursor_px.0 / ui.scale + 10.0).min(sw - Ui::text_width(&text) - 6.0).max(3.0);
-        let y = (self.cursor_px.1 / ui.scale - 12.0).clamp(3.0, (sh - 11.0).max(3.0));
-        ui.rect(x - 3.0, y - 3.0, Ui::text_width(&text) + 6.0, 14.0, [0.08, 0.02, 0.12, 0.92]);
+        let x = (self.cursor_px.0 / ui.scale + 10.0).min(sw - Ui::text_width(&text) - 6.0).max(4.0).floor();
+        let y = (self.cursor_px.1 / ui.scale - 12.0).clamp(4.0, (sh - 12.0).max(4.0)).floor();
+        style::tooltip_box(ui, x, y, Ui::text_width(&text), 8.0);
         ui.text(x, y, &text, colour);
     }
 
@@ -1421,47 +1409,44 @@ impl Game {
     /// The anvil's plus and arrow, and Java's cost line: green "Enchantment
     /// Cost: n" (red if short of levels) or "Too Expensive!".
     fn anvil_ui(&self, ui: &mut Ui, px: f32, py: f32) {
-        let dark = [0.45, 0.45, 0.45, 1.0];
-        // A plus between the inputs and an arrow to the result.
-        ui.rect(px + 55.0, py + 44.0, 13.0, 3.0, dark);
-        ui.rect(px + 60.0, py + 39.0, 3.0, 13.0, dark);
-        ui.rect(px + 102.0, py + 44.0, 18.0, 3.0, dark);
-        for i in 0..5 {
-            ui.rect(px + 120.0 + i as f32, py + 41.0 + i as f32, 1.0, 9.0 - 2.0 * i as f32, dark);
+        // v0.18 Track 2: a plus between the inputs and an arrow to the
+        // result, at Java's offsets (the slots' row is 46 down).
+        style::plus(ui, px + 53.0, py + 49.0);
+        style::arrow(ui, px + 101.0, py + 47.0, 0.0);
+        let grindstone = matches!(self.body.container, Container::Grindstone(_));
+        if !grindstone {
+            self.anvil_name_ui(ui, px, py);
         }
         let Some((result, too_expensive)) = self.anvil_preview() else {
-            if self.session.work[0].is_some() && self.session.work[1].is_some() {
-                // Inputs that can't combine: Java crosses out the arrow.
-                ui.rect(px + 104.0, py + 38.0, 14.0, 2.0, [0.75, 0.2, 0.2, 1.0]);
+            // `extractErrorIcon`: an input but nothing to take.
+            if self.session.work[0].is_some() || self.session.work[1].is_some() {
+                style::error_cross(ui, px + 99.0, py + 45.0);
             }
             return;
         };
-        if matches!(self.body.container, Container::Grindstone(_)) {
+        if grindstone || result.cost == 0 {
             return;
         }
+        // `AnvilScreen.extractLabels`: green, or red when too expensive or
+        // short of levels, on a dark backing to the panel's right edge.
         let (text, colour) = if too_expensive {
-            ("Too Expensive!".to_string(), [1.0, 0.38, 0.38, 1.0])
+            ("Too Expensive!".to_string(), token::COST_TEXT_SHORT)
         } else if self.session.mode.is_survival() && self.session.vitals.xp.level < result.cost {
-            (format!("Enchantment Cost: {}", result.cost), [1.0, 0.38, 0.38, 1.0])
+            (format!("Enchantment Cost: {}", result.cost), token::COST_TEXT_SHORT)
         } else {
-            (format!("Enchantment Cost: {}", result.cost), [0.5, 1.0, 0.13, 1.0])
+            (format!("Enchantment Cost: {}", result.cost), token::COST_TEXT)
         };
-        let w = Ui::text_width(&text);
-        let x = px + PANEL_W - 8.0 - w;
-        ui.rect(x - 2.0, py + 58.0, w + 4.0, 11.0, [0.25, 0.25, 0.25, 0.7]);
-        ui.text(x, py + 60.0, &text, colour);
+        let x = (px + PANEL_W - 8.0 - Ui::text_width(&text) - 2.0).floor();
+        ui.rect(x - 2.0, py + 67.0, px + PANEL_W - 8.0 - (x - 2.0), 12.0, style::argb(0x4F00_0000));
+        ui.text(x, py + 69.0, &text, style::srgb(colour));
     }
 
     /// Smithing's arrow and invalid-recipe cross. Slot outlines explain the
     /// template/base/addition order without reproducing Java's full artwork.
     fn smithing_ui(&self, ui: &mut Ui, px: f32, py: f32) {
-        let dark = [0.45, 0.45, 0.45, 1.0];
-        ui.rect(px + 76.0, py + 56.0, 18.0, 3.0, dark);
-        for i in 0..5 {
-            ui.rect(px + 94.0 + i as f32, py + 53.0 + i as f32, 1.0, 9.0 - 2.0 * i as f32, dark);
-        }
+        style::arrow(ui, px + 76.0, py + 49.0, 0.0);
         if self.session.work.iter().all(Option::is_some) && self.smithing_result().is_none() {
-            ui.rect(px + 79.0, py + 49.0, 14.0, 2.0, [0.75, 0.2, 0.2, 1.0]);
+            style::error_cross(ui, px + 74.0, py + 46.0);
         }
     }
 
@@ -1490,7 +1475,7 @@ impl Game {
         let (sw, sh) = ui.size();
         let x = (self.cursor_px.0 / ui.scale + 10.0).min(sw - w - 6.0).max(3.0);
         let y = (self.cursor_px.1 / ui.scale - 12.0).clamp(3.0, (sh - h).max(3.0));
-        ui.rect(x - 3.0, y - 3.0, w + 6.0, h + 3.0, [0.08, 0.02, 0.12, 0.92]);
+        style::tooltip_box(ui, x.floor(), y.floor(), w, h - 3.0);
         for (n, (line, colour)) in lines.iter().enumerate() {
             ui.text(x, y + 11.0 * n as f32, line, *colour);
         }
@@ -1506,7 +1491,7 @@ impl Game {
         let (sw, sh) = ui.size();
         let x = (self.cursor_px.0 / ui.scale + 10.0).min(sw - w - 6.0).max(3.0);
         let y = (self.cursor_px.1 / ui.scale - 12.0).clamp(3.0, (sh - h + 3.0).max(3.0));
-        ui.rect(x - 3.0, y - 3.0, w + 6.0, h, [0.08, 0.02, 0.12, 0.92]);
+        style::tooltip_box(ui, x.floor(), y.floor(), w, h - 6.0);
         let colour = if stack.item == Item::ENCHANTED_BOOK { [1.0, 1.0, 0.33, 1.0] } else { [0.33, 1.0, 1.0, 1.0] };
         ui.text(x, y, &title, colour);
         for (i, (line, curse)) in lines.iter().enumerate() {
@@ -1537,7 +1522,7 @@ impl Game {
         let (sw, sh) = ui.size();
         let x = (self.cursor_px.0 / ui.scale + 10.0).min(sw - w - 6.0).max(3.0);
         let y = (self.cursor_px.1 / ui.scale - 12.0).clamp(3.0, (sh - h + 3.0).max(3.0));
-        ui.rect(x - 3.0, y - 3.0, w + 6.0, h, [0.08, 0.02, 0.12, 0.92]);
+        style::tooltip_box(ui, x.floor(), y.floor(), w, h - 6.0);
         ui.text(x, y, &title, colour);
         for (i, (line, c)) in lines.iter().enumerate() {
             ui.text(x, y + 11.0 * (i + 1) as f32, line, *c);
@@ -1570,7 +1555,7 @@ impl Game {
         let (sw, sh) = ui.size();
         let x = (self.cursor_px.0 / ui.scale + 10.0).min(sw - w - 6.0).max(3.0);
         let y = (self.cursor_px.1 / ui.scale - 12.0).clamp(3.0, (sh - h + 3.0).max(3.0));
-        ui.rect(x - 3.0, y - 3.0, w + 6.0, h, [0.08, 0.02, 0.12, 0.92]);
+        style::tooltip_box(ui, x.floor(), y.floor(), w, h - 6.0);
         ui.text(x, y, &title, colour);
         for (i, (line, c)) in lines.iter().enumerate() {
             ui.text(x, y + 11.0 * (i + 1) as f32, line, *c);
@@ -1588,7 +1573,7 @@ impl Game {
         let (sw, sh) = ui.size();
         let x = (self.cursor_px.0 / ui.scale + 10.0).min(sw - w - 6.0).max(3.0);
         let y = (self.cursor_px.1 / ui.scale - 12.0).clamp(3.0, (sh - h).max(3.0));
-        ui.rect(x - 3.0, y - 3.0, w + 6.0, h, [0.08, 0.02, 0.12, 0.92]);
+        style::tooltip_box(ui, x.floor(), y.floor(), w, h - 6.0);
         ui.text(x, y, &title, WHITE);
         for (i, detail) in details.iter().enumerate() {
             let colour = match effects.get(i) {

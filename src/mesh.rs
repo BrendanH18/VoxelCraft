@@ -68,6 +68,9 @@ pub struct MeshInput {
     pub neighbors: Neighborhood,
     /// Region light copied from World, sky in the low nibble, block in the high.
     pub light: Box<[u8; REGION_VOLUME]>,
+    /// Where `light` is still to be read from, for a job queued on the main
+    /// thread; [`MeshInput::resolve_light`] fills it on the worker.
+    pub light_sources: Option<Box<crate::world::LightSources>>,
     /// World Y of the chunk's lowest block.
     pub base_y: i32,
     /// The dimension's lowest block y: missing chunks below it are bedrock.
@@ -78,6 +81,15 @@ pub struct MeshInput {
     /// v0.18 Track 9: local cells drawn as block-entity models instead (a
     /// chest whose lid is open or moving, a barrel in use); usually empty.
     pub models: Vec<glam::IVec3>,
+}
+
+impl MeshInput {
+    /// Fills `light` from `light_sources`, if they are still pending.
+    pub fn resolve_light(&mut self) {
+        if let Some(sources) = self.light_sources.take() {
+            sources.fill(&mut self.light);
+        }
+    }
 }
 
 /// Render passes, in the order their quads are stored.
@@ -317,6 +329,7 @@ fn shaped_boxes(blocks: &[Block], i: usize, b: Block) -> Boxes {
 
 /// Lights and meshes one chunk.
 pub fn build(input: &MeshInput, region: &mut Region) -> MeshData {
+    debug_assert!(input.light_sources.is_none(), "mesh input light not resolved");
     region.fill(&input.neighbors, input.base_y, input.min_y);
     for c in &input.models {
         let (x, y, z) = (c.x as usize + MARGIN, c.y as usize + MARGIN, c.z as usize + MARGIN);

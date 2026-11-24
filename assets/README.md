@@ -22,6 +22,11 @@ Supported formats are 16 x 16 RGBA8 PNG textures, schema-1 static box models
 existing Rust implementations. Add format/schema and runtime support together
 before introducing an unsupported animation or file kind.
 
+A texture with a `source` (a palette and 16 rows of palette indices, such as
+`textures/stone.source.json`) is built by
+`python3 tools/texture_from_source.py SOURCE PNG`, and the validator checks
+that the PNG's pixels still match it.
+
 Run `python3 tools/validate_assets.py`. Add `--executable /absolute/path/voxelcraft`
 to validate a development or packaged binary from a temporary directory outside
 the checkout. `voxelcraft --validate-assets` reports embedded bytes and validation

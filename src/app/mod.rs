@@ -16,6 +16,7 @@ mod containers;
 mod crafter;
 mod creative;
 mod credits;
+mod death;
 mod dimension;
 mod distortion;
 mod doors;
@@ -90,6 +91,8 @@ use survival::Vitals;
 /// Placement/use repeat; mining timing is owned by the shared session.
 const ACTION_REPEAT: f64 = 0.22;
 const AUTOSAVE_EVERY: Duration = Duration::from_secs(120);
+/// Light [`World::update_players`] may resolve per frame (v0.18 Track 10).
+const STREAM_LIGHT_BUDGET: Duration = Duration::from_millis(2);
 /// How long `--screenshot` waits, once streaming settles, for fluids to
 /// come to rest. Placed water settles well inside it; generation 2's
 /// springs can pour for minutes and would otherwise hold a capture open.
@@ -290,6 +293,14 @@ struct Game {
     menu: gui::Stack<Game>,
     /// What a controller asked the menus for during the frame, for the app.
     menu_action: Option<menu::MenuAction>,
+    /// v0.18 Track 2: the death screen and its quit confirmation, apart
+    /// from `menu` because they don't pause the game.
+    death: gui::Stack<Game>,
+    /// When a LAN guest last asked the host to respawn it (the death
+    /// screen stays closed meanwhile).
+    death_respawn_sent: Option<Instant>,
+    /// v0.18 Track 2: the anvil screen's name box.
+    anvil_name: anvil::NameBox,
     /// The window has had keyboard focus at some point (losing focus only
     /// pauses after that, not when the game starts in the background).
     had_focus: bool,
@@ -457,6 +468,7 @@ impl Shell {
             self.renderer.set_vsync(s.vsync);
         }
         self.renderer.set_brightness(s.brightness);
+        self.renderer.set_mipmap_levels(s.mipmap_levels);
         self.audio.set_volumes(|source| s.sound_volume(source));
         self.audio.set_subtitles(s.show_subtitles);
     }
@@ -636,6 +648,9 @@ impl ApplicationHandler for App {
             WindowEvent::CursorMoved { position, .. } => {
                 game.cursor_px = (position.x as f32, position.y as f32);
                 game.menu_cursor_moved();
+                if game.death.is_open() {
+                    game.death_cursor_moved();
+                }
                 game.creative_drag();
             }
             WindowEvent::Focused(true) => game.had_focus = true,
@@ -662,6 +677,7 @@ impl ApplicationHandler for App {
                 match event.state {
                     ElementState::Pressed => {
                         if game.console_key(&event)
+                            || (!game.menu.is_open() && game.anvil_key(&event))
                             || game.search_key(&event)
                             || (game.inventory_open && !game.menu.is_open() && game.recipe_book_key(&event))
                         {
@@ -669,6 +685,14 @@ impl ApplicationHandler for App {
                         }
                         if game.menu.is_open() {
                             if game.menu_key(&event) == Some(menu::MenuAction::Quit) {
+                                self.quit_to_title();
+                            }
+                            return;
+                        }
+                        // v0.18 Track 2: the death screen takes the keys
+                        // (Tab, arrows, Enter; Escape does nothing).
+                        if game.death.is_open() {
+                            if game.death_key(&event) == Some(menu::MenuAction::Quit) {
                                 self.quit_to_title();
                             }
                             return;
@@ -708,8 +732,9 @@ impl ApplicationHandler for App {
                     return;
                 }
                 if game.session.vitals.is_dead() {
-                    if pressed && button == MouseButton::Left {
-                        game.respawn();
+                    // v0.18 Track 2: Java's death screen buttons.
+                    if game.death.is_open() && game.death_click(button, pressed) == Some(menu::MenuAction::Quit) {
+                        self.quit_to_title();
                     }
                     return;
                 }
@@ -1216,13 +1241,13 @@ impl Game {
         if self.gamerules.bool("ender_pearls_vanish_on_death") {
             self.mobs.entities.discard_pearls_of_dead(|owner| owner == crate::entity::PlayerId::HOST);
         }
-        if self.hardcore {
-            self.session.vitals.respawn();
-            self.set_mode(GameMode::Spectator);
-            self.show_popup("Game over - Spectator mode");
-        }
+        // v0.18 Track 2: Java's client respawns at once when the game rule
+        // hides the death screen (`shouldShowDeathScreen`), in Hardcore
+        // too, where the respawn then makes the player a spectator;
+        // otherwise the death screen offers Respawn or Spectate World.
+        let immediate = self.gamerules.bool("immediate_respawn");
         // An immediate respawn keeps the mouse; the death screen frees it.
-        if !self.gamerules.respawns_immediately(self.hardcore) {
+        if !immediate {
             self.set_grab(false);
         }
         self.keys.clear();
@@ -1235,9 +1260,7 @@ impl Game {
         self.jump_pressed = false;
         self.body.mine_pressed = false;
         self.body.actions.reset();
-        if self.hardcore {
-            self.set_grab(true);
-        } else if self.gamerules.respawns_immediately(self.hardcore) {
+        if immediate {
             self.respawn_due = true;
         }
     }
@@ -1246,7 +1269,7 @@ impl Game {
     /// killed the player (a tick, a save's settling) is over.
     fn respawn_if_due(&mut self) {
         if std::mem::take(&mut self.respawn_due) && self.session.vitals.is_dead() {
-            self.respawn();
+            self.respawn_from_death();
             // A teleport: the camera snaps instead of gliding from the death spot.
             self.previous_eye = self.session.player.eye();
         }
@@ -2078,13 +2101,18 @@ impl Game {
             self.agents.host.is_some() || self.lan.host.is_some() || self.lan.client.is_some(),
         );
         self.respawn_if_due();
+        self.sync_death_screen();
         let elapsed = now - self.last_frame;
         self.last_frame = now;
         let ticks = self.clock.advance(elapsed, paused);
         let dt = if paused { 0.0 } else { elapsed.as_secs_f64().min(0.25) };
         self.update_credits(elapsed.as_secs_f32().min(0.25));
         self.menu_tick();
+        if let Some(action) = self.death_tick() {
+            self.menu_action = Some(action);
+        }
         self.recipe_book_frame();
+        self.anvil_frame();
         // Benchmark scenes take no controller input (a stray Start would pause sampling).
         if self.lan.client.is_none() && self.benchmark.is_none() {
             self.poll_pads(dt as f32, paused);
@@ -2102,6 +2130,9 @@ impl Game {
         }
         let viewers: Vec<DVec3> = self.followed().map(|(_, b)| b.agent.session.player.pos).collect();
         self.world.set_viewers(&viewers);
+        // Streaming spends at most this much of a frame on light; the rest
+        // is resolved before the frame's first tick, below.
+        self.world.set_stream_light_budget(Some(STREAM_LIGHT_BUDGET));
         self.world.update_players(self.session.player.pos, &self.agents.positions());
         if self.lan.client.is_none()
             && !self.placed
@@ -2112,6 +2143,11 @@ impl Game {
             self.apply_placements();
         }
         benchmark::mark(&mut self.benchmark, 0);
+        if ticks > 0 {
+            // Ticks read light exactly as when streaming resolved all of it
+            // each frame.
+            self.world.update_block_light();
+        }
         for _ in 0..ticks {
             if self.lan.client.is_some() {
                 self.tick_lan_client();
@@ -2245,7 +2281,13 @@ impl Game {
         benchmark::mark(&mut self.benchmark, 2);
         let verts = self.mobs.entities.mesh(camera, forward, fog_end, scene.time, alpha);
         push_avatars(&self.world, &others, camera, fog_end, scene.time, verts);
-        crate::render::signs::text(&self.world, camera, verts);
+        crate::render::signs::text(
+            &mut self.mobs.sign_text,
+            crate::render::signs::FONT_VERSION,
+            &self.world,
+            camera,
+            verts,
+        );
         crate::entity::model::build_beacon_beams(&self.world, camera, scene.time, fog_end, verts);
         crate::entity::model::build_conduits(&self.world, camera, fog_end, verts);
         if !self.camera.first_person() {
@@ -2286,6 +2328,16 @@ impl Game {
             let right = forward.cross(glam::DVec3::Y).normalize_or_zero();
             self.captions = self.audio.subtitles(self.session.player.eye(), forward, right);
         }
+        let (ui, blur_from) = if self.show_hud
+            || self.session.vitals.is_dead()
+            || self.menu.is_open()
+            || self.console.open
+            || self.credits.is_some()
+        {
+            self.build_ui(now)
+        } else {
+            (Vec::new(), None)
+        };
         let params = FrameParams {
             camera,
             forward,
@@ -2354,16 +2406,10 @@ impl Game {
                 .vitals
                 .effects
                 .vision(scene.time, self.session.player.head_in_water(&self.world)),
-            ui: if self.show_hud
-                || self.session.vitals.is_dead()
-                || self.menu.is_open()
-                || self.console.open
-                || self.credits.is_some()
-            {
-                self.build_ui(now)
-            } else {
-                Vec::new()
-            },
+            ui,
+            // v0.18 Track 2: a menu over the world blurs what is under it.
+            blur: blur_from.map_or(0, |_| self.settings.menu_blur),
+            ui_under_blur: blur_from.unwrap_or(0),
         };
         benchmark::mark(&mut self.benchmark, 4);
         let Some(mut frame) = self.renderer.begin_frame() else {

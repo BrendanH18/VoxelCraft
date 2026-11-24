@@ -684,10 +684,12 @@ impl Game {
         for &(i, r) in &l.tabs {
             let selected = i == self.recipe_book.tab;
             let r = if selected { Rect { x: r.x - 2.0, w: r.w + 2.0, ..r } } else { r };
-            ui.rect(r.x, r.y, r.w - 5.0, r.h, if selected { [0.78, 0.78, 0.78, 1.0] } else { [0.6, 0.6, 0.6, 1.0] });
-            ui.rect(r.x, r.y, r.w - 5.0, 1.0, WHITE);
-            ui.rect(r.x, r.y, 1.0, r.h, WHITE);
-            ui.rect(r.x, r.y + r.h - 1.0, r.w - 5.0, 1.0, [0.33, 0.33, 0.33, 1.0]);
+            // v0.18 Track 2: the panel's colours, a darker face unselected.
+            use super::gui::style::{srgb, token};
+            ui.rect(r.x, r.y, r.w - 5.0, r.h, srgb(if selected { token::PANEL } else { 0xA8A8A8 }));
+            ui.rect(r.x, r.y, r.w - 5.0, 1.0, srgb(token::PANEL_LIGHT));
+            ui.rect(r.x, r.y, 1.0, r.h, srgb(token::PANEL_LIGHT));
+            ui.rect(r.x, r.y + r.h - 1.0, r.w - 5.0, 1.0, srgb(token::PANEL_SHADE));
             let icons = menu.book.tabs()[i].icons;
             for (k, icon) in icons.iter().enumerate() {
                 if let Some(item) = rb::java_item(icon) {
@@ -947,13 +949,10 @@ fn overlay_rect(x: f32, y: f32, n: usize, i: usize) -> Rect {
     }
 }
 
-/// A raised grey panel like the container screens'.
+/// A raised grey panel like the container screens' (v0.18 Track 2's
+/// shared panel).
 fn panel(ui: &mut Ui, r: Rect) {
-    ui.rect(r.x, r.y, r.w, r.h, [0.78, 0.78, 0.78, 1.0]);
-    ui.rect(r.x, r.y, r.w, 1.0, WHITE);
-    ui.rect(r.x, r.y, 1.0, r.h, WHITE);
-    ui.rect(r.x, r.y + r.h - 1.0, r.w, 1.0, [0.33, 0.33, 0.33, 1.0]);
-    ui.rect(r.x + r.w - 1.0, r.y, 1.0, r.h, [0.33, 0.33, 0.33, 1.0]);
+    super::gui::style::panel(ui, r.x, r.y, r.w, r.h);
 }
 
 /// The survival inventory's book button, from its 2x2 grid's first slot
