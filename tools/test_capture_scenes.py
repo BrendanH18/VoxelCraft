@@ -92,7 +92,9 @@ class CaptureScenesTest(unittest.TestCase):
 
     def test_select_by_name_or_group(self):
         picked = [s["name"] for s in capture_scenes.select(self.data, ["day", "mobs"])]
-        self.assertEqual(picked, ["mobs-uneven-ground", "mobs-night", "day"])
+        expected = [s["name"] for s in self.data["scenes"] if s["name"] == "day" or s.get("group") == "mobs"]
+        self.assertEqual(picked, expected)
+        self.assertEqual(picked[:3], ["mobs-uneven-ground", "mobs-night", "day"])
         with self.assertRaises(SystemExit):
             capture_scenes.select(self.data, ["nowhere"])
 
