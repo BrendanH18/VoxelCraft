@@ -108,6 +108,7 @@ pub fn tick_world_rules(world: &mut World, player: DVec3, fire_tick: bool, rando
     world.clear_removed_banners();
     world.clear_removed_shulker_boxes();
     world.tick_shulker_boxes();
+    world.tick_lids();
     // `ServerLevel.tick`: scheduled block ticks, fluid ticks, then the
     // chunk tick (random ticks), then block events; entities and block
     // entities follow in the caller (docs/redstone.md "Tick phases").

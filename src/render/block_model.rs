@@ -35,7 +35,9 @@ pub struct BlockModel {
     /// A banner's pattern layers (v0.15 Track B), drawn over its flag.
     pub patterns: Option<voxelcraft::inventory::components::StackPayload>,
     /// v0.16 Track B: a placed shulker box's lid, 0 shut to 1 open; the
-    /// block is then drawn as `ShulkerBoxRenderer` draws it.
+    /// block is then drawn as `ShulkerBoxRenderer` draws it. v0.18 Track 9:
+    /// a chest's lid the same way (`ChestRenderer`), and a barrel in use with
+    /// its open top.
     pub lid: Option<f32>,
 }
 
@@ -69,6 +71,12 @@ pub fn vertices(models: &[BlockModel], camera: DVec3, ticks: f64) -> Vec<BlockVe
             crate::world::shulker_box::quads(s, lid, |q| push_quad(&mut out, m, min, q));
             continue;
         }
+        // v0.18 Track 9: a chest in use, its lid at `lid` (`ChestRenderer`).
+        if let (Some(lid), Some((facing, bounds))) = (m.lid, crate::world::lids::chest_model(m.block)) {
+            let faces = m.block.info().tex;
+            crate::world::lids::chest_quads(facing, bounds, faces, lid, |q| push_quad(&mut out, m, min, q));
+            continue;
+        }
         // v0.16 Track C: placed heads (`SkullBlockRenderer`); a powered
         // piglin or dragon head animates with the game ticks.
         if m.icon.is_none()
@@ -80,7 +88,8 @@ pub fn vertices(models: &[BlockModel], camera: DVec3, ticks: f64) -> Vec<BlockVe
             quad_vertices(&mut out, m, &crate::world::skulls::quads(s, anim), min);
             continue;
         }
-        let tex = m.block.info().tex;
+        // v0.18 Track 9: a barrel in use shows its open top.
+        let tex = m.lid.and_then(|_| crate::world::lids::barrel_faces(m.block)).unwrap_or(m.block.info().tex);
         let (sin, cos) = m.yaw.sin_cos();
         // Unit-cube corner -> camera-relative position, turned about the centre.
         let place = |c: Vec3| match m.orient {

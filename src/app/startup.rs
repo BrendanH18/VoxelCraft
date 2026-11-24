@@ -279,6 +279,7 @@ impl Game {
             cursor_px: (0.0, 0.0),
             body: Default::default(),
             show_hud: !args.no_hud,
+            captions: Vec::new(),
             hand: Default::default(),
             camera: args.camera,
             scripted_ride: args.ride.clone(),

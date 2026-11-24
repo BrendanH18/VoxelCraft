@@ -61,6 +61,14 @@ pub struct Settings {
     pub scroll_sensitivity: f64,
     /// Discrete Scrolling: every wheel event counts as one notch.
     pub discrete_scroll: bool,
+    /// v0.18 Track 9: Java's Closed Captions (`showSubtitles`, off).
+    pub show_subtitles: bool,
+    /// Text Background Opacity (`textBackgroundOpacity`, 0..1, 0.5): the
+    /// text backing where Text Background is Everywhere.
+    pub text_background_opacity: f32,
+    /// Text Background (`backgroundForChatOnly`): Chat (true, the default)
+    /// keeps each overlay's own backing; Everywhere uses the opacity above.
+    pub background_for_chat_only: bool,
     pub keys: super::keys::Bindings,
 }
 
@@ -109,6 +117,9 @@ impl Default for Settings {
             invert_mouse_y: false,
             scroll_sensitivity: 1.0,
             discrete_scroll: false,
+            show_subtitles: false,
+            text_background_opacity: 0.5,
+            background_for_chat_only: true,
             keys: Default::default(),
         }
     }
@@ -231,6 +242,11 @@ impl Settings {
             "invertYMouse" => flag(&mut self.invert_mouse_y),
             "mouseWheelSensitivity" => self.scroll_sensitivity = num().unwrap_or(self.scroll_sensitivity),
             "discrete_mouse_scroll" => flag(&mut self.discrete_scroll),
+            "showSubtitles" => flag(&mut self.show_subtitles),
+            "textBackgroundOpacity" => {
+                self.text_background_opacity = num().map_or(self.text_background_opacity, |v| v as f32)
+            }
+            "backgroundForChatOnly" => flag(&mut self.background_for_chat_only),
             _ => return self.keys.parse_line(key, value),
         }
         true
@@ -238,7 +254,7 @@ impl Settings {
 
     fn serialize_display_controls(&self, out: &mut String) {
         out.push_str(&format!(
-            "guiScale={}\nmaxFps={}\ngamma={}\nfovEffectScale={}\nscreenEffectScale={}\ndamageTiltStrength={}\ntoggleCrouch={}\ntoggleSprint={}\ninvertXMouse={}\ninvertYMouse={}\nmouseWheelSensitivity={:.4}\ndiscrete_mouse_scroll={}\n",
+            "guiScale={}\nmaxFps={}\ngamma={}\nfovEffectScale={}\nscreenEffectScale={}\ndamageTiltStrength={}\ntoggleCrouch={}\ntoggleSprint={}\ninvertXMouse={}\ninvertYMouse={}\nmouseWheelSensitivity={:.4}\ndiscrete_mouse_scroll={}\nshowSubtitles={}\ntextBackgroundOpacity={}\nbackgroundForChatOnly={}\n",
             self.gui_scale,
             self.max_fps,
             self.brightness,
@@ -251,6 +267,9 @@ impl Settings {
             self.invert_mouse_y,
             self.scroll_sensitivity,
             self.discrete_scroll,
+            self.show_subtitles,
+            self.text_background_opacity,
+            self.background_for_chat_only,
         ));
         self.keys.serialize(out);
     }
@@ -295,7 +314,13 @@ impl Settings {
         self.gui_scale = self.gui_scale.min(MAX_GUI_SCALE);
         // Java stores the framerate in steps of ten.
         self.max_fps = (self.max_fps.clamp(MAX_FPS.0, MAX_FPS.1) + 5) / 10 * 10;
-        for v in [&mut self.brightness, &mut self.fov_effects, &mut self.distortion, &mut self.damage_tilt] {
+        for v in [
+            &mut self.brightness,
+            &mut self.fov_effects,
+            &mut self.distortion,
+            &mut self.damage_tilt,
+            &mut self.text_background_opacity,
+        ] {
             *v = v.clamp(0.0, 1.0);
         }
         let (lo, hi) = SCROLL_STEPS;
@@ -304,6 +329,12 @@ impl Settings {
     }
 
     /// The Max Framerate cap, or `None` for Unlimited.
+    /// `Options.getBackgroundColor(defaultOpacity)`: the backing alpha of
+    /// an overlay whose own opacity is `default`.
+    pub fn background_opacity(&self, default: f32) -> f32 {
+        if self.background_for_chat_only { default } else { self.text_background_opacity }
+    }
+
     pub fn frame_cap(&self) -> Option<u32> {
         (self.max_fps < MAX_FPS.1).then_some(self.max_fps)
     }
@@ -404,6 +435,29 @@ mod tests {
         assert_eq!(wild.weather_volume, 1.0);
         assert_eq!(wild.hostile_volume, 0.5);
         assert_eq!(Settings { ui_volume: 4.0, record_volume: -1.0, ..Settings::default() }.clamped().ui_volume, 1.0);
+    }
+
+    /// v0.18 Track 9: Closed Captions and the text background options keep
+    /// Java's keys and defaults, survive a save, and old files get the defaults.
+    #[test]
+    fn subtitle_and_text_background_options_round_trip() {
+        let d = Settings::default();
+        assert!(!d.show_subtitles && d.background_for_chat_only);
+        assert_eq!(d.text_background_opacity, 0.5);
+        assert_eq!(d.background_opacity(0.8), 0.8, "Chat keeps the overlay's own backing");
+        let s = Settings {
+            show_subtitles: true,
+            text_background_opacity: 0.25,
+            background_for_chat_only: false,
+            ..Settings::default()
+        };
+        let text = s.serialize();
+        assert!(text.contains("\nshowSubtitles=true\n") && text.contains("\nbackgroundForChatOnly=false\n"));
+        let back = Settings::parse(&text);
+        assert_eq!(back, s);
+        assert_eq!(back.background_opacity(0.8), 0.25, "Everywhere uses the opacity");
+        assert_eq!(Settings::parse("fov=80\n").show_subtitles, false);
+        assert_eq!(Settings::parse("textBackgroundOpacity=7\n").text_background_opacity, 1.0);
     }
 
     #[test]

@@ -250,6 +250,65 @@ pub enum Sound {
     Minecart(crate::entity::minecart::Cue),
     /// v0.17 Track C1: the crafter's craft and failure.
     Crafter(crate::world::crafter::Cue),
+    /// v0.18 Track 9: a block's own break, place, step, hit or fall sound,
+    /// by the Java `SoundType` event family it plays (`block.<family>.*`).
+    Block(super::block_sounds::Family, BlockCue),
+    /// v0.18 Track 9: chests, ender chests, copper chests and barrels
+    /// opening and closing.
+    Container(ContainerCue),
+}
+
+/// v0.18 Track 9: the five events of a Java `SoundType`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum BlockCue {
+    Break,
+    Place,
+    Step,
+    Hit,
+    Fall,
+}
+
+impl BlockCue {
+    pub const ALL: [BlockCue; 5] = [BlockCue::Break, BlockCue::Place, BlockCue::Step, BlockCue::Hit, BlockCue::Fall];
+}
+
+/// v0.18 Track 9: container lid sounds (`ChestBlock.getOpenChestSound`,
+/// `EnderChestBlockEntity`, `BarrelBlockEntity`, `CopperChestBlock`).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum ContainerCue {
+    ChestOpen,
+    ChestClose,
+    EnderChestOpen,
+    EnderChestClose,
+    BarrelOpen,
+    BarrelClose,
+    CopperChestOpen,
+    CopperChestClose,
+    CopperChestWeatheredOpen,
+    CopperChestWeatheredClose,
+    CopperChestOxidizedOpen,
+    CopperChestOxidizedClose,
+}
+
+impl ContainerCue {
+    pub const ALL: [ContainerCue; 12] = [
+        ContainerCue::ChestOpen,
+        ContainerCue::ChestClose,
+        ContainerCue::EnderChestOpen,
+        ContainerCue::EnderChestClose,
+        ContainerCue::BarrelOpen,
+        ContainerCue::BarrelClose,
+        ContainerCue::CopperChestOpen,
+        ContainerCue::CopperChestClose,
+        ContainerCue::CopperChestWeatheredOpen,
+        ContainerCue::CopperChestWeatheredClose,
+        ContainerCue::CopperChestOxidizedOpen,
+        ContainerCue::CopperChestOxidizedClose,
+    ];
+
+    pub fn is_open(self) -> bool {
+        self as usize % 2 == 0
+    }
 }
 
 const M: usize = Material::ALL.len();
@@ -272,7 +331,9 @@ impl Sound {
     const CONDUIT_END: usize = Self::SULFUR_CUBE_END + crate::world::conduit::Cue::ALL.len();
     const GEYSER_END: usize = Self::CONDUIT_END + crate::world::potent_sulfur::Cue::ALL.len();
     const MINECART_END: usize = Self::GEYSER_END + crate::entity::minecart::Cue::ALL.len();
-    pub const COUNT: usize = Self::MINECART_END + crate::world::crafter::Cue::ALL.len();
+    const CRAFTER_END: usize = Self::MINECART_END + crate::world::crafter::Cue::ALL.len();
+    const BLOCK_END: usize = Self::CRAFTER_END + super::block_sounds::FAMILY_COUNT * BlockCue::ALL.len();
+    pub const COUNT: usize = Self::BLOCK_END + ContainerCue::ALL.len();
 
     /// Dense index in `0..COUNT`.
     pub fn key(self) -> usize {
@@ -296,6 +357,8 @@ impl Sound {
             Sound::Geyser(cue) => Self::CONDUIT_END + cue as usize,
             Sound::Minecart(cue) => Self::GEYSER_END + cue as usize,
             Sound::Crafter(cue) => Self::MINECART_END + cue as usize,
+            Sound::Block(family, cue) => Self::CRAFTER_END + family.index() * BlockCue::ALL.len() + cue as usize,
+            Sound::Container(cue) => Self::BLOCK_END + cue as usize,
             Sound::Note(i) => 3 * M + 27 + Voice::ALL.len() * CALLS + i as usize,
             Sound::Thunder => Self::BASE_COUNT - 1,
             Sound::Bell => Self::BASE_COUNT - 4,
@@ -425,6 +488,8 @@ impl Sound {
             .chain(crate::world::potent_sulfur::Cue::ALL.map(Sound::Geyser))
             .chain(crate::entity::minecart::Cue::ALL.map(Sound::Minecart))
             .chain(crate::world::crafter::Cue::ALL.map(Sound::Crafter))
+            .chain(super::block_sounds::sounds())
+            .chain(ContainerCue::ALL.map(Sound::Container))
     }
 
     /// Stable sound name used when exporting or identifying samples.
@@ -447,6 +512,8 @@ impl Sound {
             Sound::Geyser(c) => c.key().replace('.', "_"),
             Sound::Minecart(c) => format!("minecart_{c:?}").to_lowercase(),
             Sound::Crafter(c) => format!("crafter_{c:?}").to_lowercase(),
+            Sound::Block(f, c) => format!("block_{}_{c:?}", f.name()).to_lowercase(),
+            Sound::Container(c) => format!("container_{c:?}").to_lowercase(),
             Sound::Thunder => "lightning_thunder".into(),
             Sound::HoneySlide => "honey_block_slide".into(),
             Sound::HoneyDrink => "honey_drink".into(),
@@ -586,6 +653,11 @@ impl Sound {
             Sound::Minecart(_) => SoundSource::Neutral,
             // `CRAFTER_CRAFT` and `CRAFTER_FAIL` play as `BLOCKS`.
             Sound::Crafter(_) => SoundSource::Blocks,
+            // `Entity.playStepSound` and `playBlockFallSound` play in the
+            // walker's category (`PLAYERS` for players); breaking, placing,
+            // mining hits and lids play as `BLOCKS`.
+            Sound::Block(_, BlockCue::Step | BlockCue::Fall) => SoundSource::Players,
+            Sound::Block(..) | Sound::Container(_) => SoundSource::Blocks,
             Sound::Mob(voice, _) => voice.source(),
         }
     }
@@ -606,6 +678,9 @@ impl Sound {
             Sound::Geyser(_) => 2,
             Sound::Minecart(_) => 1,
             Sound::Crafter(_) => 2,
+            Sound::Block(_, BlockCue::Step | BlockCue::Hit | BlockCue::Fall) => 3,
+            Sound::Block(..) => 2,
+            Sound::Container(_) => 2,
             Sound::Warden(_) | Sound::Sculk(_) => 2,
             Sound::Sniffer(_) | Sound::Weapon(_) => 2,
             Sound::Step(_) => 4,
@@ -662,6 +737,8 @@ impl Sound {
             Sound::Geyser(c) => super::sulfur_cube::render_geyser(c, &mut rng),
             Sound::Minecart(c) => super::minecart::render(c, &mut rng),
             Sound::Crafter(c) => super::crafter::render(c, &mut rng),
+            Sound::Block(f, c) => super::block_sounds::render(f, c, &mut rng),
+            Sound::Container(c) => super::block_sounds::render_container(c, &mut rng),
             Sound::Thunder => thunder(&mut rng),
             Sound::HoneySlide => honey_sound(&mut rng, 0.35),
             Sound::HoneyDrink => honey_sound(&mut rng, 0.22),
@@ -710,7 +787,8 @@ pub struct Bank {
 
 impl Bank {
     pub fn synthesize() -> Bank {
-        let sounds: Vec<Sound> = Sound::all().collect();
+        // v0.18 Track 9: a block's hit and fall share its step buffers.
+        let sounds: Vec<Sound> = Sound::all().filter(|&s| super::block_sounds::shares(s).is_none()).collect();
         // Sounds are independent: render them across a few threads.
         let threads = std::thread::available_parallelism().map_or(1, |n| n.get()).clamp(1, 4);
         let rendered: Vec<Vec<Vec<f32>>> = std::thread::scope(|s| {
@@ -736,6 +814,11 @@ impl Bank {
         for (snd, variants) in sounds.iter().zip(rendered) {
             bank.ranges[snd.key()] = (bank.buffers.len() as u16, variants.len() as u16);
             bank.buffers.extend(variants);
+        }
+        for s in Sound::all() {
+            if let Some(step) = super::block_sounds::shares(s) {
+                bank.ranges[s.key()] = bank.ranges[step.key()];
+            }
         }
         if let Some(entry) =
             voxelcraft::assets::CATALOGUE["resources"].as_array().and_then(|r| r.iter().find(|e| e["sound"] == "pop"))
@@ -767,24 +850,24 @@ impl Bank {
 // --- Recipes ------------------------------------------------------------------
 
 /// Parameters of the granular "crunch" family (stone, dirt, gravel...).
-struct Crunch {
+pub(super) struct Crunch {
     /// High-pass / low-pass corners of the grain noise.
-    lo: f32,
-    hi: f32,
+    pub(super) lo: f32,
+    pub(super) hi: f32,
     /// Grain rate at the start, events per second.
-    density: f32,
-    grain_ms: (f32, f32),
+    pub(super) density: f32,
+    pub(super) grain_ms: (f32, f32),
     /// Resonant body band (centre, Q) mixed with the raw grains.
-    body: (f32, f32),
+    pub(super) body: (f32, f32),
     /// Low thump frequency and level (0 disables).
-    thump: (f32, f32),
+    pub(super) thump: (f32, f32),
     /// Continuous noise bed under the grains.
-    hiss: f32,
+    pub(super) hiss: f32,
     /// Slow amplitude flutter (rustling), 0..1.
-    flutter: f32,
+    pub(super) flutter: f32,
 }
 
-fn crunch_params(m: Material) -> Crunch {
+pub(super) fn crunch_params(m: Material) -> Crunch {
     match m {
         Material::Stone => Crunch {
             lo: 450.0,
@@ -873,7 +956,7 @@ fn crunch_params(m: Material) -> Crunch {
 }
 
 /// Granular crunch lasting `secs`, with grain density decaying over `tau`.
-fn crunch(p: &Crunch, rng: &mut Rng, secs: f32, tau: f32, thump_gain: f32) -> Vec<f32> {
+pub(super) fn crunch(p: &Crunch, rng: &mut Rng, secs: f32, tau: f32, thump_gain: f32) -> Vec<f32> {
     let len = samples(secs);
     // A few clusters (sub-impacts) make breaks sound like crumbling rather
     // than a single burst.
@@ -919,7 +1002,7 @@ fn crunch(p: &Crunch, rng: &mut Rng, secs: f32, tau: f32, thump_gain: f32) -> Ve
 }
 
 /// Hollow wooden knock: a few inharmonic damped modes excited by a click.
-fn knock(buf: &mut [f32], start: usize, rng: &mut Rng, amp: f32, damp: f32) {
+pub(super) fn knock(buf: &mut [f32], start: usize, rng: &mut Rng, amp: f32, damp: f32) {
     let f0 = rng.range(230.0, 320.0);
     for (ratio, a, tau) in [(1.0, 1.0, 0.07), (2.32, 0.55, 0.045), (3.93, 0.3, 0.028), (5.61, 0.16, 0.016)] {
         let f = f0 * ratio * rng.range(0.97, 1.03);
@@ -960,7 +1043,7 @@ fn wood(rng: &mut Rng, kind: Kind) -> Vec<f32> {
 }
 
 /// Short high glass ping: two inharmonic partials.
-fn ping(buf: &mut [f32], start: usize, f: f32, amp: f32, tau: f32) {
+pub(super) fn ping(buf: &mut [f32], start: usize, f: f32, amp: f32, tau: f32) {
     add_mode(buf, start, Mode { freq: f, amp, tau, glide: 1.0, glide_tau: 1.0 });
     add_mode(buf, start, Mode { freq: f * 2.76, amp: amp * 0.45, tau: tau * 0.6, glide: 1.0, glide_tau: 1.0 });
 }
@@ -1005,7 +1088,7 @@ fn glass(rng: &mut Rng, kind: Kind) -> Vec<f32> {
 }
 
 /// Adds a rising-pitch bubble (Minnaert resonance) at `t0` seconds.
-fn bubble(buf: &mut [f32], t0: f32, f0: f32, amp: f32) {
+pub(super) fn bubble(buf: &mut [f32], t0: f32, f0: f32, amp: f32) {
     // Smaller bubbles ring higher and shorter.
     let tau = (0.9 / f0).clamp(0.004, 0.03) * 12.0;
     add_mode(buf, samples(t0), Mode { freq: f0, amp, tau, glide: 1.5, glide_tau: tau * 0.8 });

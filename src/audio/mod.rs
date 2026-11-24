@@ -6,9 +6,11 @@
 //! Synthesis and device setup happen on a background thread, so startup is
 //! never blocked. Without an output device the game runs silently.
 
+pub mod block_sounds;
 mod breeze;
 mod crafter;
 mod dsp;
+mod events;
 mod export;
 mod flight;
 mod illager;
@@ -18,6 +20,7 @@ mod raid;
 mod sniffer;
 pub mod sounds;
 mod source;
+pub mod subtitles;
 mod sulfur_cube;
 mod voices;
 mod warden;
@@ -37,7 +40,7 @@ use crate::world::terrain::SEA_LEVEL;
 use dsp::Rng;
 pub use export::{export_music, export_sounds};
 use mixer::{Command, Mixer};
-pub use sounds::{Bank, Material, Sound, material};
+pub use sounds::{Bank, BlockCue, ContainerCue, Material, Sound, material};
 pub use source::SoundSource;
 use voxelcraft::music::{Context, MusicReader, MusicStream};
 
@@ -45,8 +48,9 @@ use voxelcraft::music::{Context, MusicReader, MusicStream};
 const STRIDE: f64 = 1.67;
 /// Distance swum between strokes.
 const SWIM_STROKE: f64 = 2.4;
-/// Interval between hit sounds while mining a block.
-const HIT_INTERVAL: f64 = 0.22;
+/// Interval between hit sounds while mining a block: Java's
+/// `MultiPlayerGameMode.continueDestroyBlock` plays one every fourth tick.
+const HIT_INTERVAL: f64 = 0.2;
 
 /// A sound copied for LAN clients: (sound, position or `None` for the host's own, gain, pitch range).
 pub type Tapped = (Sound, Option<DVec3>, f32, (f32, f32), SoundSource);
@@ -73,12 +77,20 @@ pub struct Audio {
     prev_pos: Option<glam::DVec3>,
     stride: f64,
     swim: f64,
-    ground: Material,
+    /// The block underfoot, whose step sound footsteps play.
+    ground: Option<Block>,
     ambience_timer: f64,
     /// Eyes of the listeners deep in caves, where drips play.
     caves: Vec<DVec3>,
     drip_timer: f64,
     hit_timer: f64,
+    /// v0.18 Track 9: Closed Captions, and the captions while it is on.
+    show_subtitles: bool,
+    subtitles: subtitles::Subtitles,
+    /// The listener's eye, where sounds with no position play.
+    listener: DVec3,
+    /// When this `Audio` started: captions time their sounds from it.
+    clock: Instant,
 }
 
 impl Audio {
@@ -91,6 +103,8 @@ impl Audio {
             std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(1, |d| d.as_nanos() as u64);
         let (music, reader) = MusicStream::new(seed);
         let master = if muted { 0.0 } else { volume };
+        // Read the block sound types now rather than at the first footstep.
+        block_sounds::warm();
         let spawned = std::thread::Builder::new().name("audio".into()).spawn(move || {
             let start = Instant::now();
             let bank = Arc::new(Bank::synthesize());
@@ -133,11 +147,15 @@ impl Audio {
             prev_pos: None,
             stride: 0.0,
             swim: 0.0,
-            ground: Material::Grass,
+            ground: None,
             ambience_timer: 0.0,
             caves: Vec::new(),
             drip_timer: 5.0,
             hit_timer: 0.0,
+            show_subtitles: false,
+            subtitles: Default::default(),
+            listener: DVec3::ZERO,
+            clock: Instant::now(),
         }
     }
 
@@ -166,6 +184,10 @@ impl Audio {
         {
             tap.push((sound, pos, gain, pitch, source));
         }
+        if self.show_subtitles && !self.muted && gain > 0.0 {
+            let time = self.clock.elapsed().as_secs_f64();
+            self.subtitles.play(sound, pos.unwrap_or(self.listener), pos.is_none(), gain, time);
+        }
         if self.muted || self.tx.is_none() {
             return;
         }
@@ -179,27 +201,55 @@ impl Audio {
         Some(pos.as_dvec3() + DVec3::splat(0.5))
     }
 
+    /// v0.18 Track 9: one of a block's own sounds ([`block_sounds::play`])
+    /// at `pos`, `gain` times Java's volume for it, in `source`.
+    fn block_sound(&mut self, block: Block, cue: BlockCue, pos: Option<DVec3>, gain: f32, source: SoundSource) {
+        if let Some((sound, volume, pitch)) = block_sounds::play(block, cue) {
+            self.play_in(source, sound, pos, volume * gain, (pitch, pitch));
+        }
+    }
+
     pub fn block_break(&mut self, block: Block, pos: IVec3) {
-        self.play(Sound::Break(material(block)), Self::at_block(pos), 1.0, (0.85, 1.0));
+        self.block_sound(block, BlockCue::Break, Self::at_block(pos), 1.0, SoundSource::Blocks);
     }
 
     pub fn block_place(&mut self, block: Block, pos: IVec3) {
-        self.play(Sound::Place(material(block)), Self::at_block(pos), 0.9, (0.85, 1.0));
+        self.block_sound(block, BlockCue::Place, Self::at_block(pos), 1.0, SoundSource::Blocks);
     }
 
-    /// Call every frame while a block is being mined: plays soft, low hits.
+    /// Call every frame while a block is being mined: its hit sound every
+    /// fourth tick, in `BLOCKS`.
     pub fn block_hit(&mut self, block: Block, pos: IVec3, dt: f64) {
         self.hit_timer -= dt;
         if self.hit_timer <= 0.0 {
             self.hit_timer = HIT_INTERVAL;
-            // Java plays the block's hit sound in `BLOCKS`.
-            self.play_in(SoundSource::Blocks, Sound::Step(material(block)), Self::at_block(pos), 0.45, (0.7, 0.8));
+            self.block_sound(block, BlockCue::Hit, Self::at_block(pos), 1.0, SoundSource::Blocks);
         }
+    }
+
+    /// v0.18 Track 9: turns Closed Captions on or off (captions on screen
+    /// go with it).
+    pub fn set_subtitles(&mut self, on: bool) {
+        if !on {
+            self.subtitles.clear();
+        }
+        self.show_subtitles = on;
+    }
+
+    /// The captions to draw now for a listener at `ear` looking along
+    /// `forward` (`right` to its right), oldest first.
+    pub fn subtitles(&mut self, ear: DVec3, forward: DVec3, right: DVec3) -> Vec<subtitles::Shown> {
+        if !self.show_subtitles || self.subtitles.is_empty() {
+            return Vec::new();
+        }
+        let time = self.clock.elapsed().as_secs_f64();
+        self.subtitles.shown(ear, forward, right, time)
     }
 
     /// Fades out the world's ambience and lifts underwater muffling (back
     /// to the title screen).
     pub fn leave_world(&mut self) {
+        self.subtitles.clear();
         self.music.set_context(Context::default());
         self.muffle = 0.0;
         self.send(Command::Muffle(0.0));
@@ -257,8 +307,12 @@ impl Audio {
         self.muted
     }
 
-    fn step(&mut self, m: Material, gain: f32) {
-        self.play(Sound::Step(m), None, gain, (0.9, 1.1));
+    /// The block underfoot's step (`cue` Step) or fall sound at the
+    /// listener, `gain` times Java's volume.
+    fn step(&mut self, cue: BlockCue, gain: f32) {
+        if let Some(block) = self.ground {
+            self.block_sound(block, cue, None, gain, SoundSource::Players);
+        }
     }
 
     /// Another player's footsteps: `stride` accumulates the distance they've
@@ -274,8 +328,8 @@ impl Audio {
         }
         *stride -= STRIDE;
         if let Some(b) = ground_block(player, world) {
-            let gain = if player.sneaking { 0.2 } else { 0.55 };
-            self.play(Sound::Step(material(b)), Some(player.pos), gain, (0.9, 1.1));
+            let gain = if player.sneaking { 0.2 / 0.55 } else { 1.0 };
+            self.block_sound(b, BlockCue::Step, Some(player.pos), gain, SoundSource::Players);
         }
     }
 
@@ -291,6 +345,7 @@ impl Audio {
             return;
         }
         let eye = player.eye();
+        self.listener = eye;
         let pos = eye.as_vec3().to_array();
         self.send(Command::Listener { pos, yaw: player.yaw });
         let mut ears = [[0.0; 4]; mixer::MAX_OTHERS];
@@ -318,17 +373,19 @@ impl Audio {
         self.prev_pos = Some(player.pos);
         if player.on_ground && !player.in_water {
             if let Some(b) = ground_block(player, world) {
-                self.ground = material(b);
+                self.ground = Some(b);
             }
             if !self.was_on_ground {
                 // Landed: the impact speed is last frame's fall velocity.
+                // A hard landing plays the block's fall sound
+                // (`playBlockFallSound`), a soft one a step.
                 let impact = -self.prev_vel_y;
                 if impact > 12.0 {
                     let g = ((impact - 12.0) / 16.0).clamp(0.35, 1.0) as f32;
                     self.play(Sound::Land, None, g, (0.9, 1.05));
-                    self.step(self.ground, 0.8);
+                    self.step(BlockCue::Fall, 1.0);
                 } else if impact > 4.0 {
-                    self.step(self.ground, 0.45);
+                    self.step(BlockCue::Step, 0.45 / 0.55);
                 }
                 self.stride = 0.0;
             } else if speed > 0.5 {
@@ -336,7 +393,7 @@ impl Audio {
                 if self.stride >= STRIDE {
                     self.stride -= STRIDE;
                     // Sneaking is near silent.
-                    self.step(self.ground, if player.sneaking { 0.2 } else { 0.55 });
+                    self.step(BlockCue::Step, if player.sneaking { 0.2 / 0.55 } else { 1.0 });
                 }
             } else {
                 // Standing still: the first step comes soon after moving.
@@ -344,7 +401,7 @@ impl Audio {
             }
         }
         if self.was_on_ground && !player.on_ground && player.vel.y > 4.0 && !player.in_water {
-            self.step(self.ground, 0.35); // jump push-off
+            self.step(BlockCue::Step, 0.35 / 0.55); // jump push-off
         }
 
         if player.in_water && !self.was_in_water && !player.flying {
@@ -400,6 +457,12 @@ impl Audio {
                 rain = rain.max(r);
             }
             self.send(Command::Ambience { wind, cave, rain });
+            // Java's rain plays `weather.rain` again and again around the
+            // player; the loop here refreshes its caption instead.
+            if rain > 0.05 && self.show_subtitles && !self.muted {
+                let time = self.clock.elapsed().as_secs_f64();
+                self.subtitles.play(Sound::Rain, self.listener, true, rain, time);
+            }
         }
         if !self.caves.is_empty() {
             self.drip_timer -= dt;

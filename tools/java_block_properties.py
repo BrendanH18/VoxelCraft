@@ -29,6 +29,7 @@ BY_STATE = "net/minecraft/world/level/block/WeatheringCopperCollection$ByState"
 DYE_COLOR = "net/minecraft/world/item/DyeColor"
 WEATHER_STATE = "net/minecraft/world/level/block/WeatheringCopper$WeatherState"
 PUSH_REACTION = "net/minecraft/world/level/material/PushReaction"
+SOUND_TYPE = "net/minecraft/world/level/block/SoundType"
 FUNCTIONAL = (
     "java/util/function/Function",
     "java/util/function/BiFunction",
@@ -57,11 +58,13 @@ class Opaque:
 
 
 class Props:
-    def __init__(self, destroy=0.0, resistance=0.0, requires=False, map_color="NONE", push="PUSH_PULL"):
+    def __init__(self, destroy=0.0, resistance=0.0, requires=False, map_color="NONE", push="PUSH_PULL", sound="STONE"):
         self.destroy, self.resistance, self.requires = destroy, resistance, requires
         self.map_color = map_color
         # `Properties.pushReaction` (`PushReaction.PUSH_PULL` unless set).
         self.push = push
+        # `Properties.soundType`: the `SoundType` constant (`STONE` unless set).
+        self.sound = sound
         # The constructed block class (`register`'s factory), set on registration.
         self.block_class = None
 
@@ -69,7 +72,7 @@ class Props:
         return (self.destroy, self.resistance, self.requires)
 
     def copy(self):
-        out = Props(*self.key(), self.map_color, self.push)
+        out = Props(*self.key(), self.map_color, self.push, self.sound)
         out.block_class = self.block_class
         return out
 
@@ -79,6 +82,7 @@ class Props:
             and self.key() == other.key()
             and self.map_color == other.map_color
             and self.push == other.push
+            and self.sound == other.sound
         )
 
     def __repr__(self):
@@ -352,6 +356,8 @@ class Interpreter:
             return Enum("state", field)
         if owner == PUSH_REACTION:
             return Enum("push", field)
+        if owner == SOUND_TYPE:
+            return Enum("sound", field)
         if owner == COLOR_COLLECTION and field == "VALUES":
             return Coll("color", {c: Enum("color", c) for c in self.colors})
         return Opaque(f"{owner}.{field}")
@@ -473,6 +479,9 @@ class Interpreter:
                             receiver.map_color = {"bed": captured[0].name}
             elif method == "requiresCorrectToolForDrops":
                 receiver.requires = True
+            elif method == "sound":
+                sound = args[1]
+                receiver.sound = sound.name if isinstance(sound, Enum) and sound.kind == "sound" else "unknown"
             elif method == "pushReaction":
                 reaction = args[1]
                 receiver.push = reaction.name if isinstance(reaction, Enum) and reaction.kind == "push" else "unknown"
@@ -634,6 +643,8 @@ class Interpreter:
                         result.map_color = "state_dependent"
                     if any(o.push != result.push for o in outcomes):
                         result.push = "branch_dependent"
+                    if any(o.sound != result.sound for o in outcomes):
+                        result.sound = "branch_dependent"
                     return result
                 if any(o != outcomes[0] for o in outcomes):
                     raise ValueError(f"branch outcomes differ in {owner}: {outcomes}")
@@ -783,3 +794,10 @@ def block_push_properties(jar):
             "class": props.block_class.rsplit("/", 1)[-1],
         }
     return out
+
+
+def block_sound_types(jar):
+    """Java `SoundType` constant name of every registered block's properties."""
+    interpreter = Interpreter(jar)
+    interpreter.static(BLOCKS, "AIR")
+    return {name: props.sound for name, props in interpreter.registered.items()}

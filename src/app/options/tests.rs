@@ -687,3 +687,31 @@ fn labels_follow_java() {
     assert_eq!(video::brightness_label(0.53), "Brightness: 53");
     assert_eq!(video::brightness_label(0.59), "Brightness: 59");
 }
+
+/// v0.18 Track 9: Closed Captions sits in Music & Sound Options and in
+/// Accessibility Settings with Java's label, off by default; the text
+/// background pair follows it in Accessibility Settings.
+#[test]
+fn closed_captions_and_text_background_use_javas_labels() {
+    let mut host = Host::default();
+    assert_eq!(label(&MusicAndSounds, &host, sound::Id::Subtitles), "Closed Captions: OFF");
+    assert_eq!(label(&Accessibility, &host, accessibility::Id::Subtitles), "Closed Captions: OFF");
+    MusicAndSounds.activate(&mut host, sound::Id::Subtitles);
+    assert!(host.settings.show_subtitles);
+    assert_eq!(label(&Accessibility, &host, accessibility::Id::Subtitles), "Closed Captions: ON");
+    let mut screen = Accessibility;
+    screen.activate(&mut host, accessibility::Id::Subtitles);
+    assert!(!host.settings.show_subtitles);
+    assert_eq!(label(&screen, &host, accessibility::Id::TextBackgroundOpacity), "Text Background Opacity: 50%");
+    assert_eq!(label(&screen, &host, accessibility::Id::TextBackground), "Text Background: Chat");
+    screen.activate(&mut host, accessibility::Id::TextBackground);
+    assert_eq!(label(&screen, &host, accessibility::Id::TextBackground), "Text Background: Everywhere");
+    screen.slide(&mut host, accessibility::Id::TextBackgroundOpacity, 0.0);
+    assert_eq!(label(&screen, &host, accessibility::Id::TextBackgroundOpacity), "Text Background Opacity: 0%");
+    // Java's order: Closed Captions, then the text background pair, before View Bobbing.
+    let ids: Vec<_> = screen.widgets(&host, (640.0, 360.0)).into_iter().map(|w| w.id).collect();
+    let at = |id| ids.iter().position(|&i| i == id).unwrap();
+    assert!(at(accessibility::Id::Subtitles) < at(accessibility::Id::TextBackgroundOpacity));
+    assert!(at(accessibility::Id::TextBackgroundOpacity) < at(accessibility::Id::TextBackground));
+    assert!(at(accessibility::Id::TextBackground) < at(accessibility::Id::ViewBobbing));
+}
