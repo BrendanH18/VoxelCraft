@@ -239,6 +239,7 @@ impl Entities {
                 && self.mobs[i].on_ground
             {
                 self.mobs[i].hold_still(world, face);
+                i += 1;
                 continue;
             }
             let before_tame = self.mobs[i].mount.as_ref().map(|s| (s.tame, s.rider));

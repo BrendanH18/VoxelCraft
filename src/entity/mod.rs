@@ -3250,6 +3250,35 @@ mod tests {
         assert!(e.mobs[0].effects.has(Effect::FireResistance));
     }
 
+    /// v0.18 Track 6: `--still-mobs` holds landed mobs where they are,
+    /// facing the camera, and the update loop still moves on past them.
+    #[test]
+    fn still_mobs_land_then_hold_their_pose_facing_the_camera() {
+        let mut e = Entities::new(5);
+        e.spawn(MobKind::Pig, DVec3::new(0.5, 11.0, 0.5));
+        e.spawn(MobKind::Zombie, DVec3::new(4.5, 10.0, 0.5));
+        let camera = DVec3::new(2.5, 12.0, -8.0);
+        e.still = Some(camera);
+        let c = ctx(DVec3::new(2.5, 10.0, -8.0));
+        for _ in 0..20 {
+            e.snapshot_positions();
+            e.update(0.05, &Grid::flat(10), &c);
+        }
+        let landed: Vec<DVec3> = e.mobs.iter().map(|m| m.pos).collect();
+        assert!(e.mobs.iter().all(|m| m.on_ground && (m.pos.y - 10.0).abs() < 1e-6), "{landed:?}");
+        for _ in 0..100 {
+            e.snapshot_positions();
+            e.update(0.05, &Grid::flat(10), &c);
+        }
+        for (m, was) in e.mobs.iter().zip(&landed) {
+            assert_eq!(m.pos, *was, "{:?} held still", m.kind);
+            let to = (camera - m.pos).normalize();
+            let facing = DVec3::new(f64::from(m.yaw.cos()), 0.0, f64::from(m.yaw.sin()));
+            assert!(facing.dot(DVec3::new(to.x, 0.0, to.z).normalize()) > 0.999, "{:?} faces the camera", m.kind);
+            assert_eq!((m.limb_amp, m.head_yaw, m.burning), (0.0, 0.0, false));
+        }
+    }
+
     #[test]
     fn wither_skeleton_hits_wither_and_drops_coal_bones_and_rare_skulls() {
         use crate::simulation::effects::Effect;
