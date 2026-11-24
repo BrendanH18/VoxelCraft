@@ -103,6 +103,23 @@ pub fn tick_world(world: &mut World, player: DVec3) {
 
 /// [`tick_world`] with the gamerules that govern world block ticks.
 pub fn tick_world_rules(world: &mut World, player: DVec3, fire_tick: bool, random_tick_speed: u32) {
+    tick_world_rules_marked(world, player, fire_tick, random_tick_speed, |_| {});
+}
+
+/// The steps of [`tick_world_rules`], for [`tick_world_rules_marked`]'s marks.
+pub const WORLD_RULE_STEPS: [&str; 8] =
+    ["block_ticks", "fluids", "block_entities", "light", "random_ticks", "block_events", "pistons", "light_after"];
+
+/// [`tick_world_rules`], calling `mark(i)` as step `i` of
+/// [`WORLD_RULE_STEPS`] ends (the headless tick benchmark times them;
+/// v0.18 Track 10).
+pub fn tick_world_rules_marked(
+    world: &mut World,
+    player: DVec3,
+    fire_tick: bool,
+    random_tick_speed: u32,
+    mut mark: impl FnMut(usize),
+) {
     world.maps.game_ticks = world.maps.game_ticks.wrapping_add(1);
     world.simulation_player(player);
     world.clear_removed_banners();
@@ -114,8 +131,10 @@ pub fn tick_world_rules(world: &mut World, player: DVec3, fire_tick: bool, rando
     // entities follow in the caller (docs/redstone.md "Tick phases").
     world.tick_block_ticks();
     world.tick_sculk();
+    mark(0);
     world.tick_fluids(TICK_SECONDS);
     world.tick_falling(TICK_SECONDS);
+    mark(1);
     world.tick_furnaces(TICK_SECONDS);
     world.tick_brewing(TICK_SECONDS);
     world.tick_utilities();
@@ -123,17 +142,23 @@ pub fn tick_world_rules(world: &mut World, player: DVec3, fire_tick: bool, rando
     if fire_tick {
         world.tick_fire(TICK_SECONDS, player);
     }
+    mark(2);
     world.update_block_light_within(LIGHT_TICK_BUDGET);
+    mark(3);
     world.tick_precipitation(random_tick_speed);
     world.tick_random_rules(TICK_SECONDS, player, random_tick_speed, fire_tick);
     world.tick_leaf_decay(TICK_SECONDS);
+    mark(4);
     world.run_block_events();
+    mark(5);
     // v0.17 Track B: `tickBlockEntities` for moving pistons (Java runs the
     // entities between; the caller applies their pushes after this).
     world.tick_moving_pistons();
+    mark(6);
     // Entities and block entities (hoppers, in `tick_automation_entities`)
     // follow in the caller.
     world.update_block_light_within(LIGHT_TICK_BUDGET);
+    mark(7);
 }
 
 pub struct PlayerStep {

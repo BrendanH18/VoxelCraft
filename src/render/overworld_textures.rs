@@ -7,7 +7,6 @@ use crate::world::block::tex;
 use crate::world::overworld_blocks::t;
 
 const CLEAR: Rgba = [0, 0, 0, 0];
-const DIRT: [u8; 3] = [134, 96, 67];
 const MOSS: [u8; 3] = [89, 109, 45];
 const PALE_MOSS: [u8; 3] = [108, 118, 104];
 const DRIPSTONE: [u8; 3] = [134, 107, 92];
@@ -232,7 +231,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             }
         }
         l if (t::CORAL..t::CORAL + 30).contains(&l) => coral_pixel(l - t::CORAL, x, y, r),
-        t::DARK_OAK_LEAVES => leaves(layer, x, y, r, [44, 92, 24], 0.16),
         t::MANGROVE_LEAVES => leaves(layer, x, y, r, [70, 128, 36], 0.2),
         t::CHERRY_LEAVES => {
             if rnd(layer, x, y, 11) < 0.15 {
@@ -386,7 +384,8 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
 /// Dirt with a coloured layer hanging over its top edge.
 fn fringe(layer: u16, x: usize, y: usize, top: [u8; 3]) -> Rgba {
     let edge = 3 + (rnd(layer, x, 0, 7) * 2.2) as usize;
-    if y < edge { noisy(layer, x, y, top, 0.14) } else { noisy(tex::DIRT, x, y, DIRT, 0.14) }
+    // The dirt below matches the dirt block (v0.18 Track 3).
+    if y < edge { noisy(layer, x, y, top, 0.14) } else { base_pixel(tex::DIRT, x, y) }
 }
 
 fn mossy(layer: u16, x: usize, y: usize, c: [u8; 3]) -> Rgba {

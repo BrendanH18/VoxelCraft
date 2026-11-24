@@ -98,7 +98,8 @@ pub(super) fn anvil_preview(container: Container, session: &PlayerSession) -> Op
         return voxelcraft::grindstone::result(session.work[0], session.work[1]).map(|r| (r, false));
     }
     let creative = session.mode.is_creative();
-    let result = enchant::anvil_any_cost(session.work[0]?, session.work[1], creative)?;
+    // v0.18 Track 2: with the name box's text, as `AnvilMenu.createResult`.
+    let result = enchant::anvil_menu(session.work[0]?, session.work[1], session.anvil_name(), creative)?;
     Some((result, !creative && result.cost >= enchant::TOO_EXPENSIVE))
 }
 

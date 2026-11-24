@@ -1,0 +1,1923 @@
+{
+ "reference": "Minecraft Java Edition 26.3",
+ "client_sha1": "e877b6a07acd633fb3bb475002175cec036e7b87",
+ "source": "assets/minecraft/font/default.json and its includes, assets/minecraft/textures/font/*.png (widths only, as BitmapProvider measures them), Font.lineHeight, GlyphInfo.getShadowOffset, SignBlockEntity and HangingSignBlockEntity line metrics",
+ "line_height": 9,
+ "shadow_offset": 1,
+ "sign": {
+  "max_line_width": 90,
+  "line_height": 10
+ },
+ "hanging_sign": {
+  "max_line_width": 60,
+  "line_height": 9
+ },
+ "glyphs": {
+  "0020": {
+   "advance": 4,
+   "provider": "space"
+  },
+  "0021": {
+   "advance": 2,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0022": {
+   "advance": 4,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0023": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0024": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0025": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0026": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0027": {
+   "advance": 2,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0028": {
+   "advance": 4,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0029": {
+   "advance": 4,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "002A": {
+   "advance": 4,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "002B": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "002C": {
+   "advance": 2,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "002D": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "002E": {
+   "advance": 2,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "002F": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0030": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0031": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0032": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0033": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0034": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0035": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0036": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0037": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0038": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0039": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "003A": {
+   "advance": 2,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "003B": {
+   "advance": 2,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "003C": {
+   "advance": 5,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "003D": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "003E": {
+   "advance": 5,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "003F": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0040": {
+   "advance": 7,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0041": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0042": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0043": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0044": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0045": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0046": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0047": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0048": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0049": {
+   "advance": 4,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "004A": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "004B": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "004C": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "004D": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "004E": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "004F": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0050": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0051": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0052": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0053": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0054": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0055": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0056": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0057": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0058": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0059": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "005A": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "005B": {
+   "advance": 4,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "005C": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "005D": {
+   "advance": 4,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "005E": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "005F": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0060": {
+   "advance": 3,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0061": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0062": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0063": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0064": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0065": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0066": {
+   "advance": 5,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0067": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0068": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0069": {
+   "advance": 2,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "006A": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "006B": {
+   "advance": 5,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "006C": {
+   "advance": 3,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "006D": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "006E": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "006F": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0070": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0071": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0072": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0073": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0074": {
+   "advance": 4,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0075": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0076": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0077": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0078": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "0079": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "007A": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "007B": {
+   "advance": 4,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "007C": {
+   "advance": 2,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "007D": {
+   "advance": 4,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "007E": {
+   "advance": 7,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "00A0": {
+   "provider": "unifont"
+  },
+  "00A1": {
+   "advance": 2,
+   "provider": "nonlatin_european",
+   "ascent": 7,
+   "height": 8
+  },
+  "00A2": {
+   "advance": 6,
+   "provider": "nonlatin_european",
+   "ascent": 7,
+   "height": 8
+  },
+  "00A3": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "00A4": {
+   "advance": 8,
+   "provider": "nonlatin_european",
+   "ascent": 7,
+   "height": 8
+  },
+  "00A5": {
+   "advance": 6,
+   "provider": "nonlatin_european",
+   "ascent": 7,
+   "height": 8
+  },
+  "00A6": {
+   "advance": 2,
+   "provider": "nonlatin_european",
+   "ascent": 7,
+   "height": 8
+  },
+  "00A7": {
+   "advance": 6,
+   "provider": "nonlatin_european",
+   "ascent": 7,
+   "height": 8
+  },
+  "00A8": {
+   "advance": 4,
+   "provider": "nonlatin_european",
+   "ascent": 7,
+   "height": 8
+  },
+  "00A9": {
+   "advance": 8,
+   "provider": "nonlatin_european",
+   "ascent": 7,
+   "height": 8
+  },
+  "00AA": {
+   "advance": 5,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "00AB": {
+   "advance": 7,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "00AC": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "00AD": {
+   "advance": 4,
+   "provider": "nonlatin_european",
+   "ascent": 7,
+   "height": 8
+  },
+  "00AE": {
+   "advance": 8,
+   "provider": "nonlatin_european",
+   "ascent": 7,
+   "height": 8
+  },
+  "00AF": {
+   "advance": 6,
+   "provider": "nonlatin_european",
+   "ascent": 7,
+   "height": 8
+  },
+  "00B0": {
+   "advance": 5,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "00B1": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "00B2": {
+   "advance": 5,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "00B3": {
+   "advance": 5,
+   "provider": "nonlatin_european",
+   "ascent": 7,
+   "height": 8
+  },
+  "00B4": {
+   "advance": 3,
+   "provider": "nonlatin_european",
+   "ascent": 7,
+   "height": 8
+  },
+  "00B5": {
+   "advance": 6,
+   "provider": "nonlatin_european",
+   "ascent": 7,
+   "height": 8
+  },
+  "00B6": {
+   "advance": 7,
+   "provider": "nonlatin_european",
+   "ascent": 7,
+   "height": 8
+  },
+  "00B7": {
+   "advance": 2,
+   "provider": "nonlatin_european",
+   "ascent": 7,
+   "height": 8
+  },
+  "00B8": {
+   "provider": "unifont"
+  },
+  "00B9": {
+   "advance": 4,
+   "provider": "nonlatin_european",
+   "ascent": 7,
+   "height": 8
+  },
+  "00BA": {
+   "advance": 5,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "00BB": {
+   "advance": 7,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "00BC": {
+   "advance": 8,
+   "provider": "nonlatin_european",
+   "ascent": 7,
+   "height": 8
+  },
+  "00BD": {
+   "advance": 8,
+   "provider": "nonlatin_european",
+   "ascent": 7,
+   "height": 8
+  },
+  "00BE": {
+   "advance": 8,
+   "provider": "nonlatin_european",
+   "ascent": 7,
+   "height": 8
+  },
+  "00BF": {
+   "advance": 6,
+   "provider": "nonlatin_european",
+   "ascent": 7,
+   "height": 8
+  },
+  "00C0": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00C1": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00C2": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00C3": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00C4": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00C5": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00C6": {
+   "advance": 10,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00C7": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00C8": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00C9": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00CA": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00CB": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00CC": {
+   "advance": 4,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00CD": {
+   "advance": 4,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00CE": {
+   "advance": 4,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00CF": {
+   "advance": 4,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00D0": {
+   "advance": 7,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00D1": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00D2": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00D3": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00D4": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00D5": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00D6": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00D7": {
+   "advance": 6,
+   "provider": "nonlatin_european",
+   "ascent": 7,
+   "height": 8
+  },
+  "00D8": {
+   "advance": 6,
+   "provider": "nonlatin_european",
+   "ascent": 7,
+   "height": 8
+  },
+  "00D9": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00DA": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00DB": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00DC": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00DD": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00DE": {
+   "advance": 6,
+   "provider": "nonlatin_european",
+   "ascent": 7,
+   "height": 8
+  },
+  "00DF": {
+   "advance": 6,
+   "provider": "nonlatin_european",
+   "ascent": 7,
+   "height": 8
+  },
+  "00E0": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00E1": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00E2": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00E3": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00E4": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00E5": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00E6": {
+   "advance": 10,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00E7": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00E8": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00E9": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00EA": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00EB": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00EC": {
+   "advance": 3,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00ED": {
+   "advance": 3,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00EE": {
+   "advance": 4,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00EF": {
+   "advance": 4,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00F0": {
+   "advance": 6,
+   "provider": "nonlatin_european",
+   "ascent": 7,
+   "height": 8
+  },
+  "00F1": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00F2": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00F3": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00F4": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00F5": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00F6": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00F7": {
+   "advance": 6,
+   "provider": "ascii",
+   "ascent": 7,
+   "height": 8
+  },
+  "00F8": {
+   "advance": 6,
+   "provider": "nonlatin_european",
+   "ascent": 7,
+   "height": 8
+  },
+  "00F9": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00FA": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00FB": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00FC": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00FD": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "00FE": {
+   "advance": 6,
+   "provider": "nonlatin_european",
+   "ascent": 7,
+   "height": 8
+  },
+  "00FF": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0100": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0101": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0102": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0103": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0104": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0105": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0106": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0107": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0108": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0109": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "010A": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "010B": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "010C": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "010D": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "010E": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "010F": {
+   "advance": 8,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0110": {
+   "advance": 7,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0111": {
+   "advance": 7,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0112": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0113": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0114": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0115": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0116": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0117": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0118": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0119": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "011A": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "011B": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "011C": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "011D": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "011E": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "011F": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0120": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0121": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0122": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0123": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0124": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0125": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0126": {
+   "advance": 8,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0127": {
+   "advance": 7,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0128": {
+   "advance": 5,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0129": {
+   "advance": 5,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "012A": {
+   "advance": 4,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "012B": {
+   "advance": 4,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "012C": {
+   "advance": 5,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "012D": {
+   "advance": 5,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "012E": {
+   "advance": 4,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "012F": {
+   "advance": 3,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0130": {
+   "advance": 4,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0131": {
+   "advance": 2,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0132": {
+   "advance": 6,
+   "provider": "nonlatin_european",
+   "ascent": 7,
+   "height": 8
+  },
+  "0133": {
+   "advance": 5,
+   "provider": "nonlatin_european",
+   "ascent": 7,
+   "height": 8
+  },
+  "0134": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0135": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0136": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0137": {
+   "advance": 5,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0138": {
+   "advance": 5,
+   "provider": "nonlatin_european",
+   "ascent": 7,
+   "height": 8
+  },
+  "0139": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "013A": {
+   "advance": 3,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "013B": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "013C": {
+   "advance": 3,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "013D": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "013E": {
+   "advance": 4,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "013F": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0140": {
+   "advance": 4,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0141": {
+   "advance": 7,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0142": {
+   "advance": 5,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0143": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0144": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0145": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0146": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0147": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0148": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0149": {
+   "advance": 8,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "014A": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "014B": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "014C": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "014D": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "014E": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "014F": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0150": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0151": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0152": {
+   "advance": 10,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0153": {
+   "advance": 10,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0154": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0155": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0156": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0157": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0158": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0159": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "015A": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "015B": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "015C": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "015D": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "015E": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "015F": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0160": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0161": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0162": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0163": {
+   "advance": 4,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0164": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0165": {
+   "advance": 5,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0166": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0167": {
+   "advance": 4,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0168": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0169": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "016A": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "016B": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "016C": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "016D": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "016E": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "016F": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0170": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0171": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0172": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0173": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0174": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0175": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0176": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0177": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0178": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "0179": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "017A": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "017B": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "017C": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "017D": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "017E": {
+   "advance": 6,
+   "provider": "accented",
+   "ascent": 10,
+   "height": 12
+  },
+  "017F": {
+   "advance": 4,
+   "provider": "nonlatin_european",
+   "ascent": 7,
+   "height": 8
+  }
+ }
+}

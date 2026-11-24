@@ -1,9 +1,9 @@
 //! Accessibility Settings: Java 26.3's screen with the options VoxelCraft
-//! has, in Java's order. Narrator, high contrast, chat, menu blur, notification
+//! has, in Java's order. Narrator, high contrast, chat, notification
 //! time, darkness, glint, panorama, splash and minecart options are left out
 //! until VoxelCraft has what they change. v0.18 Track 9 adds Closed Captions
-//! and the text background pair the captions use; Track 8 adds Hide Sky
-//! Flashes.
+//! and the text background pair the captions use, Track 2 Menu Background
+//! Blur and Track 8 Hide Sky Flashes.
 
 use super::{Controls, OptionsHost, change, close, percent_label};
 use crate::app::gui::{OptionList, Rect, Screen, Size, Step, Widget, on_off};
@@ -12,6 +12,7 @@ use crate::app::gui::{OptionList, Rect, Screen, Size, Step, Widget, on_off};
 pub(in crate::app) enum Id {
     Controls,
     Subtitles,
+    MenuBlur,
     TextBackgroundOpacity,
     TextBackground,
     ViewBobbing,
@@ -44,6 +45,7 @@ impl<H: OptionsHost> Screen<H> for Accessibility {
         list.pairs(vec![
             Widget::button(Id::Subtitles, z, format!("Closed Captions: {}", on_off(s.show_subtitles)))
                 .tooltip("Enables captions for sounds played in the game."),
+            super::menu_blur_slider(Id::MenuBlur, s.menu_blur),
             // `Options.percentValueLabel`: no OFF at zero.
             Widget::slider(
                 Id::TextBackgroundOpacity,
@@ -101,6 +103,7 @@ impl<H: OptionsHost> Screen<H> for Accessibility {
             Id::FovEffects => change(host, |s| s.fov_effects = t * t),
             Id::DamageTilt => change(host, |s| s.damage_tilt = t),
             Id::TextBackgroundOpacity => change(host, |s| s.text_background_opacity = t),
+            Id::MenuBlur => change(host, |s| s.menu_blur = super::menu_blur_at(t)),
             _ => {}
         }
     }

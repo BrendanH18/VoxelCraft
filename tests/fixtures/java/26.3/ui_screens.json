@@ -1,0 +1,131 @@
+{
+  "reference": "Minecraft Java Edition 26.3",
+  "client_sha1": "e877b6a07acd633fb3bb475002175cec036e7b87",
+  "sources": [
+    "client DeathScreen (init, tick, visitText, extractDeathBackground, handleExitToTitleScreen, shouldCloseOnEsc, isPauseScreen) and DeathScreen.TitleConfirmScreen",
+    "client ConfirmScreen (init, setDelay, tick, keyPressed); Button.DEFAULT_WIDTH, DEFAULT_HEIGHT",
+    "client Options.menuBackgroundBlurriness, BLURRINESS_DEFAULT_VALUE, processOptions; assets/minecraft/post_effect/blur.json",
+    "client Screen (extractBackground, extractBlurredBackground, extractTransparentBackground); assets/minecraft/textures/gui/inworld_menu_background.png",
+    "client AnvilScreen (constructor, subInit, extractLabels, extractBackground, extractErrorIcon)",
+    "assets/minecraft/lang/en_us.json"
+  ],
+  "death_screen": {
+    "title": "You Died!",
+    "title_hardcore": "Game Over!",
+    "respawn": "Respawn",
+    "spectate": "Spectate World",
+    "title_screen": "Title Screen",
+    "score": "Score: %s",
+    "button_half_width": 100,
+    "button_quarter_rows": [
+      72,
+      96
+    ],
+    "button_size": [
+      200,
+      20
+    ],
+    "delay_ticks": 20,
+    "title_scale": 2,
+    "title_y_scaled": 30,
+    "cause_y": 85,
+    "score_y": 100,
+    "background": [
+      "0x60500000",
+      "0xA0803030"
+    ],
+    "closes_on_escape": false,
+    "pauses": false
+  },
+  "quit_confirm": {
+    "title": "Are you sure you want to quit?",
+    "yes": "Title Screen",
+    "no": "Respawn",
+    "delay_ticks": 20,
+    "spacing": 8,
+    "button_spacing": 4,
+    "button_padding_top": 16,
+    "button_size": [
+      150,
+      20
+    ],
+    "escape_answers": "no"
+  },
+  "menu_blur": {
+    "key": "menuBackgroundBlurriness",
+    "label": "Menu Background Blur",
+    "tooltip": "Changes the blurriness of menu backgrounds.",
+    "off": "OFF",
+    "min": 0,
+    "max": 10,
+    "default": 5,
+    "passes": [
+      [
+        1,
+        0
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        1,
+        0
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        1,
+        0
+      ],
+      [
+        0,
+        1
+      ]
+    ]
+  },
+  "backgrounds": {
+    "container": [
+      "0xC0101010",
+      "0xD0101010"
+    ],
+    "in_world_menu_alpha": 64
+  },
+  "anvil": {
+    "title": "Repair & Name",
+    "title_x": 60,
+    "field": [
+      62,
+      24,
+      103,
+      12
+    ],
+    "field_max_length": 50,
+    "field_sprite": [
+      59,
+      20,
+      110,
+      16
+    ],
+    "error_icon": [
+      99,
+      45,
+      28,
+      21
+    ],
+    "cost": "Enchantment Cost: %1$s",
+    "too_expensive": "Too Expensive!",
+    "too_expensive_at": 40,
+    "cost_colour": "0xFF80FF20",
+    "short_colour": "0xFFFF6060",
+    "cost_y": 69,
+    "backing_rows": [
+      67,
+      79
+    ],
+    "backing_right_margin": 8,
+    "backing": "0x4F000000"
+  }
+}

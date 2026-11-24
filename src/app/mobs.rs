@@ -24,11 +24,20 @@ pub(super) struct Mobs {
     /// `--wait`: seconds to keep simulating before a `--screenshot`.
     wait: f64,
     wait_start: Option<Instant>,
+    /// Sign text laid out once and redrawn from the cache each frame.
+    pub sign_text: crate::render::signs::TextCache,
 }
 
 impl Mobs {
     pub fn new(seed: u64, spawn: Vec<(MobKind, IVec3, Option<crate::entity::armor::Equipped>)>, wait: f64) -> Self {
-        Self { entities: Entities::new(seed), pending: spawn, held: Vec::new(), wait, wait_start: None }
+        Self {
+            entities: Entities::new(seed),
+            pending: spawn,
+            held: Vec::new(),
+            wait,
+            wait_start: None,
+            sign_text: Default::default(),
+        }
     }
 
     pub fn holding(self, held: Vec<(usize, crate::item::Item)>) -> Self {

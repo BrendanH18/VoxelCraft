@@ -11,11 +11,21 @@ manifest. Missing files and duplicate keys fail the build with the asset key.
 The installed executable does not read the checkout or its current directory.
 Unmapped resources continue using the existing Rust procedural generators.
 
+The text font, `font/glyphs.txt`, is original pixel art in a plain text
+format (described at its top) that `src/font.rs` embeds and parses itself;
+it is not a manifest resource. Its widths are Java's, checked by
+`tests/typography.rs`.
+
 Supported formats are 16 x 16 RGBA8 PNG textures, schema-1 static box models
 (up to ten boxes in sixteenths, with a texture key), and mono PCM16 WAV at
 48 kHz. Entity animations and the original background compositions retain their
 existing Rust implementations. Add format/schema and runtime support together
 before introducing an unsupported animation or file kind.
+
+A texture with a `source` (a palette and 16 rows of palette indices, such as
+`textures/stone.source.json`) is built by
+`python3 tools/texture_from_source.py SOURCE PNG`, and the validator checks
+that the PNG's pixels still match it.
 
 Run `python3 tools/validate_assets.py`. Add `--executable /absolute/path/voxelcraft`
 to validate a development or packaged binary from a temporary directory outside
