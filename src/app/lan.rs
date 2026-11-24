@@ -288,7 +288,9 @@ const WOOD_BYTES: usize = voxelcraft::lan::MAX_FRAME / 4;
 fn fit_state(mut v: Value) -> (Option<Value>, bool) {
     let fits = |v: &Value| serde_json::to_vec(v).is_ok_and(|b| b.len() < voxelcraft::lan::MAX_FRAME - 16);
     let mut shed_looks = false;
-    for shed in ["recipe_book", "extras", "workstations", "copper_golem_statues", "wood", "decor", "items", "looks", "mobs"] {
+    for shed in
+        ["recipe_book", "extras", "workstations", "copper_golem_statues", "wood", "decor", "items", "looks", "mobs"]
+    {
         if fits(&v) {
             return (Some(v), shed_looks);
         }
@@ -948,7 +950,8 @@ impl Game {
         use voxelcraft::crafting::book::RecipeId;
         let Some(name) = peer.profile.clone() else { return Ok(()) };
         let words: Vec<&str> = command.split_whitespace().collect();
-        let recipe = |w: Option<&&str>| w.and_then(|w| RecipeId::from_name(w)).ok_or_else(|| "Unknown recipe".to_string());
+        let recipe =
+            |w: Option<&&str>| w.and_then(|w| RecipeId::from_name(w)).ok_or_else(|| "Unknown recipe".to_string());
         match words.first().copied() {
             Some("recipe_place") => {
                 let id = recipe(words.get(1))?;
@@ -969,7 +972,8 @@ impl Game {
                 }
             }
             Some("recipe_settings") => {
-                let book = words.get(1).and_then(|b| super::recipe_book::book_from_name(b)).ok_or("Unknown recipe book")?;
+                let book =
+                    words.get(1).and_then(|b| super::recipe_book::book_from_name(b)).ok_or("Unknown recipe book")?;
                 let flag = |i: usize| words.get(i).map(|w| *w == "1").ok_or("Bad recipe book settings");
                 let (open, filtering) = (flag(2)?, flag(3)?);
                 if let Some(bot) = self.agents.players.get_mut(&name) {

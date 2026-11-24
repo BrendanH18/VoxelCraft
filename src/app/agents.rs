@@ -301,8 +301,14 @@ impl Game {
                     if !bot.active && active >= 8 {
                         return Err("eight agent players already active".into());
                     }
-                    let observation =
-                        matches!(command, Command::Observe(_) | Command::Players | Command::Catalog(_) | Command::Recipes(..) | Command::Help);
+                    let observation = matches!(
+                        command,
+                        Command::Observe(_)
+                            | Command::Players
+                            | Command::Catalog(_)
+                            | Command::Recipes(..)
+                            | Command::Help
+                    );
                     if bot.reply.is_some() && !observation && !matches!(command, Command::Leave) {
                         return Err("player has a timed action in progress".into());
                     }

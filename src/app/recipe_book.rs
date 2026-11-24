@@ -12,9 +12,7 @@
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
-use voxelcraft::crafting::book::{
-    self as rb, BookType, RecipeId, Shown, place::Outcome, stacked::Stacked,
-};
+use voxelcraft::crafting::book::{self as rb, BookType, RecipeId, Shown, place::Outcome, stacked::Stacked};
 
 use super::hud::SlotRef;
 use super::{Container, Game, GameMode};
@@ -306,7 +304,7 @@ impl Game {
                 return Some(Control::Tab(i));
             }
             let (xo, yo) = l.origin;
-            if Rect { x: xo, y: yo, w: rb::IMAGE_WIDTH, h: rb::IMAGE_HEIGHT }.contains(mouse) {
+            if (Rect { x: xo, y: yo, w: rb::IMAGE_WIDTH, h: rb::IMAGE_HEIGHT }).contains(mouse) {
                 return Some(Control::Book);
             }
         }
@@ -397,14 +395,16 @@ impl Game {
             self.recipe_book.tab = 0;
         }
         let contents = match (menu.grid, self.body.container) {
-            (Some(n), _) => fingerprint(self.session.inventory.slots.iter().copied().chain(self.craft.cells[..n * n].iter().copied())),
+            (Some(n), _) => fingerprint(
+                self.session.inventory.slots.iter().copied().chain(self.craft.cells[..n * n].iter().copied()),
+            ),
             (None, Container::Furnace(p)) => {
                 let f = self.world.furnace(p);
-                fingerprint(
-                    self.session.inventory.slots.iter().copied().chain(
-                        [f.and_then(|f| f.input), f.and_then(|f| f.fuel), f.and_then(|f| f.output)],
-                    ),
-                )
+                fingerprint(self.session.inventory.slots.iter().copied().chain([
+                    f.and_then(|f| f.input),
+                    f.and_then(|f| f.fuel),
+                    f.and_then(|f| f.output),
+                ]))
             }
             _ => 0,
         };
@@ -421,14 +421,8 @@ impl Game {
         }
         let reset = self.recipe_book.key.as_ref().is_none_or(|k| k.tab != key.tab || k.menu != key.menu);
         let available = self.stacked(menu);
-        self.recipe_book.shown = rb::page(
-            &self.session.recipe_book,
-            menu.book,
-            tabs[key.tab].category,
-            menu.grid,
-            &key.query,
-            &available,
-        );
+        self.recipe_book.shown =
+            rb::page(&self.session.recipe_book, menu.book, tabs[key.tab].category, menu.grid, &key.query, &available);
         let pages = self.page_count();
         if reset || self.recipe_book.page >= pages {
             self.recipe_book.page = 0;
@@ -598,7 +592,11 @@ impl Game {
     pub(super) fn recipe_slot_clicked(&mut self, slot: SlotRef) {
         if matches!(
             slot,
-            SlotRef::Craft(_) | SlotRef::CraftResult | SlotRef::FurnaceInput | SlotRef::FurnaceFuel | SlotRef::FurnaceOutput
+            SlotRef::Craft(_)
+                | SlotRef::CraftResult
+                | SlotRef::FurnaceInput
+                | SlotRef::FurnaceFuel
+                | SlotRef::FurnaceOutput
         ) {
             self.recipe_book.ghost = None;
             self.recipe_book.last_placed = None;
@@ -702,13 +700,23 @@ impl Game {
         }
         // Search box with its hint.
         let s = l.search;
-        ui.rect(s.x - 1.0, s.y - 1.0, s.w + 2.0, s.h + 2.0, if self.recipe_book.search_focused { WHITE } else { [0.63, 0.63, 0.63, 1.0] });
+        ui.rect(
+            s.x - 1.0,
+            s.y - 1.0,
+            s.w + 2.0,
+            s.h + 2.0,
+            if self.recipe_book.search_focused { WHITE } else { [0.63, 0.63, 0.63, 1.0] },
+        );
         ui.rect(s.x, s.y, s.w, s.h, [0.0, 0.0, 0.0, 1.0]);
         magnifier(ui, l.magnifier);
         if self.recipe_book.query.is_empty() && !self.recipe_book.search_focused {
             ui.text_clipped(s.x + 4.0, s.y + 3.0, rb::SEARCH_HINT, [0.5, 0.5, 0.5, 1.0], (s.x, s.x + s.w - 2.0));
         } else {
-            let caret = if self.recipe_book.search_focused && (now - self.started).as_millis() / 300 % 2 == 0 { "_" } else { "" };
+            let caret = if self.recipe_book.search_focused && (now - self.started).as_millis() / 300 % 2 == 0 {
+                "_"
+            } else {
+                ""
+            };
             let text = format!("{}{caret}", self.recipe_book.query);
             ui.text_clipped(s.x + 4.0, s.y + 3.0, &text, WHITE, (s.x, s.x + s.w - 2.0));
         }
@@ -717,7 +725,13 @@ impl Game {
         let f = l.filter;
         let hover = f.contains(mouse);
         ui.rect(f.x, f.y, f.w, f.h, if hover { [0.85, 0.85, 0.85, 1.0] } else { [0.6, 0.6, 0.6, 1.0] });
-        ui.rect(f.x + 1.0, f.y + 1.0, f.w - 2.0, f.h - 2.0, if filtering { [0.33, 0.6, 0.25, 1.0] } else { [0.35, 0.35, 0.35, 1.0] });
+        ui.rect(
+            f.x + 1.0,
+            f.y + 1.0,
+            f.w - 2.0,
+            f.h - 2.0,
+            if filtering { [0.33, 0.6, 0.25, 1.0] } else { [0.35, 0.35, 0.35, 1.0] },
+        );
         for k in 0..3 {
             let w = 14.0 - 4.0 * k as f32;
             ui.rect(f.x + (f.w - w) / 2.0, f.y + 4.0 + 3.0 * k as f32, w, 2.0, WHITE);
@@ -789,7 +803,15 @@ impl Game {
             let first = overlay_rect(x, y, n, 0);
             let cols = n.min(4) as f32;
             let rows = n.div_ceil(4) as f32;
-            panel(ui, Rect { x: first.x - 4.0, y: first.y - 4.0, w: cols * rb::BUTTON_SIZE + 8.0, h: rows * rb::BUTTON_SIZE + 8.0 });
+            panel(
+                ui,
+                Rect {
+                    x: first.x - 4.0,
+                    y: first.y - 4.0,
+                    w: cols * rb::BUTTON_SIZE + 8.0,
+                    h: rows * rb::BUTTON_SIZE + 8.0,
+                },
+            );
             for (k, id) in entries.iter().enumerate() {
                 let r = overlay_rect(x, y, n, k);
                 let craftable = shown.craftable.contains(id);
@@ -835,7 +857,10 @@ impl Game {
                     Container::Furnace(pos) => self.world.furnace(pos).is_none_or(|f| f.fuel.is_none()),
                     _ => false,
                 };
-                if fuel_empty && let Some(p) = at(SlotRef::FurnaceFuel) && !fuels().is_empty() {
+                if fuel_empty
+                    && let Some(p) = at(SlotRef::FurnaceFuel)
+                    && !fuels().is_empty()
+                {
                     ghosts.push((p, Stack::new(fuels()[cycle % fuels().len()], 1), false));
                 }
                 if let Some(p) = at(SlotRef::FurnaceOutput) {
@@ -863,7 +888,9 @@ impl Game {
                 let (w, h) = if recipe.kind == rb::Kind::Shaped { (recipe.width, recipe.height) } else { (n, n) };
                 let mut found = None;
                 rb::place::arrange(n, n, w, h, &recipe.slots, |ingredient, c| {
-                    if c == cell && let Some(i) = ingredient {
+                    if c == cell
+                        && let Some(i) = ingredient
+                    {
                         let options = &recipe.ingredients[i];
                         found = Some(Stack::new(options[cycle % options.len()], 1).display_name().to_string());
                     }

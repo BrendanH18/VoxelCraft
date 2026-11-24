@@ -1120,7 +1120,12 @@ impl Game {
                 SlotRef::Inventory(i) => self.session.inventory.get(i),
                 SlotRef::Palette(b) => Some(Stack::new(b, 1)),
                 SlotRef::Craft(i) => self.craft.cells[i],
-                SlotRef::CraftResult => super::screen::crafting_result(&self.craft, &self.world, &self.session, self.gamerules.bool("limited_crafting")),
+                SlotRef::CraftResult => super::screen::crafting_result(
+                    &self.craft,
+                    &self.world,
+                    &self.session,
+                    self.gamerules.bool("limited_crafting"),
+                ),
                 SlotRef::Armor(p) => self.session.inventory.armor[p as usize],
                 SlotRef::Offhand => self.session.inventory.offhand,
                 f => self.container_slot(f),
@@ -1173,16 +1178,21 @@ impl Game {
             Some(SlotRef::Inventory(i)) => self.session.inventory.get(i),
             Some(SlotRef::Palette(item)) => Some(Stack::new(item, 1)),
             Some(SlotRef::Craft(i)) => self.craft.cells[i],
-            Some(SlotRef::CraftResult) => super::screen::crafting_result(&self.craft, &self.world, &self.session, self.gamerules.bool("limited_crafting")),
+            Some(SlotRef::CraftResult) => super::screen::crafting_result(
+                &self.craft,
+                &self.world,
+                &self.session,
+                self.gamerules.bool("limited_crafting"),
+            ),
             Some(SlotRef::Armor(p)) => self.session.inventory.armor[p as usize],
             Some(SlotRef::Offhand) => self.session.inventory.offhand,
             Some(f) => self.container_slot(f),
             None => None,
         };
         // v0.18 Track 5: the recipe book, its button and the ghost recipe.
-        let recipe_hint = self.recipe_book_ui(ui, Instant::now()).or_else(|| {
-            hovered_stack.is_none().then(|| self.ghost_tooltip(hovered)).flatten()
-        });
+        let recipe_hint = self
+            .recipe_book_ui(ui, Instant::now())
+            .or_else(|| hovered_stack.is_none().then(|| self.ghost_tooltip(hovered)).flatten());
         if let Some(hint) = recipe_hint {
             for (k, line) in hint.lines().enumerate() {
                 if k == 0 {
