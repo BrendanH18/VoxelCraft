@@ -580,3 +580,41 @@ fn recipe_commands_parse() {
     assert!(matches!(Command::parse("recipes craftable iron"), Ok(Command::Recipes(Some(true), q)) if q == "iron"));
     assert!(matches!(Command::parse("recipes"), Ok(Command::Recipes(None, q)) if q.is_empty()));
 }
+
+/// Headless costs, printed for the record (`--nocapture`): the per-tick
+/// unlock check with an inventory that changes every tick, and building a
+/// page with every recipe known. The bounds are loose; they only catch a
+/// cost that grows with something it shouldn't.
+#[test]
+fn unlock_ticks_and_pages_stay_cheap() {
+    use std::time::Instant;
+    let mut inventory = Inventory::default();
+    for (i, slot) in inventory.slots.iter_mut().enumerate() {
+        *slot = Some(Stack::new(item("oak log"), 1 + i as u8));
+    }
+    let mut book = RecipeBook::default();
+    book.tick(&inventory, false);
+    let ticks = 20_000;
+    let start = Instant::now();
+    for t in 0..ticks {
+        // One slot changes each tick, as picking things up does.
+        inventory.slots[t % 36] = Some(Stack::new(item("oak log"), 1 + (t % 60) as u8));
+        book.tick(&inventory, t % 2 == 0);
+    }
+    let per_tick = start.elapsed().as_secs_f64() * 1e9 / ticks as f64;
+    let mut all = RecipeBook::default();
+    for id in RecipeId::all() {
+        all.unlock(id);
+    }
+    let available = Stacked::of_inventory(&inventory);
+    let start = Instant::now();
+    let rounds = 20;
+    let mut shown = 0;
+    for _ in 0..rounds {
+        shown = book::page(&all, BookType::Crafting, None, Some(3), "", &available).len();
+    }
+    let per_page = start.elapsed().as_secs_f64() * 1e3 / rounds as f64;
+    eprintln!("recipe book: unlock tick {per_tick:.0} ns; full crafting page ({shown} buttons) {per_page:.2} ms");
+    assert!(per_tick < 100_000.0, "{per_tick} ns per tick");
+    assert!(per_page < 250.0, "{per_page} ms per page");
+}

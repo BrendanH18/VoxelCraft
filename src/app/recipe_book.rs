@@ -85,6 +85,8 @@ pub(super) struct View {
     pub overlay: Option<(usize, f32, f32)>,
     /// The page, computed when the book or the items change.
     pub shown: Vec<Shown>,
+    /// Which of the book's tabs have anything that fits, computed with the page.
+    tabs: Vec<bool>,
     key: Option<Key>,
     /// When a button last pulsed for newly shown recipes (`animationTime`).
     pulses: Vec<(RecipeId, Instant)>,
@@ -106,7 +108,6 @@ impl View {
 /// Positions of everything on the book (`RecipeBookComponent.initVisuals`).
 pub(super) struct Layout {
     pub origin: (f32, f32),
-    pub narrow: bool,
     pub search: Rect,
     pub magnifier: Rect,
     pub filter: Rect,
@@ -197,7 +198,7 @@ impl Game {
             for (i, tab) in menu.book.tabs().iter().enumerate() {
                 // `RecipeBookTabButton.updateVisibility`: a category tab shows
                 // when it has anything that fits.
-                let visible = tab.category.is_none() || self.tab_has_recipes(menu, i);
+                let visible = tab.category.is_none() || self.recipe_book.tabs.get(i).copied().unwrap_or(false);
                 if visible {
                     tabs.push((i, Rect { x: xo - 30.0, y: yo + 3.0 + TAB_H * row, w: TAB_W, h: TAB_H }));
                     row += 1.0;
@@ -215,7 +216,6 @@ impl Game {
         }
         Layout {
             origin: (xo, yo),
-            narrow,
             magnifier: Rect { x: xo + 8.0, y: search.y, w: search.x - xo - 8.0, h: search.h },
             search,
             filter: Rect { x: xo + 110.0, y: yo + 12.0, w: 26.0, h: 16.0 },
@@ -421,6 +421,7 @@ impl Game {
             return;
         }
         let reset = self.recipe_book.key.as_ref().is_none_or(|k| k.tab != key.tab || k.menu != key.menu);
+        self.recipe_book.tabs = (0..tabs.len()).map(|i| self.tab_has_recipes(menu, i)).collect();
         let available = self.stacked(menu);
         self.recipe_book.shown =
             rb::page(&self.session.recipe_book, menu.book, tabs[key.tab].category, menu.grid, &key.query, &available);
@@ -713,7 +714,8 @@ impl Game {
         if self.recipe_book.query.is_empty() && !self.recipe_book.search_focused {
             ui.text_clipped(s.x + 4.0, s.y + 3.0, rb::SEARCH_HINT, [0.5, 0.5, 0.5, 1.0], (s.x, s.x + s.w - 2.0));
         } else {
-            let caret = if self.recipe_book.search_focused && (now - self.started).as_millis() / 300 % 2 == 0 {
+            let caret = if self.recipe_book.search_focused && ((now - self.started).as_millis() / 300).is_multiple_of(2)
+            {
                 "_"
             } else {
                 ""
@@ -741,7 +743,6 @@ impl Game {
             tip = Some(if filtering { menu.book.filter_label() } else { rb::SHOWING_ALL }.to_string());
         }
         // The recipe buttons.
-        let craft_size = menu.grid;
         for (i, r) in l.buttons.iter().enumerate() {
             let Some(shown) = self.page_entry(i) else { continue };
             let entries = shown.entries(filtering);
@@ -770,11 +771,7 @@ impl Game {
                 if many {
                     text = format!("{text}\n{}", rb::MORE_RECIPES);
                 }
-                if craft_size.is_none() || craftable {
-                    tip = Some(text);
-                } else {
-                    tip = Some(text);
-                }
+                tip = Some(text);
             }
         }
         // Paging.
