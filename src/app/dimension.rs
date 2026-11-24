@@ -67,7 +67,6 @@ pub(super) const DIMENSION_KEYS: [&str; 34] = [
 ];
 /// How far around the arrival point to look for an existing portal.
 const SEARCH_RADIUS: i32 = 16;
-pub(super) const NETHER_FOG: [f32; 3] = [0.20, 0.035, 0.025];
 
 /// Where the player is headed while the destination streams in.
 #[derive(Clone, Copy, PartialEq, Debug)]

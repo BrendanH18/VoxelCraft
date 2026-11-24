@@ -12,9 +12,39 @@ struct Globals {
     params: vec4<f32>,
     clouds: vec4<f32>,
     environment: vec4<f32>,
+    effects: vec4<f32>,
+    ambient: vec4<f32>,
+    // Java's fog: environmental start/end (spherical), render-distance start/end (cylindrical).
+    fog: vec4<f32>,
+    // x: sky fog end, y: cloud fog end.
+    fog_ends: vec4<f32>,
+    // rgb: linear visual/sky_light_color.
+    sky_light: vec4<f32>,
+    sunrise: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> g: Globals;
+
+// Java 26.3's fog.glsl: spherical and cylindrical distance, and the larger
+// of the environmental and render-distance fogs, blended in sRGB as Java
+// blends it (the 2.2 power matches the fog colour's conversion).
+fn fog_distances(rel: vec3<f32>) -> vec2<f32> {
+    return vec2<f32>(length(rel), max(length(rel.xz), abs(rel.y)));
+}
+fn linear_fog(d: f32, start: f32, end: f32) -> f32 {
+    if d <= start { return 0.0; }
+    if d >= end { return 1.0; }
+    return (d - start) / (end - start);
+}
+fn fog_value(d: vec2<f32>) -> f32 {
+    return max(linear_fog(d.x, g.fog.x, g.fog.y), linear_fog(d.y, g.fog.z, g.fog.w));
+}
+fn apply_fog(color: vec3<f32>, d: vec2<f32>) -> vec3<f32> {
+    let f = fog_value(d);
+    if f <= 0.0 { return color; }
+    let e = vec3<f32>(1.0 / 2.2);
+    return pow(mix(pow(max(color, vec3<f32>(0.0)), e), pow(g.fog_color.rgb, e), f), vec3<f32>(2.2));
+}
 
 struct VsOut {
     @builtin(position) clip: vec4<f32>,
@@ -22,7 +52,7 @@ struct VsOut {
     @location(1) seed: f32,
     // x: snow, y: sky light, z: opacity
     @location(2) params: vec4<f32>,
-    @location(3) dist: f32,
+    @location(3) dist: vec2<f32>,
 };
 
 @vertex
@@ -37,7 +67,7 @@ fn vs_main(
     out.uv = uv;
     out.seed = seed;
     out.params = params;
-    out.dist = length(pos);
+    out.dist = fog_distances(pos);
     return out;
 }
 
@@ -84,13 +114,12 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         }
     }
     // Thin out right in front of the eyes.
-    alpha *= smoothstep(0.8, 3.0, in.dist);
+    alpha *= smoothstep(0.8, 3.0, in.dist.x);
     if alpha <= 0.0 {
         discard;
     }
     let light = curve(in.params.y) * g.params.z * 0.9 + 0.1;
     var c = pow(color, vec3<f32>(2.2)) * light;
-    let f = clamp((in.dist - g.params.x) / (g.params.y - g.params.x), 0.0, 1.0);
-    c = mix(c, g.fog_color.rgb, f);
+    c = apply_fog(c, in.dist);
     return vec4<f32>(c, alpha * in.params.z);
 }

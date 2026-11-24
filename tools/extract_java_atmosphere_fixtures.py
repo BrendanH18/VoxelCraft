@@ -118,7 +118,15 @@ def biomes(archive):
 def day_timeline(archive):
     data = json.loads(archive.read("data/minecraft/timeline/day.json"))
     tracks = {}
-    for key in ("fog_color", "sky_color", "cloud_color", "sunrise_sunset_color", "sun_angle"):
+    for key in (
+        "fog_color",
+        "sky_color",
+        "cloud_color",
+        "sunrise_sunset_color",
+        "sun_angle",
+        "sky_light_factor",
+        "sky_light_color",
+    ):
         track = data["tracks"][f"minecraft:visual/{key}"]
         tracks[key] = {
             "modifier": track.get("modifier", "override"),

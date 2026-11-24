@@ -299,7 +299,7 @@ impl Game {
             clock: Default::default(),
             previous_eye,
             rendered_eye: previous_eye,
-            nether_fog: Default::default(),
+            atmosphere_views: Default::default(),
             day_time: args
                 .time
                 .or_else(|| existing.as_ref().and_then(|l| l.props.get("time")).and_then(|t| t.parse().ok()))

@@ -1,8 +1,9 @@
 //! Accessibility Settings: Java 26.3's screen with the options VoxelCraft
 //! has, in Java's order. Narrator, high contrast, chat, menu blur, notification
-//! time, darkness, glint, lightning flash, panorama, splash and minecart
-//! options are left out until VoxelCraft has what they change. v0.18 Track 9
-//! adds Closed Captions and the text background pair the captions use.
+//! time, darkness, glint, panorama, splash and minecart options are left out
+//! until VoxelCraft has what they change. v0.18 Track 9 adds Closed Captions
+//! and the text background pair the captions use; Track 8 adds Hide Sky
+//! Flashes.
 
 use super::{Controls, OptionsHost, change, close, percent_label};
 use crate::app::gui::{OptionList, Rect, Screen, Size, Step, Widget, on_off};
@@ -17,6 +18,7 @@ pub(in crate::app) enum Id {
     Distortion,
     FovEffects,
     DamageTilt,
+    HideSkyFlashes,
     Done,
 }
 
@@ -65,6 +67,16 @@ impl<H: OptionsHost> Screen<H> for Accessibility {
                 .tooltip("Controls how much the field of view can change with gameplay effects."),
             Widget::slider(Id::DamageTilt, z, percent_label("Damage Tilt", s.damage_tilt), s.damage_tilt, 100)
                 .tooltip("The amount of camera shake caused by being hurt."),
+            // Java's `options.hideLightningFlashes`, after Darkness Pulsing
+            // (not in VoxelCraft yet) and Damage Tilt.
+            Widget::button(
+                Id::HideSkyFlashes,
+                z,
+                format!("Hide Sky Flashes: {}", on_off(s.hide_lightning_flashes)),
+            )
+            .tooltip(
+                "Prevents Lightning Bolts or other environmental effects from making the sky flash. The sources of flashes themselves will still be visible.",
+            ),
         ]);
         list.done(Widget::button(Id::Done, z, "Done"), size)
     }
@@ -75,6 +87,7 @@ impl<H: OptionsHost> Screen<H> for Accessibility {
             Id::ViewBobbing => change(host, |s| s.view_bobbing = !s.view_bobbing),
             Id::Subtitles => change(host, |s| s.show_subtitles = !s.show_subtitles),
             Id::TextBackground => change(host, |s| s.background_for_chat_only = !s.background_for_chat_only),
+            Id::HideSkyFlashes => change(host, |s| s.hide_lightning_flashes = !s.hide_lightning_flashes),
             Id::Done => return close(host),
             _ => {}
         }

@@ -15,9 +15,37 @@ struct Globals {
     effects: vec4<f32>,
     // rgb: visual/ambient_light_color; w: use the skyless dimension lightmap.
     ambient: vec4<f32>,
+    // Java's fog: environmental start/end (spherical), render-distance start/end (cylindrical).
+    fog: vec4<f32>,
+    // x: sky fog end, y: cloud fog end.
+    fog_ends: vec4<f32>,
+    // rgb: linear visual/sky_light_color.
+    sky_light: vec4<f32>,
+    sunrise: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> g: Globals;
+
+// Java 26.3's fog.glsl: spherical and cylindrical distance, and the larger
+// of the environmental and render-distance fogs, blended in sRGB as Java
+// blends it (the 2.2 power matches the fog colour's conversion).
+fn fog_distances(rel: vec3<f32>) -> vec2<f32> {
+    return vec2<f32>(length(rel), max(length(rel.xz), abs(rel.y)));
+}
+fn linear_fog(d: f32, start: f32, end: f32) -> f32 {
+    if d <= start { return 0.0; }
+    if d >= end { return 1.0; }
+    return (d - start) / (end - start);
+}
+fn fog_value(d: vec2<f32>) -> f32 {
+    return max(linear_fog(d.x, g.fog.x, g.fog.y), linear_fog(d.y, g.fog.z, g.fog.w));
+}
+fn apply_fog(color: vec3<f32>, d: vec2<f32>) -> vec3<f32> {
+    let f = fog_value(d);
+    if f <= 0.0 { return color; }
+    let e = vec3<f32>(1.0 / 2.2);
+    return pow(mix(pow(max(color, vec3<f32>(0.0)), e), pow(g.fog_color.rgb, e), f), vec3<f32>(2.2));
+}
 
 // Night vision (Java's lightmap): brightens every light level toward full,
 // keeping its hue; g.effects.x is its strength. Brightness follows.
@@ -74,7 +102,7 @@ struct VsOut {
     @location(1) @interpolate(flat) layer: u32,
     // x: sky light, y: face shade, z: torch light
     @location(2) light: vec3<f32>,
-    @location(3) dist: f32,
+    @location(3) dist: vec2<f32>,
     @location(4) rel: vec3<f32>,
     @location(5) tint: vec3<f32>,
 };
@@ -87,7 +115,7 @@ fn transform(pos: vec3<f32>, uv: vec2<f32>, layer: u32, light: vec3<f32>, tint: 
     out.light = light;
     // Tints (an item's `minecraft:dye` colour) are authored in sRGB.
     out.tint = pow(tint.rgb, vec3<f32>(2.2));
-    out.dist = length(pos);
+    out.dist = fog_distances(pos);
     out.rel = pos;
     return out;
 }
@@ -117,24 +145,28 @@ fn vs_hand(
     var out = transform(pos, uv, layer, light, tint);
     let depth = out.clip.z / out.clip.w;
     out.clip.z = out.clip.w * (0.75 + 0.25 * clamp(depth * 4.0, 0.0, 1.0));
-    out.dist = 0.0;
+    out.dist = vec2<f32>(0.0);
     return out;
 }
 
 // Directional skylight; caves retain their block lighting and dimensions
 // without a sun keep their steady ambient illumination.
 fn daylight_tint(normal: vec3<f32>) -> vec3<f32> {
-    if g.environment.y < 0.5 || g.environment.x > 0.5 {
+    if g.environment.x > 0.5 {
         return vec3<f32>(1.0);
+    }
+    // Java 26.3's `visual/sky_light_color`: white by day, blue at night.
+    if g.environment.y < 0.5 {
+        return g.sky_light.rgb;
     }
     let moon = g.sun.y < 0.0;
     let dir = select(g.sun.xyz, -g.sun.xyz, moon);
     let elevation = abs(dir.y);
     let dusk = 1.0 - smoothstep(0.05, 0.45, elevation);
     let warm = mix(vec3<f32>(1.0), vec3<f32>(1.12, 0.80, 0.58), dusk);
-    let tint = select(warm, vec3<f32>(0.72, 0.82, 1.05), moon);
+    let tint = select(warm, vec3<f32>(1.0), moon) * g.sky_light.rgb;
     let diffuse = max(dot(normal, dir), 0.0);
-    return mix(tint * (0.62 + 0.38 * diffuse), vec3<f32>(0.85), g.params.w);
+    return mix(tint * (0.62 + 0.38 * diffuse), g.sky_light.rgb * 0.85, g.params.w);
 }
 
 // Java 26.3 adds the environment ambient colour to sky and block light.
@@ -165,7 +197,6 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     let l = in.light.xz / (4.0 - 3.0 * in.light.xz);
     let torch = l.y * vec3<f32>(1.0, 0.86, 0.66);
     let lit = night_vision(dimension_light(l.x * g.params.z * daylight_tint(normal), torch)) * in.light.y;
-    let f = clamp((in.dist - g.params.x) / (g.params.y - g.params.x), 0.0, 1.0);
-    let c = mix(tex.rgb * in.tint * lit, g.fog_color.rgb, f * f * (3.0 - 2.0 * f));
+    let c = apply_fog(tex.rgb * in.tint * lit, in.dist);
     return vec4<f32>(c, 1.0);
 }

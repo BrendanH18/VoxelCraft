@@ -3,6 +3,7 @@
 
 pub mod agent;
 pub mod assets;
+pub mod atmosphere;
 pub mod camera;
 pub mod capture;
 pub mod color;

@@ -1,13 +1,15 @@
 //! Video Settings: Java 26.3's three sections (Display, Quality &
 //! Performance, Preferences) with the options VoxelCraft can honour, in
 //! Java's order. Options that would need renderer work VoxelCraft doesn't
-//! have (Clouds, Biome Blend, Entity Distance and the like) are left out.
+//! have (Biome Blend, Entity Distance and the like) are left out. v0.18
+//! Track 8 adds Clouds and Cloud Distance.
 
 use super::{OptionsHost, change, close, frac, lerp};
 use crate::app::gui::{OptionList, Rect, Screen, Size, Step, Widget, on_off};
 use crate::app::settings::{MAX_FPS, RENDER_DISTANCE};
 use crate::render::ui::Ui;
 use crate::world::activity::SIMULATION_DISTANCE_RANGE;
+use voxelcraft::atmosphere::CLOUD_RANGE;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(in crate::app) enum Id {
@@ -21,7 +23,9 @@ pub(in crate::app) enum Id {
     Graphics,
     RenderDistance,
     SimulationDistance,
+    Clouds,
     Particles,
+    CloudDistance,
     PreferencesHeader,
     Fps,
     Done,
@@ -29,6 +33,11 @@ pub(in crate::app) enum Id {
 
 fn range((lo, hi): (i32, i32)) -> (f32, f32) {
     (lo as f32, hi as f32)
+}
+
+/// Cloud Distance's slider range in Java chunks.
+fn cloud_range() -> (f32, f32) {
+    (CLOUD_RANGE.0 as f32, CLOUD_RANGE.1 as f32)
 }
 
 /// Java's Max Framerate label: "Unlimited" at the top.
@@ -117,7 +126,16 @@ impl<H: OptionsHost> Screen<H> for VideoSettings {
                 frac(s.simulation_distance as f32, sd),
                 (sd.1 - sd.0) as u32,
             ),
+            // Java's Quality order: Clouds before Particles, Cloud Distance after.
+            Widget::button(Id::Clouds, z, format!("Clouds: {}", s.clouds.caption())),
             Widget::button(Id::Particles, z, format!("Particles: {}", s.particles.name())),
+            Widget::slider(
+                Id::CloudDistance,
+                z,
+                format!("Cloud Distance: {} Chunks", s.cloud_range),
+                frac(s.cloud_range as f32, cloud_range()),
+                CLOUD_RANGE.1 - CLOUD_RANGE.0,
+            ),
         ]);
         list.wide(Widget::label(Id::PreferencesHeader, z, "Preferences"));
         list.pair(
@@ -141,6 +159,7 @@ impl<H: OptionsHost> Screen<H> for VideoSettings {
                 host.apply_fullscreen();
             }
             Id::Particles => change(host, |s| s.particles = s.particles.next()),
+            Id::Clouds => change(host, |s| s.clouds = s.clouds.next()),
             Id::Fps => change(host, |s| s.show_fps = !s.show_fps),
             Id::Done => return close(host),
             _ => {}
@@ -159,6 +178,7 @@ impl<H: OptionsHost> Screen<H> for VideoSettings {
                 change(host, |s| s.max_fps = MAX_FPS.0 + (t * steps).round() as u32 * 10);
             }
             Id::Brightness => change(host, |s| s.brightness = (t * 100.0).round() / 100.0),
+            Id::CloudDistance => change(host, |s| s.cloud_range = lerp(cloud_range(), t).round() as u32),
             _ => {}
         }
     }
