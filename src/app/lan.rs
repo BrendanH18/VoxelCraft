@@ -2854,6 +2854,23 @@ mod tests {
         apply(&mut copy, &lite);
         assert_eq!((copy.inventory.get(1), copy.inventory.armor[0]), (Some(book), Some(helmet)));
     }
+
+    /// v0.18 Track 4: the spawn eggs come after every v0.17 palette entry,
+    /// so an older palette code still means the same item; the End crystal,
+    /// v0.17's last entry, keeps its code.
+    #[test]
+    fn legacy_palette_codes_keep_their_items() {
+        let crystal = Stack::new(crate::entity::crystal::END_CRYSTAL, 1);
+        assert_eq!(encode_slot(SlotRef::Palette(crystal)), Some(LEGACY_END_CRYSTAL_CODE));
+        let decoded = decode_slot(LEGACY_END_CRYSTAL_CODE, Container::Inventory, GameMode::Creative, 2);
+        assert_eq!(decoded, Some(SlotRef::Palette(crystal)));
+        let eggs = voxelcraft::content::spawn_egg::EGGS.len();
+        let palette: Vec<_> = crate::item::Item::creative_palette().collect();
+        assert!(palette[palette.len() - eggs..].iter().all(|&i| voxelcraft::content::spawn_egg::is_spawn_egg(i)));
+    }
+    /// 1000 + 1645: the End crystal was the last of v0.17's 1646 palette entries.
+    const LEGACY_END_CRYSTAL_CODE: u16 = 2645;
+
     #[test]
     fn slots_are_bounded_and_validated_against_the_authoritative_screen() {
         let inventory = Container::Inventory;

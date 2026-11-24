@@ -1389,6 +1389,8 @@ Item 1937 is kept for the Ender Dragon's egg, left unregistered (its
 `registry_gaps.json` entry says why); 1938–1949 are unused. No block
 states or block texture layers. Item icons appended after the furnace
 minecart's: 87 layers (`item::icon_count`), one per egg in id order.
+In `Item::all_items` (and so `creative_palette` and its LAN codes) the eggs
+come after the End crystal, v0.17's last entry, whose code stays 2645.
 Appended orderings: key bindings `key.saveToolbarActivator` and
 `key.loadToolbarActivator` after `key.swapOffhand` (`app::keys::Action`
 and `options.txt`); LAN slot codes 405 (Destroy Item), 406 (an empty

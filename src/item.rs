@@ -1876,10 +1876,13 @@ impl Item {
             .chain([crate::world::camp_maps::CAMP_MAP])
             // v0.17 Track D1: the furnace minecart (its icon follows Track D's).
             .chain([Self::FURNACE_MINECART])
-            // v0.18 Track 4: the spawn eggs, whose icons follow the furnace minecart's.
-            .chain(crate::content::spawn_egg::all())
             // v0.16 Track G: the End crystal, which draws its own layer.
             .chain([crate::entity::crystal::END_CRYSTAL])
+            // v0.18 Track 4: the spawn eggs, appended so every older item
+            // keeps its place in `creative_palette` (LAN slot codes); their
+            // icons follow the furnace minecart's (`sprite_for_layer` skips
+            // the End crystal, which draws its own layer).
+            .chain(crate::content::spawn_egg::all())
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -2360,7 +2363,12 @@ pub fn effect_icon_layer(effect: crate::simulation::effects::Effect) -> u16 {
 pub fn sprite_for_layer(index: u16) -> Option<Sprite> {
     Item::all_items()
         // v0.16 Track A's chorus items draw block texture layers.
-        .filter(|i| !i.is_map() && *i != Item::SUSPICIOUS_STEW && !crate::content::chorus::is_item(*i))
+        .filter(|i| {
+            !i.is_map()
+                && *i != Item::SUSPICIOUS_STEW
+                && !crate::content::chorus::is_item(*i)
+                && *i != crate::entity::crystal::END_CRYSTAL
+        })
         .nth(index as usize)
         .map(|i| i.info().sprite)
 }
