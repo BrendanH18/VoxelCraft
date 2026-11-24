@@ -634,7 +634,7 @@ impl Game {
                         && !self.modifiers.super_key()
                         && let Some(text) = &event.text
                     {
-                        for c in text.chars().filter(|c| !c.is_control()) {
+                        for c in text.chars().filter(|&c| voxelcraft::font::allowed(c)) {
                             // `EditBox.setMaxLength(50)`.
                             if self.recipe_book.query.chars().count() < 50 {
                                 self.recipe_book.query.push(c);

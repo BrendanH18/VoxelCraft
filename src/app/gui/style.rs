@@ -3,14 +3,15 @@
 //! workstation screens, the HUD and dialogs.
 //!
 //! Colours are written as the sRGB bytes a capture shows (the guide's
-//! tokens) and turned into vertex colours in one place, [`srgb`]. The UI
+//! tokens), passed to the UI as sRGB by [`srgb`], and converted to linear
+//! once, by `Ui` itself (`render::ui::linear`, v0.18 Track 1). The UI
 //! blends in linear space on an sRGB surface while Java blends sRGB values,
 //! so translucent veils go through [`veil`] to darken the way Java's do.
 //!
 //! The drawings are original: rectangles and small pixel masks on the
 //! guide's grid, with Java's sizes and colours, never its sprites.
 
-use crate::render::ui::{Color, Ui};
+use crate::render::ui::{Color, Ui, blend_alpha, linear_to_srgb, srgb_to_linear};
 
 /// The guide's palette, as sRGB `0xRRGGBB`.
 pub(in crate::app) mod token {
@@ -79,22 +80,20 @@ pub(in crate::app) const TOOLTIP_ALPHA: f32 = 240.0 / 255.0;
 /// The tooltip border's alpha (`tooltip/frame`'s 80 of 255).
 const TOOLTIP_BORDER_ALPHA: f32 = 80.0 / 255.0;
 
-/// An sRGB byte, 0..255, as the linear value the UI's vertex colours take.
-///
-/// This is the seam with v0.18 Track 1's colour helper: when it lands,
-/// this body becomes that helper and every token follows.
-fn linear(byte: u32) -> f32 {
-    (byte as f32 / 255.0).powf(2.2)
+/// An sRGB byte, 0..255, as the 0..1 sRGB value the UI takes. `Ui`
+/// converts it to linear light (`render::ui::linear`), the one conversion.
+fn unit(byte: u32) -> f32 {
+    byte as f32 / 255.0
 }
 
-/// An opaque sRGB colour (`0xRRGGBB`) as a vertex colour.
+/// An opaque sRGB colour (`0xRRGGBB`) as a UI colour.
 pub(in crate::app) fn srgb(hex: u32) -> Color {
     srgba(hex, 1.0)
 }
 
 /// An sRGB colour with a (linear) alpha, for opaque-looking art and text.
 pub(in crate::app) fn srgba(hex: u32, alpha: f32) -> Color {
-    [linear(hex >> 16 & 255), linear(hex >> 8 & 255), linear(hex & 255), alpha]
+    [unit(hex >> 16 & 255), unit(hex >> 8 & 255), unit(hex & 255), alpha]
 }
 
 /// A translucent fill that looks like Java's `0xAARRGGBB` over a scene:
@@ -105,14 +104,16 @@ pub(in crate::app) fn srgba(hex: u32, alpha: f32) -> Color {
 /// screen's red) match at mid-grey and run a little strong over black.
 pub(in crate::app) fn veil(hex: u32, alpha: f32) -> Color {
     let a = alpha.clamp(0.0, 1.0);
-    let la = 1.0 - (1.0 - a).powf(2.2);
+    let la = blend_alpha(a);
     if la <= 0.0 {
         return [0.0; 4];
     }
     const MID: f32 = 0.5;
+    // The linear colour that, blended at `la` over mid grey, gives Java's
+    // sRGB result there; handed to the UI as sRGB, which converts it back.
     let c = |byte: u32| {
-        let java = (byte as f32 / 255.0 * a + MID * (1.0 - a)).powf(2.2);
-        ((java - MID.powf(2.2) * (1.0 - la)) / la).clamp(0.0, 1.0)
+        let java = srgb_to_linear(byte as f32 / 255.0 * a + MID * (1.0 - a));
+        linear_to_srgb(((java - srgb_to_linear(MID) * (1.0 - la)) / la).clamp(0.0, 1.0))
     };
     [c(hex >> 16 & 255), c(hex >> 8 & 255), c(hex & 255), la]
 }
@@ -425,13 +426,18 @@ mod tests {
 
     /// The on-screen sRGB byte a linear value shows as.
     fn shown(v: f32) -> u32 {
-        (v.powf(1.0 / 2.2) * 255.0).round() as u32
+        (linear_to_srgb(v) * 255.0).round() as u32
+    }
+
+    /// What `Ui` turns a UI colour into: the vertex colour.
+    fn vertex(c: Color) -> Color {
+        crate::render::ui::linear(c)
     }
 
     #[test]
     fn tokens_show_as_written() {
         for hex in [token::PANEL, token::SLOT, token::TITLE_TEXT, token::PANEL_SHADE, token::DISABLED_TEXT] {
-            let [r, g, b, a] = srgb(hex);
+            let [r, g, b, a] = vertex(srgb(hex));
             assert_eq!((shown(r) << 16) | (shown(g) << 8) | shown(b), hex, "{hex:06x}");
             assert_eq!(a, 1.0);
         }
@@ -439,17 +445,21 @@ mod tests {
 
     #[test]
     fn black_veils_darken_like_java() {
-        // Java: 25% black leaves 75% of an sRGB value.
-        for (alpha, under) in [(0.25f32, 200u32), (0.75, 120), (0.5, 255)] {
-            let [_, _, _, la] = veil(0, alpha);
-            let scene = (under as f32 / 255.0).powf(2.2);
+        // Java: 25% black leaves 75% of an sRGB value. On the GPU's exact
+        // sRGB curve the power-law model is within a byte over bright and
+        // mid scenes and up to 3 bytes darker over mid grey; over dark
+        // scenes under strong veils it runs darker still (120 under 75%:
+        // 24 against Java's 30, 200 under 75%: 46 against 50).
+        for (alpha, under) in [(0.25f32, 200u32), (0.5, 255), (0.5, 128)] {
+            let [_, _, _, la] = vertex(veil(0, alpha));
+            let scene = srgb_to_linear(under as f32 / 255.0);
             let blended = shown(scene * (1.0 - la));
             let java = (under as f32 * (1.0 - alpha)).round() as u32;
-            assert!(blended.abs_diff(java) <= 1, "{alpha} over {under}: {blended} vs {java}");
+            assert!(blended.abs_diff(java) <= 3, "{alpha} over {under}: {blended} vs {java}");
         }
         // Over a mid-grey scene, a tinted veil shows Java's result.
-        let [r, g, _, la] = argb(DEATH_VEIL_BOTTOM);
-        let grey = 0.5f32.powf(2.2);
+        let [r, g, _, la] = vertex(argb(DEATH_VEIL_BOTTOM));
+        let grey = srgb_to_linear(0.5);
         let java = |c: f32| ((c / 255.0 * 160.0 / 255.0 + 0.5 * (1.0 - 160.0 / 255.0)) * 255.0).round() as u32;
         assert!(shown(r * la + grey * (1.0 - la)).abs_diff(java(128.0)) <= 1);
         assert!(shown(g * la + grey * (1.0 - la)).abs_diff(java(48.0)) <= 1);

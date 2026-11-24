@@ -4699,6 +4699,76 @@
    ]
   },
   {
+   "name": "sign-text",
+   "group": "ui",
+   "description": "Three oak signs 2.8 blocks away at noon, the eye level with their text: accented Latin-1 and Latin Extended-A, ASCII, and lines at and past the 90-pixel width (v0.18 track 1 font)",
+   "pose": [
+    0.5,
+    158.25,
+    3.3,
+    270,
+    0
+   ],
+   "hud": false,
+   "fill": [
+    [
+     -2,
+     158,
+     0,
+     2,
+     158,
+     0,
+     "stone"
+    ]
+   ],
+   "place": [
+    "-1,159,0,oak sign",
+    "0,159,0,oak sign",
+    "1,159,0,oak sign"
+   ],
+   "args": [
+    "--sign",
+    "-1,159,0,Ærøskøbing|Łódź, Žďár|Grüße, Façade|ĞÜŞİÖÇ ğüşıöç",
+    "--sign",
+    "0,159,0,Hello, world!|0123456789|The quick fox|jumps (over) @",
+    "--sign",
+    "1,159,0,WWWWWWWWWWWWWWW|iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii|Ŋ ő ŀ ſ ĳ ŉ ŧ|¿Qué? ¡Sí! «»"
+   ]
+  },
+  {
+   "name": "accessibility-settings",
+   "group": "ui",
+   "matrix": {
+    "size": [
+     [
+      1920,
+      1080
+     ],
+     [
+      1280,
+      720
+     ]
+    ],
+    "gui_scale": [
+     "auto",
+     2
+    ]
+   },
+   "pose": [
+    0.5,
+    160,
+    0.5,
+    90,
+    -20
+   ],
+   "render_distance": 4,
+   "description": "Accessibility Settings, with Java's text options (Text Background, Text Background Opacity, Closed Captions)",
+   "args": [
+    "--open-menu",
+    "accessibility"
+   ]
+  },
+  {
    "group": "title",
    "matrix": {
     "size": [

@@ -41,36 +41,41 @@ to linear in one shared helper before it becomes a vertex colour. Alpha
 stays linear. Texture art is already authored in sRGB bytes and needs no
 change.
 
-**Now:** `ui.rect` and text colours are given as linear floats but were
-picked as if they were sRGB. The GPU encodes them for the sRGB target, so
-every flat UI colour shows lighter than written:
+**Done (v0.18 track 1):** every colour given to the UI, flat or a
+texture tint, is sRGB. `Ui::quad` converts it once with
+[`render::ui::linear`](../src/render/ui.rs) (the exact sRGB curve, so a
+byte value shows on screen as written; alpha untouched), and
+`render::ui::rgb(0xC6C6C6)` writes a constant as its hex. Nothing else
+converts: a track adding a colour writes the sRGB value and passes it to
+the UI as is. Before the helper, the values below were written as sRGB
+but sent as linear, so they showed lighter:
 
-| Constant | Written | On screen (sRGB) | Java's counterpart |
-|---|---|---|---|
-| Inventory panel `[0.78; 3]` | 199 | 229 (`#E5E5E5`) | `#C6C6C6` (198) |
-| Panel title text `[0.25; 3]` | 64 | 137 (`#898989`) | `#404040` (64) |
-| Button `BUTTON` `[0.42; 3]` | 107 | 173 (`#ADADAD`) | the button sprite's grey |
-| Disabled `DISABLED` `[0.2; 3]` | 51 | 124 (`#7C7C7C`) | the disabled button sprite |
-| Panel shadow edge `[0.33; 3]` | 84 | 155 (`#9B9B9B`) | `#555555` (85) |
+| Constant | Written | Showed before (sRGB) | Shows now | Java's counterpart |
+|---|---|---|---|---|
+| Inventory panel `[0.78; 3]` | 199 | 229 (`#E5E5E5`) | 199 | `#C6C6C6` (198) |
+| Panel title text `[0.25; 3]` | 64 | 137 (`#898989`) | 64 | `#404040` (64) |
+| Button `BUTTON` | 107 | 173 (`#ADADAD`) | `#6F6F6F` (track 2's token) | the button sprite's `#6F6F6F` |
+| Disabled `DISABLED` | 51 | 124 (`#7C7C7C`) | `#2C2C2C` (track 2's token) | the disabled sprite's `#2C2C2C` |
+| Panel shadow edge `[0.33; 3]` | 84 | 155 (`#9B9B9B`) | 84 | `#555555` (85) |
 
-All five match the before captures (the inventory, pause menu and Select
-World scenes). The
-[foundation record](verification/2026-11-23-v0.18-foundation.md#colour-path)
-has the samples. The typography track (1) owns the conversion helper and the
-audit item 1 of the scope asks for. Until it lands, a track that adds a
-colour writes the sRGB value and converts it with `x.powf(2.2)`, with a
-comment that it becomes the shared helper.
+The [typography record](verification/2026-11-23-v0.18-typography.md)
+has the before and after samples. Translucent colours still blend in
+linear light on the sRGB surface, where Java blends sRGB values, so a
+dimming overlay at a given alpha looks a little lighter than Java's.
 
 **Track 2 (shared UI):** the guide's tokens live in
-[`gui/style.rs`](../src/app/gui/style.rs) as sRGB `0xRRGGBB` values and
-reach the vertex colours through one function, `style::srgb` (its
-`linear` is the seam the typography track's helper replaces). Panels,
+[`gui/style.rs`](../src/app/gui/style.rs) as sRGB `0xRRGGBB` values.
+`style::srgb` hands them to the UI as sRGB and `Ui` converts them, the
+same single conversion as every other UI colour (merged with track 1,
+2026-11-23; `Ui::gradient` converts too). Panels,
 slots, buttons, sliders, tooltips, progress icons, the hotbar, experience
 bar and effect backgrounds, the anvil's name box and the creative and
 recipe book panels use it, so they already show the table's Java values.
 Translucent fills use `style::veil`, which raises the alpha so a scene
-darkens by Java's sRGB factor (exact for black veils): Java blends sRGB
-values, the UI blends linear ones. Text colours outside these components
+darkens by Java's sRGB factor: Java blends sRGB values, the UI blends
+linear ones. Its alpha and track 1's `render::ui::shade` come from one
+blend model, `render::ui::blend_alpha` (`1 - (1 - a)^2.2`), within a byte
+of Java over bright scenes and a few bytes darker over dark ones. Text colours outside these components
 (F3, chat, captions, menus' grey labels) are the typography track's.
 
 ## Pixel grid
@@ -125,6 +130,7 @@ Luminance below is relative luminance (WCAG) of sRGB values from captures.
 | Disabled widget text | `#A0A0A0` with shadow |
 | Hovered slot overlay | white at 50 % alpha over the 16 × 16 item area |
 | Screen dimming behind a menu in a world | `#101010` from 75 % alpha at the top to 82 % at the bottom |
+| Scrolling list backing (track 1) | black at 112/255 across the screen's width (Java's `menu_list_background`), drawn with `render::ui::shade` so it darkens as Java's sRGB blend does |
 
 **Block materials** (**tunable (track 3)**, checked per tile and in the
 `block-palette`, `grass-hillside`, `forest` and `stone-ore-wall` scenes).
@@ -187,10 +193,19 @@ Targets for the typography track (1); the metrics are Java's.
 | Shadow | offset (1, 1), the text colour at 25 % brightness |
 | Characters | ASCII plus Latin-1 and Latin Extended-A in user text: world names, signs, name tags, book text. No `?` substitution for those |
 
-**Now:** the font is `font8x8`'s legacy ASCII set in 8 × 8 cells, with
-widths measured from each glyph's ink. It has no consistent baseline or
-descender row and replaces anything outside ASCII with `?`. Sign text must
-load unchanged when metrics change (scope item 8).
+**Done (v0.18 track 1):** VoxelCraft's own pixel font
+([`assets/font/glyphs.txt`](../assets/font/glyphs.txt), read by
+[`src/font.rs`](../src/font.rs)) covers ASCII, Latin-1 and Latin
+Extended-A with these metrics, accents composed from shared marks. Each
+character's advance equals Java 26.3's (checked against
+`tests/fixtures/java/26.3/font_metrics.json`), so Java's layouts and line
+limits fit the same text. x-height is 5. Anything else draws as a 5 × 7
+box and can't be typed. Every measurement goes through the font:
+`font::width` is Java's `Font.width` (the advances, trailing gap
+included) for limits such as a sign's 90 pixels, and `Ui::text_width`
+(`font::ink_width`) is the ink for centring and boxes. Sign text from the
+old font still shows whole (see the record). `font::VERSION` changes
+whenever a glyph does, for caches of laid-out text.
 
 ## Spacing and layout
 

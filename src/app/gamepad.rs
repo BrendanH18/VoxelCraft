@@ -660,10 +660,10 @@ impl Game {
             Some(c) => {
                 let mut longer = text.clone();
                 longer.push(c);
-                let max = if hanging { 60.0 } else { 90.0 };
+                let max = if hanging { 60 } else { 90 };
                 if voxelcraft::world::wood::entities::allowed(c)
                     && longer.chars().count() <= voxelcraft::world::wood::entities::MAX_LINE_CHARS
-                    && crate::render::ui::Ui::text_width(&longer) <= max
+                    && voxelcraft::font::width(&longer) <= max
                 {
                     *text = longer;
                 }
@@ -856,15 +856,10 @@ impl Game {
             Request::Open(Used::EditSign { cell, front }) => {
                 let Some((sign, entity)) = self.world.sign_at(cell) else { return };
                 let seat = &mut self.pads.seats[i];
-                // Text an agent wrote can be wider than the sign; cut it as the
-                // keyboard editor's tick does.
-                let max = if sign.hanging() { 60.0 } else { 90.0 };
-                seat.sign_text = entity.side(front).lines.clone().map(|mut line| {
-                    while crate::render::ui::Ui::text_width(&line) > max {
-                        line.pop();
-                    }
-                    line
-                });
+                // Lines wider than the sign (written by an agent, or before
+                // the v0.18 font) stay whole; only typing is limited, as in
+                // Java's editor.
+                seat.sign_text = entity.side(front).lines.clone();
                 seat.open(Menu::Sign { cell, front, hanging: sign.hanging(), line: 0, key: (0, 0), shift: false });
             }
             Request::Open(Used::Utility {
