@@ -2243,7 +2243,13 @@ impl Game {
             })
             .collect();
         benchmark::mark(&mut self.benchmark, 2);
-        let verts = self.mobs.entities.mesh(camera, forward, fog_end, scene.time, alpha);
+        self.mobs.entities.mesh(camera, forward, fog_end, scene.time, alpha);
+        // v0.18 Track 6: ground shadows, for the players drawn in this view too.
+        let mut feet: Vec<DVec3> = others.iter().map(|o| o.1).collect();
+        if !self.camera.first_person() && casts_shadow(&self.session.vitals, self.session.mode) {
+            feet.push(eye - (self.session.player.eye() - self.session.player.pos));
+        }
+        let verts = self.mobs.entities.shadows(&self.world, camera, alpha, &feet, self.settings.entity_shadows);
         push_avatars(&self.world, &others, camera, fog_end, scene.time, verts);
         crate::render::signs::text(&self.world, camera, verts);
         crate::entity::model::build_beacon_beams(&self.world, camera, scene.time, fog_end, verts);
@@ -2544,4 +2550,16 @@ mod pause_tests {
         assert_eq!(unreadable_level(&storage, true), None, "--new and new worlds replace it on purpose");
         std::fs::remove_dir_all(dir).unwrap();
     }
+}
+
+/// v0.18 Track 6: whether a player's body casts a ground shadow: drawn
+/// (`Vitals::visible`), not Invisible and not a spectator (Java's
+/// `isInvisible` hides both).
+pub(crate) fn casts_shadow(
+    vitals: &voxelcraft::simulation::survival::Vitals,
+    mode: voxelcraft::rules::GameMode,
+) -> bool {
+    vitals.visible()
+        && !vitals.effects.has(voxelcraft::simulation::effects::Effect::Invisibility)
+        && mode != voxelcraft::rules::GameMode::Spectator
 }

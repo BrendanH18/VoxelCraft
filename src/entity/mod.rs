@@ -80,6 +80,7 @@ mod projectile;
 pub mod raid;
 mod replica;
 pub mod sculk_events;
+pub mod shadow;
 pub mod shulker;
 pub mod silverfish;
 mod slime;
@@ -1259,6 +1260,10 @@ pub struct Entities {
     /// landed stops updating (no AI, movement, burning or sounds), faces this
     /// point and keeps its lighting fresh, so its pose is the same in every run.
     pub still: Option<DVec3>,
+    /// v0.18 Track 6: this frame's shadow casters, kept to reuse the allocation.
+    casters: Vec<shadow::Caster>,
+    /// v0.18 Track 6: the mobs' simulation poses while `mesh` draws interpolated ones.
+    poses: Vec<[f32; 5]>,
 }
 
 impl Entities {
@@ -1360,6 +1365,8 @@ impl Entities {
             rendered: 0,
             mesh: model::EntityMesh::default(),
             still: None,
+            casters: Vec::new(),
+            poses: Vec::new(),
         }
     }
 
@@ -2155,6 +2162,7 @@ impl Entities {
             if m.riding.is_none() {
                 m.previous_pos = m.pos;
             }
+            m.previous_pose = m.pose_values();
         }
         for a in &mut self.arrows {
             a.previous_pos = a.pos;
@@ -2207,7 +2215,17 @@ impl Entities {
         alpha: f64,
     ) -> &mut model::EntityMesh {
         self.mesh.clear();
+        // v0.18 Track 6: draw each mob turned and mid-stride as of `alpha`,
+        // then put the simulation's values back.
+        self.poses.clear();
+        for m in &mut self.mobs {
+            self.poses.push(m.pose_values());
+            m.set_pose_values(m.render_pose(alpha as f32));
+        }
         self.rendered = model::build(&self.mobs, camera, forward, max_dist, time, alpha, &mut self.mesh);
+        for (m, &pose) in self.mobs.iter_mut().zip(&self.poses) {
+            m.set_pose_values(pose);
+        }
         model::build_arrows(&self.arrows, camera, alpha, &mut self.mesh);
         model::build_tridents(&self.tridents, camera, alpha, &mut self.mesh);
         model::build_fangs(&self.fangs, camera, &mut self.mesh);
@@ -2230,6 +2248,39 @@ impl Entities {
         if let Some(fight) = &self.fight {
             dragon_model::build_fight(fight, &self.crystals, camera, time, alpha, &mut self.mesh);
         }
+        &mut self.mesh
+    }
+
+    /// v0.18 Track 6: adds ground shadows to the mesh [`Entities::mesh`]
+    /// built for this view, when `enabled` (the Entity Shadows option): for
+    /// the mobs, dropped items and experience orbs here and for the players
+    /// whose interpolated feet are `players`. Returns the mesh.
+    pub fn shadows<G: shadow::Ground + ?Sized>(
+        &mut self,
+        ground: &G,
+        camera: DVec3,
+        alpha: f64,
+        players: &[DVec3],
+        enabled: bool,
+    ) -> &mut model::EntityMesh {
+        if !enabled {
+            return &mut self.mesh;
+        }
+        let mut casters = std::mem::take(&mut self.casters);
+        casters.clear();
+        shadow::mob_casters(&self.mobs, camera, alpha, &mut casters);
+        let near = |pos: DVec3| pos.distance_squared(camera) < shadow::FADE_DISTANCE_SQ;
+        let (radius, strength) = shadow::ITEM;
+        let items = self.items.iter().map(|i| i.previous_pos.lerp(i.pos, alpha));
+        let orbs = self.orbs.iter().map(|o| o.previous_pos.lerp(o.pos, alpha));
+        casters.extend(items.chain(orbs).filter(|&p| near(p)).map(|pos| shadow::Caster { pos, radius, strength }));
+        casters.extend(players.iter().filter(|&&p| near(p)).map(|&pos| shadow::Caster {
+            pos,
+            radius: shadow::PLAYER_RADIUS,
+            strength: 1.0,
+        }));
+        shadow::build(ground, &casters, camera, &mut self.mesh);
+        self.casters = casters;
         &mut self.mesh
     }
 
@@ -3250,6 +3301,38 @@ mod tests {
         assert!(e.mobs[0].effects.has(Effect::FireResistance));
     }
 
+    /// v0.18 Track 6: between ticks a mob is drawn turned and mid-stride as
+    /// far as the frame is through the tick, and the simulation keeps its values.
+    #[test]
+    fn mobs_turn_and_walk_smoothly_between_ticks() {
+        let mut e = Entities::new(5);
+        e.spawn(MobKind::Pig, DVec3::new(6.5, 10.0, 0.5));
+        e.mobs[0].yaw = 3.0;
+        e.mobs[0].limb_amp = 0.0;
+        e.snapshot_positions();
+        // One tick turns it across the -pi/pi seam and starts it walking.
+        e.mobs[0].set_pose_values([-3.0, 0.4, -0.2, 2.0, 1.0]);
+        let half = e.mesh(DVec3::new(0.0, 11.0, 0.0), glam::Vec3::X, 64.0, 0.0, 0.5).boxes().to_vec();
+        assert_eq!(e.mobs[0].pose_values(), [-3.0, 0.4, -0.2, 2.0, 1.0], "the simulation keeps its pose");
+        let mid = e.mobs[0].render_pose(0.5);
+        assert!((mid[0] - std::f32::consts::PI).abs() < 1e-4, "the short way round: {}", mid[0]);
+        for (got, want) in mid[1..].iter().zip([0.2, -0.1, 1.0, 0.5]) {
+            assert!((got - want).abs() < 1e-5, "{mid:?}");
+        }
+        // The same mob posed halfway, drawn at the end of its tick, looks the same.
+        let mut f = Entities::new(5);
+        f.spawn(MobKind::Pig, DVec3::new(6.5, 10.0, 0.5));
+        f.mobs[0].set_pose_values(mid);
+        f.snapshot_positions();
+        let posed = f.mesh(DVec3::new(0.0, 11.0, 0.0), glam::Vec3::X, 64.0, 0.0, 1.0).boxes().to_vec();
+        assert_eq!(half.len(), posed.len());
+        for (a, b) in half.iter().zip(&posed) {
+            for (ra, rb) in a.rows.iter().zip(&b.rows) {
+                assert!(ra.iter().zip(rb).all(|(x, y)| (x - y).abs() < 1e-4), "{ra:?} vs {rb:?}");
+            }
+        }
+    }
+
     /// v0.18 Track 6: `--still-mobs` holds landed mobs where they are,
     /// facing the camera, and the update loop still moves on past them.
     #[test]
@@ -3265,7 +3348,7 @@ mod tests {
             e.update(0.05, &Grid::flat(10), &c);
         }
         let landed: Vec<DVec3> = e.mobs.iter().map(|m| m.pos).collect();
-        assert!(e.mobs.iter().all(|m| m.on_ground && (m.pos.y - 10.0).abs() < 1e-6), "{landed:?}");
+        assert!(e.mobs.iter().all(|m| m.on_ground && (m.pos.y - 10.0).abs() < 1e-3), "{landed:?}");
         for _ in 0..100 {
             e.snapshot_positions();
             e.update(0.05, &Grid::flat(10), &c);

@@ -339,7 +339,14 @@ impl Game {
                     ));
                 }
             }
-            let verts = self.mobs.entities.mesh(camera, forward, fog.end, scene.time, scene.alpha);
+            self.mobs.entities.mesh(camera, forward, fog.end, scene.time, scene.alpha);
+            // v0.18 Track 6: ground shadows, for the players drawn in this view too.
+            let mut players: Vec<DVec3> = others.iter().map(|o| o.1).collect();
+            if !bot.camera.first_person() && super::casts_shadow(&a.vitals, a.mode) {
+                players.push(feet);
+            }
+            let shadows = self.settings.entity_shadows;
+            let verts = self.mobs.entities.shadows(&self.world, camera, scene.alpha, &players, shadows);
             super::push_avatars(&self.world, &others, camera, fog.end, scene.time, verts);
             crate::render::signs::text(&self.world, camera, verts);
             crate::entity::model::build_beacon_beams(&self.world, camera, scene.time, fog.end, verts);

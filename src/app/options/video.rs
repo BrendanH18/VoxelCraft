@@ -2,6 +2,7 @@
 //! Performance, Preferences) with the options VoxelCraft can honour, in
 //! Java's order. Options that would need renderer work VoxelCraft doesn't
 //! have (Clouds, Biome Blend, Entity Distance and the like) are left out.
+//! Entity Shadows (v0.18 Track 6) switches the ground shadows.
 
 use super::{OptionsHost, change, close, frac, lerp};
 use crate::app::gui::{OptionList, Rect, Screen, Size, Step, Widget, on_off};
@@ -22,6 +23,7 @@ pub(in crate::app) enum Id {
     RenderDistance,
     SimulationDistance,
     Particles,
+    EntityShadows,
     PreferencesHeader,
     Fps,
     Done,
@@ -118,6 +120,12 @@ impl<H: OptionsHost> Screen<H> for VideoSettings {
                 (sd.1 - sd.0) as u32,
             ),
             Widget::button(Id::Particles, z, format!("Particles: {}", s.particles.name())),
+            // v0.18 Track 6: after Particles (and Mipmap Levels) in Java's order.
+            Widget::button(
+                Id::EntityShadows,
+                z,
+                format!("{}: {}", crate::entity::shadow::OPTION_LABEL, on_off(s.entity_shadows)),
+            ),
         ]);
         list.wide(Widget::label(Id::PreferencesHeader, z, "Preferences"));
         list.pair(
@@ -141,6 +149,7 @@ impl<H: OptionsHost> Screen<H> for VideoSettings {
                 host.apply_fullscreen();
             }
             Id::Particles => change(host, |s| s.particles = s.particles.next()),
+            Id::EntityShadows => change(host, |s| s.entity_shadows = !s.entity_shadows),
             Id::Fps => change(host, |s| s.show_fps = !s.show_fps),
             Id::Done => return close(host),
             _ => {}

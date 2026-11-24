@@ -21,6 +21,8 @@ mod copper_golem_statue;
 mod crops;
 #[path = "gen5_textures.rs"]
 mod gen5;
+#[path = "mob_textures.rs"]
+mod mob;
 #[path = "nether_textures.rs"]
 mod nether;
 #[path = "overworld_textures.rs"]
@@ -113,6 +115,10 @@ const DIRT: [u8; 3] = [134, 96, 67];
 const GRASS: [u8; 3] = [95, 159, 53];
 
 pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
+    // v0.18 Track 6: the mob material patterns.
+    if crate::entity::model::Pattern::from_layer(layer).is_some() {
+        return mob::pixel(layer, x, y);
+    }
     // v0.18 Track 9: a barrel's open top, while it is in use.
     if layer == crate::world::lids::BARREL_OPEN_TEX {
         return barrel_open(x, y);

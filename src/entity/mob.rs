@@ -1333,6 +1333,10 @@ pub struct Mob {
     pub pos: DVec3,
     /// Position at the start of the last simulation step, for rendering.
     pub previous_pos: DVec3,
+    /// v0.18 Track 6: [`Mob::pose_values`] at the start of the last
+    /// simulation step, so the model turns and walks smoothly between ticks
+    /// as Java's renderers do with the partial tick. Not saved.
+    pub previous_pose: [f32; 5],
     pub vel: DVec3,
     /// Body facing, same convention as the player: forward = (cos, 0, sin).
     pub yaw: f32,
@@ -1549,6 +1553,7 @@ impl Mob {
             riding: None,
             pos,
             previous_pos: pos,
+            previous_pose: [yaw, 0.0, 0.0, 0.0, 0.0],
             vel: DVec3::ZERO,
             yaw,
             head_yaw: 0.0,
@@ -2118,6 +2123,35 @@ impl Mob {
     }
 
     /// Advances the mob by `dt` seconds.
+    /// v0.18 Track 6: what the model's pose is drawn from: body yaw, head
+    /// yaw and pitch, walk-cycle phase and amplitude.
+    pub fn pose_values(&self) -> [f32; 5] {
+        [self.yaw, self.head_yaw, self.head_pitch, self.limb_phase, self.limb_amp]
+    }
+
+    pub fn set_pose_values(&mut self, [yaw, head_yaw, head_pitch, limb_phase, limb_amp]: [f32; 5]) {
+        (self.yaw, self.head_yaw, self.head_pitch, self.limb_phase, self.limb_amp) =
+            (yaw, head_yaw, head_pitch, limb_phase, limb_amp);
+    }
+
+    /// The pose `alpha` of the way from the last step's start to now, as
+    /// `Mth.rotLerp` and `WalkAnimationState` interpolate it: angles the
+    /// short way round, the walk phase across its wrap.
+    pub fn render_pose(&self, alpha: f32) -> [f32; 5] {
+        use std::f32::consts::{PI, TAU};
+        let (from, to) = (self.previous_pose, self.pose_values());
+        let angle = |a: f32, b: f32| a + ((b - a + PI).rem_euclid(TAU) - PI) * alpha;
+        let wrap = TAU * 64.0;
+        let phase = from[3] + ((to[3] - from[3] + wrap / 2.0).rem_euclid(wrap) - wrap / 2.0) * alpha;
+        [
+            angle(from[0], to[0]),
+            angle(from[1], to[1]),
+            angle(from[2], to[2]),
+            phase,
+            from[4] + (to[4] - from[4]) * alpha,
+        ]
+    }
+
     /// v0.18 Track 6: `--still-mobs`. Holds a landed mob in place facing
     /// `face`, its limbs and head at rest and its lighting current.
     pub fn hold_still<W: MobWorld + ?Sized>(&mut self, world: &W, face: DVec3) {

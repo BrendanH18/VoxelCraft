@@ -55,7 +55,8 @@ pub struct BoxInstance {
     pub color: [u8; 4],
     /// x: sky light, y: block light, z: hurt tint, w: emissive.
     pub light: [u8; 4],
-    /// Directional shade of the -X, +X, -Y, +Y, -Z and +Z faces; two spare bytes.
+    /// Directional shade of the -X, +X, -Y, +Y, -Z and +Z faces, then the
+    /// box's [`Pattern`] number (0: none) and a spare byte.
     pub shade: [u8; 8],
 }
 
@@ -81,9 +82,19 @@ impl BoxInstance {
             uv: [p[u] + (self.min[3] + axis as f32 * 31.0 + side as u8 as f32 * 17.0), p[v] + self.max[3]],
             color: self.color,
             light: [self.light[0], self.shade[face], self.light[2], self.light[3]],
-            torch: [self.light[1], 0, 0, 0],
+            torch: pattern_torch(self.light[1], self.shade[6]),
         }
     }
+}
+
+/// A vertex's `torch` bytes for block light `torch` and pattern number
+/// `pattern`: material 6 and the pattern's layer, or plain material 0.
+fn pattern_torch(torch: u8, pattern: u8) -> [u8; 4] {
+    if pattern == 0 {
+        return [torch, 0, 0, 0];
+    }
+    let [lo, hi] = (PATTERN_TEX + u16::from(pattern) - 1).to_le_bytes();
+    [torch, PATTERN_MATERIAL, lo, hi]
 }
 
 /// Face corners along a face's two in-plane axes, counter-clockwise seen
@@ -97,13 +108,17 @@ const fn corner_order(side: bool) -> [(f32, f32); 6] {
 }
 
 /// Entity geometry for one view, relative to its camera. Plain opaque boxes,
-/// which are nearly all of it, go to the GPU as [`BoxInstance`]s. Textured,
-/// translucent and flat geometry (skins, armor, held items, slime shells,
-/// name tags, sign text) is a list of triangles, which the mesh dereferences
-/// to. The boxes draw first; nothing translucent is among them.
+/// which are nearly all of it, go to the GPU as [`BoxInstance`]s. Textured
+/// and flat geometry (skins, armor, held items, name tags, sign text) is a
+/// list of triangles, which the mesh dereferences to. Blended geometry
+/// (slime shells, ground shadows) is a second list, drawn last, so the
+/// renderer uploads the two lists as they are, with no sorting pass. The
+/// boxes draw first; nothing translucent is among them.
 #[derive(Default)]
 pub struct EntityMesh {
     verts: Vec<EntityVertex>,
+    /// v0.18 Track 6: triangles drawn blended after everything else.
+    translucent: Vec<EntityVertex>,
     boxes: Vec<BoxInstance>,
     /// Expand every box into `verts` on the CPU where it is emitted.
     flat: bool,
@@ -117,6 +132,7 @@ pub struct EntityMesh {
 #[derive(Clone, Copy, Debug)]
 pub struct GlowMark {
     verts: usize,
+    translucent: usize,
     boxes: usize,
 }
 
@@ -130,6 +146,7 @@ impl EntityMesh {
 
     pub fn clear(&mut self) {
         self.verts.clear();
+        self.translucent.clear();
         self.boxes.clear();
         self.glow_verts.clear();
         self.glow_boxes.clear();
@@ -137,7 +154,7 @@ impl EntityMesh {
 
     /// Marks where the next entity's geometry starts.
     pub fn glow_start(&self) -> GlowMark {
-        GlowMark { verts: self.verts.len(), boxes: self.boxes.len() }
+        GlowMark { verts: self.verts.len(), translucent: self.translucent.len(), boxes: self.boxes.len() }
     }
 
     /// v0.15 Track D: when `glowing`, copies everything emitted since `mark`
@@ -145,6 +162,7 @@ impl EntityMesh {
     pub fn glow_end(&mut self, mark: GlowMark, glowing: bool) {
         if glowing {
             self.glow_verts.extend_from_slice(&self.verts[mark.verts.min(self.verts.len())..]);
+            self.glow_verts.extend_from_slice(&self.translucent[mark.translucent.min(self.translucent.len())..]);
             self.glow_boxes.extend_from_slice(&self.boxes[mark.boxes.min(self.boxes.len())..]);
         }
     }
@@ -163,11 +181,23 @@ impl EntityMesh {
         &self.boxes
     }
 
+    /// The blended triangles, drawn after the opaque ones. A flat mesh
+    /// keeps them with the rest, in emission order.
+    pub fn translucent(&self) -> &[EntityVertex] {
+        &self.translucent
+    }
+
+    /// Where blended triangles go: their own list, or the one list of a
+    /// flat mesh.
+    pub fn translucent_mut(&mut self) -> &mut Vec<EntityVertex> {
+        if self.flat { &mut self.verts } else { &mut self.translucent }
+    }
+
     /// Every vertex the mesh draws, in draw order: each box expanded as the
-    /// GPU expands it, then the triangles.
+    /// GPU expands it, then the opaque triangles, then the blended ones.
     pub fn expanded(&self) -> Vec<EntityVertex> {
         let boxes = self.boxes.iter().flat_map(|b| (0..BOX_VERTICES).map(|i| b.vertex(i)));
-        boxes.chain(self.verts.iter().copied()).collect()
+        boxes.chain(self.verts.iter().copied()).chain(self.translucent.iter().copied()).collect()
     }
 }
 
@@ -186,6 +216,55 @@ impl std::ops::DerefMut for EntityMesh {
 
 pub(super) type Rgb = [u8; 3];
 
+/// v0.18 Track 6: first texture layer of the mob material patterns (the
+/// track's reservation 1280–1289, one layer per [`Pattern`]).
+pub const PATTERN_TEX: u16 = 1280;
+
+/// An original surface pattern a box can carry instead of plain per-texel
+/// noise: a tileable grey modulation of its colour (`render::mob_textures`),
+/// one texel per model pixel, fading to the plain colour with distance.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum Pattern {
+    Wool = 1,
+    Fur,
+    Hide,
+    Feather,
+    Mottle,
+    Bone,
+    Speckle,
+    Bristle,
+    Cloth,
+    Rot,
+}
+
+impl Pattern {
+    pub const ALL: [Pattern; 10] = [
+        Pattern::Wool,
+        Pattern::Fur,
+        Pattern::Hide,
+        Pattern::Feather,
+        Pattern::Mottle,
+        Pattern::Bone,
+        Pattern::Speckle,
+        Pattern::Bristle,
+        Pattern::Cloth,
+        Pattern::Rot,
+    ];
+
+    /// Its texture layer.
+    pub const fn layer(self) -> u16 {
+        PATTERN_TEX + self as u16 - 1
+    }
+
+    pub fn from_layer(layer: u16) -> Option<Pattern> {
+        Self::ALL.into_iter().find(|p| p.layer() == layer)
+    }
+}
+
+/// The entity shader's material number for a patterned box.
+pub const PATTERN_MATERIAL: u8 = 6;
+
 #[derive(Clone, Copy)]
 pub(super) struct Cuboid {
     min: [f32; 3],
@@ -195,17 +274,26 @@ pub(super) struct Cuboid {
     noise: u8,
     /// Drawn alpha-blended after the opaque pass (entity material 4).
     translucent: bool,
+    /// v0.18 Track 6: a [`Pattern`] number, or 0 for per-texel noise.
+    pattern: u8,
 }
 
 pub(super) const fn cube(min: [f32; 3], max: [f32; 3], color: Rgb, noise: u8) -> Cuboid {
-    Cuboid { min, max, color, noise, translucent: false }
+    Cuboid { min, max, color, noise, translucent: false, pattern: 0 }
+}
+
+impl Cuboid {
+    /// The same box with a material pattern in place of its noise.
+    pub(super) const fn with(self, p: Pattern) -> Cuboid {
+        Cuboid { pattern: p as u8, ..self }
+    }
 }
 
 /// A box Java draws through the translucent entity layer, like the slime shell.
 /// Distance from a sleeping villager's pillow-block centre back to its feet.
 const SLEEP_FEET_BACK: f32 = 1.52;
 const fn glass(min: [f32; 3], max: [f32; 3], color: Rgb, noise: u8) -> Cuboid {
-    Cuboid { min, max, color, noise, translucent: true }
+    Cuboid { min, max, color, noise, translucent: true, pattern: 0 }
 }
 
 const MAGMA_BODY: &[Cuboid] = &[cube([-4.08, 0.0, -4.08], [4.08, 8.16, 4.08], [50, 28, 25], 80)];
@@ -241,17 +329,27 @@ const PIG_SNOUT: Rgb = [226, 128, 138];
 const DARK: Rgb = [60, 30, 36];
 const WHITE: Rgb = [235, 235, 235];
 
-const PIG_BODY: &[Cuboid] = &[cube([-5.0, 6.0, -8.0], [5.0, 14.0, 8.0], PIG_SKIN, 22)];
-const PIG_LEG_BOX: &[Cuboid] = &[cube([-2.0, -6.0, -2.0], [2.0, 0.0, 2.0], PIG_LEG, 22)];
+const PIG_HOOF: Rgb = [128, 78, 80];
+const PIG_BODY: &[Cuboid] = &[cube([-5.0, 6.0, -8.0], [5.0, 14.0, 8.0], PIG_SKIN, 22).with(Pattern::Hide)];
+// v0.18 Track 6: hide texture, darker cloven feet and a mouth under the snout.
+const PIG_LEG_BOX: &[Cuboid] = &[
+    cube([-2.0, -5.0, -2.0], [2.0, 0.0, 2.0], PIG_LEG, 22).with(Pattern::Hide),
+    cube([-2.0, -6.0, -2.0], [2.0, -5.0, 2.0], PIG_HOOF, 12),
+    cube([-0.25, -6.0, 2.0], [0.25, -5.0, 2.05], DARK, 0),
+];
 const PIG_HEAD: &[Cuboid] = &[
-    cube([-4.0, -4.0, 0.0], [4.0, 4.0, 8.0], PIG_SKIN, 22),
-    cube([-2.0, -3.0, 8.0], [2.0, 0.0, 9.0], PIG_SNOUT, 14),
+    cube([-4.0, -4.0, 0.0], [4.0, 4.0, 8.0], PIG_SKIN, 22).with(Pattern::Hide),
+    cube([-2.0, -3.0, 8.0], [2.0, 0.0, 9.0], PIG_SNOUT, 14).with(Pattern::Hide),
     cube([-1.5, -2.0, 9.0], [-0.5, -1.0, 9.1], DARK, 0),
     cube([0.5, -2.0, 9.0], [1.5, -1.0, 9.1], DARK, 0),
     cube([-4.0, 0.0, 8.0], [-3.0, 1.0, 8.1], DARK, 0),
     cube([-3.0, 0.0, 8.0], [-2.0, 1.0, 8.1], WHITE, 0),
     cube([3.0, 0.0, 8.0], [4.0, 1.0, 8.1], DARK, 0),
     cube([2.0, 0.0, 8.0], [3.0, 1.0, 8.1], WHITE, 0),
+    // Mouth and a little blush under the eyes.
+    cube([-1.5, -3.8, 8.0], [1.5, -3.4, 8.05], [150, 82, 92], 0),
+    cube([-4.0, -1.5, 8.0], [-3.0, -0.5, 8.05], [242, 136, 146], 0),
+    cube([3.0, -1.5, 8.0], [4.0, -0.5, 8.05], [242, 136, 146], 0),
 ];
 
 // ---------------------------------------------------------------- zombie
@@ -262,36 +360,50 @@ const ZOMBIE_PANTS: Rgb = [62, 56, 150];
 const ZOMBIE_SHOES: Rgb = [72, 72, 82];
 const ZOMBIE_EYES: Rgb = [24, 40, 24];
 
-const ZOMBIE_BODY: &[Cuboid] = &[cube([-4.0, 12.0, -2.0], [4.0, 24.0, 2.0], ZOMBIE_SHIRT, 40)];
+// v0.18 Track 6: rotting skin, woven clothes with a torn shirt, sunken
+// eyes with a pale glint, a nose and a ragged mouth.
+const ZOMBIE_BODY: &[Cuboid] = &[
+    cube([-4.0, 12.0, -2.0], [4.0, 24.0, 2.0], ZOMBIE_SHIRT, 40).with(Pattern::Cloth),
+    cube([1.0, 13.0, 2.0], [3.0, 16.0, 2.05], ZOMBIE_SKIN, 36).with(Pattern::Rot),
+    cube([-3.0, 18.0, 2.0], [-2.0, 19.0, 2.05], ZOMBIE_SKIN, 36),
+    cube([-4.0, 12.0, 2.0], [4.0, 13.0, 2.05], [36, 52, 110], 0),
+];
 const ZOMBIE_LEG: &[Cuboid] = &[
-    cube([-2.0, -10.0, -2.0], [2.0, 0.0, 2.0], ZOMBIE_PANTS, 40),
+    cube([-2.0, -10.0, -2.0], [2.0, 0.0, 2.0], ZOMBIE_PANTS, 40).with(Pattern::Cloth),
     cube([-2.0, -12.0, -2.0], [2.0, -10.0, 2.0], ZOMBIE_SHOES, 30),
 ];
 const ZOMBIE_ARM: &[Cuboid] = &[
-    cube([-2.0, -4.0, -2.0], [2.0, 2.0, 2.0], ZOMBIE_SHIRT, 40),
-    cube([-2.0, -10.0, -2.0], [2.0, -4.0, 2.0], ZOMBIE_SKIN, 36),
+    cube([-2.0, -4.0, -2.0], [2.0, 2.0, 2.0], ZOMBIE_SHIRT, 40).with(Pattern::Cloth),
+    cube([-2.0, -10.0, -2.0], [2.0, -4.0, 2.0], ZOMBIE_SKIN, 36).with(Pattern::Rot),
 ];
 const ZOMBIE_HEAD: &[Cuboid] = &[
-    cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], ZOMBIE_SKIN, 36),
+    cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], ZOMBIE_SKIN, 36).with(Pattern::Rot),
     cube([-3.0, 3.0, 4.0], [-1.0, 4.0, 4.1], ZOMBIE_EYES, 0),
     cube([1.0, 3.0, 4.0], [3.0, 4.0, 4.1], ZOMBIE_EYES, 0),
+    cube([-2.0, 3.0, 4.1], [-1.0, 4.0, 4.15], [150, 170, 120], 0),
+    cube([1.0, 3.0, 4.1], [2.0, 4.0, 4.15], [150, 170, 120], 0),
+    cube([-0.5, 2.0, 4.0], [0.5, 3.0, 4.05], [66, 104, 54], 0),
     cube([-2.0, 1.0, 4.0], [2.0, 1.6, 4.05], ZOMBIE_EYES, 10),
+    cube([-1.0, 0.6, 4.0], [0.0, 1.0, 4.05], ZOMBIE_EYES, 0),
 ];
 
 /// Zombie-shaped boxes in another palette.
 macro_rules! zombie_boxes {
     ($body:ident, $leg:ident, $arm:ident, $head:ident, $skin:expr, $shirt:expr, $pants:expr) => {
-        const $body: &[Cuboid] = &[cube([-4.0, 12.0, -2.0], [4.0, 24.0, 2.0], $shirt, 40)];
+        const $body: &[Cuboid] = &[
+            cube([-4.0, 12.0, -2.0], [4.0, 24.0, 2.0], $shirt, 40).with(Pattern::Cloth),
+            cube([1.0, 13.0, 2.0], [3.0, 16.0, 2.05], $skin, 36).with(Pattern::Rot),
+        ];
         const $leg: &[Cuboid] = &[
-            cube([-2.0, -10.0, -2.0], [2.0, 0.0, 2.0], $pants, 40),
+            cube([-2.0, -10.0, -2.0], [2.0, 0.0, 2.0], $pants, 40).with(Pattern::Cloth),
             cube([-2.0, -12.0, -2.0], [2.0, -10.0, 2.0], ZOMBIE_SHOES, 30),
         ];
         const $arm: &[Cuboid] = &[
-            cube([-2.0, -4.0, -2.0], [2.0, 2.0, 2.0], $shirt, 40),
-            cube([-2.0, -10.0, -2.0], [2.0, -4.0, 2.0], $skin, 36),
+            cube([-2.0, -4.0, -2.0], [2.0, 2.0, 2.0], $shirt, 40).with(Pattern::Cloth),
+            cube([-2.0, -10.0, -2.0], [2.0, -4.0, 2.0], $skin, 36).with(Pattern::Rot),
         ];
         const $head: &[Cuboid] = &[
-            cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], $skin, 36),
+            cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], $skin, 36).with(Pattern::Rot),
             cube([-3.0, 3.0, 4.0], [-1.0, 4.0, 4.1], ZOMBIE_EYES, 0),
             cube([1.0, 3.0, 4.0], [3.0, 4.0, 4.1], ZOMBIE_EYES, 0),
             cube([-2.0, 1.0, 4.0], [2.0, 1.6, 4.05], ZOMBIE_EYES, 10),
@@ -330,20 +442,26 @@ const WITCH_HEAD: &[Cuboid] = &[
 ];
 
 // ---------------------------------------------------------------- villager
+// v0.18 Track 6: a woven robe with a belt and a darker hem, skin texture,
+// and eyes with whites and green irises under the brow.
 const VILLAGER_BODY: &[Cuboid] = &[
-    cube([-4.0, 8.0, -3.0], [4.0, 24.0, 3.0], [114, 78, 50], 30),
-    cube([-4.5, 5.0, -3.5], [4.5, 11.0, 3.5], [98, 66, 44], 30),
-    cube([-7.0, 15.0, 3.0], [7.0, 19.0, 6.0], [114, 78, 50], 28),
-    cube([-1.5, 15.0, 5.5], [1.5, 18.0, 6.5], [177, 131, 101], 24),
+    cube([-4.0, 8.0, -3.0], [4.0, 24.0, 3.0], [114, 78, 50], 30).with(Pattern::Cloth),
+    cube([-4.5, 5.0, -3.5], [4.5, 11.0, 3.5], [98, 66, 44], 30).with(Pattern::Cloth),
+    cube([-4.55, 5.0, -3.55], [4.55, 6.0, 3.55], [74, 50, 33], 12),
+    cube([-4.02, 12.0, -3.02], [4.02, 13.0, 3.02], [66, 44, 28], 10),
+    cube([-7.0, 15.0, 3.0], [7.0, 19.0, 6.0], [114, 78, 50], 28).with(Pattern::Cloth),
+    cube([-1.5, 15.0, 5.5], [1.5, 18.0, 6.5], [177, 131, 101], 24).with(Pattern::Hide),
 ];
 const VILLAGER_HEAD: &[Cuboid] = &[
-    cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], [177, 131, 101], 24),
-    cube([-1.0, 1.0, 4.0], [1.0, 5.0, 6.0], [162, 117, 86], 22),
-    cube([-3.0, 4.0, 4.0], [-1.0, 5.0, 4.1], [49, 103, 43], 0),
-    cube([1.0, 4.0, 4.0], [3.0, 5.0, 4.1], [49, 103, 43], 0),
+    cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], [177, 131, 101], 24).with(Pattern::Hide),
+    cube([-1.0, 1.0, 4.0], [1.0, 5.0, 6.0], [162, 117, 86], 22).with(Pattern::Hide),
+    cube([-3.0, 4.0, 4.0], [-2.0, 5.0, 4.1], [236, 232, 224], 0),
+    cube([-2.0, 4.0, 4.0], [-1.0, 5.0, 4.1], [49, 103, 43], 0),
+    cube([1.0, 4.0, 4.0], [2.0, 5.0, 4.1], [49, 103, 43], 0),
+    cube([2.0, 4.0, 4.0], [3.0, 5.0, 4.1], [236, 232, 224], 0),
     cube([-3.0, 5.5, 4.0], [3.0, 6.5, 4.1], [62, 43, 28], 0),
 ];
-const VILLAGER_LEG: &[Cuboid] = &[cube([-2.0, -8.0, -2.0], [2.0, 0.0, 2.0], [68, 49, 36], 28)];
+const VILLAGER_LEG: &[Cuboid] = &[cube([-2.0, -8.0, -2.0], [2.0, 0.0, 2.0], [68, 49, 36], 28).with(Pattern::Cloth)];
 const ZOMBIE_VILLAGER_HEAD: &[Cuboid] = &[
     cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], [92, 148, 78], 24),
     cube([-1.0, 1.0, 4.0], [1.0, 5.0, 6.0], [70, 120, 58], 22),
@@ -448,21 +566,38 @@ const COW_PATCH: Rgb = [232, 230, 224];
 const COW_NOSE: Rgb = [206, 160, 150];
 const HORN: Rgb = [222, 216, 196];
 
+const COW_HOOF: Rgb = [46, 36, 30];
+const COW_UDDER: Rgb = [222, 160, 156];
+// v0.18 Track 6: short fur on the hide and its patches, more patches over
+// the back and flanks, an udder, dark hooves and nostrils.
 const COW_BODY: &[Cuboid] = &[
-    cube([-6.0, 12.0, -9.0], [6.0, 22.0, 9.0], COW_HIDE, 24),
-    cube([-6.1, 14.0, -2.0], [-5.9, 20.0, 5.0], COW_PATCH, 10),
-    cube([5.9, 16.0, -7.0], [6.1, 21.0, -1.0], COW_PATCH, 10),
-    cube([-3.0, 21.9, -6.0], [2.0, 22.1, 0.0], COW_PATCH, 10),
+    cube([-6.0, 12.0, -9.0], [6.0, 22.0, 9.0], COW_HIDE, 24).with(Pattern::Fur),
+    cube([-6.1, 14.0, -2.0], [-5.9, 20.0, 5.0], COW_PATCH, 10).with(Pattern::Fur),
+    cube([-6.1, 17.0, -8.0], [-5.9, 21.0, -5.0], COW_PATCH, 10).with(Pattern::Fur),
+    cube([5.9, 16.0, -7.0], [6.1, 21.0, -1.0], COW_PATCH, 10).with(Pattern::Fur),
+    cube([5.9, 13.0, 3.0], [6.1, 17.0, 7.0], COW_PATCH, 10).with(Pattern::Fur),
+    cube([-3.0, 21.9, -6.0], [2.0, 22.1, 0.0], COW_PATCH, 10).with(Pattern::Fur),
+    cube([1.0, 21.9, 3.0], [5.0, 22.1, 7.0], COW_PATCH, 10).with(Pattern::Fur),
+    cube([-2.0, 11.0, -7.0], [2.0, 12.0, -3.0], COW_UDDER, 10).with(Pattern::Hide),
 ];
-const COW_LEG: &[Cuboid] = &[cube([-2.0, -12.0, -2.0], [2.0, 0.0, 2.0], COW_HIDE, 24)];
+const COW_LEG: &[Cuboid] = &[
+    cube([-2.0, -10.0, -2.0], [2.0, 0.0, 2.0], COW_HIDE, 24).with(Pattern::Fur),
+    cube([-2.0, -12.0, -2.0], [2.0, -10.0, 2.0], COW_HOOF, 12),
+];
 const COW_HEAD: &[Cuboid] = &[
-    cube([-4.0, -4.0, 0.0], [4.0, 4.0, 6.0], COW_HIDE, 24),
-    cube([-3.0, -4.0, 6.0], [3.0, -1.0, 7.0], COW_NOSE, 12),
+    cube([-4.0, -4.0, 0.0], [4.0, 4.0, 6.0], COW_HIDE, 24).with(Pattern::Fur),
+    cube([-3.0, -4.0, 6.0], [3.0, -1.0, 7.0], COW_NOSE, 12).with(Pattern::Hide),
+    cube([-2.0, -3.0, 7.0], [-1.0, -2.0, 7.05], [96, 60, 56], 0),
+    cube([1.0, -3.0, 7.0], [2.0, -2.0, 7.05], [96, 60, 56], 0),
     cube([-1.0, -1.0, 6.0], [1.0, 4.0, 6.05], COW_PATCH, 8),
     cube([-5.0, 2.0, 1.0], [-4.0, 5.0, 2.0], HORN, 8),
     cube([4.0, 2.0, 1.0], [5.0, 5.0, 2.0], HORN, 8),
+    cube([-5.05, 4.0, 0.95], [-3.95, 5.05, 2.05], [150, 140, 120], 0),
+    cube([3.95, 4.0, 0.95], [5.05, 5.05, 2.05], [150, 140, 120], 0),
     cube([-3.0, 0.0, 6.0], [-2.0, 1.0, 6.1], DARK, 0),
     cube([2.0, 0.0, 6.0], [3.0, 1.0, 6.1], DARK, 0),
+    cube([-4.0, 0.0, 6.0], [-3.0, 1.0, 6.1], WHITE, 0),
+    cube([3.0, 0.0, 6.0], [4.0, 1.0, 6.1], WHITE, 0),
 ];
 
 // ---------------------------------------------------------------- sheep
@@ -470,17 +605,33 @@ const COW_HEAD: &[Cuboid] = &[
 const WOOL: Rgb = [232, 232, 226];
 const SHEEP_SKIN: Rgb = [214, 190, 170];
 
-const SHEARED_BODY: &[Cuboid] = &[cube([-4.0, 11.0, -7.0], [4.0, 18.0, 7.0], SHEEP_SKIN, 14)];
-const SHEARED_HEAD: &[Cuboid] = &[cube([-3.0, -3.0, 0.0], [3.0, 3.0, 7.0], SHEEP_SKIN, 14)];
-const SHEARED_LEG: &[Cuboid] = &[cube([-2.0, -12.0, -2.0], [2.0, 0.0, 2.0], SHEEP_SKIN, 14)];
-const SHEEP_BODY: &[Cuboid] = &[cube([-5.0, 10.0, -8.0], [5.0, 19.0, 8.0], WOOL, 34)];
-const SHEEP_LEG: &[Cuboid] =
-    &[cube([-2.5, -5.0, -2.5], [2.5, 0.0, 2.5], WOOL, 34), cube([-2.0, -12.0, -2.0], [2.0, -5.0, 2.0], SHEEP_SKIN, 14)];
-const SHEEP_HEAD: &[Cuboid] = &[
-    cube([-3.0, -3.0, 0.0], [3.0, 3.0, 7.0], SHEEP_SKIN, 14),
-    cube([-3.5, 0.5, -0.5], [3.5, 4.0, 5.0], WOOL, 34),
+const SHEEP_HOOF: Rgb = [72, 60, 52];
+// v0.18 Track 6: tufted wool, skin texture, eye whites, a pink nose and
+// dark hooves.
+const SHEARED_BODY: &[Cuboid] = &[cube([-4.0, 11.0, -7.0], [4.0, 18.0, 7.0], SHEEP_SKIN, 14).with(Pattern::Hide)];
+const SHEARED_HEAD: &[Cuboid] = &[
+    cube([-3.0, -3.0, 0.0], [3.0, 3.0, 7.0], SHEEP_SKIN, 14).with(Pattern::Hide),
     cube([-2.5, 0.0, 7.0], [-1.5, 1.0, 7.1], DARK, 0),
     cube([1.5, 0.0, 7.0], [2.5, 1.0, 7.1], DARK, 0),
+];
+const SHEARED_LEG: &[Cuboid] = &[
+    cube([-2.0, -10.0, -2.0], [2.0, 0.0, 2.0], SHEEP_SKIN, 14).with(Pattern::Hide),
+    cube([-2.0, -12.0, -2.0], [2.0, -10.0, 2.0], SHEEP_HOOF, 10),
+];
+const SHEEP_BODY: &[Cuboid] = &[cube([-5.0, 10.0, -8.0], [5.0, 19.0, 8.0], WOOL, 34).with(Pattern::Wool)];
+const SHEEP_LEG: &[Cuboid] = &[
+    cube([-2.5, -5.0, -2.5], [2.5, 0.0, 2.5], WOOL, 34).with(Pattern::Wool),
+    cube([-2.0, -10.0, -2.0], [2.0, -5.0, 2.0], SHEEP_SKIN, 14).with(Pattern::Hide),
+    cube([-2.0, -12.0, -2.0], [2.0, -10.0, 2.0], SHEEP_HOOF, 10),
+];
+const SHEEP_HEAD: &[Cuboid] = &[
+    cube([-3.0, -3.0, 0.0], [3.0, 3.0, 7.0], SHEEP_SKIN, 14).with(Pattern::Hide),
+    cube([-3.5, 0.5, -0.5], [3.5, 4.0, 5.0], WOOL, 34).with(Pattern::Wool),
+    cube([-2.5, 0.0, 7.0], [-1.5, 1.0, 7.1], DARK, 0),
+    cube([1.5, 0.0, 7.0], [2.5, 1.0, 7.1], DARK, 0),
+    cube([-3.0, 0.0, 7.0], [-2.5, 1.0, 7.1], WHITE, 0),
+    cube([2.5, 0.0, 7.0], [3.0, 1.0, 7.1], WHITE, 0),
+    cube([-1.0, -2.0, 7.0], [1.0, -1.0, 7.05], [204, 140, 138], 0),
 ];
 
 // ---------------------------------------------------------------- chicken
@@ -490,16 +641,28 @@ const BEAK: Rgb = [240, 170, 40];
 const WATTLE: Rgb = [205, 30, 30];
 const CHICKEN_FEET: Rgb = [226, 176, 52];
 
-const CHICKEN_BODY: &[Cuboid] = &[cube([-3.0, 4.0, -4.0], [3.0, 9.0, 3.0], FEATHERS, 18)];
+const WING_EDGE: Rgb = [206, 204, 196];
+// v0.18 Track 6: layered feathers, darker wing edges and tail tips.
+const CHICKEN_BODY: &[Cuboid] = &[
+    cube([-3.0, 4.0, -4.0], [3.0, 9.0, 3.0], FEATHERS, 18).with(Pattern::Feather),
+    cube([-2.0, 7.0, -4.05], [2.0, 9.0, -4.0], WING_EDGE, 10),
+];
 const CHICKEN_LEG: &[Cuboid] = &[
     cube([-0.5, -4.0, -0.5], [0.5, 0.0, 0.5], CHICKEN_FEET, 8),
     cube([-1.0, -4.0, -1.0], [1.0, -3.6, 1.5], CHICKEN_FEET, 8),
 ];
-const CHICKEN_WING_L: &[Cuboid] = &[cube([-1.0, -4.0, -3.0], [0.0, 0.0, 3.0], FEATHERS, 18)];
-const CHICKEN_WING_R: &[Cuboid] = &[cube([0.0, -4.0, -3.0], [1.0, 0.0, 3.0], FEATHERS, 18)];
+const CHICKEN_WING_L: &[Cuboid] = &[
+    cube([-1.0, -3.0, -3.0], [0.0, 0.0, 3.0], FEATHERS, 18).with(Pattern::Feather),
+    cube([-1.0, -4.0, -3.0], [0.0, -3.0, 3.0], WING_EDGE, 10),
+];
+const CHICKEN_WING_R: &[Cuboid] = &[
+    cube([0.0, -3.0, -3.0], [1.0, 0.0, 3.0], FEATHERS, 18).with(Pattern::Feather),
+    cube([0.0, -4.0, -3.0], [1.0, -3.0, 3.0], WING_EDGE, 10),
+];
 const CHICKEN_HEAD: &[Cuboid] = &[
-    cube([-2.0, 0.0, 0.0], [2.0, 4.0, 3.0], FEATHERS, 18),
+    cube([-2.0, 0.0, 0.0], [2.0, 4.0, 3.0], FEATHERS, 18).with(Pattern::Feather),
     cube([-2.0, 1.0, 3.0], [2.0, 2.5, 6.0], BEAK, 8),
+    cube([-2.0, 1.0, 3.0], [2.0, 1.3, 6.05], [200, 128, 30], 0),
     cube([-1.0, -1.0, 3.0], [1.0, 1.0, 4.0], WATTLE, 8),
     cube([-2.0, 2.5, 3.0], [-1.0, 3.5, 3.1], DARK, 0),
     cube([1.0, 2.5, 3.0], [2.0, 3.5, 3.1], DARK, 0),
@@ -514,44 +677,53 @@ const BOW: Rgb = [112, 80, 42];
 const WITHER_BONE: Rgb = [58, 58, 60];
 const WITHER_RIBS: Rgb = [44, 44, 46];
 const STONE_BLADE: Rgb = [128, 128, 128];
+// v0.18 Track 6: bone texture, a darker skull mouth with teeth, and the
+// nose hole; the wither skeleton keeps its charred palette.
 const WITHER_BODY: &[Cuboid] = &[
-    cube([-1.0, 12.0, -1.0], [1.0, 24.0, 1.0], WITHER_RIBS, 20),
-    cube([-4.0, 21.0, -1.5], [4.0, 23.0, 1.5], WITHER_BONE, 24),
-    cube([-3.5, 18.0, -1.5], [3.5, 19.5, 1.5], WITHER_BONE, 24),
-    cube([-3.0, 15.0, -1.5], [3.0, 16.5, 1.5], WITHER_BONE, 24),
-    cube([-4.0, 12.0, -1.5], [4.0, 13.5, 1.5], WITHER_BONE, 24),
+    cube([-1.0, 12.0, -1.0], [1.0, 24.0, 1.0], WITHER_RIBS, 20).with(Pattern::Bone),
+    cube([-4.0, 21.0, -1.5], [4.0, 23.0, 1.5], WITHER_BONE, 24).with(Pattern::Bone),
+    cube([-3.5, 18.0, -1.5], [3.5, 19.5, 1.5], WITHER_BONE, 24).with(Pattern::Bone),
+    cube([-3.0, 15.0, -1.5], [3.0, 16.5, 1.5], WITHER_BONE, 24).with(Pattern::Bone),
+    cube([-4.0, 12.0, -1.5], [4.0, 13.5, 1.5], WITHER_BONE, 24).with(Pattern::Bone),
 ];
-const WITHER_LIMB: &[Cuboid] = &[cube([-1.0, -12.0, -1.0], [1.0, 0.0, 1.0], WITHER_BONE, 24)];
+const WITHER_LIMB: &[Cuboid] = &[cube([-1.0, -12.0, -1.0], [1.0, 0.0, 1.0], WITHER_BONE, 24).with(Pattern::Bone)];
 /// The sword arm holds a stone sword out in front.
 const WITHER_SWORD_ARM: &[Cuboid] = &[
-    cube([-1.0, -12.0, -1.0], [1.0, 0.0, 1.0], WITHER_BONE, 24),
+    cube([-1.0, -12.0, -1.0], [1.0, 0.0, 1.0], WITHER_BONE, 24).with(Pattern::Bone),
     cube([-0.5, -13.0, -1.0], [0.5, -12.0, 4.0], BOW, 16),
     cube([-0.5, -13.0, 4.0], [0.5, -9.0, 5.0], STONE_BLADE, 8),
 ];
 const WITHER_HEAD: &[Cuboid] = &[
-    cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], WITHER_BONE, 24),
+    cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], WITHER_BONE, 24).with(Pattern::Bone),
     cube([-3.0, 3.0, 4.0], [-1.0, 5.0, 4.1], DARK, 0),
     cube([1.0, 3.0, 4.0], [3.0, 5.0, 4.1], DARK, 0),
     cube([-0.5, 2.0, 4.0], [0.5, 3.0, 4.1], DARK, 0),
     cube([-3.0, 1.0, 4.0], [3.0, 1.5, 4.05], DARK, 0),
 ];
 const SKELETON_BODY: &[Cuboid] = &[
-    cube([-1.0, 12.0, -1.0], [1.0, 24.0, 1.0], RIBS, 20),
-    cube([-4.0, 21.0, -1.5], [4.0, 23.0, 1.5], BONE, 24),
-    cube([-3.5, 18.0, -1.5], [3.5, 19.5, 1.5], BONE, 24),
-    cube([-3.0, 15.0, -1.5], [3.0, 16.5, 1.5], BONE, 24),
-    cube([-4.0, 12.0, -1.5], [4.0, 13.5, 1.5], BONE, 24),
+    cube([-1.0, 12.0, -1.0], [1.0, 24.0, 1.0], RIBS, 20).with(Pattern::Bone),
+    cube([-4.0, 21.0, -1.5], [4.0, 23.0, 1.5], BONE, 24).with(Pattern::Bone),
+    cube([-3.5, 18.0, -1.5], [3.5, 19.5, 1.5], BONE, 24).with(Pattern::Bone),
+    cube([-3.0, 15.0, -1.5], [3.0, 16.5, 1.5], BONE, 24).with(Pattern::Bone),
+    cube([-4.0, 12.0, -1.5], [4.0, 13.5, 1.5], BONE, 24).with(Pattern::Bone),
 ];
-const SKELETON_LEG: &[Cuboid] = &[cube([-1.0, -12.0, -1.0], [1.0, 0.0, 1.0], BONE, 24)];
-const SKELETON_ARM: &[Cuboid] = &[cube([-1.0, -12.0, -1.0], [1.0, 0.0, 1.0], BONE, 24)];
-const SKELETON_BOW_ARM: &[Cuboid] =
-    &[cube([-1.0, -12.0, -1.0], [1.0, 0.0, 1.0], BONE, 24), cube([-0.5, -13.0, -5.0], [0.5, -12.0, 5.0], BOW, 16)];
+const SKELETON_LEG: &[Cuboid] = &[cube([-1.0, -12.0, -1.0], [1.0, 0.0, 1.0], BONE, 24).with(Pattern::Bone)];
+const SKELETON_ARM: &[Cuboid] = &[cube([-1.0, -12.0, -1.0], [1.0, 0.0, 1.0], BONE, 24).with(Pattern::Bone)];
+const SKELETON_BOW_ARM: &[Cuboid] = &[
+    cube([-1.0, -12.0, -1.0], [1.0, 0.0, 1.0], BONE, 24).with(Pattern::Bone),
+    cube([-0.5, -13.0, -5.0], [0.5, -12.0, 5.0], BOW, 16),
+];
+const SKULL_SHADOW: Rgb = [40, 38, 40];
 const SKELETON_HEAD: &[Cuboid] = &[
-    cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], BONE, 24),
-    cube([-3.0, 3.0, 4.0], [-1.0, 5.0, 4.1], DARK, 0),
-    cube([1.0, 3.0, 4.0], [3.0, 5.0, 4.1], DARK, 0),
-    cube([-0.5, 2.0, 4.0], [0.5, 3.0, 4.1], DARK, 0),
-    cube([-3.0, 1.0, 4.0], [3.0, 1.5, 4.05], DARK, 0),
+    cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], BONE, 24).with(Pattern::Bone),
+    cube([-3.0, 3.0, 4.0], [-1.0, 5.0, 4.1], SKULL_SHADOW, 0),
+    cube([1.0, 3.0, 4.0], [3.0, 5.0, 4.1], SKULL_SHADOW, 0),
+    cube([-0.5, 2.0, 4.0], [0.5, 3.0, 4.1], SKULL_SHADOW, 0),
+    cube([-3.0, 0.8, 4.0], [3.0, 1.6, 4.05], SKULL_SHADOW, 0),
+    cube([-2.0, 0.8, 4.05], [-1.5, 1.6, 4.1], [196, 194, 186], 0),
+    cube([-0.75, 0.8, 4.05], [-0.25, 1.6, 4.1], [196, 194, 186], 0),
+    cube([0.5, 0.8, 4.05], [1.0, 1.6, 4.1], [196, 194, 186], 0),
+    cube([1.75, 0.8, 4.05], [2.25, 1.6, 4.1], [196, 194, 186], 0),
 ];
 
 // ---------------------------------------------------------------- creeper
@@ -559,10 +731,14 @@ const SKELETON_HEAD: &[Cuboid] = &[
 const CREEPER: Rgb = [94, 172, 80];
 const CREEPER_FACE: Rgb = [20, 26, 20];
 
-const CREEPER_BODY: &[Cuboid] = &[cube([-4.0, 6.0, -2.0], [4.0, 18.0, 2.0], CREEPER, 70)];
-const CREEPER_LEG: &[Cuboid] = &[cube([-2.0, -6.0, -2.0], [2.0, 0.0, 2.0], CREEPER, 70)];
+// v0.18 Track 6: mottled, leafy skin and darker feet.
+const CREEPER_BODY: &[Cuboid] = &[cube([-4.0, 6.0, -2.0], [4.0, 18.0, 2.0], CREEPER, 70).with(Pattern::Mottle)];
+const CREEPER_LEG: &[Cuboid] = &[
+    cube([-2.0, -5.0, -2.0], [2.0, 0.0, 2.0], CREEPER, 70).with(Pattern::Mottle),
+    cube([-2.0, -6.0, -2.0], [2.0, -5.0, 2.0], [58, 116, 50], 30),
+];
 const CREEPER_HEAD: &[Cuboid] = &[
-    cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], CREEPER, 70),
+    cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], CREEPER, 70).with(Pattern::Mottle),
     cube([-3.0, 4.0, 4.0], [-1.0, 6.0, 4.1], CREEPER_FACE, 0),
     cube([1.0, 4.0, 4.0], [3.0, 6.0, 4.1], CREEPER_FACE, 0),
     cube([-1.0, 1.0, 4.0], [1.0, 4.0, 4.1], CREEPER_FACE, 0),
@@ -579,18 +755,28 @@ const SPIDER_EYES: Rgb = [230, 30, 24];
 const SPIDER_LEG_LEN: f32 = 14.0;
 const SPIDER_LEG_DROOP: f32 = std::f32::consts::FRAC_PI_6;
 
+// v0.18 Track 6: bristly hair, a faint marking on the abdomen and eight eyes.
 const SPIDER_BODY: &[Cuboid] = &[
-    cube([-3.0, 4.0, -3.0], [3.0, 10.0, 3.0], SPIDER, 30),
-    cube([-5.0, 5.0, -15.0], [5.0, 14.0, -3.0], SPIDER_BACK, 40),
+    cube([-3.0, 4.0, -3.0], [3.0, 10.0, 3.0], SPIDER, 30).with(Pattern::Bristle),
+    cube([-5.0, 5.0, -15.0], [5.0, 14.0, -3.0], SPIDER_BACK, 40).with(Pattern::Bristle),
+    cube([-1.5, 14.0, -12.0], [1.5, 14.05, -5.0], [104, 52, 44], 0),
+    cube([-3.0, 14.0, -10.0], [3.0, 14.05, -9.0], [104, 52, 44], 0),
 ];
-const SPIDER_LEG_R: &[Cuboid] = &[cube([0.0, -1.0, -1.0], [SPIDER_LEG_LEN, 1.0, 1.0], SPIDER, 30)];
-const SPIDER_LEG_L: &[Cuboid] = &[cube([-SPIDER_LEG_LEN, -1.0, -1.0], [0.0, 1.0, 1.0], SPIDER, 30)];
+const SPIDER_LEG_R: &[Cuboid] =
+    &[cube([0.0, -1.0, -1.0], [SPIDER_LEG_LEN, 1.0, 1.0], SPIDER, 30).with(Pattern::Bristle)];
+const SPIDER_LEG_L: &[Cuboid] =
+    &[cube([-SPIDER_LEG_LEN, -1.0, -1.0], [0.0, 1.0, 1.0], SPIDER, 30).with(Pattern::Bristle)];
 const SPIDER_HEAD: &[Cuboid] = &[
-    cube([-4.0, -4.0, 0.0], [4.0, 4.0, 8.0], SPIDER, 30),
+    cube([-4.0, -4.0, 0.0], [4.0, 4.0, 8.0], SPIDER, 30).with(Pattern::Bristle),
     cube([-3.0, 1.0, 8.0], [-1.0, 2.0, 8.1], SPIDER_EYES, 0),
     cube([1.0, 1.0, 8.0], [3.0, 2.0, 8.1], SPIDER_EYES, 0),
     cube([-2.0, 2.5, 8.0], [-1.0, 3.5, 8.1], SPIDER_EYES, 0),
     cube([1.0, 2.5, 8.0], [2.0, 3.5, 8.1], SPIDER_EYES, 0),
+    cube([-4.0, 2.0, 8.0], [-3.0, 3.0, 8.1], [170, 24, 20], 0),
+    cube([3.0, 2.0, 8.0], [4.0, 3.0, 8.1], [170, 24, 20], 0),
+    cube([-1.0, -0.5, 8.0], [-0.2, 0.3, 8.1], [170, 24, 20], 0),
+    cube([0.2, -0.5, 8.0], [1.0, 0.3, 8.1], [170, 24, 20], 0),
+    cube([-2.5, -3.0, 8.0], [2.5, -2.0, 8.05], [30, 24, 22], 0),
 ];
 
 // ---------------------------------------------------------------- enderman
@@ -598,11 +784,12 @@ const SPIDER_HEAD: &[Cuboid] = &[
 const ENDER: Rgb = [22, 20, 26];
 const ENDER_JAW: Rgb = [14, 12, 18];
 
-const ENDERMAN_BODY: &[Cuboid] = &[cube([-4.0, 28.0, -2.0], [4.0, 40.0, 2.0], ENDER, 18)];
-const ENDERMAN_LIMB: &[Cuboid] = &[cube([-1.0, -28.0, -1.0], [1.0, 2.0, 1.0], ENDER, 18)];
-const ENDERMAN_HEAD: &[Cuboid] = &[cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], ENDER, 18)];
+// v0.18 Track 6: a speckled, faintly glittering hide.
+const ENDERMAN_BODY: &[Cuboid] = &[cube([-4.0, 28.0, -2.0], [4.0, 40.0, 2.0], ENDER, 18).with(Pattern::Speckle)];
+const ENDERMAN_LIMB: &[Cuboid] = &[cube([-1.0, -28.0, -1.0], [1.0, 2.0, 1.0], ENDER, 18).with(Pattern::Speckle)];
+const ENDERMAN_HEAD: &[Cuboid] = &[cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], ENDER, 18).with(Pattern::Speckle)];
 /// The lower jaw left behind when an angry enderman's head lifts.
-const ENDERMAN_JAW: &[Cuboid] = &[cube([-4.2, -0.2, -4.2], [4.2, 3.0, 4.2], ENDER_JAW, 10)];
+const ENDERMAN_JAW: &[Cuboid] = &[cube([-4.2, -0.2, -4.2], [4.2, 3.0, 4.2], ENDER_JAW, 10).with(Pattern::Speckle)];
 /// Drawn glowing, like Java's eye layer.
 static ENDERMAN_EYES: &[Cuboid] = &[
     cube([-3.5, 3.0, 4.0], [-1.0, 4.0, 4.1], [204, 0, 250], 0),
@@ -1338,6 +1525,7 @@ fn flames(out: &mut EntityMesh, m: &Mob, rel: Vec3, time: f32) {
             color,
             noise: 0,
             translucent: false,
+            pattern: 0,
         };
         push_cuboid(out, &c, &|v: Vec3| rel + v / 16.0, Quat::IDENTITY, ([255, 255, 0, 255], 0), (FIRE, 0.0), 0.0);
     }
@@ -1535,7 +1723,14 @@ pub fn build_puffs(puffs: &[Puff], camera: DVec3, alpha: f64, out: &mut EntityMe
         let t = p.age / p.life;
         let size = p.size * 16.0 * (t * 4.0).min(1.0) * (1.0 - t);
         let grey = (230.0 - 120.0 * t) as u8;
-        let c = Cuboid { min: [-size / 2.0; 3], max: [size / 2.0; 3], color: [grey; 3], noise: 30, translucent: false };
+        let c = Cuboid {
+            min: [-size / 2.0; 3],
+            max: [size / 2.0; 3],
+            color: [grey; 3],
+            noise: 30,
+            translucent: false,
+            pattern: 0,
+        };
         let rel = (p.previous_pos.lerp(p.pos, alpha) - camera).as_vec3();
         // Emissive while hot, so the flash reads at night too.
         let glow = ((1.0 - t * 3.0).max(0.0) * 255.0) as u8;
@@ -1571,6 +1766,7 @@ pub fn build_orbs(orbs: &[XpOrb], camera: DVec3, max_dist: f32, time: f32, alpha
             color: [red, 255, 40],
             noise: 40,
             translucent: false,
+            pattern: 0,
         };
         // Bob a little above the ground, and spin.
         let lift = 0.15 + 0.03 * (time * 3.0 + o.phase).sin();
@@ -1732,12 +1928,16 @@ pub(super) fn push_cuboid(
     tint: ([f32; 3], f32),
     seed: f32,
 ) {
-    if out.flat || c.translucent {
+    if c.translucent {
+        return push_cuboid_flat(out.translucent_mut(), c, xf, rot, (light, torch), tint, seed);
+    }
+    if out.flat {
         return push_cuboid_flat(&mut out.verts, c, xf, rot, (light, torch), tint, seed);
     }
     let origin = xf(Vec3::ZERO);
     let (x, y, z) = (xf(Vec3::X) - origin, xf(Vec3::Y) - origin, xf(Vec3::Z) - origin);
     let mut shade = [0; 8];
+    shade[6] = c.pattern;
     for axis in 0..3 {
         let mut n = Vec3::ZERO;
         n[axis] = 1.0;
@@ -1799,7 +1999,7 @@ pub(super) fn push_cuboid_flat(
                     uv: [p[u] + offset[0], p[v] + offset[1]],
                     color,
                     light: l,
-                    torch: [torch, if c.translucent { 4 } else { 0 }, 0, 0],
+                    torch: if c.translucent { [torch, 4, 0, 0] } else { pattern_torch(torch, c.pattern) },
                 });
             }
         }
@@ -1892,7 +2092,8 @@ mod tests {
     fn assert_same_picture(flat: &EntityMesh, drawn: &EntityMesh, what: &str) {
         assert!(flat.boxes().is_empty(), "{what}: a flat mesh holds only triangles");
         let got = drawn.expanded();
-        assert_eq!(got.len(), drawn.boxes().len() * BOX_VERTICES as usize + drawn.len(), "{what}");
+        let loose = drawn.len() + drawn.translucent().len();
+        assert_eq!(got.len(), drawn.boxes().len() * BOX_VERTICES as usize + loose, "{what}");
         assert_eq!(flat.len(), got.len(), "{what}: vertex count");
         let key = |v: &EntityVertex| (v.uv.map(f32::to_bits), v.color, v.light, v.torch);
         let mut unmatched: std::collections::HashMap<_, Vec<Vec3>> = Default::default();
@@ -1938,13 +2139,15 @@ mod tests {
                 });
                 assert_same_picture(&flat, &drawn, &format!("{kind:?} variant {variant}"));
                 // Nothing translucent may be instanced: the boxes draw first, unblended.
+                let loose = drawn.iter().chain(drawn.translucent());
                 assert_eq!(
-                    flat.iter().filter(|v| v.torch[1] != 0).count(),
-                    drawn.iter().filter(|v| v.torch[1] != 0).count(),
+                    flat.iter().filter(|v| !matches!(v.torch[1], 0 | PATTERN_MATERIAL)).count(),
+                    loose.filter(|v| !matches!(v.torch[1], 0 | PATTERN_MATERIAL)).count(),
                     "{kind:?}: textured and translucent faces stay triangles"
                 );
+                assert!(drawn.translucent().iter().all(|v| v.torch[1] >= 4), "{kind:?}: only blended faces are last");
                 instanced += drawn.boxes().len() * BOX_VERTICES as usize;
-                triangles += drawn.len();
+                triangles += drawn.len() + drawn.translucent().len();
             }
         }
         assert!(instanced > 4 * triangles, "mobs are nearly all plain boxes: {instanced} vs {triangles}");
@@ -2026,8 +2229,8 @@ mod tests {
         // A translucent box is never instanced.
         drawn.clear();
         push_cuboid(&mut drawn, &glass([0.0; 3], [1.0; 3], [9; 3], 0), &xf, rot, light, (FIRE, 0.0), 0.0);
-        assert_eq!((drawn.len(), drawn.boxes().len()), (36, 0));
-        assert!(drawn.iter().all(|v| v.torch[1] == 4));
+        assert_eq!((drawn.len(), drawn.translucent().len(), drawn.boxes().len()), (0, 36, 0));
+        assert!(drawn.translucent().iter().all(|v| v.torch[1] == 4));
     }
 
     #[test]
@@ -2077,7 +2280,7 @@ mod tests {
         pig.equipment = zombie.equipment.clone();
         out.clear();
         build(std::slice::from_ref(&pig), DVec3::ZERO, Vec3::X, 100.0, 0.0, 1.0, &mut out);
-        assert!(out.iter().all(|v| v.torch[1] == 0));
+        assert!(out.iter().all(|v| matches!(v.torch[1], 0 | PATTERN_MATERIAL)), "no armor on a pig");
     }
 
     #[test]

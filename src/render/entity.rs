@@ -15,9 +15,9 @@ pub(super) struct EntityPass {
     box_capacity: usize,
     box_count: u32,
     pipeline: wgpu::RenderPipeline,
-    /// Alpha-blended, depth-tested but not depth-written (slime shells).
+    /// Alpha-blended, depth-tested but not depth-written (slime shells and
+    /// ground shadows).
     translucent: wgpu::RenderPipeline,
-    scratch: Vec<EntityVertex>,
     /// Vertices before this index are opaque.
     opaque: u32,
     skin: wgpu::BindGroup,
@@ -181,7 +181,6 @@ impl EntityPass {
             box_count: 0,
             pipeline,
             translucent,
-            scratch: Vec::new(),
             opaque: 0,
             skin,
             buffer: Self::create_buffer(device, "entity vertices", capacity * std::mem::size_of::<EntityVertex>()),
@@ -266,30 +265,28 @@ impl Renderer {
             self.queue.write_buffer(&e.box_buffer, 0, bytemuck::cast_slice(boxes));
         }
         e.box_count = boxes.len() as u32;
-        let verts: &[EntityVertex] = mesh;
-        // Translucent faces (material 4) go last so they blend over the opaque pass.
-        let verts = if verts.iter().any(|v| v.torch[1] == 4) {
-            e.scratch.clear();
-            e.scratch.extend(verts.iter().filter(|v| v.torch[1] != 4));
-            e.opaque = e.scratch.len() as u32;
-            e.scratch.extend(verts.iter().filter(|v| v.torch[1] == 4));
-            &e.scratch[..]
-        } else {
-            e.opaque = verts.len() as u32;
-            verts
-        };
-        if verts.len() > e.capacity {
-            e.capacity = verts.len().next_power_of_two();
+        // v0.18 Track 6: the mesh keeps its blended triangles (slime shells,
+        // ground shadows) in their own list, so both go up as they are and
+        // the translucent pipeline draws the second range.
+        let (opaque, blended) = (&mesh[..], mesh.translucent());
+        let total = opaque.len() + blended.len();
+        if total > e.capacity {
+            e.capacity = total.next_power_of_two();
             e.buffer = EntityPass::create_buffer(
                 &self.device,
                 "entity vertices",
                 e.capacity * std::mem::size_of::<EntityVertex>(),
             );
         }
-        if !verts.is_empty() {
-            self.queue.write_buffer(&e.buffer, 0, bytemuck::cast_slice(verts));
+        if !opaque.is_empty() {
+            self.queue.write_buffer(&e.buffer, 0, bytemuck::cast_slice(opaque));
         }
-        e.count = verts.len() as u32;
+        if !blended.is_empty() {
+            let offset = std::mem::size_of_val(opaque) as u64;
+            self.queue.write_buffer(&e.buffer, offset, bytemuck::cast_slice(blended));
+        }
+        e.opaque = opaque.len() as u32;
+        e.count = total as u32;
         // v0.15 Track D: the glowing entities, for the outline mask.
         let (glow_boxes, glow) = (mesh.glow_boxes(), mesh.glow_verts());
         if glow_boxes.len() > e.glow_box_capacity {
