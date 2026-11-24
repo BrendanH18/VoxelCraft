@@ -87,6 +87,8 @@ pub struct Harness {
     ticks: u64,
     spawning: bool,
     heights: rustc_hash::FxHashMap<(i32, i32), i32>,
+    /// The last tick's world rule steps, in milliseconds.
+    pub steps: [f32; crate::simulation::WORLD_RULE_STEPS.len()],
 }
 
 impl Harness {
@@ -108,6 +110,7 @@ impl Harness {
             ticks: 0,
             spawning: true,
             heights: Default::default(),
+            steps: Default::default(),
         };
         if h.scene == "village" {
             let g = Arc::clone(&h.world.generator);
@@ -288,7 +291,13 @@ impl Harness {
         w.set_shulker_viewers(&[]);
         w.set_chest_viewers(Vec::new());
         mark(0, &mut times);
-        crate::simulation::tick_world_rules(w, self.camera, true, 3);
+        let mut step = Instant::now();
+        let steps = &mut self.steps;
+        crate::simulation::tick_world_rules_marked(w, self.camera, true, 3, |i| {
+            let now = Instant::now();
+            steps[i] = now.duration_since(step).as_secs_f32() * 1000.0;
+            step = now;
+        });
         mark(1, &mut times);
         if !w.piston_pushes().is_empty() {
             self.entities.apply_piston_pushes(w);
@@ -402,6 +411,7 @@ pub fn run(options: &Options) -> Result<Value, String> {
     let mut next_tick = start;
     let mut frames = Vec::new();
     let mut ticks = Vec::new();
+    let mut steps: Vec<[f32; crate::simulation::WORLD_RULE_STEPS.len()]> = Vec::new();
     let mut late_ticks = 0u32;
     let (mut mobs, mut chunks) = (0usize, 0usize);
     loop {
@@ -424,6 +434,7 @@ pub fn run(options: &Options) -> Result<Value, String> {
             }
             if t >= options.warmup {
                 ticks.push(times);
+                steps.push(h.steps);
             }
             next_tick += tick;
             due += 1;
@@ -462,6 +473,19 @@ pub fn run(options: &Options) -> Result<Value, String> {
     for (i, name) in TICK_PHASES.iter().enumerate() {
         phases.insert((*name).into(), summary(ticks.iter().map(|t: &TickTimes| t[i]).collect()));
     }
+    // The world rule steps over every tick, and their mean over the
+    // slowest 1% of ticks.
+    let mut world_steps = serde_json::Map::new();
+    let mut tick_order: Vec<usize> = (0..ticks.len()).collect();
+    tick_order.sort_by(|&a, &b| ticks[b][1].total_cmp(&ticks[a][1]));
+    let slow_ticks: Vec<usize> = tick_order.iter().take((ticks.len() / 100).max(1)).copied().collect();
+    for (i, name) in crate::simulation::WORLD_RULE_STEPS.iter().enumerate() {
+        let mut v = summary(steps.iter().map(|s| s[i]).collect());
+        let n = slow_ticks.len().max(1) as f64;
+        let slow = slow_ticks.iter().map(|&t| f64::from(steps[t][i])).sum::<f64>() / n;
+        v["slowest_1pct_mean"] = json!((slow * 1000.0).round() / 1000.0);
+        world_steps.insert((*name).into(), v);
+    }
     let mut slowest = serde_json::Map::new();
     slowest.insert("total".into(), json!(slow_mean(&|f| f.total())));
     slowest.insert("stream".into(), json!(slow_mean(&|f| f.stream)));
@@ -486,6 +510,7 @@ pub fn run(options: &Options) -> Result<Value, String> {
         "frames_over_50_ms": totals.iter().filter(|&&v| v > 50.0).count(),
         "tick_ms": summary(ticks.iter().map(|t| t.iter().sum()).collect()),
         "phases_ms": phases,
+        "world_rule_steps_ms": world_steps,
         "slowest_1pct_mean_ms": slowest,
     }))
 }
