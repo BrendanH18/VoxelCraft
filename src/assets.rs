@@ -170,7 +170,7 @@ mod tests {
     #[cfg(feature = "client")]
     #[test]
     fn original_pixels_override_only_their_mapped_layer() {
-        assert_eq!(texture_pixel(0, 1, 1), Some([134, 134, 137, 255]));
+        assert_eq!(texture_pixel(0, 1, 1), Some([116, 116, 119, 255]));
         assert_eq!(texture_pixel(1, 1, 1), None);
     }
 }

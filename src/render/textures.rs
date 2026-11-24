@@ -625,10 +625,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             ];
             noisy(layer, x, y, COLOURS[(l - tex::TERRACOTTA) as usize], 0.05)
         }
-        tex::CLAY => {
-            let spot = rnd(layer, x / 2, y / 2, 3) < 0.15;
-            shade([160, 166, 180], if spot { 0.9 } else { 0.97 + r * 0.06 })
-        }
         tex::ICE => {
             // Pale blue and see-through, with bright fracture lines.
             let crack =
@@ -732,15 +728,8 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
                 [0, 0, 0, 0]
             }
         }
-        tex::BEDROCK => shade([85, 85, 85], 0.45 + r * 0.8),
         tex::SNOW => noisy(layer, x, y, [240, 245, 252], 0.03),
-        tex::POLISHED_GRANITE
-        | tex::POLISHED_DIORITE
-        | tex::POLISHED_ANDESITE
-        | tex::CALCITE
-        | tex::SMOOTH_STONE
-        | tex::COBBLED_DEEPSLATE
-        | tex::POLISHED_DEEPSLATE => rock(layer, x, y, r),
+        tex::CALCITE | tex::SMOOTH_STONE => rock(layer, x, y, r),
         tex::CACTUS_SIDE => {
             let line = x % 4 == 1;
             let spike = rnd(layer, x, y, 8) < 0.05;
@@ -759,11 +748,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
                 shade([150, 72, 56], 0.85 + rnd(layer, (x + offset) / 8, row, 1) * 0.2 + r * 0.06)
             }
         }
-        tex::SANDSTONE_SIDE => {
-            let band = matches!(y, 3 | 4 | 10);
-            shade([216, 203, 155], if band { 0.88 } else { 0.96 + r * 0.06 })
-        }
-        tex::SANDSTONE_TOP => noisy(layer, x, y, [222, 210, 162], 0.04),
         tex::GLOWSTONE => {
             let pts = points(layer, 7);
             let (d1, d2, i) = voronoi(x, y, &pts);
@@ -1429,31 +1413,13 @@ fn wooden_door(layer: u16, x: usize, y: usize, r: f32, colour: [u8; 3], top: u16
     }
 }
 
-/// Polished and other stone variants not drawn by `material`.
+/// Calcite and smooth stone (`material` draws the other stones).
 fn rock(layer: u16, x: usize, y: usize, r: f32) -> Rgba {
-    match layer {
-        tex::POLISHED_GRANITE => {
-            let blot = rnd(layer, x / 4, y / 4, 4);
-            shade([168, 114, 98], 0.9 + blot * 0.12 + r * 0.04)
-        }
-        tex::POLISHED_DIORITE => shade([232, 232, 234], 0.94 + rnd(layer, x / 4, y / 4, 4) * 0.08),
-        tex::POLISHED_ANDESITE => shade([148, 148, 150], 0.92 + rnd(layer, x / 4, y / 4, 4) * 0.1),
-        tex::CALCITE => {
-            let crack = (x + y).is_multiple_of(7) && rnd(layer, x, y, 6) < 0.5;
-            shade(if crack { [186, 186, 180] } else { [223, 224, 216] }, 0.94 + r * 0.08)
-        }
-        tex::SMOOTH_STONE => shade([158, 158, 158], 0.96 + r * 0.06),
-        tex::COBBLED_DEEPSLATE => {
-            let pts = points(layer, 7);
-            let (d1, d2, i) = voronoi(x, y, &pts);
-            let c = [72, 72, 78];
-            if d2 - d1 < 1.1 { shade(c, 0.45) } else { shade(c, 0.75 + rnd(layer, i, 0, 4) * 0.3) }
-        }
-        _ => {
-            // Polished deepslate: dark tiles.
-            let edge = x.is_multiple_of(8) || y.is_multiple_of(4);
-            shade([64, 64, 70], if edge { 0.7 } else { 0.95 + r * 0.08 })
-        }
+    if layer == tex::CALCITE {
+        let crack = (x + y).is_multiple_of(7) && rnd(layer, x, y, 6) < 0.5;
+        shade(if crack { [186, 186, 180] } else { [223, 224, 216] }, 0.94 + r * 0.08)
+    } else {
+        shade([158, 158, 158], 0.96 + r * 0.06)
     }
 }
 
