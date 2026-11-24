@@ -387,10 +387,11 @@ reproducible before/after scenes for v0.18's visual work, in five groups:
   midnight.
 - `ui`: the survival HUD, inventory, recipe book, a crafting table with the
   recipe book, a furnace, the creative inventory on two tabs, the pause menu,
-  Video Settings, the death screen and the Hardcore death, each at
-  1920 × 1080 and 1280 × 720 with Auto and fixed scale-2 GUI scales. Auto
-  is already the largest scale that fits (4 and 3), so it is the "large"
-  case.
+  Video Settings, Accessibility Settings, the death screen and the
+  Hardcore death, each at 1920 × 1080 and 1280 × 720 with Auto and fixed
+  scale-2 GUI scales. Auto is already the largest scale that fits (4 and
+  3), so it is the "large" case. `sign-text` (one 1080p capture) shows
+  three signs with accented, ASCII and full-width lines.
 - `title`: the title screen, Select World with four fixed saves and empty,
   and Create New World, at the same four sizes.
 - `atmosphere`: the seeded landscape at noon, dusk and midnight, in rain and

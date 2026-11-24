@@ -113,6 +113,7 @@ Luminance below is relative luminance (WCAG) of sRGB values from captures.
 | Disabled widget text | `#A0A0A0` with shadow |
 | Hovered slot overlay | white at 50 % alpha over the 16 × 16 item area |
 | Screen dimming behind a menu in a world | `#101010` from 75 % alpha at the top to 82 % at the bottom |
+| Scrolling list backing (track 1) | black at 112/255 across the screen's width (Java's `menu_list_background`), drawn with `render::ui::shade` so it darkens as Java's sRGB blend does |
 
 **Block materials** (**tunable (track 3)**, checked per tile and in the
 `block-palette`, `grass-hillside`, `forest` and `stone-ore-wall` scenes):

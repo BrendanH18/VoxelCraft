@@ -4524,10 +4524,10 @@
   {
    "name": "sign-text",
    "group": "ui",
-   "description": "Three oak signs 2.3 blocks away at noon: accented Latin-1 and Latin Extended-A text, ASCII, and full 90-pixel lines (v0.18 track 1 font)",
+   "description": "Three oak signs 2.8 blocks away at noon, the eye level with their text: accented Latin-1 and Latin Extended-A, ASCII, and lines at and past the 90-pixel width (v0.18 track 1 font)",
    "pose": [
     0.5,
-    159.85,
+    158.25,
     3.3,
     270,
     0
