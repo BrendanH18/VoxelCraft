@@ -341,7 +341,13 @@ impl Game {
             }
             let verts = self.mobs.entities.mesh(camera, forward, fog.end, scene.time, scene.alpha);
             super::push_avatars(&self.world, &others, camera, fog.end, scene.time, verts);
-            crate::render::signs::text(&self.world, camera, verts);
+            crate::render::signs::text(
+                &mut self.mobs.sign_text,
+                crate::render::signs::FONT_VERSION,
+                &self.world,
+                camera,
+                verts,
+            );
             crate::entity::model::build_beacon_beams(&self.world, camera, scene.time, fog.end, verts);
             crate::entity::model::build_conduits(&self.world, camera, fog.end, verts);
             if !bot.camera.first_person() {

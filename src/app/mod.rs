@@ -2170,7 +2170,13 @@ impl Game {
         benchmark::mark(&mut self.benchmark, 2);
         let verts = self.mobs.entities.mesh(camera, forward, fog_end, scene.time, alpha);
         push_avatars(&self.world, &others, camera, fog_end, scene.time, verts);
-        crate::render::signs::text(&self.world, camera, verts);
+        crate::render::signs::text(
+            &mut self.mobs.sign_text,
+            crate::render::signs::FONT_VERSION,
+            &self.world,
+            camera,
+            verts,
+        );
         crate::entity::model::build_beacon_beams(&self.world, camera, scene.time, fog_end, verts);
         crate::entity::model::build_conduits(&self.world, camera, fog_end, verts);
         if !self.camera.first_person() {

@@ -3,17 +3,20 @@
 //! models (`template_sign_rot_*`, `template_wall_sign`,
 //! `template_hanging_sign_*`), their text placed as `StandingSignRenderer`
 //! and `HangingSignRenderer` place it, and the items on shelves as
-//! `ShelfRenderer` places them. Everything here is rebuilt each frame for
-//! the signs and shelves within [`RANGE`] blocks.
+//! `ShelfRenderer` places them. Bodies and shelf items are rebuilt each
+//! frame for the signs and shelves within [`RANGE`] blocks; sign text is
+//! laid out once per side and kept in a [`TextCache`] until its text,
+//! colour, glow, block state or font changes.
 
 use glam::{DVec3, IVec3, Vec3};
+use rustc_hash::FxHashMap;
 
 use super::BlockModel;
 use super::block_model::BlockVertex;
 use crate::entity::model::EntityVertex;
 use crate::world::World;
 use crate::world::block::{Block, tex as block_tex};
-use crate::world::wood::entities::{SignEntity, SignText, text_color};
+use crate::world::wood::entities::{SignText, text_color};
 use crate::world::wood::signs::{Mount, Sign};
 use crate::world::wood::{self, Kind, shelves};
 
@@ -266,56 +269,145 @@ impl Pen<'_> {
     }
 }
 
+/// The font the sign text is laid out with. Cached text is keyed on it, so
+/// a change to glyph shapes or advances at run time (a font option) must
+/// pass a new value to [`text`]; the built-in font is version 0.
+pub const FONT_VERSION: u32 = 0;
+
+/// Calls of [`text`] an unseen side stays cached for (split screen draws a
+/// view per player, each its own call).
+const KEEP_CALLS: u64 = 8;
+
+/// One sign side's laid-out text, in the sign cell's own coordinates (the
+/// cell's minimum corner at the origin), with its lighting left to fill in.
+struct CachedSide {
+    block: Block,
+    text: SignText,
+    origin: DVec3,
+    normal: DVec3,
+    verts: Vec<EntityVertex>,
+    /// Ranges of `verts` in drawing order, marked when they are a glowing
+    /// line's outline (drawn near the camera, or always for black text).
+    runs: Vec<(u32, u32, bool)>,
+    seen: u64,
+}
+
+/// Sign text laid out once and kept between frames (v0.18 Track 10). Each
+/// side is rebuilt only when its text, colour or glow, the sign's block
+/// state (mount, rotation, wood) or the font changes; a frame then copies
+/// the cached vertices, moved to the camera and lit by the world.
+#[derive(Default)]
+pub struct TextCache {
+    sides: FxHashMap<(IVec3, bool), CachedSide>,
+    font: u32,
+    calls: u64,
+    /// Sides laid out since the cache was made (for tests and profiling).
+    pub builds: u64,
+}
+
+#[cfg(test)]
+impl TextCache {
+    /// Sides currently cached.
+    pub fn len(&self) -> usize {
+        self.sides.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.sides.is_empty()
+    }
+}
+
 /// Text of the signs within [`RANGE`] of `camera`, as entity geometry:
 /// dyed text darkened to 40% and lit by the world, glowing text at full
 /// colour and full brightness with a dark outline (Java's
-/// `AbstractSignRenderer.submitSignText`).
-pub fn text(world: &World, camera: DVec3, out: &mut Vec<EntityVertex>) {
+/// `AbstractSignRenderer.submitSignText`). `font` is the font version
+/// ([`FONT_VERSION`]) the cache is keyed on.
+pub fn text(cache: &mut TextCache, font: u32, world: &World, camera: DVec3, out: &mut Vec<EntityVertex>) {
+    if cache.font != font {
+        cache.sides.clear();
+        cache.font = font;
+    }
+    cache.calls += 1;
+    let call = cache.calls;
     for (&cell, entity) in world.wood_entities().signs() {
         let distance = (cell.as_dvec3() + DVec3::splat(0.5)).distance(camera);
         if distance > RANGE {
             continue;
         }
-        let Some(sign) = world.get_block(cell).and_then(wood::signs::sign) else { continue };
-        let (sky, block) = light(world, cell);
+        let Some(block) = world.get_block(cell) else { continue };
+        let Some(sign) = wood::signs::sign(block) else { continue };
+        let mut lighting = None;
         for front in [true, false] {
-            side_text(sign, cell, entity, front, distance <= OUTLINE_RANGE, (sky, block), camera, out);
+            let text = entity.side(front);
+            if !text.has_message() {
+                continue;
+            }
+            let side = cache.sides.entry((cell, front)).or_insert_with(|| CachedSide {
+                block: Block::AIR,
+                text: SignText::default(),
+                origin: DVec3::ZERO,
+                normal: DVec3::ZERO,
+                verts: Vec::new(),
+                runs: Vec::new(),
+                seen: 0,
+            });
+            side.seen = call;
+            if side.block != block || side.text != *text || side.runs.is_empty() {
+                side.block = block;
+                side.text.clone_from(text);
+                lay_out(sign, cell, text, front, side);
+                cache.builds += 1;
+            }
+            // Only the side facing the camera can be seen.
+            if (camera - (cell.as_dvec3() + side.origin)).dot(side.normal) <= 0.0 {
+                continue;
+            }
+            let (sky, block_light) = *lighting.get_or_insert_with(|| light(world, cell));
+            let lit = [(sky.clamp(0.0, 1.0) * 255.0) as u8, 255, 0, 0];
+            let torch = [(block_light.clamp(0.0, 1.0) * 255.0) as u8, 0, 0, 0];
+            let outline = distance <= OUTLINE_RANGE || text.color == crate::color::DyeColor::Black;
+            let offset = (cell.as_dvec3() - camera).as_vec3();
+            out.reserve(side.verts.len());
+            for &(start, end, is_outline) in &side.runs {
+                if is_outline && !outline {
+                    continue;
+                }
+                out.extend(side.verts[start as usize..end as usize].iter().map(|v| {
+                    let mut v = *v;
+                    v.pos = (Vec3::from_array(v.pos) + offset).to_array();
+                    if !text.glowing {
+                        v.light = lit;
+                        v.torch = torch;
+                    }
+                    v
+                }));
+            }
         }
+    }
+    if !cache.sides.is_empty() {
+        cache.sides.retain(|_, s| call - s.seen < KEEP_CALLS);
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn side_text(
-    sign: Sign,
-    cell: IVec3,
-    entity: &SignEntity,
-    front: bool,
-    near: bool,
-    (sky, block): (f32, f32),
-    camera: DVec3,
-    out: &mut Vec<EntityVertex>,
-) {
-    let text: &SignText = entity.side(front);
-    if !text.has_message() {
-        return;
-    }
+/// Lays out one side of `sign` into `side`, relative to the cell's minimum
+/// corner. Unlit text gets its light when drawn.
+fn lay_out(sign: Sign, cell: IVec3, text: &SignText, front: bool, side: &mut CachedSide) {
+    side.verts.clear();
+    side.runs.clear();
     let (origin, right, normal, scale) = text_frame(sign, cell, front);
-    // Only the side facing the camera can be seen.
-    if (camera - origin).dot(normal) <= 0.0 {
-        return;
-    }
+    side.origin = origin - cell.as_dvec3();
+    side.normal = normal;
     let colour = text_color(text.color);
     let dark = if text.color == crate::color::DyeColor::Black && text.glowing {
         [0xF0, 0xEB, 0xCC]
     } else {
         colour.map(|c| (c as f32 * 0.4) as u8)
     };
-    let lit = [(sky.clamp(0.0, 1.0) * 255.0) as u8, 255, 0, 0];
-    let torch = (block.clamp(0.0, 1.0) * 255.0) as u8;
     let emissive = [255, 255, 0, 255];
     let line_height = sign.line_height() as f64;
     let midpoint = 4.0 * line_height / 2.0;
-    let mut pen = Pen { out, camera, origin, right, normal, scale };
+    let mut runs = Vec::new();
+    let mut pen = Pen { out: &mut side.verts, camera: cell.as_dvec3(), origin, right, normal, scale };
     for (i, line) in text.lines.iter().enumerate() {
         let line = fitted(line, sign.max_line_width() as i32);
         if line.is_empty() {
@@ -323,26 +415,27 @@ fn side_text(
         }
         let x0 = -(text_width(line) as f64) / 2.0;
         let y0 = i as f64 * line_height - midpoint;
+        let start = pen.out.len() as u32;
         if text.glowing {
-            if near || text.color == crate::color::DyeColor::Black {
-                for d in [
-                    (-1.0, 0.0),
-                    (1.0, 0.0),
-                    (0.0, -1.0),
-                    (0.0, 1.0),
-                    (-1.0, -1.0),
-                    (1.0, 1.0),
-                    (-1.0, 1.0),
-                    (1.0, -1.0),
-                ] {
-                    pen.line(line, x0, y0, d, 1.0, (dark, emissive, 0));
-                }
+            for d in
+                [(-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0), (-1.0, -1.0), (1.0, 1.0), (-1.0, 1.0), (1.0, -1.0)]
+            {
+                pen.line(line, x0, y0, d, 1.0, (dark, emissive, 0));
             }
+            let middle = pen.out.len() as u32;
+            runs.push((start, middle, true));
             pen.line(line, x0, y0, (0.0, 0.0), 2.0, (colour, emissive, 0));
+            runs.push((middle, pen.out.len() as u32, false));
         } else {
-            pen.line(line, x0, y0, (0.0, 0.0), 1.0, (dark, lit, torch));
+            pen.line(line, x0, y0, (0.0, 0.0), 1.0, (dark, [0; 4], 0));
+            runs.push((start, pen.out.len() as u32, false));
         }
     }
+    // An empty layout (no line fits) still counts as built.
+    if runs.is_empty() {
+        runs.push((0, 0, false));
+    }
+    side.runs = runs;
 }
 
 // ---- Shelf items -------------------------------------------------------
@@ -444,15 +537,124 @@ mod tests {
         let centre = AT.as_dvec3() + DVec3::splat(0.5);
         // Rotation 0 faces south (+z): seen from there, not from the north.
         let mut front = Vec::new();
-        text(&w, centre + DVec3::new(0.0, 0.5, 4.0), &mut front);
+        text(&mut TextCache::default(), FONT_VERSION, &w, centre + DVec3::new(0.0, 0.5, 4.0), &mut front);
         assert!(!front.is_empty());
         let mut back = Vec::new();
-        text(&w, centre + DVec3::new(0.0, 0.5, -4.0), &mut back);
+        text(&mut TextCache::default(), FONT_VERSION, &w, centre + DVec3::new(0.0, 0.5, -4.0), &mut back);
         assert!(back.is_empty(), "the back side has no text");
         let mut far = Vec::new();
-        text(&w, centre + DVec3::new(0.0, 0.5, RANGE + 1.0), &mut far);
+        text(&mut TextCache::default(), FONT_VERSION, &w, centre + DVec3::new(0.0, 0.5, RANGE + 1.0), &mut far);
         assert!(far.is_empty(), "beyond the block entity range");
         assert_eq!(models(&w, centre).len(), 1);
+    }
+
+    /// A world with a lit oak sign at `AT` saying "Hello" on its front.
+    fn signed() -> World {
+        let mut w = world();
+        w.set_block(AT - IVec3::Y, Block::STONE);
+        let sign = Sign { kind: Kind::Oak, mount: Mount::Standing { rotation: 3 }, wet: false };
+        w.set_block(AT, sign.block());
+        w.set_sign_text(AT, true, ["Hello".into(), "World".into(), String::new(), String::new()]).unwrap();
+        w
+    }
+
+    fn draw(cache: &mut TextCache, w: &World, camera: DVec3) -> Vec<EntityVertex> {
+        let mut out = Vec::new();
+        text(cache, FONT_VERSION, w, camera, &mut out);
+        out
+    }
+
+    #[test]
+    fn cached_text_is_laid_out_once_and_redrawn_unchanged() {
+        let w = signed();
+        let camera = AT.as_dvec3() + DVec3::new(0.5, 1.0, 6.0);
+        let mut cache = TextCache::default();
+        let first = draw(&mut cache, &w, camera);
+        assert!(!first.is_empty());
+        assert_eq!((cache.builds, cache.len()), (1, 1), "the back side has no message");
+        for _ in 0..5 {
+            assert_eq!(draw(&mut cache, &w, camera), first);
+        }
+        assert_eq!(cache.builds, 1, "frames after the first reuse the layout");
+        // A fresh cache lays out the same geometry.
+        assert_eq!(draw(&mut TextCache::default(), &w, camera), first);
+    }
+
+    #[test]
+    fn cached_text_follows_the_camera_without_a_rebuild() {
+        let w = signed();
+        let camera = AT.as_dvec3() + DVec3::new(0.5, 1.0, 6.0);
+        let mut cache = TextCache::default();
+        let here = draw(&mut cache, &w, camera);
+        let moved = DVec3::new(-1.25, -0.5, 2.0);
+        let there = draw(&mut cache, &w, camera + moved);
+        assert_eq!(cache.builds, 1);
+        assert_eq!(here.len(), there.len());
+        for (a, b) in here.iter().zip(&there) {
+            let d = Vec3::from_array(a.pos) - moved.as_vec3() - Vec3::from_array(b.pos);
+            assert!(d.abs().max_element() < 1e-4, "{d}");
+            assert_eq!((a.color, a.light, a.torch), (b.color, b.light, b.torch));
+        }
+    }
+
+    #[test]
+    fn edits_dyes_glow_state_and_font_rebuild_the_text() {
+        let mut w = signed();
+        let camera = AT.as_dvec3() + DVec3::new(0.5, 1.0, 6.0);
+        let mut cache = TextCache::default();
+        let plain = draw(&mut cache, &w, camera);
+        w.set_sign_text(AT, true, ["Hullo".into(), "World".into(), String::new(), String::new()]).unwrap();
+        let edited = draw(&mut cache, &w, camera);
+        assert_eq!(cache.builds, 2);
+        assert_ne!(edited, plain);
+        assert!(w.update_sign(AT, true, |t| t.color = crate::color::DyeColor::Red));
+        let red = draw(&mut cache, &w, camera);
+        assert_eq!(cache.builds, 3);
+        assert_ne!(red[0].color, edited[0].color);
+        assert!(w.update_sign(AT, true, |t| t.glowing = true));
+        let near = draw(&mut cache, &w, camera);
+        assert_eq!(cache.builds, 4);
+        // Glowing text: an outline of eight copies near the camera, none
+        // beyond 16 blocks for a coloured dye, without a rebuild.
+        assert_eq!(near.len(), red.len() * 9);
+        let far = draw(&mut cache, &w, camera + DVec3::new(0.0, 0.0, 20.0));
+        assert_eq!(far.len(), red.len());
+        assert_eq!(cache.builds, 4);
+        // A new block state (turned sign) and a new font lay it out again.
+        let turned = Sign { kind: Kind::Oak, mount: Mount::Standing { rotation: 2 }, wet: false };
+        w.set_block(AT, turned.block());
+        let _ = draw(&mut cache, &w, camera);
+        assert_eq!(cache.builds, 5);
+        let mut out = Vec::new();
+        text(&mut cache, FONT_VERSION + 1, &w, camera, &mut out);
+        assert_eq!(cache.builds, 6);
+    }
+
+    #[test]
+    fn unlit_text_takes_the_current_light_without_a_rebuild() {
+        let mut w = signed();
+        let camera = AT.as_dvec3() + DVec3::new(0.5, 1.0, 6.0);
+        let mut cache = TextCache::default();
+        let before = draw(&mut cache, &w, camera);
+        w.set_block(AT + IVec3::X, Block::GLOWSTONE);
+        while !w.update_block_light_within(std::time::Duration::from_secs(5)) {}
+        let after = draw(&mut cache, &w, camera);
+        assert_eq!(cache.builds, 1);
+        assert!(after[0].torch[0] > before[0].torch[0], "{:?} -> {:?}", before[0].torch, after[0].torch);
+        assert_eq!(after[0].torch[0], (w.block_light(AT) as f32 / 15.0 * 255.0) as u8);
+    }
+
+    #[test]
+    fn signs_out_of_sight_leave_the_cache() {
+        let mut w = signed();
+        let camera = AT.as_dvec3() + DVec3::new(0.5, 1.0, 6.0);
+        let mut cache = TextCache::default();
+        draw(&mut cache, &w, camera);
+        w.set_block(AT, Block::AIR);
+        for _ in 0..KEEP_CALLS {
+            draw(&mut cache, &w, camera);
+        }
+        assert!(cache.is_empty());
     }
 
     #[test]
