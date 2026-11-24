@@ -17,14 +17,14 @@
 use voxelcraft::creative::{self as cv, Kind, Row, scroll};
 
 use super::Game;
+use super::gui::style;
 use super::hud::{SLOT, SlotRef};
 use crate::inventory::Stack;
-use crate::render::ui::{Color, Ui, WHITE};
+use crate::render::ui::{Ui, WHITE};
 
 /// The panel (`imageWidth` x `imageHeight`).
 pub(super) const W: f32 = 195.0;
 pub(super) const H: f32 = 136.0;
-const TITLE: Color = [0.25, 0.25, 0.25, 1.0];
 
 /// Where the creative screen stands: the tab Java remembers between
 /// openings (`selectedTab` is static), the scroll fraction and whether the
@@ -340,48 +340,42 @@ impl Game {
         for i in c.shown().filter(|&i| i != selected) {
             self.creative_tab_ui(ui, (x0, y0), i, false);
         }
-        ui.rect(x0, y0, W, H, [0.78, 0.78, 0.78, 1.0]);
-        ui.rect(x0, y0, W, 1.0, WHITE);
-        ui.rect(x0, y0, 1.0, H, WHITE);
-        ui.rect(x0, y0 + H - 1.0, W, 1.0, [0.33, 0.33, 0.33, 1.0]);
-        ui.rect(x0 + W - 1.0, y0, 1.0, H, [0.33, 0.33, 0.33, 1.0]);
+        // v0.18 Track 2: the shared container panel.
+        style::panel(ui, x0, y0, W, H);
         self.creative_tab_ui(ui, (x0, y0), selected, true);
         let tab = &c.tabs[selected];
         // `extractLabels`: the title at (8, 6) unless the tab hides it.
         if tab.show_title {
-            ui.text_flat(x0 + 8.0, y0 + 6.0, &tab.title, TITLE);
+            style::title(ui, x0 + 8.0, y0 + 6.0, &tab.title);
         }
         match tab.kind {
             Kind::Search => {
                 // The search box: 80 x 9 at (82, 6), no border, white text.
                 let (bx, by) = (x0 + 82.0, y0 + 6.0);
-                ui.rect(bx - 1.0, by - 1.0, 89.0, 11.0, [0.12, 0.12, 0.12, 1.0]);
+                style::inset(ui, bx - 1.0, by - 1.0, 89.0, 11.0, 0x1F1F1F);
                 let text = format!("{}{}", self.search.query, if self.search.focused { "_" } else { "" });
                 ui.text_clipped(bx, by, &text, WHITE, (bx, bx + 87.0));
                 if self.creative_list().is_empty() {
-                    ui.text_flat(x0 + 9.0, y0 + 22.0, "No matching items", [0.3, 0.3, 0.3, 1.0]);
+                    style::title(ui, x0 + 9.0, y0 + 22.0, "No matching items");
                 }
             }
             Kind::Inventory => {
                 // `InventoryScreen.extractEntityInInventoryFollowsMouse`.
-                ui.rect(x0 + 72.0, y0 + 5.0, 34.0, 45.0, [0.0, 0.0, 0.0, 1.0]);
+                ui.rect(x0 + 72.0, y0 + 5.0, 34.0, 45.0, style::srgb(style::token::OUTLINE));
                 super::preview::player(ui, (x0 + 73.0, y0 + 6.0, x0 + 105.0, y0 + 49.0), 20.0, 0.0625, mouse);
             }
             _ => {}
         }
         if tab.can_scroll && tab.kind != Kind::Inventory {
             // The scrollbar's well and its 12 x 15 thumb (`(112 - 17) * scrollOffs`).
-            ui.rect(x0 + 174.0, y0 + 17.0, 14.0, 112.0, [0.33, 0.33, 0.33, 1.0]);
-            ui.rect(x0 + 175.0, y0 + 18.0, 13.0, 111.0, [0.55, 0.55, 0.55, 1.0]);
+            style::inset(ui, x0 + 174.0, y0 + 17.0, 14.0, 112.0, style::token::SLOT);
             let enabled = self.creative_can_scroll();
             let top = y0 + 18.0 + scroll::thumb(self.creative.scroll);
-            ui.rect(x0 + 175.0, top, 12.0, 15.0, if enabled { WHITE } else { [0.68, 0.68, 0.68, 1.0] });
-            ui.rect(
-                x0 + 176.0,
-                top + 1.0,
-                10.0,
-                13.0,
-                if enabled { [0.78, 0.78, 0.78, 1.0] } else { [0.6, 0.6, 0.6, 1.0] },
+            // The thumb: raised like a button, flat and grey when it can't move.
+            style::button(
+                ui,
+                [x0 + 175.0, top, 12.0, 15.0],
+                if enabled { style::State::Normal } else { style::State::Disabled },
             );
         }
         if tab.kind == Kind::Hotbar {
@@ -389,8 +383,7 @@ impl Game {
             for cell in 0..45 {
                 if let Some(row) = self.hotbar_placeholder(cell) {
                     let (x, y) = (x0 + 8.0 + (cell % 9) as f32 * SLOT, y0 + 17.0 + (cell / 9) as f32 * SLOT);
-                    ui.rect(x, y, SLOT, SLOT, [0.55, 0.55, 0.55, 1.0]);
-                    ui.rect(x + 1.0, y + 1.0, SLOT - 1.0, SLOT - 1.0, [0.45, 0.45, 0.45, 1.0]);
+                    style::slot(ui, x, y);
                     if let Some(layer) = crate::item::Item::PAPER.icon_layer() {
                         ui.icon(x + 1.0, y + 1.0, 16.0, layer, [1.0, 1.0, 1.0, 0.6]);
                     }
@@ -420,10 +413,12 @@ impl Game {
     fn creative_tab_ui(&self, ui: &mut Ui, (x0, y0): (f32, f32), i: usize, selected: bool) {
         let t = &cv::catalogue().tabs[i];
         let (x, y) = (x0 + tab_x(t), y0 + tab_y(t, true));
-        let face = if selected { [0.78, 0.78, 0.78, 1.0] } else { [0.62, 0.62, 0.62, 1.0] };
-        ui.rect(x, y, 26.0, 32.0, [0.2, 0.2, 0.2, 1.0]);
+        // v0.18 Track 2: the panel's colours; an unselected tab is darker
+        // and drawn behind the panel, the selected one joins it.
+        let face = style::srgb(if selected { style::token::PANEL } else { 0xA8A8A8 });
+        ui.rect(x, y, 26.0, 32.0, style::srgb(style::token::OUTLINE));
         ui.rect(x + 1.0, y + 1.0, 24.0, 30.0, face);
-        ui.rect(x + 1.0, y + 1.0, 24.0, 1.0, WHITE);
+        ui.rect(x + 1.0, y + 1.0, 24.0, 1.0, style::srgb(style::token::PANEL_LIGHT));
         if selected {
             // Joined to the panel: the panel's edge under it is open.
             let join = if t.row == Row::Top { y0 } else { y0 + H - 1.0 };

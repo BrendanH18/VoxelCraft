@@ -762,6 +762,7 @@ impl Game {
             let session = &mut bot.agent.session;
             let work: Vec<_> = session.work.iter_mut().filter_map(Option::take).collect();
             session.inventory.return_stacks(peer.grid.take_all().into_iter().chain(work));
+            session.clear_anvil_name();
         }
         peer.grid = Grid::new(2);
         peer.body.container = Container::Inventory;
@@ -782,6 +783,18 @@ impl Game {
             "inventory" => self.peer_open(peer, Container::Inventory),
             "close" => self.peer_close(peer),
             c if c.starts_with("recipe_") => self.remote_recipe_book(peer, c)?,
+            // v0.18 Track 2: the guest typed in an anvil's name box
+            // (`ServerboundRenameItemPacket`).
+            c if let Some(name) = super::anvil::parse_rename(c) => {
+                let Some(profile) = peer.profile.clone() else { return Ok(()) };
+                if peer.open
+                    && matches!(peer.body.container, Container::Anvil(_))
+                    && let Some(bot) = self.agents.players.get_mut(&profile)
+                    && !bot.agent.session.set_anvil_name(name)
+                {
+                    return Err("Invalid item name".into());
+                }
+            }
             "swap" => {
                 let name = peer.profile.clone().unwrap_or_default();
                 self.agent_hands(&name, &mut peer.body, |h| {

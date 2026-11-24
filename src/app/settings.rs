@@ -21,6 +21,8 @@ pub struct Settings {
     pub music_volume: f32,
     pub vsync: bool,
     pub enhanced_graphics: bool,
+    /// The compact FPS counter. v0.18 Track 2: off unless a saved
+    /// `show_fps` line says otherwise; files that have one keep it.
     pub show_fps: bool,
     pub view_bobbing: bool,
     pub particles: crate::particles::Setting,
@@ -72,6 +74,9 @@ pub struct Settings {
     /// v0.18 Track 3: Java's Mipmap Levels (`mipmapLevels`, 0..=4, 4): how
     /// many of the block textures' smaller levels distant surfaces may use.
     pub mipmap_levels: u32,
+    /// v0.18 Track 2: Menu Background Blur (`menuBackgroundBlurriness`,
+    /// 0 to 10, default 5; 0 is OFF): the blur radius behind menus.
+    pub menu_blur: u32,
     pub keys: super::keys::Bindings,
 }
 
@@ -80,6 +85,9 @@ pub const FOV: (f32, f32) = (30.0, 110.0);
 pub const SENSITIVITY: (f32, f32) = (0.25, 3.0);
 /// Max Framerate's range; the top value is Unlimited.
 pub const MAX_FPS: (u32, u32) = (10, 260);
+/// Menu Background Blur's range and default (`Options.menuBackgroundBlurriness`).
+pub const MENU_BLUR: (u32, u32) = (0, 10);
+pub const MENU_BLUR_DEFAULT: u32 = 5;
 /// Java's Scroll Sensitivity slider: 10^(n/100) for n in -200..=100.
 pub const SCROLL_STEPS: (i32, i32) = (-200, 100);
 /// Mipmap Levels' range (Java 26.3; `tests/fixtures/java/26.3/mipmap_levels.json`).
@@ -96,7 +104,7 @@ impl Default for Settings {
             music_volume: 1.0,
             vsync: true,
             enhanced_graphics: true,
-            show_fps: true,
+            show_fps: false,
             view_bobbing: true,
             particles: Default::default(),
             fullscreen: Default::default(),
@@ -126,6 +134,7 @@ impl Default for Settings {
             text_background_opacity: 0.5,
             background_for_chat_only: true,
             mipmap_levels: MIPMAP_LEVELS.1,
+            menu_blur: MENU_BLUR_DEFAULT,
             keys: Default::default(),
         }
     }
@@ -254,6 +263,7 @@ impl Settings {
             }
             "backgroundForChatOnly" => flag(&mut self.background_for_chat_only),
             "mipmapLevels" => self.mipmap_levels = value.parse().unwrap_or(self.mipmap_levels),
+            "menuBackgroundBlurriness" => self.menu_blur = value.parse().unwrap_or(self.menu_blur),
             _ => return self.keys.parse_line(key, value),
         }
         true
@@ -261,7 +271,7 @@ impl Settings {
 
     fn serialize_display_controls(&self, out: &mut String) {
         out.push_str(&format!(
-            "guiScale={}\nmaxFps={}\ngamma={}\nfovEffectScale={}\nscreenEffectScale={}\ndamageTiltStrength={}\ntoggleCrouch={}\ntoggleSprint={}\ninvertXMouse={}\ninvertYMouse={}\nmouseWheelSensitivity={:.4}\ndiscrete_mouse_scroll={}\nshowSubtitles={}\ntextBackgroundOpacity={}\nbackgroundForChatOnly={}\nmipmapLevels={}\n",
+            "guiScale={}\nmaxFps={}\ngamma={}\nfovEffectScale={}\nscreenEffectScale={}\ndamageTiltStrength={}\ntoggleCrouch={}\ntoggleSprint={}\ninvertXMouse={}\ninvertYMouse={}\nmouseWheelSensitivity={:.4}\ndiscrete_mouse_scroll={}\nshowSubtitles={}\ntextBackgroundOpacity={}\nbackgroundForChatOnly={}\nmipmapLevels={}\nmenuBackgroundBlurriness={}\n",
             self.gui_scale,
             self.max_fps,
             self.brightness,
@@ -278,6 +288,7 @@ impl Settings {
             self.text_background_opacity,
             self.background_for_chat_only,
             self.mipmap_levels,
+            self.menu_blur,
         ));
         self.keys.serialize(out);
     }
@@ -321,6 +332,7 @@ impl Settings {
         }
         self.gui_scale = self.gui_scale.min(MAX_GUI_SCALE);
         self.mipmap_levels = self.mipmap_levels.clamp(MIPMAP_LEVELS.0, MIPMAP_LEVELS.1);
+        self.menu_blur = self.menu_blur.clamp(MENU_BLUR.0, MENU_BLUR.1);
         // Java stores the framerate in steps of ten.
         self.max_fps = (self.max_fps.clamp(MAX_FPS.0, MAX_FPS.1) + 5) / 10 * 10;
         for v in [
@@ -388,7 +400,7 @@ mod tests {
             music_volume: 0.25,
             vsync: false,
             enhanced_graphics: false,
-            show_fps: false,
+            show_fps: true,
             view_bobbing: false,
             particles: crate::particles::Setting::Decreased,
             fullscreen: super::super::fullscreen::Mode::Exclusive,
@@ -413,6 +425,40 @@ mod tests {
         assert_eq!(Settings::parse(""), Settings::default());
         assert_eq!(Settings::parse("skip_update=junk").skip_update, None);
         assert!(Settings::parse("check_updates=junk").check_updates);
+    }
+
+    /// v0.18 Track 2: the FPS counter is off for a new options file only;
+    /// a saved true or false loads unchanged and survives a save.
+    #[test]
+    fn fps_counter_defaults_off_only_without_a_saved_preference() {
+        assert!(!Settings::default().show_fps);
+        assert!(!Settings::parse("").show_fps, "no options file yet");
+        assert!(!Settings::parse("fov=80\nvsync=true\n").show_fps, "a file without the line");
+        for saved in [true, false] {
+            let s = Settings::parse(&format!("render_distance=8\nshow_fps={saved}\n"));
+            assert_eq!(s.show_fps, saved, "a saved {saved} is kept");
+            assert_eq!(Settings::parse(&s.serialize()).show_fps, saved, "and saved again");
+        }
+        // A file written by v0.17, whose default was on, keeps the counter.
+        let v017 = "render_distance=8\nsimulation_distance=10\nfov=70\nsensitivity=1.00\nvolume=1.00\nmusic_volume=1.00\nvsync=true\ngraphics=enhanced\nshow_fps=true\nview_bobbing=true\n";
+        assert!(Settings::parse(v017).show_fps);
+        assert!(Settings::default().serialize().contains("show_fps=false\n"));
+    }
+
+    /// Menu Background Blur: Java's key, range 0 to 10 and default 5,
+    /// kept across a save; out-of-range and junk values clamp or fall back.
+    #[test]
+    fn menu_blur_round_trips_with_javas_range() {
+        assert_eq!(Settings::default().menu_blur, 5);
+        assert_eq!(Settings::parse("").menu_blur, 5, "old files get the default");
+        for v in 0..=10 {
+            let s = Settings { menu_blur: v, ..Settings::default() };
+            assert!(s.serialize().contains(&format!("menuBackgroundBlurriness={v}\n")));
+            assert_eq!(Settings::parse(&s.serialize()).menu_blur, v);
+        }
+        assert_eq!(Settings::parse("menuBackgroundBlurriness=99").menu_blur, 10);
+        assert_eq!(Settings::parse("menuBackgroundBlurriness=junk").menu_blur, 5);
+        assert_eq!(Settings::parse("menuBackgroundBlurriness=-3").menu_blur, 5, "not a u32");
     }
 
     #[test]

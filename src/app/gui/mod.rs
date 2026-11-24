@@ -17,6 +17,7 @@
 mod clipboard;
 mod dialog;
 mod layout;
+pub(in crate::app) mod style;
 mod text_field;
 
 use std::time::Instant;
@@ -42,9 +43,6 @@ pub(super) const GAP: f32 = 4.0;
 /// Width of a slider's handle.
 pub(super) const HANDLE_W: f32 = 8.0;
 
-pub(super) const BUTTON: Color = [0.42, 0.42, 0.42, 1.0];
-pub(super) const HOT: Color = [0.48, 0.52, 0.72, 1.0];
-pub(super) const DISABLED: Color = [0.2, 0.2, 0.2, 1.0];
 pub(super) const GREY: Color = [0.63, 0.63, 0.63, 1.0];
 pub(super) const HOT_TEXT: Color = [1.0, 1.0, 0.63, 1.0];
 
@@ -312,8 +310,20 @@ pub(super) trait Screen<H: Host>: 'static {
         layout::TITLE_Y
     }
     fn background(&self, host: &H, ui: &mut Ui, (sw, sh): Size) {
-        // Blending is in linear space: it takes a high alpha to look dark.
-        ui.rect(0.0, 0.0, sw, sh, [0.0, 0.0, 0.0, if host.in_world() { 0.78 } else { 0.6 }]);
+        if host.in_world() {
+            // v0.18 Track 2: Java's in-world menu backdrop over the blurred
+            // world (`Screen.extractMenuBackground`, 25% black).
+            ui.rect(0.0, 0.0, sw, sh, style::argb(style::MENU_VEIL));
+        } else {
+            // Blending is in linear space: it takes a high alpha to look dark.
+            ui.rect(0.0, 0.0, sw, sh, [0.0, 0.0, 0.0, 0.6]);
+        }
+    }
+    /// Whether the world behind blurs (Menu Background Blur) while this
+    /// screen is on top: Java's ordinary screens do; the death screen,
+    /// which draws its own red backdrop, doesn't.
+    fn blurs(&self) -> bool {
+        true
     }
     /// Anything the widgets don't draw, under them. `scroll` is how far the
     /// list is scrolled, in UI pixels.
@@ -370,6 +380,7 @@ pub(super) trait Dyn<H: Host> {
     fn scroll_step_dyn(&self) -> f32;
     fn initial_focus_at(&self, host: &H, size: Size) -> Option<usize>;
     fn draw_dyn(&self, host: &H, ui: &mut Ui, frame: &Frame);
+    fn blurs_dyn(&self) -> bool;
 }
 
 /// Scrolling widgets moved by `scroll` and hidden outside the list.
@@ -465,6 +476,10 @@ impl<H: Host, S: Screen<H>> Dyn<H> for S {
         self.scroll_step()
     }
 
+    fn blurs_dyn(&self) -> bool {
+        self.blurs()
+    }
+
     fn initial_focus_at(&self, host: &H, size: Size) -> Option<usize> {
         let id = self.initial_focus()?;
         self.widgets(host, size).iter().position(|w| w.id == id)
@@ -503,11 +518,11 @@ impl<H: Host, S: Screen<H>> Dyn<H> for S {
             // Java's scroll bar: a dark track at the list's right edge with a
             // grey thumb sized to the visible part.
             let bar = [x + w - 6.0, y, 6.0, h];
-            ui.rect(bar[0], bar[1], bar[2], bar[3], [0.0, 0.0, 0.0, 1.0]);
+            ui.rect(bar[0], bar[1], bar[2], bar[3], style::srgb(style::token::OUTLINE));
             let thumb = (h * h / (h + max_scroll)).clamp(32.0_f32.min(h), h);
-            let ty = y + (h - thumb) * (frame.scroll.clamp(0.0, max_scroll) / max_scroll);
-            ui.rect(bar[0], ty, 6.0, thumb, [0.5, 0.5, 0.5, 1.0]);
-            ui.rect(bar[0], ty, 5.0, thumb - 1.0, [0.75, 0.75, 0.75, 1.0]);
+            let ty = (y + (h - thumb) * (frame.scroll.clamp(0.0, max_scroll) / max_scroll)).floor();
+            ui.rect(bar[0], ty, 6.0, thumb, style::srgb(style::token::SLOT));
+            ui.rect(bar[0], ty, 5.0, thumb - 1.0, style::srgb(0xC0C0C0));
         }
         if let Some((i, at)) = frame.tooltip
             && let Some(text) = widgets.get(i).filter(|_| shown[i]).and_then(|w| w.tooltip.as_deref())
@@ -563,6 +578,11 @@ impl<H: Host> Stack<H> {
 
     pub fn is_open(&self) -> bool {
         !self.entries.is_empty()
+    }
+
+    /// Whether the top screen wants the world behind it blurred.
+    pub fn blurs(&self) -> bool {
+        self.entries.last().is_some_and(|e| e.screen.blurs_dyn())
     }
 
     pub fn open(&mut self, screen: impl Screen<H>) {
@@ -937,33 +957,29 @@ pub(super) fn bevel(ui: &mut Ui, [x, y, w, h]: Rect, fill: Color, raised: bool) 
 }
 
 /// A white frame around a focused widget, as Java draws keyboard focus.
-pub(super) fn focus_frame(ui: &mut Ui, [x, y, w, h]: Rect) {
-    ui.rect(x, y, w, 1.0, WHITE);
-    ui.rect(x, y + h - 1.0, w, 1.0, WHITE);
-    ui.rect(x, y, 1.0, h, WHITE);
-    ui.rect(x + w - 1.0, y, 1.0, h, WHITE);
+pub(super) fn focus_frame(ui: &mut Ui, rect: Rect) {
+    style::outline(ui, rect, WHITE);
 }
 
+/// v0.18 Track 2: Java's widget text, white, or `#A0A0A0` when disabled;
+/// hover and focus show in the widget's white outline, not the text.
 pub(super) fn text_color(look: Look) -> Color {
-    match (look.enabled, look.hot()) {
-        (false, _) => GREY,
-        (true, true) => HOT_TEXT,
-        (true, false) => WHITE,
+    style::text_colour(look.state())
+}
+
+impl Look {
+    /// The guide's component state.
+    pub fn state(self) -> style::State {
+        match (self.enabled, self.hot()) {
+            (false, _) => style::State::Disabled,
+            (true, true) => style::State::Hot,
+            (true, false) => style::State::Normal,
+        }
     }
 }
 
 pub(super) fn draw_button(ui: &mut Ui, rect: Rect, label: &str, look: Look) {
-    let fill = if !look.enabled {
-        DISABLED
-    } else if look.hot() {
-        HOT
-    } else {
-        BUTTON
-    };
-    bevel(ui, rect, fill, look.enabled);
-    if look.focused && look.enabled {
-        focus_frame(ui, rect);
-    }
+    style::button(ui, rect, look.state());
     label_text(ui, rect, label, 4.0, text_color(look));
 }
 
@@ -988,21 +1004,17 @@ pub(super) fn label_text(ui: &mut Ui, [x, y, w, h]: Rect, label: &str, margin: f
 
 pub(super) fn draw_slider(ui: &mut Ui, rect: Rect, label: &str, value: f32, look: Look) {
     let [x, y, w, h] = rect;
-    // Minecraft-style: a dark track with a button-like handle.
-    bevel(ui, rect, [0.16, 0.16, 0.16, 1.0], false);
-    let hx = x + (w - HANDLE_W) * value.clamp(0.0, 1.0);
-    // The handle lights up while the mouse is over it or the keys adjust it.
-    let fill = if !look.enabled {
-        DISABLED
-    } else if look.hovered || look.editing {
-        HOT
-    } else {
-        BUTTON
+    // Java's slider: a dark track, outlined white when focused, with a
+    // button-like handle that lights up while the mouse is over it or the
+    // keys adjust it.
+    style::track(ui, rect, look.hot());
+    let hx = (x + (w - HANDLE_W) * value.clamp(0.0, 1.0)).floor();
+    let handle = match look.state() {
+        style::State::Disabled => style::State::Disabled,
+        _ if look.hovered || look.editing => style::State::Hot,
+        _ => style::State::Normal,
     };
-    bevel(ui, [hx, y, HANDLE_W, h], fill, look.enabled);
-    if look.focused && look.enabled {
-        focus_frame(ui, rect);
-    }
+    style::button(ui, [hx, y, HANDLE_W, h], handle);
     label_text(ui, rect, label, 4.0, text_color(look));
 }
 
@@ -1012,10 +1024,9 @@ pub(super) fn draw_tooltip(ui: &mut Ui, text: &str, (ax, ay): (f32, f32)) {
     let lines: Vec<String> = text.lines().flat_map(|l| wrap(l, 200.0)).collect();
     let w = lines.iter().map(|l| Ui::text_width(l)).fold(0.0, f32::max) + 8.0;
     let h = lines.len() as f32 * 10.0 + 6.0;
-    let x = ax.min(sw - w - 2.0).max(2.0);
-    let y = if ay + h > sh - 2.0 { (ay - h - 24.0).max(2.0) } else { ay.max(2.0) };
-    ui.rect(x, y, w, h, [0.31, 0.0, 1.0, 0.6]);
-    ui.rect(x + 1.0, y + 1.0, w - 2.0, h - 2.0, [0.06, 0.0, 0.06, 0.94]);
+    let x = ax.min(sw - w - 2.0).max(2.0).floor();
+    let y = if ay + h > sh - 2.0 { (ay - h - 24.0).max(2.0) } else { ay.max(2.0) }.floor();
+    style::tooltip_box(ui, x + 4.0, y + 4.0, w - 8.0, h - 8.0);
     for (i, line) in lines.iter().enumerate() {
         ui.text(x + 4.0, y + 4.0 + i as f32 * 10.0, line, WHITE);
     }

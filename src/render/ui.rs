@@ -129,6 +129,19 @@ impl Ui {
         self.quad([[x, y], [x + w, y], [x + w, y + h], [x, y + h]], [[0.0; 2]; 4], SOLID, color);
     }
 
+    /// A rectangle shading from `top` to `bottom` (Java's `fillGradient`).
+    pub fn gradient(&mut self, x: f32, y: f32, w: f32, h: f32, top: Color, bottom: Color) {
+        let p = [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
+        let colour = [top, top, bottom, bottom];
+        let v: [UiVertex; 4] = std::array::from_fn(|i| UiVertex {
+            pos: self.ndc(p[i][0], p[i][1]),
+            uv: [0.0; 2],
+            layer: SOLID,
+            color: colour[i],
+        });
+        self.verts.extend_from_slice(&[v[0], v[1], v[2], v[0], v[2], v[3]]);
+    }
+
     /// Square HUD icon (heart, bubble, ...) from a block texture or item icon layer.
     pub fn icon(&mut self, x: f32, y: f32, size: f32, layer: impl Into<u16>, color: Color) {
         let uv = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];

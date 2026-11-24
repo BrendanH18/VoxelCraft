@@ -61,6 +61,18 @@ audit item 1 of the scope asks for. Until it lands, a track that adds a
 colour writes the sRGB value and converts it with `x.powf(2.2)`, with a
 comment that it becomes the shared helper.
 
+**Track 2 (shared UI):** the guide's tokens live in
+[`gui/style.rs`](../src/app/gui/style.rs) as sRGB `0xRRGGBB` values and
+reach the vertex colours through one function, `style::srgb` (its
+`linear` is the seam the typography track's helper replaces). Panels,
+slots, buttons, sliders, tooltips, progress icons, the hotbar, experience
+bar and effect backgrounds, the anvil's name box and the creative and
+recipe book panels use it, so they already show the table's Java values.
+Translucent fills use `style::veil`, which raises the alpha so a scene
+darkens by Java's sRGB factor (exact for black veils): Java blends sRGB
+values, the UI blends linear ones. Text colours outside these components
+(F3, chat, captions, menus' grey labels) are the typography track's.
+
 ## Pixel grid
 
 - Block and item textures are 16 × 16 texels. No track adds a higher
@@ -198,8 +210,12 @@ Java's GUI layout in UI pixels, already used by the
   and output), leave at least one slot pitch or a drawn divider. Don't pad
   with empty grey.
 
-**Now:** container panels are 9 × 18 + 14 = 176 wide with slots 7 pixels in
-and 18 apart, matching. The panel has a 1-pixel bevel and no black outline.
+Container panels are 9 × 18 + 14 = 176 wide with slots 7 pixels in and 18
+apart, matching. Since Track 2 the panel is Java's: a black outline with
+stepped corners, 2-pixel white and `#555555` bevels and the `#C6C6C6` fill
+(`style::panel`); crafting and furnace results sit in a 26 × 26 frame
+(`style::big_slot`), and the anvil's slots moved down to Java's row (46) under
+its name box.
 
 ## Components and states
 
@@ -208,11 +224,11 @@ state by more than colour alone (scope item 8):
 
 | State | Rule |
 |---|---|
-| Normal | Panel or button sprite, white text with shadow |
-| Hovered or focused (mouse, keyboard or controller) | A 1-pixel white outline around the widget, or the 50 % white overlay in a slot. Keyboard and controller focus look the same as hover |
+| Normal | Panel or button sprite (a black outline, `#6F6F6F` fill, `#AAAAAA` top-left light and a 2-pixel `#565656` shade), white text with shadow |
+| Hovered or focused (mouse, keyboard or controller) | A 1-pixel white outline around the widget (Java's button sprite: `#757575` fill, `#AFAFAF` light, `#5C5C5C` shade), or the 50 % white overlay in a slot. Keyboard and controller focus look the same as hover |
 | Selected (current hotbar slot, chosen tab, toggled option) | A 24 × 24 hotbar frame, or a raised tab joined to its panel, or "ON" in the label. Never colour only |
 | Pressed or active | As hovered, for the frame while held |
-| Disabled | Darker sprite with `#A0A0A0` text. It takes no focus with the mouse, but the controller may still land on it to read its tooltip |
+| Disabled | Darker sprite (flat `#2C2C2C`, no bevel) with `#A0A0A0` text. It takes no focus with the mouse or keyboard; the controller can't land on it either (Java's controller support has no such screens to follow) |
 | Error or warning | Red (`#FF5555`) text or a red-tinted 1-pixel outline, with the message in words |
 
 Slots draw their frame even when empty. Equipment slots show an outline
@@ -237,9 +253,33 @@ Pixel-art sprites, never flat rectangles. Each fills in whole UI pixels:
 
 Each sprite has a 1-pixel dark outline or an empty-state sprite behind the
 fill, so progress reads against both the light panel and the world.
-**Now:** the furnace flame and arrow, the experience bar and the effect
-backgrounds are drawn as flat rectangles (`src/app/hud.rs`). Track 2 owns
-the change.
+Track 2 draws them as original pixel art in `gui/style.rs`: the 14 × 14
+flame (`style::flame`, Java's `ceil(left * 13) + 1` rows), the 24 × 16
+arrow (`style::arrow`, 16 × 13 in the survival inventory), the brewing
+stand's 9 × 28 arrow and 18 × 4 fuel gauge, the anvil's plus and the
+error cross, the 182 × 5 experience bar in Java's greens with its dark
+trough, and the 24 × 24 and 120 × 32 effect backgrounds (dark fill in a
+grey frame with stepped corners, cyan for ambient effects). Each empty
+sprite is drawn in `#8B8B8B` behind its fill. Hearts, hunger, armour and air
+keep their existing textures.
+
+## Backgrounds and blur
+
+Behind screens, Java has three backdrops, all now matched
+(`style::backdrop`, colours from the
+[UI fixture](../tests/fixtures/java/26.3/ui_screens.json)):
+
+- Container and workstation screens (`isInGameUi`): the `#101010`
+  gradient from 75 % to 82 % alpha, no blur.
+- Other menus over a world (pause, Options, LAN, books, signs, error
+  notices): the world and HUD blurred by Menu Background Blur (0 to 10,
+  default 5; the renderer's `blur` pass, Java's three box blur pairs), then
+  black at 25 % (`inworld_menu_background`).
+- The death screen and its quit confirmation: `#500000` at 38 % to
+  `#803030` at 63 %, no blur.
+
+Title-screen menus blur what is behind them too; their own darkening stays
+as it was until the title track's panorama lands.
 
 ## Where the code is
 

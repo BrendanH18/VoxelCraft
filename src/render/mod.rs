@@ -11,6 +11,7 @@
 
 pub mod arena;
 pub mod block_model;
+mod blur;
 pub mod brushable;
 pub mod entity;
 mod gpu_timer;
@@ -129,6 +130,12 @@ pub struct FrameParams {
     pub hand: Option<hand::Hand>,
     /// HUD geometry, drawn last.
     pub ui: Vec<UiVertex>,
+    /// v0.18 Track 2: the menu background blur's radius in pixels (Menu
+    /// Background Blur; 0 draws no blur). The world and the first
+    /// `ui_under_blur` UI vertices (the HUD) are blurred; the rest (the
+    /// menu) is drawn sharp over them.
+    pub blur: u32,
+    pub ui_under_blur: usize,
     /// Rain strength 0..1: hides the sun, moon and stars and thickens the
     /// clouds.
     pub rain: f32,
@@ -198,6 +205,12 @@ fn face_runs(offsets: &[u32], mask: u8, mut f: impl FnMut(u32, u32)) {
             f(offsets[first], quads);
         }
     }
+}
+
+/// v0.18 Track 2: how many passes the menu background blur draws.
+#[cfg(test)]
+pub fn blur_passes() -> usize {
+    blur::PASSES
 }
 
 /// A window image being drawn this frame (or the offscreen target).
@@ -274,6 +287,8 @@ pub struct Renderer {
     entities: entity::EntityPass,
     /// v0.15 Track D: the Glowing outline.
     outline: outline::Outline,
+    /// v0.18 Track 2: the menu background blur.
+    blur: blur::Blur,
     particles: particles::ParticlePass,
     block_models: block_model::BlockModelPass,
     weather: weather::WeatherPass,
@@ -841,6 +856,7 @@ impl Renderer {
             particles::ParticlePass::new(&device, &queue, &globals_layout, &blocks_layout, format, paged_blocks);
         let entities = entity::EntityPass::new(&device, &queue, &globals_layout, &blocks_layout, format, paged_blocks);
         let outline = outline::Outline::new(&device, format);
+        let blur = blur::Blur::new(&device, format);
         let block_models = block_model::BlockModelPass::new(&device, &layout, format, paged_blocks);
         let weather = weather::WeatherPass::new(&device, &layout, format);
 
@@ -889,6 +905,7 @@ impl Renderer {
             ui_pipeline,
             entities,
             outline,
+            blur,
             particles,
             block_models,
             weather,
@@ -1451,11 +1468,21 @@ impl Renderer {
             self.entities.draw_mask(&mut pass);
         }
         let timed = self.gpu_timer.as_mut().and_then(|timer| timer.next_pass());
+        // v0.18 Track 2: with a blurring menu open, the world and HUD go to
+        // the blur's scene target, and the menu is drawn after the blur.
+        let blurring = p.blur > 0;
+        let under = if blurring { p.ui_under_blur.min(hud.len()) } else { hud.len() };
+        if blurring {
+            let size = (self.config.width, self.config.height);
+            let rect = [vp.x as f32, vp.y as f32, (vp.x + vp.width) as f32, (vp.y + vp.height) as f32];
+            self.blur.prepare(&self.device, &self.queue, size, p.blur, rect);
+        }
+        let scene = if blurring { self.blur.scene() } else { None };
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("main"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view,
+                    view: scene.unwrap_or(view),
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -1564,11 +1591,43 @@ impl Renderer {
                 pass.set_bind_group(0, &self.globals_bg, &[]);
             }
 
-            if !hud.is_empty() {
+            if under > 0 {
                 pass.set_pipeline(&self.ui_pipeline);
                 pass.set_bind_group(2, &self.font_bg, &[]);
                 pass.set_vertex_buffer(0, self.ui_buf.slice(..));
-                pass.draw(0..hud.len() as u32, 0..1);
+                pass.draw(0..under as u32, 0..1);
+            }
+        }
+        if blurring {
+            self.blur.finish(&mut encoder, view, [vp.x, vp.y, vp.width, vp.height]);
+            stats.draw_calls += blur::PASSES;
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("menu"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
+                })],
+                // The UI pipeline ignores depth but declares the format.
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.depth,
+                    depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(0.0), store: wgpu::StoreOp::Discard }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            pass.set_viewport(vp.x as f32, vp.y as f32, vp.width as f32, vp.height as f32, 0.0, 1.0);
+            pass.set_scissor_rect(vp.x, vp.y, vp.width, vp.height);
+            if hud.len() > under {
+                pass.set_bind_group(0, &self.globals_bg, &[]);
+                pass.set_bind_group(1, &self.blocks_bg, &[]);
+                pass.set_pipeline(&self.ui_pipeline);
+                pass.set_bind_group(2, &self.font_bg, &[]);
+                pass.set_vertex_buffer(0, self.ui_buf.slice(..));
+                pass.draw(under as u32..hud.len() as u32, 0..1);
             }
         }
         self.last_submission = Some(self.queue.submit([encoder.finish()]));
@@ -1646,6 +1705,7 @@ mod tests {
             ("entity", include_str!("shaders/entity.wgsl")),
             ("particles", include_str!("shaders/particles.wgsl")),
             ("overlay", include_str!("shaders/overlay.wgsl")),
+            ("blur", include_str!("shaders/blur.wgsl")),
             ("sky", include_str!("shaders/sky.wgsl")),
             ("weather", include_str!("shaders/weather.wgsl")),
             ("outline", include_str!("shaders/outline.wgsl")),

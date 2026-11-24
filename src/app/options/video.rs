@@ -23,6 +23,7 @@ pub(in crate::app) enum Id {
     SimulationDistance,
     Particles,
     MipmapLevels,
+    MenuBlur,
     PreferencesHeader,
     Fps,
     Done,
@@ -135,6 +136,8 @@ impl<H: OptionsHost> Screen<H> for VideoSettings {
                 frac(s.mipmap_levels as f32, range_u(MIPMAP_LEVELS)),
                 MIPMAP_LEVELS.1 - MIPMAP_LEVELS.0,
             ),
+            // v0.18 Track 2: Java lists it after Entity Distance.
+            super::menu_blur_slider(Id::MenuBlur, s.menu_blur),
         ]);
         list.wide(Widget::label(Id::PreferencesHeader, z, "Preferences"));
         list.pair(
@@ -177,6 +180,7 @@ impl<H: OptionsHost> Screen<H> for VideoSettings {
             }
             Id::Brightness => change(host, |s| s.brightness = (t * 100.0).round() / 100.0),
             Id::MipmapLevels => change(host, |s| s.mipmap_levels = lerp(range_u(MIPMAP_LEVELS), t).round() as u32),
+            Id::MenuBlur => change(host, |s| s.menu_blur = super::menu_blur_at(t)),
             _ => {}
         }
     }

@@ -234,6 +234,27 @@ impl TextField {
 
     /// Java's look: a black box with a grey border, white when focused, and
     /// a blinking caret.
+    /// v0.18 Track 2: the text alone, white, from `x` in `w` pixels, with
+    /// the caret (the anvil's borderless, always-focused name box).
+    pub fn draw_plain(&self, ui: &mut Ui, [x, y, w, _]: Rect, caret: bool) {
+        let start = self.visible_start(w);
+        let shown = &self.text[start..];
+        let mut end = shown.len();
+        while end > 0 && Ui::text_width(&shown[..end]) > w {
+            end -= 1;
+        }
+        ui.text(x, y, &shown[..end], WHITE);
+        if caret {
+            let at = self.cursor.clamp(start, start + end);
+            let cx = if at == start { x } else { x + Ui::text_width(&self.text[start..at]) + 1.0 };
+            if self.cursor == self.text.len() {
+                ui.text(cx, y, "_", WHITE);
+            } else {
+                ui.rect(cx - 1.0, y - 1.0, 1.0, 10.0, WHITE);
+            }
+        }
+    }
+
     pub fn draw(&self, ui: &mut Ui, [x, y, w, h]: Rect, focused: bool, caret: bool, enabled: bool) {
         ui.rect(x, y, w, h, if focused { WHITE } else { BORDER });
         ui.rect(x + 1.0, y + 1.0, w - 2.0, h - 2.0, [0.0, 0.0, 0.0, 1.0]);
