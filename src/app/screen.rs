@@ -354,7 +354,7 @@ impl Screen<'_> {
         let recipe = id.recipe()?;
         let creative = self.session.mode.is_creative();
         let inventory = &mut self.session.inventory;
-        Some(match *self.container {
+        let outcome = match *self.container {
             Container::Furnace(p) => {
                 place::place_in_furnace(recipe, self.world.furnace_mut(p)?, inventory, selected, max, creative)
             }
@@ -362,7 +362,15 @@ impl Screen<'_> {
                 place::place_in_grid(recipe, self.craft, inventory, selected, max, creative)
             }
             _ => return None,
-        })
+        };
+        // What didn't fit back drops at once, as Java's
+        // `placeItemBackInInventory` does, for every player (agents and LAN
+        // guests have no per-tick spill drop).
+        let (eye, forward) = (self.session.player.eye(), self.session.player.forward().as_dvec3());
+        for stack in self.session.inventory.take_spill() {
+            self.entities.throw(stack, eye, forward);
+        }
+        Some(outcome)
     }
 
     /// Clicking the crafting result: takes one craft onto the cursor (or

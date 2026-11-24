@@ -398,7 +398,15 @@ impl Game {
                         _ => {
                             let mut others = self.agents.positions();
                             others.push(self.session.player.pos);
-                            bot.agent.execute(command, &mut self.world, &mut self.mobs.entities, &others)?;
+                            // Review S6: the rules as they are now, not as of the
+                            // profile's last tick (a restored profile has had none).
+                            bot.agent.execute_with_rules(
+                                command,
+                                &self.gamerules,
+                                &mut self.world,
+                                &mut self.mobs.entities,
+                                &others,
+                            )?;
                         }
                     }
                     if bot.agent.remaining > 0 && !observation {

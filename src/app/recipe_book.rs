@@ -88,6 +88,9 @@ pub(super) struct View {
     /// Which of the book's tabs have anything that fits, computed with the page.
     tabs: Vec<bool>,
     key: Option<Key>,
+    /// The page needs rebuilding (and its new recipes marking seen) though
+    /// its key is unchanged: a page turn, a placed recipe, new settings.
+    dirty: bool,
     /// When a button last pulsed for newly shown recipes (`animationTime`).
     pulses: Vec<(RecipeId, Instant)>,
     /// `RecipeToast` entries and when the toast last changed.
@@ -99,6 +102,21 @@ pub(super) struct View {
 }
 
 impl View {
+    /// A page arrow (`RecipeBookPage.mouseClicked`): the page stays when it
+    /// is rebuilt, which marks its recipes seen.
+    fn turn_page(&mut self, forward: bool) {
+        self.page = if forward { self.page + 1 } else { self.page.saturating_sub(1) };
+        self.dirty = true;
+    }
+
+    /// The page to show once the book is rebuilt for `key` with `pages`
+    /// pages (`RecipeBookPage.updateCollections`): the first after a tab or
+    /// screen change, else the current one while it exists.
+    fn page_after(&self, key: &Key, pages: usize) -> usize {
+        let reset = self.key.as_ref().is_none_or(|k| k.tab != key.tab || k.menu != key.menu);
+        if reset || self.page >= pages { 0 } else { self.page }
+    }
+
     /// `SlotSelectTime`: one step every 30 ticks while the screen shows.
     fn cycle(now: Instant, started: Instant) -> usize {
         ((now - started).as_secs_f32() * 20.0 / rb::TICKS_TO_SWAP as f32) as usize
@@ -419,19 +437,17 @@ impl Game {
             filtering: self.filtering(menu),
             contents,
         };
-        if self.recipe_book.key.as_ref() == Some(&key) {
+        if self.recipe_book.key.as_ref() == Some(&key) && !self.recipe_book.dirty {
             return;
         }
-        let reset = self.recipe_book.key.as_ref().is_none_or(|k| k.tab != key.tab || k.menu != key.menu);
         self.recipe_book.tabs = (0..tabs.len()).map(|i| self.tab_has_recipes(menu, i)).collect();
         let available = self.stacked(menu);
         self.recipe_book.shown =
             rb::page(&self.session.recipe_book, menu.book, tabs[key.tab].category, menu.grid, &key.query, &available);
         let pages = self.page_count();
-        if reset || self.recipe_book.page >= pages {
-            self.recipe_book.page = 0;
-        }
+        self.recipe_book.page = self.recipe_book.page_after(&key, pages);
         self.recipe_book.key = Some(key);
+        self.recipe_book.dirty = false;
         self.mark_page_seen(menu);
     }
 
@@ -496,13 +512,11 @@ impl Game {
                 }
             }
             Control::Forward if !right => {
-                self.recipe_book.page += 1;
-                self.recipe_book.key = None;
+                self.recipe_book.turn_page(true);
                 self.audio.ui_click();
             }
             Control::Back if !right => {
-                self.recipe_book.page = self.recipe_book.page.saturating_sub(1);
-                self.recipe_book.key = None;
+                self.recipe_book.turn_page(false);
                 self.audio.ui_click();
             }
             Control::Button(i) => {
@@ -573,7 +587,7 @@ impl Game {
         if Self::book_narrow(self.screen_size().0) {
             self.set_book_settings(menu.book, Some(false), None);
         }
-        self.recipe_book.key = None;
+        self.recipe_book.dirty = true;
     }
 
     /// Changes this player's book settings (sent to a LAN host).
@@ -585,7 +599,7 @@ impl Game {
         if let Some(filtering) = filtering {
             self.session.recipe_book.set_filtering(book, filtering);
         }
-        self.recipe_book.key = None;
+        self.recipe_book.dirty = true;
         if self.lan.client.is_some() {
             let s = self.session.recipe_book.settings(book);
             self.lan_command(&format!("recipe_settings {} {} {}", book_name(book), s.open as u8, s.filtering as u8));
@@ -1040,6 +1054,30 @@ mod tests {
         let first = overlay_rect(100.0, 50.0, 6, 0);
         assert_eq!(first.x, 100.0 + 12.5 - 50.0);
         assert_eq!(overlay_rect(100.0, 50.0, 6, 5).y, first.y + rb::BUTTON_SIZE);
+    }
+
+    /// Review S1: a page turn keeps its page when the book is rebuilt, so
+    /// every page past the first is reachable; a tab change or a shorter
+    /// book still starts from the first.
+    #[test]
+    fn page_turns_survive_the_rebuild() {
+        let key = Key {
+            menu: BookMenu { book: BookType::Crafting, grid: Some(3) },
+            revision: 0,
+            tab: 0,
+            query: String::new(),
+            filtering: false,
+            contents: 0,
+        };
+        let mut view = View { key: Some(key.clone()), ..View::default() };
+        view.turn_page(true);
+        view.turn_page(true);
+        assert!(view.dirty);
+        assert_eq!(view.page_after(&key, 3), 2);
+        view.turn_page(false);
+        assert_eq!(view.page_after(&key, 3), 1);
+        assert_eq!(view.page_after(&Key { tab: 1, ..key.clone() }, 3), 0);
+        assert_eq!(view.page_after(&key, 1), 0);
     }
 
     #[test]

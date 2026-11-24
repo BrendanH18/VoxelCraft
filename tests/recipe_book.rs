@@ -621,3 +621,54 @@ fn unlock_ticks_and_pages_stay_cheap() {
     assert!(per_tick < 100_000.0, "{per_tick} ns per tick");
     assert!(per_page < 250.0, "{per_page} ms per page");
 }
+
+/// Review S6: a request that arrives before the profile's first rules tick
+/// (a restored player) still runs under `limited_crafting`, because the
+/// adapters pass the world's rules with it.
+#[test]
+fn agent_requests_honour_the_current_rule_before_any_tick() {
+    let mut world = world();
+    let mut entities = Entities::new(9);
+    let mut rules = GameRules::default();
+    rules.set("limited_crafting", "true").unwrap();
+    let mut agent = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+    agent.set_mode(GameMode::Survival);
+    agent.inventory.slots[0] = Some(Stack::new(item("oak planks"), 4));
+    assert!(!agent.recipe_book.knows(id("stick")));
+    let refused = agent.execute_with_rules(Command::Craft(Item::STICK), &rules, &mut world, &mut entities, &[]);
+    assert!(refused.is_err(), "an unknown recipe crafted under limited_crafting");
+    assert_eq!(agent.inventory.slots[0].map(|s| s.count), Some(4));
+    // With the rule off the same request crafts.
+    agent
+        .execute_with_rules(Command::Craft(Item::STICK), &GameRules::default(), &mut world, &mut entities, &[])
+        .unwrap();
+    assert!(agent.inventory.find(Item::STICK).is_some());
+}
+
+/// Review S2 and S3, kept as Java does them: `StackedItemContents` counts
+/// the furnace's fuel and the grid, `testClearGrid` checks only the inputs
+/// and reserves no room, and `moveItemToGrid` takes from the 36 main slots
+/// only. So charcoal's logs in the fuel slot count, nothing moves, and Java
+/// answers `NOTHING` (no ghost); here that is `Filled` with an empty input.
+#[test]
+fn placement_counts_the_slots_java_counts() {
+    let mut furnace = Furnace { fuel: Some(Stack::new(item("oak log"), 4)), ..Furnace::default() };
+    let mut inventory = Inventory::default();
+    let charcoal = recipe("charcoal");
+    assert_eq!(place::place_in_furnace(charcoal, &mut furnace, &mut inventory, 0, false, false), Outcome::Filled);
+    assert!(furnace.input.is_none() && furnace.fuel.map(|s| s.count) == Some(4));
+    // Two single planks against one 63-plank stack in a full inventory both
+    // pass `testClearGrid`; the second spills, for the adapter to drop.
+    let mut inventory = Inventory::default();
+    for slot in &mut inventory.slots {
+        *slot = Some(Stack::new(Item::from_block(Block::STONE), 64));
+    }
+    inventory.slots[0] = Some(Stack::new(item("oak planks"), 63));
+    inventory.slots[1] = Some(Stack::new(item("oak log"), 1));
+    let mut grid = Grid::new(2);
+    grid.cells[0] = Some(Stack::new(item("oak planks"), 1));
+    grid.cells[1] = Some(Stack::new(item("oak planks"), 1));
+    assert_eq!(place::place_in_grid(recipe("oak_planks"), &mut grid, &mut inventory, 0, false, false), Outcome::Filled);
+    assert_eq!(inventory.slots[0].map(|s| s.count), Some(64));
+    assert_eq!(inventory.take_spill(), vec![Stack::new(item("oak planks"), 1)]);
+}
