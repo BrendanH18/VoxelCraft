@@ -379,9 +379,12 @@ Differences from Metal seen so far (2026-11-23,
 reproducible before/after scenes for v0.18's visual work, in five groups:
 
 - `materials`: a stone and ore wall over deepslate, a torch-lit stone room's
-  ceiling, a stepped grass and dirt hillside, a small forest, sand dunes and
-  a palette wall of 32 common blocks. All are built with `--place` high
-  above the terrain, so they don't change when world generation does.
+  ceiling, a stepped grass and dirt hillside, a small forest, sand dunes, a
+  palette wall of 32 common blocks, and `material-items`: material blocks
+  in the hotbar (stone held) and nine dropped blocks on grass and stone.
+  All are built with `--place` high above the terrain, so they don't change
+  when world generation does, and each is captured at 1920 × 1080 and
+  1280 × 720 with Auto GUI scale.
 - `mobs`: nine mobs and dropped items on uneven grass at sunrise (held
   below the sunburn threshold, so the undead survive the wait) and at
   midnight.
@@ -405,6 +408,10 @@ command line of each variant. `scripts/boat-capture.sh` puts one folder of
 PNGs per commit under `target/captures/`. Mobs move during the 1.5 seconds
 the mob scenes wait, so those two scenes are the only ones that differ
 between runs of one build.
+
+`python3 tools/compare_captures.py target/captures/<before> target/captures/<after>`
+puts each capture the two folders share side by side (before on the left)
+in `target/captures/compare-<before>-<after>/`.
 
 To add a scene, append it to the JSON with a new name, rather than changing
 an existing scene, so earlier captures keep comparing like with like. The
