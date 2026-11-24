@@ -586,6 +586,14 @@ fn every_sound_has_a_java_event_and_unplayed_subtitles_are_listed() {
 /// Java ID), every family a block can play has its own recipe, and the
 /// volume and pitch follow Java's call sites.
 #[test]
+fn planting_a_crop_makes_a_sound() {
+    use super::block_sounds::play;
+    use super::sounds::BlockCue;
+    let wheat = crate::world::block::Block::wheat(0);
+    assert!(play(wheat, BlockCue::Place).is_some(), "Java plants crops with item.crop.plant");
+}
+
+#[test]
 fn blocks_play_their_own_java_sound_types() {
     use super::block_sounds::{Family, GAIN, has_recipe, play, sound_type};
     use crate::world::block::{Block, STATE_CAPACITY};

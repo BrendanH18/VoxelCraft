@@ -98,6 +98,13 @@ class CaptureScenesTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             capture_scenes.select(self.data, ["nowhere"])
 
+    def test_capture_names_stay_inside_the_output(self):
+        for scene in self.data["scenes"]:
+            capture_scenes.safe_name(scene["name"])
+        for bad in ["../saves", "/tmp/x", "a/b", "..", ".hidden", ""]:
+            with self.assertRaises(SystemExit):
+                capture_scenes.safe_name(bad)
+
     def test_scene_list_is_valid_json_with_unique_names(self):
         names = [s["name"] for s in self.data["scenes"]]
         self.assertEqual(len(names), len(set(names)))

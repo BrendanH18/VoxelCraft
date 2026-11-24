@@ -87,7 +87,7 @@ pub struct Args {
     pub weather: Option<bool>,
     /// `--weather thunder`: start a thunderstorm (with `weather` raining).
     pub thunder: bool,
-    /// `--gui-scale`: the GUI Scale option for this session (0 is Auto).
+    /// `--gui-scale`: the GUI Scale of a scripted run (0 is Auto).
     pub gui_scale: Option<u32>,
     /// `--open-recipe-book`: start with the recipe book open (screenshots).
     pub open_recipe_book: bool,
@@ -199,8 +199,8 @@ voxelcraft [options]
                     beside --open-block's crafting table (screenshots)
   --creative-tab <id>  open the creative inventory on this Java tab
                     (building_blocks ... search ... inventory; screenshots)
-  --gui-scale <auto|n>  GUI Scale for this session (scripted runs ignore
-                    saved options; n is capped at what fits the window)
+  --gui-scale <auto|n>  GUI Scale for a scripted run, which ignores saved
+                    options (n is capped at what fits the window)
   --hardcore        a new world is a Hardcore world (with --health 0, the
                     Hardcore death)
   --gamerule r=v    set a game rule once the world loads (repeatable; e.g.
@@ -286,6 +286,11 @@ voxelcraft [options]
 
 fn parse_args() -> Result<Args, String> {
     parse_args_from(std::env::args().skip(1))
+}
+
+/// A benchmark length in seconds: finite and not negative, so the run ends.
+fn finite_seconds(text: &str) -> Option<f64> {
+    text.parse::<f64>().ok().filter(|s| s.is_finite() && *s >= 0.0)
 }
 
 /// Parses command-line arguments (without the program name).
@@ -431,10 +436,10 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
             "--bench" => args.bench = true,
             "--bench-tick" => args.bench_tick = Some(value("--bench-tick")?),
             "--bench-seconds" => {
-                args.bench_seconds = value("--bench-seconds")?.parse().map_err(|_| "bad --bench-seconds")?
+                args.bench_seconds = finite_seconds(&value("--bench-seconds")?).ok_or("bad --bench-seconds")?
             }
             "--bench-warmup" => {
-                args.bench_warmup = value("--bench-warmup")?.parse().map_err(|_| "bad --bench-warmup")?
+                args.bench_warmup = finite_seconds(&value("--bench-warmup")?).ok_or("bad --bench-warmup")?
             }
             "--bench-render" => args.bench_render = true,
             "--benchmark-scene" => {
@@ -758,6 +763,12 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
         }
         args.mode = Some(app::GameMode::Creative);
         args.open_inventory = true;
+    }
+    // A normal run's GUI Scale is the saved option, and an override would be
+    // written back when the options are next saved: the flag is for scripted
+    // runs, which read and save no options file.
+    if args.gui_scale.is_some() && args.screenshot.is_none() && !args.bench_render && args.benchmark_scene.is_none() {
+        return Err("--gui-scale is for scripted runs (--screenshot, --bench-render, --benchmark)".into());
     }
     if args.open_recipe_book && args.open_block.is_none() {
         args.open_inventory = true;

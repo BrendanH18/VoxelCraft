@@ -483,15 +483,28 @@ mod tests {
     }
 
     #[test]
+    fn bench_lengths_must_be_finite() {
+        for bad in ["NaN", "inf", "-1"] {
+            assert!(crate::parse_args_from(["--bench-seconds", bad].map(String::from)).is_err(), "{bad}");
+            assert!(crate::parse_args_from(["--bench-warmup", bad].map(String::from)).is_err(), "{bad}");
+        }
+        assert_eq!(args(&["--bench-seconds", "30"]).bench_seconds, 30.0);
+    }
+
+    #[test]
     fn gui_scale_overrides_the_options_for_the_session() {
         let mut settings = settings::Settings::default();
         assert_eq!(settings.gui_scale, 0, "scripted runs start from Auto");
-        super::super::apply_session_overrides(&mut settings, &args(&["--gui-scale", "2"]));
+        super::super::apply_session_overrides(&mut settings, &args(&["--screenshot", "x.png", "--gui-scale", "2"]));
         assert_eq!(settings.gui_scale, 2);
-        super::super::apply_session_overrides(&mut settings, &args(&["--gui-scale", "auto"]));
+        super::super::apply_session_overrides(&mut settings, &args(&["--screenshot", "x.png", "--gui-scale", "auto"]));
         assert_eq!(settings.gui_scale, 0);
         super::super::apply_session_overrides(&mut settings, &args(&[]));
         assert_eq!(settings.gui_scale, 0, "no flag keeps the option");
+        assert!(
+            crate::parse_args_from(["--gui-scale", "2"].map(String::from)).is_err(),
+            "a normal run keeps its saved GUI Scale"
+        );
         // At 1280x720 a requested 4 is capped at what fits, as in the options.
         assert_eq!(crate::render::ui::Ui::gui_scale(1280.0, 720.0, 4), 3.0);
         assert!(crate::parse_args_from(["--gui-scale".to_string(), "huge".to_string()]).is_err());

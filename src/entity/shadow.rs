@@ -220,7 +220,8 @@ pub fn push<G: Ground + ?Sized>(ground: &G, c: &Caster, camera: DVec3, out: &mut
         return;
     }
     let r = f64::from(radius);
-    let depth = f64::from((power / 0.5 - 1.0).min(radius));
+    // Never negative: a faint shadow still reaches the block under its feet.
+    let depth = f64::from((power / 0.5 - 1.0).clamp(0.0, radius));
     let (x0, x1) = ((c.pos.x - r).floor() as i32, (c.pos.x + r).floor() as i32);
     let (z0, z1) = ((c.pos.z - r).floor() as i32, (c.pos.z + r).floor() as i32);
     let (y0, y1) = ((c.pos.y - depth).floor() as i32, c.pos.y.floor() as i32);

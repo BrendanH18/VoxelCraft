@@ -16,6 +16,7 @@ software Vulkan (one X server for the whole run, so set DISPLAY first), so the i
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -127,7 +128,7 @@ def icon_args(save, data_dir, png):
 
 def take_icons(binary, out, scene_name, saves):
     """Takes each save's icon once per scene (`saves[].icon`), kept for every variant."""
-    folder = out / ".icons" / scene_name
+    folder = out / ".icons" / safe_name(scene_name)
     for save in saves:
         if "icon" not in save:
             continue
@@ -185,9 +186,17 @@ def select(data, names):
     return picked
 
 
+def safe_name(name):
+    """A capture name is one plain file name: it names a folder that is
+    deleted and recreated, so it must not reach outside the output."""
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name) or ".." in name:
+        raise SystemExit("capture names are letters, digits, '.', '_' and '-': " + repr(name))
+    return name
+
+
 def capture(binary, out, name, args, commit, saves=(), icons=None):
     """One screenshot run in its own data folder; returns the manifest entry."""
-    data_dir = out / ".data" / name
+    data_dir = out / ".data" / safe_name(name)
     if data_dir.exists():
         shutil.rmtree(data_dir)
     if saves:

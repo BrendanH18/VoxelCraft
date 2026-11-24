@@ -324,7 +324,12 @@ pub fn play(block: Block, cue: BlockCue) -> Option<(Sound, f32, f32)> {
         };
         return Some((sound, gain, pitch));
     };
-    let family = t.families[cue as usize]?;
+    // Crops have no `block.crop.place`: Java plants them with
+    // `item.crop.plant`. Their family's place cue borrows a buffer it has.
+    let family = t.families[cue as usize].or(match cue {
+        BlockCue::Place => t.families[BlockCue::Break as usize],
+        _ => None,
+    })?;
     let (volume, pitch) = match cue {
         BlockCue::Break | BlockCue::Place => ((t.volume + 1.0) / 2.0, t.pitch * 0.8),
         BlockCue::Step => (t.volume * 0.15, t.pitch),
