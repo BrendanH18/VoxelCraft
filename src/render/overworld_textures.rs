@@ -3,7 +3,6 @@
 //! moss, dripstone, amethyst, ocean, coral, new woods and flowers.
 
 use super::{Rgba, SIZE, noisy, pixel as base_pixel, rnd, shade};
-use crate::world::block::tex;
 use crate::world::overworld_blocks::t;
 
 const CLEAR: Rgba = [0, 0, 0, 0];
@@ -20,31 +19,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     let r = rnd(layer, x, y, 0);
     let (fx, fy) = (x as f32 + 0.5, y as f32 + 0.5);
     match layer {
-        t::PODZOL_TOP => {
-            let c = if rnd(layer, x / 2, y / 2, 3) < 0.35 { [92, 62, 28] } else { [122, 87, 40] };
-            noisy(layer, x, y, c, 0.16)
-        }
-        t::PODZOL_SIDE => fringe(layer, x, y, [106, 74, 34]),
-        t::COARSE_DIRT => {
-            let pebble = rnd(layer, x / 2, y / 2, 4) < 0.22;
-            if pebble { shade([110, 104, 96], 0.85 + r * 0.25) } else { noisy(layer, x, y, [119, 85, 59], 0.16) }
-        }
-        t::ROOTED_DIRT => {
-            let root = (x + (y / 3) * 5).is_multiple_of(7) && rnd(layer, x, y / 2, 5) < 0.7;
-            if root { shade([170, 130, 92], 0.9 + r * 0.15) } else { noisy(layer, x, y, [144, 104, 76], 0.14) }
-        }
-        t::MYCELIUM_TOP => {
-            let speck = rnd(layer, x, y, 6);
-            let c = if speck < 0.15 {
-                [150, 128, 150]
-            } else if speck > 0.85 {
-                [96, 82, 96]
-            } else {
-                [114, 98, 112]
-            };
-            shade(c, 0.9 + r * 0.15)
-        }
-        t::MYCELIUM_SIDE => fringe(layer, x, y, [114, 98, 112]),
         t::MUD => noisy(layer, x, y, [60, 57, 60], 0.12),
         t::PACKED_MUD => {
             let straw = rnd(layer, x, y / 2, 7) < 0.12;
@@ -231,16 +205,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             }
         }
         l if (t::CORAL..t::CORAL + 30).contains(&l) => coral_pixel(l - t::CORAL, x, y, r),
-        t::MANGROVE_LEAVES => leaves(layer, x, y, r, [70, 128, 36], 0.2),
-        t::CHERRY_LEAVES => {
-            if rnd(layer, x, y, 11) < 0.15 {
-                CLEAR
-            } else {
-                let deep = rnd(layer, x / 2, y / 2, 12) < 0.3;
-                shade(if deep { [220, 132, 180] } else { [240, 180, 210] }, 0.88 + r * 0.16)
-            }
-        }
-        t::PALE_OAK_LEAVES => leaves(layer, x, y, r, [140, 150, 134], 0.2),
         t::DARK_OAK_SAPLING => sapling(x, y, r, [44, 92, 24], [70, 50, 30]),
         t::CHERRY_SAPLING => sapling(x, y, r, [238, 170, 206], [70, 40, 46]),
         t::PALE_OAK_SAPLING => sapling(x, y, r, [140, 150, 134], [200, 196, 188]),
@@ -255,19 +219,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
                 CLEAR
             }
         }
-        t::PALE_OAK_LOG_SIDE => {
-            let stripe = (x + (rnd(layer, 0, y / 4, 3) * 2.0) as usize).is_multiple_of(4);
-            shade([84, 76, 72], if stripe { 0.75 } else { 0.9 + r * 0.15 })
-        }
-        t::PALE_OAK_LOG_TOP => {
-            let d = ((fx - 8.0).powi(2) + (fy - 8.0).powi(2)).sqrt();
-            if d > 6.6 {
-                shade([84, 76, 72], 0.9 + r * 0.1)
-            } else {
-                shade(if (d * 1.1) as i32 % 2 == 0 { [232, 226, 220] } else { [210, 200, 196] }, 0.95 + r * 0.06)
-            }
-        }
-        t::PALE_OAK_PLANKS => planks(layer, x, y, [228, 218, 214]),
         t::BAMBOO_PLANKS => planks(layer, x, y, [196, 176, 82]),
         t::MANGROVE_ROOTS_SIDE | t::MANGROVE_ROOTS_TOP => {
             let root = (x + y).is_multiple_of(5) || (x + 16 - y).is_multiple_of(6);
@@ -381,13 +332,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     }
 }
 
-/// Dirt with a coloured layer hanging over its top edge.
-fn fringe(layer: u16, x: usize, y: usize, top: [u8; 3]) -> Rgba {
-    let edge = 3 + (rnd(layer, x, 0, 7) * 2.2) as usize;
-    // The dirt below matches the dirt block (v0.18 Track 3).
-    if y < edge { noisy(layer, x, y, top, 0.14) } else { base_pixel(tex::DIRT, x, y) }
-}
-
 fn mossy(layer: u16, x: usize, y: usize, c: [u8; 3]) -> Rgba {
     let tuft = rnd(layer, x / 2, y / 2, 3);
     shade(
@@ -416,10 +360,6 @@ fn planks(layer: u16, x: usize, y: usize, colour: [u8; 3]) -> Rgba {
     let board = y / 4;
     let seam = y % 4 == 3 || x == (board * 7 + 3) % SIZE;
     shade(colour, if seam { 0.68 } else { 0.92 + rnd(layer, x, board, 2) * 0.12 })
-}
-
-fn leaves(layer: u16, x: usize, y: usize, r: f32, c: [u8; 3], holes: f32) -> Rgba {
-    if rnd(layer, x, y, 11) < holes { CLEAR } else { shade(c, 0.7 + r * 0.45) }
 }
 
 fn sapling(x: usize, y: usize, r: f32, leaf: [u8; 3], trunk: [u8; 3]) -> Rgba {

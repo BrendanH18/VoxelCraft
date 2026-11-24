@@ -3709,6 +3709,324 @@
    ]
   },
   {
+   "name": "material-families",
+   "group": "materials",
+   "description": "Thirty-two more natural, polished and stripped blocks (sandstones, dirts, clay, bedrock, polished stones, cobbled deepslate, three leaves, pale oak and eight stripped logs) as 2 x 2 x 2 cubes in four rising rows, from above at noon: tops and sides of the second-round materials",
+   "matrix": {
+    "size": [
+     [
+      1920,
+      1080
+     ],
+     [
+      1280,
+      720
+     ]
+    ],
+    "gui_scale": [
+     "auto"
+    ]
+   },
+   "pose": [
+    0.5,
+    162,
+    6,
+    90,
+    -32
+   ],
+   "hud": false,
+   "fill": [
+    [
+     -12,
+     150,
+     18,
+     -11,
+     151,
+     19,
+     "sandstone"
+    ],
+    [
+     -9,
+     150,
+     18,
+     -8,
+     151,
+     19,
+     "cut sandstone"
+    ],
+    [
+     -6,
+     150,
+     18,
+     -5,
+     151,
+     19,
+     "red sandstone"
+    ],
+    [
+     -3,
+     150,
+     18,
+     -2,
+     151,
+     19,
+     "cut red sandstone"
+    ],
+    [
+     0,
+     150,
+     18,
+     1,
+     151,
+     19,
+     "coarse dirt"
+    ],
+    [
+     3,
+     150,
+     18,
+     4,
+     151,
+     19,
+     "podzol"
+    ],
+    [
+     6,
+     150,
+     18,
+     7,
+     151,
+     19,
+     "mycelium"
+    ],
+    [
+     9,
+     150,
+     18,
+     10,
+     151,
+     19,
+     "rooted dirt"
+    ],
+    [
+     -12,
+     151,
+     21,
+     -11,
+     152,
+     22,
+     "clay"
+    ],
+    [
+     -9,
+     151,
+     21,
+     -8,
+     152,
+     22,
+     "bedrock"
+    ],
+    [
+     -6,
+     151,
+     21,
+     -5,
+     152,
+     22,
+     "smooth sandstone"
+    ],
+    [
+     -3,
+     151,
+     21,
+     -2,
+     152,
+     22,
+     "stone"
+    ],
+    [
+     0,
+     151,
+     21,
+     1,
+     152,
+     22,
+     "polished andesite"
+    ],
+    [
+     3,
+     151,
+     21,
+     4,
+     152,
+     22,
+     "polished diorite"
+    ],
+    [
+     6,
+     151,
+     21,
+     7,
+     152,
+     22,
+     "polished granite"
+    ],
+    [
+     9,
+     151,
+     21,
+     10,
+     152,
+     22,
+     "polished tuff"
+    ],
+    [
+     -12,
+     152,
+     24,
+     -11,
+     153,
+     25,
+     "polished deepslate"
+    ],
+    [
+     -9,
+     152,
+     24,
+     -8,
+     153,
+     25,
+     "cobbled deepslate"
+    ],
+    [
+     -6,
+     152,
+     24,
+     -5,
+     153,
+     25,
+     "pale oak leaves"
+    ],
+    [
+     -3,
+     152,
+     24,
+     -2,
+     153,
+     25,
+     "mangrove leaves"
+    ],
+    [
+     0,
+     152,
+     24,
+     1,
+     153,
+     25,
+     "cherry leaves"
+    ],
+    [
+     3,
+     152,
+     24,
+     4,
+     153,
+     25,
+     "pale oak log"
+    ],
+    [
+     6,
+     152,
+     24,
+     7,
+     153,
+     25,
+     "pale oak planks"
+    ],
+    [
+     9,
+     152,
+     24,
+     10,
+     153,
+     25,
+     "stripped pale oak log"
+    ],
+    [
+     -12,
+     153,
+     27,
+     -11,
+     154,
+     28,
+     "stripped oak log"
+    ],
+    [
+     -9,
+     153,
+     27,
+     -8,
+     154,
+     28,
+     "stripped spruce log"
+    ],
+    [
+     -6,
+     153,
+     27,
+     -5,
+     154,
+     28,
+     "stripped birch log"
+    ],
+    [
+     -3,
+     153,
+     27,
+     -2,
+     154,
+     28,
+     "stripped jungle log"
+    ],
+    [
+     0,
+     153,
+     27,
+     1,
+     154,
+     28,
+     "stripped acacia log"
+    ],
+    [
+     3,
+     153,
+     27,
+     4,
+     154,
+     28,
+     "stripped dark oak log"
+    ],
+    [
+     6,
+     153,
+     27,
+     7,
+     154,
+     28,
+     "stripped mangrove log"
+    ],
+    [
+     9,
+     153,
+     27,
+     10,
+     154,
+     28,
+     "stripped cherry log"
+    ]
+   ]
+  },
+  {
    "name": "mobs-uneven-ground",
    "group": "mobs",
    "description": "Nine mobs and a fan of dropped items on grass with one- and two-block bumps, a moment after spawning, at sunrise (time 0.0, held: below the undead sunburn threshold, as in the entities benchmark): silhouettes, faces and ground contact",

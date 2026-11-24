@@ -51,41 +51,6 @@ fn ring(x: usize, y: usize) -> usize {
     dx.min(dy)
 }
 
-/// A smooth, bevelled slab of stone: lighter top-left rim, darker bottom-right.
-fn polished(layer: u16, x: usize, y: usize, c: [u8; 3]) -> Rgba {
-    let r = rnd(layer, x / 2, y / 2, 4);
-    let f = if x == 0 || y == 0 {
-        1.08
-    } else if x == 15 || y == 15 {
-        0.78
-    } else {
-        0.94 + r * 0.08
-    };
-    shade(c, f)
-}
-
-/// Sandstone-like side: soft layered bands.
-fn layered(layer: u16, x: usize, y: usize, c: [u8; 3]) -> Rgba {
-    let band = matches!(y, 3 | 4 | 10);
-    shade(c, if band { 0.88 } else { 0.96 + rnd(layer, x, y, 0) * 0.06 })
-}
-
-/// Cut sandstone: smooth face with two cut lines and a rim.
-fn cut(layer: u16, x: usize, y: usize, c: [u8; 3]) -> Rgba {
-    let line = y == 1 || y == 14;
-    let rim = y == 0 || y == 15;
-    shade(
-        c,
-        if rim {
-            0.84
-        } else if line {
-            0.9
-        } else {
-            0.97 + rnd(layer, x, y, 0) * 0.05
-        },
-    )
-}
-
 /// Chiseled sandstone: bands top and bottom around a carved diamond.
 fn chiseled_sand(layer: u16, x: usize, y: usize, c: [u8; 3]) -> Rgba {
     if !(3..=12).contains(&y) {
@@ -138,7 +103,6 @@ fn gem(layer: u16, x: usize, y: usize, c: [u8; 3]) -> Rgba {
 pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     let r = rnd(layer, x, y, 0);
     match layer {
-        t::POLISHED_TUFF => polished(layer, x, y, [118, 120, 112]),
         t::TUFF_BRICKS => bricks(layer, x, y, 8, 4, TUFF, 0.62),
         t::CHISELED_TUFF => {
             let band = !(3..=12).contains(&y);
@@ -202,12 +166,7 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
         t::QUARTZ_PILLAR_SIDE => pillar(layer, x, y, true),
         t::QUARTZ_PILLAR_SIDE_TURNED => pillar(t::QUARTZ_PILLAR_SIDE, y, x, true),
         t::QUARTZ_PILLAR_TOP => shade(QUARTZ, if matches!(ring(x, y), 0 | 4) { 0.84 } else { 0.97 + r * 0.03 }),
-        t::RED_SANDSTONE => layered(layer, x, y, RED_SANDSTONE),
-        t::RED_SANDSTONE_TOP => noisy(layer, x, y, [192, 104, 34], 0.04),
-        t::RED_SANDSTONE_BOTTOM => noisy(layer, x, y, [180, 95, 28], 0.08),
-        t::CUT_RED_SANDSTONE => cut(layer, x, y, RED_SANDSTONE),
         t::CHISELED_RED_SANDSTONE => chiseled_sand(layer, x, y, RED_SANDSTONE),
-        t::CUT_SANDSTONE => cut(layer, x, y, SANDSTONE),
         t::CHISELED_SANDSTONE => chiseled_sand(layer, x, y, SANDSTONE),
         t::RED_NETHER_BRICKS => bricks(layer, x, y, 8, 4, RED_NETHER_BRICK, 0.45),
         t::CHISELED_NETHER_BRICKS => {

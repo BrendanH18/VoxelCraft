@@ -133,20 +133,29 @@ Luminance below is relative luminance (WCAG) of sRGB values from captures.
 | Scrolling list backing (track 1) | black at 112/255 across the screen's width (Java's `menu_list_background`), drawn with `render::ui::shade` so it darkens as Java's sRGB blend does |
 
 **Block materials** (**tunable (track 3)**, checked per tile and in the
-`block-palette`, `grass-hillside`, `forest` and `stone-ore-wall` scenes).
+`block-palette`, `material-families`, `grass-hillside`, `forest`,
+`cave-ceiling` and `stone-ore-wall` scenes).
 "Within ±N %" compares each texel's relative luminance with the tile's mean.
 The `material` texture tests (`src/render/material_textures.rs`) check
 every rule below:
 
 - Natural stone: mean relative luminance 0.17–0.24. 90 % of texels lie
   within ±25 % of the tile mean. Ores keep the stone's background exactly,
-  with their mineral clusters the only change. (Stone measures 0.207.)
+  with their mineral clusters the only change. (Stone measures 0.204.)
 - Grass and leaves: at the plains tint, grass tops have HSV saturation of
   at most 0.55 and leaves are 10–25 % darker than grass tops. Biome tints
   stay distinct (the review found too many strong greens). (Oak leaves measure
   23 % darker than grass.) Leaves cut out 8–15 % of their texels.
-- Dirt, sand and gravel: lower texel contrast than stone (90 % within
-  ±18 % of the mean), so walls of stone read rougher than the ground.
+- Dirt and sand: lower texel contrast than stone (90 % within ±18 % of the
+  mean), so walls of stone read rougher than the ground. Gravel's pebbles
+  need their dark gaps, so it has its own band: 75 % within ±25 %
+  (changed in track 3's second round; ±18 % left it flat).
+- No pattern at a distance: in natural stone, ground, grass and sandstone
+  tops, every 4 × 4 block's mean luminance is within 8 % of the tile's.
+  A tile with a light half and a dark half, or accents lined up along a
+  row, repeats into bands and diagonals across a wall (the first round's
+  cave ceiling showed it). The generator evens each tile out after drawing
+  it (`balance`).
 - Every tile keeps its family recognisable from 8 blocks away at 1080p:
   the 2 × 2 mip level must still separate stone, cobblestone, andesite,
   dirt and gravel by mean colour (no two within 4 % luminance and the same
@@ -163,8 +172,8 @@ of the Nether and End):
 - No frame, inset, bevel or darker border at the tile edge. The review
   found plain stone reading as repeating inset panels. A 3 × 3 repeat of
   the tile should show no grid. Clusters are placed on a stratified grid
-  (each in its own 4 × 4 cell), so they never clump into a repeating
-  glyph.
+  (each in its own 4 × 4 cell, taken in a shuffled order), so they never
+  clump into a repeating glyph or line up from tile to tile.
 - Tileable in both directions. Logs tile vertically. Leaves keep their
   cut-out holes (8–15 % transparent texels).
 
@@ -308,4 +317,4 @@ as it was until the title track's panorama lands.
   The common natural materials, ores and woods are in
   [`material_textures.rs`](../src/render/material_textures.rs) (v0.18 track 3):
   palettes, soft base patches, stratified clusters lit from the top left,
-  and a pass that breaks straight runs.
+  a pass that breaks straight runs and one that evens out 4 × 4 blocks.

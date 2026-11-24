@@ -7,7 +7,7 @@
 //! 4 x 4 cell) so they never clump, light from the top left, and no run of
 //! one shade longer than four texels except deliberate grain and strata.
 //! Every tile wraps in both directions. Tiles are built once, on first use,
-//! and kept (about 70 KiB).
+//! and kept (about 105 KiB).
 //!
 //! Stone itself is the authored asset `assets/textures/stone.png`; the ores
 //! keep its texels exactly and add mineral clusters.
@@ -20,6 +20,8 @@ use super::Rgba;
 use crate::world::block::tex;
 use crate::world::noise::hash3;
 use crate::world::overworld_blocks::t;
+use crate::world::stone_blocks::t as st;
+use crate::world::wood::tex as wt;
 
 const N: usize = 16;
 /// Palette indices; [`HOLE`] is a transparent texel.
@@ -50,11 +52,21 @@ fn field(seed: u32, cells: usize, x: usize, y: usize, v: u32) -> u32 {
 
 const DIRS: [(usize, usize); 4] = [(1, 0), (0, 1), (N - 1, 0), (0, N - 1)];
 
+/// The sixteen 4 x 4 cells of the tile in a shuffled order for stream `v`.
+/// Clusters take them in turn: spread over the tile like a stratified grid,
+/// but in no arithmetic order, so repeats of the tile don't line them up.
+fn cell_order(seed: u32, v: u32) -> [usize; 16] {
+    let mut cells: [usize; 16] = std::array::from_fn(|i| i);
+    for i in (1..16).rev() {
+        cells.swap(i, hu(seed, i, 0, v + 200) as usize % (i + 1));
+    }
+    cells
+}
+
 /// The texels of random-walk cluster `k`, in paint order (2 to `max` long).
 fn walk(seed: u32, k: usize, min: usize, max: usize, v: u32) -> Vec<(usize, usize)> {
     let h = hu(seed, k, 0, v);
-    // Stratified: cluster k starts in its own 4 x 4 cell (7 is coprime to 16).
-    let cell = (k * 7 + (hu(seed, 0, 0, v + 100) & 15) as usize) % 16;
+    let cell = cell_order(seed, v)[k % 16];
     let (mut x, mut y) = ((cell % 4) * 4 + h as usize % 4, (cell / 4) * 4 + (h >> 2) as usize % 4);
     let n = min + (h >> 16) as usize % (max - min + 1);
     let mut cells = vec![(x, y)];
@@ -106,6 +118,53 @@ fn break_runs(g: &mut Grid, lo: u8, hi: u8, limit: usize) {
         }
         if !changed {
             break;
+        }
+    }
+}
+
+/// Evens a tile out for distant walls: nudges base shades (`lo..=hi`) one
+/// step at a time until every 4 x 4 block's brightness (squared bytes,
+/// close to luminance) is within 4 % of the tile's mean, so repeats of the
+/// tile show no larger pattern.
+fn balance(g: &mut Grid, palette: &[[u8; 3]], lo: u8, hi: u8, seed: u32) {
+    // Squared bytes: closer to luminance than the bytes themselves.
+    let bright =
+        |c: u8| if c == HOLE { 0 } else { palette[c as usize].iter().map(|&v| (v as i64).pow(2)).sum::<i64>() };
+    let mut stuck = [false; 16];
+    for step in 0..512 {
+        let mut sums = [0i64; 16];
+        for (y, row) in g.iter().enumerate() {
+            for (x, &c) in row.iter().enumerate() {
+                sums[(y / 4) * 4 + x / 4] += bright(c);
+            }
+        }
+        let mean = sums.iter().sum::<i64>() / 16;
+        let Some((block, &sum)) =
+            sums.iter().enumerate().filter(|&(b, _)| !stuck[b]).max_by_key(|&(_, s)| (s - mean).abs())
+        else {
+            break;
+        };
+        if (sum - mean).abs() * 1000 <= mean * 40 {
+            break;
+        }
+        let down = sum > mean;
+        let start = hu(seed, step, 0, 41) as usize % 16;
+        // Visit the block's texels from `start` in steps of 5 (coprime to 16).
+        let found = (0..16)
+            .map(|i| (start + i * 5) % 16)
+            .map(|i| ((block % 4) * 4 + i % 4, (block / 4) * 4 + i / 4))
+            .find(|&(x, y)| {
+                let c = g[y][x];
+                (lo..=hi).contains(&c) && if down { c > lo } else { c < hi }
+            });
+        let Some((x, y)) = found else {
+            stuck[block] = true;
+            continue;
+        };
+        if down {
+            g[y][x] -= 1;
+        } else {
+            g[y][x] += 1;
         }
     }
 }
@@ -183,6 +242,8 @@ impl Recipe {
         let (n, size, light, shadow) = self.bumps;
         bumps(&mut g, self.seed, n, size, light, shadow, 7);
         // Accents included: clusters that meet mustn't line up into a streak.
+        break_runs(&mut g, 1, 5, 4);
+        balance(&mut g, self.palette, 2, 4, self.seed);
         break_runs(&mut g, 1, 5, 4);
         g
     }
@@ -360,12 +421,12 @@ fn ore(background: &Tile, seed: u32, i: usize) -> Tile {
 
 /// Rounded stones on a one-texel joint, lit from the top left: the joint is
 /// on each stone's bottom and right edge, the top and left edges are light.
-fn stones(seed: u32, n: usize, joint: u8) -> Grid {
+fn stones(seed: u32, n: usize, jitter: u32, joint: u8) -> (Grid, [[usize; N]; N]) {
     let pts: Vec<(usize, usize)> = (0..n * n)
         .map(|c| {
             let (i, j) = (c / n, c % n);
             let h = hu(seed, i, j, 15);
-            ((i * N / n + h as usize % 5) % N, (j * N / n + (h >> 4) as usize % 5) % N)
+            ((i * N / n + (h % jitter) as usize) % N, (j * N / n + ((h >> 4) % jitter) as usize) % N)
         })
         .collect();
     let mut ids = [[0usize; N]; N];
@@ -403,29 +464,35 @@ fn stones(seed: u32, n: usize, joint: u8) -> Grid {
             g[y][x] = c;
         }
     }
-    g
+    (g, ids)
 }
 
 const COBBLE: Palette =
     &[[70, 70, 73], [92, 92, 95], [110, 110, 113], [122, 122, 125], [134, 134, 137], [150, 150, 152]];
 const GRAVEL: Palette = &[
-    [100, 94, 92],
-    [121, 115, 112],
-    [126, 120, 117],
-    [132, 126, 122],
-    [138, 132, 127],
-    [145, 138, 133],
-    [130, 114, 102],
-    [140, 124, 111],
+    [100, 95, 92],
+    [112, 107, 103],
+    [124, 118, 114],
+    [134, 128, 123],
+    [144, 137, 131],
+    [160, 153, 146],
+    [124, 108, 96],
+    [142, 124, 108],
+    [110, 96, 86],
 ];
 
+/// Gravel: twenty-five small pebbles with dark gaps, lit at their top left;
+/// one in five is warm brown.
 fn gravel_grid() -> Grid {
-    let mut g = stones(71, 5, 1);
+    let (mut g, ids) = stones(71, 5, 6, 0);
     for (y, row) in g.iter_mut().enumerate() {
         for (x, c) in row.iter_mut().enumerate() {
-            // Some pebbles are warm brown.
-            if *c >= 3 && hu(71, x / 2, y / 2, 18).is_multiple_of(5) {
-                *c = if *c < 4 { 6 } else { 7 };
+            if hu(71, ids[y][x], 1, 18).is_multiple_of(5) && *c >= 1 {
+                *c = match *c {
+                    1 | 2 => 8,
+                    3 | 4 => 6,
+                    _ => 7,
+                };
             }
         }
     }
@@ -524,7 +591,7 @@ fn birch_grid() -> Grid {
     break_runs(&mut g, 2, 4, 4);
     for k in 0..10 {
         let h = hu(SEED, k, 0, 28);
-        let cell = (k * 7 + SEED as usize) % 16;
+        let cell = cell_order(SEED, 28)[k];
         let (x, y) = ((cell % 4) * 4 + h as usize % 4, (cell / 4) * 4 + (h >> 2) as usize % 4);
         let n = 2 + (h >> 16) as usize % 3;
         for s in 0..n {
@@ -598,6 +665,231 @@ fn planks_grid(seed: u32) -> Grid {
     g
 }
 
+// v0.18 Track 3, second round: the rest of the ground, stone and wood families.
+
+const SANDSTONE_TOP: Recipe = Recipe {
+    jitter: 64,
+    thresholds: [110, 150],
+    pits: (4, (1, 2), 1, None),
+    bumps: (5, (1, 2), 5, None),
+    ..natural(
+        51,
+        &[[190, 176, 128], [204, 190, 141], [214, 201, 152], [220, 208, 160], [226, 214, 168], [236, 226, 184]],
+    )
+};
+const RED_SANDSTONE_TOP: Recipe = Recipe {
+    seed: 52,
+    palette: &[[160, 80, 24], [174, 90, 28], [184, 98, 32], [192, 104, 34], [200, 110, 38], [212, 124, 48]],
+    ..SANDSTONE_TOP
+};
+/// Red sandstone's bottom: the top's stone, rougher.
+const RED_SANDSTONE_BOTTOM: Recipe =
+    Recipe { seed: 53, pits: (8, (1, 3), 1, Some(0)), bumps: (4, (1, 2), 5, Some(1)), ..RED_SANDSTONE_TOP };
+const SANDSTONE_SIDE: Palette =
+    &[[172, 156, 108], [188, 172, 122], [204, 189, 139], [212, 198, 148], [220, 207, 157], [232, 220, 172]];
+const RED_SANDSTONE_SIDE: Palette =
+    &[[130, 64, 16], [150, 76, 20], [170, 88, 26], [180, 96, 29], [190, 103, 33], [206, 118, 42]];
+/// Each row's shade in a sandstone side, top to bottom: a light crust, then
+/// layers split by two dark seams (1). Deliberate strata run across.
+const SANDSTONE_ROWS: [u8; N] = [4, 4, 3, 1, 3, 3, 2, 3, 3, 4, 3, 3, 1, 2, 3, 3];
+
+/// A sandstone side: horizontal layers whose seams break now and then, with
+/// grains scattered over them.
+fn strata_grid(seed: u32) -> Grid {
+    let mut g = [[0; N]; N];
+    for (y, row) in g.iter_mut().enumerate() {
+        for (x, c) in row.iter_mut().enumerate() {
+            let (base, j) = (SANDSTONE_ROWS[y], hu(seed, x, y, 2) % 8);
+            *c = match (base, j) {
+                (1, 0) => 2,
+                (1, _) => 1,
+                (b, 0) if b > 2 => b - 1,
+                (b, 1) if b < 4 => b + 1,
+                (b, _) => b,
+            };
+        }
+    }
+    bumps(&mut g, seed, 6, (1, 2), 5, None, 7);
+    pits(&mut g, seed, 3, (1, 2), 0, None, 9);
+    g
+}
+
+/// Cut sandstone: one smooth slab split by a groove, lit at the top left of
+/// each half and shaded at the bottom right.
+fn cut_grid(seed: u32) -> Grid {
+    let mut g = base_grid(seed, 4, 24, [100, 156], false);
+    for (y, row) in g.iter_mut().enumerate() {
+        for (x, c) in row.iter_mut().enumerate() {
+            if y == N - 1 || y == 7 || x == N - 1 {
+                *c = 1;
+            } else if y == 0 || y == 8 || x == 0 {
+                *c = 5;
+            }
+        }
+    }
+    g
+}
+
+const COARSE_DIRT: Palette = &[
+    [82, 57, 39],
+    [98, 69, 47],
+    [110, 78, 54],
+    [118, 84, 58],
+    [126, 90, 62],
+    [140, 102, 72],
+    [112, 106, 98],
+    [146, 140, 130],
+];
+const PODZOL: Recipe = Recipe {
+    jitter: 72,
+    thresholds: [110, 150],
+    pits: (6, (1, 2), 1, None),
+    bumps: (8, (2, 3), 5, None),
+    ..natural(62, &[[70, 46, 22], [88, 60, 28], [104, 72, 34], [114, 80, 38], [124, 88, 42], [146, 106, 52]])
+};
+const MYCELIUM: Recipe = Recipe {
+    jitter: 64,
+    thresholds: [110, 150],
+    pits: (5, (1, 2), 1, None),
+    bumps: (8, (1, 2), 5, None),
+    ..natural(63, &[[84, 72, 84], [100, 86, 100], [112, 97, 110], [120, 104, 118], [128, 111, 126], [150, 134, 150]])
+};
+const ROOTED_DIRT: Palette =
+    &[[98, 70, 48], [118, 84, 58], [134, 96, 68], [142, 102, 72], [150, 108, 76], [168, 124, 88], [184, 146, 104]];
+const CLAY: Recipe = Recipe {
+    jitter: 40,
+    thresholds: [110, 150],
+    pits: (4, (1, 2), 1, None),
+    bumps: (4, (1, 2), 5, None),
+    ..natural(
+        65,
+        &[[132, 138, 152], [146, 152, 166], [156, 162, 176], [162, 168, 182], [168, 174, 188], [180, 186, 198]],
+    )
+};
+/// Bedrock is meant to look broken and hard: the strongest contrast here.
+const BEDROCK: Recipe = Recipe {
+    jitter: 96,
+    thresholds: [100, 156],
+    pits: (12, (2, 4), 1, Some(0)),
+    bumps: (9, (1, 3), 5, Some(1)),
+    ..natural(66, &[[24, 24, 26], [48, 48, 50], [76, 76, 78], [92, 92, 94], [110, 110, 112], [140, 140, 142]])
+};
+
+/// Coarse dirt: darker dirt with grey pebbles, lit at their corner.
+fn coarse_dirt_grid() -> Grid {
+    const SEED: u32 = 61;
+    let mut g = Recipe { seed: SEED, palette: COARSE_DIRT, ..DIRT }.grid();
+    for k in 0..7 {
+        let cells = walk(SEED, k, 2, 3, 30);
+        for &(x, y) in &cells {
+            let (sx, sy) = ((x + 1) % N, (y + 1) % N);
+            if !cells.contains(&(sx, sy)) {
+                g[sy][sx] = 0;
+            }
+        }
+        for &(x, y) in &cells {
+            g[y][x] = 6;
+        }
+        let (x, y) = cells[0];
+        g[y][x] = 7;
+    }
+    balance(&mut g, COARSE_DIRT, 2, 4, SEED);
+    g
+}
+
+/// Rooted dirt: light dirt with pale roots wandering down, shaded on their
+/// right.
+fn rooted_dirt_grid() -> Grid {
+    const SEED: u32 = 64;
+    let mut g = Recipe { seed: SEED, palette: ROOTED_DIRT, ..DIRT }.grid();
+    for k in 0..5 {
+        let h = hu(SEED, k, 0, 31);
+        let (mut x, mut y) = ((cell_order(SEED, 31)[k] % 4) * 4 + h as usize % 4, (h >> 8) as usize % N);
+        for s in 0..4 + (h >> 16) as usize % 4 {
+            g[y][x] = 6;
+            let right = (x + 1) % N;
+            if g[y][right] != 6 {
+                g[y][right] = 1;
+            }
+            y = (y + 1) % N;
+            if hu(SEED, k, s, 32).is_multiple_of(3) {
+                x = if hu(SEED, k, s, 33) & 1 == 1 { (x + 1) % N } else { (x + N - 1) % N };
+            }
+        }
+    }
+    g
+}
+
+/// Polished stone: a smooth face with a one-texel bevel, lit along the top
+/// and left and shaded along the bottom and right, in tiles `tile` wide.
+fn polished_grid(seed: u32, tile: usize) -> Grid {
+    let mut g = base_grid(seed, 4, 24, [96, 160], false);
+    for (y, row) in g.iter_mut().enumerate() {
+        for (x, c) in row.iter_mut().enumerate() {
+            if x % tile == tile - 1 || y % tile == tile - 1 {
+                *c = 1;
+            } else if x % tile == 0 || y % tile == 0 {
+                *c = 5;
+            }
+        }
+    }
+    g
+}
+
+/// Polished stone shades: bevel shade, body and bevel light around `c`.
+fn polished_palette(c: [u8; 3]) -> [[u8; 3]; 6] {
+    ramp(c, [700, 840, 960, 1000, 1040, 1130])
+}
+
+const COBBLED_DEEPSLATE: Palette =
+    &[[30, 30, 34], [46, 46, 51], [58, 58, 64], [66, 66, 72], [76, 76, 82], [92, 92, 100]];
+const PALE_OAK_LEAVES: Palette =
+    &[[96, 104, 92], [116, 124, 112], [132, 140, 128], [140, 148, 136], [150, 158, 146], [170, 176, 166]];
+const MANGROVE_LEAVES: Palette =
+    &[[44, 84, 26], [56, 102, 32], [68, 118, 40], [76, 128, 44], [86, 140, 50], [102, 156, 62]];
+const CHERRY_LEAVES: Palette =
+    &[[170, 92, 130], [196, 118, 156], [214, 146, 180], [224, 160, 192], [234, 176, 206], [246, 204, 224]];
+
+/// Stripped wood: smooth bark-less wood with long grain lines running down
+/// (deliberate grain: they may run longer than four texels).
+fn stripped_grid(seed: u32) -> Grid {
+    let mut g = [[0; N]; N];
+    for x in 0..N {
+        let streak = hu(seed, x, 0, 24) % 3;
+        for (y, row) in g.iter_mut().enumerate() {
+            let f = streak * 48 + field(seed, 4, x, y, 1) / 4 + hu(seed, x, y, 2) % 32;
+            row[x] = 2 + [70, 120].iter().filter(|&&t| f >= t).count() as u8;
+        }
+    }
+    for k in 0..5 {
+        let h = hu(seed, k, 0, 25);
+        let (mut x, mut y) = ((cell_order(seed, 25)[k] % 4) * 4 + h as usize % 4, (h >> 8) as usize % N);
+        for s in 0..4 + (h >> 16) as usize % 5 {
+            g[y][x] = 1;
+            y = (y + 1) % N;
+            if hu(seed, k, s, 26) & 7 == 0 {
+                x = (x + 1) % N;
+            }
+        }
+    }
+    break_runs(&mut g, 2, 4, 6);
+    g
+}
+
+/// Stripped log colours of `wood::Kind` 0..9 (oak to pale oak; bamboo keeps
+/// its own drawing in `wood_textures`).
+const STRIPPED: [[u8; 3]; 9] = [
+    [177, 144, 86],
+    [115, 89, 52],
+    [196, 176, 118],
+    [171, 132, 84],
+    [174, 92, 59],
+    [72, 56, 36],
+    [120, 54, 48],
+    [215, 145, 148],
+    [240, 232, 228],
+];
+
 fn paint(g: &Grid, palette: &[[u8; 3]]) -> Tile {
     let mut out = [[0; 4]; N * N];
     for (y, row) in g.iter().enumerate() {
@@ -624,7 +916,7 @@ struct Wood {
     dark: [u8; 3],
 }
 
-const WOODS: [Wood; 8] = [
+const WOODS: [Wood; 9] = [
     Wood {
         side: tex::LOG_SIDE,
         top: tex::LOG_TOP,
@@ -697,6 +989,15 @@ const WOODS: [Wood; 8] = [
         light: [214, 170, 164],
         dark: [186, 140, 138],
     },
+    Wood {
+        side: t::PALE_OAK_LOG_SIDE,
+        top: t::PALE_OAK_LOG_TOP,
+        planks: t::PALE_OAK_PLANKS,
+        bark: [84, 76, 72],
+        plank: [228, 218, 214],
+        light: [232, 226, 220],
+        dark: [210, 200, 196],
+    },
 ];
 
 /// Jungle bark's moss, laid over a few of its bark clusters.
@@ -733,8 +1034,41 @@ fn layers() -> Vec<u16> {
     for w in &WOODS {
         out.extend([w.side, w.top, w.planks]);
     }
+    out.extend(ROUND_TWO);
+    for i in 0..STRIPPED.len() as u16 {
+        out.extend([wt::STRIPPED_SIDE + i, wt::STRIPPED_TOP + i]);
+    }
     out
 }
+
+/// The second round's single layers, in `layers` order.
+#[cfg(test)]
+const ROUND_TWO: [u16; 24] = [
+    tex::SANDSTONE_SIDE,
+    tex::SANDSTONE_TOP,
+    st::RED_SANDSTONE,
+    st::RED_SANDSTONE_TOP,
+    st::RED_SANDSTONE_BOTTOM,
+    st::CUT_SANDSTONE,
+    st::CUT_RED_SANDSTONE,
+    t::COARSE_DIRT,
+    t::PODZOL_TOP,
+    t::PODZOL_SIDE,
+    t::MYCELIUM_TOP,
+    t::MYCELIUM_SIDE,
+    t::ROOTED_DIRT,
+    tex::CLAY,
+    tex::BEDROCK,
+    tex::POLISHED_ANDESITE,
+    tex::POLISHED_DIORITE,
+    tex::POLISHED_GRANITE,
+    tex::POLISHED_DEEPSLATE,
+    st::POLISHED_TUFF,
+    tex::COBBLED_DEEPSLATE,
+    t::PALE_OAK_LEAVES,
+    t::MANGROVE_LEAVES,
+    t::CHERRY_LEAVES,
+];
 
 /// Ores in [`ORES`] order.
 const STONE_ORES: [u16; 8] = [
@@ -758,6 +1092,11 @@ const DEEPSLATE_ORES: [u16; 8] = [
     tex::DEEPSLATE_EMERALD_ORE,
 ];
 
+/// Dirt's palette, then a grass, snow, podzol or mycelium lip's.
+fn side_palette(lip: Palette) -> Vec<[u8; 3]> {
+    DIRT.palette.iter().chain(lip).copied().collect()
+}
+
 fn build() -> FxHashMap<u16, Tile> {
     let mut tiles = FxHashMap::default();
     let mut put = |layer: u16, tile: Tile| {
@@ -777,9 +1116,8 @@ fn build() -> FxHashMap<u16, Tile> {
     ] {
         put(layer, paint(&r.grid(), r.palette));
     }
-    put(tex::COBBLESTONE, paint(&stones(61, 3, 0), COBBLE));
+    put(tex::COBBLESTONE, paint(&stones(61, 3, 5, 0).0, COBBLE));
     put(tex::GRAVEL, paint(&gravel_grid(), GRAVEL));
-    let side_palette = |lip: Palette| -> Vec<[u8; 3]> { DIRT.palette.iter().chain(lip).copied().collect() };
     put(tex::GRASS_SIDE, paint(&side_grid(&GRASS.grid(), 42), &side_palette(GRASS.palette)));
     let snow = Recipe { seed: 43, palette: SNOW, ..GRASS };
     put(tex::SNOWY_GRASS_SIDE, paint(&side_grid(&snow.grid(), 43), &side_palette(SNOW)));
@@ -823,6 +1161,48 @@ fn build() -> FxHashMap<u16, Tile> {
         let palette = [top[0], top[1], pith, top[2], top[3]];
         put(w.top, paint(&log_top_grid(150 + i), &palette));
         put(w.planks, paint(&planks_grid(160 + i), &ramp(w.plank, [620, 800, 900, 1000, 1070])));
+    }
+    // Second round.
+    put(tex::SANDSTONE_SIDE, paint(&strata_grid(54), SANDSTONE_SIDE));
+    put(tex::SANDSTONE_TOP, paint(&SANDSTONE_TOP.grid(), SANDSTONE_TOP.palette));
+    put(st::RED_SANDSTONE, paint(&strata_grid(55), RED_SANDSTONE_SIDE));
+    put(st::RED_SANDSTONE_TOP, paint(&RED_SANDSTONE_TOP.grid(), RED_SANDSTONE_TOP.palette));
+    put(st::RED_SANDSTONE_BOTTOM, paint(&RED_SANDSTONE_BOTTOM.grid(), RED_SANDSTONE_BOTTOM.palette));
+    put(st::CUT_SANDSTONE, paint(&cut_grid(56), SANDSTONE_SIDE));
+    put(st::CUT_RED_SANDSTONE, paint(&cut_grid(57), RED_SANDSTONE_SIDE));
+    put(t::COARSE_DIRT, paint(&coarse_dirt_grid(), COARSE_DIRT));
+    put(t::ROOTED_DIRT, paint(&rooted_dirt_grid(), ROOTED_DIRT));
+    for (top, side, r, seed) in
+        [(t::PODZOL_TOP, t::PODZOL_SIDE, &PODZOL, 44), (t::MYCELIUM_TOP, t::MYCELIUM_SIDE, &MYCELIUM, 45)]
+    {
+        let lip = r.grid();
+        put(top, paint(&lip, r.palette));
+        put(side, paint(&side_grid(&lip, seed), &side_palette(r.palette)));
+    }
+    put(tex::CLAY, paint(&CLAY.grid(), CLAY.palette));
+    put(tex::BEDROCK, paint(&BEDROCK.grid(), BEDROCK.palette));
+    for (layer, seed, colour, tile) in [
+        (tex::POLISHED_ANDESITE, 71, [148, 148, 150], N),
+        (tex::POLISHED_DIORITE, 72, [228, 228, 230], N),
+        (tex::POLISHED_GRANITE, 73, [164, 112, 96], N),
+        (st::POLISHED_TUFF, 74, [116, 118, 110], N),
+        (tex::POLISHED_DEEPSLATE, 75, [70, 70, 77], N / 2),
+    ] {
+        put(layer, paint(&polished_grid(seed, tile), &polished_palette(colour)));
+    }
+    put(tex::COBBLED_DEEPSLATE, paint(&stones(81, 4, 5, 0).0, COBBLED_DEEPSLATE));
+    for (layer, seed, palette) in [
+        (t::PALE_OAK_LEAVES, 97, PALE_OAK_LEAVES),
+        (t::MANGROVE_LEAVES, 98, MANGROVE_LEAVES),
+        (t::CHERRY_LEAVES, 99, CHERRY_LEAVES),
+    ] {
+        put(layer, paint(&leaves_grid(seed), palette));
+    }
+    for (i, &c) in STRIPPED.iter().enumerate() {
+        let (i16, seed) = (i as u16, 170 + i as u32);
+        put(wt::STRIPPED_SIDE + i16, paint(&stripped_grid(seed), &ramp(c, [560, 820, 920, 1000, 1060, 1140])));
+        let ends = ramp(c, [800, 860, 720, 950, 1060]);
+        put(wt::STRIPPED_TOP + i16, paint(&log_top_grid(seed + 20), &ends));
     }
     tiles
 }
@@ -885,6 +1265,18 @@ mod tests {
         longest
     }
 
+    /// The largest difference between a 4 x 4 block's mean luminance and
+    /// the tile's, as a fraction of the tile's.
+    fn block_deviation(t: &Tile) -> f64 {
+        let mean = mean_luminance(t);
+        (0..16)
+            .map(|b| {
+                let lum: f64 = (0..16).map(|i| luminance(t[((b / 4) * 4 + i / 4) * N + (b % 4) * 4 + i % 4])).sum();
+                (lum / 16.0 - mean).abs() / mean
+            })
+            .fold(0.0, f64::max)
+    }
+
     fn mean_rgb(t: &Tile) -> [f64; 3] {
         let px = opaque(t);
         let n = px.len() as f64;
@@ -929,52 +1321,52 @@ mod tests {
     }
 
     const PINNED: &[(u16, u64)] = &[
-        (0, 0x11e0df0adf0a87cf),
-        (204, 0xc4a341ceee790945),
-        (199, 0x88309026d7179769),
-        (197, 0x7335f6e798625a5d),
-        (195, 0x1b8ebbab1cd551da),
-        (201, 0xc3bdbdc3ca21910f),
+        (0, 0xae810368f4376fbc),
+        (204, 0xd41cb9633a14bf99),
+        (199, 0x362efbfe8d6ed99c),
+        (197, 0x6996671afc7f2198),
+        (195, 0xba522dd5ed2440e8),
+        (201, 0x96d7b8782ba72cf7),
         (10, 0xeb53c3b7b1a533b2),
-        (13, 0x76487e0b5fd51e44),
-        (1, 0xe5d9d9ece34ffc73),
-        (2, 0xf52412f0847421ad),
-        (3, 0xeee727da449f5eb5),
-        (15, 0xa8755788369d44c8),
-        (4, 0xd2288f6ea82993a1),
-        (114, 0xc522886112112326),
-        (16, 0x4308af3d845252a7),
-        (17, 0x47134e2ae5e2c9a2),
-        (18, 0xea97383c04029259),
-        (19, 0x2c890dcad47aab85),
-        (170, 0xe7fdd846ee343118),
-        (187, 0x4f65747e50922d23),
-        (188, 0x45b947c869737b4a),
-        (189, 0xd389778c81d0d267),
-        (207, 0x4c6baf21daa47e96),
-        (208, 0x81e76c71fabead5a),
-        (210, 0xb7c6d2a7dc7d6459),
-        (214, 0x1045ca42e1ab8124),
-        (213, 0xc6e1257e0b2874f0),
-        (209, 0xb73d75fa27d0d380),
-        (211, 0x2d6b5f7916aed530),
-        (212, 0xbf2b77a04aa33ea2),
-        (8, 0xe5e20aa6deba53f6),
-        (26, 0x76b29351c2124471),
-        (104, 0x73cdacb33676c7d4),
-        (105, 0x981460430c448dfc),
-        (106, 0x6e6ccb75c56f3865),
-        (1552, 0x112b2eb5d0e77337),
+        (13, 0x7011ae61e64c5df7),
+        (1, 0x63722ef4af392629),
+        (2, 0x278097d37ebf38b5),
+        (3, 0xe2c691f54b1e5655),
+        (15, 0xaa4a031435b74227),
+        (4, 0x49d20430213de341),
+        (114, 0xe9ba9e9e2a252237),
+        (16, 0x967ad8ba0d824aaf),
+        (17, 0x3bd2132b4bc1e957),
+        (18, 0xaf2ca42e27e3e54a),
+        (19, 0x7060752c24fe681a),
+        (170, 0x3296c555e4fe7410),
+        (187, 0x3d1ee3ff846068a7),
+        (188, 0xa0d0a0402c643bb0),
+        (189, 0x8cef5190f84c3cc3),
+        (207, 0xfefc0d819d6a5c2e),
+        (208, 0xd01e1f127ba1e4be),
+        (210, 0xd273482e63869571),
+        (214, 0xb2753accec5d1358),
+        (213, 0x79980ea2d47f92d6),
+        (209, 0xf00d6da11d9870c8),
+        (211, 0xce30ec6f7732d978),
+        (212, 0x563e107472f00dd2),
+        (8, 0xad8eb2d4de40d1ed),
+        (26, 0x2711eff28ed9d60f),
+        (104, 0x5b326b56fb5abe47),
+        (105, 0xf337182cd62f5e8e),
+        (106, 0x7e806a54272b7baa),
+        (1552, 0xf456c9f821a3681c),
         (6, 0xb9c1dfe5e7d7219e),
         (7, 0x818f10a6778f4f67),
         (9, 0x4096540ef9224c5b),
         (96, 0x5f9dca8be4989e1e),
         (97, 0x699b24a11e2fa2f5),
         (107, 0x15de0d59da4ec6d3),
-        (98, 0x74262bb24327d531),
+        (98, 0xb1d6b1793fc23695),
         (99, 0xde7c5d7fcab895e5),
         (108, 0x7fbdd9811509bdeb),
-        (100, 0xbd53698167a8a5d1),
+        (100, 0x78cad4a2a575149c),
         (101, 0xb972b1eed6a3fab0),
         (109, 0x7e5c200cba9ab0dd),
         (102, 0x8f46b65efdbed01d),
@@ -989,6 +1381,51 @@ mod tests {
         (219, 0xca15b022740f2761),
         (220, 0xb2b4627998cb4859),
         (223, 0xe20d7fee3ae5b100),
+        (1560, 0x489f76bc055a73c6),
+        (1561, 0xca26cef8b8756002),
+        (1562, 0x45571d11a3f5c969),
+        (23, 0xfdf7d977ebf79357),
+        (24, 0xb1f99954af32133e),
+        (2019, 0x6f0253f2e9c99efe),
+        (2020, 0xc30c46695af22665),
+        (2021, 0x53dfeb677ef45a79),
+        (2024, 0x2d963cfba97ad2e9),
+        (2022, 0x161ba04bbc545b1b),
+        (1452, 0xf9cb0c05444faabd),
+        (1450, 0xc643a00f6489f323),
+        (1451, 0xa75da94ff13c665a),
+        (1454, 0x3da7002fe5c8aa17),
+        (1455, 0x324d38e13cd4dae0),
+        (1453, 0xb6cc06d6724862e7),
+        (122, 0xdfe36a2f27631aa5),
+        (12, 0xa21ad4c6a0f21d93),
+        (200, 0x95b31419d6736774),
+        (198, 0x8af6c5f23a2d4a06),
+        (196, 0xf9d8e87d067bae11),
+        (206, 0xaaa2a4309e0046fc),
+        (2000, 0xbf0c398f7c2207f8),
+        (205, 0xc9c0f7e117424e11),
+        (1555, 0x85fcc4e9b8dea8ba),
+        (1553, 0x905885d9bc355f3d),
+        (1554, 0x94b43222d94dde53),
+        (1776, 0x29c6ba43befb7e2c),
+        (1786, 0x4eb864a606e00f2c),
+        (1777, 0xffb9af72c67a657d),
+        (1787, 0x8d12378ab6ae0627),
+        (1778, 0xff2bcac6495b7a8a),
+        (1788, 0x6906eb6c780cc3d4),
+        (1779, 0x3d5a44781196bddb),
+        (1789, 0x1eea6993a969896a),
+        (1780, 0xe5d4e79612d2a9b0),
+        (1790, 0xf8df9dbbace14e10),
+        (1781, 0xfeb3cec080af5668),
+        (1791, 0x8028c9156482d7f7),
+        (1782, 0x4d360292f8e2c432),
+        (1792, 0x3f2f2610d61b9ced),
+        (1783, 0x8f6db4b1f2998d5d),
+        (1793, 0x97961019dc7d8ba3),
+        (1784, 0x13bc5933ed64106d),
+        (1794, 0xe78179c1c58a6ee3),
     ];
 
     /// The measurable rules of `docs/art-and-ui.md` for natural materials.
@@ -1027,9 +1464,32 @@ mod tests {
                 format!("layer {layer}: a straight run of {}", longest_run(&tile(layer))),
             );
         }
-        for layer in [tex::DIRT, tex::SAND, tex::RED_SAND, tex::GRAVEL] {
+        for layer in [tex::DIRT, tex::SAND, tex::RED_SAND] {
             let w = within(&tile(layer), 0.18);
             check(w >= 0.9, format!("layer {layer}: only {w} of texels within 18 % of the mean"));
+        }
+        // Gravel's pebbles need their dark gaps: three quarters within ±25 %.
+        let w = within(&tile(tex::GRAVEL), 0.25);
+        check(w >= 0.75, format!("gravel: only {w} of texels within 25 % of the mean"));
+        // No pattern at a distance: every 4 x 4 block is close to the tile's mean.
+        for layer in [
+            tex::STONE,
+            tex::ANDESITE,
+            tex::DIORITE,
+            tex::GRANITE,
+            tex::TUFF,
+            tex::DIRT,
+            tex::SAND,
+            tex::RED_SAND,
+            tex::GRASS_TOP,
+            tex::SANDSTONE_TOP,
+            tex::CLAY,
+            t::COARSE_DIRT,
+            t::PODZOL_TOP,
+            t::MYCELIUM_TOP,
+        ] {
+            let d = block_deviation(&tile(layer));
+            check(d <= 0.08, format!("layer {layer}: a 4 x 4 block {d} off the mean"));
         }
         let grass = tile(tex::GRASS_TOP);
         check(saturation(mean_rgb(&grass)) <= 0.55, format!("grass saturation {}", saturation(mean_rgb(&grass))));
@@ -1116,10 +1576,35 @@ mod tests {
             Block::PLANKS,
             Block::BIRCH_PLANKS,
         ] {
-            assert!(!block.flat_icon(), "{block:?} has a flat icon");
-            let faces = block.info().tex;
-            assert!(faces.iter().all(|f| drawn.contains(f)), "{block:?} faces {faces:?} aren't all redrawn");
+            check_icon(block, &drawn);
         }
+        // Second round, by name.
+        for name in [
+            "sandstone",
+            "red sandstone",
+            "cut sandstone",
+            "coarse dirt",
+            "mycelium",
+            "rooted dirt",
+            "clay",
+            "bedrock",
+            "polished andesite",
+            "polished deepslate",
+            "cobbled deepslate",
+            "stripped oak log",
+            "stripped cherry log",
+            "pale oak log",
+            "pale oak planks",
+            "cherry leaves",
+        ] {
+            check_icon(Block::from_name(name).unwrap_or_else(|| panic!("no block {name}")), &drawn);
+        }
+    }
+
+    fn check_icon(block: Block, drawn: &[u16]) {
+        assert!(!block.flat_icon(), "{block:?} has a flat icon");
+        let faces = block.info().tex;
+        assert!(faces.iter().all(|f| drawn.contains(f)), "{block:?} faces {faces:?} aren't all redrawn");
     }
 
     /// The tile cache stays within the budget recorded in the asset
@@ -1174,7 +1659,22 @@ mod tests {
                     put(16 * 12 + 8 + x, y, t[((y / 4) % N) * N + (x / 4) % N]);
                 }
             }
-            println!("{layer}: luminance {:.3}, run {}", mean_luminance(&t), longest_run(&t));
+            println!(
+                "{layer}: luminance {:.3}, run {}, block deviation {:.3}, within 18 % {:.2}, 25 % {:.2}",
+                mean_luminance(&t),
+                longest_run(&t),
+                block_deviation(&t),
+                within(&t, 0.18),
+                within(&t, 0.25)
+            );
+        }
+        // The generator's stone, for authoring `assets/textures/stone.source.json`.
+        let stone = natural(
+            2,
+            &[[84, 84, 87], [103, 103, 106], [116, 116, 119], [125, 125, 128], [134, 134, 137], [147, 147, 150]],
+        );
+        for row in stone.grid() {
+            println!("stone row {}", row.iter().map(|c| c.to_string()).collect::<String>());
         }
         let file = std::fs::File::create(path).unwrap();
         let mut enc = png::Encoder::new(std::io::BufWriter::new(file), w as u32, h as u32);

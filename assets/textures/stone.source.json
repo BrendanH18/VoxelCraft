@@ -38,22 +38,22 @@
     ]
   ],
   "pixels": [
-    "4335232333322331",
-    "3433224333433344",
+    "5222232333352334",
+    "3233324332432344",
     "4443344344332324",
-    "4104344443235543",
-    "2414434443315223",
-    "2244443443222232",
-    "2333343333423223",
-    "2233334334322223",
-    "3223434232342322",
-    "2334423233334222",
-    "1423433344322432",
-    "0323332323433331",
-    "3343433222333433",
-    "4333432233334344",
-    "4434341322454443",
-    "4345310232552341"
+    "4014344443222443",
+    "2414224343324224",
+    "2244342343222242",
+    "2333233533423223",
+    "2233225524332323",
+    "3221034222342443",
+    "2334423233334332",
+    "3423433344322412",
+    "3323332323413014",
+    "3242433222313433",
+    "3233432233334344",
+    "4324344322431443",
+    "5542322232251344"
   ],
-  "description": "Original natural stone, redrawn for v0.18 (track 3, 2026-11-23): soft patches of three greys, small irregular pits (three with a deeper centre) and a few raised flecks lit from the top left, no frame or inset, tileable both ways. Laid out with the material generator's cluster rules and finished by hand. Build the PNG with tools/texture_from_source.py."
+  "description": "Original natural stone, redrawn for v0.18 (track 3, 2026-11-23; second round the same day): soft patches of three greys balanced so every 4 x 4 block has nearly the same brightness (no larger pattern on a wall of repeats), small irregular pits in a shuffled spread (three with a deeper centre) and a few raised flecks lit from the top left, no frame or inset, tileable both ways. Laid out with the material generator's rules and finished by hand. Build the PNG with tools/texture_from_source.py."
 }
