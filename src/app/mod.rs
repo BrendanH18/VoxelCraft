@@ -1793,6 +1793,11 @@ impl Game {
                 log::warn!("--brush {pos}: not a suspicious block");
             }
         }
+        // v0.18 Track 6: pinned captures draw their throws and spawn rolls
+        // from a fixed point of the entity random sequence.
+        if self.mobs.still_mobs() {
+            self.mobs.entities.reseed_for_capture(self.world.generator.seed);
+        }
         // Fanned out so each one can be seen.
         let drops = std::mem::take(&mut self.drop);
         for (i, &(item, count)) in drops.iter().enumerate() {

@@ -41,6 +41,11 @@ impl Mobs {
         Self { still, ..self }
     }
 
+    /// Whether `--still-mobs` pins this capture's mobs.
+    pub fn still_mobs(&self) -> bool {
+        self.still
+    }
+
     /// For `--screenshot`: true once `--wait` seconds have passed since the
     /// first call.
     pub fn waited(&mut self) -> bool {

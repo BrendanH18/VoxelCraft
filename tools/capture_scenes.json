@@ -4978,6 +4978,186 @@
    "args": [
     "--still-mobs"
    ]
+  },
+  {
+   "name": "mobs-still-village-nether",
+   "group": "mobs",
+   "description": "Pinned close-up (v0.18 Track 6 round 2): iron golem, witch, pillager, vindicator, evoker, piglin, zombified piglin, hoglin and blaze at noon, each holding still facing the camera",
+   "pose": [
+    0.5,
+    154.0,
+    13.5,
+    90,
+    -12
+   ],
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "fill": [
+    [
+     -11,
+     150,
+     13,
+     11,
+     150,
+     30,
+     "grass"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "iron_golem,-8,151,21",
+    "witch,-6,151,21",
+    "pillager,-4,151,21",
+    "vindicator,-2,151,21",
+    "evoker,0,151,21",
+    "piglin,2,151,21",
+    "zombified_piglin,4,151,21",
+    "hoglin,6,151,21",
+    "blaze,8,152,21"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
+  },
+  {
+   "name": "mobs-still-animals",
+   "group": "mobs",
+   "description": "Pinned close-up (v0.18 Track 6 round 2): horse, llama, goat, fox, cat, rabbit, panda and polar bear at noon, facing the camera",
+   "pose": [
+    0.5,
+    154.0,
+    13.5,
+    90,
+    -12
+   ],
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "fill": [
+    [
+     -11,
+     150,
+     13,
+     11,
+     150,
+     30,
+     "grass"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "horse,-8,151,21",
+    "llama,-6,151,21",
+    "goat,-4,151,21",
+    "fox,-2,151,21",
+    "cat,0,151,21",
+    "rabbit,2,151,21",
+    "panda,4,151,21",
+    "polar_bear,7,151,21"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
+  },
+  {
+   "name": "mobs-still-small",
+   "group": "mobs",
+   "description": "Pinned close-up (v0.18 Track 6 round 2): slime, magma cube, frog, axolotl, turtle, bee, parrot, silverfish, endermite and bat at noon (fliers hold still after ten ticks)",
+   "pose": [
+    0.5,
+    153.4,
+    14.5,
+    90,
+    -14
+   ],
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "fill": [
+    [
+     -11,
+     150,
+     13,
+     11,
+     150,
+     30,
+     "grass"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "slime,-8,151,20",
+    "magma_cube,-6,151,20",
+    "frog,-4,151,20",
+    "axolotl,-2,151,20",
+    "turtle,0,151,20",
+    "bee,2,152,20",
+    "parrot,4,152,20",
+    "silverfish,5,151,19",
+    "endermite,6,151,19",
+    "bat,8,152,20"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
+  },
+  {
+   "name": "mobs-still-large",
+   "group": "mobs",
+   "description": "Pinned close-up (v0.18 Track 6 round 2): camel, sniffer, warden, ravager and squid at noon, facing the camera",
+   "pose": [
+    0.5,
+    154.5,
+    13,
+    90,
+    -10
+   ],
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "fill": [
+    [
+     -11,
+     150,
+     13,
+     11,
+     150,
+     30,
+     "grass"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "camel,-7,151,23",
+    "sniffer,-3,151,23",
+    "warden,1,151,23",
+    "ravager,5,151,23",
+    "squid,8,151,21"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
   }
  ]
 }

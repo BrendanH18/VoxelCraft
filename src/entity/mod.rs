@@ -1260,6 +1260,8 @@ pub struct Entities {
     /// landed stops updating (no AI, movement, burning or sounds), faces this
     /// point and keeps its lighting fresh, so its pose is the same in every run.
     pub still: Option<DVec3>,
+    /// Updates since `still` was set, after which fliers hold still too.
+    still_ticks: u32,
     /// v0.18 Track 6: this frame's shadow casters, kept to reuse the allocation.
     casters: Vec<shadow::Caster>,
     /// v0.18 Track 6: the mobs' simulation poses while `mesh` draws interpolated ones.
@@ -1365,6 +1367,7 @@ impl Entities {
             rendered: 0,
             mesh: model::EntityMesh::default(),
             still: None,
+            still_ticks: 0,
             casters: Vec::new(),
             poses: Vec::new(),
         }
@@ -2249,6 +2252,14 @@ impl Entities {
             dragon_model::build_fight(fight, &self.crystals, camera, time, alpha, &mut self.mesh);
         }
         &mut self.mesh
+    }
+
+    /// v0.18 Track 6: restarts the entity random sequence from `seed`, so
+    /// `--still-mobs` captures throw their items and roll their spawns
+    /// (wool colour, babies, variants) the same way in every run, however
+    /// many ticks ran before the scene was placed.
+    pub fn reseed_for_capture(&mut self, seed: u64) {
+        self.rng = Rng::new(seed ^ 0x7374_696c_6c00);
     }
 
     /// v0.18 Track 6: adds ground shadows to the mesh [`Entities::mesh`]
