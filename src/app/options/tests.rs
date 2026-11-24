@@ -639,7 +639,11 @@ fn key_binds_list_every_action_under_javas_categories() {
             _ => None,
         })
         .collect();
-    assert_eq!(headings, ["Movement", "Miscellaneous", "Multiplayer", "Gameplay", "Inventory", "Debug", "VoxelCraft"]);
+    // v0.18 Track 4: the saved-hotbar activators bring Java's Creative Mode category.
+    assert_eq!(
+        headings,
+        ["Movement", "Miscellaneous", "Multiplayer", "Gameplay", "Inventory", "Creative Mode", "Debug", "VoxelCraft"]
+    );
     for action in Action::ALL {
         assert!(widgets.iter().any(|w| w.id == keybinds::Id::Change(action)), "{action:?} is listed");
     }
