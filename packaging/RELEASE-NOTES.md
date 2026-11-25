@@ -1,14 +1,15 @@
-VoxelCraft 0.17.0 is the redstone and automation update. **Redstone:**
-signals now travel in Java's update order, so common contraptions built
-from Java designs behave the way they do in Java. **Pistons:** slime and honey blocks
-pull their neighbours along, so flying machines fly, and pistons push mobs
-and players. **The crafter:** a block that crafts on a redstone pulse.
-**And more:** dispensers that handle items as Java's do, the furnace
-minecart, hoppers with Java's timing, sculk sensors that hear far more of
-what Java's hear, and workstations that match Java. If you have 0.10.0 or later,
-the title screen offers this update; choose **Update and Restart**. If
-you're coming from 0.9.0 or earlier, install it by hand once, as below, and
-it updates itself from then on.
+VoxelCraft 0.18.0 is the polish update. **A new look:** redrawn
+stone, wood, masonry, ores and hundreds of other blocks, every mob
+repainted with faces and markings, ground shadows under mobs and items,
+and a new font that handles accented letters. **Java's atmosphere:** fog,
+sky, lighting and block-shaped clouds that follow Java's. **Java's
+screens:** creative tabs with spawn eggs, the recipe book, the death
+screen, menu background blur, a title panorama and world icons. **Sound:**
+blocks have their own sounds, chests and barrels open their lids, and
+Closed Captions show what you hear. If you have 0.10.0 or later, the title
+screen offers this update; choose **Update and Restart**. If you're coming
+from 0.9.0 or earlier, install it by hand once, as below, and it updates
+itself from then on.
 
 VoxelCraft is an unofficial fan project, inspired by Minecraft Java Edition. It
 is not affiliated with or endorsed by Mojang Studios or Microsoft, and it
@@ -16,10 +17,92 @@ contains no Minecraft code or assets.
 
 Choose your download:
 
-- **Windows 10/11 x64:** `VoxelCraft-0.17.0-windows-x64-Setup.exe`
-- **Mac with Apple Silicon (M-series), macOS 13+:** `VoxelCraft-0.17.0-macos-apple-silicon.dmg`
+- **Windows 10/11 x64:** `VoxelCraft-0.18.0-windows-x64-Setup.exe`
+- **Mac with Apple Silicon (M-series), macOS 13+:** `VoxelCraft-0.18.0-macos-apple-silicon.dmg`
 
-## What's new in 0.17.0
+## What's new in 0.18.0
+
+### Blocks and mobs, redrawn
+
+- Stone, dirt, grass, sand, gravel, wood, bricks and tiles, terracotta,
+  copper, quartz, purpur, the dyed blocks, ores, Nether and End blocks,
+  ice, snow and the workstations are redrawn: 472 textures in all. Stone
+  walls no longer show a grid of panels, distant surfaces no longer
+  streak, and grass is a calmer green.
+- **Mipmap Levels** (Video Settings, 0 to 4) sets how smooth distant
+  textures look.
+- Every mob has new surface art and hand-drawn detail: faces, eyes,
+  markings, and variants you can tell apart, such as a panda's
+  personality. Mobs turn and walk smoothly between game ticks.
+- Mobs, players, dropped items, experience orbs, minecarts, boats and TNT
+  cast Java's soft ground shadows. Turn them off with **Entity Shadows**.
+
+### Text
+
+- A new original pixel font with Java's letter widths, so labels fit as
+  they do in Java. It draws accented letters, which you can now type on
+  signs, in books, in world names and in searches. Signs written in older
+  versions show the same text as before.
+
+### Fog, sky, light and clouds
+
+- Fog, sky colour and lighting follow Java 26.3: fog thickens in rain and
+  closes in underwater, in lava and in powder snow; torch-lit rooms take
+  Java's warm light and nights are darker.
+- Clouds are Java's block-shaped clouds. **Clouds** (Off, Fast, Fancy) and
+  **Cloud Distance** are in Video Settings. **Hide Sky Flashes** stops
+  lightning lighting up the sky.
+- Water ripples keep the block art's pixel grid.
+
+### Screens
+
+- **Creative inventory:** Java's tabs in Java's order, scrolling, search,
+  saved hotbars (C + 1–9 to save, X + 1–9 to load) and the survival
+  inventory tab with Destroy Item.
+- **Spawn eggs** in Creative, 87 of them. Use one on the ground,
+  on water, on a spawner or on a mob of the same kind to spawn a baby, or
+  load it into a dispenser.
+- **The recipe book:** recipes unlock as you pick up their items, as in
+  Java. Search, show only what you can craft, and click a recipe to fill
+  the grid (Shift for every set). It works for crafting grids, furnaces,
+  blast furnaces and smokers, and on controllers, for CLI agents and over
+  LAN. The `limited_crafting` game rule works.
+- **Java's death screen** with Respawn and Title Screen, and Game Over with
+  Spectate World in Hardcore.
+- Menus blur the world behind them (**Menu Background Blur**), and
+  containers and workstations use Java's panels, slots, progress arrows
+  and tooltips.
+- **Anvils rename items:** the name box is on the anvil screen, on
+  controllers and over LAN.
+- The FPS counter is off by default in new installs. Saved options keep
+  your choice.
+
+### The title screen and worlds
+
+- A new VoxelCraft wordmark over a turning panorama, with **Panorama Scroll
+  Speed** in Accessibility Settings.
+- Each world takes an icon from your view once it has loaded, shown in
+  Select World. Edit World's **Reset Icon** clears it, and your next
+  visit takes a new one.
+
+### Sound
+
+- Blocks have their own sounds: stone, deepslate, tuff, mud, copper,
+  amethyst, the woods, candles, sculk and many more each sound different
+  when you walk on, break, place or mine them, at Java's volumes and
+  pitches.
+- Chests, trapped, copper and ender chests open and close their lids, and
+  barrels open, with their own sounds, for you and for other LAN players.
+- **Closed Captions** show what you hear and which side it comes from, with
+  **Text Background Opacity** and **Text Background** options.
+
+### Performance
+
+- Sign text is laid out once instead of every frame, light for newly
+  loaded terrain is worked out over several frames instead of all at once,
+  and several parts of the game tick cost less.
+
+## What's new in 0.17.0 (if you're coming from 0.16.0 or earlier)
 
 ### Redstone in Java's order
 
@@ -628,15 +711,18 @@ new giant trees.
 - The Host, Raiser, Shaper and Wayfinder armor trim templates have no
   survival source yet: trail ruins have no suspicious gravel loot.
 - The Wither's flight and attack timing are simpler than Java's.
-- Dispensers can't put armour or heads on other LAN players.
 - Music discs can be heard 24 blocks away (Java: 64), and other music
   doesn't fade while a disc plays.
-- Some Java options aren't in yet because nothing in the game uses them:
-  clouds, biome blend, entity distance and shadows, mipmaps, menu blur,
-  resource packs, language, chat and skin options, the attack indicator,
-  directional audio, the sound output device and voice volume.
-- There are no world icons. Create New World has no More tab, and Edit World
-  can't optimize or export a world. Multiplayer lists LAN games only.
+- Some Java options aren't in yet: biome blend, entity distance, weather
+  radius, the monochrome logo, resource packs, language, chat and skin
+  options, the attack indicator, directional audio, the sound output
+  device and voice volume.
+- Create New World has no More tab, and Edit World can't optimize or
+  export a world. Multiplayer lists LAN games only.
+- There is no Ender Dragon spawn egg.
+- 0.18.0's frame rate hasn't been measured on the reference Mac yet. If a
+  high render distance runs slowly, lower Cloud Distance or set Clouds to
+  Fast or Off.
 - Difficulty stays on the Options screen; Java 26.3 moved it to the pause
   menu.
 - Updating in game works on Windows x64 and Apple Silicon Macs, for copies
@@ -651,8 +737,8 @@ new giant trees.
   in the host's dimension; when the host travels, the others follow. It has
   been tested between processes on one computer, not yet across Windows, Mac
   and Linux machines on a real network.
-- Many blocks and mobs borrow the nearest existing sound; their own sounds
-  come with the sound review.
+- Many mobs borrow the nearest existing sound, and blocks without a Java
+  counterpart share a material's sounds.
 - Mobs and dropped items treat scaffolding and powder snow as plain blocks.
 - Walls built in older versions show their posts until a neighbouring block
   changes.
@@ -661,15 +747,14 @@ new giant trees.
 - There is no Soul Speed.
 - Pistons don't push arrows, falling blocks, End crystals, item frames,
   paintings or armour stands.
-- Anvils can't rename items yet: the name box isn't on the anvil screen.
 - You can't drag a stack across slots to share it out, or double-click to
   collect a stack.
 - Sculk sensors don't hear a few actions yet, such as leads, shearing
   some mobs, goat horns and spawners.
 - Commands accept `@s` and `@p` only.
 - Bells don't swing, strider jockeys don't spawn and boats ignore currents.
-- Streaming in new terrain quickly can still cause an occasional long frame
-  on an Apple M5; that work is planned for 0.18.
+- Streaming in new terrain quickly can still cause an occasional long
+  frame.
 - World generation is VoxelCraft's own: worlds aren't seed-compatible with
   Minecraft.
 
@@ -677,18 +762,18 @@ new giant trees.
 
 Players on 0.10.0 or later get this version from the title screen. Install
 it by hand if you're on 0.9.0 or earlier; later versions then arrive in game.
-Worlds and options from 0.16.0 and earlier load in 0.17.0, and everything
-new in 0.17.0 works in them: it changes no terrain. Worlds keep the terrain
-and structures they were created with, so End cities and ships, poplar
-forests, sulfur caves, abandoned camps and the rebuilt strongholds,
-mineshafts, fortresses, shipwrecks and monuments appear only in worlds
-created in 0.16.0 or later. Redstone in an old world switches to Java's
-update order when it loads, so a contraption that relied on the old order
-may behave differently. Once 0.17.0 has saved a world, don't open it in an
-older version: older versions can't read chunks holding the new blocks,
-and lose the new carts and items. Back up your worlds before
-upgrading from 0.8.0, and don't open a world saved by 0.9.0 or later in
-0.8.0. LAN players all need the same version.
+Worlds and options from 0.17.0 and earlier load in 0.18.0, and everything
+new in 0.18.0 works in them: it changes no terrain. Players in older
+worlds start with an empty recipe book, and the items they carry unlock
+their recipes on the first tick. Worlds keep the terrain and structures
+they were created with, so End cities and ships, poplar forests, sulfur
+caves, abandoned camps and the rebuilt strongholds, mineshafts, fortresses,
+shipwrecks and monuments appear only in worlds created in 0.16.0 or later.
+Once 0.18.0 has saved a world, don't open it in an older version: older
+versions can't read the new items, such as spawn eggs, and lose the
+recipe book. Back up your worlds before upgrading from 0.8.0, and don't
+open a world saved by 0.9.0 or later in 0.8.0. LAN players all need the
+same version.
 
 ## Installing
 

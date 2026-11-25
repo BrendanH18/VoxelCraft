@@ -52,6 +52,11 @@ and stay Partial for what is still open. No row became Verified: the
 owner's play and the frame-time runs on the reference Mac come first. The
 counts below are recounted from the rows.
 
+**2026-11-25:** the owner played v0.18 and asked for it to ship without
+its frame-time runs, which move to v1.0
+([delivery record](delivery-records.md#38-v018-delivery-record--2026-11-25)).
+No row changed state.
+
 | State | Rows |
 |---|---|
 | Verified | 3 |
