@@ -378,6 +378,50 @@ contraptions and workstations). Players on v0.16 update straight to it.
   track records listed in the
   [v0.17 scope](roadmap.md#v017-scope-redstone-and-automation).
 
+### 3.8 v0.18 delivery record — 2026-11-25
+
+The owner played v0.18 on 2026-11-25 and asked for it to ship; it is
+tagged and released the way v0.16 and v0.17 were. The v0.18 build is v0.17
+plus polish and performance ([#118](https://github.com/BrendanH18/VoxelCraft/pull/118):
+the foundation, typography, shared UI, core material art, creative
+inventory and spawn eggs, recipe book, mobs and ground shadows, title and
+world icons, atmosphere, sound and subtitles, and performance code) and
+the dependency upgrade of 2026-11-25
+([#112](https://github.com/BrendanH18/VoxelCraft/pull/112)). Players on
+v0.17 update straight to it.
+
+- **Evidence:** the owner's play of the v0.18 build; the owner's approval of
+  every art round's look (materials, mobs, title, atmosphere); CI's full
+  suite on the commits #118 and #112 merged from; the eleven
+  [track records](roadmap.md#v018-plan-2026-11-23). v0.18 has no
+  frame-time run.
+- **Exception (owner, 2026-11-25):** to be tagged and released without any
+  frame-time run. The runs owed by v0.16, v0.17 and v0.18 and the ones
+  v0.18 carried (PERF-03, v0.11's menus and title, v0.12's `materials`)
+  move to v1.0's acceptance pass. v0.18's exit (UX-01/02, UX-03c–g, MOB-06
+  and BLD-05c Verified) is not met, and no row moved to **Verified**.
+- **Performance report, not measured:** at first the owner found
+  performance at higher render distances worse than v0.17's, then judged
+  it fine. A comparison on the reference Mac (v0.17 against v0.18 at
+  render distances 8, 16 and 24) was attempted twice but never ran, because
+  the remote task couldn't create its worktree. Suspects found by reading
+  the v0.17..v0.18 diff, none measured: the block-shaped clouds (Fancy at
+  128 chunks by default, about 35,000 faces from below the layer, each drawn
+  in a depth pass and a colour pass); the chunk shader's sRGB lightmap and
+  fog (power functions on nearly every fragment, since the Overworld's
+  environmental fog spans 0 to 1,024 blocks); entities, beams and conduits
+  built out to `Fog::end()` (the render-distance radius × √2) instead of
+  0.95 × the render distance, with more detailed mob models; and the 2 ms
+  streaming light budget, which holds mesh jobs until light settles. The
+  release notes tell players to lower Cloud Distance or Clouds if a high
+  render distance runs slowly.
+- **Open decisions shipped as built:** the startup sound bank's extra
+  44 MB, no Ender Dragon spawn egg, and growth light flushing the whole
+  light queue on the first crop check after chunks arrive.
+- **Known gaps** ship as the release notes' known limitations, from the
+  track records listed in the
+  [v0.18 scope](roadmap.md#v020-scope-presentation-and-performance).
+
 ## Assessment follow-ups, 2026-10-13 to 2026-10-16
 
 These paragraphs opened the roadmap's §4 "Core requirement catalogue".
