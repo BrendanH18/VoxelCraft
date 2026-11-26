@@ -53,6 +53,8 @@ impl Entities {
                 .map(|k| json!({"at": pair(k.pos, k.previous_pos), "dangerous": k.dangerous})).collect::<Vec<_>>(),
             // v0.16 Track G: End crystals (beams reach far, so all of them).
             "end_crystals": self.crystals.replica_json(),
+            // v1.0 Track 7: Ender Dragons no fight owns.
+            "ender_dragons": self.wild_dragons.replica_json(),
         })
     }
 
@@ -188,6 +190,7 @@ impl Entities {
             (Some(f), fight) => f.apply_replica(fight),
             (None, fight) => self.fight = super::dragon::Fight::replica(fight),
         }
+        self.wild_dragons.apply_replica(&v["ender_dragons"]);
     }
 }
 

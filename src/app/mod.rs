@@ -1579,13 +1579,24 @@ impl Game {
             let back = self.mobs.entities.push_carts(player.pos, player.collision_shape());
             player.vel += back * 20.0;
         }
+        let rider =
+            |player: &crate::player::Player, input: crate::player::MoveInput| crate::entity::minecart::RiderInput {
+                push: player.ride_push(input),
+                keys: crate::entity::minecart::boat::Keys::from_move(input.forward, input.right),
+            };
         if self.session.player.vehicle.is_some() {
-            wish.push((crate::entity::PlayerId::HOST, self.session.player.ride_push(input)));
+            wish.push((crate::entity::PlayerId::HOST, rider(&self.session.player, input)));
         }
         for bot in self.agents.players.values().filter(|b| b.active && b.agent.session.player.vehicle.is_some()) {
-            wish.push((bot.agent.session.id, bot.agent.session.player.ride_push(bot.agent.movement_input())));
+            wish.push((bot.agent.session.id, rider(&bot.agent.session.player, bot.agent.movement_input())));
         }
         self.mobs.entities.tick_minecarts(&mut self.world, &wish);
+        // v1.0 Track 7: a boat's turn carries its riders' heading with it.
+        self.mobs.entities.turn_boat_rider(&mut self.session.player, crate::entity::PlayerId::HOST);
+        for bot in self.agents.players.values_mut().filter(|b| b.active) {
+            let id = bot.agent.session.id;
+            self.mobs.entities.turn_boat_rider(&mut bot.agent.session.player, id);
+        }
         self.world.refresh_frame_signals(self.mobs.entities.frame_signals());
         seat_rider(&self.mobs.entities, &mut self.session.player, crate::entity::PlayerId::HOST);
         let ids: Vec<_> = self

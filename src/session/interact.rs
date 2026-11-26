@@ -684,7 +684,7 @@ impl PlayerSession {
             return Ok(Some(Used::MapCreated));
         }
         // v0.18 Track 4: `SpawnEggItem.useOn` and `use`.
-        if let Some(kind) = self.inventory.get(slot).and_then(|s| crate::content::spawn_egg::mob(s.item)) {
+        if let Some(kind) = self.inventory.get(slot).and_then(|s| crate::content::spawn_egg::spawns(s.item)) {
             return self.use_spawn_egg(slot, kind, world, entities);
         }
         let creative = self.mode.is_creative();
@@ -806,7 +806,7 @@ impl PlayerSession {
     fn use_spawn_egg(
         &mut self,
         slot: usize,
-        kind: crate::entity::MobKind,
+        kind: crate::content::spawn_egg::Spawns,
         world: &mut World,
         entities: &mut Entities,
     ) -> Result<Option<Used>, &'static str> {
@@ -824,10 +824,10 @@ impl PlayerSession {
         if !matches!(world.get_block(pos), Some(Block::WATER | Block::LAVA)) {
             return Ok(None);
         }
-        let index = entities.spawn_from_egg(world, kind, pos, false, false).ok_or(EGG_PEACEFUL)?;
+        let at = entities.spawn_egg_spawns(world, kind, pos, false, false).ok_or(EGG_PEACEFUL)?;
         self.consume_egg(slot);
         world.emit_block_event(pos, crate::world::vibration::GameEvent::EntityPlace, self.event_source(), None);
-        Ok(Some(Used::SpawnedMob { at: entities.mobs[index].pos }))
+        Ok(Some(Used::SpawnedMob { at }))
     }
 
     /// `ItemStack.consume` / `shrink`: creative keeps its eggs.
@@ -844,19 +844,24 @@ impl PlayerSession {
     fn spawn_egg_on_block(
         &mut self,
         slot: usize,
-        kind: crate::entity::MobKind,
+        spawns: crate::content::spawn_egg::Spawns,
         world: &mut World,
         entities: &mut Entities,
         (pos, normal): (IVec3, IVec3),
     ) -> Result<Option<Used>, &'static str> {
+        use crate::content::spawn_egg::Spawns;
         use crate::world::vibration::GameEvent as E;
-        if !entities.egg_can_spawn(kind) {
+        if !entities.egg_spawns_allowed(spawns) {
             return Err(EGG_PEACEFUL);
         }
         let source = self.event_source();
         let block = world.get_block(pos).ok_or("that block isn't loaded")?;
-        if block == Block::SPAWNER || crate::world::trial::spawner(block).is_some() {
+        if let Spawns::Mob(kind) = spawns
+            && (block == Block::SPAWNER || crate::world::trial::spawner(block).is_some())
+        {
             // `Spawner.setEntityId`, unless `spawner_blocks_work` is off.
+            // (Spawners hold mobs only here; the dragon's egg on one spawns
+            // a dragon in front, a recorded difference.)
             if !entities.spawner_blocks {
                 return Err("Spawner blocks are not enabled");
             }
@@ -876,10 +881,10 @@ impl PlayerSession {
         crate::physics::block_collision_boxes(block, |_, _| empty = false);
         let at = if empty { pos } else { pos + normal };
         let moved_up = at != pos && normal == IVec3::Y;
-        let index = entities.spawn_from_egg(world, kind, at, true, moved_up).ok_or(EGG_PEACEFUL)?;
+        let spawned = entities.spawn_egg_spawns(world, spawns, at, true, moved_up).ok_or(EGG_PEACEFUL)?;
         self.consume_egg(slot);
         world.emit_block_event(at, E::EntityPlace, source, None);
-        Ok(Some(Used::SpawnedMob { at: entities.mobs[index].pos }))
+        Ok(Some(Used::SpawnedMob { at: spawned }))
     }
 
     /// [`Self::use_block_inner`], then the game event Java's block posts
@@ -1233,7 +1238,7 @@ impl PlayerSession {
         // v0.18 Track 4: `SpawnEggItem.useOn`, after the block's own use
         // passed (containers, doors, berry bushes and the rest come first).
         // A mob under the crosshair that wouldn't breed leaves it unused.
-        if let Some(kind) = held.and_then(crate::content::spawn_egg::mob) {
+        if let Some(kind) = held.and_then(crate::content::spawn_egg::spawns) {
             if self.mob_target(world, entities).is_some() {
                 return Ok(None);
             }

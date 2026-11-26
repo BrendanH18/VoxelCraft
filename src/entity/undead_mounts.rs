@@ -39,13 +39,20 @@ impl Entities {
         m.persistent = false;
         m.undead_mount.trap_age = 0;
     }
+    /// `ZombieHorse.finalizeSpawn` for a natural spawn: a zombie (rolled
+    /// like any other, `EntitySpawnReason.JOCKEY`) facing the horse's way,
+    /// then given an iron spear in its main hand, rides it. The spear
+    /// replaces whatever the roll gave and carries no enchantment.
     pub(super) fn spawn_zombie_horse_rider(&mut self) {
         let i = self.mobs.len() - 1;
         self.ensure_mob_ids();
         let uid = self.mobs[i].uid;
-        let pos = self.mobs[i].pos;
+        let (pos, yaw) = (self.mobs[i].pos, self.mobs[i].yaw);
         self.spawn(MobKind::Zombie, pos);
         let m = self.mobs.last_mut().unwrap();
+        m.yaw = yaw;
+        let spear = crate::weapons::spear(crate::item::Tier::Iron);
+        m.equipment.set(super::equipment::Slot::MainHand, Some(crate::inventory::Stack::new(spear, 1)));
         m.riding = Some(super::mounts::MOB_VEHICLE | uid);
         m.persistent = false;
     }
@@ -232,6 +239,28 @@ mod tests {
         assert_eq!(restored.mobs.iter().filter(|m| m.riding.is_some()).count(), 4);
         restored.tick_undead_mounts(0.05, &Grid::flat(10), &ctx(p));
         assert_eq!(restored.mobs.len(), 8);
+        // `SkeletonTrapGoal.createSkeleton`: an iron helmet on an empty head,
+        // and the bow and helmet enchanted afresh by `mob_spawn_equipment`
+        // (whose lowest cost, 5, always finds something for both).
+        use super::super::equipment::Slot;
+        for r in e.mobs.iter().filter(|m| m.kind == MobKind::Skeleton) {
+            let bow = r.equipment.get(Slot::MainHand).expect("a bow");
+            let helmet = r.equipment.get(Slot::Head).expect("a helmet");
+            assert_eq!(bow.item, crate::item::Item::BOW);
+            assert!(helmet.item.as_armor().is_some_and(|(p, _)| p == crate::item::ArmorPiece::Helmet));
+            assert!(bow.enchants != crate::enchant::Enchants::NONE, "the trap bow is enchanted");
+            assert!(helmet.enchants != crate::enchant::Enchants::NONE, "the trap helmet is enchanted");
+        }
+        // The enchantments survive a save.
+        for (a, b) in e
+            .mobs
+            .iter()
+            .filter(|m| m.kind == MobKind::Skeleton)
+            .zip(restored.mobs.iter().filter(|m| m.kind == MobKind::Skeleton))
+        {
+            assert_eq!(a.equipment.get(Slot::MainHand), b.equipment.get(Slot::MainHand));
+            assert_eq!(a.equipment.get(Slot::Head), b.equipment.get(Slot::Head));
+        }
         assert_eq!(
             e.mobs.iter().filter(|m| m.kind == MobKind::SkeletonHorse && m.mount.as_ref().unwrap().tame).count(),
             4
@@ -248,6 +277,10 @@ mod tests {
         e.spawn_zombie_horse_rider();
         assert_eq!(e.mobs.last().unwrap().kind, MobKind::Zombie);
         assert!(e.mobs.last().unwrap().riding.unwrap() & super::super::mounts::MOB_VEHICLE != 0);
+        // `ZombieHorse.finalizeSpawn`: the horseman carries an iron spear.
+        let spear = e.mobs.last().unwrap().equipment.get(super::super::equipment::Slot::MainHand).copied();
+        assert_eq!(spear.map(|s| s.item), Some(crate::weapons::spear(crate::item::Tier::Iron)));
+        assert_eq!(spear.unwrap().enchants, crate::enchant::Enchants::NONE);
         let mut m = Mob::new(MobKind::SkeletonHorse, DVec3::ZERO, 0.);
         m.undead_mount.protection = 3.;
         assert!(!m.damage(100., Some(DVec3::new(4., 2., 0.)), &mut e.rng));

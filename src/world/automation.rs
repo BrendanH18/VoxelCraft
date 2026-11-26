@@ -787,7 +787,13 @@ impl World {
             // can't spawn and stays.
             Behaviour::SpawnEgg => {
                 let peaceful = self.rules.difficulty == 0;
-                if crate::content::spawn_egg::egg_of(stack.item).is_some_and(|e| e.peaceful || !peaceful) {
+                let allowed = crate::content::spawn_egg::egg_of(stack.item).map(|e| e.peaceful);
+                // v1.0 Track 7: the Ender Dragon's egg.
+                let allowed = allowed.or_else(|| {
+                    (stack.item == crate::content::spawn_egg::ENDER_DRAGON)
+                        .then_some(crate::content::spawn_egg::ENDER_DRAGON_PEACEFUL)
+                });
+                if allowed.is_some_and(|ok| ok || !peaceful) {
                     self.set_container_stack(p, slot, rest);
                     self.queue_dispensed(p, facing, Output::Egg, one);
                     self.emit_block_event(p, GameEvent::EntityPlace, EventSource::NONE, None);
@@ -986,8 +992,8 @@ impl World {
                 }
                 Output::Stand => entities.dispense_armor_stand(p + step, step),
                 Output::Egg => {
-                    if let Some(kind) = crate::content::spawn_egg::mob(stack.item) {
-                        entities.spawn_from_egg(self, kind, p + step, step != IVec3::Y, false);
+                    if let Some(spawns) = crate::content::spawn_egg::spawns(stack.item) {
+                        entities.spawn_egg_spawns(self, spawns, p + step, step != IVec3::Y, false);
                     }
                 }
                 _ => entities.dispense_item(stack, p, step),

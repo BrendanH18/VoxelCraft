@@ -314,7 +314,8 @@ impl PlayerSession {
                     && entities
                         .cart_ray(eye, dir, cart_reach)
                         .is_some_and(|i| entities.minecarts[i].kind.cushion().is_some());
-                landed = !denied && entities.hurt_cart(eye, dir, cart_reach, self.mode.is_creative());
+                // `VehicleEntity.hurtServer` takes the attack's damage (v1.0 Track 7).
+                landed = !denied && entities.hurt_cart_by(eye, dir, cart_reach, self.mode.is_creative(), base + other);
                 eye + dir * 2.0
             }
             Target::Fireball => {
@@ -329,7 +330,7 @@ impl PlayerSession {
             }
             Target::Fight => {
                 let (hit, t) = entities.fight_raycast(eye, dir, reach).ok_or("target vanished")?;
-                living_hit = matches!(hit, crate::entity::dragon::Hit::Dragon(_));
+                living_hit = hit.is_dragon();
                 landed = entities.strike_as(hit, base + other, self.id, self.mode.is_creative());
                 if landed && other > 0.0 {
                     let mut burst = crate::particles::Burst::new(crate::particles::Kind::MagicCrit, eye + dir * t, 16);

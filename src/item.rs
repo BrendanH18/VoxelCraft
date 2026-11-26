@@ -1975,7 +1975,8 @@ fn sprite_index(item: Item) -> Option<u16> {
             Some(track_d_icon_base() + TRACK_D_ICONS as u16 + TRACK_B16_ICONS as u16 + 1 + GEN5_ICONS as u16)
         }
         // v0.18 Track 4: the spawn eggs follow the furnace minecart.
-        i if (crate::content::spawn_egg::ITEM_FIRST..crate::content::spawn_egg::ITEM_END).contains(&i) => Some(
+        // v1.0 Track 7: the Ender Dragon's egg follows the Wither's.
+        i if (crate::content::spawn_egg::ITEM_FIRST..crate::content::spawn_egg::ALL_END).contains(&i) => Some(
             track_d_icon_base()
                 + TRACK_D_ICONS as u16
                 + TRACK_B16_ICONS as u16
@@ -2130,7 +2131,7 @@ pub const fn icon_count() -> u32 {
         + 1 // v0.16 Track C: the Nether star.
         + GEN5_ICONS
         + 1 // v0.17 Track D1: the furnace minecart.
-        + (crate::content::spawn_egg::ITEM_END - crate::content::spawn_egg::ITEM_FIRST) as u32 // v0.18 Track 4.
+        + (crate::content::spawn_egg::ALL_END - crate::content::spawn_egg::ITEM_FIRST) as u32 // v0.18 Track 4, v1.0 Track 7.
 }
 
 /// v0.16 Track B's items, in icon order (after v0.15 Track D's).

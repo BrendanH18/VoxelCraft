@@ -45,10 +45,19 @@ fn every_egg_for_a_mob_the_game_has_is_registered_in_java_order() {
         let english = e["name"].as_str().unwrap();
         let resolved = java_registry::item(id, english);
         let Some(kind) = MobKind::from_name(e["entity"].as_str().unwrap()) else {
-            // Only the Ender Dragon's: the dragon is the End fight's boss, not a mob.
+            // Only the Ender Dragon's (v1.0 Track 7): the dragon isn't a
+            // mob kind, so its egg is item 1937 outside `EGGS`.
             assert_eq!(id, "ender_dragon_spawn_egg");
-            assert_eq!(resolved, None);
-            assert!(gaps()["items"].get(id).is_some(), "{id} is listed as a gap");
+            assert_eq!(resolved, Some(spawn_egg::ENDER_DRAGON));
+            assert_eq!(spawn_egg::ENDER_DRAGON, Item(1937));
+            assert_eq!(spawn_egg::ENDER_DRAGON.name(), english.to_lowercase());
+            assert_eq!(u64::from(spawn_egg::ENDER_DRAGON.max_stack()), e["max_stack"].as_u64().unwrap());
+            assert_eq!(spawn_egg::ENDER_DRAGON_BASE, rgb(e["base"].as_str().unwrap()));
+            assert_eq!(spawn_egg::ENDER_DRAGON_SPOTS, rgb(e["spots"].as_str().unwrap()));
+            assert_eq!(spawn_egg::ENDER_DRAGON_PEACEFUL, e["allowed_in_peaceful"].as_bool().unwrap());
+            assert_eq!(e["in_tab"], false, "no creative tab lists it");
+            assert_eq!(e["baby"], "none");
+            assert!(gaps()["items"].get(id).is_none(), "{id} is registered, so not a gap");
             continue;
         };
         let item = Item(spawn_egg::ITEM_FIRST + k);
@@ -87,9 +96,10 @@ fn eggs_are_creative_only_and_have_their_own_icons() {
         let layer = item.icon_layer().expect("an icon");
         assert!(voxelcraft::world::block::tex::item_index(layer).is_some());
     }
-    // Every egg's icon is its own layer.
+    // Every egg's icon is its own layer, the Ender Dragon's included.
     let layers: std::collections::BTreeSet<_> = spawn_egg::all().filter_map(|i| i.icon_layer()).collect();
-    assert_eq!(layers.len(), spawn_egg::EGGS.len());
+    assert_eq!(layers.len(), spawn_egg::EGGS.len() + 1);
+    assert_eq!(spawn_egg::all().last(), Some(spawn_egg::ENDER_DRAGON));
 }
 
 /// The block the player looks at, level with the eye, along +x.
@@ -317,4 +327,43 @@ fn blocks_that_take_the_use_come_before_the_egg() {
     assert!(matches!(used, Some(Used::SpawnedMob { .. })), "{used:?}");
     assert_eq!(w.get_block(WALL), Some(iron_door(Facing::East, false, true)), "still shut");
     assert_eq!(e.mobs.len(), 1);
+}
+
+/// v1.0 Track 7: the Ender Dragon's egg makes a dragon no fight owns. Java
+/// 26.3 starts it `HOVERING` where it appeared (`EnderDragonPhaseManager`),
+/// with no boss bar (`EnderDragonFight` owns that), and keeps it through a
+/// save (`EnderDragon.addAdditionalSaveData`).
+#[test]
+fn the_ender_dragon_egg_spawns_a_hovering_dragon_that_saves() {
+    use voxelcraft::entity::dragon::Phase;
+    let (mut w, mut s, mut e) = scene(MobKind::Pig);
+    s.inventory.slots[0] = Some(Stack::new(spawn_egg::ENDER_DRAGON, 3));
+    let used = use_egg(&mut s, &mut w, &mut e).unwrap();
+    let Some(Used::SpawnedMob { at }) = used else { panic!("{used:?}") };
+    assert!(e.mobs.is_empty(), "the dragon isn't a mob");
+    assert_eq!(e.wild_dragons.dragons.len(), 1);
+    let d = &e.wild_dragons.dragons[0].dragon;
+    assert_eq!(d.pos, at);
+    // In front of the clicked face (+x of the wall's west face).
+    assert_eq!((at.x, at.z), (6.5, 4.5));
+    assert_eq!(d.phase, Phase::Hovering);
+    assert_eq!(d.health, voxelcraft::entity::dragon::MAX_HEALTH);
+    assert!(e.fight.is_none(), "no fight, so no boss bar");
+    // Creative keeps the egg; survival would use one.
+    assert_eq!(count(&s), 3 - u8::from(!s.mode.is_creative()));
+
+    let mut props = std::collections::BTreeMap::new();
+    e.save_props(&mut props);
+    let mut back = Entities::new(7);
+    back.load_props(&props);
+    assert_eq!(back.wild_dragons.dragons.len(), 1);
+    let b = &back.wild_dragons.dragons[0].dragon;
+    assert_eq!((b.pos, b.yaw, b.health, b.phase), (d.pos, d.yaw, d.health, d.phase));
+
+    // Peaceful still allows it (`isAllowedInPeaceful` is true for the dragon).
+    let (mut w, mut s, mut e) = scene(MobKind::Pig);
+    e.difficulty = Difficulty::Peaceful;
+    s.inventory.slots[0] = Some(Stack::new(spawn_egg::ENDER_DRAGON, 1));
+    assert!(matches!(use_egg(&mut s, &mut w, &mut e).unwrap(), Some(Used::SpawnedMob { .. })));
+    assert_eq!(e.wild_dragons.dragons.len(), 1);
 }
