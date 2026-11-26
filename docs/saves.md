@@ -91,7 +91,8 @@ record queued before it is on disk, and every region table that failed to
 be rewritten is (such a file stays open until it is), so a later save
 writes the failed records first. A dimension change whose save failed
 doesn't happen: the player stays, and steps out of the portal to try
-again.
+again; a respawn whose anchor is gone, and whose fall back to the
+Overworld can't be saved, leaves the player where they are.
 
 **The level file and the records.** The level file still holds the state
 of the chunks that were loaded when it was saved, in the keys it always
@@ -120,8 +121,9 @@ holds, whose records' entities are ignored anyway): the records' copies are
 newer, so the level file's copies of those mobs and carts are dropped, and
 each comes back once, from its record, when its chunk loads. Only ids the
 records saved count (a mob saved without a uid matches nothing), and the
-next mob uid and cart id move past every one of them before the level
-file's entities load, so nothing loaded or spawned afterwards takes one.
+next mob uid, cart id and villager merchant id move past every one of them
+before the level file's entities load, so nothing loaded or spawned
+afterwards takes one.
 The session's own saves then number past every region file's.
 
 A scripted run (screenshots, benchmarks) reads region files but never

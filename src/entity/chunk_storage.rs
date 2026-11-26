@@ -295,7 +295,8 @@ impl Entities {
 
     /// Reads the mob uids and cart ids saved in the region records written
     /// after the level file by a session that stopped before its next save
-    /// (see `world::chunk_records`), and moves the next ids past them, so
+    /// (see `world::chunk_records`), and moves the next ids past them, and
+    /// the next merchant id past the villagers' and traders' there, so
     /// nothing the level file loads or spawns afterwards takes one. Only
     /// ids the records hold count: a mob saved without a uid has none to
     /// match. Called before the level file's entities load; the first
@@ -306,12 +307,18 @@ impl Entities {
             return;
         }
         let (mut uids, mut carts) = (FxHashSet::default(), FxHashSet::default());
+        let mut merchants = 0;
         for (key, text) in batches.iter().flatten() {
             match key.as_str() {
                 "villagers" | "nether_mobs" => {
                     let root: serde_json::Value = serde_json::from_str(text).unwrap_or_default();
-                    let saved = root["mobs"].as_array().into_iter().flatten();
-                    uids.extend(saved.filter_map(|m| u32::try_from(m["uid"].as_u64()?).ok()).filter(|&u| u != 0));
+                    for m in root["mobs"].as_array().into_iter().flatten() {
+                        uids.extend(m["uid"].as_u64().and_then(|u| u32::try_from(u).ok()).filter(|&u| u != 0));
+                        // The merchant id trading finds villagers and traders by.
+                        if key == "villagers" {
+                            merchants = merchants.max(m["id"].as_u64().unwrap_or(0));
+                        }
+                    }
                 }
                 "minecarts" => carts.extend(
                     text.split(';').filter(|s| !s.is_empty()).filter_map(minecart::Minecart::deserialize).map(|c| c.id),
@@ -324,6 +331,9 @@ impl Entities {
         }
         if let Some(&c) = carts.iter().max() {
             self.next_cart = self.next_cart.max(c.saturating_add(1));
+        }
+        if merchants > 0 {
+            self.next_villager_id = self.next_villager_id.max(merchants.saturating_add(1));
         }
         self.storage.superseded = Some((uids, carts));
     }
@@ -1015,6 +1025,42 @@ mod tests {
         uids.sort_unstable();
         uids.dedup();
         assert_eq!(uids.len(), 3, "the cow, the pig and the sheep, each its own uid");
+        drop(w);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Review fix S10: a villager made after the last save and stored in a
+    /// record keeps its merchant id to itself, like its uid.
+    #[test]
+    fn recovery_reserves_the_merchant_ids_of_newer_records() {
+        let dir = std::env::temp_dir().join(format!("voxelcraft-entity-recover-merchant-{}", std::process::id()));
+        let mut w = region_world(&dir, [IVec2::new(0, 0)]);
+        let mut e = Entities::new(5);
+        e.spawn(MobKind::Villager, at(10.5, 4.5));
+        e.ensure_mob_ids();
+        e.sync_chunk_entities(&mut w);
+        let props = checkpoint(&mut w, &mut e);
+        // After the save: another villager in a column that then unloads.
+        w.load_test_column(IVec2::new(2, 0), GROUND);
+        e.spawn(MobKind::Villager, at(70.5, 4.5));
+        e.ensure_mob_ids();
+        let stored = e.mobs.last().unwrap().villager.as_ref().unwrap().id;
+        e.sync_chunk_entities(&mut w);
+        w.unload_test_column(IVec2::new(2, 0));
+        e.sync_chunk_entities(&mut w);
+        drop(w);
+
+        let (mut w, mut e) = reopen(&dir, &props);
+        e.sync_chunk_entities(&mut w);
+        e.spawn(MobKind::Villager, at(12.5, 4.5));
+        let new = e.mobs.last().unwrap().villager.as_ref().unwrap().id;
+        assert_ne!(new, stored, "a new villager doesn't take the stored one's merchant id");
+        w.load_test_column(IVec2::new(2, 0), GROUND);
+        e.sync_chunk_entities(&mut w);
+        let mut ids: Vec<u64> = e.mobs.iter().filter_map(|m| m.villager.as_ref()).map(|v| v.id).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        assert_eq!(ids.len(), 3, "three villagers, three merchant ids");
         drop(w);
         let _ = std::fs::remove_dir_all(dir);
     }

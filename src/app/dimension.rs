@@ -402,8 +402,9 @@ impl Game {
     }
 
     /// Saves this dimension and swaps in `to`, with the player waiting at
-    /// `arrival` until the ground there has loaded.
-    pub(super) fn switch_dimension(&mut self, to: Dimension, arrival: Arrival) {
+    /// `arrival` until the ground there has loaded. Returns false, changing
+    /// nothing, when the save failed.
+    pub(super) fn switch_dimension(&mut self, to: Dimension, arrival: Arrival) -> bool {
         // An open ender chest hands its contents back before the world goes.
         if let super::Container::Chest(pos) = self.body.container
             && self.inventory_open
@@ -421,7 +422,7 @@ impl Game {
             if self.save_error.is_some() {
                 log::warn!("not travelling to the {}: this dimension couldn't be saved", to.name());
                 self.portal_locked = true;
-                return;
+                return false;
             }
         }
         if self.dimension == Dimension::Overworld {
@@ -460,6 +461,7 @@ impl Game {
         self.session.cancel_consumption();
         self.session.player.vel = DVec3::ZERO;
         self.session.vitals.reset_fall();
+        true
     }
 
     /// Goes through the portal the player is standing in.
@@ -583,8 +585,13 @@ impl Game {
                 None => {
                     self.session.spawn_anchor = None;
                     self.show_popup("You have no home bed or charged respawn anchor, or it was obstructed");
-                    self.switch_dimension(Dimension::Overworld, Arrival::Respawn);
-                    return true;
+                    if self.switch_dimension(Dimension::Overworld, Arrival::Respawn) {
+                        return true;
+                    }
+                    // The save failed and says so: the player stays here
+                    // rather than retrying it every frame.
+                    self.arrival = None;
+                    return false;
                 }
             },
             Arrival::Gateway { exit, from, island, link, .. } => {
