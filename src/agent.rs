@@ -1170,6 +1170,12 @@ impl Agent {
             self.session.inventory.armor.map(|s| s.map(|s| s.item)),
             self.session.event_source(),
         );
+        world.player_totems(
+            self.session.id,
+            self.session.player.pos,
+            self.session.vitals.totems_used,
+            self.session.event_source(),
+        );
         let moved = (self.session.player.pos - before).with_y(0.0).length();
         let env = simulation::survival::Env {
             respiration: crate::enchant::armor_level(

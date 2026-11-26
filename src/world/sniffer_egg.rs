@@ -35,7 +35,14 @@ const FACES: [IVec3; 6] = [IVec3::NEG_Y, IVec3::Y, IVec3::NEG_Z, IVec3::Z, IVec3
 impl World {
     pub(super) fn track_sniffer_egg(&mut self, p: IVec3, old: Block, new: Block) {
         if old != new && owns(new.0) {
-            // `SnifferEggBlock.onPlace` runs for every hatch-level change.
+            // `SnifferEggBlock.onPlace` runs for every hatch-level change,
+            // posting `block_place` (v1.0 Track 9).
+            self.emit_block_event(
+                p,
+                crate::world::vibration::GameEvent::BlockPlace,
+                crate::world::vibration::EventSource::NONE,
+                Some(new),
+            );
             if self.schedule_sniffer_egg(p) {
                 // A positional count keeps visuals off the gameplay random stream.
                 for (i, face) in FACES.into_iter().enumerate() {

@@ -19,6 +19,8 @@ mod ticks;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod track9_tests;
 
 use glam::IVec3;
 use rustc_hash::FxHashMap;

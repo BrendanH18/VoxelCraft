@@ -938,8 +938,9 @@ impl Game {
         let bindings = self.settings.keys;
         for action in bindings.actions(input) {
             match action {
-                keys::Action::Attack => self.attack_button(false),
-                keys::Action::Use => self.use_button(false),
+                // A toggled button ignores the release (`ToggleKeyMapping.setDown`).
+                keys::Action::Attack if !self.settings.toggle_attack => self.attack_button(false),
+                keys::Action::Use if !self.settings.toggle_use => self.use_button(false),
                 _ => {}
             }
         }
@@ -977,6 +978,8 @@ impl Game {
             return;
         }
         match action {
+            A::Attack if self.settings.toggle_attack => self.toggled_press(true),
+            A::Use if self.settings.toggle_use => self.toggled_press(false),
             A::Attack => self.attack_button(true),
             A::Use => self.use_button(true),
             A::PickBlock => self.pick_block(),
@@ -2063,6 +2066,22 @@ impl Game {
         self.with_hands(|hands| hands.swap_hands());
     }
 
+    /// v1.0 Track 9: Attack or Use in Toggle mode (`toggleAttack`,
+    /// `toggleUse`). Java's `ToggleKeyMapping` flips the held state on each
+    /// press, and every press is still a click (`KeyMapping.click`), which
+    /// `Minecraft.handleKeybinds` acts on before reading the held state.
+    fn toggled_press(&mut self, attack: bool) {
+        let action = if attack { ToggleAction::Attack } else { ToggleAction::Use };
+        let down = if attack { self.body.left_held } else { self.body.right_held };
+        for (pressed, button_attack) in toggled_presses(action, down, self.session.using_item()) {
+            if button_attack {
+                self.attack_button(pressed);
+            } else {
+                self.use_button(pressed);
+            }
+        }
+    }
+
     /// Use button (right click, or a controller's LT) pressed or released.
     fn use_button(&mut self, pressed: bool) {
         if self.lan.client.is_some() {
@@ -2225,7 +2244,11 @@ impl Game {
         let alpha = if paused { 1.0 } else { self.clock.alpha() };
         let eye = crate::simulation::interpolated_eye(self.previous_eye, self.session.player.eye(), alpha);
         self.rendered_eye = eye;
-        let (camera, forward) = self.camera.view(&self.world, eye, self.session.player.forward());
+        // v1.0 Track 9: `Camera.alignWithEntity`: the eased eye height and
+        // the rider's camera distance.
+        let eye = eye + glam::DVec3::Y * self.session.player.camera_eye_offset(alpha as f32);
+        let distance = self.mobs.entities.camera_distance(self.session.player.vehicle);
+        let (camera, forward) = self.camera.view_at(&self.world, eye, self.session.player.forward(), distance);
         self.hand.update(
             dt as f32,
             self.held_item(),
@@ -2703,5 +2726,50 @@ mod pause_tests {
         assert!(unreadable_level(&storage, false).unwrap().contains("bad seed"));
         assert_eq!(unreadable_level(&storage, true), None, "--new and new worlds replace it on purpose");
         std::fs::remove_dir_all(dir).unwrap();
+    }
+}
+
+/// Which button a Toggle-mode press is for.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum ToggleAction {
+    Attack,
+    Use,
+}
+
+/// The button edges one Toggle-mode press makes, as (pressed, is attack),
+/// given whether the button was toggled on and whether an item is in use.
+/// `Minecraft.handleKeybinds` with a `ToggleKeyMapping`: a press that turns
+/// Attack on clicks it (`startAttack`) and holds it; one that turns it off
+/// still clicks, then `continueAttack(false)` stops mining. Use turning on
+/// clicks (`startUseItem`) and holds; turning off while an item is in use
+/// swallows the click and releases the item (`releaseUsingItem`), and
+/// otherwise uses once more and stops repeating.
+pub(crate) fn toggled_presses(action: ToggleAction, down: bool, using_item: bool) -> Vec<(bool, bool)> {
+    let attack = action == ToggleAction::Attack;
+    match (attack, down) {
+        (_, false) => vec![(true, attack)],
+        (true, true) => vec![(true, true), (false, true)],
+        (false, true) if using_item => vec![(false, false)],
+        (false, true) => vec![(true, false), (false, false)],
+    }
+}
+
+#[cfg(test)]
+mod toggle_tests {
+    use super::{ToggleAction, toggled_presses};
+
+    /// v1.0 Track 9: Toggle mode turns a press into Java's click plus the
+    /// flipped held state; the controller's triggers use the same table.
+    #[test]
+    fn toggled_presses_follow_javas_click_then_held_state() {
+        // Turning on: one press edge, held afterwards.
+        assert_eq!(toggled_presses(ToggleAction::Attack, false, false), [(true, true)]);
+        assert_eq!(toggled_presses(ToggleAction::Use, false, true), [(true, false)]);
+        // Turning Attack off still clicks once, then stops mining.
+        assert_eq!(toggled_presses(ToggleAction::Attack, true, false), [(true, true), (false, true)]);
+        // Turning Use off releases a drawn bow or food without a new use ...
+        assert_eq!(toggled_presses(ToggleAction::Use, true, true), [(false, false)]);
+        // ... and otherwise places or uses once more before stopping.
+        assert_eq!(toggled_presses(ToggleAction::Use, true, false), [(true, false), (false, false)]);
     }
 }

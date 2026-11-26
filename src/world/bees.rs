@@ -262,6 +262,15 @@ impl World {
             a.partner = None;
         }
         *entities.mobs.last_mut().unwrap() = restored;
+        // v1.0 Track 9: `BeehiveBlockEntity.releaseOccupant` posts
+        // `block_change` from the released bee.
+        let hive = self.get_block(p);
+        self.emit_block_event(
+            p,
+            crate::world::vibration::GameEvent::BlockChange,
+            crate::world::vibration::EventSource::mob(uid),
+            hive,
+        );
         let s = entities.mobs.last_mut().unwrap().bee.as_mut().unwrap();
         s.hive = Some(p.to_array());
         s.nectar = o.nectar && emergency;

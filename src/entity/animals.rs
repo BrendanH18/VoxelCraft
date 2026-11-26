@@ -339,6 +339,10 @@ impl Entities {
             }
         }
         m.persistent = true;
+        // v1.0 Track 9: `Camel.handleEating` posts `eat`.
+        if super::mounts::camel_like(m.kind) {
+            self.post_mob_event(index, crate::world::vibration::GameEvent::Eat);
+        }
         self.animal_hearts(index);
         Some(true)
     }

@@ -10,6 +10,7 @@
 //! nothing holds them up, and wear the four armor pieces.
 //! Sources and differences: `docs/verification/2026-10-25-v0.12-utilities.md`.
 
+use crate::world::vibration::{EventSource, GameEvent};
 use glam::{DVec3, IVec3, Quat, Vec3};
 
 use super::{
@@ -633,16 +634,29 @@ impl Entities {
             };
             // A creative shooter: alive but not a target for mobs.
             let creative = owner.is_some_and(|id| ctx.players.iter().any(|p| p.id == id && p.alive && !p.targetable));
+            // v1.0 Track 9: the hit's game events name the shooter.
+            let source = owner.map_or(EventSource::NONE, |id| EventSource::player(id, false));
             match struck {
-                Struck::Cart(id) => self.shoot_cart(id, damage, burning, arrow, creative, motion),
-                Struck::Decor(i) => decor.push((i, creative)),
+                Struck::Cart(id) => {
+                    // `VehicleEntity.hurtServer` posts `entity_damage`.
+                    if let Some(at) = self.cart(id).map(|c| c.pos) {
+                        self.sculk.post(at, GameEvent::EntityDamage, source, None);
+                    }
+                    self.shoot_cart(id, damage, burning, arrow, creative, motion)
+                }
+                Struck::Decor(i) => decor.push((i, creative, source)),
             }
         }
         // Highest index first, so `swap_remove` never moves one still to come.
-        decor.sort_by_key(|&(i, _)| std::cmp::Reverse(i));
-        decor.dedup_by_key(|&mut (i, _)| i);
-        for (i, creative) in decor {
+        decor.sort_by_key(|&(i, _, _)| std::cmp::Reverse(i));
+        decor.dedup_by_key(|&mut (i, _, _)| i);
+        for (i, creative, source) in decor {
             let drops = !creative && self.entity_drops;
+            // v1.0 Track 9: a framed item popping out posts `block_change`
+            // (`ItemFrame.hurtServer`); anything else breaks (`kill`, `entity_die`).
+            let framed = matches!(self.decor[i].kind, Kind::Frame { .. }) && self.decor[i].item.is_some();
+            let event = if framed { GameEvent::BlockChange } else { GameEvent::EntityDie };
+            self.post_decor_event(i, event, source);
             let d = &mut self.decor[i];
             if matches!(d.kind, Kind::Frame { .. }) && d.item.is_some() {
                 let stack = d.item.take();
@@ -714,8 +728,19 @@ impl Entities {
         }
         let drops = self.entity_drops;
         for i in gone.into_iter().rev() {
+            // v1.0 Track 9: a frame that lost its wall posts `block_change`
+            // (`ItemFrame.dropItem`); a painting posts nothing.
+            if matches!(self.decor[i].kind, Kind::Frame { .. }) {
+                self.post_decor_event(i, GameEvent::BlockChange, EventSource::NONE);
+            }
             self.break_decor(i, drops, drops);
         }
+    }
+
+    /// v1.0 Track 9: queues `event` at decoration `i`.
+    fn post_decor_event(&mut self, i: usize, event: GameEvent, source: EventSource) {
+        let pos = self.decor[i].pos;
+        self.sculk.post(pos, event, source, None);
     }
 
     /// `ArmorStand.hurtServer` for explosions: stands caught in a blast break,
@@ -728,6 +753,8 @@ impl Entities {
             let (min, max) = self.decor[i].aabb();
             if super::explosion_damage(power, ((min + max) * 0.5).distance(center), 1.0).is_some() {
                 let stand = self.decor[i].kind == Kind::Stand;
+                // v1.0 Track 9: `kill` posts `entity_die`.
+                self.post_decor_event(i, GameEvent::EntityDie, EventSource::NONE);
                 self.break_decor(i, drops && !stand, drops);
             }
         }

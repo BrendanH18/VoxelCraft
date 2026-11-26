@@ -351,6 +351,8 @@ pub struct Vitals {
     /// v0.15 Track D: hits taken under Infested since the session last
     /// rolled them for silverfish (`InfestedMobEffect.onMobHurt`). Not saved.
     pub infested_hits: u8,
+    /// v1.0 Track 9: totems of undying used, for the game event. Not saved.
+    pub totems_used: u32,
 }
 
 impl Default for Vitals {
@@ -386,6 +388,7 @@ impl Default for Vitals {
             freeze_clock: 0.0,
             freeze_tick: 0,
             infested_hits: 0,
+            totems_used: 0,
         }
     }
 }

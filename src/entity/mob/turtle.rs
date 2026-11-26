@@ -170,6 +170,12 @@ impl Mob {
         }
     }
 
+    /// v1.0 Track 9: `Turtle.aiStep`'s digging: laying, on every fifth
+    /// count of the clutch (the caller checks for sand below).
+    pub(crate) fn turtle_digging(&self) -> bool {
+        self.alive() && self.turtle().is_some_and(|t| t.lay_counter >= 1 && t.lay_counter % 5 == 0)
+    }
+
     /// `TurtleLayEggGoal.canUse`.
     pub(crate) fn lay_egg_can_use<W: MobWorld + ?Sized>(&mut self, w: &W, rng: &mut Rng) -> bool {
         self.has_egg() && self.home_within(9.0) && self.move_to_block_can_use(w, rng, true)
@@ -523,6 +529,19 @@ mod tests {
         e.spawn(MobKind::Turtle, at);
         e.ensure_mob_ids();
         e
+    }
+
+    /// v1.0 Track 9: `Turtle.aiStep` digs (`entity_action`) on every fifth
+    /// count of a clutch being laid, and not otherwise.
+    #[test]
+    fn a_laying_turtle_digs_every_fifth_tick() {
+        let mut e = turtle(DVec3::new(0.5, 30.0, 0.5));
+        let m = &mut e.mobs[0];
+        assert!(!m.turtle_digging(), "not laying");
+        for (count, digs) in [(1, false), (4, false), (5, true), (6, false), (10, true), (200, true)] {
+            m.turtle_mut().lay_counter = count;
+            assert_eq!(m.turtle_digging(), digs, "{count}");
+        }
     }
 
     /// `TurtleTravelGoal`: in the water, a turtle picks a spot up to 512

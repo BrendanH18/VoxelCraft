@@ -632,6 +632,14 @@ impl World {
         self.emit_game_event(block_center(p), event, source, affected);
     }
 
+    /// v1.0 Track 9: `FarmlandBlock.turnToBaseBlock`: farmland at `p`
+    /// becomes dirt and posts `block_change` from `source` (the entity that
+    /// trampled it, or no one when it dried out or was covered).
+    pub fn farmland_to_dirt(&mut self, p: IVec3, source: EventSource) {
+        self.edit(p, Block::DIRT, false);
+        self.emit_block_event(p, GameEvent::BlockChange, source, Some(Block::DIRT));
+    }
+
     /// A mob changed the block at `cell` from `from` to `to`
     /// ([`crate::entity::EntityEvent::AnimalBlock`]), posting Java's event:
     /// `block_place` for a laid turtle egg or frogspawn
@@ -681,6 +689,9 @@ impl World {
         occluded(|p| self.get_block(p), from, to)
     }
 }
+
+#[cfg(test)]
+mod track9_tests;
 
 #[cfg(test)]
 mod tests {

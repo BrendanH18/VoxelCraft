@@ -21,6 +21,7 @@ mod frog;
 pub(crate) mod goals;
 mod illager;
 mod navigate;
+pub(crate) use navigate::is_sand;
 mod nether_ai;
 mod ocelot;
 mod polar_bear;
@@ -1462,6 +1463,10 @@ pub struct Mob {
     pub(super) reinforce_call: Option<Option<super::PlayerId>>,
     /// The player a reinforcement was sent after (`setTarget`). Never saved.
     pub(super) reinforce_target: Option<super::PlayerId>,
+    /// v1.0 Track 9: how many times a slime block or bed has bounced it
+    /// (`restituteMovementAfterCollisions`), for the `bounce` game event.
+    /// Never saved.
+    pub(crate) bounces: u32,
 }
 
 /// Per-kind state of the mobs on the flagged goal selector. Mobs hold it
@@ -1631,6 +1636,7 @@ impl Mob {
             attrs: Default::default(),
             reinforce_call: None,
             reinforce_target: None,
+            bounces: 0,
         }
     }
 
@@ -3709,6 +3715,7 @@ impl Mob {
         let bounce = crate::player::bounciness(below);
         if hit.on_ground && bounce > 0.0 && -falling > 0.08 * 20.0 {
             self.vel.y = -falling * bounce * BOUNCE_DRAG;
+            self.bounces = self.bounces.wrapping_add(1);
         }
         if let Some(s) = &mut self.mount {
             if self.in_water {

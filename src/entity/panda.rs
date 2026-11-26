@@ -364,6 +364,9 @@ impl Entities {
                         if s.eating > 100 && m.animal.as_ref().unwrap().mouth.is_some_and(|h| edible(h.item)) {
                             m.animal.as_mut().unwrap().mouth = None;
                             s.sitting = false;
+                            // v1.0 Track 9: `Panda.handleEating` posts `eat`.
+                            let source = super::warden::mob_source(m);
+                            self.sculk.post(m.pos, crate::world::vibration::GameEvent::Eat, source, None);
                         }
                         s.eating = 0;
                     } else {

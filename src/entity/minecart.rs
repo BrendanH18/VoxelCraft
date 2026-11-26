@@ -1098,6 +1098,28 @@ impl super::Entities {
         true
     }
 
+    /// v1.0 Track 9: the vehicle stores players have open now, one id per
+    /// viewer. Each viewer gone from a chest boat or chest minecart posts
+    /// `container_close` at it (`AbstractChestBoat.stopOpen`,
+    /// `MinecartChest.stopOpen`; opening is posted by the use).
+    pub fn set_vehicle_viewers(&mut self, mut open: Vec<u32>) {
+        open.sort_unstable();
+        let mut old = std::mem::replace(&mut self.vehicle_viewers, open.clone());
+        for id in open {
+            if let Some(i) = old.iter().position(|&o| o == id) {
+                old.swap_remove(i);
+            }
+        }
+        for id in old {
+            if let Some(c) = self.cart(id)
+                && matches!(c.kind, CartKind::Chest | CartKind::Boat { chest: true, .. })
+            {
+                let (pos, none) = (c.pos, crate::world::vibration::EventSource::NONE);
+                self.sculk.post(pos, crate::world::vibration::GameEvent::ContainerClose, none, None);
+            }
+        }
+    }
+
     /// An arrow or fireball hit cart `id` (`VehicleEntity.hurtServer`, with
     /// `MinecartTNT.hurtServer` for a burning arrow on a TNT cart).
     /// `creative`: shot by a creative player, which removes it without drops.

@@ -703,6 +703,14 @@ impl Game {
         }
     }
     /// The chests LAN players have open.
+    /// v1.0 Track 9: the vehicle stores LAN peers have open.
+    pub(super) fn open_vehicles(&self) -> impl Iterator<Item = u32> + '_ {
+        self.lan.peers.iter().filter(|p| p.open).filter_map(|p| match p.body.container() {
+            Container::Minecart(id) => Some(id),
+            _ => None,
+        })
+    }
+
     pub(super) fn open_chests(&self) -> impl Iterator<Item = IVec3> + '_ {
         self.lan.peers.iter().filter(|p| p.open).filter_map(|p| match p.body.container() {
             Container::Chest(pos) | Container::EnderChest(pos) => Some(pos),
@@ -1604,7 +1612,13 @@ impl Game {
     }
 
     pub(super) fn tick_lan_client(&mut self) {
-        let input = self.sample_lan_input();
+        let mut input = self.sample_lan_input();
+        // v1.0 Track 9: the host simulates this player, so an auto-jump the
+        // client's own move found goes to it as a jump press.
+        self.session.player.auto_jump = self.settings.auto_jump;
+        if self.session.player.take_auto_jump() {
+            input.buttons |= 1;
+        }
         let slot = usize::from(input.selected).min(8);
         let use_held = input.buttons & 16 != 0;
         let bow = self

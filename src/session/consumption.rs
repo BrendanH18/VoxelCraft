@@ -112,7 +112,12 @@ impl PlayerSession {
         active: bool,
         entities: &mut Entities,
     ) -> Result<Step, &'static str> {
+        use crate::world::vibration::GameEvent as Use;
         if !active {
+            // v1.0 Track 9: `stopUsingItem` while eating posts `item_interact_finish`.
+            if self.consuming() {
+                self.use_vibration(entities, Use::ItemInteractFinish);
+            }
             self.cancel_consumption();
             return Ok(Step::default());
         }
@@ -120,7 +125,9 @@ impl PlayerSession {
         let held = self.inventory.get(slot).expect("validated held stack");
         let key = Some((slot, held.item));
         if self.consumption.key != key {
+            // v1.0 Track 9: `startUsingItem` posts `item_interact_start`.
             self.consumption = State { key, ticks: 0, duration };
+            self.use_vibration(entities, Use::ItemInteractStart);
         }
         self.consumption.ticks += 1;
         if self.consumption.ticks < duration {

@@ -21,6 +21,15 @@ impl Game {
         let nanos = self.started.elapsed().subsec_nanos() as u64;
         if (crate::world::noise::hash_f(below.x, below.y, below.z, nanos) as f64) < fallen - 0.5 {
             self.world.set_block(below, Block::DIRT);
+            // v1.0 Track 9: `FarmlandBlock.turnToBaseBlock` posts
+            // `block_change` from the player who trampled it.
+            let source = self.session.event_source();
+            self.world.emit_block_event(
+                below,
+                voxelcraft::world::vibration::GameEvent::BlockChange,
+                source,
+                Some(Block::DIRT),
+            );
         }
     }
 }

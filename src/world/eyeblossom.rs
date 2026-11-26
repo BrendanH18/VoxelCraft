@@ -107,6 +107,13 @@ impl World {
             return false;
         }
         self.edit(p, flipped(b), true);
+        // v1.0 Track 9: `tryChangingState` posts `block_change`.
+        self.emit_block_event(
+            p,
+            crate::world::vibration::GameEvent::BlockChange,
+            crate::world::vibration::EventSource::NONE,
+            Some(b),
+        );
         for dy in -2..=2 {
             for dz in -3..=3 {
                 for dx in -3..=3 {

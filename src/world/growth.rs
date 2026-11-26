@@ -613,7 +613,7 @@ impl World {
     fn tick_farmland(&mut self, p: IVec3, b: Block) {
         let above = self.get_block(p + IVec3::Y);
         if above.is_some_and(|a| a.is_solid()) {
-            self.edit(p, Block::DIRT, false);
+            self.farmland_to_dirt(p, super::vibration::EventSource::NONE);
             return;
         }
         let wet = self.rains_on(p + IVec3::Y)
@@ -636,7 +636,7 @@ impl World {
                 self.edit(p, Block::FARMLAND, false);
             }
             (false, _) if !crop => {
-                self.edit(p, Block::DIRT, false);
+                self.farmland_to_dirt(p, super::vibration::EventSource::NONE);
             }
             _ => {}
         }

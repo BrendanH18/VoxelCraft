@@ -158,7 +158,12 @@ impl World {
         let signal = self.redstone_power(p) > 0;
         if s.powered != signal {
             let chain = if signal { s.chain } else { Chain::Unconnected };
-            self.edit(p, Shelf { powered: signal, chain, ..s }.block(), false);
+            let block = Shelf { powered: signal, chain, ..s }.block();
+            self.edit(p, block, false);
+            // v1.0 Track 9: `block_activate` or `block_deactivate`.
+            use crate::world::vibration::{EventSource, GameEvent};
+            let event = if signal { GameEvent::BlockActivate } else { GameEvent::BlockDeactivate };
+            self.emit_block_event(p, event, EventSource::NONE, Some(block));
         }
     }
 

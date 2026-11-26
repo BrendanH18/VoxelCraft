@@ -1148,6 +1148,10 @@ impl Entities {
                 Action::Fang { pos, yaw, warmup } => {
                     let owner = self.mobs[i].uid;
                     self.fangs.push(Fang::new(pos, yaw, warmup, owner));
+                    // v1.0 Track 9: `createSpellEntity` posts `entity_place`
+                    // at the fang, from the evoker.
+                    let source = super::warden::mob_source(&self.mobs[i]);
+                    self.sculk.post(pos, crate::world::vibration::GameEvent::EntityPlace, source, None);
                 }
                 Action::Wololo(uid) => {
                     if self.villager_griefing
@@ -1184,6 +1188,15 @@ impl Entities {
             let dz = self.rng.next_int(5) as i32 - 2;
             let at = cell + IVec3::new(dx, 1, dz);
             self.spawn(MobKind::Vex, at.as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
+            // v1.0 Track 9: `EvokerSummonSpellGoal.performSpellCasting`
+            // posts `entity_place` at the cell's centre, from the evoker.
+            let source = super::warden::mob_source(&self.mobs[i]);
+            self.sculk.post(
+                at.as_dvec3() + DVec3::splat(0.5),
+                crate::world::vibration::GameEvent::EntityPlace,
+                source,
+                None,
+            );
             let life = 20 * (VEX_LIFE_MIN_SECONDS + self.rng.next_int(VEX_LIFE_SPREAD_SECONDS) as i32);
             let vex = self.mobs.last_mut().unwrap();
             vex.persistent = false;
@@ -1260,6 +1273,8 @@ impl Entities {
         let mut b = crate::particles::Burst::new(crate::particles::Kind::Poof, from + DVec3::Y * 1.1, 40);
         b.velocity_spread = DVec3::splat(0.2);
         self.particles.push(crate::particles::Request::Burst(b));
+        // v1.0 Track 9: `Ravager.roar` posts `entity_action`.
+        self.post_mob_event(i, crate::world::vibration::GameEvent::EntityAction);
     }
 
     /// `blockedByItem`: unless roaring, half the time the ravager is stunned

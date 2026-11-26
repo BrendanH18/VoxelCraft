@@ -299,6 +299,11 @@ impl World {
             }
             // BrushableBlock disables placement and drops after falling.
             if super::archaeology::owns(block.0) {
+                // v1.0 Track 9: `BrushableBlock.onBrokenAfterFall` posts
+                // `block_destroy` at the falling block's centre.
+                let centre = fell.pos + glam::DVec3::Y * 0.49;
+                let none = super::vibration::EventSource::NONE;
+                self.emit_game_event(centre, super::vibration::GameEvent::BlockDestroy, none, None);
                 continue;
             }
             // Pointed dripstone breaks where it lands (`onBrokenAfterFall`).

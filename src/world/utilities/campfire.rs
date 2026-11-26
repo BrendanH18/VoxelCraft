@@ -138,6 +138,7 @@ impl World {
             return;
         }
         let mut done = Vec::new();
+        let mut finished = Vec::new();
         let mut smoke = Vec::new();
         let positions: Vec<IVec3> = self.utilities.campfires.keys().copied().collect();
         for p in positions {
@@ -160,6 +161,7 @@ impl World {
                         slots.progress[i] = 0;
                         if let Some(out) = cooked(stack.item) {
                             done.push((p, Stack::new(out, 1)));
+                            finished.push((p, b));
                         }
                     }
                 } else {
@@ -171,6 +173,16 @@ impl World {
             }
         }
         self.drops.extend(done);
+        // v1.0 Track 9: `CampfireBlockEntity.cookTick` posts `block_change`
+        // for each food it finishes.
+        for (p, b) in finished {
+            self.emit_block_event(
+                p,
+                crate::world::vibration::GameEvent::BlockChange,
+                crate::world::vibration::EventSource::NONE,
+                Some(b),
+            );
+        }
         for &p in &self.utilities.fires {
             if self.activity.contains(p, true)
                 && let Some(c) = self.get_block(p).and_then(campfire_of)

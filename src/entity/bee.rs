@@ -212,9 +212,14 @@ impl Entities {
                 let at = m.bee.and_then(|s| s.hive).map(IVec3::from_array);
                 let lead = m.leash.is_some();
                 let pos = m.pos;
+                let source = crate::world::vibration::EventSource::mob(m.uid);
                 if let Some(p) = at
                     && world.bee_enter(p, Occupant::from_mob(m))
                 {
+                    // v1.0 Track 9: `BeehiveBlockEntity.addOccupant` posts
+                    // `block_change` from the bee.
+                    let hive = world.get_block(p);
+                    world.emit_block_event(p, crate::world::vibration::GameEvent::BlockChange, source, hive);
                     self.mobs.swap_remove(i);
                     if lead {
                         self.scatter(crate::inventory::Stack::new(crate::item::Item::LEAD, 1), pos);

@@ -591,3 +591,79 @@ fn swift_sneak_raises_the_sneaking_speed_attribute() {
         near(top.x * 20.0, expected, 0.002, "swift sneak speed");
     }
 }
+
+/// v1.0 Track 9: walks `p` forward (or as `input` says) for `n` ticks and
+/// returns the highest the feet got.
+fn highest(p: &mut Player, world: &Grid, input: MoveInput, n: usize) -> f64 {
+    let mut top = p.pos.y;
+    for _ in 0..n {
+        p.tick(input, world);
+        top = top.max(p.pos.y);
+    }
+    top
+}
+
+/// v1.0 Track 9: `LocalPlayer.updateAutoJump`. With the option on, walking
+/// into a one-block step jumps onto it; off (Java 26.3's default) it stops.
+#[test]
+fn auto_jump_climbs_a_one_block_step_only_when_enabled() {
+    let mut world = ground();
+    for x in 2..12 {
+        world.set(IVec3::new(x, FLOOR, 0), Block::STONE);
+    }
+    let mut off = standing(&world);
+    assert!(!off.auto_jump, "off by default");
+    assert_eq!(highest(&mut off, &world, forward(), 30), FLOOR as f64);
+    let mut on = standing(&world);
+    on.auto_jump = true;
+    // The jump comes the tick after the move that found the block: a
+    // vertical velocity of Java's 0.42 a tick.
+    let mut jumped_at = None;
+    for tick in 0..30 {
+        on.tick(forward(), &world);
+        if on.jumped && jumped_at.is_none() {
+            jumped_at = Some(tick);
+            near(on.vel.y / 20.0, (0.42_f32 - 0.08) as f64 * 0.98_f32 as f64, 1e-6, "jump velocity after gravity");
+        }
+    }
+    assert_eq!(jumped_at, Some(4), "found on the fourth move, about 0.9 blocks short");
+    assert_eq!(on.pos.y, FLOOR as f64 + 1.0, "on top of the ledge");
+    assert!(on.pos.x > 2.0);
+}
+
+/// Two blocks are higher than the 1.2-block jump; a slab is a step (no
+/// more than half a block); a ceiling, sneaking or walking backwards stop it.
+#[test]
+fn auto_jump_skips_tall_walls_steps_ceilings_sneaking_and_backing_up() {
+    let auto = |world: &Grid| {
+        let mut p = standing(world);
+        p.auto_jump = true;
+        p
+    };
+    let mut wall = ground();
+    wall.set(IVec3::new(2, FLOOR, 0), Block::STONE);
+    wall.set(IVec3::new(2, FLOOR + 1, 0), Block::STONE);
+    assert_eq!(highest(&mut auto(&wall), &wall, forward(), 30), FLOOR as f64, "a two-block wall");
+
+    let mut slab = ground();
+    slab.set(IVec3::new(2, FLOOR, 0), Block::STONE_SLAB);
+    let mut p = auto(&slab);
+    assert_eq!(highest(&mut p, &slab, forward(), 30), FLOOR as f64 + 0.5, "stepped, not jumped");
+
+    let mut low = ground();
+    low.set(IVec3::new(2, FLOOR, 0), Block::STONE);
+    for x in -1..=3 {
+        low.set(IVec3::new(x, FLOOR + 2, 0), Block::STONE);
+    }
+    assert_eq!(highest(&mut auto(&low), &low, forward(), 30), FLOOR as f64, "no headroom");
+
+    let mut step = ground();
+    step.set(IVec3::new(2, FLOOR, 0), Block::STONE);
+    let sneak = MoveInput { descend: true, ..forward() };
+    assert_eq!(highest(&mut auto(&step), &step, sneak, 60), FLOOR as f64, "sneaking");
+
+    let mut behind = ground();
+    behind.set(IVec3::new(-2, FLOOR, 0), Block::STONE);
+    let back = MoveInput { forward: -1.0, ..Default::default() };
+    assert_eq!(highest(&mut auto(&behind), &behind, back, 30), FLOOR as f64, "walking backwards");
+}

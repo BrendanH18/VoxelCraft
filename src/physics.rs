@@ -122,7 +122,7 @@ impl CollisionContext {
         self.feet_y > p.y as f64 + top - f64::from(1.0e-5_f32)
     }
 }
-fn cell_boxes_context<W: BlockSource + ?Sized>(
+pub(crate) fn cell_boxes_context<W: BlockSource + ?Sized>(
     world: &W,
     p: IVec3,
     context: Option<CollisionContext>,

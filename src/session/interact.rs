@@ -372,9 +372,26 @@ impl PlayerSession {
         tool_broken: &mut Option<Item>,
     ) -> Result<Option<Used>, &'static str> {
         // The mob a use reaches, for `entity_interact` and `shear` at its position.
-        let target = self.mob_target(world, entities).map(|i| entities.mobs[i].pos);
+        let target_mob = self.mob_target(world, entities);
+        let target = target_mob.map(|i| entities.mobs[i].pos);
+        // v1.0 Track 9: shears a mob's `mobInteract` took (`MushroomCow`,
+        // `SnowGolem`, `CopperGolem`, `SulfurCube`, and `Mob.shearItem` for
+        // a nautilus's saddle or a happy ghast's harness) post `shear` first.
+        use crate::entity::MobKind as K;
+        let shearing = self.inventory.get(slot).is_some_and(|s| s.item == Item::SHEARS)
+            && target_mob.is_some_and(|i| {
+                let kind = entities.mobs[i].kind;
+                matches!(kind, K::Mooshroom | K::SnowGolem | K::CopperGolem | K::SulfurCube | K::HappyGhast)
+                    || crate::entity::nautilus::is_nautilus(kind)
+            });
         let mut used = self.use_entity(slot, world, entities, ctx, tool_broken)?;
         if let Some(u) = used {
+            if shearing
+                && matches!(u, Used::Animal | Used::Mob)
+                && let Some(at) = target
+            {
+                world.emit_game_event(at, crate::world::vibration::GameEvent::Shear, self.event_source(), None);
+            }
             self.entity_use_event(world, entities, u, target);
         }
         if used.is_none()
@@ -499,6 +516,11 @@ impl PlayerSession {
             _ => return,
         };
         world.emit_game_event(pos, event, source, None);
+        // v1.0 Track 9: `MobBucketItem.checkExtraContent` posts `entity_place`
+        // from the player for the released creature.
+        if let Used::Bucket(B::Released { .. }) = used {
+            world.emit_game_event(pos, E::EntityPlace, source, None);
+        }
     }
 
     /// Items whose right-click starts drawing (bows and crossbows).
@@ -933,6 +955,8 @@ impl PlayerSession {
             // `ComposterBlock.addLayer` / `empty`, `CaveVines.use` and
             // `SweetBerryBushBlock.useWithoutItem`, `LecternBlock.placeBook`:
             // the new state is the context.
+            // A harvested beehive posted its own event at the use.
+            Used::Harvested { cell } if state(world, cell).and_then(crate::world::bees::hive).is_some() => return,
             Used::Composter { cell } | Used::Harvested { cell } | Used::LecternBook { cell } => {
                 (cell, E::BlockChange, source, state(world, cell))
             }
@@ -1020,6 +1044,11 @@ impl PlayerSession {
                 }
                 U::Washed => (cell, E::BlockChange, none, state(world, cell)),
                 U::EnderChest => (cell, E::ContainerOpen, source, None),
+                // v1.0 Track 9: `DecoratedPotBlock.useWithoutItem`: the
+                // wobble posts `block_change` from the player.
+                U::Consumed if state(world, cell).and_then(crate::world::utilities::decorated_pot_of).is_some() => {
+                    (cell, E::BlockChange, source, None)
+                }
                 _ => return,
             },
             _ => return,
@@ -1067,6 +1096,14 @@ impl PlayerSession {
             && world.get_block(pos).and_then(crate::world::bees::hive).is_some_and(|(_, _, h)| h == 5)
             && world.harvest_beehive(entities, pos, self.id)
         {
+            // v1.0 Track 9: `BeehiveBlock.useItemOn` posts `shear` or
+            // `fluid_pickup` from the player (and no `block_change`).
+            let event = if held == Some(Item::SHEARS) {
+                crate::world::vibration::GameEvent::Shear
+            } else {
+                crate::world::vibration::GameEvent::FluidPickup
+            };
+            world.emit_block_event(pos, event, self.event_source(), None);
             if held == Some(Item::SHEARS) {
                 world.drop_honeycomb(pos);
                 if survival && self.inventory.wear(slot, 1) {

@@ -1137,6 +1137,9 @@ pub struct Entities {
     pub(crate) charged_blasts: Vec<DVec3>,
     /// v0.16 Track A: shulker bullets (not saved; see `shulker`).
     pub shulker_bullets: Vec<shulker::Bullet>,
+    /// v1.0 Track 9: the vehicle stores each player has open, one entry per
+    /// viewer ([`Entities::set_vehicle_viewers`]). Not saved.
+    vehicle_viewers: Vec<u32>,
     /// Seconds until End city sentries are checked again.
     end_city_timer: f32,
     /// Ominous item spawners over trial chamber fights (see [`trial`]).
@@ -1298,6 +1301,7 @@ impl Entities {
             wither_skulls: Vec::new(),
             charged_blasts: Vec::new(),
             shulker_bullets: Vec::new(),
+            vehicle_viewers: Vec::new(),
             end_city_timer: 0.0,
             item_spawners: Vec::new(),
             puffs: Vec::new(),
@@ -1652,6 +1656,7 @@ impl Entities {
             Some((damage, push * crate::knockback::TICK_RATE))
         };
         if items {
+            let sculk = &mut self.sculk;
             self.items.retain_mut(|item| match hit(item.pos, item.aabb(), item::ItemEntity::EYE) {
                 // v0.16 Track C: the Nether star's `damage_resistant`
                 // spares it the damage, not the push.
@@ -1661,6 +1666,9 @@ impl Entities {
                 }
                 Some((damage, push)) => {
                     item.vel += push;
+                    // v1.0 Track 9: `ItemEntity.hurtServer` posts `entity_damage`.
+                    let none = crate::world::vibration::EventSource::NONE;
+                    sculk.post(item.pos, crate::world::vibration::GameEvent::EntityDamage, none, None);
                     item.hurt(damage)
                 }
                 None => true,
