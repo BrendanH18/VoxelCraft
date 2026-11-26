@@ -19,7 +19,9 @@
 //! faces out of the template in Java's frame, north being -z) or `u`/`d`
 //! (up, down) followed by the connector's top (`n s e w`) and `!` when its
 //! joint is aligned; the target defaults to the name and the priorities to
-//! 0. `piece <location> missing` stands for a location the jar lacks (Java
+//! 0. `@x,y,z` is where Java's template holds the connector (the bastion
+//! catalogue keeps it, since its pieces tile; the others leave the position
+//! to the painter). `piece <location> missing` stands for a location the jar lacks (Java
 //! places nothing for it).
 //!
 //! `alias <pool>` lines name pools that exist only as Java's
@@ -53,6 +55,8 @@ pub struct Conn {
     pub aligned: bool,
     pub placement: i32,
     pub selection: i32,
+    /// Where Java's template holds the connector, when the catalogue keeps it.
+    pub pos: Option<IVec3>,
 }
 
 impl Conn {
@@ -154,6 +158,18 @@ fn conns(token: &str) -> Result<Vec<Conn>, String> {
         Some((t, n)) => (t, n.parse::<usize>().map_err(|_| format!("bad count in {token:?}"))?),
         None => (token, 1),
     };
+    let (token, pos) = match token.rsplit_once('@') {
+        Some((t, p)) => {
+            let v: Vec<i32> = p
+                .split(',')
+                .map(|n| n.parse::<i32>())
+                .collect::<Result<_, _>>()
+                .map_err(|_| format!("bad position in {token:?}"))?;
+            let [x, y, z] = v[..] else { return Err(format!("bad position in {token:?}")) };
+            (t, Some(IVec3::new(x, y, z)))
+        }
+        None => (token, None),
+    };
     let (f, rest) = token.split_once(':').ok_or_else(|| format!("bad connector {token:?}"))?;
     let (names, pool) = rest.split_once('>').ok_or_else(|| format!("connector {token:?} has no pool"))?;
     let (pool, priorities) = match pool.split_once('^') {
@@ -176,6 +192,7 @@ fn conns(token: &str) -> Result<Vec<Conn>, String> {
         aligned,
         placement: priorities.0,
         selection: priorities.1,
+        pos,
     };
     Ok(vec![c; count])
 }

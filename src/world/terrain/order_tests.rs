@@ -431,7 +431,16 @@ fn generation_5_ignores_order_threads_and_caches() {
 /// Runs `chunks` of a `dimension` generation 5 world reversed, on threads
 /// and on a fresh generator each, against a row-order reference.
 fn other_dimension_ignores_order(dimension: Dimension, chunks: &[IVec3], what: &str) -> Vec<(ChunkData, Features)> {
-    let fresh = || Generator::with_generation(SEED, dimension, Generation::V5);
+    other_dimension_ignores_order_in(Generation::V5, dimension, chunks, what)
+}
+
+fn other_dimension_ignores_order_in(
+    generation: Generation,
+    dimension: Dimension,
+    chunks: &[IVec3],
+    what: &str,
+) -> Vec<(ChunkData, Features)> {
+    let fresh = || Generator::with_generation(SEED, dimension, generation);
     let g = fresh();
     let reference: Vec<_> = chunks.iter().map(|&p| (g.generate(p), g.structure_features(p))).collect();
     drop(g);
@@ -488,6 +497,30 @@ fn generation_5_nether_complexes_ignore_order_threads_and_caches() {
     chunks.sort_by_key(|p| (p.z, p.x, p.y));
     chunks.dedup();
     let reference = other_dimension_ignores_order(Dimension::Nether, &chunks, "generation 5 Nether complexes");
+    let all: Vec<_> = reference.iter().flat_map(|(_, f)| f.iter().map(|(_, f)| *f)).collect();
+    assert!(all.iter().any(|f| matches!(f, Feature::Spawner(crate::entity::MobKind::Blaze))), "no blaze spawner");
+    assert!(all.iter().any(|f| matches!(f, Feature::BastionChest(..))), "no bastion chest");
+}
+
+/// v1.0 Track 8: generation 6's Nether — a fortress and a bastion of Java's
+/// full catalogue, with every chunk row up to the roof's mushrooms, and a
+/// patch of feature-heavy terrain (Java 26.3's placed features).
+#[test]
+fn generation_6_nether_ignores_order_threads_and_caches() {
+    let n = crate::world::nether::NetherGen::with_generation(SEED, Generation::V6);
+    let regions = || (-3..=3).flat_map(|z| (-3..=3).map(move |x| IVec2::new(x, z)));
+    let fortress = regions().find_map(|r| n.fortresses.get(r)).expect("a generation 6 fortress");
+    let bastion = regions().find_map(|r| n.fortresses.bastions.get(r)).expect("a bastion");
+    let rows = Dimension::Nether.chunk_rows();
+    let patch = (-2..=1).flat_map(|z| (-2..=1).flat_map(move |x| (0..5).map(move |y| IVec3::new(x, y, z))));
+    let mut chunks: Vec<_> = chunks_of(fortress.bounds, 0)
+        .chain(chunks_of(bastion.bounds, 0))
+        .chain(patch)
+        .filter(|p| rows.contains(&p.y))
+        .collect();
+    chunks.sort_by_key(|p| (p.z, p.x, p.y));
+    chunks.dedup();
+    let reference = other_dimension_ignores_order_in(Generation::V6, Dimension::Nether, &chunks, "generation 6 Nether");
     let all: Vec<_> = reference.iter().flat_map(|(_, f)| f.iter().map(|(_, f)| *f)).collect();
     assert!(all.iter().any(|f| matches!(f, Feature::Spawner(crate::entity::MobKind::Blaze))), "no blaze spawner");
     assert!(all.iter().any(|f| matches!(f, Feature::BastionChest(..))), "no bastion chest");

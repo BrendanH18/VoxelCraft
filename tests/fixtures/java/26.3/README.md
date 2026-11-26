@@ -1661,3 +1661,50 @@ scripts/boat-check.sh -- 'cargo test --profile ci --locked --test title_identity
 facts come from the 26.3 asset index (index 34), not the jar, and are
 recorded there: the panorama faces are 1024 x 1024 and
 `panorama_overlay.png` is a single transparent pixel.
+
+## Nether generation (v1.0 Track 8)
+
+`nether_generation.json` holds the facts GEN-04a checks the Nether
+against, from `tools/extract_java_nether_fixtures.py`: the `nether`
+multi-noise preset's five parameter points (the preset is code, so the
+tool compiles `tools/JavaNetherVectors.java` against the jar and prints
+each point's quantized ranges); each Nether biome's feature lists by
+generation step; every placed feature those lists name and the configured
+feature each places, as the jar's JSON; the `nether_complexes` and
+`nether_fossils` structure sets, the `fortress`, `bastion_remnant`,
+`nether_fossil` and `ruined_portal_nether` structures and the biomes their
+`has_structure` tags hold; and the block tags the placements test. It
+needs `javac` and `java` (JDK 25):
+
+```sh
+python3 tools/extract_java_nether_fixtures.py /path/to/server.jar --output target/java-nether.json
+diff tests/fixtures/java/26.3/nether_generation.json target/java-nether.json
+scripts/boat-check.sh -- 'cargo test --profile ci --locked --lib nether_generation_tests'
+```
+
+`world::nether_placed` is generation 6's table of these placed features;
+`nether_generation_tests` checks it, the biome source, the structure sets
+and the tags against the file both ways
+([record](../../../../docs/verification/2026-11-25-v1.0-track-08-generation.md)).
+
+## The bastion catalogue (v1.0 Track 8)
+
+`bastion_catalogue.json` is `tools/extract_java_structure_catalogues.py`
+with `--set bastion`: the `bastion_remnant` structure's jigsaw settings,
+all 60 `bastion/*` template pools, the 167 templates they name (size,
+connectors with where each sits in its template, chests and their loot
+tables, spawners by mob, gold blocks, gilded blackstone, lava and
+residents) and the 12 processor lists. No block layout is copied. The
+default set's output (`structure_catalogues.json`) is unchanged by the
+option:
+
+```sh
+python3 tools/extract_java_structure_catalogues.py /path/to/server.jar --set bastion --output target/java-bastion.json
+diff tests/fixtures/java/26.3/bastion_catalogue.json target/java-bastion.json
+scripts/boat-check.sh -- 'cargo test --profile ci --locked --lib structure_catalogue_tests'
+```
+
+`src/world/jigsaw/bastion_v6.txt` holds a `piece` line per template and
+Java's pools; `structure_catalogue_tests` checks both against this file,
+and the painted templates' counts and connector positions against the
+piece lines ([record](../../../../docs/verification/2026-11-25-v1.0-track-08-generation.md)).

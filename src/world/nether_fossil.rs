@@ -18,7 +18,10 @@ use super::structure::{Bounds, Rng};
 use super::terrain::Generation;
 use super::trail_ruins::spread;
 
+/// `nether_fossils`' random spread: salt, spacing and separation.
 pub const SALT: u64 = 14_357_921;
+pub const SPACING: i32 = 2;
+pub const SEPARATION: i32 = 1;
 const CACHE_LIMIT: usize = 512;
 /// Margin that covers every region whose fossil's beard can reach a column:
 /// a start lies in its region's first chunk, a design reaches at most 12
@@ -38,7 +41,7 @@ impl NetherFossils {
     }
 
     pub fn start_chunk(&self, region: IVec2) -> IVec2 {
-        spread(self.seed, region, 2, 1, SALT)
+        spread(self.seed, region, SPACING, SEPARATION, SALT)
     }
 
     pub fn get(&self, g: &NetherGen, region: IVec2) -> Option<Arc<Relic>> {

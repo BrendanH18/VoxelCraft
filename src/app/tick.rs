@@ -102,6 +102,12 @@ impl Game {
         {
             self.world.tick_map(stack, self.session.player.pos, self.session.id.0 as u64);
         }
+        // Framed maps mark their frames every 10 ticks, as Java's server
+        // entity ticks a framed map (BLD-05b).
+        if self.world.maps.game_ticks.is_multiple_of(10) {
+            let frames = voxelcraft::entity::decor::framed_maps(&self.mobs.entities.decor);
+            self.world.sync_frame_markers(&frames);
+        }
         self.weather.update_rules(dt, self.gamerules.bool("advance_weather"));
         self.update_sleep(dt);
         // Java's isRaining compares the faded rain level, not the target state.

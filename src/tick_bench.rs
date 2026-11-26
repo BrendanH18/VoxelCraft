@@ -458,7 +458,7 @@ pub fn run(options: &Options) -> Result<Value, String> {
         f.ticked = due as u8;
         let a = Instant::now();
         let forward = glam::Vec3::new(1.0, -0.2, 0.0).normalize();
-        let mesh = h.entities.mesh(h.camera, forward, 256.0, t as f32, 1.0);
+        let mesh = h.entities.mesh(&h.world.maps, h.camera, forward, 256.0, t as f32, 1.0);
         std::hint::black_box(mesh.len());
         f.entity_mesh = a.elapsed().as_secs_f32() * 1000.0;
         if t >= options.warmup {

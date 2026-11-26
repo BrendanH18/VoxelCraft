@@ -273,6 +273,20 @@ pub(super) fn vertices(
                         ))
                 };
                 b.quad([p(-2.0, 3.0), p(2.0, 3.0), p(0.0, -4.0), p(0.0, -4.0)], palette(8 * 4 + 2), 2955);
+            } else if d.kind == "frame" {
+                // Java's frame marker: an original green arrow, pointing the
+                // way the frame faces (south at rotation zero).
+                let angle = (rotation as f32 * 22.5).to_radians();
+                let center = point(x, y, 0.005);
+                let p = |dx: f32, dy: f32| {
+                    center
+                        + m.transform_vector3(Vec3::new(
+                            (dx * angle.cos() - dy * angle.sin()) / 128.0,
+                            (-dx * angle.sin() - dy * angle.cos()) / 128.0,
+                            0.0,
+                        ))
+                };
+                b.quad([p(-3.0, -3.0), p(0.0, -1.5), p(3.0, -3.0), p(0.0, 4.0)], palette(7 * 4 + 2), 2955);
             } else if d.kind.contains("treasure") || d.kind == "target_x" {
                 for offset in -3..=3 {
                     let offset = offset as f32;
