@@ -22,7 +22,7 @@ use crate::world::terrain::{Dimension, Generator};
 use super::Game;
 
 /// Level properties that belong to one dimension rather than the player.
-pub(super) const DIMENSION_KEYS: [&str; 38] = [
+pub(super) const DIMENSION_KEYS: [&str; 40] = [
     "furnaces",
     "chests",
     "items",
@@ -67,6 +67,10 @@ pub(super) const DIMENSION_KEYS: [&str; 38] = [
     "fluid_ticks",
     "stored_index",
     "entity_ids",
+    // v1.0 Track 7: dragons hatched from eggs.
+    "ender_dragons",
+    // v1.0 review fixes: the level file's save generation.
+    "save_generation",
 ];
 /// How far around the arrival point to look for an existing portal.
 const SEARCH_RADIUS: i32 = 16;
@@ -212,7 +216,8 @@ pub(super) fn attach_regions(
             // (`tools/save_fixtures/collect.py`), with the records the
             // region tables name, whether or not the chunks load.
             log::info!("region storage: {} chunk records in the {}", store.stored_at_open().len(), dim.name());
-            world.attach_regions(store, owned, writable);
+            let generation = props.get(crate::world::GENERATION_KEY).and_then(|g| g.parse().ok()).unwrap_or(0);
+            world.attach_regions(store, owned, generation, writable);
             let notices: Vec<String> = damage.iter().map(|d| d.notice(dim.name())).collect();
             (!notices.is_empty()).then(|| notices.join(" "))
         }
@@ -268,6 +273,7 @@ impl Game {
         // v1.0 Track 3b: what region storage needs from the level file.
         if self.world.writes_records() {
             props.insert(crate::world::REGION_KEY.to_string(), self.world.region_chunks_to_string());
+            props.insert(crate::world::GENERATION_KEY.to_string(), self.world.save_generation().to_string());
             props.insert(crate::world::FLUID_TICKS_KEY.to_string(), self.world.fluid_ticks_to_string());
             props.insert("stored_index".to_string(), self.mobs.entities.stored_index_to_string());
             props.insert("entity_ids".to_string(), self.mobs.entities.entity_ids_to_string());
@@ -735,6 +741,28 @@ mod tests {
         for key in props.keys() {
             assert!(DIMENSION_KEYS.contains(&key.as_str()), "{key} would be dropped on reload");
         }
+    }
+
+    /// Review fix S3: keys written only when there is something to write
+    /// (dragons hatched from eggs), and the region storage keys, stay with
+    /// their dimension when the overworld's are cached.
+    #[test]
+    fn egg_dragons_and_region_keys_stay_with_their_dimension() {
+        let mut entities = crate::entity::Entities::new(1);
+        entities.wild_dragons.spawn(DVec3::new(0.5, 90.0, 0.5), 0.0);
+        let mut props = BTreeMap::new();
+        entities.save_props(&mut props);
+        assert!(props.contains_key("ender_dragons"));
+        for key in [
+            crate::world::REGION_KEY,
+            crate::world::FLUID_TICKS_KEY,
+            crate::world::GENERATION_KEY,
+            "stored_index",
+            "entity_ids",
+        ] {
+            props.insert(key.to_string(), "1".to_string());
+        }
+        assert_eq!(dimension_props(&props), props);
     }
 
     #[test]

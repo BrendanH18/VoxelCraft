@@ -21,7 +21,7 @@ fn world(dir: &std::path::Path, owned: Option<FxHashSet<IVec3>>) -> World {
     let mut w = World::new_headless(Arc::new(Generator::new(3)), Default::default(), 2);
     let (store, damage) = RegionStore::open(dir, true).unwrap();
     assert!(damage.is_empty());
-    w.attach_regions(store, owned, true);
+    w.attach_regions(store, owned, 0, true);
     w
 }
 
@@ -120,7 +120,7 @@ fn the_first_save_moves_the_level_files_unloaded_state_into_records() {
     saved.insert(chunk_of(far), data);
     let mut w = World::new_headless(Arc::new(Generator::new(3)), saved, 2);
     let (store, _) = RegionStore::open(&dir, true).unwrap();
-    w.attach_regions(store, None, true);
+    w.attach_regions(store, None, 0, true);
     let mut held = crate::world::chest::Chest::default();
     held.slots[0] = Some(Stack::new(Item::DIAMOND, 5));
     w.load_chests(&format!("{},{},{}={}", far.x, far.y, far.z, held.serialize()));

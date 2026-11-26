@@ -26,6 +26,16 @@
 //! their record was written, and the level file is written by the I/O
 //! thread after every record queued before it, so it never names a record
 //! that isn't on disk.
+//!
+//! Each level file save has a generation (`save_generation`), and every
+//! record the world writes, and the header of its region file, carries the
+//! generation of the level file save it goes with: the next one, for
+//! records written between saves. A region file newer than the level file
+//! was written by a session that stopped before its next level file was
+//! written. Its entities may have left a chunk the level file holds, so
+//! the level file still has them too: opening such a world reads those
+//! records, and their entities replace the level file's copies (the
+//! records are the newer copies), so each is restored once.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -40,6 +50,9 @@ use super::region::{ChunkRecord, Patch, Props, RegionStore, StateParts};
 pub const REGION_KEY: &str = "region_chunks";
 /// The level file key holding the loaded chunks' scheduled fluid ticks.
 pub const FLUID_TICKS_KEY: &str = "fluid_ticks";
+/// The level file key holding its save's generation (see the module
+/// documentation).
+pub const GENERATION_KEY: &str = "save_generation";
 
 type At<'a> = &'a dyn Fn(IVec3) -> bool;
 type Out = FxHashMap<IVec3, Props>;
@@ -323,6 +336,12 @@ pub(super) struct Records {
     /// Records are read but never written (scripted runs): unloaded chunks
     /// stay in memory as without region storage.
     read_only: bool,
+    /// The generation of the last level file save queued (or loaded).
+    generation: u64,
+    /// Entity batches written after the level file by a session that
+    /// stopped before its next one: the level file's copies of their
+    /// entities are older and go (see the module documentation).
+    superseding: Vec<Props>,
 }
 
 impl Records {
@@ -338,10 +357,17 @@ impl Records {
 impl World {
     /// Keeps this world's unloaded chunks in region storage from now on.
     /// `owned` is the level file's `region_chunks` (`None`: a level file
-    /// from before region storage, which holds every chunk's state). Saved
+    /// from before region storage, which holds every chunk's state) and
+    /// `generation` its `save_generation` (0 if it has none). Saved
     /// `chunks.bin` chunks that already have blocks in a record are older
     /// than it (a crash after the first save wrote the records) and give way.
-    pub fn attach_regions(&mut self, store: RegionStore, owned: Option<FxHashSet<IVec3>>, writable: bool) {
+    pub fn attach_regions(
+        &mut self,
+        store: RegionStore,
+        owned: Option<FxHashSet<IVec3>>,
+        generation: u64,
+        writable: bool,
+    ) {
         let stored = store.stored_at_open();
         if !self.saved.is_empty() && !stored.is_empty() {
             let newer: Vec<IVec3> = self
@@ -354,6 +380,19 @@ impl World {
                 self.saved.remove(&p);
             }
         }
+        // Records written after the level file, outside the chunks it holds:
+        // their entities may also be in it, and are the newer copies.
+        let newest = store.generation();
+        let mut superseding = Vec::new();
+        if let Some(owned) = owned.as_ref().filter(|_| newest > generation) {
+            let after = store.chunks_written_after(generation);
+            log::warn!("{} chunk records were written after the level file; reading their entities", after.len());
+            for pos in after.into_iter().filter(|p| !owned.contains(p)) {
+                if let Some(record) = store.read(pos) {
+                    superseding.extend(record.entities.into_iter().filter(|b| !b.is_empty()));
+                }
+            }
+        }
         let mut store = store;
         // Only a level file from before region storage needs the list, at
         // its first save.
@@ -364,6 +403,10 @@ impl World {
             owns_all: owned.is_none(),
             level_owned: owned.unwrap_or_default(),
             read_only: !writable,
+            // Past every generation on disk, so a later level file is newer
+            // than all of it.
+            generation: generation.max(newest),
+            superseding,
             ..Default::default()
         };
         self.regions = Some(store);
@@ -406,14 +449,31 @@ impl World {
         if !self.writes_records() {
             return;
         }
+        let generation = self.region_records.generation.saturating_add(1);
         let Some(store) = &self.regions else { return };
-        store.queue(batches.into_iter().map(|(pos, batch)| (pos, Patch { append: vec![batch], ..Default::default() })));
+        store.queue(
+            batches
+                .into_iter()
+                .map(|(pos, batch)| (pos, Patch { append: vec![batch], generation, ..Default::default() })),
+        );
     }
 
     /// Entity batches of chunks that loaded from records since the last
     /// call, for the entity pass to bring back.
     pub fn take_entity_records(&mut self) -> Vec<(IVec3, Vec<Props>)> {
         std::mem::take(&mut self.region_records.entities)
+    }
+
+    /// Entity batches whose entities replace the level file's copies (see
+    /// the module documentation), once, for the entity pass.
+    pub fn take_superseding_entities(&mut self) -> Vec<Props> {
+        std::mem::take(&mut self.region_records.superseding)
+    }
+
+    /// The `save_generation` text: the generation of the last level file
+    /// save queued.
+    pub fn save_generation(&self) -> u64 {
+        self.region_records.generation
     }
 
     /// Takes the block entity, falling block, fluid and fire state of the
@@ -458,6 +518,7 @@ impl World {
             chunks.iter().copied().filter(|p| self.chunks.get(p).is_some_and(|s| s.modified)).collect();
         let mut state = self.take_chunk_state(&|c| set.contains(&c), &|c| modified.contains(&c));
         let mut patches = Vec::new();
+        let generation = self.region_records.generation.saturating_add(1);
         for &pos in chunks {
             let Some(slot) = self.chunks.get(&pos) else { continue };
             let parts = state.remove(&pos).unwrap_or_default();
@@ -472,7 +533,13 @@ impl World {
             let blocks = slot.modified.then(|| slot.data.clone());
             patches.push((
                 pos,
-                Patch { blocks: Some(blocks), state: Some(parts), entities: Some(Vec::new()), append: Vec::new() },
+                Patch {
+                    blocks: Some(blocks),
+                    state: Some(parts),
+                    entities: Some(Vec::new()),
+                    append: Vec::new(),
+                    generation,
+                },
             ));
         }
         self.region_records.evicted += patches.len() as u64;
@@ -512,7 +579,8 @@ impl World {
     /// it all), and loaded chunks whose blocks changed since their record
     /// was written write them. Returns how many records were queued.
     /// Afterwards the level file holds exactly the loaded chunks' state,
-    /// and [`World::region_chunks_to_string`] names them.
+    /// [`World::region_chunks_to_string`] names them and
+    /// [`World::save_generation`] is this save's.
     pub fn save_records(&mut self, stored: Vec<(IVec3, Props)>) -> usize {
         if !self.writes_records() {
             return 0;
@@ -575,6 +643,11 @@ impl World {
         now_owned.extend(loading.iter().copied().filter(|&c| owns(c)));
         self.region_records.level_owned = now_owned;
         self.region_records.owns_all = false;
+        // These records go with the level file this save writes.
+        self.region_records.generation = self.region_records.generation.saturating_add(1);
+        for patch in patches.values_mut() {
+            patch.generation = self.region_records.generation;
+        }
         let n = patches.len();
         if let Some(store) = &mut self.regions {
             store.queue(patches);

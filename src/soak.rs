@@ -215,6 +215,7 @@ fn dimension_props(world: &World, entities: &Entities) -> BTreeMap<String, Strin
     }
     if world.writes_records() {
         props.insert(crate::world::REGION_KEY.to_string(), world.region_chunks_to_string());
+        props.insert(crate::world::GENERATION_KEY.to_string(), world.save_generation().to_string());
         props.insert(crate::world::FLUID_TICKS_KEY.to_string(), world.fluid_ticks_to_string());
         props.insert("stored_index".to_string(), entities.stored_index_to_string());
         props.insert("entity_ids".to_string(), entities.entity_ids_to_string());
@@ -236,7 +237,8 @@ fn attach_regions(
         return Err(d.notice(dim.name()));
     }
     let owned = props.get(crate::world::REGION_KEY).map(|t| World::parse_region_chunks(t));
-    world.attach_regions(store, owned, true);
+    let generation = props.get(crate::world::GENERATION_KEY).and_then(|g| g.parse().ok()).unwrap_or(0);
+    world.attach_regions(store, owned, generation, true);
     Ok(())
 }
 
@@ -521,7 +523,7 @@ impl Soak {
         let p = &self.agent.session.player;
         let player = (self.dimension == Dimension::Overworld).then_some((p.pos, p.yaw, p.pitch));
         if self.world.writes_records() {
-            let stored = self.entities.take_stored_batches(&self.world);
+            let stored = self.entities.take_stored_batches(&mut self.world);
             self.world.save_records(stored);
             let props = dimension_props(&self.world, &self.entities);
             let level = LevelInfo { seed, player, props };

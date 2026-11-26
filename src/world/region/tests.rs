@@ -269,3 +269,85 @@ fn a_read_only_store_never_writes() {
     assert_eq!(fs::read_dir(&dir).unwrap().count(), 1, "no copy");
     fs::remove_dir_all(dir).unwrap();
 }
+
+/// Review fix S1: a record that fails to write stays queued, and the level
+/// file waits until it is on disk.
+#[test]
+fn a_failed_write_is_retried_before_the_level_file_is_written() {
+    let dir = temp("failed");
+    let (store, _) = RegionStore::open(&dir, true).unwrap();
+    // A folder where the region file goes: every write to it fails.
+    let blocker = dir.join(file_name(IVec2::ZERO));
+    fs::create_dir_all(&blocker).unwrap();
+    let a = IVec3::new(1, 0, 1);
+    store.queue([(a, Patch::replace(full(a)))]);
+    let level = dir.join("level.txt");
+    let save_level = |store: &RegionStore| {
+        let level = level.clone();
+        store.after_writes(move || fs::write(&level, "seed=1\n"));
+    };
+    save_level(&store);
+    let error = store.flush().unwrap_err().to_string();
+    assert!(error.contains("r.0.0.vxr"), "{error}");
+    assert!(!level.exists(), "no level file names a record that isn't on disk");
+    assert_eq!(store.stats().0, 1, "the record waits to be written again");
+    same(&store.read(a).unwrap(), &full(a));
+    // The next save writes it first, then the level file.
+    fs::remove_dir(&blocker).unwrap();
+    save_level(&store);
+    store.flush().unwrap();
+    assert!(level.exists());
+    assert_eq!(store.stats().0, 0);
+    drop(store);
+    let (store, damage) = RegionStore::open(&dir, true).unwrap();
+    assert!(damage.is_empty());
+    same(&store.read(a).unwrap(), &full(a));
+    drop(store);
+    fs::remove_dir_all(dir).unwrap();
+}
+
+/// Review fix S4: one region file that can't be opened is moved aside and
+/// regenerates; the dimension's other regions load.
+#[test]
+fn an_unreadable_region_file_is_moved_aside_and_the_others_still_load() {
+    let dir = temp("unreadable");
+    let (store, _) = RegionStore::open(&dir, true).unwrap();
+    let (a, b) = (IVec3::new(1, 0, 1), IVec3::new(20, 0, 1));
+    store.queue([(a, Patch::replace(full(a))), (b, Patch::replace(full(b)))]);
+    store.flush().unwrap();
+    drop(store);
+    // b's region from a newer version.
+    let path = dir.join(file_name(region_of(b)));
+    let mut bytes = fs::read(&path).unwrap();
+    bytes[8..12].copy_from_slice(&(FILE_VERSION + 1).to_le_bytes());
+    fs::write(&path, &bytes).unwrap();
+    // A read-only store leaves it alone.
+    let (store, damage) = RegionStore::open(&dir, false).unwrap();
+    assert_eq!((damage.len(), damage[0].kept_as.is_none()), (1, true));
+    same(&store.read(a).unwrap(), &full(a));
+    assert!(store.read(b).is_none());
+    drop(store);
+    assert_eq!(fs::read(&path).unwrap(), bytes);
+
+    let (store, damage) = RegionStore::open(&dir, true).unwrap();
+    assert_eq!(damage.len(), 1);
+    assert_eq!(damage[0].reason, "it is from a newer version");
+    let notice = damage[0].notice("overworld");
+    assert!(notice.contains("r.1.0.vxr") && notice.contains("regenerate"), "{notice}");
+    let kept = damage[0].kept_as.clone().unwrap();
+    assert_eq!(fs::read(&kept).unwrap(), bytes, "kept unchanged");
+    assert!(!path.exists());
+    same(&store.read(a).unwrap(), &full(a));
+    assert!(store.read(b).is_none(), "b regenerates");
+    assert_eq!(store.stored_at_open().iter().copied().collect::<Vec<_>>(), vec![a]);
+    // Its region starts again.
+    store.queue([(b, Patch::replace(full(b)))]);
+    store.flush().unwrap();
+    drop(store);
+    let (store, damage) = RegionStore::open(&dir, true).unwrap();
+    assert!(damage.is_empty());
+    same(&store.read(b).unwrap(), &full(b));
+    drop(store);
+    assert_eq!(fs::read(&kept).unwrap(), bytes);
+    fs::remove_dir_all(dir).unwrap();
+}

@@ -26,7 +26,7 @@ use voxelcraft::world::chunk::ChunkData;
 use voxelcraft::world::region::{REGION_DIR, RegionStore};
 use voxelcraft::world::storage::{LevelInfo, SavedChunks, Storage, VERSION_KEY};
 use voxelcraft::world::terrain::Generator;
-use voxelcraft::world::{REGION_KEY, World};
+use voxelcraft::world::{GENERATION_KEY, REGION_KEY, World};
 
 /// Every tagged release whose saves 1.0 opens (`docs/saves.md`).
 const RELEASES: [&str; 11] =
@@ -103,7 +103,8 @@ fn open_with_regions(
     let (store, damage) = RegionStore::open(dir.join(REGION_DIR), writable).unwrap();
     assert!(damage.is_empty(), "{}: damaged region files", dir.display());
     let owned = props.get(REGION_KEY).map(|t| World::parse_region_chunks(t));
-    world.attach_regions(store, owned, writable);
+    let generation = props.get(GENERATION_KEY).and_then(|g| g.parse().ok()).unwrap_or(0);
+    world.attach_regions(store, owned, generation, writable);
     if let Some(c) = props.get("chests") {
         world.load_chests(c);
     }
@@ -416,7 +417,7 @@ fn check_region_save(root: &Path, tag: &str) {
 
     // The first save: nothing is loaded, so everything moves to records.
     let (mut world, mut entities) = open(&level.props, storage.load_chunks().unwrap());
-    let stored = entities.take_stored_batches(&world);
+    let stored = entities.take_stored_batches(&mut world);
     if original_chunks.is_some() {
         assert!(!stored.is_empty(), "{tag}: the mobs and the dropped stack go to their chunks' records");
     }

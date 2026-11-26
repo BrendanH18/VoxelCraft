@@ -1,5 +1,6 @@
 //! World save assembly and persistence, separate from event dispatch.
 use super::*;
+use crate::world::region::REGION_DIR;
 impl Game {
     /// Saves the world and waits until it is on disk: quitting, changing
     /// dimension, `/save` and the LAN host's save all finish here before
@@ -103,6 +104,19 @@ impl Game {
             self.last_save = Instant::now();
             return;
         }
+        // A dimension with region files keeps its chunks there. If they
+        // couldn't be opened, saving without them would write a `chunks.bin`
+        // and a level file without `region_chunks`, and the next launch
+        // would move the region files aside as unsaved: refuse instead.
+        let regions = dimension::storage_for(&self.storage, self.dimension).dir().join(REGION_DIR);
+        if regions.exists() {
+            let e = "this dimension's region files couldn't be opened, so nothing was written over them";
+            log::error!("save failed: {e} ({})", regions.display());
+            self.show_popup(&format!("Could not save the world: {e}"));
+            self.save_error = Some(e.to_string());
+            self.last_save = Instant::now();
+            return;
+        }
         let chunks = self.world.modified_chunks();
         // The overworld saves with the player; the Nether in its own folder.
         let result = match self.dimension {
@@ -150,7 +164,7 @@ impl Game {
     /// is written.
     fn save_regions(&mut self, seed: u64, mut props: std::collections::BTreeMap<String, String>, wait: bool) {
         let started = Instant::now();
-        let stored = self.mobs.entities.take_stored_batches(&self.world);
+        let stored = self.mobs.entities.take_stored_batches(&mut self.world);
         let records = self.world.save_records(stored);
         let player = Some((self.session.player.pos, self.session.player.yaw, self.session.player.pitch));
         let dimension = dimension::storage_for(&self.storage, self.dimension);

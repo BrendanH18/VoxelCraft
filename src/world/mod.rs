@@ -121,7 +121,7 @@ pub mod relics;
 pub mod ruined_portal;
 #[cfg(test)]
 mod rule_tests;
-pub use chunk_records::{CHUNK_KEYS, FLUID_TICKS_KEY, REGION_KEY};
+pub use chunk_records::{CHUNK_KEYS, FLUID_TICKS_KEY, GENERATION_KEY, REGION_KEY};
 pub mod scaffolding;
 pub mod sculk;
 pub mod sculk_spread;

@@ -60,7 +60,8 @@ the old sectors are free.
 | --- | --- |
 | 0–7 | `VXREGION` |
 | 8–11 | file version 1 (little-endian, as every number here) |
-| 12–4095 | zero |
+| 12–19 | the newest [save generation](#region-files) of any record written to the file (0 in files written before the 1.0 review fixes) |
+| 20–4095 | zero |
 | 4096–36863 | 4096 entries of 8 bytes: the record's first sector (0: none) and its length in bytes. Entry `(row * 16 + z) * 16 + x` is the chunk at those coordinates modulo 16 |
 | 36864 on | records, each starting a sector, padded to the next |
 
@@ -78,9 +79,16 @@ queued one. At most 4096 chunks wait; past that the game waits for the
 disk. Autosaves queue only the loaded chunks whose blocks changed since
 their record was written, and the I/O thread writes the level files after
 every record queued before them, so a level file never names a record that
-isn't on disk. Quitting, changing dimension, `/save` and the LAN host's
+isn't on disk. Every save first brings back the entities of chunks that
+loaded since the last game tick (streaming goes on while the game is
+paused), so the level file that now holds those chunks holds their
+entities. Quitting, changing dimension, `/save` and the LAN host's
 save wait until everything is written before the world closes. A failed
-write shows "Could not save the world" as a failed save always has.
+write shows "Could not save the world" as a failed save always has; the
+record stays queued (and readable) and is written again with the next
+batch, and the level file (and moving `chunks.bin` aside) waits until every
+record queued before it is on disk, so a later save writes the failed
+records first.
 
 **The level file and the records.** The level file still holds the state
 of the chunks that were loaded when it was saved, in the keys it always
@@ -89,8 +97,24 @@ blocks: the rest is older than the level file and is ignored when such a
 chunk loads, until it unloads and its whole record is written again. The
 level file also holds `fluid_ticks` (the loaded chunks' scheduled fluid
 ticks, which before 1.0 were never saved), `stored_index` (the bed and job
-claims of villagers, and the heart-bound creakings, stored in records) and
-`entity_ids` (the next mob and cart ids, which stored entities keep).
+claims of villagers, and the heart-bound creakings, stored in records),
+`entity_ids` (the next mob and cart ids, which stored entities keep) and
+`save_generation` (1.0 review fixes, 2026-11-26).
+
+**Save generations.** Each level file save is numbered (`save_generation`,
+one more each save), and every record the game writes, and the header of
+its region file, carries the number of the level file save it goes with:
+that save's, or the next one's for a record written between saves (a chunk
+unloading). A region file whose number is above the level file's was
+written by a session that stopped before its next level file was written.
+In that session an entity the level file holds may have walked into a
+chunk the level file doesn't hold and been stored in its record, so the
+level file and the record both have it. Opening the dimension reads the
+entities of those region files' records (except the chunks the level file
+holds, whose records' entities are ignored anyway): the records' copies are
+newer, so the level file's copies of those mobs and carts are dropped, and
+each comes back once, from its record, when its chunk loads. The session's
+own saves then number past every region file's.
 Redstone and hopper scheduling (`redstone`, `automation`) stay in the level
 file whole: they run on a world-wide clock.
 
@@ -204,10 +228,13 @@ states:
   build doesn't know) fails to load; the dimension's terrain regenerates and
   the next save moves the file to `chunks.bin.unknown-<secs>` instead of
   replacing it.
-- A **region file of a newer version** (file version above 1) isn't
-  opened: the dimension runs without region storage for the session, its
-  chunks regenerate, the player is told, and the files are left alone. A
-  record whose payload version is newer reads as damaged (below).
+- A **region file of a newer version** (file version above 1), or one that
+  can't be opened at all, is moved aside to `r.<x>.<z>.vxr.damaged-<secs>`:
+  its chunks regenerate, the player is told, and the dimension's other
+  region files load as usual (1.0 review fixes, 2026-11-26; before them one
+  such file stopped all region storage for the session). A scripted run
+  leaves the file where it is and reads its chunks as missing. A record
+  whose payload version is newer reads as damaged (below).
 
 ## Backups
 
@@ -249,7 +276,9 @@ as a fresh world.
 | `chunks.bin` is cut off, or a chunk record is malformed | Every intact chunk loads; the rest regenerate, as Java's `ChunkMap` regenerates a chunk it fails to read. The damaged file is first copied to `chunks.bin.damaged-<secs>`, and chat says how many chunks were kept, with a pointer on the action bar |
 | A region file is cut off (its table, or records past its end) | Opening the dimension finds it: every chunk whose record is whole loads, the rest regenerate, the file is first copied to `r.<x>.<z>.vxr.damaged-<secs>`, and chat says how many of the file's chunks were kept. The next write to the file repairs its table |
 | A region record is damaged (its checksum, length or contents don't read) | Found when the chunk loads: that chunk regenerates, the file is copied aside once, and chat says so |
-| The game stopped while records were being written | Each record is written into free sectors before its table entry points at it, so a chunk reads as its last record or its one before; the level file is only written after the records queued before it |
+| A region file can't be opened, or is from a newer version | It is moved aside to `r.<x>.<z>.vxr.damaged-<secs>`, its chunks regenerate, chat says so, and the dimension's other region files load. If the region folder itself can't be read, saving that dimension is refused ("Could not save the world") rather than writing a `chunks.bin` the next launch would mistake for an unfinished migration |
+| The game stopped while records were being written | Each record is written into free sectors before its table entry points at it, so a chunk reads as its last record or its one before; the level file is only written after the records queued before it, all of them written |
+| The game stopped after records were written but before the next level file | Mobs and carts the level file holds that were also stored in a newer record come back once, from the record ([save generations](#region-files)). Dropped items and orbs have no id and can come back twice |
 | The Nether's or End's `level.txt` is damaged | Its `level.txt_old` is used and the damaged file is kept as `level.txt.damaged-<secs>`; without a kept copy the dimension's containers and entities are lost, and chat says so |
 
 **The recovery screen** is Java's `RecoverWorldDataScreen`: "Failed to load
@@ -276,8 +305,9 @@ Bug** button is left out.
   holds (the level file's). A new layout takes a new file or payload
   version; a newer file version is left alone, a newer payload regenerates
   its chunk.
-- `region_chunks`, `fluid_ticks`, `stored_index` and `entity_ids` keep their
-  meaning in the level file.
+- `region_chunks`, `fluid_ticks`, `stored_index`, `entity_ids` and
+  `save_generation` keep their meaning in the level file, and bytes 12–19
+  of a region file's header theirs.
 - The file names in [the table above](#what-a-world-is-on-disk) and the
   `key=value` form of `level.txt` and `options.txt`. An existing key keeps
   its meaning and value format; new data goes in new keys; a retired key's

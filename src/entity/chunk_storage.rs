@@ -268,6 +268,10 @@ impl Entities {
     /// chunk isn't loaded move into storage. Bounded by the live entities and
     /// the chunks that just loaded; stored entities are never visited.
     pub fn sync_chunk_entities(&mut self, world: &mut World) {
+        let superseding = world.take_superseding_entities();
+        if !superseding.is_empty() {
+            self.drop_superseded(superseding);
+        }
         for (_, batches) in world.take_entity_records() {
             self.restore_batches(batches);
         }
@@ -285,10 +289,43 @@ impl Entities {
         }
     }
 
+    /// Drops the level file's copies of the mobs and carts in `batches`:
+    /// region records written after the level file by a session that
+    /// stopped before its next save hold newer copies of them, which come
+    /// back when their chunks load (see `world::chunk_records`).
+    fn drop_superseded(&mut self, batches: Vec<Props>) {
+        let (mut uids, mut carts) = (FxHashSet::default(), FxHashSet::default());
+        for batch in batches {
+            let mut scratch = Entities::new(0);
+            scratch.load_props(&batch.into_iter().collect());
+            uids.extend(scratch.mobs.iter().map(|m| m.uid).filter(|&u| u != 0));
+            carts.extend(scratch.minecarts.iter().map(|c| c.id));
+        }
+        let before = self.mobs.len() + self.minecarts.len() + self.storage.len;
+        self.mobs.retain(|m| !uids.contains(&m.uid));
+        self.minecarts.retain(|c| !carts.contains(&c.id));
+        let (mut gone, mut carts_gone) = (Vec::new(), 0);
+        for chunk in self.storage.chunks.values_mut() {
+            gone.extend(chunk.mobs.extract_if(.., |m| uids.contains(&m.uid)));
+            carts_gone += chunk.minecarts.extract_if(.., |c| carts.contains(&c.id)).count();
+        }
+        self.storage.len -= gone.len() + carts_gone;
+        for m in &gone {
+            self.storage.release_claims(m);
+        }
+        let dropped = before - self.mobs.len() - self.minecarts.len() - self.storage.len;
+        if dropped > 0 {
+            log::warn!("{dropped} entities were saved again after the level file; keeping only the newer copies");
+        }
+    }
+
     /// v1.0 Track 3b: at a save with region storage, every stored chunk's
     /// entities but those of chunks still loading, for
-    /// [`World::save_records`].
-    pub fn take_stored_batches(&mut self, world: &World) -> Vec<(IVec3, Props)> {
+    /// [`World::save_records`]. Chunks that loaded since the last tick
+    /// bring their entities back first (streaming goes on while the game
+    /// is paused, and a loaded chunk's entities are the level file's).
+    pub fn take_stored_batches(&mut self, world: &mut World) -> Vec<(IVec3, Props)> {
+        self.sync_chunk_entities(world);
         let chunks: Vec<IVec3> = self.storage.chunks.keys().copied().filter(|&c| !world.chunk_loading(c)).collect();
         self.serialize_stored(chunks)
     }
@@ -745,7 +782,7 @@ mod tests {
         let mut w = world(columns);
         let (store, damage) = crate::world::region::RegionStore::open(dir, true).unwrap();
         assert!(damage.is_empty());
-        w.attach_regions(store, Some(Default::default()), true);
+        w.attach_regions(store, Some(Default::default()), 0, true);
         w
     }
 
@@ -794,6 +831,89 @@ mod tests {
         assert_eq!(e.stored_index_to_string(), "");
         let pig = e.mobs.iter().find(|m| m.kind == MobKind::Pig).unwrap();
         assert!(e.minecarts.iter().any(|c| Some(c.id) == pig.riding), "the pig still rides its cart");
+        drop(w);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Review fix S2: streaming goes on while the game is paused, so a save
+    /// can come before any tick brought back a loaded chunk's entities.
+    #[test]
+    fn a_save_while_paused_keeps_the_entities_of_chunks_that_just_loaded() {
+        let dir = std::env::temp_dir().join(format!("voxelcraft-entity-paused-{}", std::process::id()));
+        let mut w = region_world(&dir, [IVec2::new(0, 0), IVec2::new(2, 0)]);
+        let mut e = Entities::new(5);
+        e.spawn(MobKind::Cow, at(70.5, 4.5));
+        e.ensure_mob_ids();
+        e.sync_chunk_entities(&mut w);
+        w.unload_test_column(IVec2::new(2, 0));
+        e.sync_chunk_entities(&mut w);
+        assert!(e.mobs.is_empty());
+        w.flush_regions().unwrap();
+        // Paused: the column loads again, and the player saves.
+        w.load_test_column(IVec2::new(2, 0), GROUND);
+        let stored = e.take_stored_batches(&mut w);
+        w.save_records(stored);
+        let owned = World::parse_region_chunks(&w.region_chunks_to_string());
+        assert!(owned.contains(&crate::world::chunk::chunk_of(IVec3::new(70, GROUND + 1, 4))));
+        let mut props = BTreeMap::new();
+        e.save_props(&mut props);
+        let mut back = Entities::new(5);
+        back.load_props(&props);
+        assert_eq!(back.mobs.len(), 1, "the level file now holds the cow's chunk, and the cow");
+        drop(w);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Review fix S6: a mob the level file holds walks into a chunk that
+    /// unloads, its record is written, and the game stops before the next
+    /// save. Reopened, the mob comes back once: the record's newer copy.
+    #[test]
+    fn an_interrupted_session_restores_each_saved_mob_once() {
+        use crate::world::{GENERATION_KEY, REGION_KEY};
+        let dir = std::env::temp_dir().join(format!("voxelcraft-entity-interrupted-{}", std::process::id()));
+        let mut w = region_world(&dir, [IVec2::new(0, 0)]);
+        let mut e = Entities::new(5);
+        e.spawn(MobKind::Cow, at(10.5, 4.5));
+        e.ensure_mob_ids();
+        let uid = e.mobs[0].uid;
+        e.sync_chunk_entities(&mut w);
+        // The last complete save: the cow is in the level file.
+        let stored = e.take_stored_batches(&mut w);
+        w.save_records(stored);
+        let mut props = BTreeMap::new();
+        e.save_props(&mut props);
+        props.insert(REGION_KEY.to_string(), w.region_chunks_to_string());
+        props.insert(GENERATION_KEY.to_string(), w.save_generation().to_string());
+        props.insert("entity_ids".to_string(), e.entity_ids_to_string());
+        w.flush_regions().unwrap();
+        // Then a column the level file doesn't hold loads, the cow walks
+        // into it, and it unloads: its record gets the cow. The game stops
+        // before saving again.
+        w.load_test_column(IVec2::new(2, 0), GROUND);
+        e.mobs[0].pos.x = 70.5;
+        e.sync_chunk_entities(&mut w);
+        w.unload_test_column(IVec2::new(2, 0));
+        e.sync_chunk_entities(&mut w);
+        assert!(e.mobs.is_empty() && e.stored_entities() == 0, "the cow is in the record");
+        drop(w);
+
+        // Reopened from that level file and the region files.
+        let mut w = world([IVec2::new(0, 0)]);
+        let (store, damage) = crate::world::region::RegionStore::open(&dir, true).unwrap();
+        assert!(damage.is_empty());
+        let owned = World::parse_region_chunks(&props[REGION_KEY]);
+        w.attach_regions(store, Some(owned), props[GENERATION_KEY].parse().unwrap(), true);
+        let mut e = Entities::new(5);
+        e.load_props(&props);
+        e.load_entity_ids(&props["entity_ids"]);
+        assert_eq!(e.mobs.len(), 1, "the level file's copy");
+        e.sync_chunk_entities(&mut w);
+        w.load_test_column(IVec2::new(2, 0), GROUND);
+        e.sync_chunk_entities(&mut w);
+        let cows: Vec<&Mob> = e.mobs.iter().chain(e.storage.mobs()).filter(|m| m.uid == uid).collect();
+        assert_eq!(cows.len(), 1, "restored once");
+        assert_eq!(cows[0].pos.x, 70.5, "the record's copy, the newer one");
+        assert!(w.save_generation() > props[GENERATION_KEY].parse::<u64>().unwrap());
         drop(w);
         let _ = std::fs::remove_dir_all(dir);
     }

@@ -125,12 +125,15 @@ impl StateParts {
 
 /// A change to one chunk's record. Fields left `None` keep what the record
 /// has; `append` adds entity batches after the (kept or replaced) ones.
+/// `generation` is the level file save the change belongs to (see
+/// [`RegionStore::chunks_written_after`]); 0 stamps nothing.
 #[derive(Clone, Default)]
 pub struct Patch {
     pub blocks: Option<Option<Arc<ChunkData>>>,
     pub state: Option<StateParts>,
     pub entities: Option<Vec<Props>>,
     pub append: Vec<Props>,
+    pub generation: u64,
 }
 
 impl Patch {
@@ -142,6 +145,7 @@ impl Patch {
             state: Some(StateParts { state, water, lava, bubbles, fires }),
             entities: Some(entities),
             append: Vec::new(),
+            generation: 0,
         }
     }
 
@@ -152,6 +156,7 @@ impl Patch {
 
     /// `later` applied after this one.
     fn then(&mut self, later: Patch) {
+        self.generation = self.generation.max(later.generation);
         if later.blocks.is_some() {
             self.blocks = later.blocks;
         }
@@ -373,6 +378,15 @@ impl RegionDamage {
     /// The notice the player reads.
     pub fn notice(&self, dimension: &str) -> String {
         let kept = self.kept_as.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned());
+        if self.saved == 0 {
+            // The whole file: unreadable, or nothing in its table.
+            return format!(
+                "The {dimension}'s saved chunks in {} couldn't be read ({}), so they regenerate.{}",
+                self.file,
+                self.reason,
+                kept.map(|k| format!(" The file was kept as {k}.")).unwrap_or_default()
+            );
+        }
         format!(
             "Some of the {dimension}'s saved chunks in {} couldn't be read ({}): {} of {} were kept and the rest regenerate.{}",
             self.file,
@@ -398,6 +412,9 @@ struct RegionFile {
     /// The table on disk differs from `table` beyond single entries
     /// (damage was dropped), so the next write rewrites all of it.
     rewrite_header: bool,
+    /// The newest level file save any record here belongs to (bytes
+    /// 12–19 of the header; 0 in files written before it was kept).
+    generation: u64,
 }
 
 fn sectors(bytes: u64) -> u64 {
@@ -418,7 +435,7 @@ impl RegionFile {
                 f.write_all(&header)?;
                 let used = vec![true; HEADER_SECTORS as usize];
                 return Ok(Some((
-                    Self { file: f, table: vec![(0, 0); SLOTS].into(), used, rewrite_header: false },
+                    Self { file: f, table: vec![(0, 0); SLOTS].into(), used, rewrite_header: false, generation: 0 },
                     None,
                 )));
             }
@@ -466,8 +483,12 @@ impl RegionFile {
             *entry = (off, size);
             kept += 1;
         }
+        let generation = header
+            .get(12..20)
+            .filter(|_| &header[..8] == FILE_MAGIC)
+            .map_or(0, |b| u64::from_le_bytes(b.try_into().unwrap()));
         let damage = reason.map(|r| (r, saved, kept));
-        Ok(Some((Self { file, table, used, rewrite_header: damage.is_some() }, damage)))
+        Ok(Some((Self { file, table, used, rewrite_header: damage.is_some(), generation }, damage)))
     }
 
     /// The payload of `slot`'s record, `Ok(None)` if it has none and an
@@ -519,11 +540,23 @@ impl RegionFile {
         };
         self.table[slot] = new;
         if !self.rewrite_header {
-            self.file.seek(SeekFrom::Start(SECTOR + slot as u64 * 8))?;
             let mut entry = [0u8; 8];
             entry[..4].copy_from_slice(&new.0.to_le_bytes());
             entry[4..].copy_from_slice(&new.1.to_le_bytes());
-            self.file.write_all(&entry)?;
+            let written =
+                self.file.seek(SeekFrom::Start(SECTOR + slot as u64 * 8)).and_then(|_| self.file.write_all(&entry));
+            if let Err(e) = written {
+                // The record didn't land: the slot keeps its old record (a
+                // retry must not build on the new one), and the whole table
+                // is written again with the next write.
+                self.table[slot] = (old_off, old_size);
+                if new.1 > 0 {
+                    let (first, count) = (new.0 as usize, sectors(u64::from(new.1)) as usize);
+                    self.used[first..first + count].fill(false);
+                }
+                self.rewrite_header = true;
+                return Err(e);
+            }
         }
         if old_size > 0 {
             let first = old_off as usize;
@@ -555,6 +588,19 @@ impl RegionFile {
         first
     }
 
+    /// Records that a record of level file save `generation` is about to
+    /// be written here, before it is (so a record on disk is never newer
+    /// than the header says).
+    fn mark(&mut self, generation: u64) -> io::Result<()> {
+        if generation <= self.generation {
+            return Ok(());
+        }
+        self.file.seek(SeekFrom::Start(12))?;
+        self.file.write_all(&generation.to_le_bytes())?;
+        self.generation = generation;
+        Ok(())
+    }
+
     /// Rewrites the whole header after damage was dropped from the table.
     fn finish(&mut self) -> io::Result<()> {
         if !self.rewrite_header {
@@ -563,6 +609,7 @@ impl RegionFile {
         let mut header = vec![0u8; (HEADER_SECTORS * SECTOR) as usize];
         header[..8].copy_from_slice(FILE_MAGIC);
         header[8..12].copy_from_slice(&FILE_VERSION.to_le_bytes());
+        header[12..20].copy_from_slice(&self.generation.to_le_bytes());
         for (i, (off, size)) in self.table.iter().enumerate() {
             let at = SECTOR as usize + i * 8;
             header[at..at + 4].copy_from_slice(&off.to_le_bytes());
@@ -582,6 +629,10 @@ struct Files {
     order: VecDeque<IVec2>,
     /// Regions whose damage has been copied aside this session.
     kept: FxHashSet<IVec2>,
+    /// Region files that couldn't be opened and stay where they are (a
+    /// read-only store, or one that couldn't move them aside): their chunks
+    /// regenerate and nothing is written to them.
+    broken: FxHashSet<IVec2>,
     /// False for a read-only store: nothing is copied or rewritten.
     writable: bool,
 }
@@ -590,6 +641,10 @@ struct Queue {
     pending: FxHashMap<IVec3, Patch>,
     /// The patches the I/O thread is writing, until each is on disk.
     writing: FxHashMap<IVec3, Arc<Patch>>,
+    /// Patches whose write failed. They are older than any pending patch
+    /// of their chunk and are written again with the next batch; until
+    /// then no level file is written.
+    failed: FxHashMap<IVec3, Patch>,
     /// Work to run once everything queued before it is on disk (the level
     /// file, which must never name chunks whose records aren't written).
     after: Vec<Box<dyn FnOnce() -> io::Result<()> + Send>>,
@@ -620,6 +675,9 @@ pub struct RegionStore {
     writer: Option<thread::JoinHandle<()>>,
     /// Every chunk with a record when the store opened.
     stored: FxHashSet<IVec3>,
+    /// Each region file's newest save generation when the store opened,
+    /// for those that have one.
+    generations: Vec<(IVec2, u64)>,
 }
 
 /// A handle that reads chunks, for the generation workers.
@@ -630,7 +688,10 @@ impl RegionStore {
     /// Opens the region folder `dir` (created when the first record is
     /// written), checks every region file's table and starts the I/O
     /// thread. A damaged file is copied to `<name>.damaged-<secs>` first;
-    /// what it lost is returned for the player.
+    /// what it lost is returned for the player. A file that can't be opened
+    /// at all (unreadable, or from a newer version) is moved aside to that
+    /// name instead, and its chunks regenerate; the other regions are
+    /// unaffected.
     /// `writable` is false for a run that never writes saves (scripted
     /// captures): it reads records and copies nothing aside.
     pub fn open(dir: impl Into<PathBuf>, writable: bool) -> io::Result<(Self, Vec<RegionDamage>)> {
@@ -638,6 +699,7 @@ impl RegionStore {
         let mut files = Files { writable, ..Default::default() };
         let mut damage = Vec::new();
         let mut stored = FxHashSet::default();
+        let mut generations = Vec::new();
         let mut names: Vec<(IVec2, PathBuf)> = match fs::read_dir(&dir) {
             Ok(entries) => entries
                 .filter_map(|e| e.ok())
@@ -648,7 +710,27 @@ impl RegionStore {
         };
         names.sort_unstable_by_key(|(r, _)| (r.x, r.y));
         for (region, path) in names {
-            let Some((file, hurt)) = RegionFile::open(&path, false)? else { continue };
+            let (file, hurt) = match RegionFile::open(&path, false) {
+                Ok(Some(opened)) => opened,
+                Ok(None) => continue,
+                Err(e) => {
+                    log::error!("couldn't open {}: {e}", path.display());
+                    let reason = if e.kind() == io::ErrorKind::InvalidData {
+                        "it is from a newer version"
+                    } else {
+                        "it can't be opened"
+                    };
+                    let kept_as = if writable { move_aside(&dir, region) } else { None };
+                    if kept_as.is_none() {
+                        files.broken.insert(region);
+                    }
+                    damage.push(RegionDamage { file: file_name(region), reason, saved: 0, kept: 0, kept_as });
+                    continue;
+                }
+            };
+            if file.generation > 0 {
+                generations.push((region, file.generation));
+            }
             for (slot, &(_, size)) in file.table.iter().enumerate() {
                 if size > 0 {
                     stored.insert(slot_pos(region, slot));
@@ -669,6 +751,7 @@ impl RegionStore {
             queue: Mutex::new(Queue {
                 pending: FxHashMap::default(),
                 writing: FxHashMap::default(),
+                failed: FxHashMap::default(),
                 after: Vec::new(),
                 busy: false,
                 shutdown: false,
@@ -683,7 +766,7 @@ impl RegionStore {
         });
         let worker = shared.clone();
         let writer = thread::Builder::new().name("region-io".into()).spawn(move || write_loop(&worker))?;
-        Ok((Self { shared, writer: Some(writer), stored }, damage))
+        Ok((Self { shared, writer: Some(writer), stored, generations }, damage))
     }
 
     pub fn dir(&self) -> &Path {
@@ -745,6 +828,30 @@ impl RegionStore {
         if errors.is_empty() { Ok(()) } else { Err(io::Error::other(errors.join("; "))) }
     }
 
+    /// The newest level file save generation any region file held a record
+    /// of when the store opened (0 if none says).
+    pub fn generation(&self) -> u64 {
+        self.generations.iter().map(|&(_, g)| g).max().unwrap_or(0)
+    }
+
+    /// The chunks with a record in a region file that held records of a
+    /// save newer than `generation` when the store opened: where a session
+    /// that stopped before that save finished wrote after it.
+    pub fn chunks_written_after(&self, generation: u64) -> Vec<IVec3> {
+        let mut files = lock(&self.shared.files);
+        let mut out = Vec::new();
+        for &(region, _) in self.generations.iter().filter(|&&(_, g)| g > generation) {
+            match files.get(&self.shared.dir, region, false) {
+                Ok(Some(file)) => out.extend(
+                    file.table.iter().enumerate().filter(|(_, e)| e.1 > 0).map(|(slot, _)| slot_pos(region, slot)),
+                ),
+                Ok(None) => {}
+                Err(e) => log::error!("couldn't reopen {}: {e}", file_name(region)),
+            }
+        }
+        out
+    }
+
     /// Write errors since the last call (each also logged).
     pub fn take_errors(&self) -> Vec<String> {
         std::mem::take(&mut lock(&self.shared.queue).errors)
@@ -759,7 +866,7 @@ impl RegionStore {
     /// the soak's diagnostics.
     pub fn stats(&self) -> (usize, u64, u64) {
         let q = lock(&self.shared.queue);
-        (q.pending.len() + q.writing.len(), q.written, q.bytes)
+        (q.pending.len() + q.writing.len() + q.failed.len(), q.written, q.bytes)
     }
 
     /// Reads chunk `pos`'s record now, on this thread.
@@ -782,6 +889,10 @@ impl Drop for RegionStore {
         for e in self.take_errors() {
             log::error!("region write failed while closing: {e}");
         }
+        let lost = lock(&self.shared.queue).failed.len();
+        if lost > 0 {
+            log::error!("{lost} chunk records couldn't be written before closing");
+        }
     }
 }
 
@@ -800,14 +911,30 @@ fn unix_secs() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
 }
 
+/// An unused `r.<x>.<z>.vxr.damaged-<secs>` path for a region file's copy.
+fn damaged_path(dir: &Path, region: IVec2) -> Option<PathBuf> {
+    let base = format!("{}.damaged-{}", file_name(region), unix_secs());
+    std::iter::once(base.clone()).chain((1..).map(|n| format!("{base}-{n}"))).map(|n| dir.join(n)).find(|p| !p.exists())
+}
+
+/// Moves a region file that can't be opened aside, so its region starts
+/// again empty while the rest of the dimension's regions load.
+fn move_aside(dir: &Path, region: IVec2) -> Option<PathBuf> {
+    let name = file_name(region);
+    let to = damaged_path(dir, region)?;
+    match fs::rename(dir.join(&name), &to) {
+        Ok(()) => Some(to),
+        Err(e) => {
+            log::error!("couldn't move the unreadable {name} aside: {e}");
+            None
+        }
+    }
+}
+
 /// Copies a damaged region file aside, untouched, before anything writes it.
 fn keep_damaged(dir: &Path, region: IVec2) -> Option<PathBuf> {
     let name = file_name(region);
-    let base = format!("{name}.damaged-{}", unix_secs());
-    let to = std::iter::once(base.clone())
-        .chain((1..).map(|n| format!("{base}-{n}")))
-        .map(|n| dir.join(n))
-        .find(|p| !p.exists())?;
+    let to = damaged_path(dir, region)?;
     match fs::copy(dir.join(&name), &to) {
         Ok(_) => Some(to),
         Err(e) => {
@@ -819,6 +946,13 @@ fn keep_damaged(dir: &Path, region: IVec2) -> Option<PathBuf> {
 
 impl Files {
     fn get(&mut self, dir: &Path, region: IVec2, create: bool) -> io::Result<Option<&mut RegionFile>> {
+        if self.broken.contains(&region) {
+            return if create {
+                Err(io::Error::other("the file couldn't be read and is kept unchanged"))
+            } else {
+                Ok(None)
+            };
+        }
         if !self.open.contains_key(&region) {
             if create {
                 fs::create_dir_all(dir)?;
@@ -856,9 +990,10 @@ impl RegionReader {
         let mut files = lock(&shared.files);
         let (writing, pending) = {
             let q = lock(&shared.queue);
-            (q.writing.get(&pos).cloned(), q.pending.get(&pos).cloned())
+            let writing = q.writing.get(&pos).map(|p| (**p).clone()).or_else(|| q.failed.get(&pos).cloned());
+            (writing, q.pending.get(&pos).cloned())
         };
-        let mut patch = writing.map(|p| (*p).clone()).unwrap_or_default();
+        let mut patch = writing.unwrap_or_default();
         if let Some(p) = pending {
             patch.then(p);
         }
@@ -924,8 +1059,10 @@ fn damaged(shared: &Shared, files: &mut Files, region: IVec2, pos: IVec3, why: &
     ));
 }
 
-/// The I/O thread: takes every queued patch, writes them region by region,
-/// then runs the work waiting for them.
+/// The I/O thread: takes every queued patch (and every failed one again),
+/// writes them region by region, then runs the work waiting for them, but
+/// only if every one of them is on disk: a level file never names records
+/// that failed to write. Failed patches wait for the next batch.
 fn write_loop(shared: &Shared) {
     loop {
         let (batch, after) = {
@@ -936,7 +1073,15 @@ fn write_loop(shared: &Shared) {
             if q.pending.is_empty() && q.after.is_empty() {
                 break;
             }
-            let pending = std::mem::take(&mut q.pending);
+            let mut pending = std::mem::take(&mut q.failed);
+            for (pos, patch) in std::mem::take(&mut q.pending) {
+                match pending.get_mut(&pos) {
+                    Some(older) => older.then(patch),
+                    None => {
+                        pending.insert(pos, patch);
+                    }
+                }
+            }
             let mut batch: Vec<(IVec3, Arc<Patch>)> =
                 pending.into_iter().map(|(p, patch)| (p, Arc::new(patch))).collect();
             batch.sort_unstable_by_key(|(p, _)| (region_of(*p).x, region_of(*p).y, slot_of(*p)));
@@ -947,17 +1092,35 @@ fn write_loop(shared: &Shared) {
         // Someone may be waiting for room in the queue.
         shared.done.notify_all();
         let mut start = 0;
+        let mut whole = true;
         while start < batch.len() {
             let region = region_of(batch[start].0);
             let end = start + batch[start..].iter().take_while(|(p, _)| region_of(*p) == region).count();
-            write_region(shared, region, &batch[start..end]);
+            whole &= write_region(shared, region, &batch[start..end]);
             start = end;
         }
         let mut failed = Vec::new();
-        for work in after {
-            if let Err(e) = work() {
-                failed.push(e.to_string());
+        if whole && !after.is_empty() {
+            // A table whose rewrite failed earlier must be on disk first.
+            let mut files = lock(&shared.files);
+            let writable = files.writable;
+            for f in files.open.values_mut().filter(|_| writable) {
+                if let Err(e) = f.finish() {
+                    failed.push(format!("a region file's table: {e}"));
+                    whole = false;
+                }
             }
+        }
+        if whole {
+            for work in after {
+                if let Err(e) = work() {
+                    failed.push(e.to_string());
+                }
+            }
+        } else if !after.is_empty() {
+            // The level file waits for the next save, which writes the
+            // failed records again first.
+            log::error!("not writing the level file: some chunk records failed to write");
         }
         let mut q = lock(&shared.queue);
         for e in failed {
@@ -979,13 +1142,21 @@ fn write_loop(shared: &Shared) {
     }
 }
 
-fn write_region(shared: &Shared, region: IVec2, patches: &[(IVec3, Arc<Patch>)]) {
+/// Writes one region's patches; whether all of them are on disk. Those that
+/// failed go back to the queue's failed patches.
+fn write_region(shared: &Shared, region: IVec2, patches: &[(IVec3, Arc<Patch>)]) -> bool {
     let mut files = lock(&shared.files);
     let mut errors = Vec::new();
+    let mut failed: FxHashSet<IVec3> = FxHashSet::default();
     let mut bytes = 0;
     let mut written = 0;
-    match files.get(&shared.dir, region, true) {
-        Ok(Some(file)) => {
+    let generation = patches.iter().map(|(_, p)| p.generation).max().unwrap_or(0);
+    match files.get(&shared.dir, region, true).and_then(|f| {
+        let f = f.expect("region files are created on write");
+        f.mark(generation)?;
+        Ok(f)
+    }) {
+        Ok(file) => {
             for (pos, patch) in patches {
                 let mut record = ChunkRecord::default();
                 if !patch.is_total() {
@@ -1004,20 +1175,32 @@ fn write_region(shared: &Shared, region: IVec2, patches: &[(IVec3, Arc<Patch>)])
                         written += 1;
                         bytes += payload.map_or(0, |p| p.len() as u64);
                     }
-                    Err(e) => errors.push(format!("{}: {e}", file_name(region))),
+                    Err(e) => {
+                        errors.push(format!("{}: {e}", file_name(region)));
+                        failed.insert(*pos);
+                    }
                 }
             }
+            // The table on disk is complete only once the header is (the
+            // records are in the table in memory, so they aren't retried).
             if let Err(e) = file.finish() {
                 errors.push(format!("{}: {e}", file_name(region)));
             }
         }
-        Ok(None) => unreachable!("region files are created on write"),
-        Err(e) => errors.push(format!("{}: {e}", file_name(region))),
+        Err(e) => {
+            errors.push(format!("{}: {e}", file_name(region)));
+            failed.extend(patches.iter().map(|(p, _)| *p));
+        }
     }
-    // Still holding the files: from here a reader finds these on disk.
+    let whole = errors.is_empty();
+    // Still holding the files: from here a reader finds these on disk, or
+    // among the failed patches.
     let mut q = lock(&shared.queue);
-    for (pos, _) in patches {
+    for (pos, patch) in patches {
         q.writing.remove(pos);
+        if failed.contains(pos) {
+            q.failed.insert(*pos, (**patch).clone());
+        }
     }
     q.written += written;
     q.bytes += bytes;
@@ -1025,6 +1208,7 @@ fn write_region(shared: &Shared, region: IVec2, patches: &[(IVec3, Arc<Patch>)])
         log::error!("region write failed: {e}");
         q.errors.push(e);
     }
+    whole
 }
 
 #[cfg(test)]
