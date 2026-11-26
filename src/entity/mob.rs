@@ -1122,7 +1122,8 @@ impl MobKind {
             MobKind::Turtle => &[(SEAGRASS, 0, 2)],
             MobKind::Wolf | MobKind::Fox | MobKind::Goat => &[],
             MobKind::Parrot => &[(Item::FEATHER, 1, 2)],
-            MobKind::Rabbit => &[(Item::RAW_RABBIT, 0, 1), (Item::RABBIT_HIDE, 0, 1)],
+            // 26.3 `entities/rabbit`: always one raw rabbit (v1.0 Track 6).
+            MobKind::Rabbit => &[(Item::RAW_RABBIT, 1, 1), (Item::RABBIT_HIDE, 0, 1)],
             // The skull is rolled in `drops`.
             MobKind::WitherSkeleton => &[(Item::COAL, 0, 1), (Item::BONE, 0, 2)],
             // `entities/wither` has no pools; the Nether star is
@@ -1244,6 +1245,14 @@ pub struct Mob {
     pub name: crate::inventory::StackName,
     pub leash: Option<super::leash::Leash>,
     pub leash_pos: Option<DVec3>,
+    /// Ticks its lead's holder has been missing (`restoreLeashFromSave`'s
+    /// grace); never saved.
+    pub(crate) leash_wait: u16,
+    /// `LeashData.angularMomentum`, degrees a tick; never saved.
+    pub(crate) leash_spin: f64,
+    /// The lead is within its elastic reach this tick
+    /// (`closeRangeLeashBehaviour`); never saved.
+    pub(crate) leash_close: bool,
     pub animal: Option<Box<super::animals::State>>,
     pub bee: Option<super::bee::State>,
     pub villager: Option<Box<super::villager::Villager>>,
@@ -1491,6 +1500,9 @@ impl Mob {
             name: Default::default(),
             leash: None,
             leash_pos: None,
+            leash_wait: 0,
+            leash_spin: 0.0,
+            leash_close: false,
             animal: kind.has_animal_state().then(|| Box::new(super::animals::State::new(pos))),
             villager: matches!(kind, MobKind::Villager | MobKind::ZombieVillager | MobKind::WanderingTrader)
                 .then(|| Box::new(super::villager::Villager::new(0, 0))),
@@ -1982,7 +1994,9 @@ impl Mob {
         if let Some(a) = &mut self.animal {
             a.love = 0.0;
             a.courtship = 0.0;
-            if self.kind == MobKind::Wolf {
+            // `Wolf` and `Parrot.hurtServer` cancel the order to sit; a cat's
+            // doesn't.
+            if matches!(self.kind, MobKind::Wolf | MobKind::Parrot) {
                 a.sitting = false;
             }
         }
@@ -2492,6 +2506,21 @@ impl Mob {
         {
             return wish;
         }
+        // v1.0 Track 6: a raid witch with a raider to heal walks until it
+        // sees it within 10 blocks (`RangedAttackGoal`); the raid tick throws.
+        if self.kind == MobKind::Witch
+            && let Some((_, at)) = self.illager.as_ref().and_then(|s| s.raider.heal_target)
+        {
+            let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
+            let sees = line_of_sight(world, eye, at + DVec3::Y);
+            self.look_at(at, 1.2);
+            if (at - self.pos).with_y(0.0).length() <= WITCH_RANGE && sees {
+                self.stop_navigation();
+                return (None, 0.0);
+            }
+            let speed = self.kind.chase_speed();
+            return (self.pursue(world, at, speed, sees, true, rng), speed);
+        }
         // Raid witches carry the raider state but keep the witch's own goals.
         if self.illager.is_some()
             && self.kind != MobKind::Witch
@@ -2760,6 +2789,9 @@ impl Mob {
             let aggressive = match self.kind {
                 MobKind::Spider | MobKind::CaveSpider => ctx.daylight < SPIDER_CALM_DAYLIGHT || self.provoked > 0.0,
                 MobKind::ZombifiedPiglin => self.provoked > 0.0,
+                // `NearestAttackableWitchTargetGoal.canAttack` is off while
+                // the heal goal cools down (v1.0 Track 6).
+                MobKind::Witch => self.illager.as_ref().is_none_or(|s| s.raider.heal_cooldown <= 0),
                 MobKind::Enderman => self.enderman_anger(dt, world, ctx, rng, events),
                 _ => true,
             };
@@ -2901,6 +2933,7 @@ impl Mob {
                 (self.pursue(world, target.pos, speed, sees, true, rng), speed)
             }
             Ai::Panic => {
+                self.panic_teleport_to_owner(world, ctx, rng);
                 let pathing = self.path_move && self.kind.walks_paths();
                 if self.ai_timer <= 0.0 && (!pathing || self.nav.is_done()) {
                     self.ai = Ai::Idle;

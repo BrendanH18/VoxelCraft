@@ -113,7 +113,7 @@ impl Mob {
             v["animal"] = json!({
                 "variant": a.variant,
                 "collar": DyeColor::ALL.iter().position(|c| *c == a.collar).unwrap_or(14),
-                "sitting": a.sitting,
+                "sitting": a.sit_pose,
                 "sleeping": a.sleeping,
                 "begging": a.begging,
                 "tame": a.owner.is_some(),
@@ -275,6 +275,7 @@ impl Mob {
             a.variant = small(&w["variant"]).unwrap_or(a.variant);
             a.collar = dye(&w["collar"]).unwrap_or(a.collar);
             a.sitting = w["sitting"] == true;
+            a.sit_pose = a.sitting;
             a.sleeping = w["sleeping"] == true;
             a.begging = w["begging"] == true;
             a.horns = small(&w["horns"]).unwrap_or(a.horns).min(2);
@@ -367,6 +368,7 @@ mod tests {
         let a = wolf.animal.as_mut().unwrap();
         a.owner = Some(super::super::PlayerId(9));
         a.sitting = true;
+        a.sit_pose = true;
         a.collar = DyeColor::Blue;
         let mut copy = Mob::new(MobKind::Wolf, DVec3::ZERO, 0.0);
         copy.apply_look(&wolf.look());

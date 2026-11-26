@@ -445,6 +445,12 @@ pub enum EntityEvent {
     VillagerHarvest {
         cell: IVec3,
     },
+    /// v1.0 Track 6: a villager rings its meeting bell before a raid
+    /// (`RingBell`, `BellBlock.attemptToRing` with the villager as source).
+    RingBell {
+        pos: IVec3,
+        mob: u32,
+    },
     /// No villager is near a door they opened any more: close it again.
     VillagerDoorClose {
         cell: IVec3,
@@ -939,6 +945,8 @@ pub struct Target {
     pub darkness_ticks: u32,
     /// v0.16 Track B: gliding on elytra (`isFallFlying`): a held rocket pushes.
     pub fall_flying: bool,
+    /// Velocity in blocks a second (a lead's spring reads its movement).
+    pub vel: DVec3,
     /// v0.16 Track C: the mob head worn in the helmet slot, which halves
     /// how far its own kind sees this player (`MobVisibility`).
     pub head: Option<crate::world::skulls::Kind>,
@@ -1006,6 +1014,7 @@ impl Target {
             head: None,
             blocking: false,
             fall_flying: false,
+            vel: DVec3::ZERO,
         }
     }
 

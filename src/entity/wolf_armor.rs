@@ -130,7 +130,7 @@ impl Entities {
             s.armor = Some(Stack { count: 1, ..hand });
             Use::Equip
         } else if hand.item == Item::ARMADILLO_SCUTE
-            && m.animal.as_ref().unwrap().sitting
+            && m.animal.as_ref().unwrap().sit_pose
             && let Some(a) = s.armor.as_mut().filter(|a| a.damage > 0)
         {
             a.damage = a.damage.saturating_sub(DURABILITY / 8);

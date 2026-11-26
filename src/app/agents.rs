@@ -99,6 +99,7 @@ impl Agents {
             blocking: b.agent.session.blocking(),
             passenger: b.agent.session.player.vehicle.is_some(),
             fall_flying: b.agent.session.player.fall_flying,
+            vel: b.agent.session.player.vel,
             ..Target::new(b.id, b.agent.session.player.pos, b.agent.targetable())
         })
     }
@@ -114,7 +115,7 @@ impl Agents {
             let mut inventory = b.agent.session.inventory.clone();
             inventory.return_stacks(b.agent.session.work.into_iter().flatten());
             let mode = if b.agent.creative { voxelcraft::rules::GameMode::Creative } else { b.agent.session.mode };
-            json!({"name":name,"id":b.id.0,"position":b.agent.session.player.pos.to_array(),"yaw":b.agent.session.player.yaw,"pitch":b.agent.session.player.pitch,"mode":mode.name(),"creative":b.agent.creative,"selected":b.agent.selected,"flying":b.agent.session.player.flying,"time_since_rest":b.agent.session.vitals.time_since_rest,"ticks_frozen":b.agent.session.vitals.ticks_frozen,"warden_spawn_tracker":b.agent.session.vitals.warden.save(),"health":b.agent.session.vitals.health,"air":b.agent.session.vitals.air,"food":b.agent.session.vitals.hunger.food,"saturation":b.agent.session.vitals.hunger.saturation,"exhaustion":b.agent.session.vitals.hunger.exhaustion,"xp":b.agent.session.vitals.xp.serialize(),"effects":b.agent.session.vitals.effects.serialize(),"inventory":inventory.serialize(),"ender_chest":b.agent.session.ender.serialize(),"bed":b.agent.session.spawn_bed.map(|p|p.to_array()),"spawn_point":b.agent.session.spawn_point.map(|p|p.to_array()),"last_death":b.agent.session.last_death_to_string(),"raid_omen_position":b.agent.session.raid_omen_to_string(),"recipe_book":b.agent.session.recipe_book.serialize(),"dimension":dimension})
+            json!({"name":name,"id":b.id.0,"position":b.agent.session.player.pos.to_array(),"yaw":b.agent.session.player.yaw,"pitch":b.agent.session.player.pitch,"mode":mode.name(),"creative":b.agent.creative,"selected":b.agent.selected,"flying":b.agent.session.player.flying,"time_since_rest":b.agent.session.vitals.time_since_rest,"ticks_frozen":b.agent.session.vitals.ticks_frozen,"warden_spawn_tracker":b.agent.session.vitals.warden.save(),"health":b.agent.session.vitals.health,"air":b.agent.session.vitals.air,"food":b.agent.session.vitals.hunger.food,"saturation":b.agent.session.vitals.hunger.saturation,"exhaustion":b.agent.session.vitals.hunger.exhaustion,"xp":b.agent.session.vitals.xp.serialize(),"effects":b.agent.session.vitals.effects.serialize(),"inventory":inventory.serialize(),"ender_chest":b.agent.session.ender.serialize(),"bed":b.agent.session.spawn_bed.map(|p|p.to_array()),"spawn_point":b.agent.session.spawn_point.map(|p|p.to_array()),"last_death":b.agent.session.last_death_to_string(),"raid_omen_position":b.agent.session.raid_omen_to_string(),"stats":b.agent.session.stats.serialize(),"recipe_book":b.agent.session.recipe_book.serialize(),"dimension":dimension})
         }).collect();
         json!(profiles).to_string()
     }
@@ -162,6 +163,9 @@ impl Agents {
             }
             if let Some(text) = p["raid_omen_position"].as_str() {
                 agent.session.load_raid_omen(text);
+            }
+            if let Some(text) = p["stats"].as_str() {
+                agent.session.stats = voxelcraft::session::raid::Stats::parse(text);
             }
             // v0.18 Track 5: profiles saved before the recipe book start from
             // Java's initial book; the first tick checks the loaded inventory.

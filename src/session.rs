@@ -83,6 +83,9 @@ pub struct PlayerSession {
     /// v0.15 Track E: where Bad Omen became Raid Omen (Java's saved
     /// `raid_omen_position`); the raid starts there when the omen ends.
     pub raid_omen_pos: Option<IVec3>,
+    /// v1.0 Track 6: Java's custom statistics the game awards so far
+    /// (`raid_trigger`, `raid_win`), saved as `stats`.
+    pub stats: raid::Stats,
     /// v0.18 Track 5: known and highlighted recipes and the book's
     /// settings (Java's saved `recipeBook`).
     pub recipe_book: crate::crafting::book::RecipeBook,
@@ -236,6 +239,7 @@ impl PlayerSession {
             weapons: Default::default(),
             frost_last: None,
             raid_omen_pos: None,
+            stats: Default::default(),
             recipe_book: Default::default(),
             anvil_name: None,
         }
@@ -270,6 +274,7 @@ impl PlayerSession {
             weapons: Default::default(),
             frost_last: None,
             raid_omen_pos: None,
+            stats: Default::default(),
             recipe_book: Default::default(),
             anvil_name: None,
         }

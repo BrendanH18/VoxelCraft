@@ -77,6 +77,9 @@ pub struct Rocket {
     pub attached: Option<PlayerId>,
     pub shot_at_angle: bool,
     horizontal_collision: bool,
+    /// v1.0 Track 6: the mob that launched it (a celebrating villager),
+    /// which it never hits (`Projectile.canHitEntity` skips the owner).
+    pub shooter: Option<u32>,
 }
 
 impl Rocket {
@@ -97,6 +100,7 @@ impl Rocket {
             attached: None,
             shot_at_angle: false,
             horizontal_collision: false,
+            shooter: None,
         }
     }
 
@@ -138,6 +142,7 @@ impl Rocket {
             attached: None,
             shot_at_angle: true,
             horizontal_collision: false,
+            shooter: None,
         }
     }
 
@@ -163,6 +168,7 @@ fn first_hit(
     mobs: &[super::Mob],
     players: &[super::Target],
     skip: Option<PlayerId>,
+    shooter: Option<u32>,
 ) -> Option<f64> {
     let dir = to - from;
     let grow = DVec3::splat(SHAPE.half_width);
@@ -175,7 +181,7 @@ fn first_hit(
             best = Some(t);
         }
     };
-    for m in mobs.iter().filter(|m| m.alive()) {
+    for m in mobs.iter().filter(|m| m.alive() && Some(m.uid) != shooter) {
         let (min, max) = m.aabb();
         consider(min, max);
     }
@@ -190,6 +196,13 @@ impl Entities {
     /// v0.16 Track B: a rocket launched from a block face at `pos`.
     pub fn launch_firework(&mut self, stack: &Stack, pos: DVec3, owner: Option<super::PlayerId>) {
         let r = Rocket::new(pos, stack, owner, &mut self.rng);
+        self.fireworks.push(r);
+    }
+
+    /// v1.0 Track 6: a rocket a mob launches from `pos`
+    /// (`new FireworkRocketEntity(level, shooter, x, y, z, stack)`).
+    pub(super) fn launch_mob_firework(&mut self, stack: &Stack, pos: DVec3, shooter: u32) {
+        let r = Rocket { shooter: Some(shooter), ..Rocket::new(pos, stack, None, &mut self.rng) };
         self.fireworks.push(r);
     }
 
@@ -262,7 +275,8 @@ impl Entities {
                 }
                 let movement = r.vel;
                 let skip = (r.life < 2).then_some(r.owner).flatten();
-                let entity_hit = first_hit(r.pos, r.pos + movement, &self.mobs, &ctx.players, skip.or(r.owner));
+                let entity_hit =
+                    first_hit(r.pos, r.pos + movement, &self.mobs, &ctx.players, skip.or(r.owner), r.shooter);
                 let (mut pos, mut vel) = (r.pos, movement);
                 let hit = crate::physics::move_box(world, &mut pos, &mut vel, movement, SHAPE);
                 let block_hit = hit.on_ground || hit.ceiling || hit.horizontal;

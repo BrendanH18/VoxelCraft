@@ -167,7 +167,7 @@ pub struct Minecart {
     pub vel: DVec3,
     pub yaw: f32,
     flipped: bool,
-    on_ground: bool,
+    pub(crate) on_ground: bool,
     /// Player riding this cart, if any. Mobs store the cart id themselves.
     pub rider: Option<super::PlayerId>,
     pub second_rider: Option<super::PlayerId>,
@@ -203,6 +203,13 @@ pub struct Minecart {
     /// arrow), and whether it had been primed first: only a primed cart's
     /// blast spares rails and what holds them (`MinecartTNT.isPrimed`).
     impact_blast: Option<bool>,
+    /// v1.0 Track 6: a boat's lead (`AbstractBoat implements Leashable`),
+    /// saved after the riders.
+    pub leash: Option<super::leash::Leash>,
+    /// Ticks the lead's holder has been missing; never saved.
+    pub(crate) leash_wait: u16,
+    /// `LeashData.angularMomentum`; never saved.
+    pub(crate) leash_spin: f64,
 }
 
 impl Minecart {
@@ -234,6 +241,9 @@ impl Minecart {
             fuel: 0,
             push: DVec3::ZERO,
             impact_blast: None,
+            leash: None,
+            leash_wait: 0,
+            leash_spin: 0.0,
         }
     }
 
@@ -751,8 +761,12 @@ impl Minecart {
         } else {
             String::new()
         };
+        let leash = match self.leash {
+            Some(l) if self.kind.boat().is_some() => format!(",{}", super::leash::leash_code(l)),
+            _ => String::new(),
+        };
         format!(
-            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}{furnace}",
+            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}{furnace}{leash}",
             self.id,
             self.kind.code(),
             self.pos.x,
@@ -797,7 +811,13 @@ impl Minecart {
             return None;
         }
         // A furnace cart's fuel and push; older saves have none.
+        let mut leash = None;
         let (fuel, push) = match parts.next() {
+            // A boat's lead (v1.0 Track 6); older saves have none.
+            Some(code) if kind.boat().is_some() => {
+                leash = Some(super::leash::leash_from_code(code)?);
+                (0, DVec3::ZERO)
+            }
             Some(fuel) if kind == CartKind::Furnace => {
                 let fuel: u16 = fuel.parse().ok()?;
                 let push = DVec3::new(parts.next()?.parse().ok()?, 0.0, parts.next()?.parse().ok()?);
@@ -813,6 +833,7 @@ impl Minecart {
             return None;
         }
         let mut cart = Self::new(id, kind, pos);
+        cart.leash = leash;
         cart.fuel = fuel;
         cart.push = push;
         cart.second_rider = (second >= 0).then_some(super::PlayerId(second as u32));
@@ -1150,6 +1171,10 @@ impl super::Entities {
 
     fn drop_cart(&mut self, index: usize, item: Item, pos: DVec3, drop_item: bool) {
         let cart = self.minecarts.swap_remove(index);
+        // `AbstractBoat.remove`: a destroyed boat drops its lead.
+        if cart.leash.is_some() && self.entity_drops {
+            self.scatter(Stack::new(Item::LEAD, 1), cart.pos);
+        }
         if (cart.kind == CartKind::Tnt && cart.fuse.is_some()) || !self.entity_drops {
             return;
         }
@@ -1365,6 +1390,7 @@ impl super::Entities {
                 if m.kind != super::MobKind::IronGolem && !carrying && m.riding.is_none() {
                     carrying = true;
                     let seat = self.minecarts[i].passenger_seat(0);
+                    self.drop_leash(j, true);
                     let m = &mut self.mobs[j];
                     m.riding = Some(id);
                     m.persistent = true;
@@ -1476,17 +1502,17 @@ impl super::Entities {
         }
         world.refresh_cart_signals(signals);
         // Boats pick up small nearby mobs even while stationary; chest boats have one seat.
-        for cart in &self.minecarts {
+        for c in 0..self.minecarts.len() {
+            let cart = &self.minecarts[c];
             let players = usize::from(cart.rider.is_some()) + usize::from(cart.second_rider.is_some());
             let taken = self.mobs.iter().filter(|m| m.alive() && m.riding == Some(cart.id)).count();
             let free = cart.kind.seats().saturating_sub(players + taken);
             if free == 0 || cart.fuse.is_some() || cart.kind.boat().is_none() {
                 continue;
             }
-            for (offset, mob) in self
-                .mobs
-                .iter_mut()
-                .filter(|m| {
+            let picked: Vec<usize> = (0..self.mobs.len())
+                .filter(|&j| {
+                    let m = &self.mobs[j];
                     m.alive()
                         && m.riding.is_none()
                         && m.dying.is_none()
@@ -1494,11 +1520,16 @@ impl super::Entities {
                         && near_cart(m.pos, m.shape().half_width, cart.pos)
                 })
                 .take(free)
-                .enumerate()
-            {
+                .collect();
+            for (offset, j) in picked.into_iter().enumerate() {
+                // `Mob.startRiding` drops a lead.
+                self.drop_leash(j, true);
+                let cart = &self.minecarts[c];
+                let seat = cart.passenger_seat(players + taken + offset);
+                let mob = &mut self.mobs[j];
                 mob.riding = Some(cart.id);
                 mob.persistent = true;
-                mob.pos = cart.passenger_seat(players + taken + offset);
+                mob.pos = seat;
                 mob.vel = DVec3::ZERO;
             }
         }

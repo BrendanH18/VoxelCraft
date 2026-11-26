@@ -1,0 +1,279 @@
+{
+  "source": {
+    "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+    "read": "server-26.3.jar data/minecraft: tags/item, loot_table/entities, worldgen/structure"
+  },
+  "tags": {
+    "cow_food": [
+      "wheat"
+    ],
+    "pig_food": [
+      "carrot",
+      "potato",
+      "beetroot"
+    ],
+    "sheep_food": [
+      "wheat"
+    ],
+    "chicken_food": [
+      "wheat_seeds",
+      "melon_seeds",
+      "pumpkin_seeds",
+      "beetroot_seeds",
+      "torchflower_seeds",
+      "pitcher_pod"
+    ],
+    "rabbit_food": [
+      "carrot",
+      "golden_carrot",
+      "dandelion"
+    ],
+    "goat_food": [
+      "wheat"
+    ],
+    "horse_food": [
+      "wheat",
+      "sugar",
+      "hay_block",
+      "apple",
+      "carrot",
+      "golden_carrot",
+      "golden_apple",
+      "enchanted_golden_apple"
+    ],
+    "horse_tempt_items": [
+      "golden_carrot",
+      "golden_apple",
+      "enchanted_golden_apple"
+    ],
+    "llama_food": [
+      "wheat",
+      "hay_block"
+    ],
+    "llama_tempt_items": [
+      "hay_block"
+    ],
+    "camel_food": [
+      "cactus"
+    ],
+    "wolf_food": [
+      "beef",
+      "chicken",
+      "cooked_beef",
+      "cooked_chicken",
+      "cooked_mutton",
+      "cooked_porkchop",
+      "cooked_rabbit",
+      "mutton",
+      "porkchop",
+      "rabbit",
+      "rotten_flesh",
+      "cod",
+      "cooked_cod",
+      "salmon",
+      "cooked_salmon",
+      "tropical_fish",
+      "pufferfish",
+      "rabbit_stew"
+    ],
+    "cat_food": [
+      "cod",
+      "salmon"
+    ],
+    "parrot_food": [
+      "wheat_seeds",
+      "melon_seeds",
+      "pumpkin_seeds",
+      "beetroot_seeds",
+      "torchflower_seeds",
+      "pitcher_pod"
+    ],
+    "parrot_poisonous_food": [
+      "cookie"
+    ]
+  },
+  "loot": {
+    "cow": [
+      {
+        "item": "leather",
+        "count": [
+          0,
+          2
+        ]
+      },
+      {
+        "item": "beef",
+        "count": [
+          1,
+          3
+        ]
+      }
+    ],
+    "pig": [
+      {
+        "item": "porkchop",
+        "count": [
+          1,
+          3
+        ]
+      }
+    ],
+    "sheep": [
+      {
+        "item": "mutton",
+        "count": [
+          1,
+          2
+        ]
+      }
+    ],
+    "chicken": [
+      {
+        "item": "feather",
+        "count": [
+          0,
+          2
+        ]
+      },
+      {
+        "item": "chicken",
+        "count": [
+          1,
+          1
+        ]
+      }
+    ],
+    "rabbit": [
+      {
+        "item": "rabbit_hide",
+        "count": [
+          0,
+          1
+        ]
+      },
+      {
+        "item": "rabbit",
+        "count": [
+          1,
+          1
+        ]
+      },
+      {
+        "item": "rabbit_foot",
+        "count": [
+          1,
+          1
+        ]
+      }
+    ]
+  },
+  "spawn_overrides": {
+    "swamp_hut": {
+      "creature": {
+        "bounding_box": "piece",
+        "spawns": [
+          "cat"
+        ]
+      },
+      "monster": {
+        "bounding_box": "piece",
+        "spawns": [
+          "witch"
+        ]
+      }
+    },
+    "monument": {
+      "axolotls": {
+        "bounding_box": "full",
+        "spawns": []
+      },
+      "monster": {
+        "bounding_box": "full",
+        "spawns": [
+          "guardian"
+        ]
+      },
+      "underground_water_creature": {
+        "bounding_box": "full",
+        "spawns": []
+      }
+    },
+    "pillager_outpost": {
+      "monster": {
+        "bounding_box": "full",
+        "spawns": [
+          "pillager"
+        ]
+      }
+    },
+    "ancient_city": {
+      "ambient": {
+        "bounding_box": "full",
+        "spawns": []
+      },
+      "axolotls": {
+        "bounding_box": "full",
+        "spawns": []
+      },
+      "creature": {
+        "bounding_box": "full",
+        "spawns": []
+      },
+      "misc": {
+        "bounding_box": "full",
+        "spawns": []
+      },
+      "monster": {
+        "bounding_box": "full",
+        "spawns": []
+      },
+      "underground_water_creature": {
+        "bounding_box": "full",
+        "spawns": []
+      },
+      "water_ambient": {
+        "bounding_box": "full",
+        "spawns": []
+      },
+      "water_creature": {
+        "bounding_box": "full",
+        "spawns": []
+      }
+    },
+    "trial_chambers": {
+      "ambient": {
+        "bounding_box": "piece",
+        "spawns": []
+      },
+      "axolotls": {
+        "bounding_box": "piece",
+        "spawns": []
+      },
+      "creature": {
+        "bounding_box": "piece",
+        "spawns": []
+      },
+      "misc": {
+        "bounding_box": "piece",
+        "spawns": []
+      },
+      "monster": {
+        "bounding_box": "piece",
+        "spawns": []
+      },
+      "underground_water_creature": {
+        "bounding_box": "piece",
+        "spawns": []
+      },
+      "water_ambient": {
+        "bounding_box": "piece",
+        "spawns": []
+      },
+      "water_creature": {
+        "bounding_box": "piece",
+        "spawns": []
+      }
+    }
+  }
+}
+
