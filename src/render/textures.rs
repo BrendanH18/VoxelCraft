@@ -1483,6 +1483,91 @@ fn village_pixel(layer: u16, x: usize, y: usize) -> Rgba {
 mod tests {
     use super::*;
 
+    /// v1.0 Track 10's layers, in review-sheet order: wooden doors and
+    /// trapdoors, chests, the village and farm blocks, then the plants.
+    fn final_art_layers() -> Vec<u16> {
+        let mut out = vec![tex::DOOR_TOP, tex::DOOR_BOTTOM];
+        out.extend(tex::DARK_OAK_DOOR_BOTTOM..=tex::CHERRY_DOOR_TOP);
+        out.extend(tex::BUILDING_DOORS..tex::BUILDING_DOORS + 4);
+        out.extend(tex::NETHER_DOORS..tex::NETHER_DOORS + 4);
+        out.extend([760, 761, 1124]);
+        out.extend(1816..=1822);
+        out.extend([tex::BUILDING_TRAPDOORS, tex::BUILDING_TRAPDOORS + 1, tex::NETHER_TRAPDOORS]);
+        out.extend([tex::NETHER_TRAPDOORS + 1, 762]);
+        out.extend([tex::CHEST_TOP, tex::CHEST_SIDE, tex::CHEST_FRONT, crate::world::utilities::t::TRAPPED_FRONT]);
+        out.extend([tex::VILLAGE, tex::VILLAGE + 1, tex::VILLAGE + 2, tex::VILLAGE + 3, tex::VILLAGE + 4]);
+        out.extend([tex::VILLAGE + 42, tex::VILLAGE + 43, tex::VILLAGE + 44]);
+        out.extend(tex::ANVIL..tex::ANVIL_TOP + 3);
+        out.extend([tex::TNT_SIDE, tex::TNT_TOP, tex::TNT_BOTTOM]);
+        // Flowers, tall flowers, saplings, grasses.
+        out.extend([tex::DANDELION, tex::POPPY, tex::BLUE_ORCHID]);
+        out.extend(1578..=1586);
+        out.extend([706, 3442, 792, 3373, 3374, 2845]);
+        out.extend(1587..=1594);
+        out.extend([3454, 3455]);
+        out.extend([tex::OAK_SAPLING, tex::SPRUCE_SAPLING, tex::BIRCH_SAPLING, tex::JUNGLE_SAPLING]);
+        out.extend([tex::ACACIA_SAPLING, 1556, 1557, 1558, 1559, 1570, 759]);
+        out.extend([tex::TALL_GRASS, tex::FERN]);
+        out.extend(1595..=1598);
+        out.extend([tex::DEAD_BUSH]);
+        out.extend(2840..=2844);
+        // Crops.
+        out.extend(tex::WHEAT_0..tex::WHEAT_0 + 8);
+        out.extend(tex::CARROT_0..tex::CARROT_0 + 8);
+        out.extend(tex::POTATO_0..tex::POTATO_0 + 8);
+        out.extend(3004..=3007);
+        out.extend(2992..=3003);
+        out.extend([3440, 3441]);
+        out.extend(3444..=3453);
+        out.extend(tex::NETHER_WART_0..tex::NETHER_WART_0 + 3);
+        out.extend(1601..=1604);
+        // Mushrooms, fungi and the other cross-model plants.
+        out.extend([tex::BROWN_MUSHROOM, tex::RED_MUSHROOM, 1324, 1325]);
+        out.extend([tex::SUGAR_CANE, 1326, 1327, 1328, 1329, 1330, 1331, 1332]);
+        out.extend(1501..=1505);
+        out.extend(1490..=1495);
+        out.extend([1498, 1499, 1500, 1576, 1577, 791]);
+        out
+    }
+
+    /// Writes v1.0 Track 10's layers as a review sheet (each tile 8x, and a
+    /// 2 x 2 repeat at 4x, over a blue-grey that shows the see-through
+    /// texels) to `$VC_FINAL_ART_SHEET`; run with `--ignored --nocapture`.
+    /// The layer of each cell is printed in sheet order.
+    #[test]
+    #[ignore]
+    fn final_art_sheet() {
+        let Ok(path) = std::env::var("VC_FINAL_ART_SHEET") else { return };
+        let layers = final_art_layers();
+        let (cols, cell_w, cell_h) = (12, 16 * 8 + 4 + 32 * 4 + 12, 16 * 8 + 12);
+        let rows = layers.len().div_ceil(cols);
+        let (w, h) = (cols * cell_w, rows * cell_h);
+        let mut img = vec![24u8; w * h * 4];
+        for (i, &layer) in layers.iter().enumerate() {
+            let (ox, oy) = ((i % cols) * cell_w + 6, (i / cols) * cell_h + 6);
+            let mut put = |x: usize, y: usize, p: Rgba| {
+                let k = ((oy + y) * w + ox + x) * 4;
+                img[k..k + 4].copy_from_slice(&if p[3] == 0 { [92, 108, 132, 255] } else { [p[0], p[1], p[2], 255] });
+            };
+            for y in 0..16 * 8 {
+                for x in 0..16 * 8 {
+                    put(x, y, pixel(layer, x / 8, y / 8));
+                }
+            }
+            for y in 0..32 * 4 {
+                for x in 0..32 * 4 {
+                    put(16 * 8 + 4 + x, y, pixel(layer, (x / 4) % 16, (y / 4) % 16));
+                }
+            }
+            println!("sheet {i}: layer {layer}");
+        }
+        let file = std::fs::File::create(path).unwrap();
+        let mut enc = png::Encoder::new(std::io::BufWriter::new(file), w as u32, h as u32);
+        enc.set_color(png::ColorType::Rgba);
+        enc.set_depth(png::BitDepth::Eight);
+        enc.write_header().unwrap().write_image_data(&img).unwrap();
+    }
+
     /// Golden absorption hearts are a full tile and a left-half tile, distinct
     /// from the red hearts they sit beside, with the same outline shape.
     #[test]
