@@ -2237,6 +2237,7 @@ impl Entities {
     /// Camera-relative geometry for every visible mob and other entity, rebuilt for this view.
     pub fn mesh(
         &mut self,
+        maps: &crate::world::maps::MapStorage,
         camera: DVec3,
         forward: Vec3,
         max_dist: f32,
@@ -2272,7 +2273,7 @@ impl Entities {
         model::build_puffs(&self.puffs, camera, alpha, &mut self.mesh);
         model::build_orbs(&self.orbs, camera, max_dist, time, alpha, &mut self.mesh);
         model::build_minecarts(&self.minecarts, camera, alpha, &mut self.mesh);
-        decor::build(&self.decor, camera, max_dist, alpha, &mut self.mesh);
+        decor::build(&self.decor, maps, camera, max_dist, alpha, &mut self.mesh);
         dragon_model::build_crystals(&self.crystals, camera, time, alpha, &mut self.mesh);
         if let Some(fight) = &self.fight {
             dragon_model::build_fight(fight, &self.crystals, camera, time, alpha, &mut self.mesh);
@@ -3362,7 +3363,8 @@ mod tests {
         e.snapshot_positions();
         // One tick turns it across the -pi/pi seam and starts it walking.
         e.mobs[0].set_pose_values([-3.0, 0.4, -0.2, 2.0, 1.0]);
-        let half = e.mesh(DVec3::new(0.0, 11.0, 0.0), glam::Vec3::X, 64.0, 0.0, 0.5).boxes().to_vec();
+        let half =
+            e.mesh(&Default::default(), DVec3::new(0.0, 11.0, 0.0), glam::Vec3::X, 64.0, 0.0, 0.5).boxes().to_vec();
         assert_eq!(e.mobs[0].pose_values(), [-3.0, 0.4, -0.2, 2.0, 1.0], "the simulation keeps its pose");
         let mid = e.mobs[0].render_pose(0.5);
         assert!((mid[0] - std::f32::consts::PI).abs() < 1e-4, "the short way round: {}", mid[0]);
@@ -3374,7 +3376,8 @@ mod tests {
         f.spawn(MobKind::Pig, DVec3::new(6.5, 10.0, 0.5));
         f.mobs[0].set_pose_values(mid);
         f.snapshot_positions();
-        let posed = f.mesh(DVec3::new(0.0, 11.0, 0.0), glam::Vec3::X, 64.0, 0.0, 1.0).boxes().to_vec();
+        let posed =
+            f.mesh(&Default::default(), DVec3::new(0.0, 11.0, 0.0), glam::Vec3::X, 64.0, 0.0, 1.0).boxes().to_vec();
         assert_eq!(half.len(), posed.len());
         for (a, b) in half.iter().zip(&posed) {
             for (ra, rb) in a.rows.iter().zip(&b.rows) {

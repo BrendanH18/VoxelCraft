@@ -1,8 +1,10 @@
 //! `structure_catalogue_tests`: the generation 4 catalogues against Java
 //! 26.3's pools, templates and processor lists, extracted from the jar by
 //! `tools/extract_java_structure_catalogues.py` into
-//! `tests/fixtures/java/26.3/structure_catalogues.json`. Every check runs
-//! both ways: nothing Java has is missing and nothing is added.
+//! `tests/fixtures/java/26.3/structure_catalogues.json`, and generation 6's
+//! bastion catalogue against `tests/fixtures/java/26.3/bastion_catalogue.json`
+//! (the same tool's `--set bastion`, v1.0 Track 8). Every check runs both
+//! ways: nothing Java has is missing and nothing is added.
 
 use std::collections::BTreeMap;
 
@@ -20,11 +22,20 @@ fn fixture() -> &'static Value {
     })
 }
 
-/// One generation 4 catalogue: its pool prefix, file and library.
+fn bastion_fixture() -> &'static Value {
+    static F: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
+    F.get_or_init(|| {
+        serde_json::from_str(include_str!("../../../tests/fixtures/java/26.3/bastion_catalogue.json")).unwrap()
+    })
+}
+
+/// One catalogue: its pool prefix, file, library and the jar fixture it
+/// is checked against.
 pub(crate) struct Catalogue {
     pub prefix: &'static str,
     pub text: &'static str,
     pub lib: &'static Library,
+    pub fixture: &'static Value,
 }
 
 pub(crate) fn catalogues() -> Vec<Catalogue> {
@@ -33,16 +44,25 @@ pub(crate) fn catalogues() -> Vec<Catalogue> {
             prefix: "village/",
             text: include_str!("village_v4.txt"),
             lib: crate::world::village::catalogue::library(),
+            fixture: fixture(),
         },
         Catalogue {
             prefix: "trial_chambers/",
             text: include_str!("trial_chambers_v4.txt"),
             lib: crate::world::trial_chambers::catalogue::library(),
+            fixture: fixture(),
         },
         Catalogue {
             prefix: "ancient_city/",
             text: include_str!("ancient_city_v4.txt"),
             lib: crate::world::ancient_city::catalogue::library(),
+            fixture: fixture(),
+        },
+        Catalogue {
+            prefix: "bastion/",
+            text: include_str!("bastion_v6.txt"),
+            lib: crate::world::bastion::catalogue::library(),
+            fixture: bastion_fixture(),
         },
     ]
 }
@@ -94,8 +114,8 @@ fn our_element(lib: &Library, t: Option<u16>) -> String {
 
 #[test]
 fn pools_match_java_element_by_element_both_ways() {
-    let pools = fixture()["pools"].as_object().unwrap();
     for c in catalogues() {
+        let pools = c.fixture["pools"].as_object().unwrap();
         let java: BTreeMap<&String, &Value> = pools.iter().filter(|(k, _)| k.starts_with(c.prefix)).collect();
         let ours: Vec<&String> = c.lib.pools.keys().filter(|k| k.starts_with(c.prefix)).collect();
         assert_eq!(ours.len(), java.len(), "{}: pool count", c.prefix);
@@ -136,6 +156,18 @@ fn java_tokens(location: &str, t: &Value) -> Vec<String> {
     ] {
         if count(k) > 0 {
             out.push(format!("{k}={}", count(k)));
+        }
+    }
+    // Only the bastion fixture counts these, and spawners by their mob.
+    for k in ["gold_block", "gilded_blackstone", "lava"] {
+        if count(k) > 0 {
+            out.push(format!("{k}={}", count(k)));
+        }
+    }
+    for (k, n) in blocks.as_object().unwrap() {
+        if let Some(mob) = k.strip_prefix("spawner ") {
+            let n = n.as_u64().unwrap();
+            out.push(format!("spawner_mob={mob}") + &if n > 1 { format!("*{n}") } else { String::new() });
         }
     }
     let jobs = [
@@ -219,7 +251,12 @@ fn java_tokens(location: &str, t: &Value) -> Vec<String> {
         let names = if name == target { name.to_string() } else { format!("{name}/{target}") };
         let (p, s) = (c["placement_priority"].as_i64().unwrap_or(0), c["selection_priority"].as_i64().unwrap_or(0));
         let pr = if p != 0 || s != 0 { format!("^{p},{s}") } else { String::new() };
-        *conns.entry(format!("{f}:{names}>{}{pr}", c["pool"].as_str().unwrap())).or_default() += 1;
+        // The bastion fixture keeps each connector's position.
+        let pos = match c["pos"].as_array() {
+            Some(v) => format!("@{},{},{}", v[0], v[1], v[2]),
+            None => String::new(),
+        };
+        *conns.entry(format!("{f}:{names}>{}{pr}{pos}", c["pool"].as_str().unwrap())).or_default() += 1;
     }
     for (c, n) in conns {
         out.push(c + &if n > 1 { format!("*{n}") } else { String::new() });
@@ -230,8 +267,8 @@ fn java_tokens(location: &str, t: &Value) -> Vec<String> {
 
 #[test]
 fn every_piece_line_holds_javas_facts_and_every_java_template_has_one() {
-    let templates = fixture()["templates"].as_object().unwrap();
     for c in catalogues() {
+        let templates = c.fixture["templates"].as_object().unwrap();
         let mut lines = BTreeMap::new();
         for line in c.text.lines().filter(|l| l.starts_with("piece ")) {
             let words: Vec<&str> = line.split_whitespace().collect();
@@ -323,6 +360,36 @@ fn painted_templates_hold_every_job_site_bed_bell_container_and_resident() {
             }
             let want: BTreeMap<&str, i32> = spec.counted("mob").collect();
             assert_eq!(mobs, want, "{} residents", t.name);
+            if c.prefix == "bastion/" {
+                // Bastions also count their gold, gilded blackstone, lava and
+                // spawners (by mob), and keep Java's connector positions.
+                // `bastion/blocks/gold` is gold by its jigsaw's final state,
+                // which the fixture doesn't count.
+                let gold = spec.count("gold_block") + i32::from(spec.location == "bastion/blocks/gold");
+                assert_eq!(count(&|x| x == Block::GOLD_BLOCK), gold, "{} gold", t.name);
+                let gilded = count(&|x| x == Block::GILDED_BLACKSTONE);
+                assert_eq!(gilded, spec.count("gilded_blackstone"), "{} gilded blackstone", t.name);
+                assert_eq!(count(&|x| x.is_lava()), spec.count("lava"), "{} lava", t.name);
+                let spawners: Vec<&str> = t
+                    .cells
+                    .iter()
+                    .filter_map(|cell| match cell.spec.base {
+                        Base::Spawner(i) => Some(c.lib.mobs[i as usize].as_str()),
+                        _ => None,
+                    })
+                    .collect();
+                assert_eq!(spawners.len() as i32, spec.count("spawner"), "{} spawners", t.name);
+                let want: Vec<&str> =
+                    spec.counted("spawner_mob").flat_map(|(m, n)| std::iter::repeat_n(m, n as usize)).collect();
+                assert_eq!(spawners, want, "{} spawner mobs", t.name);
+                let mut have: Vec<String> =
+                    t.jigsaws.iter().map(|j| format!("{}>{}@{}", j.name, j.pool, j.pos)).collect();
+                let mut want: Vec<String> =
+                    spec.conns.iter().map(|j| format!("{}>{}@{}", j.name, j.pool, j.pos.unwrap())).collect();
+                have.sort();
+                want.sort();
+                assert_eq!(have, want, "{} connector positions", t.name);
+            }
             checked += 1;
         }
         assert!(checked > 40, "{}: {checked} templates", c.prefix);
@@ -338,7 +405,12 @@ fn every_block_the_painters_name_exists() {
 
 #[test]
 fn processor_lists_match_java_both_ways() {
-    let java = fixture()["processor_lists"].as_object().unwrap();
+    let mut java = fixture()["processor_lists"].as_object().unwrap().clone();
+    let bastion = bastion_fixture()["processor_lists"].as_object().unwrap();
+    for (k, v) in bastion {
+        assert!(java.insert(k.clone(), v.clone()).is_none(), "{k} in both fixtures");
+    }
+    let java = &java;
     assert_eq!(rules::LISTS.len(), java.len());
     let test = |t: &Test, v: &Value| {
         let kind = v["type"].as_str().unwrap();
@@ -379,6 +451,24 @@ fn processor_lists_match_java_both_ways() {
                     for (r, jr) in rules.iter().zip(java_rules) {
                         test(&r.input, &jr["input"]);
                         test(&r.location, &jr["location"]);
+                        match (r.pos, &jr["position"]) {
+                            (None, Value::Null) => {}
+                            (
+                                Some(rules::PosTest::LinearY { min_chance, max_chance, min_dist, max_dist }),
+                                Value::Object(p),
+                            ) => {
+                                assert_eq!(p["predicate_type"], "minecraft:axis_aligned_linear_pos");
+                                assert!(p.get("axis").is_none_or(|a| a == "y"), "{name}");
+                                let f = |k: &str| p.get(k).and_then(Value::as_f64).unwrap_or(0.0) as f32;
+                                assert_eq!((min_chance, max_chance), (f("min_chance"), f("max_chance")), "{name}");
+                                assert_eq!(
+                                    (min_dist, max_dist),
+                                    (f("min_dist") as i32, f("max_dist") as i32),
+                                    "{name}"
+                                );
+                            }
+                            (ours, theirs) => panic!("{name}: position predicate {ours:?} against {theirs}"),
+                        }
                         match &jr["output"] {
                             Value::String(o) => assert!(r.output == o && r.props.is_empty(), "{name} {o}"),
                             o => {

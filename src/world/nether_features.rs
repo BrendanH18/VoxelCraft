@@ -314,14 +314,22 @@ pub enum Vegetation {
 }
 
 impl Vegetation {
-    fn pick(self, rng: &mut Rng) -> Block {
-        let table: &[(Block, i32)] = match self {
+    /// The weighted plants (sprouts: just sprouts).
+    pub fn table(self) -> &'static [(Block, i32)] {
+        match self {
             Vegetation::Crimson => &[(nb::CRIMSON_ROOTS, 87), (nb::CRIMSON_FUNGUS, 11), (nb::WARPED_FUNGUS, 1)],
             Vegetation::Warped => {
                 &[(nb::WARPED_ROOTS, 85), (nb::CRIMSON_ROOTS, 1), (nb::WARPED_FUNGUS, 13), (nb::CRIMSON_FUNGUS, 1)]
             }
-            Vegetation::NetherSprouts => return nb::NETHER_SPROUTS,
-        };
+            Vegetation::NetherSprouts => &[(nb::NETHER_SPROUTS, 1)],
+        }
+    }
+
+    fn pick(self, rng: &mut Rng) -> Block {
+        if self == Vegetation::NetherSprouts {
+            return nb::NETHER_SPROUTS;
+        }
+        let table = self.table();
         let mut r = int(rng, table.iter().map(|t| t.1).sum());
         for &(b, w) in table {
             if r < w {
@@ -658,6 +666,325 @@ pub fn fossil(level: &mut impl Level, rng: &mut Rng, origin: IVec3) -> bool {
         }
     }
     placed
+}
+
+// ---------------------------------------------------------------------------
+// Java 26.3's data-driven Nether features (generation 6, v1.0 Track 8).
+// ---------------------------------------------------------------------------
+
+use super::nether_placed::{IntP, Simple};
+
+/// `glowstone_extra`: attempts and the x/z and y offsets of each try.
+pub const GLOWSTONE_SPREAD: (i32, IntP, IntP) = (1500, IntP::Trapezoid(-7, 7, 0), IntP::Uniform(-11, 0));
+/// `weeping_vines`: the wart spread's attempts and offsets...
+pub const WART_SPREAD: (i32, IntP, IntP) = (200, IntP::Trapezoid(-5, 5, 0), IntP::Trapezoid(-4, 1, 3));
+/// ...then the columns' count and offsets...
+pub const VINE_PLACEMENT: (i32, IntP, IntP) = (100, IntP::Trapezoid(-7, 7, 0), IntP::Trapezoid(-4, 1, 3));
+/// ...and each column's plant layer (weighted heights); twisting vines'
+/// likewise. Heads are aged [`VINE_HEAD_AGE`].
+pub const WEEPING_LENGTHS: [(IntP, i32); 3] =
+    [(IntP::Uniform(1, 8), 10), (IntP::Uniform(2, 17), 2), (IntP::Const(1), 3)];
+pub const TWISTING_LENGTHS: [(IntP, i32); 3] =
+    [(IntP::Uniform(0, 7), 10), (IntP::Uniform(1, 15), 2), (IntP::Const(0), 3)];
+pub const VINE_HEAD_AGE: (i32, i32) = (17, 25);
+
+/// `SpringFeature.place`: lava set into rock with exactly `rock` of its
+/// four sides and floor in `valid` and `hole` of them open.
+pub fn spring(
+    level: &mut impl Level,
+    origin: IVec3,
+    valid: &[Block],
+    requires_below: bool,
+    rock: u8,
+    hole: u8,
+) -> bool {
+    let is_valid = |b: Block| valid.contains(&b);
+    if !is_valid(level.block(origin + IVec3::Y)) || (requires_below && !is_valid(level.block(origin - IVec3::Y))) {
+        return false;
+    }
+    let here = level.block(origin);
+    if here != Block::AIR && !is_valid(here) {
+        return false;
+    }
+    let around = [IVec3::NEG_X, IVec3::X, IVec3::NEG_Z, IVec3::Z, IVec3::NEG_Y];
+    let rocks = around.iter().filter(|&&d| is_valid(level.block(origin + d))).count();
+    let holes = around.iter().filter(|&&d| level.empty(origin + d)).count();
+    if rocks == rock as usize && holes == hole as usize {
+        level.place(origin, Block::LAVA);
+        return true;
+    }
+    false
+}
+
+/// `SimpleBlockFeature` of a Nether plant or fire, if it can stay there
+/// (`canSurvive`; mushrooms ignore light, which worldgen hasn't lit yet).
+pub fn simple(level: &mut impl Level, rng: &mut Rng, p: IVec3, what: Simple) -> bool {
+    let below = level.block(p - IVec3::Y);
+    let b = match what {
+        Simple::Fire => {
+            if !below.is_opaque() {
+                return false;
+            }
+            Block::fire(0)
+        }
+        Simple::SoulFire => {
+            if !matches!(below, Block::SOUL_SAND | nb::SOUL_SOIL) {
+                return false;
+            }
+            nb::SOUL_FIRE
+        }
+        Simple::BrownMushroom | Simple::RedMushroom => {
+            // `MushroomBlock.canSurvive`: the override tag, or a solid block.
+            if !(below.is_opaque() || nb::is_nylium(below)) {
+                return false;
+            }
+            if what == Simple::BrownMushroom { Block::BROWN_MUSHROOM } else { Block::RED_MUSHROOM }
+        }
+        Simple::CrimsonRoots => nb::CRIMSON_ROOTS,
+        Simple::NetherSprouts => Vegetation::NetherSprouts.pick(rng),
+        Simple::CrimsonVegetation => Vegetation::Crimson.pick(rng),
+        Simple::WarpedVegetation => Vegetation::Warped.pick(rng),
+    };
+    let plant = !matches!(what, Simple::Fire | Simple::SoulFire | Simple::BrownMushroom | Simple::RedMushroom);
+    if plant && !b.can_stay_on(below) {
+        return false;
+    }
+    level.place(p, b);
+    true
+}
+
+/// `RandomNeighborSpreadFeature` of glowstone (`glowstone_extra`): the
+/// origin, then 1500 tries at offsets (trapezoid -7..7, uniform -11..0,
+/// trapezoid -7..7) that touch exactly one glowstone. Only this feature's
+/// own blocks are glowstone, so neighbours are kept in a small grid.
+pub fn glowstone(level: &mut impl Level, rng: &mut Rng, origin: IVec3) -> bool {
+    const W: i32 = 17;
+    let index = |d: IVec3| ((d.y + 12) * W * W + (d.z + 8) * W + (d.x + 8)) as usize;
+    let mut grid = vec![false; (W * W * 14) as usize];
+    level.place(origin, Block::GLOWSTONE);
+    grid[index(IVec3::ZERO)] = true;
+    let (attempts, xz, y) = GLOWSTONE_SPREAD;
+    for _ in 0..attempts {
+        let d = IVec3::new(xz.sample(rng), y.sample(rng), xz.sample(rng));
+        if grid[index(d)] {
+            continue;
+        }
+        let mut touching = 0;
+        for o in DIRECTIONS {
+            if grid[index(d + o)] {
+                touching += 1;
+                if touching > 1 {
+                    break;
+                }
+            }
+        }
+        if touching == 1 && level.empty(origin + d) {
+            grid[index(d)] = true;
+            level.place(origin + d, Block::GLOWSTONE);
+        }
+    }
+    true
+}
+
+/// `OreFeature.place` replacing netherrack with `state` (the Nether's ores
+/// never discard on air). The ocean-floor heightmap check always passes
+/// under the Nether's bedrock roof. Spheres outside the write bounds are
+/// skipped: the shape draws all its randomness first.
+pub fn ore(level: &mut impl Level, rng: &mut Rng, origin: IVec3, size: i32, state: Block) -> bool {
+    use std::f32::consts::PI;
+    let dir = float(rng) * PI;
+    let spread = size as f32 / 8.0;
+    let max_radius = ((size as f32 / 16.0 * 2.0 + 1.0) / 2.0).ceil() as i32;
+    let (o, s) = (origin.as_dvec3(), f64::from(spread));
+    let (x0, x1) = (o.x + f64::from(dir.sin()) * s, o.x - f64::from(dir.sin()) * s);
+    let (z0, z1) = (o.z + f64::from(dir.cos()) * s, o.z - f64::from(dir.cos()) * s);
+    let y0 = f64::from(origin.y + int(rng, 3) - 2);
+    let y1 = f64::from(origin.y + int(rng, 3) - 2);
+    let reach = spread.ceil() as i32 + max_radius;
+    let start = origin - IVec3::new(reach, 2 + max_radius, reach);
+    let mut data = Vec::with_capacity(size as usize);
+    for i in 0..size {
+        let step = i as f32 / size as f32;
+        let lerp = |a: f64, b: f64| a + f64::from(step) * (b - a);
+        let ss = rng.unit() * f64::from(size) / 16.0;
+        let r = ((f64::from((PI * step).sin()) + 1.0) * ss + 1.0) / 2.0;
+        data.push([lerp(x0, x1), lerp(y0, y1), lerp(z0, z1), r]);
+    }
+    for i in 0..data.len().saturating_sub(1) {
+        if data[i][3] <= 0.0 {
+            continue;
+        }
+        for j in i + 1..data.len() {
+            if data[j][3] <= 0.0 {
+                continue;
+            }
+            let (a, b) = (data[i], data[j]);
+            let dr = a[3] - b[3];
+            if dr * dr > (a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2) {
+                if dr > 0.0 {
+                    data[j][3] = -1.0;
+                } else {
+                    data[i][3] = -1.0;
+                }
+            }
+        }
+    }
+    let bounds = level.write_bounds();
+    let mut placed = false;
+    for [xx, yy, zz, r] in data {
+        if r < 0.0 {
+            continue;
+        }
+        let lo = IVec3::new((xx - r).floor() as i32, (yy - r).floor() as i32, (zz - r).floor() as i32).max(start);
+        let hi = IVec3::new((xx + r).floor() as i32, (yy + r).floor() as i32, (zz + r).floor() as i32).max(lo);
+        let (lo, hi) = match bounds {
+            Some((a, b)) => (lo.max(a), hi.min(b)),
+            None => (lo, hi),
+        };
+        for x in lo.x..=hi.x {
+            let dx = (f64::from(x) + 0.5 - xx) / r;
+            if dx * dx >= 1.0 {
+                continue;
+            }
+            for y in lo.y..=hi.y {
+                let dy = (f64::from(y) + 0.5 - yy) / r;
+                if dx * dx + dy * dy >= 1.0 || !(0..BUILD_HEIGHT).contains(&y) {
+                    continue;
+                }
+                for z in lo.z..=hi.z {
+                    let dz = (f64::from(z) + 0.5 - zz) / r;
+                    let p = IVec3::new(x, y, z);
+                    if dx * dx + dy * dy + dz * dz < 1.0 && level.block(p) == Block::NETHERRACK {
+                        level.place(p, state);
+                        placed = true;
+                    }
+                }
+            }
+        }
+    }
+    placed
+}
+
+/// `ReplaceBlobsFeature` (`netherrack_replace_blobs`): from the first
+/// netherrack at or below the origin, every netherrack within a box of
+/// three sampled radii and the largest radius's Manhattan distance.
+pub fn blobs(level: &mut impl Level, rng: &mut Rng, origin: IVec3, state: Block, radius: (i32, i32)) -> bool {
+    let mut c = IVec3::new(origin.x, origin.y.clamp(1, BUILD_HEIGHT - 1), origin.z);
+    loop {
+        if c.y <= 1 {
+            return false;
+        }
+        if level.block(c) == Block::NETHERRACK {
+            break;
+        }
+        c.y -= 1;
+    }
+    let r = IntP::Uniform(radius.0, radius.1);
+    let (rx, ry, rz) = (r.sample(rng), r.sample(rng), r.sample(rng));
+    let max = rx.max(ry).max(rz);
+    let (mut lo, mut hi) = (c - IVec3::new(rx, ry, rz), c + IVec3::new(rx, ry, rz));
+    if let Some((a, b)) = level.write_bounds() {
+        (lo, hi) = (lo.max(a), hi.min(b));
+    }
+    let mut placed = false;
+    for y in lo.y..=hi.y {
+        for z in lo.z..=hi.z {
+            for x in lo.x..=hi.x {
+                let p = IVec3::new(x, y, z);
+                let d = (p - c).abs();
+                if d.x + d.y + d.z <= max && level.block(p) == Block::NETHERRACK {
+                    level.place(p, state);
+                    placed = true;
+                }
+            }
+        }
+    }
+    placed
+}
+
+/// A `weighted_list` int provider of uniform or constant entries.
+fn weighted(rng: &mut Rng, entries: &[(IntP, i32)]) -> i32 {
+    let mut r = int(rng, entries.iter().map(|e| e.1).sum());
+    for &(p, w) in entries {
+        if r < w {
+            return p.sample(rng);
+        }
+        r -= w;
+    }
+    unreachable!("weights cover the roll")
+}
+
+/// `BlockColumnFeature` of a vine: a plant layer of `plants` blocks and a
+/// one-block head aged 17..=25, growing along `dir`, cut to the run of air
+/// past its origin, plant layer first (`prioritize_tip`).
+fn vine_column(level: &mut impl Level, rng: &mut Rng, origin: IVec3, dir: IVec3, plants: i32, vine: Vine) {
+    let total = plants + 1;
+    let mut heights = [plants, 1];
+    let mut next = origin + dir;
+    for y in 0..total {
+        if !level.empty(next) {
+            let mut remove = total - y;
+            for h in &mut heights {
+                let cut = (*h).min(remove);
+                *h -= cut;
+                remove -= cut;
+            }
+            break;
+        }
+        next += dir;
+    }
+    let plant = if vine == Vine::Weeping { nb::WEEPING_VINES_PLANT } else { nb::TWISTING_VINES_PLANT };
+    let mut p = origin;
+    for _ in 0..heights[0] {
+        level.place(p, plant);
+        p += dir;
+    }
+    for _ in 0..heights[1] {
+        level.place(p, vine.head(between(rng, VINE_HEAD_AGE.0, VINE_HEAD_AGE.1) as u8));
+        p += dir;
+    }
+}
+
+/// Java 26.3's `weeping_vines`: an overlay of a nether wart spread on the
+/// ceiling (200 tries, trapezoid -5..5 across and -4..1 with plateau 3 up)
+/// and a hundred vine columns hung where air meets netherrack or wart.
+pub fn weeping_vines_26(level: &mut impl Level, rng: &mut Rng, origin: IVec3) -> bool {
+    let (attempts, xz, y) = WART_SPREAD;
+    level.place(origin, nb::NETHER_WART_BLOCK);
+    for _ in 0..attempts {
+        let p = origin + IVec3::new(xz.sample(rng), y.sample(rng), xz.sample(rng));
+        if !level.empty(p) {
+            continue;
+        }
+        let mut touching = 0;
+        for d in DIRECTIONS {
+            if roof(level.block(p + d)) {
+                touching += 1;
+                if touching > 1 {
+                    break;
+                }
+            }
+        }
+        if touching == 1 {
+            level.place(p, nb::NETHER_WART_BLOCK);
+        }
+    }
+    let (count, xz, y) = VINE_PLACEMENT;
+    for _ in 0..count {
+        let p = origin + IVec3::new(xz.sample(rng), y.sample(rng), xz.sample(rng));
+        if level.empty(p) && roof(level.block(p + IVec3::Y)) {
+            let plants = weighted(rng, &WEEPING_LENGTHS);
+            vine_column(level, rng, p, IVec3::NEG_Y, plants, Vine::Weeping);
+        }
+    }
+    true
+}
+
+/// Java 26.3's `twisting_vines` feature: one column up from `origin`.
+pub fn twisting_vines_26(level: &mut impl Level, rng: &mut Rng, origin: IVec3) -> bool {
+    let plants = weighted(rng, &TWISTING_LENGTHS);
+    vine_column(level, rng, origin, IVec3::Y, plants, Vine::Twisting);
+    true
 }
 
 #[cfg(test)]

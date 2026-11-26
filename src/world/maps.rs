@@ -509,7 +509,72 @@ pub fn locate(g: &Generator, from: IVec3, item: Item, radius: i32) -> Option<IVe
         _ => None,
     }
 }
+/// Java's frame marker rotation: `Direction.get2DDataValue() * 90` for the
+/// way the frame faces (south 0, west 90, north 180, east 270; floors and
+/// ceilings -90).
+pub fn frame_rotation(facing: IVec3) -> f32 {
+    match (facing.x, facing.z) {
+        (0, 1) => 0.0,
+        (-1, 0) => 90.0,
+        (0, -1) => 180.0,
+        (1, 0) => 270.0,
+        _ => -90.0,
+    }
+}
+
+/// Decoration kinds `MapDecorationType.showOnItemFrame` hides on a framed
+/// map: the player markers and the red and blue markers.
+pub fn hidden_on_frames(kind: &str) -> bool {
+    matches!(kind, "player" | "player_off_map" | "player_off_limits" | "red_marker" | "blue_marker")
+}
+
+impl MapStorage {
+    /// Java's frame markers (`MapItemSavedData.tickCarriedBy` with a frame,
+    /// every 10 ticks, and `removedFromFrame`): each framed map that tracks
+    /// position marks its frame with a `frame` decoration at the frame's
+    /// block x and z, turned the way the frame faces; a marker whose frame
+    /// no longer holds the map goes, once its column is loaded to tell.
+    /// `frames` lists every frame in `dimension` holding a map: id, cell
+    /// and facing.
+    pub fn sync_frames(
+        &mut self,
+        frames: &[(u32, IVec3, IVec3)],
+        dimension: Dimension,
+        loaded: impl Fn(i32, i32) -> bool,
+    ) {
+        for (&id, map) in self.maps.iter_mut() {
+            if map.dimension != dimension {
+                continue;
+            }
+            let want: Vec<Decoration> = frames
+                .iter()
+                .filter(|f| f.0 == id && map.tracking)
+                .map(|&(_, cell, facing)| Decoration {
+                    kind: "frame".into(),
+                    x: f64::from(cell.x),
+                    z: f64::from(cell.z),
+                    rotation: frame_rotation(facing),
+                })
+                .collect();
+            map.decorations.retain(|d| d.kind != "frame" || want.contains(d) || !loaded(d.x as i32, d.z as i32));
+            for w in want {
+                if !map.decorations.contains(&w) {
+                    map.decorations.push(w);
+                }
+            }
+        }
+    }
+}
+
 impl World {
+    /// [`MapStorage::sync_frames`] for this world's dimension.
+    pub fn sync_frame_markers(&mut self, frames: &[(u32, IVec3, IVec3)]) {
+        let dimension = self.generator.dimension;
+        let mut storage = std::mem::take(&mut self.maps);
+        storage.sync_frames(frames, dimension, |x, z| self.column_loaded(x, z));
+        self.maps = storage;
+    }
+
     pub fn tick_map(&mut self, stack: Stack, pos: DVec3, player: u64) {
         let Some(id) = stack.map_id else { return };
         if self.maps.maps.get(&id).is_none_or(|m| m.locked || m.dimension != self.generator.dimension) {
@@ -930,6 +995,48 @@ mod storage_tests {
         assert_eq!(m.decoration_view(&d), None);
         m.unlimited = true;
         assert_eq!(m.decoration_view(&d), Some((127.5, 64.0, 4, true)));
+    }
+}
+
+#[cfg(test)]
+mod frame_tests {
+    use super::*;
+
+    /// v1.0 Track 8 (BLD-05b): a framed map marks its frame like Java's
+    /// `frame` decoration, drops the marker when the map leaves the frame,
+    /// keeps markers of frames in unloaded columns, and saves them.
+    #[test]
+    fn framed_maps_mark_their_frames_and_save_the_markers() {
+        let mut storage = MapStorage::default();
+        let stack = storage.create(MapData::fresh(0, 0, 0, Dimension::Overworld, true, false), Item::FILLED_MAP);
+        let id = stack.map_id.unwrap();
+        let untracked = storage.create(MapData::fresh(0, 0, 0, Dimension::Overworld, false, false), Item::FILLED_MAP);
+        let cell = IVec3::new(10, 64, -5);
+        let frames = [(id, cell, IVec3::NEG_Z), (untracked.map_id.unwrap(), cell, IVec3::NEG_Z)];
+        storage.sync_frames(&frames, Dimension::Overworld, |_, _| true);
+        let marker = Decoration { kind: "frame".into(), x: 10.0, z: -5.0, rotation: 180.0 };
+        assert_eq!(storage.maps[&id].decorations, vec![marker.clone()]);
+        assert!(storage.maps[&untracked.map_id.unwrap()].decorations.is_empty(), "no markers without tracking");
+        // Synced again: still one marker.
+        storage.sync_frames(&frames, Dimension::Overworld, |_, _| true);
+        assert_eq!(storage.maps[&id].decorations.len(), 1);
+        // Saved and loaded with the map.
+        let loaded = MapStorage::load(&storage.serialize()).unwrap();
+        assert_eq!(loaded.maps[&id].decorations, vec![marker.clone()]);
+        // Other dimensions' frames leave it alone; an unloaded column keeps it.
+        storage.sync_frames(&[], Dimension::Nether, |_, _| true);
+        storage.sync_frames(&[], Dimension::Overworld, |_, _| false);
+        assert_eq!(storage.maps[&id].decorations, vec![marker]);
+        // Taken out of the frame (column loaded): the marker goes.
+        storage.sync_frames(&[], Dimension::Overworld, |_, _| true);
+        assert!(storage.maps[&id].decorations.is_empty());
+        // Java's rotations by facing; floors and ceilings get -90.
+        for (f, r) in
+            [(IVec3::Z, 0.0), (IVec3::NEG_X, 90.0), (IVec3::NEG_Z, 180.0), (IVec3::X, 270.0), (IVec3::Y, -90.0)]
+        {
+            assert_eq!(frame_rotation(f), r);
+        }
+        assert!(hidden_on_frames("player") && !hidden_on_frames("frame") && !hidden_on_frames("target_x"));
     }
 }
 

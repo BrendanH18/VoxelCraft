@@ -1,8 +1,13 @@
 //! Bastion remnants: four hand-authored layouts and Java chest pools.
-//! Legacy layouts and generation 3 templates share Java Nether-complex placement.
+//! Legacy layouts, generation 3 templates and generation 6's full Java
+//! pool catalogue ([`catalogue`]) share Java Nether-complex placement.
 
+pub mod catalogue;
 mod templates;
 pub use templates::Resident;
+/// The jigsaw settings Java's `bastion_remnant` structure gives the assembler.
+#[cfg(test)]
+pub(crate) use templates::SETTINGS as JIGSAW;
 
 use crate::item::Item;
 
@@ -124,6 +129,8 @@ pub struct Bastion {
     placed: Vec<super::jigsaw::Placed>,
     /// Present only for generation 3, including an empty selected mob pool.
     pub template_residents: Option<Vec<Resident>>,
+    /// Generation 6: `placed` comes from [`catalogue::library`].
+    catalogue: bool,
 }
 impl Bastion {
     pub fn generate(seed: u64, start: IVec2, kind: Kind, facing: Facing) -> Self {
@@ -200,7 +207,7 @@ impl Bastion {
             .map(|p| p.bounds)
             .reduce(|a, b| Bounds { min: a.min.min(b.min), max: a.max.max(b.max) })
             .unwrap();
-        Self { kind, bounds, pieces, placed: Vec::new(), template_residents: None }
+        Self { kind, bounds, pieces, placed: Vec::new(), template_residents: None, catalogue: false }
     }
 }
 
@@ -241,7 +248,9 @@ impl Bastions {
         let seed = hash3(region.x, 0, region.y, self.seed ^ 0xBA5710);
         let mut rng = Rng(seed);
         let kind = [Kind::Housing, Kind::Stables, Kind::Treasure, Kind::Bridge][rng.below(4) as usize];
-        let b = Arc::new(if self.generation >= super::terrain::Generation::V3 {
+        let b = Arc::new(if self.generation >= super::terrain::Generation::V6 {
+            templates::generate_catalogue(seed, start)
+        } else if self.generation >= super::terrain::Generation::V3 {
             templates::generate(seed, start)
         } else {
             Bastion::generate(seed, start, kind, Facing::ALL[rng.below(4) as usize])
@@ -295,12 +304,23 @@ impl Bastions {
             })
             .min_by_key(|at| (IVec2::new(at.x, at.z) - p).as_i64vec2().length_squared())
     }
+    /// Whether bastions can reach heights `lo..=hi`: y 33 to 70 for the
+    /// older generations; generation 6's catalogue pieces climb higher and
+    /// its bridge legs hang lower, so every height is checked against the
+    /// bastions' own boxes.
+    fn reaches_height(&self, lo: i32, hi: i32) -> bool {
+        self.generation >= super::terrain::Generation::V6 || (hi >= 33 && lo <= 70)
+    }
+
     fn paint_region(&self, blocks: &mut [Block], base: IVec3, top: IVec3) {
-        if top.y < 33 || base.y > 70 {
+        if !self.reaches_height(base.y, top.y) {
             return;
         }
         let chunk = Bounds { min: base, max: top };
         for b in self.near(IVec2::new(base.x, base.z), IVec2::new(top.x, top.z)) {
+            if b.bounds.max.y < base.y || b.bounds.min.y > top.y {
+                continue;
+            }
             if !b.placed.is_empty() {
                 templates::paint(&b, blocks, base, top);
                 continue;
@@ -324,7 +344,7 @@ impl Bastions {
         let base = cpos * CHUNK_SIZE_I;
         let chunk = Bounds { min: base, max: base + IVec3::splat(CHUNK_SIZE_I - 1) };
         let mut out = Vec::new();
-        if chunk.max.y < 33 || chunk.min.y > 70 {
+        if !self.reaches_height(chunk.min.y, chunk.max.y) {
             return out;
         }
         for b in self.near(IVec2::new(base.x, base.z), IVec2::new(chunk.max.x, chunk.max.z)) {

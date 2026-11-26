@@ -3,7 +3,8 @@ use super::*;
 use crate::entity::{MobKind, nether::Weapon};
 use crate::world::jigsaw::{self, Marker, Palette};
 
-const SETTINGS: jigsaw::Settings = jigsaw::Settings { start_pool: "bastion/starts", max_depth: 6, max_distance: 80 };
+pub(crate) const SETTINGS: jigsaw::Settings =
+    jigsaw::Settings { start_pool: "bastion/starts", max_depth: 6, max_distance: 80 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Resident {
@@ -82,23 +83,92 @@ pub(super) fn generate(seed: u64, start: IVec2) -> Bastion {
             _ => None,
         })
         .collect();
-    Bastion { kind, bounds, pieces: Vec::new(), placed, template_residents: Some(residents) }
+    Bastion { kind, bounds, pieces: Vec::new(), placed, template_residents: Some(residents), catalogue: false }
+}
+
+/// Generation 6's palette: each piece's Java processor list (bastion
+/// degradation, the high rampart's falling-off with height), measured from
+/// the piece's own position as Java's `RuleProcessor` does.
+struct CataloguePalette;
+
+fn catalogue_processors() -> &'static [Option<&'static jigsaw::rules::Compiled>] {
+    static LISTS: std::sync::OnceLock<Vec<Option<&'static jigsaw::rules::Compiled>>> = std::sync::OnceLock::new();
+    LISTS.get_or_init(|| super::catalogue::library().processor_lists.iter().map(|n| jigsaw::rules::list(n)).collect())
+}
+
+impl Palette for CataloguePalette {
+    fn role(&self, _role: &str) -> Option<Block> {
+        None
+    }
+    fn clear_above(&self) -> i32 {
+        0
+    }
+    fn process(&self, block: Block, at: IVec3, piece: &jigsaw::Placed) -> Option<Block> {
+        self.process_at(block, at, piece, Block::AIR)
+    }
+    fn process_at(&self, block: Block, at: IVec3, piece: &jigsaw::Placed, existing: Block) -> Option<Block> {
+        let t = &super::catalogue::library().templates[piece.template as usize];
+        match t.processors.and_then(|i| catalogue_processors()[i as usize]) {
+            Some(list) => list.apply_in(block, at, existing, piece.origin),
+            None => Some(block),
+        }
+    }
+}
+
+/// A resident of one of Java's `bastion/mobs/*` templates.
+fn catalogue_resident(template: &str, at: IVec3) -> Option<Resident> {
+    let (kind, weapon) = match template.rsplit('/').next()? {
+        "melee_piglin" | "melee_piglin_always" => (MobKind::PiglinBrute, Weapon::GoldenAxe),
+        "sword_piglin" => (MobKind::Piglin, Weapon::GoldenSword),
+        "crossbow_piglin" => (MobKind::Piglin, Weapon::Crossbow),
+        "hoglin" => (MobKind::Hoglin, Weapon::None),
+        _ => return None,
+    };
+    Some(Resident { at, kind, weapon })
+}
+
+/// Generation 6: Java's full pool catalogue, assembled by the jigsaw engine
+/// with Java's settings (start pool `bastion/starts`, size 6, distance 80,
+/// start height 33).
+pub(super) fn generate_catalogue(seed: u64, start: IVec2) -> Bastion {
+    let lib = super::catalogue::library();
+    let placed = jigsaw::assemble(lib, &SETTINGS, start, &|_, _| 33, seed);
+    let kind = match lib.templates[placed[0].template as usize].name.as_str() {
+        "bastion/units/air_base" => Kind::Housing,
+        "bastion/hoglin_stable/air_base" => Kind::Stables,
+        "bastion/treasure/big_air_full" => Kind::Treasure,
+        "bastion/bridge/starting_pieces/entrance_base" => Kind::Bridge,
+        _ => unreachable!("bastion start pool"),
+    };
+    let bounds = placed.iter().map(|p| p.bounds).reduce(|a, b| a.union(&b)).expect("bastion start");
+    let residents = placed
+        .iter()
+        .flat_map(|p| {
+            let t = &lib.templates[p.template as usize];
+            t.mobs.iter().filter_map(|(c, _)| catalogue_resident(&t.name, p.world(*c)))
+        })
+        .collect();
+    Bastion { kind, bounds, pieces: Vec::new(), placed, template_residents: Some(residents), catalogue: true }
 }
 
 pub(super) fn paint(b: &Bastion, blocks: &mut [Block], base: IVec3, top: IVec3) {
+    let (lib, palette): (&jigsaw::Library, &dyn Palette) =
+        if b.catalogue { (super::catalogue::library(), &CataloguePalette) } else { (jigsaw::bastions(), &Degradation) };
     jigsaw::paint_canvas(
-        jigsaw::bastions(),
+        lib,
         &b.placed,
-        &Degradation,
+        palette,
         &jigsaw::Ground { surface: &|_, _| 33, solid: &|_, _| 33 },
         &mut jigsaw::Canvas { blocks, base, top },
     );
 }
 
 pub(super) fn features(b: &Bastion) -> impl Iterator<Item = (IVec3, Feature)> + '_ {
-    jigsaw::markers(jigsaw::bastions(), &b.placed, &|_, _| 33).into_iter().filter_map(|m| match m {
+    let lib = if b.catalogue { super::catalogue::library() } else { jigsaw::bastions() };
+    jigsaw::markers(lib, &b.placed, &|_, _| 33).into_iter().filter_map(|m| match m {
         Marker::Loot(at, name, seed) => {
-            let kind = match name {
+            // The catalogue names Java's tables in full (`chests/...`).
+            let kind = match name.strip_prefix("chests/").unwrap_or(name) {
                 "bastion_treasure" => ChestKind::Treasure,
                 "bastion_bridge" => ChestKind::Bridge,
                 "bastion_hoglin_stable" => ChestKind::HoglinStable,
@@ -400,10 +470,10 @@ mod tests {
 
     #[test]
     fn generated_treasure_registers_spawner_and_saved_empty_chests() {
-        let seed =
-            (0..100).find(|&s| Bastions::new(s).get(IVec2::ZERO).is_some_and(|b| b.kind == Kind::Treasure)).unwrap();
+        let v3 = |s| Bastions::with_generation(s, Generation::V3);
+        let seed = (0..100).find(|&s| v3(s).get(IVec2::ZERO).is_some_and(|b| b.kind == Kind::Treasure)).unwrap();
         let generator = Arc::new(Generator::with_generation(seed, Dimension::Nether, Generation::V3));
-        let b = Bastions::new(seed).get(IVec2::ZERO).unwrap();
+        let b = v3(seed).get(IVec2::ZERO).unwrap();
         let mut world = World::new_headless(generator.clone(), Default::default(), 2);
         let all: Vec<_> = features(&b).collect();
         for &(at, _) in &all {
@@ -423,5 +493,149 @@ mod tests {
         loaded.register_structure_features(c, &generator.generate(c));
         assert!(loaded.chests[&chest].slots.iter().all(Option::is_none));
         eprintln!("generation 3 treasure seed{seed}, bounds {:?}", b.bounds);
+    }
+
+    /// Generation 6 (v1.0 Track 8, GEN-05g): Java's full pool catalogue
+    /// assembles all four kinds, deterministically, into non-overlapping
+    /// pieces within Java's 80-block distance, with residents drawn from the
+    /// mob pools and the treasure chests, spawner and gold of the catalogue.
+    #[test]
+    fn generation_6_bastions_assemble_javas_full_catalogue() {
+        let lib = super::super::catalogue::library();
+        let mut kinds = [0; 4];
+        let mut used = std::collections::BTreeSet::new();
+        let (mut brutes, mut hoglins, mut crossbows) = (0, 0, 0);
+        let start = IVec2::new(-29, 31);
+        for seed in 0..80 {
+            let a = generate_catalogue(seed, start);
+            let b = generate_catalogue(seed, start);
+            assert_eq!(format!("{:?}", a.placed), format!("{:?}", b.placed));
+            assert_eq!(a.template_residents, b.template_residents);
+            kinds[a.kind as usize] += 1;
+            assert!(a.placed.len() >= 8, "{:?} seed {seed}: {} pieces", a.kind, a.placed.len());
+            for (i, p) in a.placed.iter().enumerate() {
+                used.insert(lib.templates[p.template as usize].name.clone());
+                // Java's `max_distance_from_center` bounds every piece.
+                let far = (p.bounds.min.x - start.x).abs().max((p.bounds.max.x - start.x).abs());
+                let far_z = (p.bounds.min.z - start.y).abs().max((p.bounds.max.z - start.y).abs());
+                assert!(
+                    far.max(far_z) <= SETTINGS.max_distance + 1,
+                    "{:?} seed {seed}: piece {far},{far_z} out",
+                    a.kind
+                );
+                // A connector pointing into its own piece places the child in
+                // that piece's interior (Java's air bases hold the units), so
+                // pieces either nest or keep apart.
+                let contains = |a: &Bounds, b: &Bounds| a.min.cmple(b.min).all() && a.max.cmpge(b.max).all();
+                for q in &a.placed[..i] {
+                    assert!(
+                        !p.bounds.intersects(&q.bounds)
+                            || contains(&p.bounds, &q.bounds)
+                            || contains(&q.bounds, &p.bounds),
+                        "{:?} seed {seed}: overlapping pieces {:?} {:?}",
+                        a.kind,
+                        lib.templates[p.template as usize].name,
+                        lib.templates[q.template as usize].name
+                    );
+                }
+            }
+            for r in a.template_residents.as_ref().unwrap() {
+                brutes += usize::from(r.kind == MobKind::PiglinBrute);
+                hoglins += usize::from(r.kind == MobKind::Hoglin);
+                crossbows += usize::from(r.weapon == Weapon::Crossbow);
+            }
+        }
+        assert!(kinds.iter().all(|&n| n > 8), "{kinds:?}");
+        assert!(
+            brutes > 20 && hoglins > 10 && crossbows > 20,
+            "{brutes} brutes, {hoglins} hoglins, {crossbows} crossbows"
+        );
+        // Most of the catalogue appears within 80 bastions.
+        assert!(used.len() > 100, "{} of {} templates used", used.len(), lib.templates.len());
+    }
+
+    #[test]
+    fn generation_6_treasure_keeps_its_spawner_and_saved_empty_chests() {
+        let v6 = |s| Bastions::with_generation(s, Generation::V6);
+        let seed = (0..200).find(|&s| v6(s).get(IVec2::ZERO).is_some_and(|b| b.kind == Kind::Treasure)).unwrap();
+        let generator = Arc::new(Generator::with_generation(seed, Dimension::Nether, Generation::V6));
+        let b = v6(seed).get(IVec2::ZERO).unwrap();
+        let mut world = World::new_headless(generator.clone(), Default::default(), 2);
+        let all: Vec<_> = features(&b).collect();
+        for &(at, _) in &all {
+            let c = chunk_of(at);
+            let data = generator.generate(c);
+            world.register_structure_features(c, &data);
+        }
+        let chest = all.iter().find(|(_, f)| matches!(f, Feature::BastionChest(_, ChestKind::Treasure))).unwrap().0;
+        assert!(world.chests[&chest].slots.iter().flatten().any(|s| s.item == Item::NETHERITE_UPGRADE));
+        let spawner = all.iter().find(|(_, f)| matches!(f, Feature::Spawner(MobKind::MagmaCube))).unwrap().0;
+        assert_eq!(world.spawners.get(&spawner), Some(&MobKind::MagmaCube));
+        world.chests.insert(chest, Chest::default());
+        let saved = world.chests_to_string();
+        let mut loaded = World::new_headless(generator.clone(), Default::default(), 2);
+        loaded.load_chests(&saved);
+        let c = chunk_of(chest);
+        loaded.register_structure_features(c, &generator.generate(c));
+        assert!(loaded.chests[&chest].slots.iter().all(Option::is_none));
+    }
+
+    /// The high rampart's processor removes blocks more often the higher
+    /// they stand above the piece (Java's `axis_aligned_linear_pos`, 0 to
+    /// 5% over 100 blocks), and the gold block piece paints gold.
+    #[test]
+    fn generation_6_processors_and_loose_blocks_follow_java() {
+        let list = jigsaw::rules::list("high_rampart").unwrap();
+        let origin = IVec3::new(0, 33, 0);
+        let mut removed = [0; 2];
+        for (i, dy) in [0, 100].into_iter().enumerate() {
+            for x in 0..100 {
+                for z in 0..100 {
+                    let at = IVec3::new(x, 33 + dy, z);
+                    if list.apply_in(BRICKS, at, Block::AIR, origin) == Some(AIR) {
+                        removed[i] += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(removed[0], 0, "nothing falls at the piece's own height");
+        assert!((300..700).contains(&removed[1]), "about 5% at 100 blocks: {}", removed[1]);
+        let lib = super::super::catalogue::library();
+        let gold = lib.template("bastion/blocks/gold").unwrap();
+        assert!(gold.cells.iter().any(|c| c.spec.base == jigsaw::Base::Block(Block::GOLD_BLOCK)));
+    }
+
+    /// Generation 6's pieces reach below y 33 (bridge legs) and above 70
+    /// (the treasure court, ramparts): chunks there paint them too.
+    #[test]
+    fn generation_6_bastions_paint_outside_the_old_height_band() {
+        let mut low = false;
+        let mut high = false;
+        for seed in 0..60 {
+            let bastions = Bastions::with_generation(seed, Generation::V6);
+            let Some(b) = bastions.get(IVec2::ZERO) else { continue };
+            for (y, cy) in
+                [(b.bounds.min.y, b.bounds.min.y.div_euclid(32)), (b.bounds.max.y, b.bounds.max.y.div_euclid(32))]
+            {
+                if (33..=70).contains(&y) || (low && y < 33) || (high && y > 70) {
+                    continue;
+                }
+                let lo = chunk_of(b.bounds.min);
+                let hi = chunk_of(b.bounds.max);
+                let painted = (lo.x..=hi.x).flat_map(|x| (lo.z..=hi.z).map(move |z| (x, z))).any(|(x, z)| {
+                    let base = IVec3::new(x, cy, z) * 32;
+                    let mut blocks = Box::new([Block::NETHERRACK; CHUNK_VOLUME]);
+                    bastions.paint(&mut blocks, base);
+                    blocks.iter().any(|&b| b != Block::NETHERRACK)
+                });
+                assert!(painted, "seed {seed}: nothing painted at y {y}");
+                if y < 33 {
+                    low = true;
+                } else {
+                    high = true;
+                }
+            }
+        }
+        assert!(low || high, "no generation 6 bastion left the old band");
     }
 }

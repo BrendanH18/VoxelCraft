@@ -44,12 +44,30 @@
 //! (plants, torches) at the cell `(x, y, z)`: face 6 runs from (0, 0) to
 //! (1, 1) in (x, z), face 7 from (1, 0) to (0, 1). They are always unit
 //! sized, lit by the cell itself, and live in their own double-sided pass.
+//! Word 0 bits 21-22 turn a cross onto its side (0 upright, 1 along x, 2
+//! along z) and bit 23 points it the negative way: Java's amethyst buds on
+//! walls are its cross model turned 90 degrees about x, then about y.
 
 use std::sync::Arc;
 
 use crate::world::block::{Block, Facing, RenderKind, tex};
 use crate::world::chunk::{CHUNK_SIZE, CHUNK_SIZE_I, ChunkData, WORLD_MAX_Y, WORLD_MIN_Y};
 use crate::world::shape::{self, Boxes};
+
+/// A cross drawn on its side: Java's amethyst buds and clusters on walls
+/// (`facing` north, south, east, west: the cross model turned x 90 and y
+/// 0/180/90/270). Bits: axis (1 x, 2 z) and, in bit 2, pointing the
+/// negative way.
+pub fn side_cross(b: Block) -> Option<u32> {
+    let (_, facing) = crate::world::overworld_blocks::bud_facing(b.canonical())?;
+    match (facing.x, facing.z) {
+        (1, _) => Some(1),
+        (-1, _) => Some(1 | 4),
+        (_, 1) => Some(2),
+        (_, -1) => Some(2 | 4),
+        _ => None,
+    }
+}
 
 /// Margin for adjacent face/corner light, AO and connected shape samples.
 pub const MARGIN: usize = 1;
@@ -385,6 +403,7 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                     // or root cube, or a bottom slab, as one box).
                     if face == 0 && raw.is_waterlogged() && !raw.is_opaque() {
                         match raw.kind() {
+                            RenderKind::Shaped if side_cross(raw).is_some() => cross_cells.push(i as usize),
                             RenderKind::Shaped => {
                                 shaped_cells.push((i as usize, shaped_boxes(blocks, i as usize, raw)))
                             }
@@ -423,6 +442,10 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                             // Ice: the only translucent block that isn't a fluid.
                             RenderKind::Opaque | RenderKind::Cutout | RenderKind::Translucent => face_visible(b, n),
                             RenderKind::Cross if face == 0 => {
+                                cross_cells.push(i as usize);
+                                false
+                            }
+                            RenderKind::Shaped if face == 0 && side_cross(b).is_some() => {
                                 cross_cells.push(i as usize);
                                 false
                             }
@@ -624,8 +647,9 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
         let l = (sky[i] | blk[i] << 4) as u32;
         let pos = (x | y << 6 | z << 12) as u32;
         let layer = tex::tinted(b.info().tex[0], foliage[x + z * CHUNK_SIZE]) as u32;
+        let turn = side_cross(b).unwrap_or(0) << 21;
         for face in [6u32, 7] {
-            cross.push([pos | face << 18, (layer & 255) | 0xFF << 8 | (layer >> 8) << 21, l * 0x0101_0101]);
+            cross.push([pos | face << 18 | turn, (layer & 255) | 0xFF << 8 | (layer >> 8) << 21, l * 0x0101_0101]);
         }
     }
     // Every cross quad belongs to face group 0.
@@ -960,6 +984,41 @@ mod tests {
             }
         }
         assert!(flips[0] > 0 && flips[1] > 0, "{flips:?}");
+    }
+
+    /// v1.0 Track 8 (BLD-05c): amethyst buds and clusters on walls draw as
+    /// Java's cross model turned onto its side, pointing away from the wall
+    /// (blockstates `x: 90` with `y` 0/90/180/270); upright and hanging buds
+    /// stay upright crosses. Waterlogged buds keep their cross too.
+    #[test]
+    fn wall_amethyst_buds_are_crosses_turned_away_from_their_wall() {
+        use crate::world::overworld_blocks::{amethyst_bud_facing, bud_facing};
+        for size in 0..4 {
+            for (facing, turn) in [
+                (glam::IVec3::X, 1),
+                (glam::IVec3::NEG_X, 1 | 4),
+                (glam::IVec3::Z, 2),
+                (glam::IVec3::NEG_Z, 2 | 4),
+                (glam::IVec3::Y, 0),
+                (glam::IVec3::NEG_Y, 0),
+            ] {
+                let bud = amethyst_bud_facing(size, facing);
+                assert_eq!(bud_facing(bud), Some((size, facing)));
+                for b in [bud, bud.with_water(true)] {
+                    let m = mesh_blocks(&[([5, 5, 5], b)]);
+                    let crosses: Vec<_> = m.quads.iter().filter(|q| (q[0] >> 18 & 7) >= 6).collect();
+                    assert_eq!(crosses.len(), 2, "{} {facing}", b.name());
+                    for q in crosses {
+                        assert_eq!(q[0] >> 21 & 7, turn, "{} {facing}", b.name());
+                    }
+                    // No box faces remain for the dry bud.
+                    if !b.is_waterlogged() {
+                        assert_eq!(m.quads.len(), 2, "{} {facing}", b.name());
+                    }
+                }
+                assert_eq!(side_cross(bud), (turn != 0).then_some(turn));
+            }
+        }
     }
 
     #[test]

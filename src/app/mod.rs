@@ -2335,7 +2335,7 @@ impl Game {
             })
             .collect();
         benchmark::mark(&mut self.benchmark, 2);
-        self.mobs.entities.mesh(camera, forward, fog_end, scene.time, alpha);
+        self.mobs.entities.mesh(&self.world.maps, camera, forward, fog_end, scene.time, alpha);
         // v0.18 Track 6: ground shadows, for the players drawn in this view too.
         let mut casters = shadow_casters(&self.world, others.iter().map(|o| o.1), alpha);
         if !self.camera.first_person() && casts_shadow(&self.session.vitals, self.session.mode) {

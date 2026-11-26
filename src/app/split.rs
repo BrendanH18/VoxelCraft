@@ -416,7 +416,7 @@ impl Game {
                     ));
                 }
             }
-            self.mobs.entities.mesh(camera, forward, fog_end, scene.time, scene.alpha);
+            self.mobs.entities.mesh(&self.world.maps, camera, forward, fog_end, scene.time, scene.alpha);
             // v0.18 Track 6: ground shadows, for the players drawn in this view too.
             let mut casters = super::shadow_casters(&self.world, others.iter().map(|o| o.1), scene.alpha);
             if !bot.camera.first_person() && super::casts_shadow(&a.vitals, a.mode) {

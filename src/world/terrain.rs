@@ -91,11 +91,17 @@ pub enum Generation {
     /// by `generation_4_chunk_hashes_stay_identical`, and generation 5's
     /// own by `generation_5_chunk_hashes_stay_identical`.
     V5 = 5,
+    /// v1.0 (Track 8, GEN-04a and GEN-05g): generation 5 with Java 26.3's
+    /// Nether placed features (ores, glowstone, springs, fire, mushrooms,
+    /// blobs and the 26.3 vegetation and vine configurations) and bastions
+    /// built from Java's full `bastion/*` pool catalogue. The Overworld and
+    /// End generate as in generation 5.
+    V6 = 6,
 }
 
 impl Generation {
     /// What new worlds use.
-    pub const LATEST: Generation = Generation::V5;
+    pub const LATEST: Generation = Generation::V6;
     /// The `level.txt` key.
     pub const KEY: &'static str = "worldgen";
 
@@ -110,6 +116,7 @@ impl Generation {
             Some(Ok(3)) => Generation::V3,
             Some(Ok(4)) => Generation::V4,
             Some(Ok(5)) => Generation::V5,
+            Some(Ok(6)) => Generation::V6,
             Some(_) => {
                 log::warn!("unknown world generation {value:?}; using {:?}", Generation::LATEST);
                 Generation::LATEST
@@ -351,6 +358,11 @@ impl super::mineshaft::ShaftTerrain for Generator {
 impl Generator {
     pub fn new(seed: u64) -> Self {
         Self::for_dimension(seed, Dimension::Overworld)
+    }
+
+    /// The Nether's generator, in the Nether.
+    pub(super) fn nether_gen(&self) -> Option<&super::nether::NetherGen> {
+        self.nether.as_ref()
     }
 
     /// A generator of the [latest](Generation::LATEST) generation.
@@ -2295,6 +2307,7 @@ mod tests {
         assert_eq!(Generation::from_prop(Some("3")), Generation::V3);
         assert_eq!(Generation::from_prop(Some("4")), Generation::V4);
         assert_eq!(Generation::from_prop(Some("5")), Generation::V5);
+        assert_eq!(Generation::from_prop(Some("6")), Generation::V6);
         assert_eq!(Generation::from_prop(Some("99")), Generation::LATEST);
         assert_eq!(Generation::from_prop(Some(&Generation::LATEST.number().to_string())), Generation::LATEST);
         assert_eq!(Generator::new(1).generation, Generation::LATEST);

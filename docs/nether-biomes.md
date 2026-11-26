@@ -244,6 +244,48 @@ and ≈1.2 ms after on an earlier quiet run). The other four biomes are unchange
 remain the most expensive biome because Java's feature counts (40 deltas and 6 column
 clusters per 16×16 cell and layer) are fixed.
 
+## Generation 6: Java 26.3's placed features (v1.0)
+
+Worlds made from v1.0 on (generation 6) decorate the Nether with every
+placed feature Java 26.3's five biomes list, as data: `world::nether_placed`
+copies each one's placement modifiers (`count`, `count_on_every_layer`,
+`in_square`, height ranges, `heightmap`, `biome`, `rarity_filter`,
+`offset`, block predicate filters and `environment_scan`) and its configured
+feature, and `nether_decoration` runs them as `PlacedFeature` does. Over
+generation 5 this adds or changes:
+
+- ores replacing netherrack (`OreFeature`): magma (4 at 27–36, size 33),
+  gravel (2 at 5–41) and blackstone (2 at 5–31), soul sand in soul sand
+  valleys (12 at 0–31, size 12), nether gold (10, or 20 in basalt deltas,
+  size 10) and quartz (16, or 32 in deltas, size 14) at 10–117. They replace
+  the noise quartz and gold of earlier generations;
+- glowstone as Java's neighbour spread (1,500 tries below a ceiling, with
+  `glowstone_extra`'s 0–9 and `glowstone`'s 10 a chunk), replacing the
+  noise glowstone;
+- lava springs: open (8 at 4–123), closed (16, or 32 in deltas, at
+  10–117) and the deltas' own (16); open springs start flowing when their
+  chunk loads;
+- fire on netherrack and soul fire on soul soil in every biome that lists
+  them, brown and red mushrooms (1 in 2 chunks in the wastes and deltas, and
+  Java's 1 in 256 and 1 in 512 on the bedrock roof of the wastes and
+  forests), crimson roots in soul sand valleys;
+- basalt and blackstone blobs in basalt deltas (`ReplaceBlobsFeature`, 75
+  and 25 a chunk), replacing the noise blobs;
+- 26.3's vegetation, sprouts and vines: plants scattered 64 times around a
+  nylium spot (trapezoid offsets), weeping vines as a wart spread and a
+  hundred vine columns, twisting vines as columns found by a downward scan,
+  each a plant layer of weighted length and a head aged 17–25.
+
+The overworld lava spring Java lists for four Nether biomes never places
+(none of its valid blocks is Nether rock). Ancient debris keeps its own
+pass, which already followed Java. Features still read the undecorated
+terrain and paint first-write-wins; the huge fungi and vines paint before
+the rest so they stay whole (Java's stems replace vines, and Java's vines
+skip a spot a plant or fire took). `nether_generation_tests` checks the
+table, the biome source and the Nether structure sets against
+`tests/fixtures/java/26.3/nether_generation.json` both ways
+([record](verification/2026-11-25-v1.0-track-08-generation.md)).
+
 ## Known gaps
 
 - Biome layouts are statistically Java's but not seed-for-seed copies.
@@ -256,10 +298,10 @@ clusters per 16×16 cell and layer) are fixed.
 - Features see only undecorated terrain, so later features don't react to
   earlier ones as in Java (painting order keeps fungi and vines whole).
 - Fossils are procedural skeletons, not Java's fourteen templates.
-  Missing Nether features: lava springs, fire patches in the wastes and
-  deltas, soul sand/gravel/blackstone/magma ore blobs, nether gold ore (no
-  block yet), and the gravel and lava edges of soul sand valley and delta
-  floors near the lava sea.
+  Generations 1 to 5 lack lava springs, fire patches in the wastes and
+  deltas and the soul sand/gravel/blackstone/magma ore blobs (generation 6
+  places them); every generation lacks the gravel and lava edges of soul
+  sand valley and delta floors near the lava sea.
 - Soul lanterns (no lanterns yet), signs, the soul fire HUD
   overlay (the Java client code is not in the reference jar to check) and wall
   torches are absent. Every mob inside a ladder or vine slides at most 0.15

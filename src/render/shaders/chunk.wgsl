@@ -156,7 +156,17 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>) -> Vs
         // to (1,1) in xz for face 6 and (1,0) to (0,1) for face 7.
         let t = select(0u, 1u, c == 1u || c == 2u);
         let up = select(0u, 1u, c >= 2u);
-        let corner = base + vec3<u32>(select(t, 1u - t, face == 7u), up, t);
+        let across = select(t, 1u - t, face == 7u);
+        // Bits 21-23: a cross on its side (wall amethyst buds), along x
+        // (1) or z (2), pointing the negative way with bit 23.
+        let axis = (w0 >> 21u) & 3u;
+        let along = select(up, 1u - up, ((w0 >> 23u) & 1u) == 1u);
+        var corner = base + vec3<u32>(across, up, t);
+        if axis == 1u {
+            corner = base + vec3<u32>(along, across, t);
+        } else if axis == 2u {
+            corner = base + vec3<u32>(across, t, along);
+        }
         local = vec3<f32>(corner);
         uv = vec2<f32>(f32(t), f32(1u - up));
     } else {

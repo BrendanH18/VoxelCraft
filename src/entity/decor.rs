@@ -852,8 +852,39 @@ pub fn framed_items(decor: &[Decor]) -> impl Iterator<Item = (DVec3, Quat, Stack
     })
 }
 
+/// Every frame holding a filled map: the map id, the frame's cell and the
+/// way it faces (for [`crate::world::maps::MapStorage::sync_frames`]).
+pub fn framed_maps(decor: &[Decor]) -> Vec<(u32, IVec3, IVec3)> {
+    decor
+        .iter()
+        .filter(|d| matches!(d.kind, Kind::Frame { .. }))
+        .filter_map(|d| {
+            let stack = d.item?;
+            let id = stack.map_id.filter(|_| crate::world::maps::has_map_id(&stack))?;
+            Some((id, d.cell, d.facing))
+        })
+        .collect()
+}
+
+/// The map a frame shows, when it holds a filled map whose data exists
+/// (Java's `ItemFrameRenderState.mapId`).
+fn framed_map<'m>(d: &Decor, maps: &'m crate::world::maps::MapStorage) -> Option<&'m crate::world::maps::MapData> {
+    let stack = d.item?;
+    if !crate::world::maps::has_map_id(&stack) {
+        return None;
+    }
+    maps.maps.get(&stack.map_id?)
+}
+
 /// Camera-relative triangles for every decoration within `max_dist`.
-pub(super) fn build(decor: &[Decor], camera: DVec3, max_dist: f32, alpha: f64, out: &mut EntityMesh) {
+pub(super) fn build(
+    decor: &[Decor],
+    maps: &crate::world::maps::MapStorage,
+    camera: DVec3,
+    max_dist: f32,
+    alpha: f64,
+    out: &mut EntityMesh,
+) {
     for d in decor {
         let pos =
             if d.is_hanging() { d.cell.as_dvec3() + DVec3::splat(0.5) } else { d.previous_pos.lerp(d.pos, alpha) };
@@ -864,7 +895,7 @@ pub(super) fn build(decor: &[Decor], camera: DVec3, max_dist: f32, alpha: f64, o
         let light = [(d.sky_light.clamp(0.0, 1.0) * 255.0) as u8, 0, 0, 0];
         let torch = (d.block_light.clamp(0.0, 1.0) * 255.0) as u8;
         match d.kind {
-            Kind::Frame { glow } => build_frame(d, rel, glow, (light, torch), out),
+            Kind::Frame { glow } => build_frame(d, framed_map(d, maps), rel, glow, (light, torch), out),
             Kind::Painting(v) => build_painting(d, rel, v, (light, torch), out),
             Kind::Stand => build_stand(d, rel, (light, torch), out),
         }
@@ -883,21 +914,121 @@ fn wall_rotation(facing: IVec3) -> Quat {
     }
 }
 
-fn build_frame(d: &Decor, rel: Vec3, glow: bool, light: Light, out: &mut EntityMesh) {
+fn build_frame(
+    d: &Decor,
+    map: Option<&crate::world::maps::MapData>,
+    rel: Vec3,
+    glow: bool,
+    light: Light,
+    out: &mut EntityMesh,
+) {
     use super::model::{cube, push_cuboid};
     let rot = wall_rotation(d.facing);
     // Model space: pixels, the wall at z = -8, the cell centre at 0.
     let xf = |p: Vec3| rel + rot * (p / 16.0);
     let (wood, back) = if glow { ([214, 170, 92], [74, 150, 140]) } else { ([150, 104, 60], [118, 86, 56]) };
     let light = if glow { ([255, 0, 0, 255], 255) } else { light };
-    push_cuboid(out, &cube([-5., -5., -8.], [5., 5., -7.5], back, 18), &xf, rot, light, ([0.; 3], 0.), 3.0);
+    let Some(map) = map else {
+        push_cuboid(out, &cube([-5., -5., -8.], [5., 5., -7.5], back, 18), &xf, rot, light, ([0.; 3], 0.), 3.0);
+        for (min, max) in [
+            ([-6., -6., -8.], [6., -5., -7.]),
+            ([-6., 5., -8.], [6., 6., -7.]),
+            ([-6., -5., -8.], [-5., 5., -7.]),
+            ([5., -5., -8.], [6., 5., -7.]),
+        ] {
+            push_cuboid(out, &cube(min, max, wood, 24), &xf, rot, light, ([0.; 3], 0.), 5.0);
+        }
+        return;
+    };
+    // Java's `template_item_frame_map`: a full-size frame a sixteenth deep,
+    // its back over 1..15 and its rim round the whole face.
+    push_cuboid(out, &cube([-7., -7., -8.], [7., 7., -7.], back, 18), &xf, rot, light, ([0.; 3], 0.), 3.0);
     for (min, max) in [
-        ([-6., -6., -8.], [6., -5., -7.]),
-        ([-6., 5., -8.], [6., 6., -7.]),
-        ([-6., -5., -8.], [-5., 5., -7.]),
-        ([5., -5., -8.], [6., 5., -7.]),
+        ([-8., -8., -8.], [8., -7., -7.]),
+        ([-8., 7., -8.], [8., 8., -7.]),
+        ([-8., -7., -8.], [-7., 7., -7.]),
+        ([7., -7., -8.], [8., 7., -7.]),
     ] {
         push_cuboid(out, &cube(min, max, wood, 24), &xf, rot, light, ([0.; 3], 0.), 5.0);
+    }
+    build_framed_map(map, d.rotation, &xf, light, out);
+}
+
+/// `ItemFrameRenderer` with a map: the 128-pixel image scaled to the whole
+/// block (1/128 per pixel), 0.4375 from the cell centre toward the wall
+/// less a pixel (1.125 model pixels off the wall, in front of the frame's
+/// back), turned by the frame's rotation in quarter turns, with only the
+/// markers `showOnItemFrame` allows. Light follows the frame (a glow frame
+/// shows it fully lit).
+fn build_framed_map(
+    map: &crate::world::maps::MapData,
+    rotation: u8,
+    xf: &impl Fn(Vec3) -> Vec3,
+    light: Light,
+    out: &mut EntityMesh,
+) {
+    use crate::world::maps::{hidden_on_frames, rgba};
+    const DEPTH: f32 = -8.0 + 16.0 * (0.5 - 0.4375 + 1.0 / 128.0);
+    // Map pixels to model pixels: x right, y up, then quarter turns
+    // clockwise as the viewer sees them.
+    let turns = rotation % 4;
+    let point = |px: f32, py: f32, z: f32| {
+        let (mut x, mut y) = ((px - 64.0) / 8.0, (64.0 - py) / 8.0);
+        for _ in 0..turns {
+            (x, y) = (y, -x);
+        }
+        Vec3::new(x, y, z)
+    };
+    // Java draws maps with the text render type: no face shading (a tile
+    // shaded as if facing up is drawn at full brightness).
+    let n = Vec3::Y;
+    let mut rect = |x: f32, y: f32, w: f32, h: f32, c: [u8; 3], z: f32| {
+        let quad = [point(x, y + h, z), point(x + w, y + h, z), point(x + w, y, z), point(x, y, z)];
+        push_tile(out, xf, n, quad, c, light);
+    };
+    // Same-colour runs, one quad each; colour 0 is transparent.
+    for y in 0..128 {
+        let mut x = 0;
+        while x < 128 {
+            let c = map.colors[y * 128 + x];
+            let begin = x;
+            x += 1;
+            while x < 128 && map.colors[y * 128 + x] == c {
+                x += 1;
+            }
+            if c / 4 != 0 {
+                let [r, g, b, _] = rgba(c);
+                rect(begin as f32, y as f32, (x - begin) as f32, 1.0, [r, g, b], DEPTH);
+            }
+        }
+    }
+    for d in &map.decorations {
+        if hidden_on_frames(&d.kind) {
+            continue;
+        }
+        let Some((x, y, rot, _)) = map.decoration_view(d) else { continue };
+        // An 8 by 8 pixel marker (Java's scale 4 sprite), turned by its
+        // sixteenth; original glyphs: a green arrow for frames, a red cross
+        // for treasure, a coloured diamond for other targets.
+        let angle = (f32::from(rot) * 22.5).to_radians();
+        let glyph = |dx: f32, dy: f32| {
+            let (s, c) = angle.sin_cos();
+            point(x + dx * c - dy * s, y + dx * s + dy * c, DEPTH + 0.02)
+        };
+        let colour = match d.kind.as_str() {
+            "frame" => [60, 180, 60],
+            k if k.contains("treasure") || k == "target_x" || k == "red_x" => [190, 40, 40],
+            k if k.contains("monument") => [60, 170, 170],
+            k if k.contains("mansion") => [110, 80, 50],
+            _ => [230, 210, 120],
+        };
+        let quad = if d.kind == "frame" {
+            // An arrow pointing the way the frame faces (south at zero).
+            [glyph(-3.0, -3.0), glyph(0.0, -1.5), glyph(3.0, -3.0), glyph(0.0, 4.0)]
+        } else {
+            [glyph(0.0, -4.0), glyph(4.0, 0.0), glyph(0.0, 4.0), glyph(-4.0, 0.0)]
+        };
+        push_tile(out, xf, n, quad, colour, light);
     }
 }
 
