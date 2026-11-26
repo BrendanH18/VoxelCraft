@@ -1,8 +1,10 @@
 //! Original procedural textures of v0.16 Track D (`world::wood::poplar::t`
 //! and `world::gen5_blocks::t`, layers 749..=948): poplar bark and wood,
 //! its three leaf colours, cinnabar and sulfur stones, potent sulfur,
-//! sulfur spikes, nether gold ore, the red shrub, the golden dandelion and
-//! the shelf mushroom. Every pattern is drawn here; nothing is copied.
+//! sulfur spikes, nether gold ore and the shelf mushroom. Every pattern is
+//! drawn here; nothing is copied. The poplar sapling, door and trapdoor,
+//! the red shrub and the golden dandelion are drawn by the material
+//! generator (v1.0 Track 10).
 
 use super::{Rgba, noisy, rnd, shade};
 use crate::world::gen5_blocks::t as g;
@@ -33,9 +35,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
         p::STRIPPED_SIDE_TURNED => stripped(layer, y, x, r),
         p::PLANKS => planks(layer, x, y, PLANKS),
         l if (p::LEAVES..p::LEAVES + 3).contains(&l) => leaves(layer, x, y, r, LEAVES[(l - p::LEAVES) as usize]),
-        p::SAPLING => sapling(x, y, r),
-        p::DOOR_BOTTOM | p::DOOR_TOP => door(layer, x, y, r, layer == p::DOOR_TOP),
-        p::TRAPDOOR => trapdoor(x, y, r),
         p::SIGN_ICON => sign_icon(x, y, r),
         p::HANGING_SIGN_ICON => hanging_sign_icon(x, y, r),
         p::SHELF => shelf_body(layer, x, y),
@@ -47,8 +46,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
         l if (g::POTENT..g::POTENT + 3).contains(&l) => potent(layer, l - g::POTENT, x, y, r),
         l if (g::SPIKE..g::SPIKE + 5).contains(&l) => spike(l - g::SPIKE, x, y, r),
         g::NETHER_GOLD_ORE => nether_gold_ore(layer, x, y, r),
-        g::RED_SHRUB => red_shrub(layer, x, y, r),
-        g::GOLDEN_DANDELION => golden_dandelion(x, y, r),
         g::POTTED_GOLDEN_DANDELION => {
             super::utility::potted_side(layer, crate::world::gen5_blocks::GOLDEN_DANDELION, x, y)
         }
@@ -109,47 +106,6 @@ fn leaves(layer: u16, x: usize, y: usize, r: f32, c: [u8; 3]) -> Rgba {
         let vein = (x + y).is_multiple_of(5);
         shade(c, if vein { 0.78 } else { 0.82 + r * 0.32 })
     }
-}
-
-/// A slim sapling: a pale stem under a narrow, upright crown.
-fn sapling(x: usize, y: usize, r: f32) -> Rgba {
-    let (dx, dy) = (x as f32 - 7.5, y as f32 - 6.0);
-    if dx * dx * 2.2 + dy * dy * 0.7 < 14.0 && !(x * 3 + y).is_multiple_of(5) {
-        shade(LEAVES[0], 0.8 + r * 0.3)
-    } else if (7..=8).contains(&x) && y >= 9 {
-        shade(BARK, 0.8 + r * 0.15)
-    } else {
-        CLEAR
-    }
-}
-
-/// A door of vertical boards with a narrow window pair on the top half.
-fn door(layer: u16, x: usize, y: usize, r: f32, top: bool) -> Rgba {
-    let frame = x <= 1 || x >= 14 || (top && y <= 1) || (!top && y >= 14);
-    if top && (4..=10).contains(&y) && matches!(x, 4..=6 | 9..=11) {
-        return CLEAR;
-    }
-    let seam = x.is_multiple_of(4);
-    let board = 0.92 + rnd(layer, x / 4, 0, 5) * 0.1 + r * 0.04;
-    shade(
-        PLANKS,
-        if frame {
-            0.78
-        } else if seam {
-            0.7
-        } else {
-            board
-        },
-    )
-}
-
-/// A trapdoor with a tall, narrow slot either side of a centre board.
-fn trapdoor(x: usize, y: usize, r: f32) -> Rgba {
-    let frame = x < 2 || y < 2 || x > 13 || y > 13;
-    if !frame && matches!(x, 4..=5 | 10..=11) && (4..=11).contains(&y) {
-        return CLEAR;
-    }
-    shade(PLANKS, if frame { 0.8 } else { 0.94 + r * 0.08 })
 }
 
 fn sign_icon(x: usize, y: usize, r: f32) -> Rgba {
@@ -308,34 +264,6 @@ fn spike(thickness: u16, x: usize, y: usize, r: f32) -> Rgba {
 fn nether_gold_ore(layer: u16, x: usize, y: usize, r: f32) -> Rgba {
     let fleck = rnd(layer, x / 2, y / 2, 5) > 0.8 && rnd(layer, x, y, 6) > 0.35;
     if fleck { shade([244, 198, 62], 0.9 + r * 0.2) } else { shade([112, 46, 44], 0.78 + r * 0.32) }
-}
-
-/// A low, round bush of small red leaves.
-fn red_shrub(layer: u16, x: usize, y: usize, r: f32) -> Rgba {
-    let (dx, dy) = (x as f32 - 7.5, y as f32 - 10.0);
-    if dx * dx + dy * dy * 1.6 < 40.0 && rnd(layer, x, y, 3) > 0.18 {
-        shade([176, 40, 34], 0.72 + r * 0.4)
-    } else if (7..=8).contains(&x) && y >= 14 {
-        shade([86, 54, 34], 0.9)
-    } else {
-        CLEAR
-    }
-}
-
-/// A dandelion head of gold leaf on a green stem.
-fn golden_dandelion(x: usize, y: usize, r: f32) -> Rgba {
-    let (dx, dy) = (x as f32 - 7.5, y as f32 - 5.5);
-    let d = dx * dx + dy * dy;
-    if d < 7.5 {
-        let glint = (x + y).is_multiple_of(3);
-        shade([246, 204, 60], if glint { 1.12 } else { 0.86 + r * 0.2 })
-    } else if (7..=8).contains(&x) && y >= 8 {
-        shade([82, 138, 48], 0.85 + r * 0.2)
-    } else if y >= 11 && (x == 5 || x == 10) {
-        shade([82, 138, 48], 0.8)
-    } else {
-        CLEAR
-    }
 }
 
 /// A bracket fungus: tan bands with a pale rim.

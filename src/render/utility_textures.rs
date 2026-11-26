@@ -1,7 +1,9 @@
 //! Procedural textures for the v0.12 utility blocks (layers from
 //! `utilities::TEX`): original artwork for cauldrons, flower pots, potted
-//! plants, lodestones, respawn anchors, campfires, coral wall fans, ender
-//! and trapped chests, decorated pots and the double chest halves.
+//! plants, lodestones, respawn anchors, campfires, decorated pots and the
+//! double chest halves. The coral wall fans, the ender chest and the
+//! trapped chest's front are drawn by the material generator (v1.0
+//! Tracks 10 and 10b).
 //!
 //! Shaped blocks sample a face texture by position in the cell: a side
 //! texel `(x, row)` is the cell's `y = 15 - row`, and a top texel `(x, y)`
@@ -18,8 +20,6 @@ const TERRACOTTA: [u8; 3] = [152, 84, 58];
 const DIRT: [u8; 3] = [116, 84, 58];
 const BARK: [u8; 3] = [92, 70, 44];
 const WOOD: [u8; 3] = [168, 132, 84];
-const CORAL: [[u8; 3]; 5] = [[50, 90, 210], [206, 80, 160], [160, 30, 190], [190, 36, 46], [216, 200, 66]];
-const DEAD_CORAL: [u8; 3] = [130, 122, 118];
 
 pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     // Double chest halves copy their single chest's texture without the
@@ -130,25 +130,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
         }
         t::ANCHOR_BOTTOM => obsidian(layer, x, y, r),
         l if (t::CAMPFIRE..t::CAMPFIRE + 9).contains(&l) => campfire(l - t::CAMPFIRE, x, y, r),
-        l if (t::WALL_FAN..t::WALL_FAN + 40).contains(&l) => wall_fan(l - t::WALL_FAN, x, y, r),
-        t::ENDER_FRONT | t::ENDER_SIDE | t::ENDER_TOP => {
-            let border = x == 0 || y == 0 || x == 15 || y == 15;
-            let lid = y == 5 || y == 6;
-            let eye = layer == t::ENDER_FRONT && (6..10).contains(&x) && (4..8).contains(&y);
-            if eye {
-                let pupil = (7..9).contains(&x) && (5..7).contains(&y);
-                return if pupil { shade([10, 40, 30], 1.0) } else { shade([80, 220, 160], 0.85 + r * 0.25) };
-            }
-            let c = if border || (layer != t::ENDER_TOP && lid) { [44, 64, 60] } else { [20, 30, 32] };
-            shade(c, 0.85 + r * 0.3)
-        }
-        t::TRAPPED_FRONT => {
-            // The chest front with a hook-red latch.
-            if (7..9).contains(&x) && (4..8).contains(&y) {
-                return shade([168, 44, 36], 0.9 + r * 0.15);
-            }
-            base_pixel(tex::CHEST_FRONT, x, y)
-        }
         t::DECORATED_SIDE | t::DECORATED_CRACKED => {
             let band = y == 4 || y == 12;
             let mut p = shade(TERRACOTTA, if band { 0.72 } else { 0.92 + r * 0.12 });
@@ -277,24 +258,4 @@ fn campfire(i: u16, x: usize, y: usize, r: f32) -> Rgba {
     }
     let crack = lit && (x * 7 + y).is_multiple_of(11);
     if crack { shade(glow, 0.9 + r * 0.2) } else { shade(BARK, if y.is_multiple_of(4) { 0.75 } else { 0.9 + r * 0.2 }) }
-}
-
-/// A coral fan seen from above, spreading out from its wall: `i` is
-/// `(dead * 5 + colour) * 4 + facing` in `utilities::FACINGS` order.
-fn wall_fan(i: u16, x: usize, y: usize, r: f32) -> Rgba {
-    let (kind, facing) = (i / 4, i % 4);
-    let c = if kind >= 5 { DEAD_CORAL } else { CORAL[kind as usize] };
-    let (fx, fy) = (x as f32 + 0.5, y as f32 + 0.5);
-    // Distance out from the wall, and across.
-    let (d, l) = match facing {
-        0 => (16.0 - fy, fx - 8.0),
-        1 => (fx, fy - 8.0),
-        2 => (fy, fx - 8.0),
-        _ => (16.0 - fx, fy - 8.0),
-    };
-    if d < 0.5 || d > 11.0 || l.abs() > 1.5 + d * 0.62 {
-        return CLEAR;
-    }
-    let rib = ((l / (d + 1.0)) * 6.0).fract().abs() < 0.2;
-    shade(c, if rib { 0.78 } else { 0.92 + r * 0.14 })
 }

@@ -8377,6 +8377,336 @@
     "advance_weather=false",
     "random_tick_speed=0"
    ]
+  },
+  {
+   "name": "material-ground-plants",
+   "group": "materials",
+   "description": "v1.0 Track 10b: the flat ground plants on grass (lily pads on a pool, a patch of pink petals, wildflowers and leaf litter with one to four segments), then bamboo stalks of three heights with their leaves, a bamboo shoot, glow lichen on the ground, a torchflower beside the potted torchflower, and an ender chest beside a chest, from above at noon; random ticks off",
+   "pose": [
+    0.5,
+    157,
+    11,
+    90,
+    -38
+   ],
+   "hud": false,
+   "fill": [
+    [
+     -14,
+     149,
+     16,
+     14,
+     149,
+     25,
+     "dirt"
+    ],
+    [
+     -14,
+     150,
+     16,
+     14,
+     150,
+     25,
+     "grass"
+    ],
+    [
+     -12,
+     150,
+     17,
+     -8,
+     150,
+     19,
+     "water"
+    ],
+    [
+     -6,
+     151,
+     17,
+     -5,
+     151,
+     18,
+     "pink petals"
+    ]
+   ],
+   "place": [
+    "-12,151,17,lily pad",
+    "-10,151,18,lily pad",
+    "-8,151,17,lily pad",
+    "-11,151,19,lily pad",
+    "-9,151,19,lily pad",
+    "-2,151,18,10000",
+    "0,151,18,10001",
+    "2,151,18,10002",
+    "4,151,18,10003",
+    "6,151,18,9984",
+    "8,151,18,9985",
+    "10,151,18,9986",
+    "12,151,18,9987",
+    "-11,151,22,2022",
+    "-11,152,22,2023",
+    "-11,153,22,2024",
+    "-8,151,22,2022",
+    "-8,152,22,2022",
+    "-8,153,22,2023",
+    "-8,154,22,2024",
+    "-5,151,22,2022",
+    "-5,152,22,2022",
+    "-5,153,22,2022",
+    "-5,154,22,2023",
+    "-5,155,22,2024",
+    "-2,151,22,bamboo sapling",
+    "1,151,21,9729",
+    "2,151,21,9729",
+    "1,151,22,9729",
+    "4,151,21,torchflower",
+    "5,151,21,potted torchflower",
+    "8,151,21,28872",
+    "10,151,21,54"
+   ],
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "random_tick_speed=0"
+   ]
+  },
+  {
+   "name": "material-hanging-plants",
+   "group": "materials",
+   "description": "v1.0 Track 10b: under a stone overhang at noon, looking a little up: cave vines with and without glow berries, a spore blossom, hanging roots, pale hanging moss and weeping vines hanging from the ceiling; a curtain of vines and patches of glow lichen on the back wall, lichen on the ceiling and floor, and twisting vines climbing from the floor; random ticks off",
+   "pose": [
+    0.5,
+    153,
+    11,
+    90,
+    10
+   ],
+   "hud": false,
+   "fill": [
+    [
+     -14,
+     150,
+     14,
+     14,
+     150,
+     24,
+     "stone"
+    ],
+    [
+     -14,
+     151,
+     24,
+     14,
+     157,
+     24,
+     "stone"
+    ],
+    [
+     -14,
+     158,
+     19,
+     14,
+     158,
+     24,
+     "stone"
+    ],
+    [
+     1,
+     151,
+     23,
+     3,
+     156,
+     23,
+     "2054"
+    ],
+    [
+     6,
+     152,
+     23,
+     8,
+     155,
+     23,
+     "9736"
+    ]
+   ],
+   "place": [
+    "-11,157,21,1946",
+    "-11,156,21,1946",
+    "-11,155,21,1944",
+    "-9,157,21,1947",
+    "-9,156,21,1947",
+    "-9,155,21,1945",
+    "-7,157,21,spore blossom",
+    "-5,157,21,hanging roots",
+    "-3,157,21,2031",
+    "-3,156,21,2031",
+    "-3,155,21,2030",
+    "-1,157,21,1660",
+    "-1,156,21,1660",
+    "-1,155,21,1634",
+    "10,157,21,9730",
+    "10,157,22,9730",
+    "11,157,22,9730",
+    "10,151,21,9729",
+    "11,151,21,9729",
+    "12,151,21,1687",
+    "12,152,21,1687",
+    "12,153,21,1661"
+   ],
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "random_tick_speed=0"
+   ]
+  },
+  {
+   "name": "material-water-plants",
+   "group": "materials",
+   "description": "v1.0 Track 10b: inside a glass tank of water over sand at noon, looking down at the corals: the five coral blocks alive (left) and dead (right), each with its coral on top, its wall fan on the front face and its fan on the sand behind; one to four sea pickles, seagrass, tall seagrass and kelp; random ticks off",
+   "pose": [
+    0.5,
+    155,
+    12.5,
+    90,
+    -30
+   ],
+   "hud": false,
+   "fill": [
+    [
+     -13,
+     149,
+     10,
+     13,
+     149,
+     27,
+     "stone"
+    ],
+    [
+     -12,
+     150,
+     11,
+     12,
+     150,
+     26,
+     "sand"
+    ],
+    [
+     -13,
+     150,
+     10,
+     13,
+     157,
+     10,
+     "glass"
+    ],
+    [
+     -13,
+     150,
+     27,
+     13,
+     157,
+     27,
+     "glass"
+    ],
+    [
+     -13,
+     150,
+     11,
+     -13,
+     157,
+     26,
+     "glass"
+    ],
+    [
+     13,
+     150,
+     11,
+     13,
+     157,
+     26,
+     "glass"
+    ],
+    [
+     -12,
+     151,
+     11,
+     12,
+     156,
+     26,
+     "water"
+    ]
+   ],
+   "place": [
+    "-9,151,20,1980",
+    "-9,152,20,1990",
+    "-9,151,19,28792",
+    "-9,151,22,2000",
+    "1,151,20,1985",
+    "1,152,20,1995",
+    "1,151,19,28832",
+    "1,151,22,2005",
+    "-7,151,20,1981",
+    "-7,152,20,1991",
+    "-7,151,19,28800",
+    "-7,151,22,2001",
+    "3,151,20,1986",
+    "3,152,20,1996",
+    "3,151,19,28840",
+    "3,151,22,2006",
+    "-5,151,20,1982",
+    "-5,152,20,1992",
+    "-5,151,19,28808",
+    "-5,151,22,2002",
+    "5,151,20,1987",
+    "5,152,20,1997",
+    "5,151,19,28848",
+    "5,151,22,2007",
+    "-3,151,20,1983",
+    "-3,152,20,1993",
+    "-3,151,19,28816",
+    "-3,151,22,2003",
+    "7,151,20,1988",
+    "7,152,20,1998",
+    "7,151,19,28856",
+    "7,151,22,2008",
+    "-1,151,20,1984",
+    "-1,152,20,1994",
+    "-1,151,19,28824",
+    "-1,151,22,2004",
+    "9,151,20,1989",
+    "9,152,20,1999",
+    "9,151,19,28864",
+    "9,151,22,2009",
+    "-3,151,16,1965",
+    "-1,151,16,1966",
+    "1,151,16,1967",
+    "3,151,16,1968",
+    "-9,151,16,seagrass",
+    "-7,151,16,seagrass",
+    "7,151,16,seagrass",
+    "9,151,16,seagrass",
+    "-11,151,17,1963",
+    "-11,152,17,1964",
+    "11,151,17,1963",
+    "11,152,17,1964",
+    "-11,151,22,1961",
+    "-11,152,22,1961",
+    "-11,153,22,1961",
+    "-11,154,22,1960",
+    "11,151,22,1961",
+    "11,152,22,1961",
+    "11,153,22,1961",
+    "11,154,22,1960",
+    "0,151,24,1961",
+    "0,152,24,1961",
+    "0,153,24,1961",
+    "0,154,24,1961",
+    "0,155,24,1960"
+   ],
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "random_tick_speed=0"
+   ]
   }
  ]
 }
