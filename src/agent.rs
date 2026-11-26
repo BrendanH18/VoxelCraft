@@ -1196,6 +1196,8 @@ impl Agent {
         if self.session.sleeping.is_some() {
             self.session.vitals.time_since_rest = 0;
         }
+        // v1.0 Track 4: `FarmlandBlock.fallOn`, as the host's `Game::trample`.
+        world.player_landed(self.session.player.pos, self.session.player.collision_shape(), hurts.landed);
         // Wither damage lands inside the rule tick, not through `damage`.
         if was_alive && self.session.vitals.is_dead() {
             self.session.totem_saves(self.selected);

@@ -219,6 +219,10 @@ impl super::Entities {
                     }
                 }
                 if bolt.life >= 0 && !bolt.visual_only {
+                    // Java lists the entities in the box before any
+                    // `thunderHit`, so what the hits drop (a turtle's bowl,
+                    // a boat's item) waits for the bolt's next tick.
+                    self.thunder_hit_objects(bolt.pos);
                     let mut bowls = Vec::new();
                     for m in &mut self.mobs {
                         let (lo, hi) = m.shape().aabb(m.pos);
@@ -288,7 +292,80 @@ impl super::Entities {
         bolts.retain(|b| (b.life >= 0 || b.flashes > 0) && world.is_loaded(b.pos.floor().as_ivec3()));
         self.lightning = bolts;
     }
+
+    /// `LightningBolt.tick` calls `thunderHit` on every live entity whose
+    /// box meets `(x ± 3, y - 3 .. y + 9, z ± 3)`, each tick the bolt is
+    /// visible. This is the part for entities that aren't mobs or players:
+    ///
+    /// - Dropped items and experience orbs take `Entity.thunderHit`'s 5
+    ///   `lightning_bolt` damage from their 5 health and are gone. No item
+    ///   resists it: `damage_resistant` items (netherite, the Nether star)
+    ///   resist `#is_fire` and `#is_explosion`, and `lightning_bolt` is in
+    ///   neither tag.
+    /// - Boats and minecarts take it as `VehicleEntity.hurtServer`: 5 × 10
+    ///   damage, past 40, so they break into their item (chest vehicles
+    ///   spill their contents); a TNT minecart moving at 0.1 a tick or more
+    ///   is primed instead (`MinecartTNT.destroy`).
+    /// - Cushions break into their item (`Cushion.thunderHit`).
+    /// - End crystals explode (`EndCrystal.hurtServer`).
+    /// - Item frames, paintings and armor stands are untouched: their
+    ///   `thunderHit` (`BlockAttachedEntity`, `ArmorStand`) does nothing.
+    ///   So are primed TNT and projectiles, whose hurt ignores it.
+    ///
+    /// The fire `Entity.thunderHit` sets first doesn't matter here: all of
+    /// these are gone in the same call. Items the vehicles drop are pushed
+    /// after the items are hit, so they wait for the next tick, as in Java.
+    pub(crate) fn thunder_hit_objects(&mut self, bolt: DVec3) {
+        let (low, high) = (bolt - DVec3::splat(3.), bolt + DVec3::new(3., 9., 3.));
+        let hit = |(lo, hi): (DVec3, DVec3)| hi.cmpgt(low).all() && lo.cmplt(high).all();
+        self.items.retain_mut(|item| !hit(item.aabb()) || item.hurt(LIGHTNING_DAMAGE));
+        self.orbs.retain_mut(|orb| !hit(orb.aabb()) || orb.hurt(LIGHTNING_DAMAGE));
+        let carts: Vec<u32> = self.minecarts.iter().filter(|c| hit(c.aabb())).map(|c| c.id).collect();
+        for id in carts {
+            self.shoot_cart(id, LIGHTNING_DAMAGE, false, false, false, DVec3::ZERO);
+        }
+        let crystals: Vec<u32> = self.crystals.touching(low, high).map(|c| c.id).collect();
+        for id in crystals {
+            self.crystals.hit(id, super::crystal::Blow::Other);
+        }
+    }
+
+    /// `Block.pushEntitiesUp` for the collision slices blocks added this
+    /// tick (`World::take_block_pushes`: snow gaining a layer, farmland
+    /// turning to dirt): every mob, dropped item, orb, boat, minecart,
+    /// cushion, primed TNT and armor stand whose box meets a slice stands on
+    /// its top. Java moves every entity there (`getEntities(null, ...)`);
+    /// the caller lifts players. Item frames and paintings hang on faces and
+    /// never meet a floor slice.
+    pub fn apply_block_pushes(&mut self, pushes: &[(glam::IVec3, f64, f64)]) {
+        use crate::world::precipitation::push_entity_up as up;
+        for &(cell, bottom, top) in pushes {
+            for m in &mut self.mobs {
+                let shape = m.shape();
+                up(&mut m.pos, shape, cell, bottom, top);
+            }
+            for i in &mut self.items {
+                up(&mut i.pos, super::item::SHAPE, cell, bottom, top);
+            }
+            for o in &mut self.orbs {
+                up(&mut o.pos, super::orb::SHAPE, cell, bottom, top);
+            }
+            for c in &mut self.minecarts {
+                let shape = c.shape();
+                up(&mut c.pos, shape, cell, bottom, top);
+            }
+            for t in &mut self.tnt {
+                up(&mut t.pos, super::tnt::SHAPE, cell, bottom, top);
+            }
+            for d in self.decor.iter_mut().filter(|d| d.kind == super::decor::Kind::Stand) {
+                up(&mut d.pos, super::decor::STAND_SHAPE, cell, bottom, top);
+            }
+        }
+    }
 }
+
+/// `Entity.thunderHit`: `hurtServer(lightningBolt(), 5.0F)`.
+pub const LIGHTNING_DAMAGE: f32 = 5.0;
 impl Mob {
     /// Species `thunderHit` overrides; true suppresses the base damage and fire.
     /// `bolt_id` stays constant through a bolt's repeated flashes.
@@ -455,7 +532,125 @@ mod bolt_tests {
         assert_eq!(other.lightning.len(), 1);
         assert_eq!(other.lightning[0].pos, p);
     }
+
+    /// A stone floor at y = 139 (x, z 2..15) and a wall at x = 5 (y 140..143,
+    /// z 5..11) to hang a painting on.
+    fn yard() -> World {
+        let mut w = world();
+        for x in 2..15 {
+            for z in 2..15 {
+                w.set_block(IVec3::new(x, 139, z), Block::STONE);
+            }
+        }
+        for y in 140..144 {
+            for z in 5..12 {
+                w.set_block(IVec3::new(5, y, z), Block::STONE);
+            }
+        }
+        w
+    }
+
+    #[test]
+    fn bolts_destroy_items_orbs_vehicles_and_cushions_but_spare_decorations() {
+        use super::super::{ItemEntity, XpOrb, decor::Kind, minecart::CartKind};
+        use crate::{inventory::Stack, item::Item};
+        let mut w = yard();
+        let mut e = Entities::new(263);
+        let bolt = DVec3::new(8.5, 140., 8.5);
+        // Decorations: a floor item frame, a painting and an armor stand.
+        let place =
+            |e: &mut Entities, item, cell, face| e.place_decor(&w, item, cell, face, 0.0, &[]).unwrap().unwrap();
+        place(&mut e, Item::ITEM_FRAME, IVec3::new(9, 139, 9), IVec3::Y);
+        place(&mut e, Item::PAINTING, IVec3::new(5, 141, 8), IVec3::X);
+        place(&mut e, Item::ARMOR_STAND, IVec3::new(10, 139, 7), IVec3::Y);
+        assert_eq!(e.decor.len(), 3);
+        // Items, even netherite and a Nether star (`damage_resistant` covers
+        // fire and blasts, not lightning), an orb, and one item out of reach.
+        for item in [Item::NETHERITE_INGOT, super::super::wither::NETHER_STAR, Item::STICK] {
+            let stack = ItemEntity::new(Stack::new(item, 1), bolt + DVec3::X, DVec3::ZERO, 0.0, &mut e.rng);
+            e.items.push(stack);
+        }
+        let far = ItemEntity::new(Stack::new(Item::STICK, 3), bolt + DVec3::X * 5., DVec3::ZERO, 0.0, &mut e.rng);
+        e.items.push(far);
+        let orb = XpOrb::new(3, bolt - DVec3::X, &mut e.rng);
+        e.orbs.push(orb);
+        // Vehicles: an oak chest boat with cargo, a minecart, a still and a
+        // moving TNT minecart, and a cushion.
+        let boat = e.spawn_cart(CartKind::Boat { wood: 0, chest: true }, bolt + DVec3::Z);
+        e.cart_mut(boat).unwrap().slots[4] = Some(Stack::new(Item::DIAMOND, 2));
+        e.spawn_cart(CartKind::Rideable, bolt - DVec3::Z);
+        e.spawn_cart(CartKind::Tnt, bolt + DVec3::new(2., 0., 2.));
+        let moving = e.spawn_cart(CartKind::Tnt, bolt - DVec3::new(2., 0., 2.));
+        e.cart_mut(moving).unwrap().vel = DVec3::new(0.2, 0., 0.);
+        e.spawn_cart(CartKind::Cushion { colour: 4 }, bolt + DVec3::new(-2., 0., 2.));
+        let crystal = e.crystals.spawn(bolt + DVec3::new(2., 0., -2.), None, true, false);
+        e.summon_lightning(bolt, false);
+        e.tick_lightning(0.05, &mut w, &ctx(), false);
+        // Only the moving TNT cart stays, primed (`MinecartTNT.destroy`).
+        assert_eq!(e.minecarts.len(), 1);
+        assert!(e.minecarts[0].id == moving && e.minecarts[0].fuse.is_some());
+        assert!(e.orbs.is_empty());
+        assert!(e.crystals.hits_pending() && e.crystals.get(crystal).is_some(), "it explodes on its next tick");
+        let items: Vec<(Item, u8)> = e.items.iter().map(|i| (i.stack.item, i.stack.count)).collect();
+        for (item, count) in [
+            (Item::STICK, 3),
+            (Item::boat(0, true), 1),
+            (Item::DIAMOND, 2),
+            (Item::MINECART, 1),
+            (Item::TNT_MINECART, 1),
+            (Item::cushion(crate::color::DyeColor::ALL[4]), 1),
+        ] {
+            assert!(items.contains(&(item, count)), "{} x{count} in {items:?}", item.name());
+        }
+        for gone in [Item::NETHERITE_INGOT, super::super::wither::NETHER_STAR, Item::STICK] {
+            assert!(!items.contains(&(gone, 1)), "{} burnt", gone.name());
+        }
+        // `BlockAttachedEntity.thunderHit` and `ArmorStand.thunderHit` do nothing.
+        assert_eq!(e.decor.len(), 3);
+        assert!(e.decor.iter().any(|d| d.kind == Kind::Stand));
+        // The next flash tick hits what the vehicles dropped, as Java's does.
+        e.tick_lightning(0.05, &mut w, &ctx(), false);
+        assert_eq!(e.items.iter().map(|i| (i.stack.item, i.stack.count)).collect::<Vec<_>>(), [(Item::STICK, 3)]);
+        // Saved and reloaded, the level holds what the bolt left.
+        let mut restored = Entities::new(264);
+        restored.load_minecarts(&e.minecarts_to_string());
+        restored.load_items(&e.items_to_string());
+        restored.load_decor(&e.decor_to_string());
+        assert_eq!(restored.minecarts.len(), 1);
+        assert_eq!(restored.minecarts[0].kind, CartKind::Tnt);
+        assert_eq!(restored.items.len(), 1);
+        assert_eq!(restored.decor.len(), 3);
+    }
+
+    #[test]
+    fn added_collision_lifts_items_vehicles_and_stands_but_not_what_is_clear_of_it() {
+        use super::super::{ItemEntity, minecart::CartKind};
+        use crate::{inventory::Stack, item::Item};
+        let w = yard();
+        let mut e = Entities::new(5);
+        let cell = IVec3::new(8, 140, 8);
+        // Snow growing from one layer to two adds the slice 0..1/8.
+        let on_snow = cell.as_dvec3() + DVec3::new(0.5, 0., 0.5);
+        let item = ItemEntity::new(Stack::new(Item::STICK, 1), on_snow, DVec3::ZERO, 0.0, &mut e.rng);
+        e.items.push(item);
+        let boat = e.spawn_cart(CartKind::Boat { wood: 2, chest: false }, on_snow + DVec3::X * 0.4);
+        let clear = ItemEntity::new(Stack::new(Item::STICK, 2), on_snow + DVec3::Y * 0.5, DVec3::ZERO, 0.0, &mut e.rng);
+        e.items.push(clear);
+        e.place_decor(&w, Item::ARMOR_STAND, cell - IVec3::Y, IVec3::Y, 0.0, &[]).unwrap().unwrap();
+        e.apply_block_pushes(&[(cell, 0.0, 0.125)]);
+        assert_eq!(e.items[0].pos.y, 140.125, "lifted onto the new layer");
+        assert_eq!(e.cart(boat).unwrap().pos.y, 140.125);
+        assert_eq!(e.items[1].pos.y, 140.5, "above the slice: untouched");
+        assert_eq!(e.decor[0].pos.y, 140.125, "armor stands are living entities and move too");
+        // Saved and reloaded, they keep the lifted height.
+        let mut restored = Entities::new(6);
+        restored.load_items(&e.items_to_string());
+        restored.load_minecarts(&e.minecarts_to_string());
+        assert!((restored.items[0].pos.y - 140.125).abs() < 1e-3);
+        assert!((restored.minecarts[0].pos.y - 140.125).abs() < 1e-3);
+    }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;

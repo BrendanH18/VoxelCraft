@@ -129,11 +129,15 @@ compact counter.
 - Farming and growth, driven by Minecraft-style random block ticks in the
   chunks within 128 blocks (each block is picked about once a minute).
   Breaking tall grass sometimes drops wheat seeds; till grass or dirt with
-  a hoe and sow them on the farmland. Farmland with water within 4 blocks
-  turns dark and wet; wheat grows through 8 stages under open sky, about
-  twice as fast on wet farmland, and ripe wheat drops wheat and 1-4 seeds
-  (unripe wheat just its seed). Bare dry farmland turns back to dirt, and
-  jumping or falling onto farmland can trample it. Leaves drop their tree's
+  a hoe and sow them on the farmland. Farmland keeps Java's moisture 0–7:
+  water within 4 blocks (at its level or one above) or rain on it soaks it
+  to 7 and turns it dark, and without either it dries one level per random
+  tick. Wheat grows through 8 stages in light 9 or more, about twice as
+  fast on moist farmland (any moisture above 0), and ripe wheat drops
+  wheat and 1-4 seeds (unripe wheat just its seed). Crops need light 8 to
+  be planted and break when a neighbouring block changes while they're
+  darker than that. Bare dry farmland, and farmland under a solid block,
+  turns back to dirt, and jumping or falling onto farmland can trample it. Leaves drop their tree's
   sapling (1 in 20, jungle 1 in 40; oak leaves also apples, 1 in 200);
   planted on grass or dirt, saplings grow into trees.
   Nether wart planted on soul sand ages through 4 stages (1 in 10 random

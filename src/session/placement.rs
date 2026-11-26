@@ -376,7 +376,9 @@ impl PlayerSession {
                         && (block != Block::SUGAR_CANE
                             || below.is_some_and(crate::world::sugar_cane::is_cane)
                             || world.cane_has_water(at))
-                        && (!block.is_mushroom() || world.mushroom_survives(at));
+                        && (!block.is_mushroom() || world.mushroom_survives(at))
+                        // `CropBlock.canSurvive`: seeds need light 8.
+                        && (!crate::world::crops::needs_light(block) || world.crop_has_light(at));
                     if !support || !world.redstone_supported(at, block) {
                         return Err("block cannot survive here");
                     }

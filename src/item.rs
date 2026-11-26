@@ -377,8 +377,21 @@ const fn item(name: &'static str, sprite: Sprite) -> ItemInfo {
     ItemInfo { name, kind: ItemKind::Material, max_stack: 64, sprite }
 }
 
-const fn food(name: &'static str, hunger: u8, saturation: f32, sprite: Sprite) -> ItemInfo {
-    ItemInfo { name, kind: ItemKind::Food { hunger, saturation }, max_stack: 64, sprite }
+/// Java's `FoodConstants.saturationByModifier`: `nutrition * modifier * 2.0F`,
+/// in single-precision floats as Java computes it (`Foods` stores the
+/// modifier; pinned in `tests/fixtures/java/26.3/foods.json`).
+pub const fn saturation_by_modifier(nutrition: u8, modifier: f32) -> f32 {
+    nutrition as f32 * modifier * 2.0
+}
+
+/// A 64-stack food: `nutrition` and the `Foods` saturation modifier.
+const fn food(name: &'static str, hunger: u8, modifier: f32, sprite: Sprite) -> ItemInfo {
+    ItemInfo {
+        name,
+        kind: ItemKind::Food { hunger, saturation: saturation_by_modifier(hunger, modifier) },
+        max_stack: 64,
+        sprite,
+    }
 }
 
 const fn copper_tool(name: &'static str, kind: ToolKind) -> ItemInfo {
@@ -420,15 +433,15 @@ static ITEMS: [ItemInfo; 64] = [
     item("gold ingot", Sprite::Ingot([250, 212, 60])),
     item("diamond", Sprite::Gem([80, 230, 220])),
     item("flint", Sprite::Gem([70, 70, 74])),
-    food("apple", 4, 2.4, Sprite::Apple),
-    food("bread", 5, 6.0, Sprite::Bread),
-    food("raw porkchop", 3, 1.8, Sprite::Meat(RAW_MEAT, FAT)),
-    food("cooked porkchop", 8, 12.8, Sprite::Meat(COOKED_MEAT, COOKED_FAT)),
-    food("raw beef", 3, 1.8, Sprite::Meat([190, 50, 45], [240, 200, 200])),
-    food("steak", 8, 12.8, Sprite::Meat([110, 62, 36], [170, 120, 80])),
-    food("raw chicken", 2, 1.2, Sprite::Drumstick([240, 190, 170])),
-    food("cooked chicken", 6, 7.2, Sprite::Drumstick([200, 130, 60])),
-    food("rotten flesh", 4, 0.8, Sprite::Meat([120, 140, 70], [150, 110, 80])),
+    food("apple", 4, 0.3, Sprite::Apple),
+    food("bread", 5, 0.6, Sprite::Bread),
+    food("raw porkchop", 3, 0.3, Sprite::Meat(RAW_MEAT, FAT)),
+    food("cooked porkchop", 8, 0.8, Sprite::Meat(COOKED_MEAT, COOKED_FAT)),
+    food("raw beef", 3, 0.3, Sprite::Meat([190, 50, 45], [240, 200, 200])),
+    food("steak", 8, 0.8, Sprite::Meat([110, 62, 36], [170, 120, 80])),
+    food("raw chicken", 2, 0.3, Sprite::Drumstick([240, 190, 170])),
+    food("cooked chicken", 6, 0.6, Sprite::Drumstick([200, 130, 60])),
+    food("rotten flesh", 4, 0.1, Sprite::Meat([120, 140, 70], [150, 110, 80])),
     item("bone", Sprite::Bone),
     item("string", Sprite::String),
     item("feather", Sprite::Feather),
@@ -440,7 +453,7 @@ static ITEMS: [ItemInfo; 64] = [
     item("bone meal", Sprite::Powder([238, 236, 226])),
     item("clay ball", Sprite::Lump([150, 156, 172])),
     item("brick", Sprite::Ingot([178, 92, 66])),
-    food("melon slice", 2, 1.2, Sprite::MelonSlice),
+    food("melon slice", 2, 0.3, Sprite::MelonSlice),
     ItemInfo { name: "bed", kind: ItemKind::Material, max_stack: 1, sprite: Sprite::Bed },
     ItemInfo { name: "bow", kind: ItemKind::Bow, max_stack: 1, sprite: Sprite::Bow },
     ItemInfo { name: "flint and steel", kind: ItemKind::FlintAndSteel, max_stack: 1, sprite: Sprite::FlintAndSteel },
@@ -474,7 +487,7 @@ static ITEMS: [ItemInfo; 64] = [
     item("glass bottle", Sprite::Bottle(None)),
     item("sugar", Sprite::Powder([246, 246, 250])),
     item("glistering melon slice", Sprite::GlisteringMelon),
-    food("spider eye", 2, 3.2, Sprite::SpiderEye),
+    food("spider eye", 2, 0.8, Sprite::SpiderEye),
     item("paper", Sprite::Paper),
     item("book", Sprite::Book([120, 66, 40])),
     ItemInfo { name: "eye of ender", kind: ItemKind::Material, max_stack: 64, sprite: Sprite::EnderEye },
@@ -515,8 +528,8 @@ const MOB_ITEM: u16 = 640;
 const VILLAGE_ITEM: u16 = 680;
 static VILLAGE_ITEMS: [ItemInfo; 3] = [
     item("pumpkin seeds", Sprite::Seeds),
-    food("golden apple", 4, 9.6, Sprite::GoldenApple),
-    food("beetroot", 1, 1.2, Sprite::Lump([152, 34, 54])),
+    food("golden apple", 4, 1.2, Sprite::GoldenApple),
+    food("beetroot", 1, 0.6, Sprite::Lump([152, 34, 54])),
 ];
 /// Nether-mob items (840..900): the crossbow and its loaded form.
 const NETHER_MOB_ITEM: u16 = 840;
@@ -538,11 +551,11 @@ const fn bucket_of(name: &'static str, colour: [u8; 3]) -> ItemInfo {
     ItemInfo { name, kind: ItemKind::Material, max_stack: 1, sprite: Sprite::Bucket(Some(colour)) }
 }
 static OVERWORLD_ITEMS: [ItemInfo; 19] = [
-    food("glow berries", 2, 0.4, Sprite::Lump([255, 186, 70])),
-    food("sweet berries", 2, 0.4, Sprite::Lump([186, 20, 40])),
+    food("glow berries", 2, 0.1, Sprite::Lump([255, 186, 70])),
+    food("sweet berries", 2, 0.1, Sprite::Lump([186, 20, 40])),
     item("cocoa beans", Sprite::Lump([112, 66, 34])),
     item("amethyst shard", Sprite::Gem([170, 120, 230])),
-    food("dried kelp", 1, 0.6, Sprite::Lump([58, 70, 36])),
+    food("dried kelp", 1, 0.3, Sprite::Lump([58, 70, 36])),
     item("prismarine shard", Sprite::Gem([99, 171, 158])),
     item("prismarine crystals", Sprite::Gem([196, 230, 214])),
     item("turtle scute", Sprite::Gem([70, 160, 70])),
@@ -550,8 +563,8 @@ static OVERWORLD_ITEMS: [ItemInfo; 19] = [
     item("heart of the sea", Sprite::Pearl([40, 90, 200], [140, 220, 255])),
     item("ink sac", Sprite::Lump([30, 28, 36])),
     item("glow ink sac", Sprite::Lump([60, 190, 180])),
-    food("tropical fish", 1, 0.2, Sprite::Fish { salmon: false, cooked: false }),
-    food("pufferfish", 1, 0.2, Sprite::Lump([230, 196, 60])),
+    food("tropical fish", 1, 0.1, Sprite::Fish { salmon: false, cooked: false }),
+    food("pufferfish", 1, 0.1, Sprite::Lump([230, 196, 60])),
     bucket_of("bucket of cod", [190, 160, 110]),
     bucket_of("bucket of salmon", [190, 80, 70]),
     bucket_of("bucket of tropical fish", [240, 130, 40]),
@@ -592,7 +605,7 @@ static MOUNT_ITEMS: [ItemInfo; 28] = [
     single("iron horse armor", Sprite::HorseArmor(ArmorMaterial::Iron)),
     single("golden horse armor", Sprite::HorseArmor(ArmorMaterial::Gold)),
     single("diamond horse armor", Sprite::HorseArmor(ArmorMaterial::Diamond)),
-    food("golden carrot", 6, 14.4, Sprite::Lump([235, 192, 52])),
+    food("golden carrot", 6, 1.2, Sprite::Lump([235, 192, 52])),
 ];
 const _: () = assert!(MOUNT_ITEM as usize + MOUNT_ITEMS.len() <= 1000);
 /// v0.7 animal items. Reserved ids 1000..=1039; do not relocate older ranges.
@@ -600,17 +613,17 @@ const ANIMAL_ITEM: u16 = 1000;
 static ANIMAL_ITEMS: [ItemInfo; 21] = [
     item("lead", Sprite::Lump([151, 113, 68])),
     item("name tag", Sprite::Lump([222, 211, 169])),
-    food("raw rabbit", 3, 1.8, Sprite::Lump([205, 146, 142])),
-    food("cooked rabbit", 5, 6.0, Sprite::Lump([170, 100, 61])),
+    food("raw rabbit", 3, 0.3, Sprite::Lump([205, 146, 142])),
+    food("cooked rabbit", 5, 0.6, Sprite::Lump([170, 100, 61])),
     item("rabbit hide", Sprite::Lump([150, 117, 88])),
     item("rabbit foot", Sprite::Lump([207, 199, 178])),
     ItemInfo {
         name: "rabbit stew",
-        kind: ItemKind::Food { hunger: 10, saturation: 12.0 },
+        kind: ItemKind::Food { hunger: 10, saturation: saturation_by_modifier(10, 0.6) },
         max_stack: 1,
         sprite: Sprite::Lump([161, 109, 62]),
     },
-    food("cookie", 2, 0.4, Sprite::Lump([190, 128, 61])),
+    food("cookie", 2, 0.1, Sprite::Lump([190, 128, 61])),
     item("goat horn ponder", Sprite::Lump([191, 185, 170])),
     item("goat horn sing", Sprite::Lump([191, 185, 170])),
     item("goat horn seek", Sprite::Lump([191, 185, 170])),
@@ -621,8 +634,8 @@ static ANIMAL_ITEMS: [ItemInfo; 21] = [
     item("goat horn dream", Sprite::Lump([191, 185, 170])),
     item("melon seeds", Sprite::Seeds),
     item("beetroot seeds", Sprite::Seeds),
-    food("raw mutton", 2, 1.2, Sprite::Lump([198, 88, 90])),
-    food("cooked mutton", 6, 9.6, Sprite::Lump([148, 81, 45])),
+    food("raw mutton", 2, 0.3, Sprite::Lump([198, 88, 90])),
+    food("cooked mutton", 6, 0.8, Sprite::Lump([148, 81, 45])),
     item("phantom membrane", Sprite::Lump([194, 185, 170])),
 ];
 const _: () = assert!(ANIMAL_ITEM as usize + ANIMAL_ITEMS.len() <= 1040);
@@ -654,7 +667,7 @@ const SURVIVAL_ITEMS: &[ItemInfo] = &[
     item("bowl", Sprite::Bowl(None)),
     ItemInfo {
         name: "mushroom stew",
-        kind: ItemKind::Food { hunger: 6, saturation: 7.2 },
+        kind: ItemKind::Food { hunger: 6, saturation: saturation_by_modifier(6, 0.6) },
         max_stack: 1,
         sprite: Sprite::Bowl(Some([155, 113, 66])),
     },
@@ -669,40 +682,40 @@ const SURVIVAL_ITEMS: &[ItemInfo] = &[
     ItemInfo { name: "clock", kind: ItemKind::Material, max_stack: 64, sprite: Sprite::Clock },
     ItemInfo {
         name: "carrot",
-        kind: ItemKind::Food { hunger: 3, saturation: 3.6 },
+        kind: ItemKind::Food { hunger: 3, saturation: saturation_by_modifier(3, 0.6) },
         max_stack: 64,
         sprite: Sprite::Carrot,
     },
     ItemInfo {
         name: "potato",
-        kind: ItemKind::Food { hunger: 1, saturation: 0.6 },
+        kind: ItemKind::Food { hunger: 1, saturation: saturation_by_modifier(1, 0.3) },
         max_stack: 64,
         sprite: Sprite::Potato { baked: false, poison: false },
     },
     ItemInfo {
         name: "baked potato",
-        kind: ItemKind::Food { hunger: 5, saturation: 6.0 },
+        kind: ItemKind::Food { hunger: 5, saturation: saturation_by_modifier(5, 0.6) },
         max_stack: 64,
         sprite: Sprite::Potato { baked: true, poison: false },
     },
     ItemInfo {
         name: "poisonous potato",
-        kind: ItemKind::Food { hunger: 2, saturation: 1.2 },
+        kind: ItemKind::Food { hunger: 2, saturation: saturation_by_modifier(2, 0.3) },
         max_stack: 64,
         sprite: Sprite::Potato { baked: false, poison: true },
     },
     ItemInfo { name: "cake", kind: ItemKind::Material, max_stack: 1, sprite: Sprite::Cake },
     ItemInfo {
         name: "pumpkin pie",
-        kind: ItemKind::Food { hunger: 8, saturation: 4.8 },
+        kind: ItemKind::Food { hunger: 8, saturation: saturation_by_modifier(8, 0.3) },
         max_stack: 64,
         sprite: Sprite::Pie,
     },
     ItemInfo { name: "fishing rod", kind: ItemKind::FishingRod, max_stack: 1, sprite: Sprite::FishingRod },
-    food("cod", 2, 0.4, Sprite::Fish { salmon: false, cooked: false }),
-    food("cooked cod", 5, 6.0, Sprite::Fish { salmon: false, cooked: true }),
-    food("salmon", 2, 0.4, Sprite::Fish { salmon: true, cooked: false }),
-    food("cooked salmon", 6, 9.6, Sprite::Fish { salmon: true, cooked: true }),
+    food("cod", 2, 0.1, Sprite::Fish { salmon: false, cooked: false }),
+    food("cooked cod", 5, 0.6, Sprite::Fish { salmon: false, cooked: true }),
+    food("salmon", 2, 0.1, Sprite::Fish { salmon: true, cooked: false }),
+    food("cooked salmon", 6, 0.8, Sprite::Fish { salmon: true, cooked: true }),
 ];
 
 const TOOL_KINDS: [ToolKind; 5] = [ToolKind::Pickaxe, ToolKind::Shovel, ToolKind::Axe, ToolKind::Hoe, ToolKind::Sword];
@@ -1272,7 +1285,7 @@ impl Item {
         if self == Self::BEETROOT_SOUP {
             return ItemInfo {
                 name: "beetroot soup",
-                kind: ItemKind::Food { hunger: 6, saturation: 7.2 },
+                kind: ItemKind::Food { hunger: 6, saturation: saturation_by_modifier(6, 0.6) },
                 max_stack: 1,
                 sprite: Sprite::Lump([152, 34, 54]),
             };
@@ -1338,7 +1351,7 @@ impl Item {
             Self::SUSPICIOUS_STEW => {
                 return ItemInfo {
                     name: "suspicious stew",
-                    kind: ItemKind::Food { hunger: 6, saturation: 7.2 },
+                    kind: ItemKind::Food { hunger: 6, saturation: saturation_by_modifier(6, 0.6) },
                     max_stack: 1,
                     sprite: SURVIVAL_ITEMS[3].sprite,
                 };
@@ -1346,7 +1359,7 @@ impl Item {
             Self::HONEY_BOTTLE => {
                 return ItemInfo {
                     name: "honey bottle",
-                    kind: ItemKind::Food { hunger: 6, saturation: 1.2 },
+                    kind: ItemKind::Food { hunger: 6, saturation: saturation_by_modifier(6, 0.1) },
                     max_stack: 16,
                     sprite: Sprite::Bottle(Some([235, 166, 35])),
                 };
@@ -1374,7 +1387,7 @@ impl Item {
                 };
             }
             Self::ENCHANTED_GOLDEN_APPLE => {
-                return food("enchanted golden apple", 4, 9.6, Sprite::EnchantedGoldenApple);
+                return food("enchanted golden apple", 4, 1.2, Sprite::EnchantedGoldenApple);
             }
             Self::FIRE_CHARGE => return item("fire charge", Sprite::Lump([241, 126, 27])),
             Self::MINECART => {

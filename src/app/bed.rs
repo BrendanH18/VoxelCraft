@@ -233,12 +233,13 @@ impl Game {
             bot.agent.session.wake(&self.world);
         }
         // `ServerLevel.tick` skips the night only with `advance_time` and
-        // clears rain only with `advance_weather`.
+        // resets the weather cycle only with `advance_weather`, while it
+        // rains (`isRaining`, the faded level).
         if self.gamerules.bool("advance_time") {
             self.day_time = WAKE_TIME;
         }
-        if self.gamerules.bool("advance_weather") && self.weather.raining {
-            self.weather.set(false, true);
+        if self.gamerules.bool("advance_weather") && self.weather.is_raining() {
+            self.weather.reset_cycle();
         }
         self.show_popup("Good morning");
     }

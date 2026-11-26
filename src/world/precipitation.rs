@@ -21,6 +21,9 @@ fn motion_blocking(b: Block) -> bool {
     b.holds_water() || b.is_lava() || states.get(usize::from(b.0)).copied().unwrap_or(false)
 }
 
+/// The most collision slices queued between two [`World::take_block_pushes`].
+pub const MAX_BLOCK_PUSHES: usize = 4096;
+
 impl World {
     /// Loaded block-ticking Java chunk columns, once each despite overlapping players.
     pub(crate) fn weather_chunks(&self) -> Vec<IVec2> {
@@ -66,7 +69,6 @@ impl World {
     }
     /// One attempt per random tick at 1/48 odds per Java 16×16 chunk.
     pub fn tick_precipitation(&mut self, random_tick_speed: u32) {
-        self.snow_pushes.clear();
         if !self.raining || !self.generator.dimension.has_sky() || self.rules.max_snow_accumulation_height == 0 {
             return;
         }
@@ -81,8 +83,20 @@ impl World {
         }
     }
 
-    pub fn take_snow_pushes(&mut self) -> Vec<(IVec3, f64)> {
-        std::mem::take(&mut self.snow_pushes)
+    /// The collision slices added since the last call (snow layers,
+    /// farmland turned to dirt) as `(cell, bottom, top)`, for
+    /// [`push_entity_up`] on every entity.
+    pub fn take_block_pushes(&mut self) -> Vec<(IVec3, f64, f64)> {
+        std::mem::take(&mut self.block_pushes)
+    }
+
+    /// Queues a slice for [`World::take_block_pushes`]. A caller that never
+    /// takes them (a test ticking the world alone) keeps only the first
+    /// [`MAX_BLOCK_PUSHES`].
+    pub(super) fn queue_block_push(&mut self, cell: IVec3, bottom: f64, top: f64) {
+        if self.block_pushes.len() < MAX_BLOCK_PUSHES {
+            self.block_pushes.push((cell, bottom, top));
+        }
     }
     /// Heightmap-selected column. Java 26.3 excludes the snow block (every
     /// layer count) from blocks_motion_in_heightmap, including eight layers.
@@ -116,7 +130,7 @@ impl World {
         };
         if self.set_block(p, next) {
             if let Some(n) = snow::snow_layers(next).filter(|n| *n > 1) {
-                self.snow_pushes.push((p, f64::from(n - 1) / 8.));
+                self.queue_block_push(p, f64::from(n - 2) / 8., f64::from(n - 1) / 8.);
             }
             true
         } else {
@@ -127,11 +141,21 @@ impl World {
 
 /// `Block.pushEntitiesUp` for the added snow collision slice.
 pub fn push_entity(pos: &mut glam::DVec3, shape: crate::physics::Shape, cell: IVec3, height: f64) {
+    push_entity_up(pos, shape, cell, height - 0.125, height);
+}
+
+/// `Block.pushEntitiesUp`: an entity whose box meets the collision slice
+/// added between `bottom` and `top` of `cell` stands on its top after.
+/// Returns whether it moved.
+pub fn push_entity_up(pos: &mut glam::DVec3, shape: crate::physics::Shape, cell: IVec3, bottom: f64, top: f64) -> bool {
     let (lo, hi) = shape.aabb(*pos);
-    let bottom = cell.as_dvec3() + glam::DVec3::Y * (height - 0.125);
-    let top = cell.as_dvec3() + glam::DVec3::new(1., height, 1.);
-    if hi.cmpgt(bottom).all() && lo.cmplt(top).all() {
-        pos.y = top.y;
+    let low = cell.as_dvec3() + glam::DVec3::Y * bottom;
+    let high = cell.as_dvec3() + glam::DVec3::new(1., top, 1.);
+    if hi.cmpgt(low).all() && lo.cmplt(high).all() {
+        pos.y = high.y;
+        true
+    } else {
+        false
     }
 }
 
