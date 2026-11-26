@@ -113,12 +113,21 @@ pub fn build_wither_skulls(
 /// v0.16 Track C: beacon beams (`BeaconRenderer`): per section a spinning
 /// inner column of the section's colour and a wider translucent glow,
 /// both drawn at full brightness; the last section reaches the top of the
-/// world. Only beacons within `max_dist` horizontally are drawn.
-pub fn build_beacon_beams(world: &crate::world::World, camera: DVec3, time: f32, max_dist: f32, out: &mut EntityMesh) {
+/// world. Only beams within Java's view distance (`renderDistance * 16`
+/// blocks horizontally, v1.0 Track 2) are drawn.
+pub fn build_beacon_beams(
+    world: &crate::world::World,
+    camera: DVec3,
+    time: f32,
+    view: impl Into<crate::entity::draw_distance::DrawDistance>,
+    out: &mut EntityMesh,
+) {
+    let view = view.into();
     let top = world.max_y() as f32;
     for (pos, sections) in world.beacon_beams() {
         let base = pos.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
-        if (base - camera).with_y(0.0).length() > f64::from(max_dist) + 1.0 {
+        // `BeaconRenderer.shouldRender` measures from the beacon's centre.
+        if !view.beacon(pos.as_dvec3() + DVec3::splat(0.5), camera) {
             continue;
         }
         let rel = (base - camera).as_vec3();

@@ -4,10 +4,15 @@
 //! the Clouds or Cloud Distance option changes, like `CloudRenderer`; each
 //! frame just draws it, six vertices per face from one packed `u32`.
 //!
-//! Java draws clouds with order-independent transparency. Here a depth-only
-//! pass lays down the nearest cloud surface and the colour pass blends only
-//! that surface, so the faces behind it never show through (Java's pre-OIT
-//! method).
+//! v1.0 Track 2: one pass, as Java 26.3 draws clouds without its
+//! order-independent transparency (`RenderPipelines.CLOUDS`: translucent
+//! blending, `DepthStencilState.DEFAULT`'s greater-or-equal reverse-Z test
+//! with depth writes, back faces culled; `FLAT_CLOUDS` culls nothing).
+//! Faces come nearest ring first, so the nearest cloud surface writes its
+//! depth before anything it hides is drawn, and the hidden faces fail the
+//! depth test: the same nearest-surface result v0.18 got from a depth-only
+//! pass followed by a colour pass, at half the vertex work. The buffer is
+//! sized by Java's own bound for the radius (`getSizeForCloudDistance`).
 
 use voxelcraft::atmosphere::{
     Clouds,
@@ -36,8 +41,10 @@ struct Key {
 }
 
 pub(super) struct CloudPass {
-    depth_pipeline: wgpu::RenderPipeline,
-    color_pipeline: wgpu::RenderPipeline,
+    /// Fancy clouds' pipeline (back faces culled) and Fast clouds' (none).
+    fancy_pipeline: wgpu::RenderPipeline,
+    flat_pipeline: wgpu::RenderPipeline,
+    mode: Clouds,
     pattern: Pattern,
     faces: Vec<u32>,
     key: Option<Key>,
@@ -52,7 +59,7 @@ impl CloudPass {
             label: Some("cloud shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/clouds.wgsl").into()),
         });
-        let pipeline = |label: &str, depth_write: bool, compare, color: bool| {
+        let pipeline = |label: &str, cull_mode: Option<wgpu::Face>| {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some(label),
                 layout: Some(layout),
@@ -66,11 +73,12 @@ impl CloudPass {
                         attributes: &wgpu::vertex_attr_array![0 => Uint32],
                     })],
                 },
-                primitive: wgpu::PrimitiveState { cull_mode: Some(wgpu::Face::Back), ..Default::default() },
+                primitive: wgpu::PrimitiveState { cull_mode, ..Default::default() },
+                // Reverse-Z: nearer is greater.
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: DEPTH_FORMAT,
-                    depth_write_enabled: Some(depth_write),
-                    depth_compare: Some(compare),
+                    depth_write_enabled: Some(true),
+                    depth_compare: Some(wgpu::CompareFunction::GreaterEqual),
                     stencil: Default::default(),
                     bias: Default::default(),
                 }),
@@ -82,20 +90,20 @@ impl CloudPass {
                     targets: &[Some(wgpu::ColorTargetState {
                         format,
                         blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                        write_mask: if color { wgpu::ColorWrites::ALL } else { wgpu::ColorWrites::empty() },
+                        write_mask: wgpu::ColorWrites::ALL,
                     })],
                 }),
                 multiview_mask: None,
                 cache: None,
             })
         };
-        // Reverse-Z: nearer is greater.
-        let depth_pipeline = pipeline("cloud depth", true, wgpu::CompareFunction::Greater, false);
-        let color_pipeline = pipeline("clouds", false, wgpu::CompareFunction::Equal, true);
-        let capacity = 4096;
+        let fancy_pipeline = pipeline("clouds", Some(wgpu::Face::Back));
+        let flat_pipeline = pipeline("flat clouds", None);
+        let capacity = clouds::max_faces(clouds::radius_cells(voxelcraft::atmosphere::DEFAULT_CLOUD_RANGE));
         Self {
-            depth_pipeline,
-            color_pipeline,
+            fancy_pipeline,
+            flat_pipeline,
+            mode: Clouds::Fancy,
             pattern: Pattern::generate(),
             faces: Vec::new(),
             key: None,
@@ -135,14 +143,21 @@ impl CloudPass {
         if self.key != Some(key) {
             self.key = Some(key);
             clouds::build(&self.pattern, &view, p.mode, radius, &mut self.faces);
-            if self.faces.len() > self.capacity {
-                self.capacity = self.faces.len().next_power_of_two();
+            // Java's bound for the radius holds every face the build makes
+            // (`build_never_exceeds_javas_bound`), so the buffer is sized
+            // once per Cloud Distance, not grown by doubling.
+            let bound = clouds::max_faces(radius);
+            debug_assert!(self.faces.len() <= bound, "{} faces over the bound {bound}", self.faces.len());
+            self.faces.truncate(bound);
+            if bound != self.capacity {
+                self.capacity = bound;
                 self.buffer = Self::create_buffer(device, self.capacity);
             }
             if !self.faces.is_empty() {
                 queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(&self.faces));
             }
             self.count = self.faces.len() as u32;
+            self.mode = p.mode;
         }
         [-view.in_cell.0, view.base, -view.in_cell.1]
     }
@@ -152,9 +167,7 @@ impl CloudPass {
             return;
         }
         pass.set_vertex_buffer(0, self.buffer.slice(..));
-        pass.set_pipeline(&self.depth_pipeline);
-        pass.draw(0..6, 0..self.count);
-        pass.set_pipeline(&self.color_pipeline);
+        pass.set_pipeline(if self.mode == Clouds::Fast { &self.flat_pipeline } else { &self.fancy_pipeline });
         pass.draw(0..6, 0..self.count);
     }
 }

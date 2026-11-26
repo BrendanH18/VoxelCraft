@@ -440,7 +440,13 @@ fn options_match_the_client() {
     let range = &o["cloud_distance"];
     assert_eq!(range["label"], "Cloud Distance");
     assert_eq!(atmosphere::CLOUD_RANGE, (range["min"].as_u64().unwrap() as u32, range["max"].as_u64().unwrap() as u32));
+    // v1.0 Track 2: a fresh client shows the Fancy preset's Cloud Distance,
+    // not the option's own default.
+    assert_eq!(range["option_default"], 128);
+    assert_eq!(range["default_preset"], "fancy");
+    assert_eq!(range["preset_values"]["fancy"], range["default"]);
     assert_eq!(atmosphere::DEFAULT_CLOUD_RANGE, range["default"].as_u64().unwrap() as u32);
+    assert_eq!(atmosphere::DEFAULT_CLOUD_RANGE, 64);
     assert_eq!(o["hide_sky_flashes"]["label"], "Hide Sky Flashes");
     assert_eq!(o["hide_sky_flashes"]["default"], false);
     assert_eq!(atmosphere::SKY_FLASH_TICKS, fx["sky_flash"]["ticks"].as_u64().unwrap() as u32);
@@ -472,8 +478,10 @@ fn gameplay_light_does_not_follow_the_visual_model() {
 }
 
 /// Headless cost of the cloud layer (run with `--ignored --nocapture`):
-/// faces and rebuild time at Java's default Cloud Distance (128 chunks)
-/// and at 12, for Fancy and Fast, below and inside the layer, and the cost
+/// faces and rebuild time at the Fabulous preset's Cloud Distance (128
+/// chunks), Java's default (64, the Fancy preset's; v1.0 Track 2) and 12,
+/// for Fancy and Fast, below and inside the layer, against Java's bound
+/// (`clouds::max_faces`), and the cost
 /// of one eye's fog. A rebuild happens only when the camera enters another
 /// 12-block cell or crosses the layer, or the options change.
 #[test]
@@ -482,7 +490,7 @@ fn cloud_and_fog_cost() {
     use std::time::Instant;
     let pattern = Pattern::generate();
     let mut faces = Vec::new();
-    for range in [128u32, 12] {
+    for range in [128u32, 64, 12] {
         for mode in [Clouds::Fancy, Clouds::Fast] {
             for y in [100.0, 194.0] {
                 let radius = clouds::radius_cells(range);
@@ -494,9 +502,10 @@ fn cloud_and_fog_cost() {
                     best = best.min(start.elapsed().as_secs_f64() * 1000.0);
                 }
                 println!(
-                    "clouds {range} chunks {mode:?} camera y {y}: {} faces ({} KiB), best rebuild {best:.3} ms",
+                    "clouds {range} chunks {mode:?} camera y {y}: {} faces ({} KiB, bound {}), best rebuild {best:.3} ms",
                     faces.len(),
-                    faces.len() * 4 / 1024
+                    faces.len() * 4 / 1024,
+                    clouds::max_faces(radius)
                 );
             }
         }

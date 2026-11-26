@@ -82,7 +82,8 @@ pub struct Settings {
     pub panorama_speed: f64,
     /// v0.18 Track 8: Java's Clouds (`renderClouds`: Fancy).
     pub clouds: voxelcraft::atmosphere::Clouds,
-    /// Cloud Distance (`cloudRange`) in Java chunks, 2..128 (128).
+    /// Cloud Distance (`cloudRange`) in Java chunks, 2..128 (64, Java's
+    /// Fancy preset; v1.0 Track 2).
     pub cloud_range: u32,
     /// Hide Sky Flashes (`hideLightningFlashes`, off): lightning no longer
     /// lights up the sky; the bolts still show.
@@ -510,7 +511,9 @@ mod tests {
         use voxelcraft::atmosphere::Clouds;
         // An options file from before v0.18 has none of them: Java's defaults.
         let old = Settings::parse("render_distance=12\nshowSubtitles=true\n");
-        assert_eq!((old.clouds, old.cloud_range, old.hide_lightning_flashes), (Clouds::Fancy, 128, false));
+        assert_eq!((old.clouds, old.cloud_range, old.hide_lightning_flashes), (Clouds::Fancy, 64, false));
+        // A value saved by v0.18 (whose default was 128) stays the player's.
+        assert_eq!(Settings::parse("cloudRange=128\n").cloud_range, 128);
         for clouds in Clouds::ALL {
             let s = Settings { clouds, cloud_range: 37, hide_lightning_flashes: true, ..Settings::default() };
             let text = s.serialize();

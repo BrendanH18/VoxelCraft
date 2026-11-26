@@ -845,9 +845,12 @@ impl Clouds {
     }
 }
 
-/// Cloud Distance's range and default, in Java chunks.
+/// Cloud Distance's range and default, in Java chunks. The default is 64,
+/// what a fresh Java 26.3 client shows: the option's own default is 128,
+/// but the client applies its graphics preset at startup and the default
+/// Fancy preset sets 64 (`GraphicsPreset.apply`; v1.0 Track 2).
 pub const CLOUD_RANGE: (u32, u32) = (2, 128);
-pub const DEFAULT_CLOUD_RANGE: u32 = 128;
+pub const DEFAULT_CLOUD_RANGE: u32 = 64;
 
 /// How many ticks a lightning bolt flashes the sky (`setSkyFlashTime(2)`).
 pub const SKY_FLASH_TICKS: u32 = 2;

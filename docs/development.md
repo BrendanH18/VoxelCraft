@@ -244,8 +244,10 @@ the scene, then paces itself to 240 frames a second for `--bench-warmup`
 (default 10) and `--bench-seconds` (default 60) seconds. Each frame streams
 the world around the camera with the real generation and mesh workers
 (`World::update_players`, with the desktop game's 2 ms light budget) and
-builds the entity mesh; before a frame's first tick it resolves the rest of
-the light, as the game does; every 50 ms of wall time it runs one game
+builds the entity mesh; before a frame's first tick it resolves the light
+the tick can read, as the game does (since v1.0 Track 2 only light work
+within a storage column of the block-ticking area, `World::settle_light_for_ticks`);
+every 50 ms of wall time it runs one game
 tick: the world rules, the automation entity pass,
 piston pushes and the mob update with natural spawning, in `Game::tick`'s
 order. It prints one JSON report: frame work (`frame_ms`, streaming plus
@@ -253,6 +255,10 @@ the ticks it ran), frames over 8.33 and 50 ms, the tick, each phase
 (`stream`, `pre_tick_light`, `entity_mesh`, and the tick's `setup`, `world_rules`,
 `automation`, `mobs` and `drops`), each world-rule step
 (`world_rule_steps_ms`) and the phases of the slowest 1% of frames.
+The entity mesh is built to Java's distances (`entity::draw_distance`);
+`--bench-entity-cull fog` builds it the v0.18 way instead, to everything
+within the clear Overworld fog's end (`min(1024, rd × 32 × √2)` blocks),
+for comparison. The report gives `entity_cull` and `mean_drawn_mobs`.
 
 | Scene | What it holds |
 |---|---|
@@ -673,6 +679,33 @@ The low-level flags are `--benchmark-scene`, `--benchmark-output`,
 `--benchmark-frame-latency`, `--benchmark-window-mode`,
 `--benchmark-no-gpu-timestamps` and `--size WIDTHxHEIGHT`.
 The legacy `--bench-render` remains available for historical comparisons.
+
+### Render-distance comparison
+
+`scripts/compare-render-distance.sh` compares two builds' frame times at
+several render distances in one command on the reference Mac (v1.0 Track
+2). With no options it builds v0.17 and the current commit (`HEAD`;
+uncommitted changes are left out) with `--release`, each in a temporary git
+worktree, copying each binary out of the shared target folder before the
+next build. It then runs the offscreen suite with each binary at render
+distances 8, 16 and 24 (256, 512 and 768 blocks): the `survival`,
+`streaming` and `entities` scenes, three 60-second runs each, about an hour
+and ten minutes in all. It prints a Markdown table of each scene's mean
+average FPS, 1% low, p99 and GPU p99 for both builds, with the change in 1%
+low, and saves it as `table.md` beside the results in
+`target/benchmarks/<date>-render-distance/`.
+
+```sh
+scripts/compare-render-distance.sh
+scripts/compare-render-distance.sh --base v0.18 --rd "16 24" --scenes streaming --repeats 1 --seconds 30
+scripts/compare-render-distance.sh --table target/benchmarks/2026-11-26-render-distance
+```
+
+`--base` and `--head` take any commit, `--rd` the render distances,
+`--scenes` the scenes (both builds must have them), `--repeats` and
+`--seconds` the runs, `--out` the folder, and `--table` reprints an earlier
+run's table. The runner's `--rd` sets the render distance; anything but 8
+is a comparison run, never gate evidence, and the summary says so.
 
 ### Presentation experiments
 

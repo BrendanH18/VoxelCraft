@@ -876,20 +876,36 @@ fn framed_map<'m>(d: &Decor, maps: &'m crate::world::maps::MapStorage) -> Option
     maps.maps.get(&stack.map_id?)
 }
 
-/// Camera-relative triangles for every decoration within `max_dist`.
+/// Camera-relative triangles for every decoration Java would draw at
+/// `view`'s distances (v1.0 Track 2). All three types are tracked within 10
+/// chunks (`EntityTypes`). Item frames render within `16 * 64 * viewScale`
+/// blocks (`ItemFrame.shouldRenderAtSqrDistance`), armor stands within
+/// `4 * size * 64` without the view scale (`ArmorStand`), and paintings
+/// by their box like any entity.
 pub(super) fn build(
     decor: &[Decor],
     maps: &crate::world::maps::MapStorage,
     camera: DVec3,
-    max_dist: f32,
+    view: &super::draw_distance::DrawDistance,
     alpha: f64,
     out: &mut EntityMesh,
 ) {
+    use super::draw_distance::box_size;
     for d in decor {
         let pos =
             if d.is_hanging() { d.cell.as_dvec3() + DVec3::splat(0.5) } else { d.previous_pos.lerp(d.pos, alpha) };
         let rel = (pos - camera).as_vec3();
-        if rel.length_squared() > max_dist * max_dist {
+        let drawn = view.tracked(pos, 10)
+            && !view.fogged(rel, 2.0)
+            && match d.kind {
+                Kind::Frame { .. } => view.renders(pos - camera, 16.0),
+                Kind::Stand => view.within(pos - camera, box_size(0.5, 1.975, 0.5) * 4.0 * 64.0),
+                Kind::Painting(v) => {
+                    let (_, w, h, _) = PAINTINGS[v as usize % PAINTINGS.len()];
+                    view.renders(pos - camera, box_size(f64::from(w), f64::from(h), 1.0 / 16.0))
+                }
+            };
+        if !drawn {
             continue;
         }
         let light = [(d.sky_light.clamp(0.0, 1.0) * 255.0) as u8, 0, 0, 0];

@@ -19,7 +19,7 @@ impl Entities {
         difficulty: crate::simulation::difficulty::Difficulty,
     ) {
         use category::MobCategory;
-        if !world.light_settled() {
+        if !world.spawn_light_settled() {
             return;
         }
         let players: Vec<_> = ctx.players.iter().filter(|t| !t.spectator).map(|t| t.pos).collect();

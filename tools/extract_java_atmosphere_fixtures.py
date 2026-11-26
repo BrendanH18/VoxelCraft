@@ -381,6 +381,23 @@ def options(jar, archive):
     low, high, _, default = expect(
         "Cloud Distance range and default", after("options.renderCloudsDistance", 4), [2, 128, 1, 128]
     )
+    # v1.0 Track 2: the option's own default (128) never shows. The client
+    # applies the selected graphics preset at startup
+    # (`Minecraft.<init>` calls `Options.applyGraphicsPreset`), the preset
+    # defaults to Fancy, and each preset sets Cloud Distance.
+    presets = javap(jar, "net.minecraft.client.GraphicsPreset")
+    preset_ranges = [int(v) for v in re.findall(r"Options\.cloudRange:\(\)\S*\n\s*\d+: [bs]ipush\s+(\d+)", presets)]
+    fast, fancy, fabulous = expect("graphics presets' Cloud Distance", preset_ranges, [32, 64, 128])
+    expect(
+        "Options defaults to the Fancy preset",
+        "Field net/minecraft/client/GraphicsPreset.FANCY" in code,
+        True,
+    )
+    expect(
+        "the client applies the preset at startup",
+        "Method net/minecraft/client/Options.applyGraphicsPreset" in javap(jar, "net.minecraft.client.Minecraft"),
+        True,
+    )
     flashes = expect("Hide Sky Flashes default", after("options.hideLightningFlashes", 1), [0])[0]
     status = javap(jar, "net.minecraft.client.CloudStatus")
     names = re.findall(r"// String (false|fast|true)\b", status)
@@ -402,7 +419,10 @@ def options(jar, archive):
             "value_label": lang["options.chunks"],
             "min": low,
             "max": high,
-            "default": default,
+            "option_default": default,
+            "preset_values": {"fast": fast, "fancy": fancy, "fabulous": fabulous},
+            "default_preset": "fancy",
+            "default": fancy,
         },
         "hide_sky_flashes": {
             "key": "hideLightningFlashes",

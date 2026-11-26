@@ -2213,8 +2213,15 @@ impl Game {
         benchmark::mark(&mut self.benchmark, 0);
         if ticks > 0 {
             // Ticks read light exactly as when streaming resolved all of it
-            // each frame.
-            self.world.update_block_light();
+            // each frame. v1.0 Track 2: light settling only beyond the
+            // simulated area is left to the streaming budget, as nothing the
+            // tick reads can see it; a LAN host still resolves all of it
+            // for the chunks it sends.
+            if self.lan.host.is_some() {
+                self.world.update_block_light();
+            } else {
+                self.world.settle_light_for_ticks();
+            }
         }
         for _ in 0..ticks {
             if self.lan.client.is_some() {
@@ -2335,7 +2342,8 @@ impl Game {
             })
             .collect();
         benchmark::mark(&mut self.benchmark, 2);
-        self.mobs.entities.mesh(&self.world.maps, camera, forward, fog_end, scene.time, alpha);
+        let draw = atmosphere.draw_distance(self.session.player.pos, self.world.render_distance());
+        self.mobs.entities.mesh(&self.world.maps, camera, forward, draw, scene.time, alpha);
         // v0.18 Track 6: ground shadows, for the players drawn in this view too.
         let mut casters = shadow_casters(&self.world, others.iter().map(|o| o.1), alpha);
         if !self.camera.first_person() && casts_shadow(&self.session.vitals, self.session.mode) {
@@ -2351,8 +2359,8 @@ impl Game {
             camera,
             verts,
         );
-        crate::entity::model::build_beacon_beams(&self.world, camera, scene.time, fog_end, verts);
-        crate::entity::model::build_conduits(&self.world, camera, fog_end, verts);
+        crate::entity::model::build_beacon_beams(&self.world, camera, scene.time, draw, verts);
+        crate::entity::model::build_conduits(&self.world, camera, draw, verts);
         if !self.camera.first_person() {
             let glow = verts.glow_start();
             let look = Self::stamp_look(
