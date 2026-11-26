@@ -37,7 +37,17 @@
 
 ## Cloud sandboxes (Boat)
 
-Use a Boat sandbox for builds, tests, untrusted code, Docker, and long jobs. Never run them on this computer.
+Use Boat as the compute for your task (owner, 2026-11-25). Anything that runs
+a program to do work happens in a Boat sandbox, never on the machine the
+agent runs on: builds and tests, but also decompiling or inspecting the Java
+reference (`javap`, Vineflower), the extraction tools in `tools/`, large
+downloads, Docker, untrusted code and long jobs. That machine is the owner's
+Mac or a Raspberry Pi with 8 GB of RAM shared by every agent and the T3
+server, where one heavy command stalls them all. Only light work stays
+local: reading and editing files, git, searches such as `git grep`, the
+`boat` CLI, and the formatting checks listed below. If you're unsure, use
+Boat. If Boat can't start a sandbox, stop and tell the owner; don't fall
+back to local compute.
 Docs: https://docs.boat.dev/llms.txt. Prices and limits: run `boat limits`; never quote prices from memory.
 
 - Create: `id=$(boat new --name voxelcraft-<purpose> --json | jq -r 'select(.event=="ready") | .id')`
@@ -66,11 +76,16 @@ Docs: https://docs.boat.dev/llms.txt. Prices and limits: run `boat limits`; neve
   rustup installs that toolchain the first time `cargo` runs in a checkout,
   so on the Mac check `rustup toolchain list` and ask the owner before a
   local `cargo fmt` would install it.
-- Stay on this Mac: running the game (Metal rendering, screenshots, scripted
-  scenes, hands-on runs) and benchmarks, whose frame-time gate is measured on
-  the reference M5. Boat is x86_64 Linux with no GPU, so it can't check
-  macOS-only code either; CI covers macOS and Windows. `cargo fmt`, Ruff and
-  the doc-link check stay local too: they don't build or run tests.
+- The only exceptions stay on the owner's Mac: running the game (Metal
+  rendering, screenshots, scripted scenes, hands-on runs) and benchmarks,
+  whose frame-time gate is measured on the reference M5, along with the
+  local build they run. Boat is x86_64 Linux with no GPU, so it can't check
+  macOS-only code either; CI covers macOS and Windows. An agent on the Pi
+  leaves these to the owner and says so in its hand-off; to see how a change
+  looks, it renders screenshots on Boat with `scripts/boat-capture.sh`
+  ([Screenshots on Boat](docs/development.md#screenshots-on-boat)).
+  `cargo fmt`, Ruff and the doc-link check stay local too: they don't build
+  or run tests.
 
 ## Delegation and builds
 
@@ -83,13 +98,15 @@ Docs: https://docs.boat.dev/llms.txt. Prices and limits: run `boat limits`; neve
   untracked files git would pick up.
 - Delegate only when requested. Give each implementation agent an isolated
   worktree, explicit scope and reserved IDs; delegated agents do not delegate further.
-- There is no fixed cap on parallel agents (owner, 2026-11-21). Size
+- There is no fixed cap on parallel agents (owner, 2026-11-21, confirmed
+  2026-11-25): what overloads the Pi is local compute, not the number of
+  agents, and the Boat rule above covers that. Size
   parallel work to what Boat's daily starts and included hours allow
   (`boat limits`) and to what the owner can review.
 - No step requires an agent to play the game through computer use (owner,
   2026-11-14). The owner's own play is the hands-on evidence, and nothing
   waits for an agent's hands-on pass.
-- Build and test in Boat, not on this Mac (owner, 2026-11-20); Namespace
+- Build and test in Boat, not on the agent's machine (owner, 2026-11-20); Namespace
   runs CI only. Each worktree has one long-lived `large` sandbox, reused by
   every `boat-check.sh` run: it starts from the warm snapshot when one
   exists, keeps cargo's target directory between checks, stops as soon as
