@@ -1538,7 +1538,57 @@ mod tests {
     #[ignore]
     fn final_art_sheet() {
         let Ok(path) = std::env::var("VC_FINAL_ART_SHEET") else { return };
-        let layers = final_art_layers();
+        write_sheet(&path, &final_art_layers());
+    }
+
+    /// v1.0 Track 10b's layers, in review-sheet order: the flat ground
+    /// plants, vines and glow lichen, the corals (blocks, plants and fans
+    /// alive then dead, then the wall fans) and sea pickles, bamboo, the
+    /// potted torchflower and the ender chest.
+    fn final_art_b_layers() -> Vec<u16> {
+        use crate::world::overworld_blocks::t as ob;
+        use crate::world::utilities::t as ut;
+        let mut out = vec![ob::LILY_PAD, ob::PINK_PETALS];
+        out.extend(crate::world::biome_plants::TEX..crate::world::biome_plants::TEX + 8);
+        out.extend([ob::VINE, crate::world::cave_blocks::t::GLOW_LICHEN]);
+        out.extend(ob::CORAL..ob::CORAL + 30);
+        out.extend(ut::WALL_FAN..ut::WALL_FAN + 40);
+        out.extend(ob::SEA_PICKLES..ob::SEA_PICKLES + 4);
+        out.extend([ob::BAMBOO, ob::BAMBOO_SMALL_LEAVES, ob::BAMBOO_LARGE_LEAVES]);
+        out.push(crate::world::sniffer_plants::t::POTTED);
+        out.extend([ut::ENDER_FRONT, ut::ENDER_SIDE, ut::ENDER_TOP]);
+        out
+    }
+
+    /// Writes v1.0 Track 10b's layers as a review sheet, as
+    /// [`final_art_sheet`] does, to `$VC_FINAL_ART_B_SHEET`.
+    #[test]
+    #[ignore]
+    fn final_art_b_sheet() {
+        let Ok(path) = std::env::var("VC_FINAL_ART_B_SHEET") else { return };
+        write_sheet(&path, &final_art_b_layers());
+    }
+
+    /// Writes one FNV-1a checksum per block layer (every layer below
+    /// `tex::COUNT`, as `pixel` draws it) to `$VC_LAYER_DIGESTS`, one
+    /// `layer checksum` line each: comparing two commits' files shows which
+    /// layers a change touched; run with `--ignored`.
+    #[test]
+    #[ignore]
+    fn layer_digests() {
+        let Ok(path) = std::env::var("VC_LAYER_DIGESTS") else { return };
+        let mut out = String::new();
+        for layer in 0..tex::COUNT as u16 {
+            let h = (0..SIZE * SIZE)
+                .flat_map(|i| pixel(layer, i % SIZE, i / SIZE))
+                .fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ b as u64).wrapping_mul(0x100_0000_01b3));
+            out.push_str(&format!("{layer} {h:016x}\n"));
+        }
+        std::fs::write(path, out).unwrap();
+    }
+
+    /// Writes `layers` as a review sheet to `path` (see [`final_art_sheet`]).
+    fn write_sheet(path: &str, layers: &[u16]) {
         let (cols, cell_w, cell_h) = (12, 16 * 8 + 4 + 32 * 4 + 12, 16 * 8 + 12);
         let rows = layers.len().div_ceil(cols);
         let (w, h) = (cols * cell_w, rows * cell_h);

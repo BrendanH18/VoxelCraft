@@ -12,6 +12,10 @@
 use super::{N, Tile, cracks, hu, paint, planks_grid, ramp, smooth_grid};
 use crate::world::block::tex;
 
+/// v1.0 Track 10b: the follow-up round, drawn with this round's primitives.
+#[path = "final_art_b_textures.rs"]
+mod round_b;
+
 type Px = [u8; 3];
 /// Four shades of one colour: dark, mid, light, highlight.
 type Shades = [Px; 4];
@@ -387,11 +391,7 @@ fn small_flowers(put: &mut impl FnMut(u16, Tile)) {
     leaf(&mut img, (8, 10), 1, 3, 1, &s);
     head(&mut img, 8, 5, &ROSE_HEAD, [58, 48, 50], [18, 14, 16]);
     put(706, img.tile());
-    // Torchflower: flame-shaped petals rising from a cup.
-    let mut img = Img::new();
-    flower_stem(&mut img, 8, 9, &[(13, -1, 4), (12, 1, 4)]);
-    torch_bloom(&mut img, 3);
-    put(3442, img.tile());
+    put(3442, torchflower().tile());
     // Eyeblossoms: open, pale petals round a glowing orange eye; closed, a
     // grey bud folded shut.
     let mut img = Img::new();
@@ -416,6 +416,15 @@ fn small_flowers(put: &mut impl FnMut(u16, Tile)) {
         [244, 210, 70],
     );
     put(2845, img.tile());
+}
+
+/// Torchflower: flame-shaped petals rising from a cup (Track 10b's potted
+/// torchflower draws it too).
+fn torchflower() -> Img {
+    let mut img = Img::new();
+    flower_stem(&mut img, 8, 9, &[(13, -1, 4), (12, 1, 4)]);
+    torch_bloom(&mut img, 3);
+    img
 }
 
 /// A torchflower's flame-shaped bloom, `stage` 1 (bud) to 3 (open).
@@ -1899,6 +1908,13 @@ pub(super) fn build(put: &mut impl FnMut(u16, Tile)) {
     grasses(put);
     crops(put);
     other_plants(put);
+    round_b::build(put);
+}
+
+/// Track 10b's layers, in review order.
+#[cfg(test)]
+pub(super) fn round_b_layers() -> Vec<u16> {
+    round_b::layers()
 }
 
 /// The layers this round draws, in review order (tests pin each one).
