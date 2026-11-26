@@ -533,7 +533,11 @@ pushed cart's facing (`pushOtherMinecart`'s 0.8 cosine of its yaw, which is
 0 for a cart that has not moved yet). Both then keep a fifth of their speed
 and share the average; a furnace cart keeps 95% of its own and hands the
 other its speed. Boats keep the earlier contact push. Right-click
-enters a rideable cart, the camera follows its seat, and sneak dismounts using
+enters a rideable cart, the camera follows its seat (Java's: the cart's
+0.1875 passenger attachment less the player's 0.6, so the feet sit 0.4125
+under the cart's; mobs sit on the attachment less their riding offset, and
+villagers and wandering traders on the cart's feet;
+[v1.0 Track 7b](verification/2026-11-25-v1.0-track-07b-end-fight-seats.md)), and sneak dismounts using
 Java's `getDismountLocationForPassenger`: the eight cells around the cart in
 `DismountHelper.offsetsForDirection` order (sideways first, relative to the rail
 axis), at the heights 0, +1 and -1 for standing, crouching and swimming poses,

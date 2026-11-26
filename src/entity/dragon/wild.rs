@@ -11,13 +11,12 @@
 //!   ignores knockback, but arrows still hurt it. Once more than a quarter
 //!   of its health (50) has been taken while sitting, it takes off.
 //! - Its fight origin is `BlockPos.ZERO` (nothing calls `setFightOrigin`),
-//!   so it perches on top of the column at (0, 0), and its 24 path nodes
-//!   are Java's absolute ring around (0, 0) at
-//!   `max(73, MOTION_BLOCKING_NO_LEAVES height + 5/15/5)`.
+//!   so it perches on top of the column at (0, 0). Its path nodes are the
+//!   same 24 nodes around (0, 0) as the End fight's (`super::path`).
 //! - With no fight it counts no crystals: `findClosestNode` and `findPath`
 //!   use only the inner nodes 12–23, the holding pattern circles the eight
 //!   nodes at radius 40 and lands one time in three, and a strafe follows
-//!   one time in two.
+//!   one time in two. The phases are the fight dragon's, in `super`.
 //! - No boss bar, no exit portal, no gateway: `tickDeath` pays 500
 //!   experience and removes it. `checkDespawn` does nothing, so it never
 //!   despawns. Crystals within 32 still heal it.
@@ -29,246 +28,13 @@ use crate::entity::crystal::Crystals;
 use crate::entity::{Ctx, EntityEvent, Rng};
 use crate::physics::{self, BlockSource};
 
-/// `EnderDragon.findClosestNode`'s lowest node height.
-pub const MIN_NODE_Y: i32 = 73;
 /// `EntityTypes.ENDER_DRAGON`: 16 wide and 8 tall.
 pub const SHAPE: crate::physics::Shape = crate::physics::Shape::new(8.0, 8.0);
-
-/// `EnderDragon.nodeAdjacency`: which nodes each node links to.
-const ADJACENCY: [u32; 24] = [
-    6146, 8197, 8202, 16404, 32808, 32848, 65696, 131392, 131712, 263424, 526848, 525313, 1581057, 3166214, 2138120,
-    6373424, 4358208, 12910976, 9044480, 9706496, 15216640, 13688832, 11763712, 8257536,
-];
-
-/// The top of the motion-blocking column at `(x, z)` with leaves left out
-/// (`Heightmap.Types.MOTION_BLOCKING_NO_LEAVES`): the cell above the
-/// highest block with collision or fluid, scanning down from `top`.
-/// `None` while the column isn't loaded.
-pub fn surface<W: BlockSource + ?Sized>(world: &W, x: i32, z: i32, top: i32, floor: i32) -> Option<i32> {
-    for y in (floor..=top).rev() {
-        let b = world.block(IVec3::new(x, y, z))?;
-        if (b.is_solid() || b.is_fluid()) && !b.is_leaves() {
-            return Some(y + 1);
-        }
-    }
-    Some(floor)
-}
-
-/// Java's node `(x, z)` for node `i` (`Mth.floor(r * Mth.cos(2 * (-PI + step * k)))`).
-pub fn node_column(i: usize) -> (i32, i32) {
-    use crate::knockback::{mth_cos, mth_sin};
-    let (radius, step, k) = match i {
-        0..12 => (60.0f32, std::f32::consts::PI / 12.0, i),
-        12..20 => (40.0, std::f32::consts::PI / 8.0, i - 12),
-        _ => (20.0, std::f32::consts::PI / 4.0, i - 20),
-    };
-    let a = 2.0f32 * (-std::f32::consts::PI + step * k as f32);
-    ((radius * mth_cos(a as f64)).floor() as i32, (radius * mth_sin(a as f64)).floor() as i32)
-}
-
-/// The 24 nodes, and whether every column was loaded (the result is kept
-/// only then; until it is, unloaded columns sit at the lowest height).
-pub fn nodes<W: BlockSource + ?Sized>(world: &W, top: i32, floor: i32) -> ([DVec3; 24], bool) {
-    let mut complete = true;
-    let nodes = std::array::from_fn(|i| {
-        let (x, z) = node_column(i);
-        let lift = if (12..20).contains(&i) { 15 } else { 5 };
-        let ground = surface(world, x, z, top, floor);
-        complete &= ground.is_some();
-        let y = ground.map_or(MIN_NODE_Y, |g| (g + lift).max(MIN_NODE_Y));
-        DVec3::new(x as f64, y as f64, z as f64)
-    });
-    (nodes, complete)
-}
-
-/// `EnderDragon.findPath`: A* over the node links, never through nodes
-/// below `min` (12 with no crystals). The nodes to fly through after
-/// `from`, nearest last (so `pop` gives the next), with `last` appended.
-pub fn find_path(nodes: &[DVec3; 24], from: usize, to: usize, min: usize, last: Option<DVec3>) -> Vec<DVec3> {
-    // `Node.distanceTo`: float distance between whole-block positions.
-    let dist = |a: usize, b: usize| (nodes[a] - nodes[b]).as_vec3().length();
-    let mut g = [f32::INFINITY; 24];
-    let mut came = [usize::MAX; 24];
-    let mut closed = [false; 24];
-    let mut open = vec![from];
-    g[from] = 0.0;
-    let mut closest = from;
-    let mut found = false;
-    while !open.is_empty() {
-        let (k, _) = open
-            .iter()
-            .enumerate()
-            .min_by(|a, b| (g[*a.1] + dist(*a.1, to)).total_cmp(&(g[*b.1] + dist(*b.1, to))))
-            .unwrap();
-        let node = open.swap_remove(k);
-        if node == to {
-            found = true;
-            break;
-        }
-        if dist(node, to) < dist(closest, to) {
-            closest = node;
-        }
-        closed[node] = true;
-        for next in min..24 {
-            if ADJACENCY[node] & (1 << next) == 0 || closed[next] {
-                continue;
-            }
-            let tentative = g[node] + dist(node, next);
-            if tentative < g[next] {
-                came[next] = node;
-                g[next] = tentative;
-                if !open.contains(&next) {
-                    open.push(next);
-                }
-            }
-        }
-    }
-    let end = if found { to } else { closest };
-    if end == from {
-        return Vec::new();
-    }
-    let mut path: Vec<DVec3> = last.into_iter().collect();
-    let mut at = end;
-    while at != from {
-        path.push(nodes[at]);
-        at = came[at];
-    }
-    path
-}
-
-/// `(i - 12) & 7 + 12`: a node index folded onto the eight inner ring nodes.
-fn inner_ring(i: i32) -> usize {
-    (((i - 12) & 7) + 12) as usize
-}
-
-impl Dragon {
-    /// The phases that differ for a dragon with no fight; returns whether
-    /// it handled this one.
-    pub(super) fn think_free<W: BlockSource + ?Sized>(
-        &mut self,
-        arena: &mut Arena<'_>,
-        world: &W,
-        ctx: &Ctx,
-        rng: &mut Rng,
-    ) -> bool {
-        match self.phase {
-            // `DragonHoverPhase.doServerTick`: hold where it was.
-            Phase::Hovering => {
-                if self.target.is_none() {
-                    self.target = Some(self.pos);
-                }
-            }
-            Phase::HoldingPattern => {
-                if self.target_reached() {
-                    self.holding_free(arena, world, ctx, rng);
-                }
-            }
-            Phase::LandingApproach => {
-                if self.target_reached() {
-                    if self.path.is_empty() {
-                        // `findNewTarget`: from the nearest node to the one
-                        // away from the player nearest the egg, then the egg.
-                        let egg = arena.perch(world);
-                        let current = arena.closest_node(self.pos, 12..24);
-                        // `NEAR_EGG_TARGETING` has no range.
-                        let player = nearest(ctx, egg);
-                        let target = match player {
-                            Some(p) => {
-                                let aim = p.with_y(0.0).normalize_or_zero();
-                                arena.closest_node(DVec3::new(-aim.x * 40.0, 105.0, -aim.z * 40.0), 12..24)
-                            }
-                            None => arena.closest_node(DVec3::new(40.0, egg.y.floor(), 0.0), 12..24),
-                        };
-                        let last = egg.floor().with_y(egg.y.floor());
-                        self.path = find_path(arena.nodes, current, target, 12, Some(last));
-                        if self.path.is_empty() {
-                            // No path: Java keeps trying.
-                            return true;
-                        }
-                    }
-                    self.next_waypoint(rng, true);
-                    if self.path.is_empty() {
-                        self.set_phase(Phase::Landing);
-                    }
-                }
-            }
-            Phase::Takeoff => {
-                if self.phase_ticks <= 1 && self.path.is_empty() && self.target.is_none() {
-                    // `DragonTakeoffPhase.findNewTarget`: out along the head's
-                    // look (pitched down by its distance from the egg).
-                    let egg = arena.perch(world);
-                    let current = arena.closest_node(self.pos, 12..24);
-                    let dist = ((egg.distance(self.pos) / 4.0) as f32).max(1.0);
-                    let pitch = (-6.0 / dist * 1.5 * 5.0).to_radians();
-                    let out = super::heading(self.yaw) * pitch.cos() as f64;
-                    let t = arena.closest_node(DVec3::new(out.x * 40.0, 105.0, out.z * 40.0), 12..24);
-                    self.path = find_path(arena.nodes, current, inner_ring(t as i32), 12, None);
-                    self.next_waypoint(rng, true);
-                } else {
-                    let egg = arena.perch(world);
-                    if egg.distance_squared(self.pos) >= 100.0 {
-                        self.set_phase(Phase::HoldingPattern);
-                    }
-                }
-            }
-            _ => return false,
-        }
-        true
-    }
-
-    /// `DragonHoldingPatternPhase.findNewTarget` with no crystals.
-    fn holding_free<W: BlockSource + ?Sized>(&mut self, arena: &Arena<'_>, world: &W, ctx: &Ctx, rng: &mut Rng) {
-        if self.path.is_empty() && self.target.is_some() {
-            if rng.next_int(3) == 0 {
-                self.set_phase(Phase::LandingApproach);
-                return;
-            }
-            let egg = arena.perch(world);
-            // `NEW_TARGET_TARGETING` has no range.
-            if let Some(t) = ctx
-                .players
-                .iter()
-                .filter(|t| t.targetable)
-                .min_by(|a, b| a.pos.distance_squared(egg).total_cmp(&b.pos.distance_squared(egg)))
-            {
-                let center = egg.floor() + DVec3::splat(0.5);
-                let odds = (center.distance_squared(t.pos) / 512.0 + 2.0) as u32;
-                if rng.next_int(odds.max(1)) == 0 || rng.next_int(2) == 0 {
-                    self.set_phase(Phase::Strafe(t.id));
-                    return;
-                }
-            }
-        }
-        if self.path.is_empty() {
-            let current = arena.closest_node(self.pos, 12..24) as i32;
-            let mut to = current;
-            if rng.next_int(8) == 0 {
-                self.clockwise = !self.clockwise;
-                to += 6;
-            }
-            to += if self.clockwise { 1 } else { -1 };
-            self.path = find_path(arena.nodes, current as usize, inner_ring(to), 12, None);
-        }
-        self.next_waypoint(rng, true);
-    }
-}
-
-/// The nearest targetable player to `at`.
-fn nearest(ctx: &Ctx, at: DVec3) -> Option<DVec3> {
-    ctx.players
-        .iter()
-        .filter(|t| t.targetable)
-        .min_by(|a, b| a.pos.distance_squared(at).total_cmp(&b.pos.distance_squared(at)))
-        .map(|t| t.pos)
-}
 
 /// One dragon no fight owns.
 pub struct WildDragon {
     pub id: u32,
     pub dragon: Dragon,
-    /// Its path nodes once every column was loaded (Java computes them
-    /// once, on the first `findClosestNode`).
-    nodes: Option<[DVec3; 24]>,
 }
 
 /// The dragons no fight owns in this dimension, with their fireballs and
@@ -297,7 +63,7 @@ impl Wild {
         dragon.place_parts();
         let id = self.next_id;
         self.next_id += 1;
-        self.dragons.push(WildDragon { id, dragon, nodes: None });
+        self.dragons.push(WildDragon { id, dragon });
         id
     }
 
@@ -338,25 +104,15 @@ impl Wild {
             if world.block(w.dragon.pos.floor().as_ivec3()).is_none() {
                 return true;
             }
-            let nodes = match w.nodes {
-                Some(n) => n,
-                None => {
-                    let (n, complete) = nodes(world, top, floor);
-                    if complete {
-                        w.nodes = Some(n);
-                    }
-                    n
-                }
-            };
             let mut arena = Arena {
                 fight: false,
                 alive_crystals: 0,
                 previously_killed: true,
-                nodes: &nodes,
                 podium: IVec3::ZERO,
                 fireballs,
                 clouds,
                 ceiling: top as f64 + 16.0,
+                top,
                 floor,
             };
             w.dragon.tick(&mut arena, world, ctx, rng, crystals, events)
@@ -476,7 +232,7 @@ impl Wild {
                 Some(i) => i,
                 None => {
                     let at = super::replica_v3(&d["dragon"]["pos"]).unwrap_or_default();
-                    self.dragons.push(WildDragon { id, dragon: Dragon::new(at), nodes: None });
+                    self.dragons.push(WildDragon { id, dragon: Dragon::new(at) });
                     self.dragons.len() - 1
                 }
             };
@@ -520,24 +276,6 @@ mod tests {
         for _ in 0..ticks {
             wild.update(TICK, &Ground, ctx, &mut rng, &crystals, events);
         }
-    }
-
-    #[test]
-    fn nodes_follow_javas_ring_around_the_origin() {
-        // `findClosestNode`: radius 60, 40 and 20, at `max(73, ground + 5/15/5)`.
-        assert_eq!(node_column(0), (60, 0));
-        assert_eq!(node_column(6), (-60, 0));
-        assert_eq!(node_column(12), (40, 0));
-        assert_eq!(node_column(20), (20, 0));
-        let (nodes, complete) = nodes(&Ground, 320, -64);
-        assert!(complete);
-        assert_eq!(nodes[0].y, 73.0, "ground 64 + 5 is under the floor of 73");
-        assert_eq!(nodes[12].y, 79.0, "the middle ring is 15 over the ground");
-        // The A* path between two inner nodes stays on the inner nodes.
-        let path = find_path(&nodes, 12, 16, 12, None);
-        assert!(!path.is_empty());
-        assert!(path.iter().all(|p| nodes[12..].contains(p)));
-        assert_eq!(path.first(), Some(&nodes[16]), "the goal is popped last");
     }
 
     #[test]
