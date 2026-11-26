@@ -402,8 +402,9 @@ impl Game {
     }
 
     /// Saves this dimension and swaps in `to`, with the player waiting at
-    /// `arrival` until the ground there has loaded. Returns false, changing
-    /// nothing, when the save failed.
+    /// `arrival` until the ground there has loaded. Returns false when the
+    /// save failed: the current dimension stays loaded and the portal locks
+    /// until the player steps out.
     pub(super) fn switch_dimension(&mut self, to: Dimension, arrival: Arrival) -> bool {
         // An open ender chest hands its contents back before the world goes.
         if let super::Container::Chest(pos) = self.body.container
