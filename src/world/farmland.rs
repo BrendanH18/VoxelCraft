@@ -110,7 +110,7 @@ impl World {
             if m > 0 {
                 self.edit_flags(p, farmland(m - 1), MOISTURE_FLAGS);
             } else if !self.get_block(p + IVec3::Y).is_some_and(maintains_farmland) {
-                self.farmland_to_dirt(p);
+                self.farmland_to_dirt(p, super::vibration::EventSource::NONE);
             }
         } else if m < MAX_MOISTURE {
             self.edit_flags(p, farmland(MAX_MOISTURE), MOISTURE_FLAGS);
@@ -121,13 +121,15 @@ impl World {
     /// 15/16 top lifted onto the full block (`Block.pushEntitiesUp`), and
     /// a `block_change` game event. A crop above loses its soil and pops
     /// off with the block update.
-    pub fn farmland_to_dirt(&mut self, p: IVec3) {
+    /// `source` is the entity that trampled it, or no one when it dried out
+    /// or was covered (v1.0 Track 9).
+    pub fn farmland_to_dirt(&mut self, p: IVec3, source: super::vibration::EventSource) {
         if !self.get_block(p).is_some_and(is_farmland) {
             return;
         }
         self.queue_block_push(p, 15. / 16., 1.);
         self.set_block(p, Block::DIRT);
-        self.emit_block_event(p, super::vibration::GameEvent::BlockChange, super::vibration::EventSource::NONE, None);
+        self.emit_block_event(p, super::vibration::GameEvent::BlockChange, source, Some(Block::DIRT));
     }
 
     /// The shape update a change at `p` sends the farmland below it:
@@ -136,7 +138,7 @@ impl World {
     pub(super) fn update_farmland_below(&mut self, p: IVec3) {
         let soil = p - IVec3::Y;
         if self.get_block(soil).is_some_and(is_farmland) && !self.farmland_survives(soil) {
-            self.farmland_to_dirt(soil);
+            self.farmland_to_dirt(soil, super::vibration::EventSource::NONE);
         }
     }
 
@@ -153,6 +155,7 @@ impl World {
         width: f32,
         height: f32,
         allowed: bool,
+        source: super::vibration::EventSource,
     ) -> bool {
         if !self.get_block(cell).is_some_and(is_farmland) {
             return false;
@@ -163,20 +166,26 @@ impl World {
         if !allowed || width * width * height <= TRAMPLE_VOLUME {
             return false;
         }
-        self.farmland_to_dirt(cell);
+        self.farmland_to_dirt(cell, source);
         true
     }
 
     /// `fallOn` for a player whose feet (`pos`) landed `landed` blocks
     /// below where the fall began, on the block 0.1 under them. Returns
     /// whether farmland was trampled.
-    pub fn player_landed(&mut self, pos: glam::DVec3, shape: crate::physics::Shape, landed: f64) -> bool {
+    pub fn player_landed(
+        &mut self,
+        pos: glam::DVec3,
+        shape: crate::physics::Shape,
+        landed: f64,
+        source: super::vibration::EventSource,
+    ) -> bool {
         if landed <= 0.5 {
             return false;
         }
         let cell = (pos - glam::DVec3::Y * 0.1).floor().as_ivec3();
         let width = (shape.half_width * 2.0) as f32;
-        self.trample_farmland(cell, landed, width, shape.height as f32, true)
+        self.trample_farmland(cell, landed, width, shape.height as f32, true, source)
     }
 }
 

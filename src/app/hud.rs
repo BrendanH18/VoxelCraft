@@ -161,8 +161,9 @@ impl Game {
             ui.rect(0.0, 0.0, sw, sh, [0.8, 0.0, 0.0, 0.35 * (1.0 - hurt / HURT_FLASH)]);
         }
 
-        // Crosshair.
-        if !self.session.vitals.is_dead() {
+        // Crosshair: `Hud.extractCrosshair` draws it, and its attack
+        // indicator, in first person only (v1.0 Track 9).
+        if !self.session.vitals.is_dead() && self.camera.first_person() {
             let (cx, cy) = ((sw / 2.0).floor(), (sh / 2.0).floor());
             ui.rect(cx - 5.0, cy - 0.5, 10.0, 1.0, [1.0, 1.0, 1.0, 0.85]);
             ui.rect(cx - 0.5, cy - 5.0, 1.0, 10.0, [1.0, 1.0, 1.0, 0.85]);
@@ -171,7 +172,11 @@ impl Game {
             }
             if let Some(power) = self.bow_power().filter(|_| !self.inventory_open && !self.menu.is_open()) {
                 bow_bar(&mut ui, cx, cy, power);
-            } else if !self.inventory_open && !self.menu.is_open() && self.session.mode != GameMode::Spectator {
+            } else if !self.inventory_open
+                && !self.menu.is_open()
+                && self.session.mode != GameMode::Spectator
+                && self.settings.attack_indicator == super::settings::AttackIndicator::Crosshair
+            {
                 let living =
                     self.mob_target().is_some() || self.lan_player_target(&super::lan::PlayerRef::Host).is_some();
                 if let Some(indicator) = self.session.attack_indicator(self.body.actions.selected, living) {
@@ -302,6 +307,17 @@ impl Game {
         let y0 = self.bar_ui(ui, &hud, now);
         let survival = hud.survival;
         let sw = ui.size().0;
+        // v1.0 Track 9: `Hud.extractItemHotbar`'s attack indicator, beside
+        // the hotbar on the main hand's side, while the charge is below full.
+        if self.settings.attack_indicator == super::settings::AttackIndicator::Hotbar
+            && self.session.mode != GameMode::Spectator
+        {
+            let scale = self.session.attack_strength(self.body.actions.selected, 0.0);
+            if scale < 1.0 {
+                let x = ((sw - HOTBAR_WIDTH) / 2.0).floor() + HOTBAR_WIDTH + 6.0;
+                hotbar_attack_indicator(ui, x, y0 + 2.0, scale);
+            }
+        }
 
         // Popup message (item names, mode changes), fading out.
         let age = (now - self.popup.1).as_secs_f32();
@@ -1749,6 +1765,17 @@ pub(super) fn attack_indicator(ui: &mut Ui, cx: f32, cy: f32, indicator: voxelcr
             ui.rect(x + 7.0, y - 1.0, 2.0, 3.0, [1.0, 1.0, 1.0, 0.85]);
         }
     }
+}
+
+/// The hotbar's width: nine 20-pixel slots and the frame.
+const HOTBAR_WIDTH: f32 = 20.0 * 9.0 + 2.0;
+
+/// v1.0 Track 9: Java's hotbar attack indicator, an 18-pixel square at
+/// (x, y) filling from the bottom in 19ths of the charge (original art).
+pub(super) fn hotbar_attack_indicator(ui: &mut Ui, x: f32, y: f32, scale: f32) {
+    let progress = (scale * 19.0).floor().clamp(0.0, 18.0);
+    ui.rect(x, y, 18.0, 18.0, [0.0, 0.0, 0.0, 0.6]);
+    ui.rect(x + 1.0, y + 18.0 - progress, 16.0, progress, [1.0, 1.0, 1.0, 0.85]);
 }
 
 /// Bow draw strength under the crosshair at (cx, cy); gold when full.

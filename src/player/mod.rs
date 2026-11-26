@@ -116,6 +116,15 @@ pub struct Player {
     pub elytra_rot: [[f32; 3]; 2],
     /// `GameRenderer`'s previous and current field-of-view modifier.
     fov: (f32, f32),
+    /// v1.0 Track 9: the Auto-Jump option (`autoJump`), copied in by the
+    /// client that drives this player (`LocalPlayer.autoJumpEnabled`).
+    pub auto_jump: bool,
+    /// v1.0 Track 9: `Camera.eyeHeightOld` and `eyeHeight`: the camera's
+    /// eye height eases halfway to the pose's each tick (sneaking).
+    camera_eye: (f64, f64),
+    /// The pose's eye height when the last tick began, for
+    /// [`Player::camera_eye_offset`].
+    eye_height_before: f64,
     /// Java movement state carried between ticks.
     motion: travel::Motion,
 }
@@ -201,8 +210,35 @@ impl Player {
             glider_used: false,
             elytra_rot: [ELYTRA_REST; 2],
             fov: (1.0, 1.0),
+            auto_jump: false,
+            camera_eye: (EYE_HEIGHT, EYE_HEIGHT),
+            eye_height_before: EYE_HEIGHT,
             motion: Default::default(),
         }
+    }
+
+    /// v1.0 Track 9: takes a pending auto-jump (`autoJumpTime`), for a
+    /// client that sends it as a jump press instead.
+    pub fn take_auto_jump(&mut self) -> bool {
+        std::mem::take(&mut self.motion.auto_jump_time) > 0
+    }
+
+    /// v1.0 Track 9: `Camera.tick`'s eye-height easing, run as a client tick
+    /// begins.
+    pub(crate) fn tick_camera_eye(&mut self) {
+        let height = self.pose.eye_height();
+        self.eye_height_before = height;
+        self.camera_eye.0 = self.camera_eye.1;
+        self.camera_eye.1 += (height - self.camera_eye.1) * 0.5_f32 as f64;
+    }
+
+    /// What to add to the interpolated eye ([`crate::simulation::interpolated_eye`])
+    /// for the camera's eased eye height (`Camera.alignWithEntity`).
+    pub fn camera_eye_offset(&self, alpha: f32) -> f64 {
+        let alpha = f64::from(alpha.clamp(0.0, 1.0));
+        let eased = self.camera_eye.0 + (self.camera_eye.1 - self.camera_eye.0) * alpha;
+        let pose = self.eye_height_before + (self.pose.eye_height() - self.eye_height_before) * alpha;
+        eased - pose
     }
 
     pub fn collision_shape(&self) -> Shape {

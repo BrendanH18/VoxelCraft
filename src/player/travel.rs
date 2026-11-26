@@ -57,6 +57,12 @@ pub(super) struct Motion {
     xxa: f32,
     zza: f32,
     colliders: Vec<Collider>,
+    /// v1.0 Track 9: `LocalPlayer.autoJumpTime`, set by `updateAutoJump`
+    /// and spent as a jump press on the next tick.
+    pub(super) auto_jump_time: u8,
+    /// `ClientInput.getMoveVector()` this tick: the unit key vector (left,
+    /// forward) before `modifyInput`.
+    move_vector: (f32, f32),
 }
 
 /// `Block.getFriction`.
@@ -139,6 +145,7 @@ fn modify_input_with(x: f32, y: f32, using_item: bool, slow: Option<f32>) -> (f3
 impl Player {
     /// One 20 Hz Java tick. Does nothing until the feet's chunk is loaded.
     pub fn tick<W: BlockSource + ?Sized>(&mut self, input: MoveInput, world: &W) {
+        self.tick_camera_eye();
         self.honey_sliding = false;
         self.honey_landed = false;
         self.kinetic_damage = 0.0;
@@ -179,7 +186,6 @@ impl Player {
             (1.0 / TICK_RATE) as f32,
             self.yaw,
             self.flying,
-            self.on_ground,
         );
         self.tick_fov();
         // `LivingEntity.updateSwimAmount`.
@@ -259,6 +265,14 @@ impl Player {
         let has_forward = forward > 1.0e-5;
         let shift = input.descend;
         self.sneaking = shift;
+        self.motion.move_vector = (left, forward);
+        // `LocalPlayer.aiStep`: a pending auto-jump presses jump for this
+        // tick (`input.makeJump()`).
+        let mut input = input;
+        if self.motion.auto_jump_time > 0 {
+            self.motion.auto_jump_time -= 1;
+            input.jump = true;
+        }
 
         if !self.noclip && !riding {
             let reach = super::HALF_WIDTH * 2.0 * 0.35;
@@ -327,6 +341,14 @@ impl Player {
             }
         }
 
+        // `AbstractClientPlayer.aiStep`'s `updateBob`, from the motion
+        // before this tick's travel. Riding resets it (`rideTick`).
+        if riding {
+            self.animation.reset_bob();
+        } else {
+            let target = if self.on_ground && !self.swimming { (dm.x.hypot(dm.z) as f32).min(0.1) } else { 0.0 };
+            self.animation.update_bob(target);
+        }
         // `Player.aiStep`.
         if self.flying && !riding {
             self.motion.fall_distance = 0.0;
@@ -732,6 +754,130 @@ impl Player {
         let factor = if self.flying || self.fall_flying { 1.0 } else { self.block_speed_factor(world) } as f64;
         dm.x *= factor;
         dm.z *= factor;
+        // `LocalPlayer.move`: auto-jump looks at the move just made.
+        self.update_auto_jump(world, movement.x as f32, movement.z as f32);
+    }
+
+    /// v1.0 Track 9: `LocalPlayer.canAutoJump`.
+    fn can_auto_jump<W: BlockSource + ?Sized>(&self, world: &W) -> bool {
+        let (left, forward) = self.motion.move_vector;
+        self.auto_jump
+            && self.motion.auto_jump_time == 0
+            && self.on_ground
+            && !self.sneaking
+            && self.vehicle.is_none()
+            && left * left + forward * forward > 0.0
+            && self.block_jump_factor(world) >= 1.0
+    }
+
+    /// v1.0 Track 9: `LocalPlayer.updateAutoJump(xa, za)`, after a move of
+    /// (xa, za): an obstacle more than half a block and at most the jump
+    /// height (1.2, plus 0.75 a Jump Boost level) above the feet, within
+    /// seven ticks' walk ahead, with headroom above, sets a jump for the
+    /// next tick. Block shapes only; Java's `getCollisions` also sees
+    /// colliding entities (boats, shulkers) and the world border.
+    fn update_auto_jump<W: BlockSource + ?Sized>(&mut self, world: &W, xa: f32, za: f32) {
+        if !self.can_auto_jump(world) {
+            return;
+        }
+        let begin = self.pos;
+        let end = begin + DVec3::new(xa as f64, 0.0, za as f64);
+        let mut diff = DVec3::new(xa as f64, 0.0, za as f64);
+        let speed = self.movement_speed();
+        let mut dist_sq = diff.length_squared() as f32;
+        if dist_sq <= 0.001 {
+            let (left, forward) = self.motion.move_vector;
+            let (input_xa, input_za) = (speed * left, speed * forward);
+            // `getYRot()` in Java's degrees is this yaw less a quarter turn.
+            let angle = self.yaw - FRAC_PI_2;
+            let (sin, cos) = (angle.sin(), angle.cos());
+            diff =
+                DVec3::new((input_xa * cos - input_za * sin) as f64, diff.y, (input_za * cos + input_xa * sin) as f64);
+            dist_sq = diff.length_squared() as f32;
+            if dist_sq <= 0.001 {
+                return;
+            }
+        }
+        let inverted = 1.0 / dist_sq.sqrt();
+        let dir = diff * inverted as f64;
+        let facing = self.forward().as_dvec3();
+        if ((facing.x * dir.x + facing.z * dir.z) as f32) < -0.15 {
+            return;
+        }
+        let context = Some(self.collision_context());
+        let empty = |cell: IVec3| {
+            let mut empty = true;
+            physics::cell_boxes_context(world, cell, context, |_, _| empty = false);
+            empty
+        };
+        let (_, top) = self.collision_shape().aabb(self.pos);
+        let mut ceiling = DVec3::new(self.pos.x, top.y, self.pos.z).floor().as_ivec3();
+        if !empty(ceiling) {
+            return;
+        }
+        ceiling.y += 1;
+        if !empty(ceiling) {
+            return;
+        }
+        let mut jump_height = 1.2_f32;
+        if self.modifiers.jump_levels > 0 {
+            jump_height += self.modifiers.jump_levels as f32 * 0.75;
+        }
+        let look_ahead = (speed * 7.0).max(1.0 / inverted);
+        let seg_end = end + dir * look_ahead as f64;
+        let shape = self.collision_shape();
+        let (width, height) = ((shape.half_width * 2.0) as f32 as f64, shape.height as f32 as f64);
+        // `new AABB(moveBegin, segEnd + (0, height, 0)).inflate(width, 0, width)`.
+        let test_min = begin.min(seg_end + DVec3::Y * height) - DVec3::new(width, 0.0, width);
+        let test_max = begin.max(seg_end + DVec3::Y * height) + DVec3::new(width, 0.0, width);
+        let lift = DVec3::Y * 0.51_f32 as f64;
+        let (seg_begin, seg_end) = (begin + lift, seg_end + lift);
+        let right = dir.cross(DVec3::Y) * (width * 0.5_f32 as f64);
+        let left_seg = (seg_begin - right, seg_end - right);
+        let right_seg = (seg_begin + right, seg_end + right);
+        let mut colliders = std::mem::take(&mut self.motion.colliders);
+        physics::colliders_context(world, test_min, test_max, context, &mut colliders);
+        // `BlockCollisions` walks `Cursor3D`: x fastest, then y, then z.
+        colliders.sort_by_key(|c| (c.cell.z, c.cell.y, c.cell.x));
+        let hits = |c: &Collider, (a, b): (DVec3, DVec3)| {
+            let (lo, hi) = (a.min(b), a.max(b));
+            c.min.x < hi.x && c.max.x > lo.x && c.min.y < hi.y && c.max.y > lo.y && c.min.z < hi.z && c.max.z > lo.z
+        };
+        // The first box either side's segment meets, raised by the blocks
+        // stacked on it up to the jump height (`return` where Java gives up).
+        let obstacle = colliders.iter().find(|c| hits(c, left_seg) || hits(c, right_seg)).and_then(|c| {
+            let mut height = c.max.y as f32;
+            let center = ((c.min + c.max) * 0.5).floor().as_ivec3();
+            let mut steps = 1;
+            while (steps as f32) < jump_height {
+                let above = center + IVec3::Y * steps;
+                let mut shape_top: Option<f64> = None;
+                physics::cell_boxes_context(world, above, context, |_, max| {
+                    shape_top = Some(shape_top.map_or(max.y, |t: f64| t.max(max.y)));
+                });
+                if let Some(top) = shape_top {
+                    height = top as f32;
+                    if (top - self.pos.y) as f32 > jump_height {
+                        return None;
+                    }
+                }
+                if steps > 1 {
+                    ceiling.y += 1;
+                    if !empty(ceiling) {
+                        return None;
+                    }
+                }
+                steps += 1;
+            }
+            Some(height)
+        });
+        self.motion.colliders = colliders;
+        if let Some(height) = obstacle {
+            let dy = (height as f64 - self.pos.y) as f32;
+            if dy > 0.5 && dy <= jump_height {
+                self.motion.auto_jump_time = 1;
+            }
+        }
     }
 
     /// `Entity.restituteMovementAfterCollisions`: collided axes stop, and a

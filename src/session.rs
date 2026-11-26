@@ -370,7 +370,7 @@ impl PlayerSession {
         {
             return 0;
         }
-        world.frost_walk(self.player.pos, level, |p| entities.cell_occupied(p))
+        world.frost_walk_by(self.player.pos, level, |p| entities.cell_occupied(p), self.event_source())
     }
 
     /// Java's respawn (`ServerPlayer.restoreFrom` after a death): a fresh

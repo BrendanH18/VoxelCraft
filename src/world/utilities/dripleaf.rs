@@ -42,7 +42,21 @@ impl World {
     }
 
     fn set_dripleaf_tilt(&mut self, p: IVec3, state: crate::world::block::Block) {
+        let previous = self.get_block(p).and_then(dripleaf_of).map(|(_, t, _)| t);
         self.edit(p, state, true);
+        // v1.0 Track 9: `BigDripleafBlock.setTilt` posts `block_change`, from
+        // no one, for a new tilt that `causesVibration` (all but unstable).
+        if let Some((_, tilt, _)) = dripleaf_of(state)
+            && tilt != Tilt::Unstable
+            && Some(tilt) != previous
+        {
+            self.emit_block_event(
+                p,
+                crate::world::vibration::GameEvent::BlockChange,
+                crate::world::vibration::EventSource::NONE,
+                None,
+            );
+        }
         self.utilities.tilts.retain(|&(q, _)| q != p);
         if let Some((_, tilt, _)) = dripleaf_of(state)
             && let Some(ticks) = delay(tilt)

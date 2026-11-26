@@ -11,7 +11,6 @@ use crate::player::Player;
 
 /// Default block friction (0.6) times the 0.91 air drag Java applies to
 /// `deltaMovement` at the end of a ground `travel`.
-const GROUND_FRICTION: f32 = 0.6 * 0.91;
 
 #[derive(Default, Debug)]
 pub struct WalkAnimation {
@@ -31,16 +30,10 @@ pub struct WalkAnimation {
 impl WalkAnimation {
     /// LivingEntity.calculateEntityAnimation: displacement * 4, capped at 1;
     /// WalkAnimationState smooths speed by 0.4 per 20 Hz tick, then accumulates it.
-    pub fn update(&mut self, distance: f32, dt: f32, yaw: f32, flying: bool, on_ground: bool) {
+    pub fn update(&mut self, distance: f32, dt: f32, yaw: f32, flying: bool) {
         let ticks = dt * 20.0;
         self.previous_walk_dist = self.walk_dist;
         self.walk_dist += distance * 0.6;
-        self.previous_bob = self.bob;
-        // Java's `Player.aiStep` bobs toward min(0.1, |deltaMovement|), and a ground
-        // tick leaves deltaMovement at the move scaled by the 0.6 x 0.91 friction.
-        let bob_target =
-            if on_ground && !flying { (distance / ticks.max(1e-4) * GROUND_FRICTION).min(0.1) } else { 0.0 };
-        self.bob += (bob_target - self.bob) * (1.0 - 0.6f32.powf(ticks));
         self.previous_speed = self.speed;
         let target = if flying { 0.0 } else { (distance * 4.0 / ticks.max(1e-4)).min(1.0) };
         self.speed += (target - self.speed) * (1.0 - 0.6f32.powf(ticks));
@@ -53,6 +46,21 @@ impl WalkAnimation {
         self.body_yaw += delta * (1.0 - 0.7f32.powf(ticks));
         // Java's body/head limit keeps the head from looking through its back.
         self.body_yaw = yaw - angle(yaw - self.body_yaw).clamp(-85f32.to_radians(), 85f32.to_radians());
+    }
+
+    /// v1.0 Track 9: `ClientAvatarState.updateBob`, from
+    /// `AbstractClientPlayer.updateBob` once a tick: `target` is
+    /// min(0.1, the horizontal `deltaMovement`) on the ground, alive and not
+    /// swimming, otherwise 0.
+    pub fn update_bob(&mut self, target: f32) {
+        self.previous_bob = self.bob;
+        self.bob += (target - self.bob) * 0.4;
+    }
+
+    /// `ClientAvatarState.resetBob`: riding stops the bob at once.
+    pub fn reset_bob(&mut self) {
+        self.previous_bob = self.bob;
+        self.bob = 0.0;
     }
 
     pub fn sample(&self, alpha: f32) -> (f32, f32) {
@@ -602,24 +610,24 @@ mod tests {
     #[test]
     fn walk_uses_distance_and_java_tick_smoothing() {
         let mut w = WalkAnimation::default();
-        w.update(0.2, 0.05, 0., false, true);
+        w.update(0.2, 0.05, 0., false);
         assert!((w.speed - 0.32).abs() < 1e-6);
         assert!((w.position - 0.32).abs() < 1e-6);
-        assert!((w.bob - 0.04).abs() < 1e-6);
         assert!((w.walk_dist - 0.12).abs() < 1e-6);
-        w.update(0., 0.05, 0., false, true);
+        w.update(0., 0.05, 0., false);
         assert!((w.speed - 0.192).abs() < 1e-6);
     }
-    /// Sneaking covers about 0.065 blocks a tick, but Java's bob reads the
-    /// post-friction velocity (0.035), not the displacement.
+    /// `ClientAvatarState.updateBob` eases 0.4 of the way each tick, and
+    /// `resetBob` drops it at once, keeping the old value to interpolate from.
     #[test]
-    fn bob_target_is_the_post_friction_velocity() {
+    fn bob_eases_toward_its_target_and_resets_when_riding() {
         let mut w = WalkAnimation::default();
-        w.update(0.0655, 0.05, 0., false, true);
-        assert!((w.bob - 0.4 * 0.0655 * 0.546).abs() < 1e-6, "{}", w.bob);
-        let mut airborne = WalkAnimation::default();
-        airborne.update(0.2, 0.05, 0., false, false);
-        assert_eq!(airborne.bob, 0.0);
+        w.update_bob(0.1);
+        assert!((w.bob - 0.04).abs() < 1e-6);
+        w.update_bob(0.1);
+        assert!((w.bob - 0.064).abs() < 1e-6 && (w.previous_bob - 0.04).abs() < 1e-6);
+        w.reset_bob();
+        assert_eq!((w.previous_bob, w.bob), (0.064, 0.0));
     }
     /// Java's bow and crossbow arm poses raise both arms forward and bring the
     /// hands toward the centre line (the screenshot of the held crossbow agrees).

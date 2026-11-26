@@ -89,7 +89,52 @@ pub struct Settings {
     pub hide_lightning_flashes: bool,
     /// v0.18 Track 6: Java's Entity Shadows (`entityShadows`, on).
     pub entity_shadows: bool,
+    /// v1.0 Track 9: Java's Attack/Destroy and Use Item/Place Block
+    /// (`toggleAttack`, `toggleUse`, both Hold): Toggle makes a press flip
+    /// the button's held state, as `ToggleKeyMapping` does.
+    pub toggle_attack: bool,
+    pub toggle_use: bool,
+    /// Auto-Jump (`autoJump`, off in Java 26.3): `LocalPlayer.updateAutoJump`.
+    pub auto_jump: bool,
+    /// Attack Indicator (`attackIndicator`, Crosshair).
+    pub attack_indicator: AttackIndicator,
     pub keys: super::keys::Bindings,
+}
+
+/// Java's `AttackIndicatorStatus`, saved as its id (0, 1, 2) like Java's
+/// `LEGACY_CODEC`; an id out of range wraps (`ByIdMap.OutOfBoundsStrategy.WRAP`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum AttackIndicator {
+    Off,
+    #[default]
+    Crosshair,
+    Hotbar,
+}
+
+impl AttackIndicator {
+    pub const ALL: [Self; 3] = [Self::Off, Self::Crosshair, Self::Hotbar];
+
+    pub fn id(self) -> i32 {
+        self as i32
+    }
+
+    pub fn from_id(id: i32) -> Self {
+        Self::ALL[id.rem_euclid(Self::ALL.len() as i32) as usize]
+    }
+
+    /// The option button's cycle (`OptionInstance.Enum`): the next value.
+    pub fn next(self) -> Self {
+        Self::from_id(self.id() + 1)
+    }
+
+    /// `options.off`, `options.attack.crosshair`, `options.attack.hotbar`.
+    pub fn caption(self) -> &'static str {
+        match self {
+            Self::Off => "OFF",
+            Self::Crosshair => "Crosshair",
+            Self::Hotbar => "Hotbar",
+        }
+    }
 }
 
 pub const RENDER_DISTANCE: (i32, i32) = (2, 32);
@@ -152,6 +197,10 @@ impl Default for Settings {
             cloud_range: voxelcraft::atmosphere::DEFAULT_CLOUD_RANGE,
             hide_lightning_flashes: false,
             entity_shadows: voxelcraft::entity::shadow::OPTION_DEFAULT,
+            toggle_attack: false,
+            toggle_use: false,
+            auto_jump: false,
+            attack_indicator: AttackIndicator::Crosshair,
             keys: Default::default(),
         }
     }
@@ -231,8 +280,9 @@ impl Settings {
                 key if let Some(source) = SoundSource::from_option_key(key) => {
                     s.set_sound_volume(source, num().unwrap_or(s.sound_volume(source)))
                 }
-                "view_bobbing" if value == "true" => s.view_bobbing = true,
-                "view_bobbing" if value == "false" => s.view_bobbing = false,
+                // Java's key is `bobView`; files before v1.0 wrote `view_bobbing`.
+                "view_bobbing" | "bobView" if value == "true" => s.view_bobbing = true,
+                "view_bobbing" | "bobView" if value == "false" => s.view_bobbing = false,
                 "vsync" => s.vsync = value != "false",
                 "show_fps" if value == "true" => s.show_fps = true,
                 "show_fps" if value == "false" => s.show_fps = false,
@@ -289,6 +339,14 @@ impl Settings {
             "cloudRange" => self.cloud_range = value.parse().unwrap_or(self.cloud_range),
             "hideLightningFlashes" => flag(&mut self.hide_lightning_flashes),
             "entityShadows" => flag(&mut self.entity_shadows),
+            "toggleAttack" => flag(&mut self.toggle_attack),
+            "toggleUse" => flag(&mut self.toggle_use),
+            "autoJump" => flag(&mut self.auto_jump),
+            "attackIndicator" => {
+                if let Ok(id) = value.parse::<i32>() {
+                    self.attack_indicator = AttackIndicator::from_id(id);
+                }
+            }
             _ => return self.keys.parse_line(key, value),
         }
         true
@@ -296,7 +354,7 @@ impl Settings {
 
     fn serialize_display_controls(&self, out: &mut String) {
         out.push_str(&format!(
-            "guiScale={}\nmaxFps={}\ngamma={}\nfovEffectScale={}\nscreenEffectScale={}\ndamageTiltStrength={}\ntoggleCrouch={}\ntoggleSprint={}\ninvertXMouse={}\ninvertYMouse={}\nmouseWheelSensitivity={:.4}\ndiscrete_mouse_scroll={}\nshowSubtitles={}\ntextBackgroundOpacity={}\nbackgroundForChatOnly={}\nmipmapLevels={}\nmenuBackgroundBlurriness={}\npanoramaScrollSpeed={}\nrenderClouds={}\ncloudRange={}\nhideLightningFlashes={}\nentityShadows={}\n",
+            "guiScale={}\nmaxFps={}\ngamma={}\nfovEffectScale={}\nscreenEffectScale={}\ndamageTiltStrength={}\ntoggleCrouch={}\ntoggleSprint={}\ninvertXMouse={}\ninvertYMouse={}\nmouseWheelSensitivity={:.4}\ndiscrete_mouse_scroll={}\nshowSubtitles={}\ntextBackgroundOpacity={}\nbackgroundForChatOnly={}\nmipmapLevels={}\nmenuBackgroundBlurriness={}\npanoramaScrollSpeed={}\nrenderClouds={}\ncloudRange={}\nhideLightningFlashes={}\nentityShadows={}\ntoggleAttack={}\ntoggleUse={}\nautoJump={}\nattackIndicator={}\nbobView={}\n",
             self.gui_scale,
             self.max_fps,
             self.brightness,
@@ -319,6 +377,11 @@ impl Settings {
             self.cloud_range,
             self.hide_lightning_flashes,
             self.entity_shadows,
+            self.toggle_attack,
+            self.toggle_use,
+            self.auto_jump,
+            self.attack_indicator.id(),
+            self.view_bobbing,
         ));
         self.keys.serialize(out);
     }
@@ -462,6 +525,42 @@ mod tests {
         assert_eq!(Settings::parse("cloudRange=1").cloud_range, 2);
         assert_eq!(Settings::parse("cloudRange=500").cloud_range, 128);
         assert!(Settings::parse("hideLightningFlashes=true").hide_lightning_flashes);
+    }
+
+    /// v1.0 Track 9: Java 26.3's control options under its `options.txt`
+    /// keys and defaults (Hold, Hold, Auto-Jump off, Crosshair), kept across a
+    /// save; an attack indicator id out of range wraps like Java's codec.
+    #[test]
+    fn control_toggles_auto_jump_and_attack_indicator_use_javas_keys() {
+        let d = Settings::default();
+        assert_eq!((d.toggle_attack, d.toggle_use, d.auto_jump), (false, false, false));
+        assert_eq!(d.attack_indicator, AttackIndicator::Crosshair);
+        assert_eq!(Settings::parse("render_distance=8\n"), d, "files without the keys get the defaults");
+        let text = d.serialize();
+        for line in
+            ["toggleAttack=false\n", "toggleUse=false\n", "autoJump=false\n", "attackIndicator=1\n", "bobView=true\n"]
+        {
+            assert!(text.contains(line), "{line:?} in {text}");
+        }
+        for indicator in AttackIndicator::ALL {
+            let s =
+                Settings { toggle_attack: true, toggle_use: true, auto_jump: true, attack_indicator: indicator, ..d };
+            assert_eq!(Settings::parse(&s.serialize()), s);
+        }
+        assert_eq!(Settings::parse("attackIndicator=2").attack_indicator, AttackIndicator::Hotbar);
+        assert_eq!(Settings::parse("attackIndicator=0").attack_indicator, AttackIndicator::Off);
+        assert_eq!(Settings::parse("attackIndicator=4").attack_indicator, AttackIndicator::Crosshair, "wraps");
+        assert_eq!(Settings::parse("attackIndicator=-1").attack_indicator, AttackIndicator::Hotbar, "wraps");
+        assert_eq!(Settings::parse("attackIndicator=junk").attack_indicator, AttackIndicator::Crosshair);
+        assert!(Settings::parse("autoJump=true").auto_jump);
+        assert!(!Settings::parse("autoJump=maybe").auto_jump);
+        // Java's `bobView` and the older `view_bobbing` both load.
+        assert!(!Settings::parse("bobView=false").view_bobbing);
+        assert!(!Settings::parse("view_bobbing=false").view_bobbing);
+        assert_eq!(
+            [AttackIndicator::Off, AttackIndicator::Crosshair, AttackIndicator::Hotbar].map(AttackIndicator::next),
+            [AttackIndicator::Crosshair, AttackIndicator::Hotbar, AttackIndicator::Off]
+        );
     }
 
     #[test]

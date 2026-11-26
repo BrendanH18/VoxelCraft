@@ -134,91 +134,115 @@ const COVERAGE: &[(&str, &str)] = &[
     ("world.entity.Entity.doWaterSplashEffect", "posted: sculk player_moved, sculk_events (splash)"),
     ("world.entity.Entity.dropAllLeashConnections", "gap: shearing off leads"),
     ("world.entity.Entity.interact", "gap: leash interactions on non-mob entities"),
-    ("world.entity.Entity.kill", "gap: /kill and void removal of non-living entities"),
-    ("world.entity.Entity.processFlappingMovement", "gap: per-type flapping (bats, bees, parrots, chickens)"),
+    ("world.entity.Entity.kill", "absent: /kill targets only the player; nothing else is killed this way"),
+    (
+        "world.entity.Entity.processFlappingMovement",
+        "posted: sculk_events flapping (bats, bees, vexes, phantoms, allays, chickens, parrots)",
+    ),
     ("world.entity.Entity.removeVehicle", "posted: Entities::dismount (players)"),
-    ("world.entity.Entity.restituteMovementAfterCollisions", "posted: sculk player_moved (players); gap for mobs"),
-    ("world.entity.Entity.startRiding", "posted: interact entity_use_event (players); gap for mobs"),
+    (
+        "world.entity.Entity.restituteMovementAfterCollisions",
+        "posted: sculk player_moved (players), sculk_events (mob bounces)",
+    ),
+    (
+        "world.entity.Entity.startRiding",
+        "posted: interact entity_use_event (players), sculk_events (mobs in carts and boats)",
+    ),
     ("world.entity.Entity.vibrationAndSoundEffectsFromBlock", "posted: sculk player_moved, sculk_events (step)"),
     ("world.entity.LightningBolt.tick", "posted: entity lightning"),
     ("world.entity.LivingEntity.actuallyHurt", "posted: sculk_events (mobs), sculk player_vitals (players)"),
-    ("world.entity.LivingEntity.checkTotemDeathProtection", "gap: totem use"),
+    ("world.entity.LivingEntity.checkTotemDeathProtection", "posted: World::player_totems"),
     ("world.entity.LivingEntity.die", "posted: sculk_events (mobs)"),
-    ("world.entity.LivingEntity.onEquipItem", "posted: sculk player_vitals (player armor); gap for mobs"),
-    ("world.entity.LivingEntity.startUsingItem", "posted: interact item_use_event (fishing); gap for held uses"),
-    ("world.entity.LivingEntity.stopUsingItem", "posted: consumption (eating, drinking); gap for bows, shields"),
+    (
+        "world.entity.LivingEntity.onEquipItem",
+        "posted: sculk player_vitals (player armor), sculk_events (mobs, every slot)",
+    ),
+    (
+        "world.entity.LivingEntity.startUsingItem",
+        "posted: interact item_use_event (fishing), consumption, ranged start_draw, app hands (shields, spyglasses)",
+    ),
+    (
+        "world.entity.LivingEntity.stopUsingItem",
+        "posted: consumption, ranged tick_draw and release_draw, app hands (shields, spyglasses)",
+    ),
     ("world.entity.LivingEntity.updateFallFlying", "posted: sculk player_moved (players)"),
     ("world.entity.Mob.ate", "posted: animals lifecycle (sheep grazing)"),
     ("world.entity.Mob.interact", "posted: interact entity_use_event"),
-    ("world.entity.Mob.shearItem", "gap: shearing mob equipment"),
+    ("world.entity.Mob.shearItem", "posted: interact use_chain (nautilus saddles, happy ghast harnesses)"),
     ("world.entity.OminousItemSpawner.spawnItem", "posted: entity trial item spawners"),
     ("world.entity.ai.behavior.HarvestFarmland.tick", "posted: app mobs VillagerHarvest"),
     ("world.entity.ai.behavior.TryLaySpawnOnFluidNearLand.create", "posted: World::animal_block (frogspawn)"),
-    ("world.entity.animal.armadillo.Armadillo.brushOffScute", "gap: armadillo brushing"),
-    ("world.entity.animal.armadillo.Armadillo.customServerAiStep", "gap: armadillo scute drop"),
-    ("world.entity.animal.armadillo.Armadillo.rollOut", "gap: armadillo rolling"),
-    ("world.entity.animal.armadillo.Armadillo.rollUp", "gap: armadillo rolling"),
-    ("world.entity.animal.camel.Camel.handleEating", "gap: camel feeding"),
-    ("world.entity.animal.camel.Camel.handleStartJump", "gap: camel dash"),
-    ("world.entity.animal.camel.Camel.sitDown", "gap: camel sitting"),
-    ("world.entity.animal.camel.Camel.standUp", "gap: camel sitting"),
-    ("world.entity.animal.camel.Camel.standUpInstantly", "gap: camel sitting"),
+    ("world.entity.animal.armadillo.Armadillo.brushOffScute", "posted: Entities::brush_armadillo"),
+    ("world.entity.animal.armadillo.Armadillo.customServerAiStep", "posted: armadillo_upkeep (scute drop)"),
+    ("world.entity.animal.armadillo.Armadillo.rollOut", "posted: sculk_events mob_actions"),
+    ("world.entity.animal.armadillo.Armadillo.rollUp", "posted: sculk_events mob_actions"),
+    ("world.entity.animal.camel.Camel.handleEating", "posted: animals use_animal (camels)"),
+    ("world.entity.animal.camel.Camel.handleStartJump", "posted: sculk_events mob_actions (dash)"),
+    ("world.entity.animal.camel.Camel.sitDown", "posted: sculk_events mob_actions"),
+    ("world.entity.animal.camel.Camel.standUp", "posted: sculk_events mob_actions"),
+    ("world.entity.animal.camel.Camel.standUpInstantly", "posted: sculk_events mob_actions"),
     ("world.entity.animal.chicken.Chicken.aiStep", "posted: lifecycle LaidEgg"),
-    ("world.entity.animal.cow.MushroomCow.mobInteract", "gap: mooshroom shearing (entity_interact is posted)"),
-    ("world.entity.animal.equine.AbstractHorse.handleEating", "gap: horse feeding (entity_interact is posted)"),
-    ("world.entity.animal.fox.Fox$FoxEatBerriesGoal.pickSweetBerries", "gap: foxes picking berries"),
-    ("world.entity.animal.golem.CopperGolem.mobInteract", "gap: copper golem shearing (entity_interact is posted)"),
+    ("world.entity.animal.cow.MushroomCow.mobInteract", "posted: interact use_chain (shear), entity_use_event"),
+    ("world.entity.animal.equine.AbstractHorse.handleEating", "posted: mounts use_mount (eat)"),
+    ("world.entity.animal.fox.Fox$FoxEatBerriesGoal.pickSweetBerries", "absent: foxes don't pick berries from bushes"),
+    ("world.entity.animal.golem.CopperGolem.mobInteract", "posted: interact use_chain (shear), entity_use_event"),
     ("world.entity.animal.golem.SnowGolem.aiStep", "absent: snow golems leave no snow"),
-    ("world.entity.animal.golem.SnowGolem.mobInteract", "gap: snow golem shearing"),
-    ("world.entity.animal.nautilus.AbstractNautilus.handleStartJump", "gap: nautilus dash"),
-    ("world.entity.animal.panda.Panda.handleEating", "gap: panda eating"),
-    ("world.entity.animal.rabbit.Rabbit$RaidGardenGoal.tick", "gap: rabbits eating carrots"),
+    ("world.entity.animal.golem.SnowGolem.mobInteract", "posted: interact use_chain (shear), entity_use_event"),
+    ("world.entity.animal.nautilus.AbstractNautilus.handleStartJump", "posted: sculk_events mob_actions (dash)"),
+    ("world.entity.animal.panda.Panda.handleEating", "posted: panda_upkeep"),
+    ("world.entity.animal.rabbit.Rabbit$RaidGardenGoal.tick", "absent: rabbits don't raid carrot crops"),
     ("world.entity.animal.sheep.Sheep.mobInteract", "posted: interact entity_use_event"),
-    ("world.entity.animal.sniffer.Sniffer.emitDiggingParticles", "gap: sniffer digging"),
-    ("world.entity.animal.turtle.Turtle.aiStep", "gap: turtle egg laying digging"),
+    ("world.entity.animal.sniffer.Sniffer.emitDiggingParticles", "posted: sniffer upkeep (digging)"),
+    ("world.entity.animal.turtle.Turtle.aiStep", "posted: sculk_events mob_actions (nest digging)"),
     ("world.entity.animal.turtle.Turtle$TurtleLayEggGoal.tick", "posted: World::animal_block (turtle eggs)"),
     ("world.entity.animal.wolf.Wolf.tick", "absent: wolves don't shake off water"),
-    ("world.entity.boss.enderdragon.EnderDragon.kill", "gap: dragon removal"),
-    ("world.entity.boss.enderdragon.EnderDragon.tickDeath", "gap: dragon death"),
-    ("world.entity.decoration.ArmorStand.causeDamage", "gap: armor stand damage"),
-    ("world.entity.decoration.ArmorStand.hurtServer", "gap: armor stand hits"),
-    ("world.entity.decoration.ArmorStand.kill", "gap: armor stand breaking"),
-    ("world.entity.decoration.BlockAttachedEntity.kill", "gap: frames and paintings breaking"),
-    ("world.entity.decoration.ItemFrame.dropItem", "gap: frames dropping items when hit"),
-    ("world.entity.decoration.ItemFrame.hurtServer", "gap: frames dropping items when hit"),
+    ("world.entity.boss.enderdragon.EnderDragon.kill", "absent: /kill targets only the player"),
+    ("world.entity.boss.enderdragon.EnderDragon.tickDeath", "posted: dragon tick_death"),
+    ("world.entity.decoration.ArmorStand.causeDamage", "gap: armor stands burning (fire damage)"),
+    (
+        "world.entity.decoration.ArmorStand.hurtServer",
+        "posted: combat attack (first hit, break), decor apply_entity_shots",
+    ),
+    ("world.entity.decoration.ArmorStand.kill", "posted: combat attack, decor apply_entity_shots, blast_decor"),
+    (
+        "world.entity.decoration.BlockAttachedEntity.kill",
+        "posted: combat attack, decor apply_entity_shots, blast_decor",
+    ),
+    ("world.entity.decoration.ItemFrame.dropItem", "posted: decor tick_decor (frames losing their wall)"),
+    ("world.entity.decoration.ItemFrame.hurtServer", "posted: combat attack, decor apply_entity_shots"),
     ("world.entity.decoration.ItemFrame.interact", "posted: interact entity_use_event"),
     ("world.entity.decoration.LeashFenceKnotEntity.interact", "gap: leads on fences"),
-    ("world.entity.item.ItemEntity.hurtServer", "gap: item entities taking damage"),
+    ("world.entity.item.ItemEntity.hurtServer", "posted: Entities explosions (items)"),
     ("world.entity.monster.Creeper.tick", "posted: sculk_events (fuse)"),
     ("world.entity.monster.Enderman.teleport", "posted: Mob::teleport"),
     ("world.entity.monster.Enderman$EndermanLeaveBlockGoal.tick", "absent: endermen carry no blocks"),
     ("world.entity.monster.Enderman$EndermanTakeBlockGoal.tick", "absent: endermen carry no blocks"),
-    ("world.entity.monster.Ravager.roar", "gap: ravager roar"),
-    ("world.entity.monster.Shulker.setRawPeekAmount", "gap: shulker peeking"),
+    ("world.entity.monster.Ravager.roar", "posted: illager ravager_roar"),
+    ("world.entity.monster.Shulker.setRawPeekAmount", "posted: shulker set_peek"),
     ("world.entity.monster.Shulker.teleportSomewhere", "posted: shulker_teleport"),
     ("world.entity.monster.Witch.aiStep", "posted: sculk_events (drink)"),
-    ("world.entity.monster.creaking.Creaking.activate", "gap: creaking states"),
-    ("world.entity.monster.creaking.Creaking.aiStep", "gap: creaking states"),
-    ("world.entity.monster.creaking.Creaking.deactivate", "gap: creaking states"),
-    ("world.entity.monster.creaking.Creaking.hurtServer", "gap: creaking states"),
-    ("world.entity.monster.cubemob.SulfurCube.mobInteract", "gap: sulfur cube shearing (entity_interact is posted)"),
-    ("world.entity.monster.cubemob.SulfurCube.primeTime", "gap: sulfur cube fuse"),
-    ("world.entity.monster.illager.Evoker$EvokerAttackSpellGoal.createSpellEntity", "gap: evoker fangs"),
-    ("world.entity.monster.illager.Evoker$EvokerSummonSpellGoal.performSpellCasting", "gap: evoker vexes"),
+    ("world.entity.monster.creaking.Creaking.activate", "posted: sculk_events mob_actions"),
+    ("world.entity.monster.creaking.Creaking.aiStep", "posted: sculk_events mob_actions (can move)"),
+    ("world.entity.monster.creaking.Creaking.deactivate", "posted: sculk_events mob_actions"),
+    ("world.entity.monster.creaking.Creaking.hurtServer", "posted: sculk_events mob_actions (twitch)"),
+    ("world.entity.monster.cubemob.SulfurCube.mobInteract", "posted: interact use_chain (shear), entity_use_event"),
+    ("world.entity.monster.cubemob.SulfurCube.primeTime", "posted: sculk_events mob_actions"),
+    ("world.entity.monster.illager.Evoker$EvokerAttackSpellGoal.createSpellEntity", "posted: illager fangs"),
+    ("world.entity.monster.illager.Evoker$EvokerSummonSpellGoal.performSpellCasting", "posted: illager summon_vexes"),
     ("world.entity.monster.skeleton.Bogged.mobInteract", "posted: interact entity_use_event"),
     ("world.entity.player.Player.actuallyHurt", "posted: sculk player_vitals"),
     ("world.entity.player.Player.interactOn", "posted: interact entity_use_event"),
     ("world.entity.projectile.FireworkRocketEntity.explode", "posted: firework burst_firework"),
     ("world.entity.projectile.Projectile.onHit", "posted: lifecycle, wither, shulker, trident (land)"),
     ("world.entity.projectile.Projectile.tick", "posted: every projectile spawn (shoot)"),
-    ("world.entity.projectile.ShulkerBullet.destroy", "gap: shooting down shulker bullets"),
-    ("world.entity.vehicle.VehicleEntity.hurtServer", "gap: hitting boats and minecarts"),
+    ("world.entity.projectile.ShulkerBullet.destroy", "posted: shulker bullets (hits)"),
+    ("world.entity.vehicle.VehicleEntity.hurtServer", "posted: combat attack, decor apply_entity_shots"),
     ("world.entity.vehicle.boat.AbstractBoat.onAboveBubbleColumn", "gap: boats over bubble columns"),
     ("world.entity.vehicle.boat.AbstractChestBoat.interact", "posted: interact entity_use_event"),
     ("world.entity.vehicle.boat.AbstractChestBoat.openCustomInventoryScreen", "posted: interact entity_use_event"),
-    ("world.entity.vehicle.boat.AbstractChestBoat.stopOpen", "gap: closing vehicle chests"),
+    ("world.entity.vehicle.boat.AbstractChestBoat.stopOpen", "posted: Entities::set_vehicle_viewers"),
     ("world.entity.vehicle.minecart.MinecartChest.interact", "posted: interact entity_use_event"),
-    ("world.entity.vehicle.minecart.MinecartChest.stopOpen", "gap: closing vehicle chests"),
+    ("world.entity.vehicle.minecart.MinecartChest.stopOpen", "posted: Entities::set_vehicle_viewers"),
     ("world.item.ArmorStandItem.useOn", "posted: interact block_use_event (decor placed)"),
     ("world.item.BlockItem.place", "posted: placement"),
     ("world.item.BoatItem.use", "posted: interact use_entity (cart placed)"),
@@ -234,39 +258,39 @@ const COVERAGE: &[(&str, &str)] = &[
     ("world.item.FlintAndSteelItem.useOn", "posted: interact block_use_event (ignited)"),
     ("world.item.HangingEntityItem.useOn", "posted: interact block_use_event (decor placed)"),
     ("world.item.HoneycombItem.useOn", "posted: interact block_use_event (waxed)"),
-    ("world.item.InstrumentItem.play", "gap: goat horns"),
+    ("world.item.InstrumentItem.play", "absent: goat horns can't be played"),
     ("world.item.JukeboxPlayable.tryInsertIntoJukebox", "posted: interact block_use_event"),
     ("world.item.JukeboxSongPlayer.stop", "posted: jukebox vibration_hook"),
     ("world.item.JukeboxSongPlayer.tick", "posted: jukebox vibration_hook"),
     ("world.item.LeadItem.bindPlayerMobs", "gap: leads on fences"),
     ("world.item.MinecartItem.useOn", "posted: interact use_entity (cart placed)"),
-    ("world.item.MobBucketItem.checkExtraContent", "posted: automation dispense; gap for players"),
-    ("world.item.PotionItem.useOn", "gap: water bottles onto dirt"),
-    ("world.item.ShearsItem.useOn", "gap: trimming plant tips"),
+    ("world.item.MobBucketItem.checkExtraContent", "posted: automation dispense, interact item_use_event"),
+    ("world.item.PotionItem.useOn", "absent: water bottles don't turn dirt to mud"),
+    ("world.item.ShearsItem.useOn", "absent: shears don't trim plant tips"),
     ("world.item.SolidBucketItem.emptyContents", "posted: automation dispense; interact item_use_event"),
     ("world.item.SpawnEggItem.spawnMob", "absent: no spawn eggs"),
     ("world.item.SpawnEggItem.useOn", "absent: no spawn eggs"),
     ("world.item.component.Consumable.onConsume", "posted: consumption"),
     ("world.item.consume_effects.TeleportRandomlyConsumeEffect.apply", "posted: consumption chorus_teleport"),
-    ("world.item.enchantment.Enchantments.bootstrap", "gap: frost walker"),
+    ("world.item.enchantment.Enchantments.bootstrap", "posted: World::frost_walk_by"),
     ("world.item.enchantment.effects.SetBlockProperties.<init>", "absent: no enchantment sets block properties"),
-    ("world.level.BaseSpawner.serverTick", "gap: monster spawners"),
+    ("world.level.BaseSpawner.serverTick", "posted: spawning run_spawners"),
     ("world.level.Level.destroyBlock", "gap: blocks mobs, falling and fluids break (mining posts its own)"),
     ("world.level.ServerExplosion.explode", "posted: app mobs and wither explosions"),
     ("world.level.block.AbstractCandleBlock.extinguish", "posted: interact block_use_event"),
     ("world.level.block.BasePressurePlateBlock.checkPressed", "posted: redstone_contacts, redstone tick"),
-    ("world.level.block.BeehiveBlock.useItemOn", "gap: harvesting beehives"),
+    ("world.level.block.BeehiveBlock.useItemOn", "posted: interact use_block (beehives)"),
     ("world.level.block.BellBlock.attemptToRing", "posted: World::ring_bell_by"),
-    ("world.level.block.BigDripleafBlock.setTilt", "gap: dripleaf tilting"),
+    ("world.level.block.BigDripleafBlock.setTilt", "posted: dripleaf set_dripleaf_tilt"),
     ("world.level.block.Block.playerWillDestroy", "posted: mining"),
-    ("world.level.block.BrushableBlock.onBrokenAfterFall", "gap: falling suspicious blocks"),
+    ("world.level.block.BrushableBlock.onBrokenAfterFall", "posted: tick_falling (suspicious blocks)"),
     ("world.level.block.ButtonBlock.checkPressed", "posted: redstone_contacts (arrows), redstone tick (release)"),
     ("world.level.block.ButtonBlock.press", "posted: World::use_redstone_by"),
     ("world.level.block.CakeBlock.eat", "posted: interact block_use_event"),
     ("world.level.block.CakeBlock.useItemOn", "posted: interact block_use_event"),
     ("world.level.block.CampfireBlock.douse", "posted: interact block_use_event (shovels); gap for splashes"),
-    ("world.level.block.CauldronBlock.handlePrecipitation", "gap: cauldrons filling in rain"),
-    ("world.level.block.CauldronBlock.receiveStalactiteDrip", "gap: dripstone filling cauldrons"),
+    ("world.level.block.CauldronBlock.handlePrecipitation", "posted: cauldron_precipitation"),
+    ("world.level.block.CauldronBlock.receiveStalactiteDrip", "posted: cauldron tick_drips"),
     ("world.level.block.CaveVines.use", "posted: interact block_use_event (harvested)"),
     ("world.level.block.ChiseledBookShelfBlock.removeBook", "posted: interact block_use_event"),
     ("world.level.block.ComposterBlock.addLayer", "posted: interact block_use_event"),
@@ -274,58 +298,58 @@ const COVERAGE: &[(&str, &str)] = &[
     ("world.level.block.CopperGolemStatueBlock.updatePose", "posted: interact block_use_event"),
     ("world.level.block.DaylightDetectorBlock.useWithoutItem", "posted: World::use_redstone_by"),
     ("world.level.block.DecoratedPotBlock.useItemOn", "posted: interact block_use_event"),
-    ("world.level.block.DecoratedPotBlock.useWithoutItem", "gap: wobbling decorated pots"),
+    ("world.level.block.DecoratedPotBlock.useWithoutItem", "posted: interact block_use_event (wobble)"),
     ("world.level.block.DispenserBlock.dispenseFrom", "posted: automation dispense"),
     ("world.level.block.DoorBlock.neighborChanged", "posted: redstone update"),
     ("world.level.block.DoorBlock.setOpen", "posted: wind_trigger"),
     ("world.level.block.DoorBlock.useWithoutItem", "posted: interact block_use_event"),
-    ("world.level.block.DriedGhastBlock.tick", "gap: dried ghast hydration"),
-    ("world.level.block.DriedGhastBlock.tickWaterlogged", "gap: dried ghast hydration"),
-    ("world.level.block.EyeblossomBlock.tryChangingState", "gap: eyeblossoms opening and closing"),
-    ("world.level.block.FarmlandBlock.turnToBaseBlock", "gap: farmland trampling and drying"),
+    ("world.level.block.DriedGhastBlock.tick", "posted: dried_ghast_tick"),
+    ("world.level.block.DriedGhastBlock.tickWaterlogged", "posted: dried_ghast_tick"),
+    ("world.level.block.EyeblossomBlock.tryChangingState", "posted: tick_eyeblossom"),
+    ("world.level.block.FarmlandBlock.turnToBaseBlock", "posted: World::farmland_to_dirt, app trample"),
     ("world.level.block.FenceGateBlock.neighborChanged", "posted: redstone update"),
     ("world.level.block.FenceGateBlock.onExplosionHit", "posted: wind_trigger"),
     ("world.level.block.FenceGateBlock.useWithoutItem", "posted: interact block_use_event"),
     ("world.level.block.FlowerPotBlock.useItemOn", "posted: interact block_use_event"),
     ("world.level.block.FlowerPotBlock.useWithoutItem", "posted: interact block_use_event"),
     ("world.level.block.IceBlock.melt", "absent: ice doesn't melt by light"),
-    ("world.level.block.LayeredCauldronBlock.handlePrecipitation", "gap: cauldrons filling in snow and rain"),
+    ("world.level.block.LayeredCauldronBlock.handlePrecipitation", "posted: cauldron_precipitation"),
     ("world.level.block.LayeredCauldronBlock.lowerFillLevel", "posted: interact block_use_event (bottles, washing)"),
-    ("world.level.block.LayeredCauldronBlock.receiveStalactiteDrip", "gap: dripstone filling cauldrons"),
+    ("world.level.block.LayeredCauldronBlock.receiveStalactiteDrip", "posted: cauldron tick_drips"),
     ("world.level.block.LecternBlock.resetBookState", "posted: interact block_use_event (book placed)"),
     ("world.level.block.LeverBlock.pull", "posted: World::use_redstone_by"),
     ("world.level.block.NoteBlock.playNote", "posted: gadgets play_note"),
-    ("world.level.block.PathBlock.turnToBaseBlock", "gap: paths reverting under blocks"),
-    ("world.level.block.PointedDripstoneBlock.maybeTransferFluid", "gap: dripstone transferring fluid"),
+    ("world.level.block.PathBlock.turnToBaseBlock", "absent: paths don't revert to dirt"),
+    ("world.level.block.PointedDripstoneBlock.maybeTransferFluid", "posted: dripstone_transfer (mud to clay)"),
     ("world.level.block.PotentSulfurBlock.onPlace", "posted: potent_sulfur"),
     ("world.level.block.PumpkinBlock.useItemOn", "posted: interact block_use_event (carved)"),
     ("world.level.block.RespawnAnchorBlock.charge", "posted: interact block_use_event"),
     ("world.level.block.SculkSensorBlock.activate", "posted: sculk activate_sensor"),
     ("world.level.block.SculkSensorBlock.stepOn", "posted: sculk sculk_step_on"),
-    ("world.level.block.ShelfBlock.neighborChanged", "gap: powered shelves"),
+    ("world.level.block.ShelfBlock.neighborChanged", "posted: shelf_power"),
     ("world.level.block.ShelfBlock.swapHotbar", "posted: interact block_use_event"),
     ("world.level.block.ShelfBlock.swapSingleItem", "posted: interact block_use_event"),
     ("world.level.block.SignBlock.useItemOn", "posted: interact block_use_event"),
-    ("world.level.block.SnifferEggBlock.onPlace", "gap: sniffer eggs"),
+    ("world.level.block.SnifferEggBlock.onPlace", "posted: track_sniffer_egg"),
     ("world.level.block.SnowLayerBlock.randomTick", "absent: snow layers don't melt by light"),
-    ("world.level.block.SweetBerryBushBlock.randomTick", "gap: berry bushes growing"),
+    ("world.level.block.SweetBerryBushBlock.randomTick", "posted: overworld flora random tick"),
     ("world.level.block.SweetBerryBushBlock.useWithoutItem", "posted: interact block_use_event (harvested)"),
     ("world.level.block.TntBlock.prime", "posted: interact, redstone update, fire"),
     ("world.level.block.TrapDoorBlock.playSound", "posted: World::use_redstone_by, redstone update"),
     ("world.level.block.TripWireBlock.playerWillDestroy", "posted: mining"),
     ("world.level.block.TripWireHookBlock.emitState", "posted: gadgets connect_hook"),
     ("world.level.block.TurtleEggBlock.decreaseEggs", "posted: World::animal_block"),
-    ("world.level.block.TurtleEggBlock.randomTick", "gap: turtle eggs cracking and hatching"),
-    ("world.level.block.entity.BeehiveBlockEntity.addOccupant", "gap: bees entering hives"),
-    ("world.level.block.entity.BeehiveBlockEntity.releaseOccupant", "gap: bees leaving hives"),
-    ("world.level.block.entity.CampfireBlockEntity.cookTick", "gap: campfires finishing food"),
+    ("world.level.block.TurtleEggBlock.randomTick", "posted: overworld flora random tick"),
+    ("world.level.block.entity.BeehiveBlockEntity.addOccupant", "posted: bee entering"),
+    ("world.level.block.entity.BeehiveBlockEntity.releaseOccupant", "posted: bees release_bee"),
+    ("world.level.block.entity.CampfireBlockEntity.cookTick", "posted: tick_campfires"),
     ("world.level.block.entity.CampfireBlockEntity.placeFood", "posted: interact block_use_event"),
     ("world.level.block.entity.ChiseledBookShelfBlockEntity.updateState", "posted: interact block_use_event"),
     ("world.level.block.entity.ContainerOpenersCounter.decrementOpeners", "posted: World::set_chest_viewers (chests)"),
     ("world.level.block.entity.ContainerOpenersCounter.incrementOpeners", "posted: interact block_use_event"),
     ("world.level.block.entity.ContainerOpenersCounter.recheckOpeners", "posted: World::set_golem_chest_viewers"),
-    ("world.level.block.entity.CreakingHeartBlockEntity.creakingHurt", "gap: creaking heart resin"),
-    ("world.level.block.entity.CreakingHeartBlockEntity.spawnProtector", "gap: creaking spawns"),
+    ("world.level.block.entity.CreakingHeartBlockEntity.creakingHurt", "posted: creaking spread_resin"),
+    ("world.level.block.entity.CreakingHeartBlockEntity.spawnProtector", "posted: tick_creaking_hearts"),
     ("world.level.block.entity.JukeboxBlockEntity.notifyItemChangedInJukebox", "posted: interact block_use_event"),
     ("world.level.block.entity.JukeboxBlockEntity.setRemoved", "posted: jukebox vibration_hook"),
     ("world.level.block.entity.PotentSulfurBlockEntity.<clinit>", "posted: potent_sulfur"),
@@ -333,7 +357,7 @@ const COVERAGE: &[(&str, &str)] = &[
     ("world.level.block.entity.ShelfBlockEntity.setChanged", "posted: interact block_use_event"),
     ("world.level.block.entity.ShulkerBoxBlockEntity.startOpen", "posted: interact block_use_event"),
     ("world.level.block.entity.ShulkerBoxBlockEntity.stopOpen", "posted: shulker_box"),
-    ("world.level.block.entity.trialspawner.TrialSpawner.spawnMob", "gap: trial spawners"),
+    ("world.level.block.entity.trialspawner.TrialSpawner.spawnMob", "posted: trial spawn_trial_mob"),
     ("world.level.block.piston.PistonBaseBlock.moveBlocks", "posted: automation extend_piston"),
     ("world.level.block.piston.PistonBaseBlock.triggerEvent", "posted: automation extend_piston, retract_piston"),
 ];
@@ -722,4 +746,151 @@ fn player_uses_post_block_transforms_and_lever_pulls_from_the_player() {
     }
     assert_eq!(kinds(&pulled), [GameEvent::BlockActivate]);
     assert_eq!(pulled[0].source.player, Some(PLAYER));
+}
+
+// v1.0 Track 9: the uses, hits and closings that post their events now.
+
+/// A survival player at `P` facing +X, and an empty entity world.
+fn session() -> (voxelcraft::session::PlayerSession, voxelcraft::entity::Entities) {
+    let mut s = voxelcraft::session::PlayerSession::new(PLAYER, P.as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
+    s.player.on_ground = true;
+    (s, voxelcraft::entity::Entities::new(1))
+}
+
+/// The events queued in `e` (`Sculk::post`), delivered and read back.
+fn queued(w: &mut World, e: &mut voxelcraft::entity::Entities) -> Vec<Posted> {
+    w.take_entity_game_events();
+    e.flush_sculk_events(w);
+    w.take_entity_game_events()
+}
+
+#[test]
+fn drawing_eating_and_totems_post_item_interact_start_and_finish() {
+    let mut w = world();
+    let (mut s, mut e) = session();
+    s.inventory.slots[0] = Some(Stack::new(Item::BOW, 1));
+    s.inventory.slots[1] = Some(Stack::new(Item::ARROW, 16));
+    assert!(s.start_draw(0, &w, &mut e).is_some());
+    let started = queued(&mut w, &mut e);
+    assert_eq!(kinds(&started), [GameEvent::ItemInteractStart]);
+    assert_eq!(started[0].source.player, Some(PLAYER));
+    for _ in 0..20 {
+        s.tick_draw(0, true, &w, &mut e);
+    }
+    assert!(s.release_draw(0, &w, &mut e).is_some());
+    let shot = queued(&mut w, &mut e);
+    assert!(kinds(&shot).contains(&GameEvent::ItemInteractFinish), "{:?}", kinds(&shot));
+    // Eating: `startUsingItem`, then letting go early `stopUsingItem`.
+    s.vitals.hunger = voxelcraft::simulation::survival::Hunger::restore(10.0, 0.0, 0.0);
+    s.inventory.slots[2] = Some(Stack::new(Item::APPLE, 4));
+    s.tick_consumption(2, true, &mut e).unwrap();
+    s.tick_consumption(2, true, &mut e).unwrap();
+    assert_eq!(kinds(&queued(&mut w, &mut e)), [GameEvent::ItemInteractStart], "once, at the start");
+    s.tick_consumption(2, false, &mut e).unwrap();
+    assert_eq!(kinds(&queued(&mut w, &mut e)), [GameEvent::ItemInteractFinish]);
+    // `checkTotemDeathProtection`: a totem used since the last look.
+    let feet = s.player.pos;
+    w.player_totems(PLAYER, feet, 0, player());
+    assert!(w.take_entity_game_events().is_empty(), "first look");
+    w.player_totems(PLAYER, feet, 0, player());
+    assert!(w.take_entity_game_events().is_empty());
+    w.player_totems(PLAYER, feet, 1, player());
+    let totem = w.take_entity_game_events();
+    assert_eq!(kinds(&totem), [GameEvent::ItemInteractFinish]);
+    assert_eq!(totem[0].source.player, Some(PLAYER));
+}
+
+/// Aims at `target` from `s`'s eye and uses the held stack, trying pitches
+/// until the use lands; returns what it did.
+fn use_on(
+    s: &mut voxelcraft::session::PlayerSession,
+    w: &mut World,
+    e: &mut voxelcraft::entity::Entities,
+    target: DVec3,
+) -> Option<voxelcraft::session::interact::Use> {
+    use voxelcraft::session::interact::UseContext;
+    let ctx = UseContext { sneaking: false, others: &[] };
+    let to = target - s.player.eye();
+    s.player.yaw = to.z.atan2(to.x) as f32;
+    for k in -20..20 {
+        s.player.pitch = (to.y.atan2(to.with_y(0.0).length()) as f32) + k as f32 * 0.01;
+        w.take_entity_game_events();
+        if let Ok(Some(used)) = s.use_held(0, w, e, &ctx) {
+            return Some(used);
+        }
+    }
+    None
+}
+
+#[test]
+fn beehives_post_shear_not_block_change_and_pots_wobble_from_the_player() {
+    let mut w = world();
+    let (mut s, mut e) = session();
+    let hive = P + IVec3::new(2, 0, 0);
+    w.set_block(hive, voxelcraft::world::bees::block(false, Facing::North, 5));
+    s.inventory.slots[0] = Some(Stack::new(Item::SHEARS, 1));
+    assert!(use_on(&mut s, &mut w, &mut e, hive.as_dvec3() + DVec3::splat(0.5)).is_some());
+    let harvested = at(&mut w, hive);
+    assert_eq!(kinds(&harvested), [GameEvent::Shear], "and no block_change");
+    assert_eq!(harvested[0].source.player, Some(PLAYER));
+    // An empty hand on a decorated pot wobbles it.
+    let pot = P + IVec3::new(0, 0, 2);
+    w.set_block(pot, voxelcraft::world::utilities::decorated_pot(Facing::North, false, false));
+    s.inventory.slots[0] = None;
+    assert!(use_on(&mut s, &mut w, &mut e, pot.as_dvec3() + DVec3::new(0.5, 0.5, 0.5)).is_some());
+    let wobbled = at(&mut w, pot);
+    assert_eq!(kinds(&wobbled), [GameEvent::BlockChange]);
+    assert_eq!(wobbled[0].source.player, Some(PLAYER));
+}
+
+#[test]
+fn fish_buckets_post_fluid_place_and_entity_place() {
+    let mut w = world();
+    let (mut s, mut e) = session();
+    let floor = P + IVec3::new(2, -1, 0);
+    s.inventory.slots[0] = Some(Stack::new(Item::COD_BUCKET, 1));
+    assert!(use_on(&mut s, &mut w, &mut e, floor.as_dvec3() + DVec3::new(0.5, 1.0, 0.5)).is_some());
+    // Wherever the aim put the water, both events are at that cell.
+    let all = w.take_entity_game_events();
+    let cell = all.iter().find(|p| p.event == GameEvent::FluidPlace).map(|p| p.pos.floor().as_ivec3());
+    let poured: Vec<Posted> = all.into_iter().filter(|p| Some(p.pos.floor().as_ivec3()) == cell).collect();
+    assert_eq!(kinds(&poured), [GameEvent::FluidPlace, GameEvent::EntityPlace], "at {cell:?}");
+    assert!(poured.iter().all(|p| p.source.player == Some(PLAYER)));
+}
+
+#[test]
+fn vehicle_stores_closing_and_hits_on_carts_post_their_events() {
+    use voxelcraft::entity::minecart::CartKind;
+    let mut w = world();
+    let (mut s, mut e) = session();
+    let at_cart = P.as_dvec3() + DVec3::new(2.5, 0.0, 0.5);
+    let chest = e.spawn_cart(CartKind::Chest, at_cart);
+    e.set_vehicle_viewers(vec![chest, chest]);
+    assert!(queued(&mut w, &mut e).is_empty(), "opening is posted by the use");
+    e.set_vehicle_viewers(vec![chest]);
+    let closed = queued(&mut w, &mut e);
+    assert_eq!(kinds(&closed), [GameEvent::ContainerClose], "one viewer left");
+    assert_eq!(closed[0].pos, at_cart);
+    e.set_vehicle_viewers(Vec::new());
+    assert_eq!(kinds(&queued(&mut w, &mut e)), [GameEvent::ContainerClose]);
+    // A plain minecart's store isn't a chest: nothing.
+    let plain = e.spawn_cart(CartKind::Rideable, at_cart + DVec3::Z * 3.0);
+    e.set_vehicle_viewers(vec![plain]);
+    e.set_vehicle_viewers(Vec::new());
+    assert!(queued(&mut w, &mut e).is_empty());
+    // A punch on the chest minecart: `entity_damage` from the player.
+    let to = at_cart + DVec3::Y * 0.3 - s.player.eye();
+    s.player.yaw = to.z.atan2(to.x) as f32;
+    let mut hit = false;
+    for k in -20..20 {
+        s.player.pitch = (to.y.atan2(to.with_y(0.0).length()) as f32) + k as f32 * 0.01;
+        if let Ok(voxelcraft::session::combat::Outcome::Hit { .. }) = s.attack(0, &w, &mut e, false) {
+            hit = true;
+            break;
+        }
+    }
+    assert!(hit, "the punch landed");
+    let damaged = queued(&mut w, &mut e);
+    assert_eq!(kinds(&damaged), [GameEvent::EntityDamage]);
+    assert_eq!(damaged[0].source.player, Some(PLAYER));
 }

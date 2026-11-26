@@ -173,7 +173,15 @@ impl PlayerSession {
             return None;
         }
         self.ranged.draw = Some((slot, 0));
+        self.use_vibration(entities, crate::world::vibration::GameEvent::ItemInteractStart);
         Some(self.shot(Ranged::Drawing, None))
+    }
+
+    /// v1.0 Track 9: `ItemStack.causeUseVibration` from `startUsingItem`
+    /// and `stopUsingItem`, queued from this player.
+    pub fn use_vibration(&self, entities: &mut Entities, event: crate::world::vibration::GameEvent) {
+        let source = crate::world::vibration::EventSource::player(self.id, self.player.sneaking);
+        entities.sculk.post(self.player.pos, event, source, None);
     }
 
     /// One fixed tick of holding use. Switching away from the bow lets the
@@ -186,11 +194,13 @@ impl PlayerSession {
         let held = self.inventory.get(slot).map(|s| s.item);
         if !using || drawn_slot != slot || !matches!(held, Some(Item::BOW | Item::CROSSBOW)) {
             self.ranged.draw = None;
+            self.use_vibration(entities, crate::world::vibration::GameEvent::ItemInteractFinish);
             return None;
         }
         let charge = crossbow_charge_ticks(self.inventory.get(slot).map_or(Enchants::NONE, |s| s.active_enchants()));
         if held == Some(Item::CROSSBOW) && ticks + 1 >= charge {
             self.ranged.draw = None;
+            self.use_vibration(entities, crate::world::vibration::GameEvent::ItemInteractFinish);
             return self.load_crossbow(slot);
         }
         self.ranged.draw = Some((slot, ticks + 1));
@@ -204,6 +214,7 @@ impl PlayerSession {
             return self.release_weapon(slot, world, entities);
         }
         let (drawn_slot, ticks) = self.ranged.draw.take()?;
+        self.use_vibration(entities, crate::world::vibration::GameEvent::ItemInteractFinish);
         let power = power(ticks);
         if drawn_slot != slot || power < MIN_POWER || self.inventory.get(slot).map(|s| s.item) != Some(Item::BOW) {
             return None;

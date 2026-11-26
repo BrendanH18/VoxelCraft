@@ -200,6 +200,8 @@ pub(crate) struct SculkState {
     /// Each player's health and armor last tick, for damage, death and
     /// equipment events; not saved.
     bodies: FxHashMap<PlayerId, (f32, [Option<crate::item::Item>; 4])>,
+    /// v1.0 Track 9: each player's totems used so far ([`World::player_totems`]).
+    totems: FxHashMap<PlayerId, u32>,
 }
 
 /// A player's movement as game events see it: Java's `moveDist`,
@@ -861,6 +863,18 @@ impl World {
                     self.emit_game_event(pos, event, source, None);
                 }
             }
+        }
+    }
+
+    /// v1.0 Track 9: a totem of undying saved the player
+    /// (`checkTotemDeathProtection`'s `item_interact_finish`) since the last
+    /// call, by `Vitals::totems_used`. Nothing the first time a player is seen.
+    pub fn player_totems(&mut self, id: PlayerId, pos: DVec3, used: u32, source: EventSource) {
+        if self.remote {
+            return;
+        }
+        if self.sculk.totems.insert(id, used).is_some_and(|last| used != last) {
+            self.emit_game_event(pos, GameEvent::ItemInteractFinish, source, None);
         }
     }
 

@@ -347,8 +347,11 @@ impl Game {
             let bot = &self.agents.players[name];
             let a = &bot.agent;
             let feet = a.previous_pos.lerp(a.player.pos, scene.alpha);
-            let eye = feet + (a.player.eye() - a.player.pos);
-            let (camera, forward) = bot.camera.view(&self.world, eye, a.player.forward());
+            let eye = feet
+                + (a.player.eye() - a.player.pos)
+                + glam::DVec3::Y * a.player.camera_eye_offset(scene.alpha as f32);
+            let distance = self.mobs.entities.camera_distance(a.player.vehicle);
+            let (camera, forward) = bot.camera.view_at(&self.world, eye, a.player.forward(), distance);
             let atmosphere = self.atmosphere(
                 scene,
                 view + 1,

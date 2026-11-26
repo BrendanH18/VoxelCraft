@@ -61,6 +61,7 @@ impl Game {
                 self.session
                     .player
                     .wear_boots(crate::enchant::armor_level(armor, crate::enchant::Enchantment::DepthStrider));
+                self.session.player.auto_jump = self.settings.auto_jump;
                 self.session.player.tick(input, &self.world);
                 self.world.powder_snow_fire(&self.session.player, self.session.vitals.burning());
                 // `BigDripleafBlock.entityInside`: a leaf stood on starts to tilt.
@@ -88,6 +89,12 @@ impl Game {
             self.session.player.pos,
             self.session.vitals.health,
             self.session.inventory.armor.map(|s| s.map(|s| s.item)),
+            self.session.event_source(),
+        );
+        self.world.player_totems(
+            self.session.id,
+            self.session.player.pos,
+            self.session.vitals.totems_used,
             self.session.event_source(),
         );
         let moved = (self.session.player.pos - before).with_y(0.0).length();
@@ -234,6 +241,14 @@ impl Game {
         // v0.18 Track 9: chest lids and barrel tops, with their sounds.
         self.world.set_container_viewers(&open);
         self.world.set_chest_viewers(open);
+        // v1.0 Track 9: vehicle stores closing post `container_close`.
+        let host_vehicle = match self.body.container {
+            super::Container::Minecart(id) if self.inventory_open => Some(id),
+            _ => None,
+        };
+        let vehicles: Vec<u32> =
+            host_vehicle.into_iter().chain(self.pads.open_vehicles()).chain(self.open_vehicles()).collect();
+        self.mobs.entities.set_vehicle_viewers(vehicles);
         crate::simulation::tick_world_rules(
             &mut self.world,
             self.session.player.pos,

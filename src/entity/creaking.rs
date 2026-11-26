@@ -69,6 +69,15 @@ fn spread_resin(w: &mut World, p: IVec3, rng: &mut Rng) -> bool {
                 let bit = 1 << (i ^ 1);
                 if f & bit == 0 {
                     w.set_block(q, faces::multiface(Multiface::ResinClump, f | bit, wet));
+                    // v1.0 Track 9: `CreakingHeartBlockEntity.creakingHurt`
+                    // posts `block_place` at the new clump.
+                    let heart = w.get_block(p);
+                    w.emit_block_event(
+                        q,
+                        crate::world::vibration::GameEvent::BlockPlace,
+                        crate::world::vibration::EventSource::NONE,
+                        heart,
+                    );
                     return true;
                 }
             }
@@ -186,6 +195,10 @@ impl Entities {
                             let m = self.mobs.last_mut().unwrap();
                             m.creaking.as_mut().unwrap().home = Some(p);
                             h.protector = Some(m.uid);
+                            // v1.0 Track 9: `spawnProtector` posts `entity_place`
+                            // where the creaking stands, from it.
+                            let source = super::warden::mob_source(m);
+                            w.emit_game_event(m.pos, crate::world::vibration::GameEvent::EntityPlace, source, None);
                             break;
                         }
                     }

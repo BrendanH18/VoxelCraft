@@ -31,6 +31,7 @@ pub(in crate::app) enum Id {
     MenuBlur,
     CloudDistance,
     PreferencesHeader,
+    AttackIndicator,
     Fps,
     Done,
 }
@@ -168,11 +169,14 @@ impl<H: OptionsHost> Screen<H> for VideoSettings {
             ),
         ]);
         list.wide(Widget::label(Id::PreferencesHeader, z, "Preferences"));
-        list.pair(
+        // v1.0 Track 9: Java's Preferences list Attack Indicator after the
+        // autosave indicator and vignette, which VoxelCraft doesn't have;
+        // the FPS counter is VoxelCraft's own.
+        list.pairs(vec![
+            Widget::button(Id::AttackIndicator, z, format!("Attack Indicator: {}", s.attack_indicator.caption())),
             Widget::button(Id::Fps, z, format!("FPS Counter: {}", on_off(s.show_fps)))
                 .tooltip("A compact frame rate at the top left. F3 shows the full debug screen."),
-            None,
-        );
+        ]);
         list.done(Widget::button(Id::Done, z, "Done"), size)
     }
 
@@ -192,6 +196,7 @@ impl<H: OptionsHost> Screen<H> for VideoSettings {
             Id::Clouds => change(host, |s| s.clouds = s.clouds.next()),
             Id::EntityShadows => change(host, |s| s.entity_shadows = !s.entity_shadows),
             Id::Fps => change(host, |s| s.show_fps = !s.show_fps),
+            Id::AttackIndicator => change(host, |s| s.attack_indicator = s.attack_indicator.next()),
             Id::Done => return close(host),
             _ => {}
         }

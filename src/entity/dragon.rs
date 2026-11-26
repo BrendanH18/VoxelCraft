@@ -1705,6 +1705,12 @@ impl Dragon {
         self.place_parts();
         if self.death_ticks >= DEATH_TICKS {
             events.push(EntityEvent::DragonXp { pos: self.pos, points: (xp as f32 * 0.2) as u32 });
+            // v1.0 Track 9: `EnderDragon.tickDeath` ends with `entity_die`.
+            events.push(EntityEvent::Vibration {
+                pos: self.pos,
+                event: crate::world::vibration::GameEvent::EntityDie,
+                source: crate::world::vibration::EventSource::NONE,
+            });
             return false;
         }
         true

@@ -683,6 +683,9 @@ impl World {
 }
 
 #[cfg(test)]
+mod track9_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

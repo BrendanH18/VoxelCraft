@@ -314,8 +314,19 @@ impl PlayerSession {
                     && entities
                         .cart_ray(eye, dir, cart_reach)
                         .is_some_and(|i| entities.minecarts[i].kind.cushion().is_some());
+                let cart = entities.cart_ray(eye, dir, cart_reach).map(|i| entities.minecarts[i].pos);
                 // `VehicleEntity.hurtServer` takes the attack's damage (v1.0 Track 7).
                 landed = !denied && entities.hurt_cart_by(eye, dir, cart_reach, self.mode.is_creative(), base + other);
+                // v1.0 Track 9: `VehicleEntity.hurtServer` posts `entity_damage`
+                // from the attacker.
+                if landed && let Some(at) = cart {
+                    entities.sculk.post(
+                        at,
+                        crate::world::vibration::GameEvent::EntityDamage,
+                        self.event_source(),
+                        None,
+                    );
+                }
                 eye + dir * 2.0
             }
             Target::Fireball => {
@@ -323,8 +334,25 @@ impl PlayerSession {
                 eye + dir * 2.0
             }
             Target::Decor(_) => {
+                let decor = entities.decor_ray(eye, dir, reach).map(|(i, _)| entities.decor[i].pos);
                 let hit = entities.hurt_decor(eye, dir, reach, self.mode.is_creative());
                 landed = hit.is_some();
+                // v1.0 Track 9: a framed item knocked out posts `block_change`
+                // (`ItemFrame.hurtServer`), an armor stand's first hit
+                // `entity_damage`, and a break `entity_die` (`kill`), from the player.
+                if let (Some((_, effect)), Some(at)) = (hit, decor) {
+                    use crate::entity::decor::Effect;
+                    use crate::world::vibration::GameEvent as E;
+                    let event = match effect {
+                        Effect::ItemRemoved => Some(E::BlockChange),
+                        Effect::Wobbled => Some(E::EntityDamage),
+                        Effect::Broken(_) => Some(E::EntityDie),
+                        _ => None,
+                    };
+                    if let Some(event) = event {
+                        entities.sculk.post(at, event, self.event_source(), None);
+                    }
+                }
                 decor_effect = hit.map(|(_, effect)| effect);
                 hit.map_or(eye + dir * 2.0, |(at, _)| at)
             }

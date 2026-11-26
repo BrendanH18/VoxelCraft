@@ -188,22 +188,22 @@ fn trampling_needs_the_fall_and_a_big_enough_body() {
     w.set_block(P + IVec3::Y, Block::wheat(5));
     // `nextFloat() < fallDistance - 0.5`: never at half a block.
     for _ in 0..50 {
-        assert!(!w.trample_farmland(P, 0.5, 0.6, 1.8, true));
+        assert!(!w.trample_farmland(P, 0.5, 0.6, 1.8, true, crate::world::vibration::EventSource::NONE));
     }
     // A chicken (0.4 × 0.7: 0.112 cubic blocks) never tramples; nor does
     // a mob without `mob_griefing`.
-    assert!(!w.trample_farmland(P, 5.0, 0.4, 0.7, true));
-    assert!(!w.trample_farmland(P, 5.0, 0.6, 1.95, false));
+    assert!(!w.trample_farmland(P, 5.0, 0.4, 0.7, true, crate::world::vibration::EventSource::NONE));
+    assert!(!w.trample_farmland(P, 5.0, 0.6, 1.95, false, crate::world::vibration::EventSource::NONE));
     w.drops.clear();
     // Falling 1.5 blocks or more always passes the roll.
-    assert!(w.trample_farmland(P, 1.5, 0.6, 1.8, true));
+    assert!(w.trample_farmland(P, 1.5, 0.6, 1.8, true, crate::world::vibration::EventSource::NONE));
     assert_eq!(w.get_block(P), Some(Block::DIRT));
     assert_eq!(w.get_block(P + IVec3::Y), Some(Block::AIR), "the crop pops off");
     assert!(w.drops.iter().any(|&(_, s)| s.item == Item::WHEAT_SEEDS), "and drops");
     // A player landing on it from 3 blocks: the feet sit at its 15/16 top.
     w.set_block(P, farmland(0));
     let feet = P.as_dvec3() + glam::DVec3::new(0.5, 15. / 16., 0.5);
-    assert!(w.player_landed(feet, crate::player::SHAPE, 3.0));
+    assert!(w.player_landed(feet, crate::player::SHAPE, 3.0, crate::world::vibration::EventSource::NONE));
     assert_eq!(w.get_block(P), Some(Block::DIRT));
 }
 
@@ -214,7 +214,7 @@ fn trampling_is_a_chance_of_the_fall_less_half_a_block() {
     for _ in 0..2000 {
         w.set_block(P, farmland(0));
         w.set_block(P + IVec3::Y, Block::wheat(0));
-        trampled += w.trample_farmland(P, 0.75, 0.6, 1.8, true) as u32;
+        trampled += w.trample_farmland(P, 0.75, 0.6, 1.8, true, crate::world::vibration::EventSource::NONE) as u32;
     }
     assert!((400..600).contains(&trampled), "about a quarter: {trampled}");
 }

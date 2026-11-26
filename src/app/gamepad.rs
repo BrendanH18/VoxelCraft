@@ -141,6 +141,9 @@ struct Seat {
     presses: Vec<Press>,
     /// Last trigger states (RT, LT), for press and release edges.
     triggers: (bool, bool),
+    /// v1.0 Track 9: RT and LT toggled on, with Attack/Destroy or Use
+    /// Item/Place Block in Toggle mode; a screen lets them go.
+    toggled: (bool, bool),
     /// When B went down, until the stack drops or it's released.
     drop_since: Option<Instant>,
     sneaking: bool,
@@ -176,6 +179,7 @@ impl Seat {
             held: Held::default(),
             presses: Vec::new(),
             triggers: (false, false),
+            toggled: (false, false),
             drop_since: None,
             sneaking: false,
             sprinting: false,
@@ -195,6 +199,7 @@ impl Seat {
         self.presses.clear();
         self.nav = None;
         self.drop_since = None;
+        self.toggled = (false, false);
         self.body.let_go();
     }
 
@@ -228,17 +233,39 @@ impl Seat {
 
     /// Trigger presses and releases since the last frame. Edges come from
     /// the triggers' own last state, so closing a screen with a trigger
-    /// still down doesn't act again.
-    fn trigger_edges(&mut self, rt: bool, lt: bool, playing: bool) {
+    /// still down doesn't act again. `toggle` is the Attack and Use options'
+    /// Toggle mode (`toggleAttack`, `toggleUse`): a pull then flips the
+    /// trigger's held state as the mouse buttons' do, and a release does
+    /// nothing; `using_item` is whether this player's item is in use.
+    fn trigger_edges(&mut self, rt: bool, lt: bool, playing: bool, toggle: (bool, bool), using_item: bool) {
+        use super::{ToggleAction, toggled_presses};
         let (was_rt, was_lt) = std::mem::replace(&mut self.triggers, (rt, lt));
         if !playing {
             return;
         }
-        if rt != was_rt {
-            self.presses.push(if rt { Press::MineDown } else { Press::MineUp });
+        let press = |pressed: bool, attack: bool| match (attack, pressed) {
+            (true, true) => Press::MineDown,
+            (true, false) => Press::MineUp,
+            (false, true) => Press::UseDown,
+            (false, false) => Press::UseUp,
+        };
+        if rt != was_rt && toggle.0 {
+            if rt {
+                let edges = toggled_presses(ToggleAction::Attack, self.toggled.0, using_item);
+                self.presses.extend(edges.into_iter().map(|(p, a)| press(p, a)));
+                self.toggled.0 = !self.toggled.0;
+            }
+        } else if rt != was_rt {
+            self.presses.push(press(rt, true));
         }
-        if lt != was_lt {
-            self.presses.push(if lt { Press::UseDown } else { Press::UseUp });
+        if lt != was_lt && toggle.1 {
+            if lt {
+                let edges = toggled_presses(ToggleAction::Use, self.toggled.1, using_item);
+                self.presses.extend(edges.into_iter().map(|(p, a)| press(p, a)));
+                self.toggled.1 = !self.toggled.1;
+            }
+        } else if lt != was_lt {
+            self.presses.push(press(lt, false));
         }
     }
 
@@ -402,6 +429,14 @@ impl Pads {
         })
     }
 
+    /// v1.0 Track 9: the vehicle stores the seats have open.
+    pub(super) fn open_vehicles(&self) -> impl Iterator<Item = u32> + '_ {
+        self.seats.iter().filter_map(|s| match s.menu {
+            Some(Menu::Items { tab: Tab::Vehicle(id), .. }) => Some(id),
+            _ => None,
+        })
+    }
+
     pub(super) fn trading(&self, id: u64) -> bool {
         self.seats.iter().any(|s| matches!(s.menu,Some(Menu::Items {tab:Tab::Trading(other),..}) if id==other))
     }
@@ -482,11 +517,19 @@ impl Game {
             }
         }
         let now = Instant::now();
+        let toggle = (self.settings.toggle_attack, self.settings.toggle_use);
         for seat in &mut self.pads.seats {
             let Some(id) = seat.id else { continue };
             let pad = gilrs.gamepad(id);
             let trigger = |b: Button| pad.button_data(b).is_some_and(|d| d.value() > TRIGGER);
-            seat.trigger_edges(trigger(Button::RightTrigger2), trigger(Button::LeftTrigger2), seat.menu.is_none());
+            let using = self.agents.players.get(&seat.name).is_some_and(|b| b.agent.session.using_item());
+            seat.trigger_edges(
+                trigger(Button::RightTrigger2),
+                trigger(Button::LeftTrigger2),
+                seat.menu.is_none(),
+                toggle,
+                using,
+            );
             if seat.menu.is_some() {
                 let stick = Vec2::new(pad.value(Axis::LeftStickX), pad.value(Axis::LeftStickY));
                 navs.extend(seat.stick_nav(stick, now).map(|n| (seat.name.clone(), n)));
@@ -807,6 +850,8 @@ impl Game {
                 }
             }
             agent.hold(tick.input, false, false);
+            // v1.0 Track 9: a controller seat is a local player too.
+            agent.session.player.auto_jump = self.settings.auto_jump;
             let mut body = std::mem::take(&mut self.pads.seats[i].body);
             let fighter = super::lan::PlayerRef::Agent(name.clone());
             let mut requests = Vec::new();
@@ -1204,15 +1249,37 @@ mod tests {
     #[test]
     fn triggers_press_and_release_once_and_not_after_a_screen() {
         let mut s = seat();
-        s.trigger_edges(true, false, true);
-        s.trigger_edges(true, true, true);
-        s.trigger_edges(false, true, true);
+        let hold = (false, false);
+        s.trigger_edges(true, false, true, hold, false);
+        s.trigger_edges(true, true, true, hold, false);
+        s.trigger_edges(false, true, true, hold, false);
         assert_eq!(s.tick_input().actions, vec![Press::MineDown, Press::UseDown, Press::MineUp]);
         // LT released and pressed again behind a screen: nothing on return.
-        s.trigger_edges(false, false, false);
-        s.trigger_edges(false, true, false);
-        s.trigger_edges(false, true, true);
+        s.trigger_edges(false, false, false, hold, false);
+        s.trigger_edges(false, true, false, hold, false);
+        s.trigger_edges(false, true, true, hold, false);
         assert!(s.tick_input().actions.is_empty());
+    }
+
+    /// v1.0 Track 9: with Attack and Use in Toggle mode, a pull flips the
+    /// trigger's held state and a release does nothing; a screen lets go.
+    #[test]
+    fn toggled_triggers_flip_on_each_pull() {
+        let mut s = seat();
+        let toggle = (true, true);
+        s.trigger_edges(true, false, true, toggle, false);
+        s.trigger_edges(false, false, true, toggle, false);
+        assert_eq!(s.tick_input().actions, vec![Press::MineDown], "held after the release");
+        s.trigger_edges(true, false, true, toggle, false);
+        assert_eq!(s.tick_input().actions, vec![Press::MineDown, Press::MineUp], "a click, then off");
+        s.trigger_edges(false, true, true, toggle, false);
+        s.trigger_edges(false, false, true, toggle, true);
+        s.trigger_edges(false, true, true, toggle, true);
+        assert_eq!(s.tick_input().actions, vec![Press::UseDown, Press::UseUp], "a drawn bow is released");
+        s.trigger_edges(false, false, true, toggle, false);
+        s.trigger_edges(false, true, true, toggle, false);
+        s.open(Menu::Pause { choice: 0 });
+        assert_eq!(s.toggled, (false, false));
     }
 
     #[test]

@@ -117,15 +117,31 @@ impl World {
         let Some(s) = self.get_block(p).and_then(decode) else { return };
         if s.waterlogged {
             if s.hydration < MAX_HYDRATION {
+                let old = self.get_block(p);
                 self.edit(p, block(State { hydration: s.hydration + 1, ..s }), false);
                 self.dried_ghast_events.push(Hydration::Grew(p));
+                // v1.0 Track 9: `tickWaterlogged` posts `block_change`.
+                self.emit_block_event(
+                    p,
+                    crate::world::vibration::GameEvent::BlockChange,
+                    crate::world::vibration::EventSource::NONE,
+                    old,
+                );
             } else {
                 // `removeBlock(pos, false)` leaves the water it held.
                 self.edit(p, Block::WATER, false);
                 self.dried_ghast_events.push(Hydration::Hatched(p, ghastling_yaw(s.facing)));
             }
         } else if s.hydration > 0 {
+            let old = self.get_block(p);
             self.edit(p, block(State { hydration: s.hydration - 1, ..s }), false);
+            // v1.0 Track 9: drying out posts `block_change` too.
+            self.emit_block_event(
+                p,
+                crate::world::vibration::GameEvent::BlockChange,
+                crate::world::vibration::EventSource::NONE,
+                old,
+            );
         }
     }
 }

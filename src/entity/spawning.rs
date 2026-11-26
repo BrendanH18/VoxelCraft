@@ -222,6 +222,12 @@ impl Entities {
                 }
                 self.spawn(kind, pos);
                 spawned = true;
+                // v1.0 Track 9: `BaseSpawner.serverTick` posts `entity_place`
+                // at the spawner, from the new mob.
+                if let Some(m) = self.mobs.last() {
+                    let source = super::warden::mob_source(m);
+                    self.sculk.post(centre, crate::world::vibration::GameEvent::EntityPlace, source, None);
+                }
             }
             if spawned {
                 let next = self.rng.range(SPAWNER_DELAY.0, SPAWNER_DELAY.1);

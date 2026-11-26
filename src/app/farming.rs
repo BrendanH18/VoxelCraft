@@ -8,6 +8,7 @@ impl Game {
     /// to dirt (`FarmlandBlock.fallOn`, see [`crate::world::World::player_landed`]).
     pub(super) fn trample(&mut self, fallen: f64) {
         let shape = self.session.player.collision_shape();
-        self.world.player_landed(self.session.player.pos, shape, fallen);
+        let source = self.session.event_source();
+        self.world.player_landed(self.session.player.pos, shape, fallen, source);
     }
 }

@@ -782,6 +782,19 @@ impl Entities {
             (s.passenger == Some(player)).then_some(seat - forward)
         }
     }
+    /// v1.0 Track 9: `Camera.alignWithEntity`'s third-person distance for a
+    /// rider: the larger of the player's `camera_distance` (4) and a living
+    /// mount's (the happy ghast's 8); carts, boats and cushions aren't living.
+    pub fn camera_distance(&self, vehicle: Option<u32>) -> f64 {
+        let mount = vehicle.and_then(|v| self.mount(v)).map_or(crate::camera::CAMERA_DISTANCE, |m| {
+            if m.kind == MobKind::HappyGhast {
+                crate::camera::HAPPY_GHAST_CAMERA_DISTANCE
+            } else {
+                crate::camera::CAMERA_DISTANCE
+            }
+        });
+        mount.max(crate::camera::CAMERA_DISTANCE)
+    }
     /// Where a vehicle is: a mount's or a cart, boat or cushion's position.
     pub fn vehicle_pos(&self, id: u32) -> Option<DVec3> {
         if id & MOB_VEHICLE != 0 { self.mount(id).map(|m| m.pos) } else { self.cart(id).map(|c| c.pos) }
@@ -894,6 +907,10 @@ impl Entities {
             } else if !consume {
                 return false;
             }
+            // v1.0 Track 9: `AbstractHorse.handleEating` posts `eat` once the
+            // food did something.
+            let source = super::warden::mob_source(m);
+            self.sculk.post(m.pos, crate::world::vibration::GameEvent::Eat, source, None);
         } else if !m.baby
             && s.rider.is_none()
             && (equine(kind) && (s.tame || held.is_none())
