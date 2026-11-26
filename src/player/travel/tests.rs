@@ -270,6 +270,39 @@ fn soul_sand_slows_walking_to_two_fifths() {
     near(top.x, a / (1.0 - 0.4_f32 as f64 * f), 1e-9, "soul sand displacement");
 }
 
+/// v1.0 Track 5: Soul Speed III boots on soul sand: no slowdown (movement
+/// efficiency 1) and 0.0615 more `movement_speed`; on stone the effect goes
+/// at the first block change, and the speed is plain walking again.
+#[test]
+fn soul_speed_boots_outrun_soul_sand() {
+    use crate::enchant::Enchantment;
+    use crate::inventory::Stack;
+    use crate::item::{ArmorMaterial, ArmorPiece, Item};
+    let mut world = ground();
+    for x in -2..30 {
+        world.set(IVec3::new(x, FLOOR - 1, 0), Block::SOUL_SAND);
+    }
+    let mut boots = Stack::new(Item::armor(ArmorPiece::Boots, ArmorMaterial::Iron), 1);
+    boots.enchants.set(Enchantment::SoulSpeed, 3);
+    let mut p = Player::new(DVec3::new(0.5, FLOOR as f64, 0.5));
+    p.powder_snow_equipment(&[None, None, None, Some(boots)], 0);
+    for _ in 0..5 {
+        p.tick(MoveInput::default(), &world);
+    }
+    assert!(p.soul.active, "standing on soul sand starts it");
+    let top = run(&mut p, &world, forward(), 60);
+    let speed = crate::knockback::movement_speed_with(0, 0, false, 0.0615) as f64;
+    near(speed, 0.1615, 1e-6, "movement_speed");
+    let a = speed * (0.21600002_f32 / (0.6_f32 * 0.6_f32 * 0.6_f32)) as f64 * 0.98_f32 as f64;
+    let f = (0.6_f32 * 0.91_f32) as f64;
+    near(top.x, a / (1.0 - f), 1e-6, "full speed on soul sand");
+    assert!(top.x > 4.317 / 20.0, "faster than walking on stone");
+    // Past the sand (x 30 on), stone: plain walking at Java's 4.317 m/s.
+    let stone = run(&mut p, &world, forward(), 60);
+    assert!(p.pos.x > 31.0 && !p.soul.active);
+    near(stone.x * 20.0, 4.317, 2e-3, "walking speed on stone");
+}
+
 #[test]
 fn ice_keeps_momentum() {
     let mut world = ground();

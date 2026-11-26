@@ -213,11 +213,13 @@ pub fn item(name: &str) -> Option<Item> {
 }
 
 /// `#double_trade_price` (`#treasure`): binding and vanishing curses,
-/// swift sneak, soul speed (not in the game), frost walker, mending and
-/// wind burst.
+/// swift sneak, soul speed, frost walker, mending and wind burst.
 pub fn double_trade_price(e: Enchantment) -> bool {
     use Enchantment as E;
-    matches!(e, E::BindingCurse | E::VanishingCurse | E::SwiftSneak | E::FrostWalker | E::Mending | E::WindBurst)
+    matches!(
+        e,
+        E::BindingCurse | E::VanishingCurse | E::SwiftSneak | E::SoulSpeed | E::FrostWalker | E::Mending | E::WindBurst
+    )
 }
 
 /// The `#tradeable` potion tag, in tag order (`set_random_potion` on the

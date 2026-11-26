@@ -260,7 +260,7 @@ clusters per 16×16 cell and layer) are fixed.
   deltas, soul sand/gravel/blackstone/magma ore blobs, nether gold ore (no
   block yet), and the gravel and lava edges of soul sand valley and delta
   floors near the lava sea.
-- Soul lanterns (no lanterns yet), signs, Soul Speed, the soul fire HUD
+- Soul lanterns (no lanterns yet), signs, the soul fire HUD
   overlay (the Java client code is not in the reference jar to check) and wall
   torches are absent. Every mob inside a ladder or vine slides at most 0.15
   blocks per tick and climbs at 0.2 while pressing a wall (Java

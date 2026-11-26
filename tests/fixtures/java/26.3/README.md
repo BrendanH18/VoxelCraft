@@ -660,7 +660,8 @@ scripts/boat-check.sh -- 'cargo test --release --test java_enchantments'
 ```
 
 `tests/java_enchantments.rs` checks every definition against `enchant::Def`
-(Soul Speed is the one Java enchantment without a variant), every
+(every Java enchantment has a variant since v1.0 Track 5 registered Soul
+Speed), every
 `ItemSet` against its tag over every registered item both ways, every
 registered item against every enchantment's supported and primary items,
 `compatible` for every pair, the enchantment tags the game uses (with their

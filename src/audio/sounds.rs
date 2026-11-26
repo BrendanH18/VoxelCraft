@@ -256,6 +256,9 @@ pub enum Sound {
     /// v0.18 Track 9: chests, ender chests, copper chests and barrels
     /// opening and closing.
     Container(ContainerCue),
+    /// v1.0 Track 5: `particle.soul_escape`, Soul Speed boots on soul sand
+    /// and soul soil.
+    SoulEscape,
 }
 
 /// v0.18 Track 9: the five events of a Java `SoundType`.
@@ -333,7 +336,8 @@ impl Sound {
     const MINECART_END: usize = Self::GEYSER_END + crate::entity::minecart::Cue::ALL.len();
     const CRAFTER_END: usize = Self::MINECART_END + crate::world::crafter::Cue::ALL.len();
     const BLOCK_END: usize = Self::CRAFTER_END + super::block_sounds::FAMILY_COUNT * BlockCue::ALL.len();
-    pub const COUNT: usize = Self::BLOCK_END + ContainerCue::ALL.len();
+    const CONTAINER_END: usize = Self::BLOCK_END + ContainerCue::ALL.len();
+    pub const COUNT: usize = Self::CONTAINER_END + 1;
 
     /// Dense index in `0..COUNT`.
     pub fn key(self) -> usize {
@@ -359,6 +363,7 @@ impl Sound {
             Sound::Crafter(cue) => Self::MINECART_END + cue as usize,
             Sound::Block(family, cue) => Self::CRAFTER_END + family.index() * BlockCue::ALL.len() + cue as usize,
             Sound::Container(cue) => Self::BLOCK_END + cue as usize,
+            Sound::SoulEscape => Self::CONTAINER_END,
             Sound::Note(i) => 3 * M + 27 + Voice::ALL.len() * CALLS + i as usize,
             Sound::Thunder => Self::BASE_COUNT - 1,
             Sound::Bell => Self::BASE_COUNT - 4,
@@ -490,6 +495,7 @@ impl Sound {
             .chain(crate::world::crafter::Cue::ALL.map(Sound::Crafter))
             .chain(super::block_sounds::sounds())
             .chain(ContainerCue::ALL.map(Sound::Container))
+            .chain([Sound::SoulEscape])
     }
 
     /// Stable sound name used when exporting or identifying samples.
@@ -514,6 +520,7 @@ impl Sound {
             Sound::Crafter(c) => format!("crafter_{c:?}").to_lowercase(),
             Sound::Block(f, c) => format!("block_{}_{c:?}", f.name()).to_lowercase(),
             Sound::Container(c) => format!("container_{c:?}").to_lowercase(),
+            Sound::SoulEscape => "particle_soul_escape".into(),
             Sound::Thunder => "lightning_thunder".into(),
             Sound::HoneySlide => "honey_block_slide".into(),
             Sound::HoneyDrink => "honey_drink".into(),
@@ -658,6 +665,8 @@ impl Sound {
             // mining hits and lids play as `BLOCKS`.
             Sound::Block(_, BlockCue::Step | BlockCue::Fall) => SoundSource::Players,
             Sound::Block(..) | Sound::Container(_) => SoundSource::Blocks,
+            // `PlaySoundEffect` plays in the wearer's category (`PLAYERS`).
+            Sound::SoulEscape => SoundSource::Players,
             Sound::Mob(voice, _) => voice.source(),
         }
     }
@@ -681,6 +690,7 @@ impl Sound {
             // Every cue alike, so a cue can share another's buffers.
             Sound::Block(..) => 2,
             Sound::Container(_) => 2,
+            Sound::SoulEscape => 2,
             Sound::Warden(_) | Sound::Sculk(_) => 2,
             Sound::Sniffer(_) | Sound::Weapon(_) => 2,
             Sound::Step(_) => 4,
@@ -739,6 +749,7 @@ impl Sound {
             Sound::Crafter(c) => super::crafter::render(c, &mut rng),
             Sound::Block(f, c) => super::block_sounds::render(f, c, &mut rng),
             Sound::Container(c) => super::block_sounds::render_container(c, &mut rng),
+            Sound::SoulEscape => soul_escape(&mut rng),
             Sound::Thunder => thunder(&mut rng),
             Sound::HoneySlide => honey_sound(&mut rng, 0.35),
             Sound::HoneyDrink => honey_sound(&mut rng, 0.22),
@@ -1564,6 +1575,19 @@ fn material_sound(m: Material, rng: &mut Rng, kind: Kind) -> Vec<f32> {
 }
 
 /// Original viscous squelch: damped low noise with a descending resonant bubble.
+/// v1.0 Track 5: an original stand-in for `particle.soul_escape`: a breathy
+/// wisp of band-passed noise that swells and fades over a faint, falling,
+/// hollow tone. Nothing is sampled.
+fn soul_escape(rng: &mut Rng) -> Vec<f32> {
+    let secs = 0.9;
+    let mut out = noise(rng, samples(secs), |t| (t / 0.12).min(1.0) * (1.0 - t / secs).max(0.0).powf(1.6));
+    Biquad::bandpass(rng.range(1100.0, 1500.0), 1.6).run(&mut out);
+    let tone = rng.range(420.0, 520.0);
+    add_mode(&mut out, samples(0.04), Mode { freq: tone, amp: 0.18, tau: 0.35, glide: 1.35, glide_tau: 0.3 });
+    add_mode(&mut out, samples(0.04), Mode { freq: tone * 1.5, amp: 0.07, tau: 0.25, glide: 1.35, glide_tau: 0.3 });
+    dsp::finish(out, 0.5)
+}
+
 fn honey_sound(rng: &mut Rng, duration: f32) -> Vec<f32> {
     let mut out = noise(rng, samples(duration), |t| (1.0 - t / duration).max(0.0).powi(2));
     Biquad::lowpass(650.0, 1.1).run(&mut out);

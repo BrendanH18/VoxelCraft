@@ -5,6 +5,7 @@
 //! kept in blocks per second (Java's `deltaMovement` times 20).
 
 pub(crate) mod fluid;
+pub mod soul_speed;
 pub(crate) mod travel;
 
 pub use fluid::{FluidCell, FluidContact, fluid_at};
@@ -102,6 +103,8 @@ pub struct Player {
     pub frozen_fraction: f32,
     /// Status effects on movement (see [`Player::apply_effects`]).
     modifiers: Modifiers,
+    /// v1.0 Track 5: the worn boots' Soul Speed (see [`soul_speed`]).
+    pub soul: soul_speed::SoulSpeed,
     /// Minecart this player is riding.
     pub vehicle: Option<u32>,
     /// v0.16 Track B: gliding on elytra (`isFallFlying`, shared flag 7).
@@ -157,6 +160,8 @@ impl Player {
     pub fn powder_snow_equipment(&mut self, armor: &[Option<crate::inventory::Stack>; 4], ticks_frozen: u16) {
         use crate::item::{ArmorMaterial, ArmorPiece};
         self.modifiers.swift_sneak = crate::enchant::armor_level(armor, crate::enchant::Enchantment::SwiftSneak);
+        // v1.0 Track 5: Soul Speed's `slots` are the feet only.
+        self.soul.set_level(armor[3].map_or(0, |s| s.enchants.level(crate::enchant::Enchantment::SoulSpeed)));
         self.modifiers.glider = crate::content::elytra::can_glide_with(armor[1]);
         self.leather_boots =
             armor[3].is_some_and(|s| s.item.as_armor() == Some((ArmorPiece::Boots, ArmorMaterial::Leather)));
@@ -203,6 +208,7 @@ impl Player {
             freeze_immune: false,
             frozen_fraction: 0.0,
             modifiers: Modifiers::default(),
+            soul: Default::default(),
             vehicle: None,
             fall_flying: false,
             fall_fly_ticks: 0,
@@ -369,13 +375,15 @@ impl Player {
         self.modifiers.depth_strider = depth_strider.min(3);
     }
 
-    /// Java's `MOVEMENT_SPEED` attribute: 0.1, with sprinting, Speed and Slowness.
+    /// Java's `MOVEMENT_SPEED` attribute: 0.1, with sprinting, Speed and
+    /// Slowness, and the `add_value` modifiers of powder snow's frost and an
+    /// active Soul Speed.
     pub fn movement_speed(&self) -> f32 {
         crate::knockback::movement_speed_with(
             self.modifiers.speed_level,
             self.modifiers.slowness_level,
             self.sprinting,
-            -0.05 * self.frozen_fraction,
+            -0.05 * self.frozen_fraction + self.soul.speed_add(),
         )
     }
 

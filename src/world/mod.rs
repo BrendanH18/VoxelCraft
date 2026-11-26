@@ -425,6 +425,9 @@ pub struct World {
     pub(crate) allay_notes: Vec<IVec3>,
     /// Tripwire hook clicks and attach sounds since the last frame.
     pub trip_sounds: Vec<(IVec3, gadgets::TripSound)>,
+    /// v1.0 Track 5: Soul Speed's `particle.soul_escape` (where, pitch),
+    /// for the client to play.
+    pub soul_sounds: Vec<(DVec3, f32)>,
     /// Freshly placed carved pumpkins and jack o'lanterns, checked for golem patterns by the game.
     pub golem_heads: Vec<IVec3>,
     /// v0.16 Track C: freshly placed wither skeleton skulls, checked for
@@ -844,6 +847,7 @@ impl World {
             notes: Vec::new(),
             allay_notes: Vec::new(),
             trip_sounds: Vec::new(),
+            soul_sounds: Vec::new(),
             golem_heads: Vec::new(),
             wither_skulls: Vec::new(),
             beacons: Default::default(),

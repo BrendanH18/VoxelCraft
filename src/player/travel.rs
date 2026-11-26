@@ -164,6 +164,11 @@ impl Player {
             dm.y = -GRAVITY * 0.98_f32 as f64;
         }
         self.base_tick(world, &mut dm);
+        // `LivingEntity.baseTick`: a new block position runs the
+        // `location_changed` enchantment effects (Soul Speed).
+        if self.soul.moved_to(self.pos.floor().as_ivec3()) {
+            self.soul_location_changed(world);
+        }
         self.ai_step(input, world, &mut dm);
         // `BubbleColumnBlock.entityInside`: the column lifts or drags the
         // player and resets the fall distance.
@@ -175,6 +180,7 @@ impl Player {
             }
         }
         self.vel = dm * TICK_RATE;
+        self.soul.moved = self.pos - before;
         self.climbing = self.on_climbable(world);
         // `LivingEntity.tick`: `fallFlyTicks` counts the glide; the wings ease.
         self.fall_fly_ticks = if self.fall_flying { self.fall_fly_ticks + 1 } else { 0 };
@@ -740,8 +746,12 @@ impl Player {
         self.honey_landed = below && self.motion.fall_distance > 0.0 && self.on_honey(world);
         self.motion.minor_horizontal_collision =
             self.motion.horizontal_collision && self.horizontal_collision_minor(movement);
-        // `checkFallDamage`'s distance bookkeeping.
+        // `checkFallDamage`'s distance bookkeeping; `LivingEntity`'s runs
+        // the `location_changed` effects on landing.
         if self.on_ground {
+            if self.motion.fall_distance > 0.0 {
+                self.soul_location_changed(world);
+            }
             self.motion.fall_distance = 0.0;
         } else if movement.y < 0.0 {
             self.motion.fall_distance -= movement.y;
@@ -1105,9 +1115,34 @@ impl Player {
         if here == 1.0 { jump_factor(world.block(self.block_below_affecting_movement(world))) } else { here }
     }
 
+    /// v1.0 Track 5: Soul Speed's `location_changed` check, on the block
+    /// that affects the player's movement.
+    fn soul_location_changed<W: BlockSource + ?Sized>(&mut self, world: &W) {
+        if self.soul.level == 0 {
+            self.soul.active = false;
+            return;
+        }
+        let on_soul = super::soul_speed::soul_speed_block(world.block(self.block_below_affecting_movement(world)));
+        let (on_ground, riding, flying) = (self.on_ground, self.vehicle.is_some(), self.flying);
+        self.soul.location_changed(on_soul, on_ground, riding, flying, crate::enchant::roll());
+    }
+
+    /// Whether the block that affects the player's movement is a soul speed
+    /// block (`movement_affected_by` with `#soul_speed_blocks`).
+    pub fn on_soul_speed_block<W: BlockSource + ?Sized>(&self, world: &W) -> bool {
+        super::soul_speed::soul_speed_block(world.block(self.block_below_affecting_movement(world)))
+    }
+
+    /// `LivingEntity.getBlockSpeedFactor`: [`Self::raw_block_speed_factor`]
+    /// lerped toward 1 by `MOVEMENT_EFFICIENCY`, which an active Soul Speed
+    /// raises from 0 to 1.
+    fn block_speed_factor<W: BlockSource + ?Sized>(&self, world: &W) -> f32 {
+        if self.soul.active && self.soul.level > 0 { 1.0 } else { self.raw_block_speed_factor(world) }
+    }
+
     /// `Entity.getBlockSpeedFactor`: the feet's block, or the one below
     /// when that is neutral (water never passes it down).
-    fn block_speed_factor<W: BlockSource + ?Sized>(&self, world: &W) -> f32 {
+    fn raw_block_speed_factor<W: BlockSource + ?Sized>(&self, world: &W) -> f32 {
         let at = world.block(self.pos.floor().as_ivec3());
         let here = speed_factor(at);
         if at.is_some_and(Block::is_water) || here != 1.0 {

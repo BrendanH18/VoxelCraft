@@ -3,7 +3,8 @@
 //! every registered item against every enchantment's supported and primary
 //! items, every pair's compatibility, the enchantment tags the game uses and
 //! the tooltip order. Both directions: what Java has, the game has (Soul
-//! Speed is the one listed gap), and the game has nothing Java lacks.
+//! Speed, the last gap, since v1.0 Track 5), and the game has nothing Java
+//! lacks.
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use voxelcraft::{
@@ -13,10 +14,9 @@ use voxelcraft::{
     world::block::{Block, STATE_CAPACITY},
 };
 
-/// Java definitions without an [`Enchantment`] variant. The save encoding
-/// holds 42 enchantments in 126 of its 128 bits, so Soul Speed waits for a
-/// wider encoding (EFX-ENCH-18).
-const UNREGISTERED: [&str; 1] = ["minecraft:soul_speed"];
+/// Java definitions without an [`Enchantment`] variant: none since v1.0
+/// Track 5 gave Soul Speed the save encoding's last two bits.
+const UNREGISTERED: [&str; 0] = [];
 
 fn fixture(name: &str) -> Value {
     let path = format!("{}/tests/fixtures/java/26.3/{name}", env!("CARGO_MANIFEST_DIR"));
@@ -131,7 +131,7 @@ fn every_java_definition_is_registered_with_its_numbers_and_names() {
             assert_eq!(e.cost_range(level), (lo.0 + lo.1 * extra, hi.0 + hi.1 * extra), "{id} {level}");
         }
     }
-    assert_eq!(missing, UNREGISTERED, "Java definitions without a variant");
+    assert_eq!(missing, UNREGISTERED.to_vec(), "Java definitions without a variant");
     for e in Enchantment::ALL {
         definition(&f, e);
     }
@@ -302,7 +302,7 @@ fn enchantment_tags_match_and_keep_java_order() {
     assert_eq!(registered_tag(&f, "smelts_loot"), [Enchantment::FireAspect]);
     // Soul Speed is in #treasure (so #double_trade_price) and #tooltip_order only.
     for (tag, ids) in f["enchantment_tags"].as_object().unwrap() {
-        let has = strings(ids).contains(&UNREGISTERED[0].to_string());
+        let has = strings(ids).contains(&"minecraft:soul_speed".to_string());
         assert_eq!(has, matches!(tag.as_str(), "treasure" | "double_trade_price" | "tooltip_order"), "{tag}");
     }
 }

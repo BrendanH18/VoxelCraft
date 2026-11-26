@@ -1896,6 +1896,9 @@ impl Item {
             // icons follow the furnace minecart's (`sprite_for_layer` skips
             // the End crystal, which draws its own layer).
             .chain(crate::content::spawn_egg::all())
+            // v1.0 Track 5: the trail ruins' seven pottery sherds, appended
+            // after the spawn eggs.
+            .chain((crate::world::archaeology::TRAIL_ITEM_FIRST..crate::world::archaeology::TRAIL_ITEM_END).map(Item))
     }
 
     /// Everything a creative player can pick from: blocks, then items.
@@ -1998,6 +2001,19 @@ fn sprite_index(item: Item) -> Option<u16> {
                 + 1
                 + (i - crate::content::spawn_egg::ITEM_FIRST),
         ),
+        // v1.0 Track 5: the trail ruins' sherds follow the spawn eggs.
+        i if (crate::world::archaeology::TRAIL_ITEM_FIRST..crate::world::archaeology::TRAIL_ITEM_END).contains(&i) => {
+            Some(
+                track_d_icon_base()
+                    + TRACK_D_ICONS as u16
+                    + TRACK_B16_ICONS as u16
+                    + 1
+                    + GEN5_ICONS as u16
+                    + 1
+                    + (crate::content::spawn_egg::ALL_END - crate::content::spawn_egg::ITEM_FIRST)
+                    + (i - crate::world::archaeology::TRAIL_ITEM_FIRST),
+            )
+        }
         // v0.17 build-5000 ITEM-08: the bundles follow the experience bottle.
         i if (crate::content::bundle::ITEM_FIRST..crate::content::bundle::ITEM_END).contains(&i) => Some(
             late_icon_base()
@@ -2145,6 +2161,7 @@ pub const fn icon_count() -> u32 {
         + GEN5_ICONS
         + 1 // v0.17 Track D1: the furnace minecart.
         + (crate::content::spawn_egg::ALL_END - crate::content::spawn_egg::ITEM_FIRST) as u32 // v0.18 Track 4, v1.0 Track 7.
+        + (crate::world::archaeology::TRAIL_ITEM_END - crate::world::archaeology::TRAIL_ITEM_FIRST) as u32 // v1.0 Track 5.
 }
 
 /// v0.16 Track B's items, in icon order (after v0.15 Track D's).

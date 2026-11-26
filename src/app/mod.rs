@@ -1698,6 +1698,10 @@ impl Game {
                 (0.8, 1.0),
             );
         }
+        // v1.0 Track 5: Soul Speed's escaping souls, at volume 0.6.
+        for (pos, pitch) in std::mem::take(&mut self.world.soul_sounds) {
+            self.audio.play(crate::audio::sounds::Sound::SoulEscape, Some(pos), 0.6, (pitch, pitch));
+        }
         for (pos, sound) in std::mem::take(&mut self.world.trip_sounds) {
             // The existing click, at Java's volume 0.4 and the hook's pitch.
             self.audio.play_in(

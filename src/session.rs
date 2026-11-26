@@ -19,6 +19,8 @@ pub mod raid;
 pub mod ranged;
 mod recipes;
 mod recovery;
+#[cfg(test)]
+mod soul_speed_tests;
 pub mod storage;
 mod weapons;
 mod wood;
@@ -80,6 +82,12 @@ pub struct PlayerSession {
     /// v0.15 Track D: the block the player last stood in, for Frost
     /// Walker's `location_changed` effect (Java's `lastPos`, not saved).
     frost_last: Option<IVec3>,
+    /// v1.0 Track 5: the Frost Walker level last seen, so putting boots on
+    /// runs the effect (`runLocationChangedEffects` for the slot; not saved).
+    frost_level: u8,
+    /// v1.0 Track 5: ticks counted for Soul Speed's `periodic_tick` (Java's
+    /// `tickCount`, not saved).
+    soul_ticks: u32,
     /// v0.15 Track E: where Bad Omen became Raid Omen (Java's saved
     /// `raid_omen_position`); the raid starts there when the omen ends.
     pub raid_omen_pos: Option<IVec3>,
@@ -235,6 +243,8 @@ impl PlayerSession {
             mining: Default::default(),
             weapons: Default::default(),
             frost_last: None,
+            frost_level: 0,
+            soul_ticks: 0,
             raid_omen_pos: None,
             recipe_book: Default::default(),
             anvil_name: None,
@@ -269,6 +279,8 @@ impl PlayerSession {
             mining: Default::default(),
             weapons: Default::default(),
             frost_last: None,
+            frost_level: 0,
+            soul_ticks: 0,
             raid_omen_pos: None,
             recipe_book: Default::default(),
             anvil_name: None,
@@ -354,14 +366,17 @@ impl PlayerSession {
     /// v0.15 Track D: Frost Walker (`enchantment/frost_walker.json`'s
     /// `location_changed` effect): when the player moves into another block
     /// while on the ground and not riding, still water around the feet
-    /// freezes into frosted ice. Every adapter calls it once a tick.
+    /// freezes into frosted ice; since v1.0 Track 5 also when the boots are
+    /// put on, as Java runs the effects for a newly equipped slot. Every
+    /// adapter calls it once a tick.
     pub fn frost_walk(&mut self, world: &mut crate::world::World, entities: &Entities) -> usize {
         let cell = self.player.pos.floor().as_ivec3();
-        if self.frost_last == Some(cell) {
+        let level = crate::enchant::armor_level(&self.inventory.armor, crate::enchant::Enchantment::FrostWalker);
+        let equipped = std::mem::replace(&mut self.frost_level, level) != level;
+        if self.frost_last == Some(cell) && !equipped {
             return 0;
         }
         self.frost_last = Some(cell);
-        let level = crate::enchant::armor_level(&self.inventory.armor, crate::enchant::Enchantment::FrostWalker);
         if level == 0
             || !self.player.on_ground
             || self.player.vehicle.is_some()
@@ -371,6 +386,52 @@ impl PlayerSession {
             return 0;
         }
         world.frost_walk_by(self.player.pos, level, |p| entities.cell_occupied(p), self.event_source())
+    }
+
+    /// v1.0 Track 5: Soul Speed's effects that need the inventory or the
+    /// world (see [`crate::player::soul_speed`]): the boots' wear rolled by
+    /// the last moves (`ItemStack.hurtAndBreak`: Unbreaking's armor chance,
+    /// none in Creative, broken at full damage) and, every fifth tick on soul
+    /// sand or soul soil while moving, a `soul` particle at the feet
+    /// (`spawn_particles`) and, with chance 0.35, `particle.soul_escape`.
+    /// Every adapter calls it once a tick. Returns whether the boots broke.
+    pub fn tick_soul_speed(&mut self, world: &mut crate::world::World) -> bool {
+        use crate::particles::{Burst, Kind, Request};
+        self.soul_ticks = self.soul_ticks.wrapping_add(1);
+        let wear = std::mem::take(&mut self.player.soul.wear);
+        let mut broke = false;
+        if wear > 0
+            && !self.mode.is_creative()
+            && let Some(boots) = &mut self.inventory.armor[3]
+            && let Some(max) = boots.item.durability()
+        {
+            let worn =
+                (0..wear).filter(|_| crate::enchant::wears(boots.enchants, true, crate::enchant::roll())).count();
+            boots.damage = boots.damage.saturating_add(worn as u16);
+            if boots.damage >= max {
+                self.inventory.armor[3] = None;
+                broke = true;
+            }
+        }
+        let p = &self.player;
+        if self.mode != GameMode::Spectator
+            && p.soul.emits(self.soul_ticks, p.on_soul_speed_block(world), p.on_ground, p.flying)
+        {
+            // `in_bounding_box` across the width, 0.1 above the feet, moving
+            // back against the wearer's motion (-0.2) and up 0.1.
+            let width = 2.0 * crate::player::HALF_WIDTH;
+            let x = p.pos.x + (f64::from(crate::enchant::roll()) - 0.5) * width;
+            let z = p.pos.z + (f64::from(crate::enchant::roll()) - 0.5) * width;
+            let mut burst = Burst::new(Kind::Soul, DVec3::new(x, p.pos.y + 0.1, z), 1);
+            burst.velocity = DVec3::new(p.soul.moved.x * -0.2, 0.1, p.soul.moved.z * -0.2);
+            world.particles.push(Request::Burst(burst));
+            if crate::enchant::roll() < 0.35 {
+                // Volume 0.6, pitch uniform in [0.6, 1.0).
+                let pitch = 0.6 + 0.4 * crate::enchant::roll();
+                world.soul_sounds.push((p.pos, pitch));
+            }
+        }
+        broke
     }
 
     /// Java's respawn (`ServerPlayer.restoreFrom` after a death): a fresh
