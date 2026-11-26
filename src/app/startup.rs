@@ -51,7 +51,7 @@ impl Game {
         let saved_dimension = root_props.get("dimension").and_then(|d| Dimension::from_name(d)).unwrap_or_default();
         let dimension = args.dimension.unwrap_or(saved_dimension);
         let overworld_props = dimension::dimension_props(&root_props);
-        let (saved, dimension_props) = if existing.is_some() {
+        let (saved, dimension_props, load_notice) = if existing.is_some() {
             dimension::load_dimension(&storage, dimension, &overworld_props)
         } else {
             Default::default()
@@ -423,6 +423,10 @@ impl Game {
             && let Err(e) = game.open_lan(address)
         {
             game.show_popup(&e);
+        }
+        // v1.0 Track 1: damage the load worked around.
+        if let Some(notice) = load_notice {
+            game.report_load_damage(&notice);
         }
         game
     }

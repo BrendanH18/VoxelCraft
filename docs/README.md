@@ -21,6 +21,8 @@ Neither a planned task nor a historical release report establishes verified pari
 
 - [Updating VoxelCraft](updates.md): the in-game updater (v0.10 and later)
   and upgrading by hand from older versions.
+- [Saves and save compatibility](saves.md): the 1.0 policy, which saves open,
+  migration, unknown data, backups and recovering a damaged save.
 - [Gameplay](gameplay.md) and [survival items](survival-items.md).
 - [Game rules](game-rules.md): every Java 26.3 rule with its type, default,
   legacy name and what VoxelCraft enforces.

@@ -37,6 +37,7 @@ mod edit;
 mod home;
 mod multiplayer;
 mod prompts;
+mod recover;
 mod select;
 mod update;
 mod worlds;
@@ -327,8 +328,24 @@ impl Title {
 
     /// Select World over the title menu, as after leaving a world in Java.
     pub fn show_select(&mut self) {
+        self.select_world();
+    }
+
+    /// [`Title::show_select`], returning the flag that makes the list reload.
+    fn select_world(&mut self) -> std::rc::Rc<std::cell::Cell<bool>> {
         self.reset();
-        self.menus.open(select::SelectWorld::new(self));
+        let select = select::SelectWorld::new(self);
+        let stale = select.stale();
+        self.menus.open(select);
+        stale
+    }
+
+    /// Java's "Failed to load world" screen for a world whose level file
+    /// can't be read, over Select World (v1.0 Track 1).
+    pub fn show_recover(&mut self, dir: &str) {
+        let stale = self.select_world();
+        let screen = recover::RecoverWorld::new(self, dir, stale);
+        self.menus.open(screen);
     }
 
     /// Shows what went wrong with a world on a screen of its own, over
@@ -345,9 +362,9 @@ impl Title {
     /// Opens a world from outside the list (`--world`) the way the list
     /// does: a world saved by a newer version asks first.
     pub fn confirm_open(&mut self, dir: &str) -> Option<Action> {
-        self.show_select();
+        let stale = self.select_world();
         let world = worlds::summary(&self.saves_dir, dir)?;
-        let step = select::open(self, &world);
+        let step = select::open(self, &world, stale);
         self.menus.run(step)
     }
 

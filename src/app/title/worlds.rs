@@ -88,14 +88,18 @@ pub(in crate::app) fn summary(saves_dir: &Path, dir: &str) -> Option<Summary> {
     crate::data::validate_world_name(dir).ok()?;
     let path = saves_dir.join(dir);
     let storage = Storage::new(&path);
-    if !storage.exists() {
+    // Java lists a folder with a level file or the copy a save kept of it;
+    // saved chunks with neither are listed too, as unreadable, so they
+    // can't be opened as a new world over them (v1.0 Track 1).
+    if !storage.exists() && !storage.has_chunks_without_level() {
         return None;
     }
     let loaded = storage.load_level();
     let unreadable = loaded.as_ref().err().map(|e| e.to_string());
     let level = loaded.ok();
     let prop = |k: &str| level.as_ref().and_then(|l| l.props.get(k)).cloned();
-    let played = std::fs::metadata(path.join("level.txt")).and_then(|m| m.modified()).ok();
+    // Java's `getFileModificationTime`: the level file's, else its kept copy's.
+    let played = storage.level_modified(false).or_else(|| storage.level_modified(true));
     Some(Summary {
         name: prop("name").unwrap_or_else(|| dir.to_string()),
         mode: prop("mode").and_then(|m| GameMode::from_name(&m)).unwrap_or_default(),

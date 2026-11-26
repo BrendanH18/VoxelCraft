@@ -1,0 +1,14 @@
+render_distance=2
+simulation_distance=10
+fov=70
+sensitivity=1.00
+volume=1.00
+music_volume=1.00
+vsync=true
+graphics=enhanced
+show_fps=true
+view_bobbing=true
+particles=all
+fullscreen=off
+check_updates=true
+skip_update=

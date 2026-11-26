@@ -1,0 +1,871 @@
+{
+ "tag": "v0.12",
+ "commit": "42169669e3a890ffed48fab487c644eb3b93d65d",
+ "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+ "seed": 20261125,
+ "player": [
+  8.5,
+  152.0,
+  8.5
+ ],
+ "placed": [
+  {
+   "name": "stone",
+   "id": 1,
+   "pos": [
+    0,
+    150,
+    -4
+   ]
+  },
+  {
+   "name": "granite",
+   "id": 233,
+   "pos": [
+    2,
+    150,
+    -4
+   ]
+  },
+  {
+   "name": "polished_andesite",
+   "id": 238,
+   "pos": [
+    4,
+    150,
+    -4
+   ]
+  },
+  {
+   "name": "cobblestone",
+   "id": 9,
+   "pos": [
+    6,
+    150,
+    -4
+   ]
+  },
+  {
+   "name": "mossy_cobblestone",
+   "id": 224,
+   "pos": [
+    8,
+    150,
+    -4
+   ]
+  },
+  {
+   "name": "oak_planks",
+   "id": 8,
+   "pos": [
+    10,
+    150,
+    -4
+   ]
+  },
+  {
+   "name": "spruce_planks",
+   "id": 76,
+   "pos": [
+    12,
+    150,
+    -4
+   ]
+  },
+  {
+   "name": "birch_planks",
+   "id": 77,
+   "pos": [
+    14,
+    150,
+    -4
+   ]
+  },
+  {
+   "name": "jungle_planks",
+   "id": 78,
+   "pos": [
+    16,
+    150,
+    -4
+   ]
+  },
+  {
+   "name": "acacia_planks",
+   "id": 79,
+   "pos": [
+    18,
+    150,
+    -4
+   ]
+  },
+  {
+   "name": "dark_oak_planks",
+   "id": 336,
+   "pos": [
+    20,
+    150,
+    -4
+   ]
+  },
+  {
+   "name": "mangrove_planks",
+   "id": 337,
+   "pos": [
+    22,
+    150,
+    -4
+   ]
+  },
+  {
+   "name": "cherry_planks",
+   "id": 338,
+   "pos": [
+    24,
+    150,
+    -4
+   ]
+  },
+  {
+   "name": "bamboo_planks",
+   "id": 2027,
+   "pos": [
+    26,
+    150,
+    -4
+   ]
+  },
+  {
+   "name": "pale_oak_planks",
+   "id": 2019,
+   "pos": [
+    28,
+    150,
+    -4
+   ]
+  },
+  {
+   "name": "crimson_planks",
+   "id": 1618,
+   "pos": [
+    30,
+    150,
+    -4
+   ]
+  },
+  {
+   "name": "warped_planks",
+   "id": 1619,
+   "pos": [
+    0,
+    150,
+    -6
+   ]
+  },
+  {
+   "name": "oak_log",
+   "id": 6,
+   "pos": [
+    2,
+    150,
+    -6
+   ]
+  },
+  {
+   "name": "stone_bricks",
+   "id": 194,
+   "pos": [
+    4,
+    150,
+    -6
+   ]
+  },
+  {
+   "name": "bricks",
+   "id": 20,
+   "pos": [
+    6,
+    150,
+    -6
+   ]
+  },
+  {
+   "name": "glass",
+   "id": 10,
+   "pos": [
+    8,
+    150,
+    -6
+   ]
+  },
+  {
+   "name": "white_stained_glass",
+   "id": 624,
+   "pos": [
+    10,
+    150,
+    -6
+   ]
+  },
+  {
+   "name": "bookshelf",
+   "id": 198,
+   "pos": [
+    12,
+    150,
+    -6
+   ]
+  },
+  {
+   "name": "crafting_table",
+   "id": 44,
+   "pos": [
+    14,
+    150,
+    -6
+   ]
+  },
+  {
+   "name": "furnace",
+   "id": 45,
+   "pos": [
+    16,
+    150,
+    -6
+   ]
+  },
+  {
+   "name": "white_wool",
+   "id": 43,
+   "pos": [
+    18,
+    150,
+    -6
+   ]
+  },
+  {
+   "name": "red_wool",
+   "id": 574,
+   "pos": [
+    20,
+    150,
+    -6
+   ]
+  },
+  {
+   "name": "terracotta",
+   "id": 84,
+   "pos": [
+    22,
+    150,
+    -6
+   ]
+  },
+  {
+   "name": "white_concrete",
+   "id": 683,
+   "pos": [
+    24,
+    150,
+    -6
+   ]
+  },
+  {
+   "name": "obsidian",
+   "id": 42,
+   "pos": [
+    26,
+    150,
+    -6
+   ]
+  },
+  {
+   "name": "netherrack",
+   "id": 100,
+   "pos": [
+    28,
+    150,
+    -6
+   ]
+  },
+  {
+   "name": "glowstone",
+   "id": 22,
+   "pos": [
+    30,
+    150,
+    -6
+   ]
+  },
+  {
+   "name": "soul_sand",
+   "id": 101,
+   "pos": [
+    0,
+    150,
+    -8
+   ]
+  },
+  {
+   "name": "nether_bricks",
+   "id": 103,
+   "pos": [
+    2,
+    150,
+    -8
+   ]
+  },
+  {
+   "name": "blackstone",
+   "id": 800,
+   "pos": [
+    4,
+    150,
+    -8
+   ]
+  },
+  {
+   "name": "basalt",
+   "id": 806,
+   "pos": [
+    6,
+    150,
+    -8
+   ]
+  },
+  {
+   "name": "shroomlight",
+   "id": 1622,
+   "pos": [
+    8,
+    150,
+    -8
+   ]
+  },
+  {
+   "name": "end_stone",
+   "id": 181,
+   "pos": [
+    10,
+    150,
+    -8
+   ]
+  },
+  {
+   "name": "end_stone_bricks",
+   "id": 20503,
+   "pos": [
+    12,
+    150,
+    -8
+   ]
+  },
+  {
+   "name": "prismarine",
+   "id": 1970,
+   "pos": [
+    14,
+    150,
+    -8
+   ]
+  },
+  {
+   "name": "prismarine_bricks",
+   "id": 1971,
+   "pos": [
+    16,
+    150,
+    -8
+   ]
+  },
+  {
+   "name": "dark_prismarine",
+   "id": 1972,
+   "pos": [
+    18,
+    150,
+    -8
+   ]
+  },
+  {
+   "name": "sea_lantern",
+   "id": 1973,
+   "pos": [
+    20,
+    150,
+    -8
+   ]
+  },
+  {
+   "name": "deepslate",
+   "id": 242,
+   "pos": [
+    22,
+    150,
+    -8
+   ]
+  },
+  {
+   "name": "cobbled_deepslate",
+   "id": 243,
+   "pos": [
+    24,
+    150,
+    -8
+   ]
+  },
+  {
+   "name": "deepslate_tiles",
+   "id": 20486,
+   "pos": [
+    26,
+    150,
+    -8
+   ]
+  },
+  {
+   "name": "tuff",
+   "id": 239,
+   "pos": [
+    28,
+    150,
+    -8
+   ]
+  },
+  {
+   "name": "tuff_bricks",
+   "id": 20481,
+   "pos": [
+    30,
+    150,
+    -8
+   ]
+  },
+  {
+   "name": "chiseled_tuff",
+   "id": 20482,
+   "pos": [
+    0,
+    150,
+    -10
+   ]
+  },
+  {
+   "name": "calcite",
+   "id": 240,
+   "pos": [
+    2,
+    150,
+    -10
+   ]
+  },
+  {
+   "name": "dripstone_block",
+   "id": 1913,
+   "pos": [
+    4,
+    150,
+    -10
+   ]
+  },
+  {
+   "name": "moss_block",
+   "id": 1907,
+   "pos": [
+    6,
+    150,
+    -10
+   ]
+  },
+  {
+   "name": "mud_bricks",
+   "id": 1906,
+   "pos": [
+    8,
+    150,
+    -10
+   ]
+  },
+  {
+   "name": "packed_mud",
+   "id": 1905,
+   "pos": [
+    10,
+    150,
+    -10
+   ]
+  },
+  {
+   "name": "bone_block",
+   "id": 1631,
+   "pos": [
+    12,
+    150,
+    -10
+   ]
+  },
+  {
+   "name": "barrel",
+   "id": 905,
+   "pos": [
+    14,
+    150,
+    -10
+   ]
+  },
+  {
+   "name": "smoker",
+   "id": 909,
+   "pos": [
+    16,
+    150,
+    -10
+   ]
+  },
+  {
+   "name": "blast_furnace",
+   "id": 917,
+   "pos": [
+    18,
+    150,
+    -10
+   ]
+  },
+  {
+   "name": "lectern",
+   "id": 937,
+   "pos": [
+    20,
+    150,
+    -10
+   ]
+  },
+  {
+   "name": "grindstone",
+   "id": 933,
+   "pos": [
+    22,
+    150,
+    -10
+   ]
+  },
+  {
+   "name": "stonecutter",
+   "id": 945,
+   "pos": [
+    24,
+    150,
+    -10
+   ]
+  },
+  {
+   "name": "loom",
+   "id": 941,
+   "pos": [
+    26,
+    150,
+    -10
+   ]
+  },
+  {
+   "name": "cartography_table",
+   "id": 925,
+   "pos": [
+    28,
+    150,
+    -10
+   ]
+  },
+  {
+   "name": "fletching_table",
+   "id": 929,
+   "pos": [
+    30,
+    150,
+    -10
+   ]
+  },
+  {
+   "name": "smithing_table",
+   "id": 223,
+   "pos": [
+    0,
+    150,
+    -12
+   ]
+  },
+  {
+   "name": "composter",
+   "id": 904,
+   "pos": [
+    2,
+    150,
+    -12
+   ]
+  },
+  {
+   "name": "note_block",
+   "id": 1507,
+   "pos": [
+    4,
+    150,
+    -12
+   ]
+  },
+  {
+   "name": "piston",
+   "id": 1329,
+   "pos": [
+    6,
+    150,
+    -12
+   ]
+  },
+  {
+   "name": "observer",
+   "id": 1365,
+   "pos": [
+    8,
+    150,
+    -12
+   ]
+  },
+  {
+   "name": "hopper",
+   "id": 1389,
+   "pos": [
+    10,
+    150,
+    -12
+   ]
+  },
+  {
+   "name": "dropper",
+   "id": 1383,
+   "pos": [
+    12,
+    150,
+    -12
+   ]
+  },
+  {
+   "name": "dispenser",
+   "id": 1377,
+   "pos": [
+    14,
+    150,
+    -12
+   ]
+  },
+  {
+   "name": "redstone_lamp",
+   "id": 1210,
+   "pos": [
+    16,
+    150,
+    -12
+   ]
+  },
+  {
+   "name": "target",
+   "id": 1313,
+   "pos": [
+    18,
+    150,
+    -12
+   ]
+  },
+  {
+   "name": "daylight_detector",
+   "id": 1281,
+   "pos": [
+    20,
+    150,
+    -12
+   ]
+  },
+  {
+   "name": "decorated_pot",
+   "id": 28904,
+   "pos": [
+    22,
+    150,
+    -12
+   ]
+  },
+  {
+   "name": "chiseled_bookshelf",
+   "id": 19328,
+   "pos": [
+    24,
+    150,
+    -12
+   ]
+  },
+  {
+   "name": "respawn_anchor",
+   "id": 28722,
+   "pos": [
+    26,
+    150,
+    -12
+   ]
+  },
+  {
+   "name": "lodestone",
+   "id": 28721,
+   "pos": [
+    28,
+    150,
+    -12
+   ]
+  },
+  {
+   "name": "enchanting_table",
+   "id": 213,
+   "pos": [
+    30,
+    150,
+    -12
+   ]
+  },
+  {
+   "name": "brewing_stand",
+   "id": 188,
+   "pos": [
+    0,
+    150,
+    -14
+   ]
+  },
+  {
+   "name": "cauldron",
+   "id": 28672,
+   "pos": [
+    2,
+    150,
+    -14
+   ]
+  },
+  {
+   "name": "ender_chest",
+   "id": 28872,
+   "pos": [
+    4,
+    150,
+    -14
+   ]
+  },
+  {
+   "name": "spawner",
+   "id": 183,
+   "pos": [
+    6,
+    150,
+    -14
+   ]
+  }
+ ],
+ "platform": [
+  [
+   0,
+   149,
+   0
+  ],
+  [
+   0,
+   149,
+   1
+  ],
+  [
+   0,
+   149,
+   2
+  ],
+  [
+   1,
+   149,
+   0
+  ],
+  [
+   1,
+   149,
+   1
+  ],
+  [
+   1,
+   149,
+   2
+  ],
+  [
+   2,
+   149,
+   0
+  ],
+  [
+   2,
+   149,
+   1
+  ],
+  [
+   2,
+   149,
+   2
+  ]
+ ],
+ "chest": {
+  "pos": [
+   1,
+   150,
+   2
+  ],
+  "filled": true,
+  "slots": {
+   "0": [
+    "diamond",
+    7
+   ],
+   "4": [
+    "iron_ingot",
+    12
+   ]
+  }
+ },
+ "give": [
+  "diamond_sword",
+  "oak_planks,32",
+  "bread,5",
+  "torch,16",
+  "iron_pickaxe"
+ ],
+ "wear": [
+  "iron_helmet",
+  "leather_boots"
+ ],
+ "spawn": [
+  "cow,4,~,12",
+  "sheep,7,~,12",
+  "pig,10,~,12",
+  "villager,13,~,12"
+ ],
+ "drop": [
+  "cobblestone,3"
+ ],
+ "agent": {
+  "name": "keeper",
+  "holds": [
+   "oak_log",
+   20
+  ]
+ },
+ "chunks": {
+  "kept": 2,
+  "saved": 26,
+  "kept_chunk_y": 4
+ },
+ "create_saved_chunks": 26,
+ "reopen_loaded_chunks": 26,
+ "reopen_saved_chunks": 29,
+ "create_exit": 0,
+ "reopen_exit": 0
+}

@@ -11,14 +11,12 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use glam::{DVec3, IVec3};
-use rustc_hash::FxHashMap;
 
 use crate::audio::SoundSource;
 use crate::audio::sounds::{Material, Sound};
 use crate::world::World;
 use crate::world::block::Block;
-use crate::world::chunk::ChunkData;
-use crate::world::storage::Storage;
+use crate::world::storage::{SavedChunks, Storage};
 use crate::world::terrain::{Dimension, Generator};
 
 use super::Game;
@@ -105,25 +103,75 @@ pub(super) fn storage_for(root: &Storage, dim: Dimension) -> Storage {
 }
 
 /// A dimension's saved chunks and properties. The overworld's properties
-/// live in the root level file, which the caller already has.
+/// live in the root level file, which the caller already has. The third
+/// value tells the player about damage the load worked around (v1.0
+/// Track 1): chunks that couldn't be read regenerate, as Java's
+/// `RegionFile` does, and a dimension level file that can't be read is
+/// replaced by the copy its last save kept. Damaged files are copied aside
+/// first, so nothing is silently lost.
 pub(super) fn load_dimension(
     root: &Storage,
     dim: Dimension,
     overworld_props: &BTreeMap<String, String>,
-) -> (FxHashMap<IVec3, Arc<ChunkData>>, BTreeMap<String, String>) {
+) -> (SavedChunks, BTreeMap<String, String>, Option<String>) {
     let storage = storage_for(root, dim);
-    if !storage.exists() {
+    if !storage.exists() && !storage.has_chunks_without_level() {
         return Default::default();
     }
-    let chunks = storage.load_chunks().unwrap_or_else(|e| {
-        log::error!("failed to load {} chunks: {e}", dim.name());
-        Default::default()
-    });
+    let mut notices = Vec::new();
+    let chunks = match storage.load_chunks_recovering() {
+        Ok((chunks, None)) => chunks,
+        Ok((chunks, Some(damage))) => {
+            let kept = damage.kept_as.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned());
+            notices.push(format!(
+                "Some of the {}'s saved chunks couldn't be read ({}): {} of {} were kept and the rest regenerate.{}",
+                dim.name(),
+                damage.reason,
+                damage.recovered,
+                damage.saved,
+                kept.map(|k| format!(" The damaged file was kept as {k}.")).unwrap_or_default()
+            ));
+            chunks
+        }
+        Err(e) => {
+            log::error!("failed to load {} chunks: {e}", dim.name());
+            notices.push(format!(
+                "The {}'s saved chunks couldn't be read ({e}), so its terrain regenerates. The file is kept.",
+                dim.name()
+            ));
+            Default::default()
+        }
+    };
     let props = match dim {
         Dimension::Overworld => overworld_props.clone(),
-        Dimension::Nether | Dimension::End => storage.load_level().map(|l| l.props).unwrap_or_default(),
+        Dimension::Nether | Dimension::End => match storage.load_level() {
+            Ok(level) => level.props,
+            Err(e) => {
+                log::error!("failed to load the {} level file: {e}", dim.name());
+                let kept =
+                    storage.dir().join("level.txt").exists().then(|| storage.keep_damaged("level.txt")).flatten();
+                let kept = kept.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned());
+                let kept = kept.map(|k| format!(" The damaged file was kept as {k}.")).unwrap_or_default();
+                match storage.load_level_old() {
+                    Ok(level) => {
+                        notices.push(format!(
+                            "The {}'s level file couldn't be read ({e}), so its last save's copy was used.{kept}",
+                            dim.name()
+                        ));
+                        level.props
+                    }
+                    Err(_) => {
+                        notices.push(format!(
+                            "The {}'s level file couldn't be read ({e}): its containers and entities are lost.{kept}",
+                            dim.name()
+                        ));
+                        Default::default()
+                    }
+                }
+            }
+        },
     };
-    (chunks, props)
+    (chunks, props, (!notices.is_empty()).then(|| notices.join(" ")))
 }
 
 /// The furnace, chest and item properties out of a level's properties.
@@ -132,6 +180,14 @@ pub(super) fn dimension_props(props: &BTreeMap<String, String>) -> BTreeMap<Stri
 }
 
 impl Game {
+    /// Tells the player what a damaged save lost (v1.0 Track 1): the whole
+    /// notice goes to chat, and the action bar points there.
+    pub(super) fn report_load_damage(&mut self, notice: &str) {
+        log::warn!("{notice}");
+        self.chat_line(notice);
+        self.show_popup("Part of this world's save was damaged; open chat for details");
+    }
+
     /// This dimension's furnaces, chests and dropped items, for saving.
     pub(super) fn dimension_props(&self) -> BTreeMap<String, String> {
         let mut props = BTreeMap::new();
@@ -287,7 +343,7 @@ impl Game {
             }
             self.overworld_props = self.dimension_props();
         }
-        let (chunks, props) = load_dimension(&self.storage, to, &self.overworld_props);
+        let (chunks, props, notice) = load_dimension(&self.storage, to, &self.overworld_props);
         let (seed, generation) = (self.world.generator.seed, self.world.generator.generation);
         log::info!("travelling to the {} ({} modified chunks)", to.name(), chunks.len());
         let loot_sequences = std::mem::take(&mut self.world.loot_sequences);
@@ -305,6 +361,9 @@ impl Game {
         self.particles.clear();
         self.dimension = to;
         self.restore_dimension(&props);
+        if let Some(notice) = notice {
+            self.report_load_damage(&notice);
+        }
         self.arrival = Some(arrival);
         self.portal_time = 0.0;
         self.session.sleeping = None;
@@ -597,6 +656,7 @@ impl Game {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::world::chunk::ChunkData;
     use crate::world::storage::LevelInfo;
 
     #[test]
@@ -641,25 +701,69 @@ mod tests {
 
         let overworld_props = dimension_props(&root_props);
         assert_eq!(overworld_props, props(&[("chests", "overworld chests")]));
-        let (chunks, p) = load_dimension(&root, Dimension::Overworld, &overworld_props);
+        let (chunks, p, _) = load_dimension(&root, Dimension::Overworld, &overworld_props);
         assert_eq!((chunks.len(), p.get("chests").map(String::as_str)), (1, Some("overworld chests")));
         assert!(matches!(*chunks[&IVec3::new(1, 2, 3)], ChunkData::Uniform(Block::STONE)));
-        let (chunks, p) = load_dimension(&root, Dimension::Nether, &overworld_props);
+        let (chunks, p, _) = load_dimension(&root, Dimension::Nether, &overworld_props);
         assert_eq!(p.get("chests").map(String::as_str), Some("nether chests"));
         assert!(matches!(*chunks[&IVec3::new(1, 2, 3)], ChunkData::Uniform(Block::NETHERRACK)));
 
         let end = storage_for(&root, Dimension::End);
         let level = LevelInfo { seed: 9, player: None, props: props(&[("chests", "end chests")]) };
         end.save(&level, &[chunk(Block::END_STONE)]).unwrap();
-        let (chunks, p) = load_dimension(&root, Dimension::End, &overworld_props);
+        let (chunks, p, _) = load_dimension(&root, Dimension::End, &overworld_props);
         assert_eq!(p.get("chests").map(String::as_str), Some("end chests"));
         assert!(matches!(*chunks[&IVec3::new(1, 2, 3)], ChunkData::Uniform(Block::END_STONE)));
-        let (_, p) = load_dimension(&root, Dimension::Nether, &overworld_props);
+        let (_, p, notice) = load_dimension(&root, Dimension::Nether, &overworld_props);
         assert_eq!(p.get("chests").map(String::as_str), Some("nether chests"));
+        assert_eq!(notice, None);
 
         // Rewriting just the root level leaves the overworld's chunks alone.
         root.save_level(&LevelInfo { seed: 9, player: None, props: root_props }).unwrap();
         assert_eq!(root.load_chunks().unwrap().len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// v1.0 Track 1: damage to a dimension's files is worked around and
+    /// reported, never silently replaced by an empty dimension.
+    #[test]
+    fn damaged_dimension_files_load_what_they_can_and_say_so() {
+        let dir = std::env::temp_dir().join(format!("voxelcraft-dims-damaged-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let root = Storage::new(&dir);
+        let nether = storage_for(&root, Dimension::Nether);
+        let props = |chests: &str| -> BTreeMap<String, String> { [("chests".into(), chests.into())].into() };
+        let chunks =
+            [IVec3::new(0, 2, 0), IVec3::new(1, 2, 0)].map(|p| (p, Arc::new(ChunkData::Uniform(Block::NETHERRACK))));
+        nether.save(&LevelInfo { seed: 9, player: None, props: props("first") }, &chunks).unwrap();
+        nether.save(&LevelInfo { seed: 9, player: None, props: props("second") }, &chunks).unwrap();
+        let none = BTreeMap::new();
+
+        // The level file cut off by a crash: the copy the last save kept is used.
+        let level = std::fs::read_to_string(nether.dir().join("level.txt")).unwrap();
+        std::fs::write(nether.dir().join("level.txt"), &level[..level.len() - 3]).unwrap();
+        let (loaded, p, notice) = load_dimension(&root, Dimension::Nether, &none);
+        assert_eq!((loaded.len(), p.get("chests").map(String::as_str)), (2, Some("first")));
+        let notice = notice.expect("the player is told");
+        assert!(notice.contains("last save's copy") && notice.contains("level.txt.damaged-"), "{notice}");
+
+        // Chunks cut off partway: the intact record is kept and the damaged
+        // file copied aside.
+        let bin = std::fs::read(nether.dir().join("chunks.bin")).unwrap();
+        std::fs::write(nether.dir().join("chunks.bin"), &bin[..bin.len() - 2]).unwrap();
+        std::fs::write(nether.dir().join("level.txt"), &level).unwrap();
+        let (loaded, p, notice) = load_dimension(&root, Dimension::Nether, &none);
+        assert_eq!((loaded.len(), p.get("chests").map(String::as_str)), (1, Some("second")));
+        let notice = notice.expect("the player is told");
+        assert!(notice.contains("1 of 2") && notice.contains("chunks.bin.damaged-"), "{notice}");
+
+        // Both level files lost, only the chunks left: the chunks still load.
+        std::fs::remove_file(nether.dir().join("level.txt")).unwrap();
+        std::fs::remove_file(nether.dir().join("level.txt_old")).unwrap();
+        std::fs::write(nether.dir().join("chunks.bin"), &bin).unwrap();
+        let (loaded, p, notice) = load_dimension(&root, Dimension::Nether, &none);
+        assert_eq!((loaded.len(), p.len()), (2, 0));
+        assert!(notice.unwrap().contains("containers and entities are lost"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
