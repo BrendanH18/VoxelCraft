@@ -193,6 +193,10 @@ pub struct ChunkSlot {
     has_record: bool,
 }
 
+/// A generated chunk's structure features and the loot chests rolled for
+/// them, which [`World::install_chunk`] registers.
+type GeneratedFeatures = (Vec<(IVec3, fortress::Feature)>, Vec<(IVec3, loot::RolledChest)>);
+
 /// A generated chunk with its generator-only follow-up work done: surface
 /// decoration, structure block entities and geode fluid ticks. Workers build
 /// it, because structure layouts can need terrain and cave sampling that would
@@ -1710,7 +1714,7 @@ impl World {
     pub(crate) fn insert_chunk(&mut self, pos: IVec3, data: Arc<ChunkData>, modified: bool) {
         if modified {
             self.load_fires(pos, &data);
-            self.install_chunk(pos, data, true, None);
+            self.install_chunk(pos, data, true, None, None);
         } else {
             let data = Arc::unwrap_or_clone(data);
             self.insert_generated(pos, GeneratedChunk::new(&self.generator, pos, data), None);
@@ -1722,7 +1726,7 @@ impl World {
     /// are scanned, so they keep their delays.
     fn insert_record(&mut self, pos: IVec3, record: region::ChunkRecord) {
         let Some(data) = record.blocks.clone() else { return };
-        self.install_chunk(pos, data.clone(), true, Some(record));
+        self.install_chunk(pos, data.clone(), true, Some(record), None);
         self.load_fires(pos, &data);
     }
 
@@ -1730,10 +1734,9 @@ impl World {
     /// done, with its region record's state if it has one (v1.0 Track 3b).
     fn insert_generated(&mut self, pos: IVec3, chunk: GeneratedChunk, record: Option<region::ChunkRecord>) {
         let GeneratedChunk { data, features, fluid_ticks, bubble_seeds, rolled } = chunk;
-        self.register_features(&data, features, rolled);
         self.fluids.bubbles.extend(bubble_seeds);
         // Installed first, so `wake_fluids` sees this chunk's lava.
-        self.install_chunk(pos, Arc::new(data), false, record);
+        self.install_chunk(pos, Arc::new(data), false, record, Some((features, rolled)));
         for p in fluid_ticks {
             self.wake_fluids(p);
         }
@@ -1742,8 +1745,18 @@ impl World {
     /// Installs a chunk. A region record's state goes back into the world's
     /// tables once the chunk is in place (so its readers see its blocks) and
     /// before the chunk's block entities register (so saved state wins over
-    /// what they would create).
-    fn install_chunk(&mut self, pos: IVec3, data: Arc<ChunkData>, modified: bool, record: Option<region::ChunkRecord>) {
+    /// what they would create). A generated chunk's structure features
+    /// register after it too: one the record holds (a structure chest) is
+    /// never rolled again, so it numbers no new explorer map and advances
+    /// no loot sequence.
+    fn install_chunk(
+        &mut self,
+        pos: IVec3,
+        data: Arc<ChunkData>,
+        modified: bool,
+        record: Option<region::ChunkRecord>,
+        generated: Option<GeneratedFeatures>,
+    ) {
         let heights = mesh::chunk_heights(&data, pos.y * CHUNK_SIZE_I);
         let workers = &self.workers;
         let col = self.columns.entry(column_of(pos)).or_insert_with(|| {
@@ -1784,6 +1797,9 @@ impl World {
         );
         if let Some(record) = record {
             self.restore_record(pos, record);
+        }
+        if let Some((features, rolled)) = generated {
+            self.register_features(&data, features, rolled);
         }
         self.register_village_life(pos, &data);
         self.register_banners(pos, &data);

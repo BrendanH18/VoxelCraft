@@ -145,3 +145,44 @@ fn the_first_save_moves_the_level_files_unloaded_state_into_records() {
     drop(w);
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+/// Neon review N1: a generated chunk loading from its record gets its
+/// structure chest from the record, and its loot isn't rolled again
+/// (rolling would advance the loot sequence, number new explorer maps and
+/// claim new chest identities on every reload).
+#[test]
+fn a_generated_chunk_reloading_from_its_record_rolls_no_structure_loot_again() {
+    let dir = temp("features");
+    let mut w = world(&dir, Some(FxHashSet::default()));
+    let chest = IVec3::new(40, GROUND + 1, 5);
+    let pos = chunk_of(chest);
+    let generated = || {
+        let mut data = Arc::unwrap_or_clone(World::flat_test_chunk(pos.y, GROUND));
+        let l = chest.rem_euclid(IVec3::splat(32));
+        data.set(l.x as usize, l.y as usize, l.z as usize, Block::CHEST);
+        // Seed 0: the table's world loot sequence rolls it.
+        let features = vec![(chest, crate::world::fortress::Feature::DungeonChest(0))];
+        crate::world::GeneratedChunk {
+            data,
+            features,
+            fluid_ticks: Vec::new(),
+            bubble_seeds: Vec::new(),
+            rolled: Vec::new(),
+        }
+    };
+    w.insert_generated(pos, generated(), None);
+    assert!(w.chest(chest).unwrap().slots.iter().any(Option::is_some), "the dungeon's loot");
+    // The player empties it, and the chunk unloads with it in its record.
+    w.chest_mut(chest).unwrap().slots.fill(None);
+    let (sequences, identities) = (w.loot_sequences.serialize(), w.next_chest_identity);
+    w.unload_test_column(IVec2::new(pos.x, pos.z));
+    assert!(w.chest(chest).is_none());
+    let record = w.regions().unwrap().read(pos);
+    assert!(record.as_ref().is_some_and(|r| r.blocks.is_none()), "the blocks regenerate");
+    w.insert_generated(pos, generated(), record);
+    assert!(w.chest(chest).unwrap().slots.iter().all(Option::is_none), "still empty");
+    assert_eq!(w.loot_sequences.serialize(), sequences, "nothing rolled again");
+    assert_eq!(w.next_chest_identity, identities + 1, "one identity, the restored chest's");
+    drop(w);
+    std::fs::remove_dir_all(dir).unwrap();
+}

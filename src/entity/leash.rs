@@ -94,9 +94,9 @@ impl MobKind {
 impl Mob {
     /// Java 26.3 `canBeLeashed`: the kind, and an angry wolf, an angry
     /// nautilus, a sulfur cube without a block, or a camel husk, zombie
-    /// horse or zombie nautilus carrying a mob (`isMobControlled`) refuse.
-    pub fn can_be_leashed(&self) -> bool {
-        let mob_controlled = self.mount.as_ref().is_some_and(|s| s.passenger.is_some());
+    /// horse or zombie nautilus carrying a mob (`isMobControlled`, from
+    /// [`Entities::mob_controlled`]) refuse.
+    pub fn can_be_leashed(&self, mob_controlled: bool) -> bool {
         self.kind.leashable()
             && match self.kind {
                 MobKind::Wolf => self.angry_player.is_none(),
@@ -335,6 +335,7 @@ impl Entities {
         player: PlayerId,
         infinite: bool,
     ) -> Option<bool> {
+        let controlled = self.mob_controlled(index);
         let m = self.mobs.get_mut(index)?;
         if !m.alive() {
             return None;
@@ -352,7 +353,7 @@ impl Entities {
             self.drop_leash(index, !infinite);
             return Some(false);
         }
-        if held.is_some_and(|s| s.item == Item::LEAD) && m.can_be_leashed() {
+        if held.is_some_and(|s| s.item == Item::LEAD) && m.can_be_leashed(controlled) {
             if m.leash.is_some() {
                 self.drop_leash(index, true);
             }
@@ -367,11 +368,20 @@ impl Entities {
         None
     }
 
+    /// Java's `isMobControlled`: a living mob rides mob `index` (mob riders
+    /// name their vehicle as `MOB_VEHICLE | uid`; a player aboard, in
+    /// either seat, isn't a mob).
+    pub fn mob_controlled(&self, index: usize) -> bool {
+        let Some(uid) = self.mobs.get(index).map(|m| m.uid).filter(|&u| u != 0) else { return false };
+        let vehicle = super::mounts::MOB_VEHICLE | uid;
+        self.mobs.iter().any(|r| r.alive() && r.riding == Some(vehicle))
+    }
+
     /// `Entity.interact` with a sneaking player: the mobs they lead within
     /// 12 blocks of this leashable, grown mob are tied to it instead.
     pub fn tie_led_mobs_to(&mut self, index: usize, player: PlayerId) -> bool {
         let Some(target) = self.mobs.get(index) else { return false };
-        if !target.alive() || target.baby || !target.can_be_leashed() {
+        if !target.alive() || target.baby || !target.can_be_leashed(self.mob_controlled(index)) {
             return false;
         }
         self.ensure_mob_ids();
@@ -838,15 +848,36 @@ mod tests {
         let mut e = Entities::new(1);
         for kind in [MobKind::Bee, MobKind::Squid, MobKind::HappyGhast, MobKind::SkeletonHorse, MobKind::Hoglin] {
             e.spawn(kind, DVec3::Y);
-            assert!(e.mobs.last().unwrap().can_be_leashed(), "{kind:?}");
+            assert!(e.mobs.last().unwrap().can_be_leashed(false), "{kind:?}");
         }
         for kind in [MobKind::Villager, MobKind::Panda, MobKind::Turtle, MobKind::Bat, MobKind::Cod, MobKind::Zombie] {
             e.spawn(kind, DVec3::Y);
-            assert!(!e.mobs.last().unwrap().can_be_leashed(), "{kind:?}");
+            assert!(!e.mobs.last().unwrap().can_be_leashed(false), "{kind:?}");
         }
         e.spawn(MobKind::Wolf, DVec3::Y);
         e.mobs.last_mut().unwrap().angry_player = Some(PlayerId(1));
-        assert!(!e.mobs.last().unwrap().can_be_leashed(), "an angry wolf");
+        assert!(!e.mobs.last().unwrap().can_be_leashed(false), "an angry wolf");
+    }
+
+    /// Review fix N2: a camel husk carrying a husk refuses a lead
+    /// (`isMobControlled`), and one carrying a second player doesn't.
+    #[test]
+    fn a_mount_refuses_a_lead_while_a_mob_rides_it() {
+        let mut e = Entities::new(1);
+        e.spawn(MobKind::CamelHusk, DVec3::Y);
+        e.spawn(MobKind::Husk, DVec3::Y);
+        e.ensure_mob_ids();
+        let lead = Some(Stack::new(Item::LEAD, 1));
+        e.mobs[0].mount.as_mut().unwrap().passenger = Some(PlayerId(2));
+        assert!(!e.mob_controlled(0), "a player in the rear seat doesn't steer it");
+        assert!(e.mobs[0].can_be_leashed(e.mob_controlled(0)));
+        e.mobs[0].mount.as_mut().unwrap().passenger = None;
+        e.mobs[1].riding = Some(crate::entity::mounts::MOB_VEHICLE | e.mobs[0].uid);
+        assert!(e.mob_controlled(0));
+        assert_eq!(e.use_lead_or_name(0, lead, PlayerId::HOST, false), None, "the husk steers it");
+        assert_eq!(e.mobs[0].leash, None);
+        e.mobs[1].riding = None;
+        assert_eq!(e.use_lead_or_name(0, lead, PlayerId::HOST, false), Some(true), "its rider got off");
     }
 
     /// Boats take leads, are pulled by them, snap at 12 and save them.

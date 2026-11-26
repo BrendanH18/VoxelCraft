@@ -579,10 +579,7 @@ impl Entities {
             .map(|m| {
                 (
                     super::mounts::MOB_VEHICLE | m.uid,
-                    (
-                        crate::world::chunk::chunk_of(m.pos.floor().as_ivec3()),
-                        m.mount.as_ref().is_some_and(|s| s.rider.is_some()),
-                    ),
+                    (world.entity_chunk(m.pos), m.mount.as_ref().is_some_and(|s| s.rider.is_some())),
                 )
             })
             .collect();
@@ -1178,6 +1175,26 @@ mod tests {
         w.unload_test_column(IVec2::new(1, 0));
         e.sync_chunk_entities(&mut w);
         assert_eq!((e.items.len(), e.stored_entities()), (0, 2));
+    }
+
+    /// Review fix N3: a mob riding a mount beyond the build limit is stored
+    /// in the same (clamped) chunk as its mount, and comes back with it.
+    #[test]
+    fn a_mount_beyond_the_build_limit_keeps_its_rider() {
+        let mut w = world([IVec2::new(0, 0), IVec2::new(1, 0)]);
+        let mut e = Entities::new(5);
+        let high = DVec3::new(40.5, 400.0, 4.5);
+        e.spawn(MobKind::CamelHusk, high);
+        e.spawn(MobKind::Husk, high);
+        e.ensure_mob_ids();
+        e.mobs[1].riding = Some(super::super::mounts::MOB_VEHICLE | e.mobs[0].uid);
+        e.sync_chunk_entities(&mut w);
+        w.unload_test_column(IVec2::new(1, 0));
+        e.sync_chunk_entities(&mut w);
+        assert_eq!((e.mobs.len(), e.stored_entities(), e.stored_chunks()), (0, 2, 1), "one chunk holds both");
+        w.load_test_column(IVec2::new(1, 0), GROUND);
+        e.sync_chunk_entities(&mut w);
+        assert_eq!((e.mobs.len(), e.stored_entities()), (2, 0));
     }
 
     #[test]

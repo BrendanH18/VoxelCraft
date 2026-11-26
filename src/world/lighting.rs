@@ -914,7 +914,7 @@ impl World {
                 record => {
                     let data = self.saved.remove(&pos).unwrap_or_else(|| Self::flat_test_chunk(cy, ground));
                     self.load_fires(pos, &data);
-                    self.install_chunk(pos, data, true, record);
+                    self.install_chunk(pos, data, true, record, None);
                 }
             }
         }
