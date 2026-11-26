@@ -377,7 +377,8 @@ impl Game {
                 a.session.mode == super::GameMode::Spectator,
             );
             let fog_end = atmosphere.end();
-            let models = self.block_models(scene.alpha, camera);
+            let draw = atmosphere.draw_distance(a.player.pos, self.world.render_distance());
+            let models = self.block_models(scene.alpha, camera, &draw);
             let highlight = a.target(&self.world).map(|(p, _)| {
                 let (min, max) = self.world.outline(p);
                 (p, min, max)
@@ -432,7 +433,6 @@ impl Game {
                     ));
                 }
             }
-            let draw = atmosphere.draw_distance(a.player.pos, self.world.render_distance());
             self.mobs.entities.mesh(&self.world.maps, camera, forward, draw, scene.time, scene.alpha);
             // v0.18 Track 6: ground shadows, for the players drawn in this view too.
             let mut casters = super::shadow_casters(&self.world, others.iter().map(|o| o.1), scene.alpha);

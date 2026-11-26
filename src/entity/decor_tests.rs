@@ -444,3 +444,26 @@ fn framed_maps_draw_their_image_at_javas_scale_and_turn() {
     assert_eq!(tile(&d, &MapStorage::default()).0, 0);
     assert_eq!(framed_maps(std::slice::from_ref(&d)), vec![(stack.map_id.unwrap(), IVec3::new(0, 64, 0), IVec3::Z)]);
 }
+
+/// Review fix S5: a framed item is drawn exactly where its frame is: past
+/// the frame's 10-chunk tracking range (160 blocks) neither shows.
+#[test]
+fn a_framed_item_is_culled_with_its_frame() {
+    use crate::entity::draw_distance::DrawDistance;
+    let w = walled();
+    let mut e = Entities::new(1);
+    let wall = IVec3::new(7, GROUND + 2, 2);
+    e.place_decor(&w, Item::ITEM_FRAME, wall, IVec3::X, 0.0, &[]).unwrap().unwrap();
+    e.decor[0].item = Some(Stack::new(Item::DIAMOND, 1));
+    let maps = crate::world::maps::MapStorage::default();
+    for (far, shown) in [(100.0, true), (170.0, false)] {
+        let player = DVec3::new(8.5 + far, f64::from(GROUND) + 2.0, 2.5);
+        // Render distance 8 (16 Java chunks): only the tracking range cuts.
+        let view = DrawDistance::new(player, 8, 1.0e6, 1.0e6);
+        let mut mesh = crate::entity::model::EntityMesh::default();
+        build(&e.decor, &maps, player, &view, 1.0, &mut mesh);
+        let frame = !mesh.expanded().is_empty();
+        let items = framed_items(&e.decor, player, &view).count();
+        assert_eq!((frame, items), (shown, usize::from(shown)), "{far} blocks away");
+    }
+}

@@ -351,3 +351,49 @@ fn an_unreadable_region_file_is_moved_aside_and_the_others_still_load() {
     assert_eq!(fs::read(&kept).unwrap(), bytes);
     fs::remove_dir_all(dir).unwrap();
 }
+
+/// Review fix S1, round 2: a file whose table rewrite fails isn't evicted
+/// from the open files, so the check before the next level file still
+/// finds it.
+#[test]
+fn a_file_owing_its_table_is_never_evicted() {
+    let dir = temp("evict");
+    fs::create_dir_all(&dir).unwrap();
+    let mut files = Files { writable: true, ..Default::default() };
+    let owing = IVec2::new(-1, -1);
+    files.get(&dir, owing, true).unwrap().unwrap();
+    // Its table must be rewritten, and its handle can't write.
+    let f = files.open.get_mut(&owing).unwrap();
+    f.file = File::open(dir.join(file_name(owing))).unwrap();
+    f.rewrite_header = true;
+    for x in 0..OPEN_FILES as i32 * 2 {
+        files.get(&dir, IVec2::new(x, 0), true).unwrap().unwrap();
+    }
+    assert!(files.open.get(&owing).is_some_and(|f| f.rewrite_header), "still open, its table still owed");
+    assert!(files.open.len() <= OPEN_FILES + 1);
+    drop(files);
+    fs::remove_dir_all(dir).unwrap();
+}
+
+/// Review fix S8: only the names the game writes are region files; another
+/// spelling of the same region is ignored, never moved aside in its place.
+#[test]
+fn only_canonical_names_are_region_files() {
+    let dir = temp("names");
+    let (store, _) = RegionStore::open(&dir, true).unwrap();
+    let a = IVec3::new(1, 0, 1);
+    store.queue([(a, Patch::replace(full(a)))]);
+    store.flush().unwrap();
+    drop(store);
+    let healthy = fs::read(dir.join("r.0.0.vxr")).unwrap();
+    for name in ["r.00.0.vxr", "r.+0.0.vxr", "r.0.-0.vxr"] {
+        fs::write(dir.join(name), b"not a region").unwrap();
+    }
+    let (store, damage) = RegionStore::open(&dir, true).unwrap();
+    assert!(damage.is_empty(), "{:?}", damage.iter().map(|d| &d.file).collect::<Vec<_>>());
+    same(&store.read(a).unwrap(), &full(a));
+    drop(store);
+    assert_eq!(fs::read(dir.join("r.0.0.vxr")).unwrap(), healthy, "the region file stays");
+    assert_eq!(fs::read(dir.join("r.00.0.vxr")).unwrap(), b"not a region");
+    fs::remove_dir_all(dir).unwrap();
+}

@@ -2454,7 +2454,7 @@ impl Game {
             }),
             cracks: self.cracks_seen_from(eye),
             block_models: {
-                let mut models = self.block_models(alpha, camera);
+                let mut models = self.block_models(alpha, camera, &draw);
                 crate::render::signs::shelf_items(&self.world, camera, &mut models);
                 crate::render::brushable::emerging_items(&self.world, camera, crate::render::signs::RANGE, &mut models);
                 models
@@ -2588,7 +2588,12 @@ pub(super) fn fov_effects(modifier: f32, scale: f32) -> f32 {
 impl Game {
     /// Falling blocks, primed TNT, dropped items and banners near `camera`,
     /// at interpolated positions.
-    fn block_models(&self, alpha: f64, camera: glam::DVec3) -> Vec<crate::render::BlockModel> {
+    fn block_models(
+        &self,
+        alpha: f64,
+        camera: glam::DVec3,
+        view: &voxelcraft::entity::draw_distance::DrawDistance,
+    ) -> Vec<crate::render::BlockModel> {
         self.world
             .falling_blocks()
             .iter()
@@ -2642,7 +2647,7 @@ impl Game {
             .chain(self.banner_models(camera))
             .chain(self.shulker_models(camera, alpha))
             .chain(self.lid_models(alpha))
-            .chain(self.decor_models())
+            .chain(self.decor_models(camera, view))
             .collect()
     }
 }

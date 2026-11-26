@@ -62,15 +62,20 @@ pub(super) fn decor_feedback(audio: &mut Audio, at: DVec3, effect: decor::Effect
 
 impl Game {
     /// Items in item frames, as free-standing block models: a small block,
-    /// or the item's icon flat in the frame.
-    pub(super) fn decor_models(&self) -> impl Iterator<Item = crate::render::BlockModel> + '_ {
+    /// or the item's icon flat in the frame. Only frames `view` draws from
+    /// `camera` show their item (Java draws it with the frame).
+    pub(super) fn decor_models<'a>(
+        &'a self,
+        camera: DVec3,
+        view: &'a voxelcraft::entity::draw_distance::DrawDistance,
+    ) -> impl Iterator<Item = crate::render::BlockModel> + 'a {
         // A filled map whose data exists is drawn as its image instead
         // (`entity::decor`), as Java's renderer does.
         let maps = &self.world.maps;
         let shows_map = move |s: &voxelcraft::inventory::Stack| {
             voxelcraft::world::maps::has_map_id(s) && s.map_id.is_some_and(|id| maps.maps.contains_key(&id))
         };
-        decor::framed_items(&self.mobs.entities.decor).filter(move |f| !shows_map(&f.2)).map(
+        decor::framed_items(&self.mobs.entities.decor, camera, view).filter(move |f| !shows_map(&f.2)).map(
             |(centre, orient, stack, sky, torch)| {
                 let block = crate::world::copper_golem_statue::item_model(stack)
                     .or_else(|| stack.item.block())

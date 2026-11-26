@@ -109,7 +109,7 @@ impl Game {
         // and a level file without `region_chunks`, and the next launch
         // would move the region files aside as unsaved: refuse instead.
         let regions = dimension::storage_for(&self.storage, self.dimension).dir().join(REGION_DIR);
-        if regions.exists() {
+        if may_hold_regions(&regions) {
             let e = "this dimension's region files couldn't be opened, so nothing was written over them";
             log::error!("save failed: {e} ({})", regions.display());
             self.show_popup(&format!("Could not save the world: {e}"));
@@ -215,4 +215,30 @@ impl Game {
 /// `startup::world_generation` to read back.
 pub(super) fn record_generation(props: &mut std::collections::BTreeMap<String, String>, generation: Generation) {
     props.insert(Generation::KEY.to_string(), generation.number().to_string());
+}
+
+/// Whether `regions` (a dimension's region folder) is there, or can't be
+/// checked: either way the legacy `chunks.bin` save must not run.
+fn may_hold_regions(regions: &std::path::Path) -> bool {
+    !matches!(regions.try_exists(), Ok(false))
+}
+
+#[cfg(test)]
+mod tests {
+    /// Review fix S4, round 2: a region folder that can't be checked (here a
+    /// symlink loop, which `Path::exists` reports as missing) counts as one
+    /// that is there.
+    #[cfg(unix)]
+    #[test]
+    fn a_region_folder_that_cant_be_checked_refuses_the_legacy_save() {
+        let dir = std::env::temp_dir().join(format!("voxelcraft-save-regions-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let regions = dir.join("region");
+        assert!(!super::may_hold_regions(&regions), "no folder: the legacy save may run");
+        std::os::unix::fs::symlink(&regions, &regions).unwrap();
+        assert!(!regions.exists());
+        assert!(super::may_hold_regions(&regions));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }

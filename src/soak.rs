@@ -311,6 +311,7 @@ fn restore_dimension(world: &mut World, entities: &mut Entities, props: &BTreeMa
     if let Some(v) = get(crate::world::FLUID_TICKS_KEY) {
         world.load_fluid_ticks(v);
     }
+    entities.recover_ids(world);
     entities.load_props(props);
     if let Some(v) = get("stored_index") {
         entities.load_stored_index(v);

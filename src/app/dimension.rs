@@ -358,6 +358,9 @@ impl Game {
         }
         // Entities in chunks that haven't streamed in yet move to per-chunk
         // storage on the first tick; ridden vehicles stay with their riders.
+        // Ids saved after the level file in region records are reserved
+        // first (see `Entities::recover_ids`).
+        self.mobs.entities.recover_ids(&mut self.world);
         self.mobs.entities.load_props(props);
         if let Some(t) = props.get("stored_index") {
             self.mobs.entities.load_stored_index(t);
@@ -410,6 +413,16 @@ impl Game {
         // Scripted runs (screenshots, benchmarks) never write saves.
         if self.settings_path.is_some() {
             self.save();
+            // A world that couldn't be saved stays loaded ("Could not save
+            // the world" is already shown): travelling would drop what
+            // wasn't written, and the Overworld's cached properties could
+            // reach the root level file later without the records they
+            // name. The player leaves the portal to try again.
+            if self.save_error.is_some() {
+                log::warn!("not travelling to the {}: this dimension couldn't be saved", to.name());
+                self.portal_locked = true;
+                return;
+            }
         }
         if self.dimension == Dimension::Overworld {
             if self.lan.client.is_none() {
@@ -662,6 +675,11 @@ impl Game {
         // Java's End portal block spans 6..12 sixteenths: coming up from
         // below takes you only once you reach it.
         if !self.session.vitals.is_dead() && self.in_portal(Block::END_PORTAL, (6.0 / 16.0, 0.75)) {
+            // A trip refused because the save failed waits until the player
+            // steps out.
+            if self.portal_locked {
+                return;
+            }
             if self.dimension == Dimension::End && self.begin_credits() {
                 return;
             }

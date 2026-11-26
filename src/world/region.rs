@@ -205,10 +205,14 @@ pub fn file_name(region: IVec2) -> String {
     format!("r.{}.{}.vxr", region.x, region.y)
 }
 
+/// The region a file name names, only in the form [`file_name`] writes
+/// (`r.00.0.vxr` or `r.+1.0.vxr` would name an existing file's region, and
+/// moving them aside would move the other one).
 fn parse_file_name(name: &str) -> Option<IVec2> {
     let rest = name.strip_prefix("r.")?.strip_suffix(".vxr")?;
     let (x, z) = rest.split_once('.')?;
-    Some(IVec2::new(x.parse().ok()?, z.parse().ok()?))
+    let region = IVec2::new(x.parse().ok()?, z.parse().ok()?);
+    (file_name(region) == name).then_some(region)
 }
 
 /// FNV-1a, 64-bit.
@@ -963,12 +967,19 @@ impl Files {
             if damage.is_some() && self.writable && self.kept.insert(region) {
                 keep_damaged(dir, region);
             }
-            while self.open.len() >= OPEN_FILES {
+            // A file whose table can't be written yet stays open (over the
+            // limit if need be), so the next level file still waits for it.
+            let mut tries = self.order.len();
+            while self.open.len() >= OPEN_FILES && tries > 0 {
+                tries -= 1;
                 let Some(old) = self.order.pop_front() else { break };
-                if let Some(mut f) = self.open.remove(&old)
-                    && self.writable
+                let Some(mut f) = self.open.remove(&old) else { continue };
+                if self.writable
+                    && let Err(e) = f.finish()
                 {
-                    f.finish()?;
+                    log::error!("couldn't finish {}: {e}; it stays open", file_name(old));
+                    self.open.insert(old, f);
+                    self.order.push_back(old);
                 }
             }
             self.order.push_back(region);

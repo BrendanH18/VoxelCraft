@@ -82,6 +82,9 @@ pub(super) struct EntityStorage {
     /// (`stored_index`) so they last until the chunk loads again.
     disk: Claims,
     disk_creakings: FxHashSet<u32>,
+    /// Mob uids and cart ids of newer copies in region records, whose
+    /// level file copies the next sync drops ([`Entities::recover_ids`]).
+    superseded: Option<(FxHashSet<u32>, FxHashSet<u32>)>,
 }
 
 /// Bed and job claims with counts, by position and by 16-block cell.
@@ -268,9 +271,10 @@ impl Entities {
     /// chunk isn't loaded move into storage. Bounded by the live entities and
     /// the chunks that just loaded; stored entities are never visited.
     pub fn sync_chunk_entities(&mut self, world: &mut World) {
-        let superseding = world.take_superseding_entities();
-        if !superseding.is_empty() {
-            self.drop_superseded(superseding);
+        // Normally done before the level file loaded (`recover_ids`).
+        self.recover_ids(world);
+        if let Some(ids) = self.storage.superseded.take() {
+            self.drop_superseded(ids);
         }
         for (_, batches) in world.take_entity_records() {
             self.restore_batches(batches);
@@ -289,18 +293,45 @@ impl Entities {
         }
     }
 
-    /// Drops the level file's copies of the mobs and carts in `batches`:
-    /// region records written after the level file by a session that
-    /// stopped before its next save hold newer copies of them, which come
-    /// back when their chunks load (see `world::chunk_records`).
-    fn drop_superseded(&mut self, batches: Vec<Props>) {
-        let (mut uids, mut carts) = (FxHashSet::default(), FxHashSet::default());
-        for batch in batches {
-            let mut scratch = Entities::new(0);
-            scratch.load_props(&batch.into_iter().collect());
-            uids.extend(scratch.mobs.iter().map(|m| m.uid).filter(|&u| u != 0));
-            carts.extend(scratch.minecarts.iter().map(|c| c.id));
+    /// Reads the mob uids and cart ids saved in the region records written
+    /// after the level file by a session that stopped before its next save
+    /// (see `world::chunk_records`), and moves the next ids past them, so
+    /// nothing the level file loads or spawns afterwards takes one. Only
+    /// ids the records hold count: a mob saved without a uid has none to
+    /// match. Called before the level file's entities load; the first
+    /// [`Entities::sync_chunk_entities`] then drops the level file's copies.
+    pub fn recover_ids(&mut self, world: &mut World) {
+        let batches = world.take_superseding_entities();
+        if batches.is_empty() {
+            return;
         }
+        let (mut uids, mut carts) = (FxHashSet::default(), FxHashSet::default());
+        for (key, text) in batches.iter().flatten() {
+            match key.as_str() {
+                "villagers" | "nether_mobs" => {
+                    let root: serde_json::Value = serde_json::from_str(text).unwrap_or_default();
+                    let saved = root["mobs"].as_array().into_iter().flatten();
+                    uids.extend(saved.filter_map(|m| u32::try_from(m["uid"].as_u64()?).ok()).filter(|&u| u != 0));
+                }
+                "minecarts" => carts.extend(
+                    text.split(';').filter(|s| !s.is_empty()).filter_map(minecart::Minecart::deserialize).map(|c| c.id),
+                ),
+                _ => {}
+            }
+        }
+        if let Some(&u) = uids.iter().max() {
+            self.next_uid = self.next_uid.max(u.saturating_add(1));
+        }
+        if let Some(&c) = carts.iter().max() {
+            self.next_cart = self.next_cart.max(c.saturating_add(1));
+        }
+        self.storage.superseded = Some((uids, carts));
+    }
+
+    /// Drops the level file's copies of the mobs and carts
+    /// [`Entities::recover_ids`] found newer copies of; those come back
+    /// when their chunks load.
+    fn drop_superseded(&mut self, (uids, carts): (FxHashSet<u32>, FxHashSet<u32>)) {
         let before = self.mobs.len() + self.minecarts.len() + self.storage.len;
         self.mobs.retain(|m| !uids.contains(&m.uid));
         self.minecarts.retain(|c| !carts.contains(&c.id));
@@ -914,6 +945,110 @@ mod tests {
         assert_eq!(cows.len(), 1, "restored once");
         assert_eq!(cows[0].pos.x, 70.5, "the record's copy, the newer one");
         assert!(w.save_generation() > props[GENERATION_KEY].parse::<u64>().unwrap());
+        drop(w);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A complete save of `w` and `e` (the level file's entity keys).
+    fn checkpoint(w: &mut World, e: &mut Entities) -> BTreeMap<String, String> {
+        use crate::world::{GENERATION_KEY, REGION_KEY};
+        let stored = e.take_stored_batches(w);
+        w.save_records(stored);
+        let mut props = BTreeMap::new();
+        e.save_props(&mut props);
+        props.insert(REGION_KEY.to_string(), w.region_chunks_to_string());
+        props.insert(GENERATION_KEY.to_string(), w.save_generation().to_string());
+        props.insert("entity_ids".to_string(), e.entity_ids_to_string());
+        w.flush_regions().unwrap();
+        props
+    }
+
+    /// Reopens `dir` from `props` with column 0 loaded, entities restored
+    /// as `Game::restore_dimension` does.
+    fn reopen(dir: &std::path::Path, props: &BTreeMap<String, String>) -> (World, Entities) {
+        use crate::world::{GENERATION_KEY, REGION_KEY};
+        let mut w = world([IVec2::new(0, 0)]);
+        let (store, damage) = crate::world::region::RegionStore::open(dir, true).unwrap();
+        assert!(damage.is_empty());
+        let owned = World::parse_region_chunks(&props[REGION_KEY]);
+        w.attach_regions(store, Some(owned), props[GENERATION_KEY].parse().unwrap(), true);
+        let mut e = Entities::new(5);
+        e.recover_ids(&mut w);
+        e.load_props(props);
+        e.load_entity_ids(&props["entity_ids"]);
+        (w, e)
+    }
+
+    /// Review fix S6, round 2: a mob made after the last save and stored in
+    /// a record keeps its uid to itself when the session that made it
+    /// stopped before saving again.
+    #[test]
+    fn recovery_reserves_the_ids_of_newer_records() {
+        let dir = std::env::temp_dir().join(format!("voxelcraft-entity-recover-ids-{}", std::process::id()));
+        let mut w = region_world(&dir, [IVec2::new(0, 0)]);
+        let mut e = Entities::new(5);
+        e.spawn(MobKind::Cow, at(10.5, 4.5));
+        e.ensure_mob_ids();
+        e.sync_chunk_entities(&mut w);
+        let props = checkpoint(&mut w, &mut e);
+        // After the save: a pig and a cart in a column that then unloads.
+        w.load_test_column(IVec2::new(2, 0), GROUND);
+        e.spawn(MobKind::Pig, at(70.5, 4.5));
+        e.ensure_mob_ids();
+        let cart = e.spawn_cart(CartKind::Rideable, at(72.5, 4.5));
+        let pig = e.mobs.last().unwrap().uid;
+        e.sync_chunk_entities(&mut w);
+        w.unload_test_column(IVec2::new(2, 0));
+        e.sync_chunk_entities(&mut w);
+        drop(w);
+
+        let (mut w, mut e) = reopen(&dir, &props);
+        e.sync_chunk_entities(&mut w);
+        e.spawn(MobKind::Sheep, at(12.5, 4.5));
+        e.ensure_mob_ids();
+        let new_cart = e.spawn_cart(CartKind::Rideable, at(14.5, 4.5));
+        assert_ne!(e.mobs.last().unwrap().uid, pig, "a new mob doesn't take the stored pig's uid");
+        assert_ne!(new_cart, cart, "nor a new cart the stored cart's id");
+        w.load_test_column(IVec2::new(2, 0), GROUND);
+        e.sync_chunk_entities(&mut w);
+        let mut uids: Vec<u32> = e.mobs.iter().map(|m| m.uid).collect();
+        uids.sort_unstable();
+        uids.dedup();
+        assert_eq!(uids.len(), 3, "the cow, the pig and the sheep, each its own uid");
+        drop(w);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Review fix S7: a mob saved without a uid in a newer record matches
+    /// nothing in the level file (loading would hand it a fresh uid, which
+    /// another mob may already have).
+    #[test]
+    fn recovery_matches_only_saved_uids() {
+        let dir = std::env::temp_dir().join(format!("voxelcraft-entity-recover-zero-{}", std::process::id()));
+        let mut w = region_world(&dir, [IVec2::new(0, 0)]);
+        let mut e = Entities::new(5);
+        e.spawn(MobKind::Cow, at(10.5, 4.5));
+        e.ensure_mob_ids();
+        let cow = e.mobs[0].uid;
+        e.sync_chunk_entities(&mut w);
+        let props = checkpoint(&mut w, &mut e);
+        // A pig that never got a uid, stored after the save.
+        w.load_test_column(IVec2::new(2, 0), GROUND);
+        e.spawn(MobKind::Pig, at(70.5, 4.5));
+        e.mobs.last_mut().unwrap().uid = 0;
+        e.sync_chunk_entities(&mut w);
+        w.unload_test_column(IVec2::new(2, 0));
+        e.sync_chunk_entities(&mut w);
+        drop(w);
+
+        let (mut w, mut e) = reopen(&dir, &props);
+        e.sync_chunk_entities(&mut w);
+        assert!(e.mobs.iter().any(|m| m.uid == cow && m.kind == MobKind::Cow), "the level file's cow stays");
+        w.load_test_column(IVec2::new(2, 0), GROUND);
+        e.sync_chunk_entities(&mut w);
+        let kinds: Vec<MobKind> = e.mobs.iter().map(|m| m.kind).collect();
+        assert_eq!(kinds.len(), 2, "{kinds:?}");
+        assert!(kinds.contains(&MobKind::Cow) && kinds.contains(&MobKind::Pig));
         drop(w);
         let _ = std::fs::remove_dir_all(dir);
     }

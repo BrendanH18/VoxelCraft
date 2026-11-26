@@ -837,10 +837,20 @@ impl<W: BlockSource + ?Sized> BlockSource for Wrapped<'_, W> {
 /// Every framed item for the renderer's free-standing block models: its
 /// centre, orientation (model +Z out of the wall), stack, and sky and
 /// block light (a glow frame's item is fully lit).
-pub fn framed_items(decor: &[Decor]) -> impl Iterator<Item = (DVec3, Quat, Stack, f32, f32)> + '_ {
-    decor.iter().filter_map(|d| {
+/// Only frames [`build`] draws for this view count, so an item never
+/// floats where its frame's backing isn't drawn (Java renders the item as
+/// part of the frame entity).
+pub fn framed_items<'a>(
+    decor: &'a [Decor],
+    camera: DVec3,
+    view: &'a super::draw_distance::DrawDistance,
+) -> impl Iterator<Item = (DVec3, Quat, Stack, f32, f32)> + 'a {
+    decor.iter().filter_map(move |d| {
         let stack = d.item?;
         let Kind::Frame { glow } = d.kind else { return None };
+        if !drawn(d, camera, view, 1.0) {
+            return None;
+        }
         let f = d.facing.as_vec3();
         let centre = d.cell.as_dvec3() + DVec3::splat(0.5) - d.facing.as_dvec3() * (0.5 - 0.0625 - 0.03);
         // The icon's front (+Z) turns to face out of the wall, then the
@@ -876,9 +886,27 @@ fn framed_map<'m>(d: &Decor, maps: &'m crate::world::maps::MapStorage) -> Option
     maps.maps.get(&stack.map_id?)
 }
 
+/// Whether `view` draws `d` from `camera` (v1.0 Track 2): tracked within
+/// 10 chunks, not hidden by the fog, and within its type's render distance.
+fn drawn(d: &Decor, camera: DVec3, view: &super::draw_distance::DrawDistance, alpha: f64) -> bool {
+    use super::draw_distance::box_size;
+    let pos = if d.is_hanging() { d.cell.as_dvec3() + DVec3::splat(0.5) } else { d.previous_pos.lerp(d.pos, alpha) };
+    let rel = (pos - camera).as_vec3();
+    view.tracked(pos, 10)
+        && !view.fogged(rel, 2.0)
+        && match d.kind {
+            Kind::Frame { .. } => view.renders(pos - camera, 16.0),
+            Kind::Stand => view.within(pos - camera, box_size(0.5, 1.975, 0.5) * 4.0 * 64.0),
+            Kind::Painting(v) => {
+                let (_, w, h, _) = PAINTINGS[v as usize % PAINTINGS.len()];
+                view.renders(pos - camera, box_size(f64::from(w), f64::from(h), 1.0 / 16.0))
+            }
+        }
+}
+
 /// Camera-relative triangles for every decoration Java would draw at
-/// `view`'s distances (v1.0 Track 2). All three types are tracked within 10
-/// chunks (`EntityTypes`). Item frames render within `16 * 64 * viewScale`
+/// `view`'s distances (v1.0 Track 2; see [`drawn`]). All three types are
+/// tracked within 10 chunks (`EntityTypes`). Item frames render within `16 * 64 * viewScale`
 /// blocks (`ItemFrame.shouldRenderAtSqrDistance`), armor stands within
 /// `4 * size * 64` without the view scale (`ArmorStand`), and paintings
 /// by their box like any entity.
@@ -890,24 +918,13 @@ pub(super) fn build(
     alpha: f64,
     out: &mut EntityMesh,
 ) {
-    use super::draw_distance::box_size;
     for d in decor {
+        if !drawn(d, camera, view, alpha) {
+            continue;
+        }
         let pos =
             if d.is_hanging() { d.cell.as_dvec3() + DVec3::splat(0.5) } else { d.previous_pos.lerp(d.pos, alpha) };
         let rel = (pos - camera).as_vec3();
-        let drawn = view.tracked(pos, 10)
-            && !view.fogged(rel, 2.0)
-            && match d.kind {
-                Kind::Frame { .. } => view.renders(pos - camera, 16.0),
-                Kind::Stand => view.within(pos - camera, box_size(0.5, 1.975, 0.5) * 4.0 * 64.0),
-                Kind::Painting(v) => {
-                    let (_, w, h, _) = PAINTINGS[v as usize % PAINTINGS.len()];
-                    view.renders(pos - camera, box_size(f64::from(w), f64::from(h), 1.0 / 16.0))
-                }
-            };
-        if !drawn {
-            continue;
-        }
         let light = [(d.sky_light.clamp(0.0, 1.0) * 255.0) as u8, 0, 0, 0];
         let torch = (d.block_light.clamp(0.0, 1.0) * 255.0) as u8;
         match d.kind {
