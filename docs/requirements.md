@@ -57,11 +57,20 @@ its frame-time runs, which move to v1.0
 ([delivery record](delivery-records.md#38-v018-delivery-record--2026-11-25)).
 No row changed state.
 
+**Refreshed 2026-11-26** on the v1.0 integration branch
+(`t3/v1.0-acceptance-build`): the v1.0 tracks ([plan](roadmap.md#v10-plan-2026-11-25))
+moved UX-04a, UX-05b, FOO-01a, FOO-02, FOO-04a, ENV-03, PRO-03, PRO-04,
+MOB-01c, MOB-03a, MOB-03b, MOB-03d, MOB-05d, GEN-05g, PLY-06a and AUT-01b
+from Partial to Implemented, unverified, and the other rows they touched
+record their work. No row became Verified: the owner's play and the
+frame-time runs on the reference Mac come first. The counts below are
+recounted from the rows.
+
 | State | Rows |
 |---|---|
 | Verified | 3 |
-| Implemented, unverified | 84 |
-| Partial | 38 |
+| Implemented, unverified | 100 |
+| Partial | 22 |
 | Missing | 0 |
 | Unassessed | 0 |
 | Deferred | 6 |
