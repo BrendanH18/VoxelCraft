@@ -22,6 +22,7 @@ use voxelcraft::item::Item;
 use voxelcraft::world::World;
 use voxelcraft::world::block::Block;
 use voxelcraft::world::chunk::ChunkData;
+use voxelcraft::world::region::{REGION_DIR, RegionStore};
 use voxelcraft::world::storage::{LevelInfo, SavedChunks, Storage, VERSION_KEY};
 use voxelcraft::world::terrain::Generator;
 
@@ -140,6 +141,17 @@ fn every_release_fixture_opens_with_its_blocks_inventory_chest_player_and_entiti
 fn every_release_fixture_saves_and_reloads_without_loss() {
     for tag in RELEASES {
         check_resaves(&checked_in(), tag);
+    }
+}
+
+/// v1.0 Track 3b: the first save with region storage moves a release's
+/// `chunks.bin` and the level file's state for unloaded chunks into region
+/// files, keeps the replaced files, and the world reopens from them with
+/// its blocks, chest and entities.
+#[test]
+fn every_release_fixture_migrates_into_region_files_and_reopens() {
+    for tag in RELEASES {
+        check_migrates(&checked_in(), tag);
     }
 }
 
@@ -291,5 +303,101 @@ fn check_resaves(root: &Path, tag: &str) {
     storage.save(&rewritten, &list).unwrap();
     let third = storage.load_level().unwrap();
     assert_eq!(reread(&third, &storage.load_chunks().unwrap()), before, "{tag}: stable in this build's text");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+/// The fixture opened as the game opens a world with region storage (the
+/// level file is from before it, so it holds every chunk's state), saved
+/// once, then opened again from what that save wrote.
+fn check_migrates(root: &Path, tag: &str) {
+    let m = manifest(root, tag);
+    let dir = copy_world(root, tag, "migrate");
+    let storage = Storage::new(&dir);
+    let level = storage.load_level().unwrap();
+    let chunks = storage.load_chunks().unwrap();
+    let original_chunks = std::fs::read(dir.join("chunks.bin")).unwrap();
+    let open = |props: &BTreeMap<String, String>, chunks: SavedChunks| {
+        let mut world = World::new_headless(Arc::new(Generator::new(level.seed)), chunks, 1);
+        let (store, damage) = RegionStore::open(dir.join(REGION_DIR), true).unwrap();
+        assert!(damage.is_empty(), "{tag}");
+        let owned = props.get(voxelcraft::world::REGION_KEY).map(|t| World::parse_region_chunks(t));
+        world.attach_regions(store, owned, true);
+        if let Some(c) = props.get("chests") {
+            world.load_chests(c);
+        }
+        let mut entities = Entities::new(level.seed);
+        entities.load_props(props);
+        if let Some(t) = props.get("stored_index") {
+            entities.load_stored_index(t);
+        }
+        entities.sync_chunk_entities(&mut world);
+        (world, entities)
+    };
+
+    // The first save: nothing is loaded, so everything moves to records.
+    let (mut world, mut entities) = open(&level.props, chunks.clone());
+    let stored = entities.take_stored_batches(&world);
+    assert!(!stored.is_empty(), "{tag}: the mobs and the dropped stack go to their chunks' records");
+    world.save_records(stored);
+    let mut props = level.props.clone();
+    props.insert("chests".into(), world.chests_to_string());
+    entities.save_props(&mut props);
+    props.insert(voxelcraft::world::REGION_KEY.into(), world.region_chunks_to_string());
+    props.insert("stored_index".into(), entities.stored_index_to_string());
+    let saved = LevelInfo { seed: level.seed, player: level.player, props };
+    let writer = Storage::new(&dir);
+    world.regions().unwrap().after_writes(move || {
+        writer.save_level(&saved)?;
+        writer.retire_chunks_file()
+    });
+    world.flush_regions().unwrap();
+    drop(world);
+    assert!(!dir.join("chunks.bin").exists(), "{tag}: chunks.bin moved aside");
+    assert_eq!(std::fs::read(dir.join("chunks.bin_old")).unwrap(), original_chunks, "{tag}: and kept unchanged");
+    assert!(storage.has_regions(), "{tag}");
+    assert_eq!(storage.load_level_old().unwrap().props, level.props, "{tag}: the old level file is kept");
+    let migrated = storage.load_level().unwrap();
+    assert_eq!(migrated.props["chests"], "", "{tag}: no chest is left in the level file");
+    assert_eq!(migrated.props[voxelcraft::world::REGION_KEY], "", "{tag}: the level file holds no chunk");
+    assert!(storage.load_chunks().unwrap().is_empty(), "{tag}");
+
+    // Reopened: the chunks load from their records with everything in them.
+    let (mut world, mut entities) = open(&migrated.props, Default::default());
+    let mut columns: Vec<(i32, i32)> = chunks.keys().map(|c| (c.x, c.z)).collect();
+    columns.extend((-2..=2).flat_map(|x| (-1..=2).map(move |z| (x, z))));
+    columns.sort_unstable();
+    columns.dedup();
+    for (x, z) in columns {
+        world.load_test_column(glam::IVec2::new(x, z), 60);
+    }
+    entities.sync_chunk_entities(&mut world);
+    for (p, c) in &chunks {
+        for i in (0..32 * 32 * 32).step_by(7) {
+            let (x, y, z) = (i % 32, i / 1024, i / 32 % 32);
+            let at = *p * 32 + IVec3::new(x as i32, y as i32, z as i32);
+            assert_eq!(world.get_block(at), Some(c.get(x, y, z)), "{tag}: {at}");
+        }
+    }
+    let chest_at = pos(&m["chest"]["pos"]);
+    let chest = world.chest(chest_at).unwrap_or_else(|| panic!("{tag}: the chest came back"));
+    for (slot, want) in m["chest"]["slots"].as_object().unwrap() {
+        let want = Some(Stack::new(item(want[0].as_str().unwrap()), want[1].as_u64().unwrap() as u8));
+        assert_eq!(chest.slots[slot.parse::<usize>().unwrap()], want, "{tag}: chest slot {slot}");
+    }
+    for s in m["spawn"].as_array().unwrap() {
+        let parts: Vec<&str> = s.as_str().unwrap().split(',').collect();
+        let kind = MobKind::from_name(parts[0]).unwrap();
+        let x: f64 = parts[1].parse().unwrap();
+        let near = entities.mobs.iter().any(|mob| mob.kind == kind && (mob.pos.x - x).hypot(mob.pos.z - 12.0) < 24.0);
+        assert!(near, "{tag}: the {} spawned at x {x} came back", parts[0]);
+    }
+    for d in m["drop"].as_array().unwrap() {
+        let (want, count) = named_stack(d.as_str().unwrap());
+        assert!(
+            entities.items.iter().any(|e| e.stack.item == want && e.stack.count == count),
+            "{tag}: the dropped {d} came back"
+        );
+    }
+    drop(world);
     std::fs::remove_dir_all(dir).unwrap();
 }

@@ -116,7 +116,7 @@ impl Entities {
                     .position(|m| m.uid == id && m.alive() && m.creaking.as_ref().is_some_and(|s| s.home == Some(p)))
             });
             // A protector in an unloaded chunk is waiting in storage, not gone.
-            let stored = || h.protector.is_some_and(|id| self.storage.mobs().any(|m| m.uid == id));
+            let stored = || h.protector.is_some_and(|id| self.storage.holds_mob(id));
             if h.protector.is_some() && protector.is_none() && h.grace <= 1e-9 && !stored() {
                 h.protector = None;
             }

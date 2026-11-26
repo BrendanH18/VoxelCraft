@@ -37,6 +37,13 @@ impl Game {
                     log::error!("failed to remove the old dimension save {}: {e}", nether.dir().display());
                 }
             }
+            // v1.0 Track 3b: the old world's overworld records too.
+            let regions = storage.dir().join(crate::world::region::REGION_DIR);
+            if regions.is_dir()
+                && let Err(e) = std::fs::remove_dir_all(&regions)
+            {
+                log::error!("failed to remove the old region files {}: {e}", regions.display());
+            }
         }
         let seed =
             existing.as_ref().map(|l| l.seed).or(new.as_ref().and_then(|n| n.seed)).or(args.seed).unwrap_or_else(
@@ -184,6 +191,15 @@ impl Game {
         }
         let mut world = World::new(generator, saved, settings.render_distance);
         world.set_simulation_distance(settings.simulation_distance);
+        // v1.0 Track 3b: unloaded chunks live in region files. A LAN client
+        // has none; scripted runs read them but never write.
+        let load_notice = if args.join.is_none() {
+            let writable = settings_path.is_some();
+            let region = dimension::attach_regions(&mut world, &storage, dimension, &dimension_props, writable);
+            load_notice.into_iter().chain(region).reduce(|a, b| format!("{a} {b}"))
+        } else {
+            load_notice
+        };
         world.set_tile_drops(gamerules.bool("block_drops"));
         log::info!("{} worker threads", world.worker_threads());
 
@@ -566,25 +582,25 @@ mod tests {
     }
 
     #[test]
-    fn new_worlds_save_and_reload_as_generation_5() {
+    fn new_worlds_save_and_reload_as_the_latest_generation() {
         let dir = std::env::temp_dir().join(format!("voxelcraft-worldgen-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let storage = Storage::new(&dir);
 
-        // A new world: generation 5, written as `worldgen=5`.
+        // A new world: the latest generation (6 since v1.0 Track 8), written as `worldgen=6`.
         let generation = world_generation(None);
-        assert_eq!(generation, Generation::V5);
+        assert_eq!(generation, Generation::V6);
         let generator = Generator::with_generation(7, Dimension::Overworld, generation);
         let mut props = std::collections::BTreeMap::new();
         super::super::save::record_generation(&mut props, generator.generation);
         storage.save(&LevelInfo { seed: 7, player: None, props }, &[]).unwrap();
         let text = std::fs::read_to_string(dir.join("level.txt")).unwrap();
-        assert!(text.lines().any(|line| line == "worldgen=5"), "{text}");
+        assert!(text.lines().any(|line| line == "worldgen=6"), "{text}");
 
-        // Reloaded, it stays generation 5.
+        // Reloaded, it stays generation 6.
         let saved = storage.load_level().unwrap();
-        assert_eq!(world_generation(Some(&saved)), Generation::V5);
-        assert_eq!(Generator::with_generation(saved.seed, Dimension::Overworld, Generation::V5).generation.number(), 5);
+        assert_eq!(world_generation(Some(&saved)), Generation::V6);
+        assert_eq!(Generator::with_generation(saved.seed, Dimension::Overworld, Generation::V6).generation.number(), 6);
 
         // Older worlds keep theirs.
         storage.set_props(&[(Generation::KEY, "2")]).unwrap();

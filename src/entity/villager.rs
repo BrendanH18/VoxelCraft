@@ -996,6 +996,11 @@ impl Entities {
                     if let Some(vehicle) = m.riding {
                         saved["riding"] = json!(vehicle);
                     }
+                    // v1.0 Track 3b: its uid, which leads, seats and creaking
+                    // hearts name; written only once it has one.
+                    if m.uid != 0 {
+                        saved["uid"] = json!(m.uid);
+                    }
                     Some(saved)
                 }
                 MobKind::Villager | MobKind::ZombieVillager | MobKind::WanderingTrader => {
@@ -1017,6 +1022,11 @@ impl Entities {
                     // v0.17 Track D1: the vehicle it sits in; written only when set.
                     if let Some(vehicle) = m.riding {
                         saved["riding"] = json!(vehicle);
+                    }
+                    // v1.0 Track 3b: its uid, which leads, seats and creaking
+                    // hearts name; written only once it has one.
+                    if m.uid != 0 {
+                        saved["uid"] = json!(m.uid);
                     }
                     Some(saved)
                 }
@@ -1167,6 +1177,13 @@ impl Entities {
                 m.effects = crate::simulation::effects::Effects::deserialize(a["effects"].as_str().unwrap_or(""));
                 super::leash::load(&mut m, &a["identity"]);
                 m.riding = a["riding"].as_u64().and_then(|u| u32::try_from(u).ok());
+                // v1.0 Track 3b: the uid it had, unless another mob has it.
+                if let Some(uid) = a["uid"].as_u64().and_then(|u| u32::try_from(u).ok()).filter(|&u| u != 0)
+                    && !self.mobs.iter().any(|o| o.uid == uid)
+                {
+                    m.uid = uid;
+                    self.next_uid = self.next_uid.max(uid.saturating_add(1));
+                }
                 if let Some(v) = m.villager.as_ref() {
                     self.next_villager_id = self.next_villager_id.max(v.id.saturating_add(1));
                 }

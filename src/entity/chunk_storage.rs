@@ -23,10 +23,11 @@
 //! records keep their tickets while the villager is unloaded.
 
 use glam::{DVec3, IVec3};
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::{Arrow, Entities, ItemEntity, Mob, MobKind, XpOrb, decor, eye, fireball, minecart, potion, thrown, tnt};
 use crate::world::World;
+use crate::world::region::Props;
 
 /// The entities of one unloaded storage chunk (Java's `ChunkEntities`).
 #[derive(Default)]
@@ -75,6 +76,66 @@ pub(super) struct EntityStorage {
     /// bell can find stored claims near it without walking them all.
     claim_cells: FxHashMap<IVec3, Vec<IVec3>>,
     len: usize,
+    /// v1.0 Track 3b: the claims of villagers stored in region records
+    /// (Java keeps them in its POI records while the villager is unloaded),
+    /// and the heart-bound creakings there, saved in the level file
+    /// (`stored_index`) so they last until the chunk loads again.
+    disk: Claims,
+    disk_creakings: FxHashSet<u32>,
+}
+
+/// Bed and job claims with counts, by position and by 16-block cell.
+#[derive(Default)]
+struct Claims {
+    beds: FxHashMap<IVec3, u32>,
+    jobs: FxHashMap<IVec3, u32>,
+    cells: FxHashMap<IVec3, Vec<IVec3>>,
+}
+
+impl Claims {
+    fn add(&mut self, home: Option<IVec3>, job: Option<IVec3>) {
+        for (map, p) in [(&mut self.beds, home), (&mut self.jobs, job)] {
+            if let Some(p) = p {
+                *map.entry(p).or_default() += 1;
+                self.cells.entry(p.div_euclid(IVec3::splat(16))).or_default().push(p);
+            }
+        }
+    }
+
+    fn release(&mut self, home: Option<IVec3>, job: Option<IVec3>) {
+        for (map, p) in [(&mut self.beds, home), (&mut self.jobs, job)] {
+            let Some(p) = p else { continue };
+            let Some(n) = map.get_mut(&p) else { continue };
+            *n -= 1;
+            if *n == 0 {
+                map.remove(&p);
+            }
+            let cell = p.div_euclid(IVec3::splat(16));
+            if let Some(claims) = self.cells.get_mut(&cell) {
+                if let Some(i) = claims.iter().position(|&c| c == p) {
+                    claims.swap_remove(i);
+                }
+                if claims.is_empty() {
+                    self.cells.remove(&cell);
+                }
+            }
+        }
+    }
+
+    fn near(&self, p: IVec3, radius: f64) -> bool {
+        let r = radius.ceil() as i32;
+        let (lo, hi) =
+            ((p - IVec3::splat(r)).div_euclid(IVec3::splat(16)), (p + IVec3::splat(r)).div_euclid(IVec3::splat(16)));
+        (lo.x..=hi.x).any(|x| {
+            (lo.y..=hi.y).any(|y| {
+                (lo.z..=hi.z).any(|z| {
+                    self.cells.get(&IVec3::new(x, y, z)).is_some_and(|claims| {
+                        claims.iter().any(|c| c.as_dvec3().distance_squared(p.as_dvec3()) <= radius * radius)
+                    })
+                })
+            })
+        })
+    }
 }
 
 impl EntityStorage {
@@ -92,16 +153,34 @@ impl EntityStorage {
     /// Whether a stored villager has claimed bed `p`. Checked where a bed is
     /// chosen, so upkeep never walks the stored claims.
     pub(super) fn claims_bed(&self, p: IVec3) -> bool {
-        self.beds.contains_key(&p)
+        self.beds.contains_key(&p) || self.disk.beds.contains_key(&p)
     }
 
     pub(super) fn claims_job(&self, p: IVec3) -> bool {
-        self.jobs.contains_key(&p)
+        self.jobs.contains_key(&p) || self.disk.jobs.contains_key(&p)
+    }
+
+    /// Every bed stored villagers have claimed.
+    pub(super) fn claimed_beds(&self) -> impl Iterator<Item = IVec3> + '_ {
+        self.beds.keys().chain(self.disk.beds.keys()).copied()
+    }
+
+    /// Every job site stored villagers have claimed.
+    pub(super) fn claimed_jobs(&self) -> impl Iterator<Item = IVec3> + '_ {
+        self.jobs.keys().chain(self.disk.jobs.keys()).copied()
+    }
+
+    /// Whether a mob with uid `id` waits in storage, in memory or in a record.
+    pub(super) fn holds_mob(&self, id: u32) -> bool {
+        self.disk_creakings.contains(&id) || self.mobs().any(|m| m.uid == id)
     }
 
     /// Whether a stored villager has claimed a bed or job site within
     /// `radius` blocks of `p`.
     pub(super) fn claimed_near(&self, p: IVec3, radius: f64) -> bool {
+        if self.disk.near(p, radius) {
+            return true;
+        }
         let r = radius.ceil() as i32;
         let (lo, hi) =
             ((p - IVec3::splat(r)).div_euclid(IVec3::splat(16)), (p + IVec3::splat(r)).div_euclid(IVec3::splat(16)));
@@ -157,6 +236,10 @@ impl EntityStorage {
     }
 }
 
+/// The level file entity keys a chunk record's entity batches hold.
+pub const RECORD_KEYS: [&str; 8] =
+    ["potion_clouds", "items", "orbs", "minecarts", "decor", "villagers", "nether_mobs", "tridents"];
+
 /// The claims `village_upkeep` counts for a villager.
 fn villager_claims(m: &Mob) -> Option<(Option<IVec3>, Option<IVec3>)> {
     let v = m.villager.as_ref().filter(|_| m.kind == MobKind::Villager && m.alive())?;
@@ -185,10 +268,178 @@ impl Entities {
     /// chunk isn't loaded move into storage. Bounded by the live entities and
     /// the chunks that just loaded; stored entities are never visited.
     pub fn sync_chunk_entities(&mut self, world: &mut World) {
+        for (_, batches) in world.take_entity_records() {
+            self.restore_batches(batches);
+        }
         for chunk in world.take_entity_loads() {
             self.restore_chunk(chunk);
         }
         self.store_unloaded(world);
+        // v1.0 Track 3b: with region storage, stored entities go on to their
+        // chunk's record (Java's `EntityStorage.storeEntities`).
+        if world.writes_records() {
+            let chunks: Vec<IVec3> =
+                self.storage.chunks.keys().copied().filter(|&c| !world.keeps_entities(c)).collect();
+            let batches = self.serialize_stored(chunks);
+            world.store_entities(batches);
+        }
+    }
+
+    /// v1.0 Track 3b: at a save with region storage, every stored chunk's
+    /// entities but those of chunks still loading, for
+    /// [`World::save_records`].
+    pub fn take_stored_batches(&mut self, world: &World) -> Vec<(IVec3, Props)> {
+        let chunks: Vec<IVec3> = self.storage.chunks.keys().copied().filter(|&c| !world.chunk_loading(c)).collect();
+        self.serialize_stored(chunks)
+    }
+
+    /// Takes `chunks`' stored entities out of memory as level file entity
+    /// keys ([`RECORD_KEYS`]), one batch per chunk. Arrows, thrown items,
+    /// fireballs and primed TNT were never saved, so they stay in memory.
+    /// Villagers' claims and heart-bound creakings stay indexed.
+    fn serialize_stored(&mut self, mut chunks: Vec<IVec3>) -> Vec<(IVec3, Props)> {
+        if chunks.is_empty() {
+            return Vec::new();
+        }
+        chunks.sort_unstable_by_key(|c| (c.x, c.y, c.z));
+        let mut scratch = Entities::new(0);
+        let mut empty = std::collections::BTreeMap::new();
+        scratch.save_props(&mut empty);
+        let mut out = Vec::new();
+        for c in chunks {
+            let Some(mut ce) = self.storage.chunks.remove(&c) else { continue };
+            self.storage.len -= ce.len();
+            let kept = ChunkEntities {
+                arrows: std::mem::take(&mut ce.arrows),
+                potions: std::mem::take(&mut ce.potions),
+                thrown: std::mem::take(&mut ce.thrown),
+                eyes: std::mem::take(&mut ce.eyes),
+                fireballs: std::mem::take(&mut ce.fireballs),
+                tnt: std::mem::take(&mut ce.tnt),
+                ..Default::default()
+            };
+            if kept.len() > 0 {
+                self.storage.len += kept.len();
+                self.storage.chunks.insert(c, kept);
+            }
+            for m in &ce.mobs {
+                self.storage.release_claims(m);
+                if let Some((home, job)) = villager_claims(m) {
+                    self.storage.disk.add(home, job);
+                }
+                if m.alive() && m.creaking.as_ref().is_some_and(|s| s.home.is_some()) {
+                    self.storage.disk_creakings.insert(m.uid);
+                }
+            }
+            scratch.mobs = ce.mobs;
+            scratch.items = ce.items;
+            scratch.orbs = ce.orbs;
+            scratch.minecarts = ce.minecarts;
+            scratch.clouds = ce.clouds;
+            scratch.decor = ce.decor;
+            scratch.tridents = ce.tridents;
+            let mut props = std::collections::BTreeMap::new();
+            scratch.save_props(&mut props);
+            let batch: Props = props
+                .into_iter()
+                .filter(|(k, v)| RECORD_KEYS.contains(&k.as_str()) && empty.get(k) != Some(v))
+                .collect();
+            scratch.mobs.clear();
+            scratch.items.clear();
+            scratch.orbs.clear();
+            scratch.minecarts.clear();
+            scratch.clouds.clear();
+            scratch.decor.clear();
+            scratch.tridents.clear();
+            if !batch.is_empty() {
+                out.push((c, batch));
+            }
+        }
+        out
+    }
+
+    /// Brings back a loading chunk's entities from its record: each batch
+    /// is read as the level file would be, then joins the level.
+    fn restore_batches(&mut self, batches: Vec<Props>) {
+        for batch in batches {
+            let mut scratch = Entities::new(0);
+            scratch.next_uid = self.next_uid;
+            scratch.next_cart = self.next_cart;
+            scratch.next_villager_id = self.next_villager_id;
+            scratch.load_props(&batch.into_iter().collect());
+            self.next_uid = self.next_uid.max(scratch.next_uid);
+            self.next_cart = self.next_cart.max(scratch.next_cart);
+            self.next_villager_id = self.next_villager_id.max(scratch.next_villager_id);
+            for m in &scratch.mobs {
+                if let Some((home, job)) = villager_claims(m) {
+                    self.storage.disk.release(home, job);
+                }
+                self.storage.disk_creakings.remove(&m.uid);
+            }
+            self.mobs.append(&mut scratch.mobs);
+            self.items.append(&mut scratch.items);
+            self.orbs.append(&mut scratch.orbs);
+            self.minecarts.append(&mut scratch.minecarts);
+            self.clouds.append(&mut scratch.clouds);
+            self.decor.append(&mut scratch.decor);
+            self.tridents.append(&mut scratch.tridents);
+        }
+    }
+
+    /// v1.0 Track 3b: the `stored_index` level file text: the claims of
+    /// villagers and the heart-bound creakings stored in region records.
+    pub fn stored_index_to_string(&self) -> String {
+        let mut claims: Vec<String> = Vec::new();
+        let pos = |p: &IVec3| format!("{},{},{}", p.x, p.y, p.z);
+        for (kind, map) in [("b", &self.storage.disk.beds), ("j", &self.storage.disk.jobs)] {
+            for (p, n) in map {
+                claims.push(format!("{kind}{}x{n}", pos(p)));
+            }
+        }
+        let mut uids: Vec<u32> = self.storage.disk_creakings.iter().copied().collect();
+        uids.sort_unstable();
+        claims.extend(uids.iter().map(|u| format!("c{u}")));
+        claims.sort();
+        claims.join("|")
+    }
+
+    /// Restores [`Entities::stored_index_to_string`].
+    pub fn load_stored_index(&mut self, text: &str) {
+        for entry in text.split('|').filter(|e| !e.is_empty()) {
+            let (kind, rest) = entry.split_at_checked(1).unwrap_or(("", ""));
+            if kind == "c" {
+                if let Ok(uid) = rest.parse() {
+                    self.storage.disk_creakings.insert(uid);
+                }
+                continue;
+            }
+            let Some((at, n)) = rest.split_once('x') else { continue };
+            let c: Vec<i32> = at.split(',').filter_map(|v| v.parse().ok()).collect();
+            let (&[x, y, z], Ok(n)) = (&c[..], n.parse::<u32>()) else { continue };
+            let p = Some(IVec3::new(x, y, z));
+            for _ in 0..n.min(64) {
+                match kind {
+                    "b" => self.storage.disk.add(p, None),
+                    "j" => self.storage.disk.add(None, p),
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    /// The `entity_ids` level file text: the next mob uid and cart id, which
+    /// entities in region records may already use.
+    pub fn entity_ids_to_string(&self) -> String {
+        format!("{},{}", self.next_uid, self.next_cart)
+    }
+
+    pub fn load_entity_ids(&mut self, text: &str) {
+        if let Some((uid, cart)) = text.split_once(',')
+            && let (Ok(uid), Ok(cart)) = (uid.parse::<u32>(), cart.parse::<u32>())
+        {
+            self.next_uid = self.next_uid.max(uid);
+            self.next_cart = self.next_cart.max(cart);
+        }
     }
 
     /// Entities waiting in unloaded chunks.
@@ -310,6 +561,9 @@ impl EntityStorage {
             ("stored.bed_claims", self.beds.len()),
             ("stored.job_claims", self.jobs.len()),
             ("stored.claim_cells", self.claim_cells.values().map(Vec::len).sum()),
+            ("stored.disk_bed_claims", self.disk.beds.len()),
+            ("stored.disk_job_claims", self.disk.jobs.len()),
+            ("stored.disk_creakings", self.disk_creakings.len()),
         ]);
     }
 }
@@ -483,6 +737,83 @@ mod tests {
             e.items.len() + e.orbs.len() + e.minecarts.len() + e.arrows.len() + e.tnt.len() + after.len(),
             count
         );
+    }
+
+    /// v1.0 Track 3b: the same world, its unloaded chunks in region files.
+    fn region_world(dir: &std::path::Path, columns: impl IntoIterator<Item = IVec2>) -> World {
+        let _ = std::fs::remove_dir_all(dir);
+        let mut w = world(columns);
+        let (store, damage) = crate::world::region::RegionStore::open(dir, true).unwrap();
+        assert!(damage.is_empty());
+        w.attach_regions(store, Some(Default::default()), true);
+        w
+    }
+
+    #[test]
+    fn with_region_storage_stored_entities_leave_memory_and_come_back_unchanged() {
+        let dir = std::env::temp_dir().join(format!("voxelcraft-entity-regions-{}", std::process::id()));
+        let columns = || (-1..=2).flat_map(|x| (-1..=1).map(move |z| IVec2::new(x, z)));
+        let mut w = region_world(&dir, columns());
+        let mut e = Entities::new(5);
+        let count = populate(&mut e);
+        e.spawn(MobKind::Cow, at(10.5, 10.5));
+        e.ensure_mob_ids();
+        e.sync_chunk_entities(&mut w);
+        let before: Vec<String> = e.mobs.iter().filter(|m| m.pos.x >= 64.0).map(state).collect();
+        let items = e.items.len() + e.orbs.len() + e.minecarts.len();
+
+        for z in -1..=1 {
+            w.unload_test_column(IVec2::new(2, z));
+        }
+        e.sync_chunk_entities(&mut w);
+        // Arrows and primed TNT were never saved: they wait in memory.
+        assert_eq!(e.stored_entities(), 2, "only the arrow and the primed TNT, never saved, stay in memory");
+        assert_eq!(e.mobs.len(), 1);
+        assert!(e.items.is_empty() && e.orbs.is_empty() && e.minecarts.is_empty());
+        // The stored villager's claims outlast it in memory.
+        assert!(e.storage.claims_bed(IVec3::new(67, GROUND + 1, 28)));
+        assert!(e.storage.claims_job(IVec3::new(65, GROUND + 1, 24)));
+        assert!(e.storage.claimed_near(IVec3::new(20, GROUND + 1, 28), 48.0));
+        assert!(!e.stored_index_to_string().is_empty());
+        w.flush_regions().unwrap();
+
+        for z in -1..=1 {
+            w.load_test_column(IVec2::new(2, z), GROUND);
+        }
+        e.sync_chunk_entities(&mut w);
+        assert_eq!(e.stored_entities(), 0);
+        let mut after: Vec<String> = e.mobs.iter().filter(|m| m.pos.x >= 64.0).map(state).collect();
+        let mut want = before.clone();
+        after.sort();
+        want.sort();
+        assert_eq!(after, want, "every mob as it was");
+        assert_eq!(e.items.len() + e.orbs.len() + e.minecarts.len(), items);
+        let live = e.mobs.len() + e.items.len() + e.orbs.len() + e.minecarts.len() + e.arrows.len() + e.tnt.len();
+        assert_eq!(live, count + 1, "everything, and the cow that stayed");
+        assert!(e.storage.disk.beds.is_empty() && e.storage.disk.jobs.is_empty(), "the villager has its claims again");
+        assert_eq!(e.stored_index_to_string(), "");
+        let pig = e.mobs.iter().find(|m| m.kind == MobKind::Pig).unwrap();
+        assert!(e.minecarts.iter().any(|c| Some(c.id) == pig.riding), "the pig still rides its cart");
+        drop(w);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_reload_keeps_the_stored_index_and_the_next_ids() {
+        let mut e = Entities::new(5);
+        e.storage.disk.add(Some(IVec3::new(1, 2, 3)), Some(IVec3::new(4, 5, 6)));
+        e.storage.disk.add(Some(IVec3::new(1, 2, 3)), None);
+        e.storage.disk_creakings.insert(77);
+        e.next_uid = 900;
+        e.next_cart = 40;
+        let (index, ids) = (e.stored_index_to_string(), e.entity_ids_to_string());
+        let mut f = Entities::new(5);
+        f.load_stored_index(&index);
+        f.load_entity_ids(&ids);
+        assert_eq!(f.stored_index_to_string(), index);
+        assert_eq!(f.storage.disk.beds[&IVec3::new(1, 2, 3)], 2);
+        assert!(f.storage.holds_mob(77));
+        assert_eq!((f.next_uid, f.next_cart), (900, 40));
     }
 
     #[test]

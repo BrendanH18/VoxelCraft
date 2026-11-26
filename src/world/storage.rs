@@ -37,8 +37,10 @@ pub const VERSION_KEY: &str = "version";
 /// so a level file that is cut off or lost can be restored from it.
 pub const LEVEL_FILE: &str = "level.txt";
 pub const LEVEL_OLD: &str = "level.txt_old";
-/// The modified chunks of one dimension.
+/// The modified chunks of one dimension, before region storage.
 pub const CHUNKS_FILE: &str = "chunks.bin";
+/// `chunks.bin` once its chunks moved into region files (v1.0 Track 3b).
+pub const CHUNKS_OLD: &str = "chunks.bin_old";
 
 /// Saved chunks by chunk position.
 pub type SavedChunks = FxHashMap<IVec3, Arc<ChunkData>>;
@@ -101,7 +103,27 @@ impl Storage {
     /// Opening such a folder as a new world would replace them, so the game
     /// refuses it like an unreadable level file.
     pub fn has_chunks_without_level(&self) -> bool {
-        !self.exists() && self.dir.join(CHUNKS_FILE).is_file()
+        !self.exists() && (self.dir.join(CHUNKS_FILE).is_file() || self.has_regions())
+    }
+
+    /// Whether this folder has region files (v1.0 Track 3b).
+    pub fn has_regions(&self) -> bool {
+        fs::read_dir(self.dir.join(super::region::REGION_DIR))
+            .is_ok_and(|mut d| d.any(|e| e.is_ok_and(|e| e.file_name().to_string_lossy().ends_with(".vxr"))))
+    }
+
+    /// v1.0 Track 3b: once every chunk of `chunks.bin` is in the region
+    /// files, it moves to `chunks.bin_old` (a newer build's file to
+    /// `chunks.bin.unknown-<secs>`), so later loads read only the regions.
+    /// The game never deletes either.
+    pub fn retire_chunks_file(&self) -> io::Result<()> {
+        self.keep_unknown_format()?;
+        let from = self.dir.join(CHUNKS_FILE);
+        if !from.is_file() {
+            return Ok(());
+        }
+        let to = self.unused_name(CHUNKS_OLD);
+        fs::rename(from, to)
     }
 
     /// Whether another process holds this save's session lock. Unlike
@@ -373,7 +395,8 @@ impl Storage {
     }
 }
 
-fn unix_secs() -> u64 {
+/// Seconds since the Unix epoch, for the names of kept files.
+pub fn unix_secs() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
 }
 
@@ -429,7 +452,7 @@ fn parse_chunks(buf: &[u8]) -> Result<SavedChunks, Partial> {
 }
 
 /// VXC2 runs: (run length u16 LE, block state u16 LE). VXC1 used u8 states.
-fn encode(data: &ChunkData) -> Vec<u8> {
+pub(super) fn encode(data: &ChunkData) -> Vec<u8> {
     let mut out = Vec::new();
     let mut run: Option<(Block, u16)> = None;
     data.for_each_block(|b| match &mut run {
@@ -449,7 +472,7 @@ fn encode(data: &ChunkData) -> Vec<u8> {
     out
 }
 
-fn decode(rle: &[u8], legacy: bool) -> Option<ChunkData> {
+pub(super) fn decode(rle: &[u8], legacy: bool) -> Option<ChunkData> {
     let stride = if legacy { 3 } else { 4 };
     if !rle.len().is_multiple_of(stride) {
         return None;

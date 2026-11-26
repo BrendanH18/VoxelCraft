@@ -314,13 +314,22 @@ every entry count `World::diagnostics` and `Entities::diagnostics` expose
 (queues, caches, retained per-position state, stored entities) and the size
 of each saved property.
 
+Like the game, it keeps unloaded chunks in region files (v1.0 Track 3b):
+autosaves only queue the changed chunks' records (`save_ms` is the main
+thread's part), saves before a reopen wait for the I/O thread
+(`flush_ms`), and the `w.regions.*` columns count queued and written
+records. `--chunks-file` runs it the way the game saved before 1.0 (every
+unloaded chunk in memory, `chunks.bin` rewritten each save), for comparison.
+
 ```sh
 scripts/boat-check.sh -- 'cargo build --profile ci --locked --no-default-features --example soak && /home/user/target/ci/examples/soak --hours 4 --rd 6 --csv target/soak/soak.csv; cat target/soak/soak.csv'
 ```
 
 `tests/soak.rs` runs six simulated minutes of the same itinerary (about 12
 seconds on Boat) and checks the bounds; the
-[record](verification/2026-11-25-v1.0-soak.md) has the multi-hour runs.
+[record](verification/2026-11-25-v1.0-soak.md) has the multi-hour runs,
+and the [Track 3b record](verification/2026-11-26-v1.0-track-03b-region-storage.md)
+those with region storage.
 
 ## Screenshots and scripted scenes
 

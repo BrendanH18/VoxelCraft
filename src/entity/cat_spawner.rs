@@ -88,19 +88,20 @@ impl Entities {
         self.try_cat_spawn(w, p);
     }
     fn occupied_pois<W: MobWorld + ?Sized>(&self, w: &W) -> (Vec<IVec3>, Vec<IVec3>) {
+        // Stored villagers' claims count too, wherever they are stored.
         let claimed: FxHashSet<_> = self
             .mobs
             .iter()
-            .chain(self.storage.mobs())
             .filter(|m| m.kind == MobKind::Villager && m.alive())
             .filter_map(|m| m.villager.as_ref()?.home)
+            .chain(self.storage.claimed_beds())
             .collect();
         let jobs: FxHashSet<_> = self
             .mobs
             .iter()
-            .chain(self.storage.mobs())
             .filter(|m| m.kind == MobKind::Villager && m.alive())
             .filter_map(|m| m.villager.as_ref()?.job)
+            .chain(self.storage.claimed_jobs())
             .collect();
         let mut homes = Vec::new();
         let mut centers = Vec::new();

@@ -906,15 +906,33 @@ impl World {
     pub fn load_test_column(&mut self, c: IVec2, ground: i32) {
         for cy in self.generator.dimension.chunk_rows() {
             let pos = IVec3::new(c.x, cy, c.y);
-            let data = self.saved.remove(&pos).unwrap_or_else(|| Self::flat_test_chunk(cy, ground));
-            self.insert_chunk(pos, data, true);
+            // v1.0 Track 3b: a chunk with a region record loads from it, as
+            // streaming's `Job::Load` would, here on this thread.
+            let record = self.regions.as_ref().and_then(|s| s.read(pos));
+            match record {
+                Some(record) if record.blocks.is_some() => self.insert_record(pos, record),
+                record => {
+                    let data = self.saved.remove(&pos).unwrap_or_else(|| Self::flat_test_chunk(cy, ground));
+                    self.load_fires(pos, &data);
+                    self.install_chunk(pos, data, true, record);
+                }
+            }
         }
     }
 
-    /// Unload every chunk of a column, keeping its edits like streaming does.
+    /// Unload every chunk of a column, keeping its edits like streaming does
+    /// (in its region records, with region storage).
     pub fn unload_test_column(&mut self, c: IVec2) {
-        for cy in self.generator.dimension.chunk_rows() {
-            self.remove_chunk(IVec3::new(c.x, cy, c.y));
+        let rows: Vec<IVec3> = self
+            .generator
+            .dimension
+            .chunk_rows()
+            .map(|cy| IVec3::new(c.x, cy, c.y))
+            .filter(|p| self.chunks.contains_key(p))
+            .collect();
+        self.evict_chunks(&rows);
+        for pos in rows {
+            self.remove_chunk(pos);
         }
     }
 }

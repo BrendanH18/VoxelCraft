@@ -16,13 +16,13 @@ use crate::audio::SoundSource;
 use crate::audio::sounds::{Material, Sound};
 use crate::world::World;
 use crate::world::block::Block;
-use crate::world::storage::{SavedChunks, Storage};
+use crate::world::storage::{self, SavedChunks, Storage};
 use crate::world::terrain::{Dimension, Generator};
 
 use super::Game;
 
 /// Level properties that belong to one dimension rather than the player.
-pub(super) const DIMENSION_KEYS: [&str; 34] = [
+pub(super) const DIMENSION_KEYS: [&str; 38] = [
     "furnaces",
     "chests",
     "items",
@@ -62,6 +62,11 @@ pub(super) const DIMENSION_KEYS: [&str; 34] = [
     "end_crystals",
     // v0.17 Track C1.
     "crafters",
+    // v1.0 Track 3b: region storage.
+    "region_chunks",
+    "fluid_ticks",
+    "stored_index",
+    "entity_ids",
 ];
 /// How far around the arrival point to look for an existing portal.
 const SEARCH_RADIUS: i32 = 16;
@@ -174,6 +179,49 @@ pub(super) fn load_dimension(
     (chunks, props, (!notices.is_empty()).then(|| notices.join(" ")))
 }
 
+/// v1.0 Track 3b: opens the dimension's region storage and attaches it to
+/// `world`, which then keeps its unloaded chunks there. `props` are the
+/// dimension's level file properties; without `region_chunks` they are from
+/// before region storage and hold every chunk's state. If such a world also
+/// has region files beside its `chunks.bin`, a session crashed before its
+/// first save wrote them: they are moved aside as `region.unsaved-<secs>`,
+/// and the world opens as that save left it. `writable` is false for
+/// scripted runs, which read records but never write them. Returns damage
+/// to tell the player about.
+pub(super) fn attach_regions(
+    world: &mut World,
+    root: &Storage,
+    dim: Dimension,
+    props: &BTreeMap<String, String>,
+    writable: bool,
+) -> Option<String> {
+    use crate::world::region::{REGION_DIR, RegionStore};
+    let storage = storage_for(root, dim);
+    let dir = storage.dir().join(REGION_DIR);
+    let owned = props.get(crate::world::REGION_KEY).map(|t| World::parse_region_chunks(t));
+    if writable && owned.is_none() && storage.dir().join(crate::world::storage::CHUNKS_FILE).is_file() && dir.is_dir() {
+        let to = storage.dir().join(format!("{REGION_DIR}.unsaved-{}", storage::unix_secs()));
+        log::warn!("moving region files no level file names aside to {}", to.display());
+        if let Err(e) = std::fs::rename(&dir, &to) {
+            log::error!("couldn't move {} aside: {e}", dir.display());
+        }
+    }
+    match RegionStore::open(&dir, writable) {
+        Ok((store, damage)) => {
+            world.attach_regions(store, owned, writable);
+            let notices: Vec<String> = damage.iter().map(|d| d.notice(dim.name())).collect();
+            (!notices.is_empty()).then(|| notices.join(" "))
+        }
+        Err(e) => {
+            log::error!("failed to open the {} region files: {e}", dim.name());
+            Some(format!(
+                "The {}'s region files couldn't be read ({e}), so its saved chunks regenerate. The files are kept.",
+                dim.name()
+            ))
+        }
+    }
+}
+
 /// The furnace, chest and item properties out of a level's properties.
 pub(super) fn dimension_props(props: &BTreeMap<String, String>) -> BTreeMap<String, String> {
     props.iter().filter(|(k, _)| DIMENSION_KEYS.contains(&k.as_str())).map(|(k, v)| (k.clone(), v.clone())).collect()
@@ -213,6 +261,13 @@ impl Game {
         props.insert("potent_sulfur".to_string(), self.world.potent_sulfur_to_string());
         props.insert("crafters".to_string(), self.world.crafters_to_string());
         self.mobs.entities.save_props(&mut props);
+        // v1.0 Track 3b: what region storage needs from the level file.
+        if self.world.writes_records() {
+            props.insert(crate::world::REGION_KEY.to_string(), self.world.region_chunks_to_string());
+            props.insert(crate::world::FLUID_TICKS_KEY.to_string(), self.world.fluid_ticks_to_string());
+            props.insert("stored_index".to_string(), self.mobs.entities.stored_index_to_string());
+            props.insert("entity_ids".to_string(), self.mobs.entities.entity_ids_to_string());
+        }
         if let Some(fight) = &self.mobs.entities.fight {
             props.insert("dragon".to_string(), fight.serialize(&self.mobs.entities.crystals));
         }
@@ -288,9 +343,18 @@ impl Game {
         if let Some(g) = props.get("potent_sulfur") {
             self.world.load_potent_sulfur(g);
         }
+        if let Some(f) = props.get(crate::world::FLUID_TICKS_KEY) {
+            self.world.load_fluid_ticks(f);
+        }
         // Entities in chunks that haven't streamed in yet move to per-chunk
         // storage on the first tick; ridden vehicles stay with their riders.
         self.mobs.entities.load_props(props);
+        if let Some(t) = props.get("stored_index") {
+            self.mobs.entities.load_stored_index(t);
+        }
+        if let Some(t) = props.get("entity_ids") {
+            self.mobs.entities.load_entity_ids(t);
+        }
         if props.contains_key("minecarts") {
             if let Some(id) = self.mobs.entities.claim_rider(crate::entity::PlayerId::HOST) {
                 self.session.player.vehicle = Some(id);
@@ -356,12 +420,13 @@ impl Game {
         self.world.maps = maps;
         self.world.loot_sequences = loot_sequences;
         self.world.set_simulation_distance(self.settings.simulation_distance);
+        let region_notice = attach_regions(&mut self.world, &self.storage, to, &props, self.settings_path.is_some());
         self.mobs.entities = crate::entity::Entities::new(seed);
         self.renderer.clear_world();
         self.particles.clear();
         self.dimension = to;
         self.restore_dimension(&props);
-        if let Some(notice) = notice {
+        if let Some(notice) = notice.into_iter().chain(region_notice).reduce(|a, b| format!("{a} {b}")) {
             self.report_load_damage(&notice);
         }
         self.arrival = Some(arrival);
@@ -764,6 +829,66 @@ mod tests {
         let (loaded, p, notice) = load_dimension(&root, Dimension::Nether, &none);
         assert_eq!((loaded.len(), p.len()), (2, 0));
         assert!(notice.unwrap().contains("containers and entities are lost"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// v1.0 Track 3b: a dimension's region files attach to its world; a
+    /// cut-off one is reported to the player, and a pre-region world whose
+    /// unsaved session left region files beside its `chunks.bin` gets them
+    /// moved aside; scripted runs read regions without writing or copying.
+    #[test]
+    fn region_files_attach_and_damage_is_reported() {
+        use crate::world::region::{ChunkRecord, Patch, REGION_DIR, RegionStore};
+        let dir = std::env::temp_dir().join(format!("voxelcraft-dims-regions-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let root = Storage::new(&dir);
+        let nether = storage_for(&root, Dimension::Nether);
+        let regions = nether.dir().join(REGION_DIR);
+        {
+            let (store, _) = RegionStore::open(&regions, true).unwrap();
+            let record = |b| ChunkRecord { blocks: Some(Arc::new(ChunkData::Uniform(b))), ..Default::default() };
+            store.queue([
+                (IVec3::new(0, 2, 0), Patch::replace(record(Block::NETHERRACK))),
+                (IVec3::new(1, 2, 0), Patch::replace(record(Block::GLOWSTONE))),
+            ]);
+            store.flush().unwrap();
+        }
+        let world = || World::new_headless(Arc::new(Generator::new(9)), Default::default(), 1);
+        let owned: BTreeMap<String, String> = [(crate::world::REGION_KEY.to_string(), String::new())].into();
+        let mut w = world();
+        assert_eq!(attach_regions(&mut w, &root, Dimension::Nether, &owned, true), None);
+        assert!(w.writes_records());
+        assert_eq!(w.section_data(IVec3::new(1, 2, 0)).and_then(|d| d.uniform()), Some(Block::GLOWSTONE));
+        drop(w);
+
+        // Cut off: the intact chunk reads, the player hears about the other.
+        let file = regions.join("r.0.0.vxr");
+        let bytes = std::fs::read(&file).unwrap();
+        std::fs::write(&file, &bytes[..bytes.len() - 4096 + 10]).unwrap();
+        let mut w = world();
+        let notice = attach_regions(&mut w, &root, Dimension::Nether, &owned, false).expect("the player is told");
+        assert!(notice.contains("nether") && notice.contains("1 of 2"), "{notice}");
+        assert!(!w.writes_records(), "a scripted run only reads");
+        assert_eq!(std::fs::read_dir(&regions).unwrap().count(), 1, "nor copies anything aside");
+        assert_eq!(w.section_data(IVec3::new(0, 2, 0)).and_then(|d| d.uniform()), Some(Block::NETHERRACK));
+        drop(w);
+        let mut w = world();
+        let notice = attach_regions(&mut w, &root, Dimension::Nether, &owned, true).unwrap();
+        assert!(notice.contains("r.0.0.vxr.damaged-"), "{notice}");
+        drop(w);
+
+        // A pre-region level file with `chunks.bin` beside region files.
+        nether.save(&LevelInfo { seed: 9, player: None, props: BTreeMap::new() }, &[]).unwrap();
+        let mut w = world();
+        attach_regions(&mut w, &root, Dimension::Nether, &BTreeMap::new(), true);
+        drop(w);
+        let aside: Vec<String> = std::fs::read_dir(nether.dir())
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.starts_with("region.unsaved-"))
+            .collect();
+        assert_eq!(aside.len(), 1, "the unsaved session's regions moved aside");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

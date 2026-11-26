@@ -36,6 +36,16 @@ impl World {
             ("stream.mesh_removals", self.mesh_removals.len()),
             ("entity_loads", self.entity_loads.len()),
         ]);
+        // v1.0 Track 3b: region storage.
+        let (pending, written, bytes) = self.regions.as_ref().map_or((0, 0, 0), |s| s.stats());
+        out.extend([
+            ("regions.pending", pending),
+            ("regions.written", written as usize),
+            ("regions.written_bytes", bytes as usize),
+            ("regions.evicted", self.region_records.evicted as usize),
+            ("regions.level_owned", self.region_records.level_owned_len()),
+            ("regions.entity_records", self.region_records.entity_batches()),
+        ]);
         self.light_updates.soak_counts(&["light.block_queue", "light.block_flood_raw"], &mut out);
         self.sky_updates.soak_counts(&["light.sky_queue", "light.sky_flood_raw"], &mut out);
         self.fluids.soak_counts(&mut out);

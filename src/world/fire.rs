@@ -74,6 +74,37 @@ impl World {
         self.fire.containers.entry(java_chunk(p)).or_default().push(Reverse((due, sequence, p.to_array())));
     }
 
+    /// v1.0 Track 3b: schedules the fire at `p` `delay` game ticks from
+    /// now, as its chunk's record saved it (Java's saved `LevelChunkTicks`).
+    pub(super) fn schedule_fire_in(&mut self, p: IVec3, delay: u32) {
+        if self.fire.pending.contains_key(&p) {
+            return;
+        }
+        let due = self.fire.tick + u64::from(delay);
+        let sequence = self.fire.sequence;
+        self.fire.sequence += 1;
+        self.fire.pending.insert(p, Scheduled { due, sequence });
+        self.fire.containers.entry(java_chunk(p)).or_default().push(Reverse((due, sequence, p.to_array())));
+    }
+
+    /// The scheduled fires of the chunks `at` accepts, by chunk, with the
+    /// game ticks until each is due, for their records. The schedules stay
+    /// until the chunk unloads ([`World::unload_fires`]).
+    pub(super) fn fire_ticks(&self, at: &dyn Fn(IVec3) -> bool) -> FxHashMap<IVec3, Vec<(IVec3, u32)>> {
+        let mut out: FxHashMap<IVec3, Vec<(IVec3, u32)>> = FxHashMap::default();
+        for (&p, s) in &self.fire.pending {
+            let c = super::chunk::chunk_of(p);
+            if at(c) {
+                let delay = u32::try_from(s.due.saturating_sub(self.fire.tick)).unwrap_or(u32::MAX);
+                out.entry(c).or_default().push((p, delay));
+            }
+        }
+        for list in out.values_mut() {
+            list.sort_unstable_by_key(|(p, _)| (p.x, p.y, p.z));
+        }
+        out
+    }
+
     pub(super) fn track_fire(&mut self, p: IVec3, old: Block, new: Block) {
         // Only aging fire is scheduled; soul fire never changes on its own.
         if new.fire_age().is_some() {

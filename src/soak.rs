@@ -80,6 +80,10 @@ pub struct Options {
     pub csv: Option<PathBuf>,
     /// Random tick speed (Java's default 3).
     pub random_tick_speed: u32,
+    /// v1.0 Track 3b: unloaded chunks go to region files, as the game's do.
+    /// `false` keeps them in memory and saves `chunks.bin`, as before 1.0,
+    /// for comparison.
+    pub regions: bool,
 }
 
 impl Default for Options {
@@ -94,6 +98,7 @@ impl Default for Options {
             data_dir: PathBuf::from("target/soak/world"),
             csv: None,
             random_tick_speed: 3,
+            regions: true,
         }
     }
 }
@@ -208,7 +213,31 @@ fn dimension_props(world: &World, entities: &Entities) -> BTreeMap<String, Strin
     if let Some(fight) = &entities.fight {
         props.insert("dragon".to_string(), fight.serialize(&entities.crystals));
     }
+    if world.writes_records() {
+        props.insert(crate::world::REGION_KEY.to_string(), world.region_chunks_to_string());
+        props.insert(crate::world::FLUID_TICKS_KEY.to_string(), world.fluid_ticks_to_string());
+        props.insert("stored_index".to_string(), entities.stored_index_to_string());
+        props.insert("entity_ids".to_string(), entities.entity_ids_to_string());
+    }
     props
+}
+
+/// Opens `dim`'s region files under `root` and attaches them
+/// (`app::dimension::attach_regions`).
+fn attach_regions(
+    world: &mut World,
+    root: &Path,
+    dim: Dimension,
+    props: &BTreeMap<String, String>,
+) -> Result<(), String> {
+    let dir = storage_for(root, dim).dir().join(crate::world::region::REGION_DIR);
+    let (store, damage) = crate::world::region::RegionStore::open(&dir, true).map_err(|e| format!("regions: {e}"))?;
+    if let Some(d) = damage.first() {
+        return Err(d.notice(dim.name()));
+    }
+    let owned = props.get(crate::world::REGION_KEY).map(|t| World::parse_region_chunks(t));
+    world.attach_regions(store, owned, true);
+    Ok(())
 }
 
 /// Restores a freshly loaded dimension (`Game::restore_dimension`).
@@ -277,7 +306,16 @@ fn restore_dimension(world: &mut World, entities: &mut Entities, props: &BTreeMa
     if let Some(v) = get("potent_sulfur") {
         world.load_potent_sulfur(v);
     }
+    if let Some(v) = get(crate::world::FLUID_TICKS_KEY) {
+        world.load_fluid_ticks(v);
+    }
     entities.load_props(props);
+    if let Some(v) = get("stored_index") {
+        entities.load_stored_index(v);
+    }
+    if let Some(v) = get("entity_ids") {
+        entities.load_entity_ids(v);
+    }
     entities.fight = world.generator.end().map(|end| crate::entity::dragon::Fight::load(end, get("dragon")));
     if let Some(fight) = &mut entities.fight {
         fight.restore_crystals(&mut entities.crystals, props.contains_key("end_crystals"));
@@ -312,6 +350,8 @@ struct Soak {
     heading: DVec3,
     window: Window,
     last_save_ms: f64,
+    /// The last blocking save's wait for the I/O thread (region storage).
+    last_flush_ms: f64,
     last_load_ms: f64,
     summary: Summary,
     started: Instant,
@@ -327,6 +367,9 @@ impl Soak {
         let spawn = DVec3::new(0.5, f64::from(ground) + 1.0, 0.5);
         let mut world = World::new(generator, Default::default(), options.render_distance);
         world.set_stream_light_budget(Some(STREAM_LIGHT_BUDGET));
+        if options.regions {
+            attach_regions(&mut world, &options.data_dir, Dimension::Overworld, &BTreeMap::new())?;
+        }
         let mut agent = Agent::new(spawn);
         agent.set_mode(GameMode::Creative);
         agent.session.player.flying = true;
@@ -347,6 +390,7 @@ impl Soak {
             heading: DVec3::X,
             window: Window::default(),
             last_save_ms: 0.0,
+            last_flush_ms: 0.0,
             last_load_ms: 0.0,
             summary: Summary::default(),
             started: Instant::now(),
@@ -466,17 +510,42 @@ impl Soak {
         Some(next)
     }
 
-    /// Saves the current dimension (`Game::save`).
-    fn save(&mut self) -> Result<(), String> {
+    /// Saves the current dimension (`Game::save` and `Game::autosave`).
+    /// With region storage, `save_ms` is the main thread's part (what the
+    /// game's frame waits for); a blocking save also waits for the I/O
+    /// thread (`flush_ms`).
+    fn save(&mut self, wait: bool) -> Result<(), String> {
         let a = Instant::now();
         let seed = self.world.generator.seed;
-        let chunks = self.world.modified_chunks();
-        let props = dimension_props(&self.world, &self.entities);
         let storage = storage_for(&self.options.data_dir, self.dimension);
         let p = &self.agent.session.player;
         let player = (self.dimension == Dimension::Overworld).then_some((p.pos, p.yaw, p.pitch));
-        storage.save(&LevelInfo { seed, player, props }, &chunks).map_err(|e| format!("save: {e}"))?;
-        self.last_save_ms = a.elapsed().as_secs_f64() * 1000.0;
+        if self.world.writes_records() {
+            let stored = self.entities.take_stored_batches(&self.world);
+            self.world.save_records(stored);
+            let props = dimension_props(&self.world, &self.entities);
+            let level = LevelInfo { seed, player, props };
+            if let Some(store) = self.world.regions() {
+                store.after_writes(move || {
+                    storage.save_level(&level)?;
+                    storage.retire_chunks_file()
+                });
+            }
+            self.last_save_ms = a.elapsed().as_secs_f64() * 1000.0;
+            if let Some(e) = self.world.take_region_errors().first() {
+                return Err(format!("save: {e}"));
+            }
+            if wait {
+                let f = Instant::now();
+                self.world.flush_regions().map_err(|e| format!("save: {e}"))?;
+                self.last_flush_ms = f.elapsed().as_secs_f64() * 1000.0;
+            }
+        } else {
+            let chunks = self.world.modified_chunks();
+            let props = dimension_props(&self.world, &self.entities);
+            storage.save(&LevelInfo { seed, player, props }, &chunks).map_err(|e| format!("save: {e}"))?;
+            self.last_save_ms = a.elapsed().as_secs_f64() * 1000.0;
+        }
         self.summary.saves += 1;
         Ok(())
     }
@@ -484,7 +553,7 @@ impl Soak {
     /// Saves, drops the world and its entities, and opens `to` from disk
     /// with the walker at `at`, waiting for its surroundings to load.
     fn reopen(&mut self, to: Dimension, at: DVec3) -> Result<(), String> {
-        self.save()?;
+        self.save(true)?;
         let a = Instant::now();
         let storage = storage_for(&self.options.data_dir, to);
         let (chunks, props) = if storage.exists() {
@@ -502,6 +571,9 @@ impl Soak {
         let generator = Arc::new(Generator::with_generation(seed, to, self.generation));
         let mut world = World::new(generator, chunks, self.options.render_distance);
         world.set_stream_light_budget(Some(STREAM_LIGHT_BUDGET));
+        if self.options.regions {
+            attach_regions(&mut world, &self.options.data_dir, to, &props)?;
+        }
         world.maps = maps;
         world.loot_sequences = loot;
         drop(std::mem::replace(&mut self.world, world));
@@ -776,6 +848,7 @@ impl Soak {
             ("stream_ms_per_tick".into(), self.window.stream_ms / n),
             ("stall_seconds".into(), self.window.stall),
             ("save_ms".into(), self.last_save_ms),
+            ("flush_ms".into(), self.last_flush_ms),
             ("load_ms".into(), self.last_load_ms),
             ("save_bytes".into(), dir_size(&self.options.data_dir) as f64),
             ("saves".into(), self.summary.saves as f64),
@@ -928,7 +1001,7 @@ pub fn run(options: &Options, mut on_sample: impl FnMut(&Sample)) -> Result<Summ
             t += TICK_SECONDS;
             since_save += 1;
             if since_save >= autosave_ticks {
-                s.save()?;
+                s.save(false)?;
                 since_save = 0;
             }
             if s.tick % sample_ticks == 0 {
@@ -944,7 +1017,7 @@ pub fn run(options: &Options, mut on_sample: impl FnMut(&Sample)) -> Result<Summ
         }
         leg_index += 1;
     }
-    s.save()?;
+    s.save(true)?;
     s.summary.ticks = s.tick;
     Ok(s.summary)
 }

@@ -85,9 +85,9 @@ pub struct Bookshelf {
 
 #[derive(Clone, Debug, Default)]
 pub struct WoodEntities {
-    pub(super) signs: FxHashMap<IVec3, SignEntity>,
-    pub(super) shelves: FxHashMap<IVec3, [Option<Stack>; 3]>,
-    pub(super) bookshelves: FxHashMap<IVec3, Bookshelf>,
+    pub(in crate::world) signs: FxHashMap<IVec3, SignEntity>,
+    pub(in crate::world) shelves: FxHashMap<IVec3, [Option<Stack>; 3]>,
+    pub(in crate::world) bookshelves: FxHashMap<IVec3, Bookshelf>,
     /// Bumped on every change, so renderers can cache what they built.
     pub(super) version: u64,
 }

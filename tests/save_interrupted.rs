@@ -264,3 +264,84 @@ fn unknown_block_states_are_kept_and_unknown_items_emptied() {
     assert_eq!(parsed.slots[1].map(|s| s.count), Some(5), "the rest of the inventory loads");
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+/// v1.0 Track 3b: a region file cut off (a crash or a full disk while the
+/// I/O thread wrote it) keeps every chunk whose record is whole; the rest
+/// regenerate, the player is told how many, and the damaged file is kept,
+/// as `chunks.bin` damage is handled. Writing again repairs the table.
+#[test]
+fn a_cut_off_region_file_keeps_every_intact_chunk_and_a_copy_of_the_damage() {
+    use voxelcraft::world::region::{ChunkRecord, Patch, RegionStore, SECTOR};
+    let dir = temp("cut-region");
+    let regions = dir.join("region");
+    let record = |b: Block| ChunkRecord {
+        blocks: Some(Arc::new(ChunkData::Uniform(b))),
+        state: vec![("spawners".to_string(), "1,2,3=zombie".to_string())],
+        ..Default::default()
+    };
+    let blocks = [Block::STONE, Block::DIRT, Block::GOLD_BLOCK];
+    {
+        let (store, _) = RegionStore::open(&regions, true).unwrap();
+        // A big middle record, so cuts land inside it and inside the last.
+        let mut big = record(blocks[1]);
+        big.entities.push(vec![("items".to_string(), "x".repeat(3 * SECTOR as usize))]);
+        store.queue([
+            (IVec3::new(0, 0, 0), Patch::replace(record(blocks[0]))),
+            (IVec3::new(1, 0, 0), Patch::replace(big)),
+            (IVec3::new(2, 0, 0), Patch::replace(record(blocks[2]))),
+        ]);
+        store.flush().unwrap();
+    }
+    let path = regions.join("r.0.0.vxr");
+    let whole = std::fs::read(&path).unwrap();
+    let header = 9 * SECTOR as usize;
+    // Records follow the table in the order they were written: 1 sector,
+    // 4 sectors, 1 sector.
+    let cases: [(usize, usize, &str); 4] = [
+        (whole.len() - SECTOR as usize + 20, 2, "it is cut off"),
+        (header + SECTOR as usize + 100, 1, "it is cut off"),
+        (header - 100, 0, "it is cut off"),
+        (6, 0, "it is cut off"),
+    ];
+    for (keep, kept, reason) in cases {
+        let damaged = &whole[..keep];
+        std::fs::write(&path, damaged).unwrap();
+        let (store, damage) = RegionStore::open(&regions, true).unwrap();
+        assert_eq!(damage.len(), 1, "cut at {keep}");
+        let d = &damage[0];
+        assert_eq!((d.kept, d.reason), (kept, reason), "cut at {keep}");
+        assert!(d.saved == 3 || keep < header, "the table listed three chunks");
+        let notice = d.notice("overworld");
+        assert!(notice.contains("regenerate") && notice.contains("r.0.0.vxr"), "{notice}");
+        let copy = d.kept_as.clone().expect("a copy is kept");
+        assert!(copy.file_name().unwrap().to_str().unwrap().starts_with("r.0.0.vxr.damaged-"));
+        assert_eq!(std::fs::read(&copy).unwrap(), damaged, "the copy is the damaged file as found");
+        assert_eq!(std::fs::read(&path).unwrap(), damaged, "opening changes nothing");
+        let read: Vec<Option<Block>> =
+            (0..3).map(|x| store.read(IVec3::new(x, 0, 0)).and_then(|r| r.blocks?.uniform())).collect();
+        let whole_ones = read.iter().filter(|b| b.is_some()).count();
+        assert_eq!(whole_ones, kept, "cut at {keep}: {read:?}");
+        for (x, b) in read.iter().enumerate() {
+            assert!(b.is_none() || *b == Some(blocks[x]), "an intact chunk reads as it was");
+        }
+        // The game writes the lost chunks again (here, all three): the file
+        // is whole afterwards.
+        store.queue((0..3).map(|x| (IVec3::new(x, 0, 0), Patch::replace(record(blocks[x as usize])))));
+        store.flush().unwrap();
+        drop(store);
+        let (store, damage) = RegionStore::open(&regions, true).unwrap();
+        assert!(damage.is_empty(), "cut at {keep}: repaired");
+        for x in 0..3 {
+            let r = store.read(IVec3::new(x, 0, 0)).unwrap();
+            assert_eq!(r.blocks.unwrap().uniform(), Some(blocks[x as usize]));
+            assert_eq!(r.state, record(Block::AIR).state);
+        }
+    }
+    let copies = std::fs::read_dir(&regions)
+        .unwrap()
+        .flatten()
+        .filter(|e| e.file_name().to_string_lossy().starts_with("r.0.0.vxr.damaged-"))
+        .count();
+    assert_eq!(copies, 4, "one copy per damaged open");
+    std::fs::remove_dir_all(dir).unwrap();
+}
