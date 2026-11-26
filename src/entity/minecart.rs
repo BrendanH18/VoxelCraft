@@ -29,7 +29,13 @@ const AIR_DRAG: f64 = 0.95f32 as f64;
 const GRAVITY: f64 = 0.04;
 const WATER_GRAVITY: f64 = 0.005;
 const SLOPE: f64 = 0.0078125;
+/// `EntityTypes.MINECART` (and every other minecart):
+/// `passengerAttachments(0.1875F)`, the point above the cart's feet a
+/// passenger's vehicle attachment sits on.
 const SEAT: f64 = 0.1875;
+/// `AbstractMinecart.LOWERED_PASSENGER_ATTACHMENT`: villagers and wandering
+/// traders sit on the cart's feet instead.
+const LOWERED_SEAT: f64 = 0.0;
 /// `MinecartFurnace.FUEL_TICKS_PER_ITEM`: ticks of fuel one coal or charcoal adds.
 pub const FUEL_PER_ITEM: u16 = 3600;
 /// `MinecartFurnace.MAX_FUEL_TICKS`: fuel is refused past this.
@@ -331,11 +337,6 @@ impl Minecart {
         self.shape().aabb(self.pos)
     }
 
-    /// Feet of a passenger. The camera follows the rider, so this is the view.
-    pub fn seat(&self) -> DVec3 {
-        self.pos + DVec3::Y * SEAT
-    }
-
     pub fn shape(&self) -> Shape {
         if self.kind.cushion().is_some() {
             return crate::world::colour_blocks::cushion::SHAPE;
@@ -361,7 +362,11 @@ impl Minecart {
             let count = usize::from(self.passengers).max(index + 1);
             self.pos + self.boat_attachment(index, count, false) - DVec3::Y * boat::PLAYER_ATTACHMENT
         } else {
-            self.seat()
+            // v1.0 Track 7b: `Entity.positionRider` puts a player's feet at
+            // the cart's attachment point less the player's own vehicle
+            // attachment (`Avatar.DEFAULT_VEHICLE_ATTACHMENT`, 0.6): 0.4125
+            // under the cart's feet. The camera follows the rider's eyes.
+            self.pos + DVec3::Y * (SEAT - boat::PLAYER_ATTACHMENT)
         }
     }
     pub fn occupied(&self) -> bool {
@@ -403,15 +408,22 @@ impl Minecart {
         (self.damage > 40.0).then(|| self.kind.item())
     }
 
-    /// The feet of mob passenger `index`: the boat's attachment point less
-    /// the mob's own vehicle attachment (`EntityType.ridingOffset`).
+    /// The feet of mob passenger `index`: the vehicle's attachment point
+    /// less the mob's own vehicle attachment (`EntityType.ridingOffset`,
+    /// scaled with a baby).
     pub fn mob_seat(&self, index: usize, mob: &super::Mob) -> DVec3 {
-        if self.kind.boat().is_none() {
+        if self.kind.cushion().is_some() {
             return self.passenger_seat(index);
         }
-        let count = usize::from(self.passengers).max(index + 1);
         let scale = if mob.baby { 0.5 } else { 1.0 };
         let attach = -riding_offset(mob.kind) * scale;
+        if self.kind.boat().is_none() {
+            // `AbstractMinecart.getPassengerAttachmentPoint`.
+            let lowered = matches!(mob.kind, super::MobKind::Villager | super::MobKind::WanderingTrader);
+            let seat = if lowered { LOWERED_SEAT } else { SEAT };
+            return self.pos + DVec3::Y * (seat - attach);
+        }
+        let count = usize::from(self.passengers).max(index + 1);
         self.pos + self.boat_attachment(index, count, mob.kind.is_breedable()) - DVec3::Y * attach
     }
 
@@ -1417,7 +1429,7 @@ impl super::Entities {
                 }
                 if m.kind != super::MobKind::IronGolem && !carrying && m.riding.is_none() {
                     carrying = true;
-                    let seat = self.minecarts[i].passenger_seat(0);
+                    let seat = self.minecarts[i].mob_seat(0, &self.mobs[j]);
                     self.drop_leash(j, true);
                     let m = &mut self.mobs[j];
                     m.riding = Some(id);
@@ -1825,6 +1837,35 @@ mod tests {
         c.rider = Some(super::super::PlayerId(u32::MAX));
         assert_eq!(Minecart::deserialize(&c.serialize()).unwrap().rider, c.rider);
     }
+    #[test]
+    fn minecart_passengers_sit_at_javas_attachment_point() {
+        use super::super::{Mob, MobKind, PlayerId};
+        let at = DVec3::new(3.5, 140.0, 3.5);
+        for kind in [CartKind::Rideable, CartKind::Furnace, CartKind::Chest] {
+            let mut c = Minecart::new(1, kind, at);
+            c.rider = Some(PlayerId::HOST);
+            // `passengerAttachments(0.1875F)` less the player's 0.6
+            // (`Avatar.DEFAULT_VEHICLE_ATTACHMENT`): the feet 0.4125 under
+            // the cart's, so standing eyes (1.62) are 1.2075 over them.
+            let seat = c.seat_for(PlayerId::HOST).unwrap();
+            assert!((seat - DVec3::new(3.5, 140.0 - 0.4125, 3.5)).length() < 1e-12, "{kind:?} {seat}");
+            assert!((seat.y + 1.62 - (at.y + 1.2075)).abs() < 1e-12);
+        }
+        let c = Minecart::new(1, CartKind::Rideable, at);
+        // A mob's own vehicle attachment is `-ridingOffset`: a zombie's
+        // (-0.7) sinks it 0.7 under the point, halved for a baby.
+        let mut zombie = Mob::new(MobKind::Zombie, at, 0.0);
+        assert!((c.mob_seat(0, &zombie).y - (140.0 + 0.1875 - 0.7f32 as f64)).abs() < 1e-12);
+        zombie.baby = true;
+        assert!((c.mob_seat(0, &zombie).y - (140.0 + 0.1875 - 0.35)).abs() < 1e-7);
+        // Most mobs ride on the point itself.
+        assert_eq!(c.mob_seat(0, &Mob::new(MobKind::Pig, at, 0.0)).y, 140.1875);
+        // `LOWERED_PASSENGER_ATTACHMENT`: villagers and wandering traders
+        // sit on the cart's feet.
+        assert_eq!(c.mob_seat(0, &Mob::new(MobKind::Villager, at, 0.0)).y, 140.0);
+        assert_eq!(c.mob_seat(0, &Mob::new(MobKind::WanderingTrader, at, 0.0)).y, 140.0);
+    }
+
     #[test]
     fn boats_that_fall_below_the_world_are_removed_like_carts() {
         let mut w = world();

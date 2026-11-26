@@ -331,6 +331,8 @@ fn furnace_fuel_push_and_mob_passengers_survive_save_and_reload() {
         assert_eq!(m.riding, Some(ridden), "{kind:?} came back in its cart");
     }
     ticks(&mut w, &mut loaded, 1);
-    let seat = cart(&loaded, ridden).passenger_seat(0);
-    assert!(loaded.mobs.iter().any(|m| m.pos == seat), "seated after the reload");
+    // v1.0 Track 7b: a mob sits on the cart's attachment point less its
+    // own vehicle attachment, not on a player's seat (0.6 lower).
+    let c = cart(&loaded, ridden);
+    assert!(loaded.mobs.iter().any(|m| m.pos == c.mob_seat(0, m)), "seated after the reload");
 }
