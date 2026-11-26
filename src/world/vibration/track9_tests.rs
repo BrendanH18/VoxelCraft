@@ -145,12 +145,14 @@ fn farmland_turning_to_dirt_and_frost_walking_post_from_their_source() {
     let changed = at(&mut w, P);
     assert_eq!(kinds(&changed), [GameEvent::BlockChange]);
     assert_eq!(changed[0].source.player, Some(PlayerId(3)));
-    // Covered farmland reverts on its random tick, from no one.
+    // Covered farmland reverts, from no one: Track 4 turns it when the
+    // block lands on it (`updateShape`), or failing that on its random tick.
     let covered = P + IVec3::X * 3;
     w.set_block(covered, Block::FARMLAND);
-    w.set_block(covered + IVec3::Y, Block::STONE);
     w.take_entity_game_events();
+    w.set_block(covered + IVec3::Y, Block::STONE);
     w.random_tick(covered);
+    assert_eq!(w.get_block(covered), Some(Block::DIRT));
     let reverted = at(&mut w, covered);
     assert_eq!(kinds(&reverted), [GameEvent::BlockChange]);
     assert_eq!(reverted[0].source, EventSource::NONE);
