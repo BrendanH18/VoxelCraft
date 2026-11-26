@@ -511,6 +511,7 @@ fn sitting_cat_on_short_chest_lid_blocks_transport() {
     golem(&mut e, DVec3::new(1.5, 64., 2.5));
     e.spawn(MobKind::Cat, DVec3::new(2.5, 64.875, 2.5));
     e.mobs[1].animal.as_mut().unwrap().sitting = true;
+    e.mobs[1].animal.as_mut().unwrap().sit_pose = true;
     e.tick_copper_golems(4., &mut w);
     assert!(cargo(&e).is_none());
     assert_eq!(w.chest_slot(p, 0).unwrap().count, 16);

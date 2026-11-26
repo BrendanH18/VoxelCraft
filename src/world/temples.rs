@@ -1233,9 +1233,18 @@ fn swamp_hut(g: &Generator, centre: IVec2, ground: i32, rot: u8) -> Built {
     b.fill(1, 5, 2, 5, 5, 7, planks);
     b.set(4, 1, 6, Block::CRAFTING_TABLE);
     b.set(2, 1, 6, Block::BROWN_MUSHROOM);
+    // `SwampHutPiece` spawns both at its (2, 2, 5); these stay a block
+    // apart because saved worlds mark a populated hut by the pair
+    // (`cat_spawner::legacy_hut_marker`).
     b.residents.push((crate::entity::MobKind::Witch, b.world(3, 1, 5)));
     b.residents.push((crate::entity::MobKind::Cat, b.world(2, 1, 5)));
-    b.finish(Kind::SwampHut, 2)
+    // v1.0 Track 6: `swamp_hut.json`'s overrides use the piece's box
+    // (`bounding_box: piece`), `SwampHutPiece`'s 7 × 7 × 9 from Java's y 0
+    // (one below this floor) to the top of the roof's box.
+    let (a, c) = (b.world(0, -1, 0), b.world(6, 5, 8));
+    let mut built = b.finish(Kind::SwampHut, 0);
+    built.spawns = Bounds { min: a.min(c), max: a.max(c) };
+    built
 }
 
 /// Extra shaft depth below the original four-piece laboratory: Java's
@@ -2638,5 +2647,33 @@ mod tests {
         assert_eq!(found, Kind::ALL.len() - 2);
         // Loot is deterministic.
         assert_eq!(loot(9, LootTable::DesertPyramid).slots, loot(9, LootTable::DesertPyramid).slots);
+    }
+}
+
+#[cfg(test)]
+mod swamp_hut_box_tests {
+    use super::*;
+
+    /// v1.0 Track 6: `swamp_hut.json`'s witch and cat overrides hold inside
+    /// `SwampHutPiece`'s 7 × 7 × 9 box (`bounding_box: piece`), which
+    /// stops at the top of the roof and starts a block under the floor.
+    #[test]
+    fn swamp_hut_spawns_use_the_java_piece_box() {
+        let g = Generator::new(7);
+        for rot in 0..4 {
+            let b = swamp_hut(&g, IVec2::new(100, -40), 62, rot);
+            let size = b.spawns.max - b.spawns.min + IVec3::ONE;
+            assert_eq!(size.y, 7, "rotation {rot}");
+            assert!(matches!((size.x, size.z), (7, 9) | (9, 7)), "rotation {rot}: {size}");
+            for (kind, at) in &b.residents {
+                assert!(b.spawns.contains(*at), "{kind:?} at {at} outside {:?}", b.spawns);
+            }
+            let top = b.spawns.max.y;
+            assert!(b.blocks.iter().filter(|(_, block)| *block != Block::AIR).any(|(p, _)| p.y == top));
+            assert!(
+                !b.spawns.contains(IVec3::new(b.spawns.min.x, top + 1, b.spawns.min.z)),
+                "the roof's top is outside"
+            );
+        }
     }
 }

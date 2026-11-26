@@ -605,6 +605,14 @@ impl PlayerSession {
         if let Some(used) = self.use_copper_golem(slot, world, entities, tool_broken) {
             return Ok(Some(used));
         }
+        // v1.0 Track 6: a boat's lead (`Entity.interact`) before boarding it.
+        let held = self.inventory.get(slot).map(|s| s.item);
+        if let Some(used) = entities.use_boat_leash(eye, dir, reach, self.id, held, creative) {
+            if used && !creative {
+                self.inventory.take_one(slot);
+            }
+            return Ok(Some(Used::Animal));
+        }
         // `Cushion.interact` passes while sneaking.
         let sneaking_at_cushion = ctx.sneaking
             && entities.cart_ray(eye, dir, reach).is_some_and(|i| entities.minecarts[i].kind.cushion().is_some());

@@ -97,6 +97,16 @@ pub fn is_poi(b: Block) -> bool {
             && Profession::of(b).is_some()
 }
 
+/// v1.0 Track 6: `Activity.PRE_RAID` and `Activity.RAID`, which
+/// `SetRaidStatus` sets and `ResetRaidStatus` clears.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum RaidActivity {
+    #[default]
+    None,
+    PreRaid,
+    Raid,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Offer {
     pub cost: Stack,
@@ -185,6 +195,11 @@ pub struct Villager {
     pub(super) food_level: u8,
     pub(super) courtship: u16,
     pub(crate) bell_hide: f32,
+    /// v1.0 Track 6: the raid activity `SetRaidStatus` chose (never saved;
+    /// Java's brain activities aren't).
+    pub raid_activity: RaidActivity,
+    /// Ticks left of `CelebrateVillagersSurvivedRaid`; 0 when not running.
+    pub celebrate: u16,
     pub wandering: bool,
     /// Biome variant used by Java 26.3 cartographer predicates.
     pub map_variant: Option<String>,
@@ -261,6 +276,8 @@ impl Villager {
             food_level: 0,
             courtship: 0,
             bell_hide: 0.0,
+            raid_activity: RaidActivity::None,
+            celebrate: 0,
             wandering: false,
             map_variant: None,
             gossip: Default::default(),

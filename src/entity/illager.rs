@@ -529,6 +529,11 @@ pub struct Raider {
     pub companions: bool,
     pub patrol_step: Option<IVec3>,
     pub patrol_cooldown: u32,
+    /// v1.0 Track 6: a witch's `NearestHealableRaiderTargetGoal.cooldown`
+    /// in ticks, and the raider it means to heal (`setTarget`) with that
+    /// raider's position. Neither is saved, as in Java.
+    pub heal_cooldown: i32,
+    pub heal_target: Option<(u32, glam::DVec3)>,
 }
 
 impl Raider {

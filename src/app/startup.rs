@@ -225,6 +225,9 @@ impl Game {
         if let Some(text) = existing.as_ref().and_then(|l| l.props.get("raid_omen_position")) {
             session.load_raid_omen(text);
         }
+        if let Some(text) = existing.as_ref().and_then(|l| l.props.get("stats")) {
+            session.stats = voxelcraft::session::raid::Stats::parse(text);
+        }
         // v0.18 Track 5: a save from before the recipe book starts from Java's
         // initial book; the first tick checks the loaded inventory.
         if let Some(text) = existing.as_ref().and_then(|l| l.props.get("recipe_book")) {

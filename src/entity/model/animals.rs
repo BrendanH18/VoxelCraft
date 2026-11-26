@@ -114,7 +114,7 @@ pub(super) fn pose(m: &Mob, time: f32) -> Parts {
     match m.kind {
         MobKind::Wolf | MobKind::Fox => {
             let wolf = m.kind == MobKind::Wolf;
-            let sitting = a.is_some_and(|a| a.sitting);
+            let sitting = a.is_some_and(|a| a.sit_pose);
             let sleeping = a.is_some_and(|a| a.sleeping);
             let body_rot = if sitting { rx(-0.7) } else { Quat::IDENTITY };
             let y = if sleeping { -3.0 } else { 0.0 };

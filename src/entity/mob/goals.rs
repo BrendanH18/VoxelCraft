@@ -337,7 +337,9 @@ pub(crate) fn tempted_by(kind: MobKind, item: Item) -> bool {
         K::Pig => item == Item::CARROT_ON_A_STICK || kind.breeding_food(item),
         K::Strider => item == Item::WARPED_FUNGUS_ON_A_STICK || kind.breeding_food(item),
         // `HORSE_TEMPT_ITEMS`, which mules follow too.
-        K::Horse | K::Donkey | K::Mule => matches!(item, Item::GOLDEN_CARROT | Item::GOLDEN_APPLE),
+        K::Horse | K::Donkey | K::Mule => {
+            matches!(item, Item::GOLDEN_CARROT | Item::GOLDEN_APPLE | Item::ENCHANTED_GOLDEN_APPLE)
+        }
         K::TraderLlama => K::Llama.breeding_food(item),
         K::Wolf | K::Fox | K::Parrot | K::Hoglin => false,
         _ => kind.breeding_food(item),
@@ -634,9 +636,24 @@ impl Mob {
         ctx.players.iter().find(|t| t.id == owner && t.alive && !t.spectator)
     }
 
-    /// `TamableAnimal.unableToMoveToOwner`: sitting, riding or leashed.
+    /// `TamableAnimal.unableToMoveToOwner`: ordered to sit, riding or
+    /// leashed (`mayBeLeashed`: a lead whose holder isn't loaded counts).
+    /// A spectating owner is left out by [`Mob::owner_target`].
     fn unable_to_move_to_owner(&self) -> bool {
-        self.animal.as_ref().is_some_and(|a| a.sitting) || self.riding.is_some() || self.leash_pos.is_some()
+        self.animal.as_ref().is_some_and(|a| a.sitting) || self.riding.is_some() || self.leash.is_some()
+    }
+
+    /// `TamableAnimalPanicGoal.tick`: a panicking pet more than 12 blocks
+    /// from its owner teleports to it, unless it can't move to it.
+    pub(crate) fn panic_teleport_to_owner<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx, rng: &mut Rng) {
+        if !matches!(self.kind, MobKind::Wolf | MobKind::Cat | MobKind::Parrot) || self.unable_to_move_to_owner() {
+            return;
+        }
+        if let Some(at) = self.owner_target(ctx).map(|t| t.pos)
+            && at.distance_squared(self.pos) >= 144.0
+        {
+            self.teleport_to_owner(world, at, rng);
+        }
     }
 
     /// `TemptGoal.canUse` (also its `canContinueToUse`): the nearest player
@@ -837,15 +854,18 @@ impl Mob {
                 continue;
             }
             let p = base + IVec3::new(dx, rng.next_int(3) as i32 - 1, dz);
-            let at = p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
+            // `noCollision(getBoundingBox().move(pos - blockPosition()))`:
+            // the box keeps its offset within the block.
+            let moved = self.pos + (p - self.pos.floor().as_ivec3()).as_dvec3();
             if w.loaded(p)
                 && path::static_type(w, p) == PathType::Walkable
                 && (self.kind == MobKind::Parrot || !w.block(p - IVec3::Y).is_some_and(|b| b.is_leaves()))
-                && !crate::physics::overlaps_solid(w, at, self.shape())
+                && !crate::physics::overlaps_solid(w, moved, self.shape())
             {
+                // `snapTo` keeps the pet's motion.
+                let at = p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
                 self.pos = at;
                 self.previous_pos = at;
-                self.vel = DVec3::ZERO;
                 self.nav.stop();
                 return;
             }

@@ -74,11 +74,23 @@ pub fn use_animal_target(
     if let Some((p, _)) = world.raycast(eye, dir, reach.block)
         && world.get_block(p).is_some_and(crate::entity::leash::fence)
         && entities.raycast(eye, dir, range).is_none()
-        && entities.use_fence_knot(owner, p)
+        && entities.use_fence_knot_by(owner, player.pos + glam::DVec3::Y * 0.9, player.sneaking, p)
     {
         return true;
     }
     let Some((index, _)) = entities.raycast(eye, dir, range) else { return false };
+    // v1.0 Track 6: `Entity.interact`'s leash rules come before the mob's
+    // own use: a sneaking player ties the mobs they lead to it, and shears
+    // cut every lead on it.
+    if player.sneaking && entities.tie_led_mobs_to(index, owner) {
+        return true;
+    }
+    if held.is_some_and(|s| s.item == Item::SHEARS) && entities.shear_leashes(index) {
+        if !creative {
+            inventory.wear(slot, 1);
+        }
+        return true;
+    }
     if held.is_some_and(|s| entities.feed_tadpole(index, s.item, world)) {
         if !creative {
             inventory.take_one(slot);

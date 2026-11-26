@@ -92,6 +92,7 @@ impl Entities {
         self.tick_allays(dt, world, ctx, &mut events);
         self.tick_animals(dt as f32, world, ctx, &mut events);
         self.tick_leashes(dt as f32, world, ctx);
+        self.tick_boat_leashes(dt as f32, world, ctx);
         self.tick_llamas(ctx);
         self.tick_undead_mounts(dt, world, ctx);
         self.sense_goals(world);
