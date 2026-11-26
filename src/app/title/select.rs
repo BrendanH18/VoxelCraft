@@ -61,6 +61,11 @@ impl SelectWorld {
         Self::with_search(host, "")
     }
 
+    /// The flag that makes the list reload on its next tick.
+    pub fn stale(&self) -> Rc<Cell<bool>> {
+        self.stale.clone()
+    }
+
     fn with_search<H: TitleHost>(host: &H, search: &str) -> Self {
         host.forget_icons();
         Self {
@@ -131,7 +136,7 @@ pub(super) fn delete<H: TitleHost>(host: &H, dir: &str) -> Result<(), String> {
 /// Opens a world the way Java's `WorldOpenFlows` does: a world last saved by
 /// a newer version asks for a backup first. The summary is read again first,
 /// so a save made by another window since the list was built still counts.
-pub(super) fn open<H: TitleHost>(host: &H, world: &Summary) -> Step<H> {
+pub(super) fn open<H: TitleHost>(host: &H, world: &Summary, stale: Rc<Cell<bool>>) -> Step<H> {
     let Some(world) = worlds::summary(host.saves_dir(), &world.dir) else {
         return Step::push(Notice::new("Failed to access world", vec![format!("\"{}\" is gone.", world.dir)]));
     };
@@ -141,14 +146,10 @@ pub(super) fn open<H: TitleHost>(host: &H, world: &Summary) -> Step<H> {
             vec![format!("\"{}\" is open in another VoxelCraft window. Close it there, then try again.", world.name)],
         ));
     }
-    if let Some(e) = &world.unreadable {
-        return Step::push(Notice::new(
-            "Failed to access world",
-            vec![format!(
-                "\"{}\" can't be opened: its level.txt is unreadable ({e}). Restore it from the backups folder.",
-                world.name
-            )],
-        ));
+    // Java's `WorldOpenFlows` opens `RecoverWorldDataScreen` for a level
+    // file it can't read (v1.0 Track 1).
+    if world.unreadable.is_some() {
+        return Step::push(super::recover::RecoverWorld::new(host, &world.dir, stale));
     }
     match world.newer() {
         Some(version) => Step::push(prompts::BackupConfirm::downgrade(world.clone(), version)),
@@ -181,15 +182,19 @@ impl<H: TitleHost> Screen<H> for SelectWorld {
             out.push(row);
         }
         let current = self.current();
-        // Java's `isDisabled`/`requiresFileFixing`: locked or unreadable worlds
-        // can be deleted but not played or edited.
+        // Java's `isDisabled`/`requiresFileFixing`: locked worlds can only be
+        // deleted. An unreadable one (`CorruptedLevelSummary`) can't be edited
+        // or re-created, and its primary button, "Attempt to Recover", opens
+        // the recovery screen (v1.0 Track 1).
         let usable = current.is_some_and(|w| !w.locked && w.unreadable.is_none());
+        let unreadable = current.is_some_and(|w| w.unreadable.is_some());
+        let play = if unreadable { "Attempt to Recover" } else { "Play Selected World" };
         // Java's footer: a 4-column grid, 71-pixel columns 8 apart, rows 4 apart.
         let left = cx - 154.0;
         let (row1, row2) = ((sh - FOOTER + 8.0).floor(), (sh - FOOTER + 32.0).floor());
         let col = |c: f32, y: f32, w: f32| [left + c * 79.0, y, w, BUTTON_H];
         out.extend([
-            Widget::button(Id::Play, col(0.0, row1, 150.0), "Play Selected World").enabled(usable),
+            Widget::button(Id::Play, col(0.0, row1, 150.0), play).enabled(current.is_some_and(|w| !w.locked)),
             Widget::button(Id::Create, col(2.0, row1, 150.0), "Create New World"),
             Widget::button(Id::Edit, col(0.0, row2, 71.0), "Edit").enabled(usable),
             Widget::button(Id::Delete, col(1.0, row2, 71.0), "Delete").enabled(current.is_some_and(|w| !w.locked)),
@@ -205,13 +210,13 @@ impl<H: TitleHost> Screen<H> for SelectWorld {
         if let Id::Row(i) = id {
             self.selected = self.worlds.get(i).map(|w| w.dir.clone());
             return match self.current() {
-                Some(world) if !world.locked => open(host, world),
+                Some(world) if !world.locked => open(host, world, self.stale.clone()),
                 _ => Step::Stay,
             };
         }
         let current = self.current().cloned();
         match (id, current) {
-            (Id::Play, Some(world)) => open(host, &world),
+            (Id::Play, Some(world)) => open(host, &world, self.stale.clone()),
             (Id::Create, _) => Step::push(create::CreateWorld::new()),
             (Id::Edit, Some(world)) => Step::push(edit::EditWorld::new(&world, self.stale.clone())),
             (Id::Delete, Some(world)) => Step::push(Self::confirm_delete(&world, self.stale.clone())),
@@ -311,7 +316,8 @@ fn info(world: &Summary) -> Vec<(String, Color)> {
         return vec![("Locked by another running instance of VoxelCraft.".into(), RED)];
     }
     if world.unreadable.is_some() {
-        return vec![("Failed to access world".into(), RED)];
+        // Java's `recover_world.warning`.
+        return vec![("Failed to load world summary".into(), RED)];
     }
     let mode = if world.hardcore { HARDCORE_RED } else { LINE_GREY };
     let mut out = vec![(world.mode_name().to_string(), mode)];

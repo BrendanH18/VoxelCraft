@@ -31,6 +31,31 @@ const LEGACY_MAGIC: &[u8; 4] = b"VXC1";
 /// such key; the world list shows their version as unknown.
 pub const VERSION_KEY: &str = "version";
 
+/// The level file, and the copy of it each save keeps (Java's `level.dat`
+/// and `level.dat_old`, `LevelResource.OLD_LEVEL_DATA_FILE`). A save moves
+/// the file it replaces to `level.txt_old` first (`Util.safeReplaceFile`),
+/// so a level file that is cut off or lost can be restored from it.
+pub const LEVEL_FILE: &str = "level.txt";
+pub const LEVEL_OLD: &str = "level.txt_old";
+/// The modified chunks of one dimension.
+pub const CHUNKS_FILE: &str = "chunks.bin";
+
+/// Saved chunks by chunk position.
+pub type SavedChunks = FxHashMap<IVec3, Arc<ChunkData>>;
+
+/// What [`Storage::load_chunks_recovering`] couldn't read from a damaged
+/// `chunks.bin`, and where the damaged file was kept.
+#[derive(Debug)]
+pub struct ChunkDamage {
+    /// Chunk records the file's header promised.
+    pub saved: usize,
+    /// Chunk records read intact; the rest regenerate from the seed.
+    pub recovered: usize,
+    /// The untouched copy of the damaged file, `chunks.bin.damaged-<secs>`.
+    pub kept_as: Option<PathBuf>,
+    pub reason: String,
+}
+
 pub struct LevelInfo {
     pub seed: u64,
     pub player: Option<(DVec3, f32, f32)>,
@@ -66,8 +91,17 @@ impl Storage {
         &self.dir
     }
 
+    /// Whether this folder holds a world: Java's `hasWorldData`, a level
+    /// file or the copy a save keeps of it.
     pub fn exists(&self) -> bool {
-        self.dir.join("level.txt").exists()
+        self.dir.join(LEVEL_FILE).is_file() || self.dir.join(LEVEL_OLD).is_file()
+    }
+
+    /// Saved chunks with no level file beside them to say whose they are.
+    /// Opening such a folder as a new world would replace them, so the game
+    /// refuses it like an unreadable level file.
+    pub fn has_chunks_without_level(&self) -> bool {
+        !self.exists() && self.dir.join(CHUNKS_FILE).is_file()
     }
 
     /// Whether another process holds this save's session lock. Unlike
@@ -77,8 +111,35 @@ impl Storage {
         matches!(file.try_lock(), Err(fs::TryLockError::WouldBlock))
     }
 
+    /// Reads `level.txt`. A missing, empty or cut-off file is an error, so
+    /// the caller offers the restore instead of starting a fresh world.
     pub fn load_level(&self) -> io::Result<LevelInfo> {
-        let text = fs::read_to_string(self.dir.join("level.txt"))?;
+        Self::read_level(&self.dir.join(LEVEL_FILE), LEVEL_FILE)
+    }
+
+    /// Reads `level.txt_old`, the level file the last save replaced.
+    pub fn load_level_old(&self) -> io::Result<LevelInfo> {
+        Self::read_level(&self.dir.join(LEVEL_OLD), LEVEL_OLD)
+    }
+
+    /// When the level file (or with `old`, its kept copy) was last written.
+    pub fn level_modified(&self, old: bool) -> Option<std::time::SystemTime> {
+        fs::metadata(self.dir.join(if old { LEVEL_OLD } else { LEVEL_FILE })).and_then(|m| m.modified()).ok()
+    }
+
+    fn read_level(path: &Path, name: &str) -> io::Result<LevelInfo> {
+        let text = fs::read_to_string(path).map_err(|e| match e.kind() {
+            io::ErrorKind::NotFound => io::Error::new(io::ErrorKind::NotFound, format!("{name} is missing")),
+            _ => e,
+        })?;
+        // Every writer ends each line with a newline, so a file without a
+        // final one stopped partway through a write.
+        if text.is_empty() {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, format!("{name} is empty")));
+        }
+        if !text.ends_with('\n') {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, format!("{name} is cut off")));
+        }
         let mut info = LevelInfo { seed: 0, player: None, props: Default::default() };
         for line in text.lines() {
             match line.split_once('=') {
@@ -142,20 +203,21 @@ impl Storage {
             Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
             Err(e) => return Err(e),
         };
-        if [&MAGIC[..], V3_MAGIC, V2_MAGIC, LEGACY_MAGIC].contains(&header.as_slice()) {
+        // Only another build's format is kept here; a damaged file of a
+        // known format was copied aside when it was loaded.
+        if [&MAGIC[..], V3_MAGIC, V2_MAGIC, LEGACY_MAGIC].contains(&header.as_slice()) || !header.starts_with(b"VXC") {
             return Ok(());
         }
-        let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
-        let to = self.unused_unknown_name(secs);
+        let to = self.unused_name(&format!("chunks.bin.unknown-{}", unix_secs()));
         log::error!("keeping {} in an unknown format as {}", path.display(), to.display());
         fs::rename(path, to)
     }
 
-    /// `chunks.bin.unknown-<secs>`, or with `-1`, `-2`… appended if that is
-    /// taken, so an earlier kept file is never replaced. The world's lock
-    /// keeps other processes from racing for the name.
-    fn unused_unknown_name(&self, secs: u64) -> PathBuf {
-        let base = format!("chunks.bin.unknown-{secs}");
+    /// `base`, or with `-1`, `-2`… appended if that is taken, so an earlier
+    /// kept file is never replaced. The world's lock keeps other processes
+    /// from racing for the name.
+    fn unused_name(&self, base: &str) -> PathBuf {
+        let base = base.to_string();
         std::iter::once(base.clone())
             .chain((1..).map(|n| format!("{base}-{n}")))
             .map(|name| self.dir.join(name))
@@ -204,43 +266,166 @@ impl Storage {
         self.write_level(&text)
     }
 
+    /// Java's `saveLevelData`: the new text goes to a temporary file, then
+    /// `Util.safeReplaceFile` moves the current level file to `level.txt_old`
+    /// and the new one into place, moving the old one back if that fails.
+    /// A crash at any point leaves a readable level file or its kept copy.
     fn write_level(&self, text: &str) -> io::Result<()> {
         let tmp = self.dir.join("level.txt.tmp");
         fs::write(&tmp, text)?;
-        fs::rename(&tmp, self.dir.join("level.txt"))
+        let (level, old) = (self.dir.join(LEVEL_FILE), self.dir.join(LEVEL_OLD));
+        let moved = level.exists();
+        if moved {
+            match fs::remove_file(&old) {
+                Err(e) if e.kind() != io::ErrorKind::NotFound => return Err(e),
+                _ => {}
+            }
+            fs::rename(&level, &old)?;
+        }
+        fs::rename(&tmp, &level).inspect_err(|_| {
+            if moved {
+                let _ = fs::rename(&old, &level);
+            }
+        })
     }
 
-    pub fn load_chunks(&self) -> io::Result<FxHashMap<IVec3, Arc<ChunkData>>> {
-        let mut map = FxHashMap::default();
+    /// Java's `restoreLevelDataFromOld`: the unreadable level file (if any)
+    /// moves to `level.txt_corrupted_<stamp>` and `level.txt_old` takes its
+    /// place. Returns where the unreadable file went.
+    pub fn restore_level_from_old(&self, stamp: &str) -> io::Result<Option<PathBuf>> {
+        self.load_level_old()?;
+        let (level, old) = (self.dir.join(LEVEL_FILE), self.dir.join(LEVEL_OLD));
+        let kept = if level.exists() {
+            let to = self.unused_name(&format!("{LEVEL_FILE}_corrupted_{stamp}"));
+            fs::rename(&level, &to)?;
+            Some(to)
+        } else {
+            None
+        };
+        fs::rename(old, level)?;
+        Ok(kept)
+    }
+
+    /// Every chunk in `chunks.bin`, or an error if any of it can't be read.
+    pub fn load_chunks(&self) -> io::Result<SavedChunks> {
+        let Some(buf) = self.read_chunks_file()? else { return Ok(FxHashMap::default()) };
+        match parse_chunks(&buf) {
+            Ok(map) => Ok(map),
+            Err(_) => Err(io::Error::new(io::ErrorKind::InvalidData, "corrupt chunks.bin")),
+        }
+    }
+
+    /// Loads `chunks.bin` the way the game opens a world: Java's `ChunkMap`
+    /// and `IOWorker` log a chunk they can't read ("Failed to read chunk")
+    /// and generate it again, and so does this, keeping every intact record. A damaged file is
+    /// first copied to `chunks.bin.damaged-<secs>`, untouched, and the
+    /// damage is returned for the game to tell the player. A file in
+    /// another build's format (`VXC` and an unknown version) is an error;
+    /// the next save keeps it as `chunks.bin.unknown-<secs>`.
+    pub fn load_chunks_recovering(&self) -> io::Result<(SavedChunks, Option<ChunkDamage>)> {
+        let Some(buf) = self.read_chunks_file()? else { return Ok(Default::default()) };
+        let partial = match parse_chunks(&buf) {
+            Ok(map) => return Ok((map, None)),
+            Err(partial) => partial,
+        };
+        if buf.len() >= 4 && buf.starts_with(b"VXC") && !partial.known_format {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "chunks.bin is from a newer version"));
+        }
+        let kept_as = self.keep_damaged(CHUNKS_FILE);
+        log::error!(
+            "{} is damaged ({}): kept {} of {} chunks; the rest regenerate",
+            self.dir.join(CHUNKS_FILE).display(),
+            partial.reason,
+            partial.chunks.len(),
+            partial.saved
+        );
+        let damage = ChunkDamage {
+            saved: partial.saved,
+            recovered: partial.chunks.len(),
+            kept_as,
+            reason: partial.reason.to_string(),
+        };
+        Ok((partial.chunks, Some(damage)))
+    }
+
+    /// Copies `file` in this folder to `<file>.damaged-<secs>`, untouched,
+    /// before the game replaces it, so the damaged original can still be
+    /// looked at or repaired by hand. Logs and returns `None` if it can't.
+    pub fn keep_damaged(&self, file: &str) -> Option<PathBuf> {
+        let to = self.unused_name(&format!("{file}.damaged-{}", unix_secs()));
+        match fs::copy(self.dir.join(file), &to) {
+            Ok(_) => Some(to),
+            Err(e) => {
+                log::error!("couldn't keep a copy of the damaged {}: {e}", self.dir.join(file).display());
+                None
+            }
+        }
+    }
+
+    fn read_chunks_file(&self) -> io::Result<Option<Vec<u8>>> {
         let mut buf = Vec::new();
-        match fs::File::open(self.dir.join("chunks.bin")) {
+        match fs::File::open(self.dir.join(CHUNKS_FILE)) {
             Ok(mut f) => f.read_to_end(&mut buf)?,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(map),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
             Err(e) => return Err(e),
         };
-        let bad = || io::Error::new(io::ErrorKind::InvalidData, "corrupt chunks.bin");
-        if buf.len() < 8 || ![&MAGIC[..], V3_MAGIC, V2_MAGIC, LEGACY_MAGIC].contains(&&buf[0..4]) {
-            return Err(bad());
-        }
-        let legacy = &buf[0..4] == LEGACY_MAGIC;
-        let mut at = 4;
-        let u32_at = |at: &mut usize| -> io::Result<u32> {
-            let b = buf.get(*at..*at + 4).ok_or_else(bad)?;
-            *at += 4;
-            Ok(u32::from_le_bytes(b.try_into().unwrap()))
-        };
-        let count = u32_at(&mut at)?;
-        for _ in 0..count {
-            let x = u32_at(&mut at)? as i32;
-            let y = u32_at(&mut at)? as i32;
-            let z = u32_at(&mut at)? as i32;
-            let len = u32_at(&mut at)? as usize;
-            let rle = buf.get(at..at + len).ok_or_else(bad)?;
-            at += len;
-            map.insert(IVec3::new(x, y, z), Arc::new(decode(rle, legacy).ok_or_else(bad)?));
-        }
-        Ok(map)
+        Ok(Some(buf))
     }
+}
+
+fn unix_secs() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
+}
+
+/// The chunks read before [`parse_chunks`] met damage, and what it was.
+struct Partial {
+    chunks: SavedChunks,
+    saved: usize,
+    /// Whether the header named a format this build reads.
+    known_format: bool,
+    reason: &'static str,
+}
+
+/// Every chunk record of a `chunks.bin`. On damage it returns the records
+/// read intact: it stops where the file is cut off and skips a record whose
+/// runs don't make a chunk, since the record's length still says where the
+/// next one starts.
+fn parse_chunks(buf: &[u8]) -> Result<SavedChunks, Partial> {
+    let mut partial = Partial { chunks: FxHashMap::default(), saved: 0, known_format: false, reason: "" };
+    let header = buf.get(0..4).unwrap_or(buf);
+    partial.known_format = [&MAGIC[..], V3_MAGIC, V2_MAGIC, LEGACY_MAGIC].contains(&header);
+    if !partial.known_format {
+        partial.reason = "its header is unreadable";
+        return Err(partial);
+    }
+    let legacy = header == LEGACY_MAGIC;
+    let u32_at = |at: usize| buf.get(at..at + 4).map(|b| u32::from_le_bytes(b.try_into().unwrap()));
+    let Some(count) = u32_at(4) else {
+        partial.reason = "it ends inside its header";
+        return Err(partial);
+    };
+    partial.saved = count as usize;
+    let mut at = 8;
+    for _ in 0..count {
+        let (Some(x), Some(y), Some(z), Some(len)) = (u32_at(at), u32_at(at + 4), u32_at(at + 8), u32_at(at + 12))
+        else {
+            partial.reason = "it is cut off";
+            return Err(partial);
+        };
+        at += 16;
+        let Some(rle) = buf.get(at..at + len as usize) else {
+            partial.reason = "it is cut off";
+            return Err(partial);
+        };
+        at += len as usize;
+        match decode(rle, legacy) {
+            Some(chunk) => {
+                partial.chunks.insert(IVec3::new(x as i32, y as i32, z as i32), Arc::new(chunk));
+            }
+            None => partial.reason = "a chunk record is malformed",
+        }
+    }
+    if partial.reason.is_empty() { Ok(partial.chunks) } else { Err(partial) }
 }
 
 /// VXC2 runs: (run length u16 LE, block state u16 LE). VXC1 used u8 states.
@@ -401,12 +586,13 @@ mod tests {
         assert_eq!(fs::read(dir.join(&kept[0])).unwrap(), buf);
         assert_eq!(storage.load_chunks().unwrap()[&pos].uniform(), Some(Block::STONE));
         storage.save(&level, &[(pos, Arc::new(ChunkData::Uniform(Block::STONE)))]).unwrap();
-        assert_eq!(fs::read_dir(&dir).unwrap().count(), 3, "a known format is replaced without another copy");
+        // level.txt, level.txt_old, chunks.bin and the kept file.
+        assert_eq!(fs::read_dir(&dir).unwrap().count(), 4, "a known format is replaced without another copy");
         // A second kept file in the same second takes a new name.
         fs::write(dir.join("chunks.bin.unknown-7"), b"A").unwrap();
         fs::write(dir.join("chunks.bin.unknown-7-1"), b"B").unwrap();
-        assert_eq!(storage.unused_unknown_name(7), dir.join("chunks.bin.unknown-7-2"));
-        assert_eq!(storage.unused_unknown_name(8), dir.join("chunks.bin.unknown-8"));
+        assert_eq!(storage.unused_name("chunks.bin.unknown-7"), dir.join("chunks.bin.unknown-7-2"));
+        assert_eq!(storage.unused_name("chunks.bin.unknown-8"), dir.join("chunks.bin.unknown-8"));
         fs::remove_dir_all(dir).unwrap();
     }
 

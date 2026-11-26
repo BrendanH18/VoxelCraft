@@ -422,6 +422,26 @@ pub fn scroll_step(value: f64) -> i32 {
 mod tests {
     use super::*;
 
+    /// v1.0 Track 1: the options file each release from v0.8.0 to v0.18
+    /// wrote (beside its save fixture, `tests/fixtures/saves`) loads with
+    /// its values, and saving it again changes nothing this build reads.
+    #[test]
+    fn every_release_options_file_loads_and_resaves_stably() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/saves");
+        let mut seen = 0;
+        for entry in std::fs::read_dir(&root).unwrap() {
+            let path = entry.unwrap().path().join("options.txt");
+            let Ok(text) = std::fs::read_to_string(&path) else { continue };
+            let s = Settings::parse(&text);
+            // Each run used `--rd 2` and changed nothing else.
+            assert_eq!((s.render_distance, s.simulation_distance, s.fov), (2, 10, 70.0), "{}", path.display());
+            assert_eq!(s.show_fps, text.contains("show_fps=true"), "{}: a saved choice is kept", path.display());
+            assert_eq!(Settings::parse(&s.serialize()), s, "{}", path.display());
+            seen += 1;
+        }
+        assert!(seen >= 10, "{seen} options files");
+    }
+
     #[test]
     fn cloud_and_sky_flash_options_save_load_and_default_like_java() {
         use voxelcraft::atmosphere::Clouds;

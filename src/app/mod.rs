@@ -377,15 +377,11 @@ impl App {
                 eprintln!("cannot open world '{world_dir}': {e}");
                 std::process::exit(1);
             }
+            // Nothing is changed: Java's "Failed to load world" screen offers
+            // the restore from `level.txt_old` (v1.0 Track 1).
+            drop(lock);
             let mut title = title::Title::new(shell, &self.saves_dir);
-            title.show_select();
-            title.world_error(
-                "Couldn't open the world",
-                format!(
-                    "Can't open \"{world_dir}\": {e}. Nothing was changed. Fix its level.txt, or restore the world \
-                     from the backups folder."
-                ),
-            );
+            title.show_recover(world_dir);
             self.title = Some(title);
             return;
         }
@@ -440,10 +436,16 @@ impl App {
     }
 }
 
-/// Why an existing world can't be opened, if its level file is unreadable.
-/// Opening it anyway would start a fresh world over the old one.
+/// Why an existing world can't be opened, if its level file is unreadable
+/// or missing. Opening it anyway would start a fresh world over the old one.
 fn unreadable_level(storage: &Storage, replacing: bool) -> Option<String> {
-    if replacing || !storage.exists() {
+    if replacing {
+        return None;
+    }
+    if storage.has_chunks_without_level() {
+        return Some("its level file is missing".into());
+    }
+    if !storage.exists() {
         return None;
     }
     storage.load_level().err().map(|e| format!("its level file is unreadable ({e})"))
@@ -2702,6 +2704,18 @@ mod pause_tests {
         std::fs::write(dir.join("level.txt"), "seed=not-a-number\n").unwrap();
         assert!(unreadable_level(&storage, false).unwrap().contains("bad seed"));
         assert_eq!(unreadable_level(&storage, true), None, "--new and new worlds replace it on purpose");
+        // v1.0 Track 1: a level file cut off partway, or lost with only its
+        // saved chunks left, is refused too.
+        std::fs::write(dir.join("level.txt"), "seed=12\nname=o").unwrap();
+        assert!(unreadable_level(&storage, false).unwrap().contains("cut off"));
+        std::fs::remove_file(dir.join("level.txt")).unwrap();
+        std::fs::write(dir.join("chunks.bin"), b"VXC2").unwrap();
+        assert!(unreadable_level(&storage, false).unwrap().contains("missing"));
+        std::fs::write(dir.join("level.txt_old"), "seed=12\nname=ok\n").unwrap();
+        assert!(
+            unreadable_level(&storage, false).unwrap().contains("level.txt is missing"),
+            "the kept copy isn't used unasked"
+        );
         std::fs::remove_dir_all(dir).unwrap();
     }
 }
