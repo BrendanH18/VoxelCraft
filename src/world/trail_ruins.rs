@@ -195,7 +195,14 @@ impl TrailRuins {
             let mut at = (p.bounds.min + p.bounds.max) / 2;
             at.y = p.origin.y + 1;
             allowed(g.surface_biome(at.x, at.z)).then(|| {
-                let archaeology = place_archaeology(self.seed, &pieces);
+                // Generations 3 to 5 keep their plain gravel, so their
+                // chunks stay identical (the golden hashes); suspicious
+                // gravel comes with generation 6 (v1.0 integration).
+                let archaeology = if g.generation >= Generation::V6 {
+                    place_archaeology(self.seed, &pieces)
+                } else {
+                    FxHashMap::default()
+                };
                 Arc::new(Ruin { at, pieces, archaeology })
             })
         });
