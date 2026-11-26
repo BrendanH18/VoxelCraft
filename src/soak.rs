@@ -676,7 +676,7 @@ impl Soak {
         w.set_container_viewers(&[]);
         w.set_chest_viewers(Vec::new());
         crate::simulation::tick_world_rules(w, pos, true, self.options.random_tick_speed);
-        let _ = w.take_snow_pushes();
+        let _ = w.take_block_pushes();
         if !w.piston_pushes().is_empty() {
             self.entities.apply_piston_pushes(w);
         }

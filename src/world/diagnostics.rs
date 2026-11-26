@@ -48,7 +48,7 @@ impl World {
         out.extend([
             ("falling", self.falling.len()),
             ("falling.stored", self.stored_falling.values().map(Vec::len).sum()),
-            ("snow_pushes", self.snow_pushes.len()),
+            ("block_pushes", self.block_pushes.len()),
             ("leaf_decay", self.leaf_decay.len()),
             ("furnaces", self.furnaces.len()),
             ("chests", self.chests.len()),
