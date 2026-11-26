@@ -375,11 +375,13 @@ impl Soak {
     /// empty world. Returns false on timeout.
     fn wait_for(&mut self, p: DVec3) -> bool {
         let cell = p.floor().as_ivec3();
+        // Within the load range of a small render distance too.
+        let radius = READY_RADIUS.min(self.options.render_distance + 1);
         let loaded = |w: &World| {
             let rows = (cell.y - 32).max(w.min_y())..=(cell.y + 32).min(w.max_y() - 1);
-            (-READY_RADIUS..=READY_RADIUS).all(|dx| {
-                (-READY_RADIUS..=READY_RADIUS).all(|dz| {
-                    dx * dx + dz * dz > READY_RADIUS * READY_RADIUS
+            (-radius..=radius).all(|dx| {
+                (-radius..=radius).all(|dz| {
+                    dx * dx + dz * dz > radius * radius
                         || rows
                             .clone()
                             .step_by(32)
@@ -908,15 +910,17 @@ pub fn run(options: &Options, mut on_sample: impl FnMut(&Sample)) -> Result<Summ
         let mut t = 0.0;
         while s.tick - leg_start < leg_ticks && s.tick < total_ticks {
             if let Some(next) = s.step(motion, t) {
-                if !s.wait_for(next) {
-                    s.summary.load_timeouts += 1;
-                    break;
-                }
+                // Move, then let the terrain around the new spot load (no
+                // tick runs meanwhile), so streaming centres on it.
                 let yaw = (next.z - s.pos().z).atan2(next.x - s.pos().x) as f32;
                 let player = &mut s.agent.session.player;
                 player.pos = next;
                 player.vel = DVec3::ZERO;
                 player.yaw = yaw;
+                if !s.wait_for(next) {
+                    s.summary.load_timeouts += 1;
+                    break;
+                }
             }
             s.stream();
             s.world.update_block_light();
