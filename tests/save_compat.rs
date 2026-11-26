@@ -8,7 +8,9 @@
 //! Each fixture's `manifest.json` says what its run put in the world. The
 //! fixture's `chunks.bin` keeps the run's own chunk records for the sky
 //! chunks it built in (chunk y 4) byte for byte; the terrain chunks the
-//! simulation touched were left out to keep the fixture small.
+//! simulation touched were left out to keep the fixture small. A world
+//! saved from 1.0 keeps them in region files instead, trimmed the same way
+//! (`tools/save_fixtures/trim_regions.py`, v1.0 Track 1b).
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -19,12 +21,12 @@ use serde_json::Value;
 use voxelcraft::entity::{Entities, MobKind};
 use voxelcraft::inventory::{Inventory, Stack};
 use voxelcraft::item::Item;
-use voxelcraft::world::World;
 use voxelcraft::world::block::Block;
 use voxelcraft::world::chunk::ChunkData;
 use voxelcraft::world::region::{REGION_DIR, RegionStore};
 use voxelcraft::world::storage::{LevelInfo, SavedChunks, Storage, VERSION_KEY};
 use voxelcraft::world::terrain::Generator;
+use voxelcraft::world::{REGION_KEY, World};
 
 /// Every tagged release whose saves 1.0 opens (`docs/saves.md`).
 const RELEASES: [&str; 11] =
@@ -50,12 +52,79 @@ fn saving_version(tag: &str) -> Option<String> {
 fn copy_world(root: &Path, tag: &str, what: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("voxelcraft-save-compat-{what}-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    for entry in std::fs::read_dir(root.join(tag).join("world")).unwrap() {
-        let entry = entry.unwrap();
-        std::fs::copy(entry.path(), dir.join(entry.file_name())).unwrap();
-    }
+    copy_dir(&root.join(tag).join("world"), &dir);
     dir
+}
+
+/// Copies a folder and its subfolders (from 1.0 a world has `region/`).
+fn copy_dir(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        if entry.file_type().unwrap().is_dir() {
+            copy_dir(&entry.path(), &to.join(entry.file_name()));
+        } else {
+            std::fs::copy(entry.path(), to.join(entry.file_name())).unwrap();
+        }
+    }
+}
+
+/// Whether a world's level file was written with region storage (1.0 on).
+fn saved_with_regions(level: &LevelInfo) -> bool {
+    level.props.contains_key(REGION_KEY)
+}
+
+/// Every chunk whose blocks the world saved: `chunks.bin`'s (before 1.0),
+/// then the region records' (from 1.0), which win as they do in the game.
+fn saved_chunks(storage: &Storage) -> SavedChunks {
+    let mut chunks = storage.load_chunks().unwrap();
+    let (store, damage) = RegionStore::open(storage.dir().join(REGION_DIR), false).unwrap();
+    assert!(damage.is_empty(), "{}: damaged region files", storage.dir().display());
+    for &p in store.stored_at_open() {
+        if let Some(blocks) = store.read(p).and_then(|r| r.blocks) {
+            chunks.insert(p, blocks);
+        }
+    }
+    chunks
+}
+
+/// The world opened as the game opens one with region storage: `chunks`
+/// are its `chunks.bin` chunks (none from 1.0), the level file's
+/// `region_chunks` (none before 1.0) says whose state it holds, and its
+/// chests and entities load. Nothing is loaded and entities aren't synced.
+fn open_with_regions(
+    dir: &Path,
+    seed: u64,
+    props: &BTreeMap<String, String>,
+    chunks: SavedChunks,
+    writable: bool,
+) -> (World, Entities) {
+    let mut world = World::new_headless(Arc::new(Generator::new(seed)), chunks, 1);
+    let (store, damage) = RegionStore::open(dir.join(REGION_DIR), writable).unwrap();
+    assert!(damage.is_empty(), "{}: damaged region files", dir.display());
+    let owned = props.get(REGION_KEY).map(|t| World::parse_region_chunks(t));
+    world.attach_regions(store, owned, writable);
+    if let Some(c) = props.get("chests") {
+        world.load_chests(c);
+    }
+    let mut entities = Entities::new(seed);
+    entities.load_props(props);
+    if let Some(t) = props.get("stored_index") {
+        entities.load_stored_index(t);
+    }
+    (world, entities)
+}
+
+/// Loads the columns of `chunks` and those around the fixture's build,
+/// from their records where they have them.
+fn load_around(world: &mut World, chunks: &SavedChunks) {
+    let mut columns: Vec<(i32, i32)> = chunks.keys().map(|c| (c.x, c.z)).collect();
+    columns.extend((-2..=2).flat_map(|x| (-1..=2).map(move |z| (x, z))));
+    columns.sort_unstable();
+    columns.dedup();
+    for (x, z) in columns {
+        world.load_test_column(glam::IVec2::new(x, z), 60);
+    }
 }
 
 fn pos(v: &Value) -> IVec3 {
@@ -151,15 +220,16 @@ fn every_release_fixture_saves_and_reloads_without_loss() {
 #[test]
 fn every_release_fixture_migrates_into_region_files_and_reopens() {
     for tag in RELEASES {
-        check_migrates(&checked_in(), tag);
+        check_region_save(&checked_in(), tag);
     }
 }
 
 /// UX-04a's Linux run of this build (`tools/save_fixtures/cycle-current.sh`
 /// on Boat): the game started, built and saved a world, quit when its
 /// window was closed, and opened and quit again. The world it saved passes
-/// the same checks as the releases'. Needs `VC_SAVE_FIXTURES`, the folder
-/// the script collected the run into.
+/// the same checks as the releases'; from 1.0 it is in region files, so it
+/// saves again as the game saves one (v1.0 Track 1b). Needs
+/// `VC_SAVE_FIXTURES`, the folder the script collected the run into.
 #[test]
 #[ignore = "needs a live run of the game; see tools/save_fixtures/cycle-current.sh"]
 fn live_run_of_this_build_starts_saves_quits_and_reopens() {
@@ -168,10 +238,17 @@ fn live_run_of_this_build_starts_saves_quits_and_reopens() {
     assert_eq!((m["create_exit"].as_u64(), m["reopen_exit"].as_u64()), (Some(0), Some(0)), "both runs quit cleanly");
     assert_eq!(m["chest"]["filled"], true);
     let saved = m["create_saved_chunks"].as_u64().expect("the first run saved on quit");
-    assert_eq!(m["reopen_loaded_chunks"].as_u64(), Some(saved), "the reopened world loaded every saved chunk");
+    assert!(saved > 0, "the first run saved chunks");
+    assert!(m["create_save_records"].as_u64().is_some(), "the first run's save on quit was written");
+    assert_eq!(m["reopen_loaded_chunks"].as_u64(), Some(saved), "the reopened world found every saved chunk");
     assert!(m["reopen_saved_chunks"].as_u64().is_some(), "the reopened world saved on quit");
     check_opens(&root, "current", Some(env!("CARGO_PKG_VERSION")));
-    check_resaves(&root, "current");
+    let level = Storage::new(root.join("current").join("world")).load_level().unwrap();
+    if saved_with_regions(&level) {
+        check_region_save(&root, "current");
+    } else {
+        check_resaves(&root, "current");
+    }
 }
 
 /// The world `tag`'s run saved loads with everything its manifest lists.
@@ -193,7 +270,7 @@ fn check_opens(root: &Path, tag: &str, saving_version: Option<&str>) {
 
     // Every block the run placed keeps its state: the id the tag gave
     // the name is the one saved, and this build gives the name that id.
-    let chunks = storage.load_chunks().unwrap_or_else(|e| panic!("{tag}: {e}"));
+    let chunks = saved_chunks(&storage);
     assert_eq!(chunks.len() as u64, m["chunks"]["kept"].as_u64().unwrap(), "{tag}");
     let placed = m["placed"].as_array().unwrap();
     assert!(placed.len() >= 60, "{tag}: {} blocks", placed.len());
@@ -214,9 +291,23 @@ fn check_opens(root: &Path, tag: &str, saving_version: Option<&str>) {
     let chest_at = pos(&m["chest"]["pos"]);
     assert_eq!(block_at(&chunks, chest_at).map(|b| b.base()), Some(Block::CHEST.base()), "{tag}");
 
+    // Opened as this build opens it: from 1.0 the chunks load from their
+    // records, and the level file holds the state of those it names.
+    let (world, entities) = if saved_with_regions(&level) {
+        let file_chunks = storage.load_chunks().unwrap();
+        let (mut world, mut entities) = open_with_regions(&dir, level.seed, &level.props, file_chunks, false);
+        load_around(&mut world, &chunks);
+        entities.sync_chunk_entities(&mut world);
+        (world, entities)
+    } else {
+        let mut world = World::new_headless(Arc::new(Generator::new(level.seed)), chunks.clone(), 2);
+        world.load_chests(&level.props["chests"]);
+        let mut entities = Entities::new(level.seed);
+        entities.load_props(&level.props);
+        (world, entities)
+    };
+
     // The chest the agent player filled.
-    let mut world = World::new_headless(Arc::new(Generator::new(level.seed)), chunks.clone(), 2);
-    world.load_chests(&level.props["chests"]);
     let chest = world.chest(chest_at).unwrap_or_else(|| panic!("{tag}: no chest record"));
     for (slot, want) in m["chest"]["slots"].as_object().unwrap() {
         let want = Some(Stack::new(item(want[0].as_str().unwrap()), want[1].as_u64().unwrap() as u8));
@@ -240,8 +331,6 @@ fn check_opens(root: &Path, tag: &str, saving_version: Option<&str>) {
     assert!(holds(&theirs, item("oak_log"), 20), "{tag}: the agent's logs");
 
     // The mobs the run spawned, and the dropped stack.
-    let mut entities = Entities::new(level.seed);
-    entities.load_props(&level.props);
     for s in m["spawn"].as_array().unwrap() {
         let parts: Vec<&str> = s.as_str().unwrap().split(',').collect();
         let kind = MobKind::from_name(parts[0]).unwrap();
@@ -257,6 +346,7 @@ fn check_opens(root: &Path, tag: &str, saving_version: Option<&str>) {
             "{tag}: the dropped {d}"
         );
     }
+    drop(world);
     std::fs::remove_dir_all(dir).unwrap();
 }
 
@@ -306,43 +396,35 @@ fn check_resaves(root: &Path, tag: &str) {
     std::fs::remove_dir_all(dir).unwrap();
 }
 
-/// The fixture opened as the game opens a world with region storage (the
-/// level file is from before it, so it holds every chunk's state), saved
-/// once, then opened again from what that save wrote.
-fn check_migrates(root: &Path, tag: &str) {
+/// The fixture opened as the game opens a world with region storage, saved
+/// once, then opened again from what that save wrote. A release's level
+/// file is from before region storage, so it holds every chunk's state and
+/// the save migrates the world; from 1.0 the level file holds the state of
+/// the chunks loaded when it was saved, which move to their records.
+fn check_region_save(root: &Path, tag: &str) {
     let m = manifest(root, tag);
-    let dir = copy_world(root, tag, "migrate");
+    let dir = copy_world(root, tag, "region");
     let storage = Storage::new(&dir);
     let level = storage.load_level().unwrap();
-    let chunks = storage.load_chunks().unwrap();
-    let original_chunks = std::fs::read(dir.join("chunks.bin")).unwrap();
+    let chunks = saved_chunks(&storage);
+    let original_chunks = std::fs::read(dir.join("chunks.bin")).ok();
     let open = |props: &BTreeMap<String, String>, chunks: SavedChunks| {
-        let mut world = World::new_headless(Arc::new(Generator::new(level.seed)), chunks, 1);
-        let (store, damage) = RegionStore::open(dir.join(REGION_DIR), true).unwrap();
-        assert!(damage.is_empty(), "{tag}");
-        let owned = props.get(voxelcraft::world::REGION_KEY).map(|t| World::parse_region_chunks(t));
-        world.attach_regions(store, owned, true);
-        if let Some(c) = props.get("chests") {
-            world.load_chests(c);
-        }
-        let mut entities = Entities::new(level.seed);
-        entities.load_props(props);
-        if let Some(t) = props.get("stored_index") {
-            entities.load_stored_index(t);
-        }
+        let (mut world, mut entities) = open_with_regions(&dir, level.seed, props, chunks, true);
         entities.sync_chunk_entities(&mut world);
         (world, entities)
     };
 
     // The first save: nothing is loaded, so everything moves to records.
-    let (mut world, mut entities) = open(&level.props, chunks.clone());
+    let (mut world, mut entities) = open(&level.props, storage.load_chunks().unwrap());
     let stored = entities.take_stored_batches(&world);
-    assert!(!stored.is_empty(), "{tag}: the mobs and the dropped stack go to their chunks' records");
+    if original_chunks.is_some() {
+        assert!(!stored.is_empty(), "{tag}: the mobs and the dropped stack go to their chunks' records");
+    }
     world.save_records(stored);
     let mut props = level.props.clone();
     props.insert("chests".into(), world.chests_to_string());
     entities.save_props(&mut props);
-    props.insert(voxelcraft::world::REGION_KEY.into(), world.region_chunks_to_string());
+    props.insert(REGION_KEY.into(), world.region_chunks_to_string());
     props.insert("stored_index".into(), entities.stored_index_to_string());
     let saved = LevelInfo { seed: level.seed, player: level.player, props };
     let writer = Storage::new(&dir);
@@ -353,23 +435,19 @@ fn check_migrates(root: &Path, tag: &str) {
     world.flush_regions().unwrap();
     drop(world);
     assert!(!dir.join("chunks.bin").exists(), "{tag}: chunks.bin moved aside");
-    assert_eq!(std::fs::read(dir.join("chunks.bin_old")).unwrap(), original_chunks, "{tag}: and kept unchanged");
+    if let Some(original) = original_chunks {
+        assert_eq!(std::fs::read(dir.join("chunks.bin_old")).unwrap(), original, "{tag}: and kept unchanged");
+    }
     assert!(storage.has_regions(), "{tag}");
     assert_eq!(storage.load_level_old().unwrap().props, level.props, "{tag}: the old level file is kept");
     let migrated = storage.load_level().unwrap();
     assert_eq!(migrated.props["chests"], "", "{tag}: no chest is left in the level file");
-    assert_eq!(migrated.props[voxelcraft::world::REGION_KEY], "", "{tag}: the level file holds no chunk");
+    assert_eq!(migrated.props[REGION_KEY], "", "{tag}: the level file holds no chunk");
     assert!(storage.load_chunks().unwrap().is_empty(), "{tag}");
 
     // Reopened: the chunks load from their records with everything in them.
     let (mut world, mut entities) = open(&migrated.props, Default::default());
-    let mut columns: Vec<(i32, i32)> = chunks.keys().map(|c| (c.x, c.z)).collect();
-    columns.extend((-2..=2).flat_map(|x| (-1..=2).map(move |z| (x, z))));
-    columns.sort_unstable();
-    columns.dedup();
-    for (x, z) in columns {
-        world.load_test_column(glam::IVec2::new(x, z), 60);
-    }
+    load_around(&mut world, &chunks);
     entities.sync_chunk_entities(&mut world);
     for (p, c) in &chunks {
         for i in (0..32 * 32 * 32).step_by(7) {

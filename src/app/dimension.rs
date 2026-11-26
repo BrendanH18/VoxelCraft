@@ -208,6 +208,10 @@ pub(super) fn attach_regions(
     }
     match RegionStore::open(&dir, writable) {
         Ok((store, damage)) => {
+            // v1.0 Track 1b: a stable line for the save cycle's collection
+            // (`tools/save_fixtures/collect.py`), with the records the
+            // region tables name, whether or not the chunks load.
+            log::info!("region storage: {} chunk records in the {}", store.stored_at_open().len(), dim.name());
             world.attach_regions(store, owned, writable);
             let notices: Vec<String> = damage.iter().map(|d| d.notice(dim.name())).collect();
             (!notices.is_empty()).then(|| notices.join(" "))
