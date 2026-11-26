@@ -123,12 +123,12 @@ impl Lectern {
 
 #[derive(Clone, Debug, Default)]
 pub struct State {
-    banners: FxHashMap<IVec3, BannerEntity>,
+    pub(in crate::world) banners: FxHashMap<IVec3, BannerEntity>,
     /// Banners removed since the last tick, so the drop that follows the
     /// removal carries their patterns (Java's loot copies them from the
     /// block entity).
     removed: FxHashMap<IVec3, BannerEntity>,
-    lecterns: FxHashMap<IVec3, Lectern>,
+    pub(in crate::world) lecterns: FxHashMap<IVec3, Lectern>,
     /// Bumped on every change, for renderers and LAN snapshots.
     version: u64,
 }

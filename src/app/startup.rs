@@ -37,6 +37,13 @@ impl Game {
                     log::error!("failed to remove the old dimension save {}: {e}", nether.dir().display());
                 }
             }
+            // v1.0 Track 3b: the old world's overworld records too.
+            let regions = storage.dir().join(crate::world::region::REGION_DIR);
+            if regions.is_dir()
+                && let Err(e) = std::fs::remove_dir_all(&regions)
+            {
+                log::error!("failed to remove the old region files {}: {e}", regions.display());
+            }
         }
         let seed =
             existing.as_ref().map(|l| l.seed).or(new.as_ref().and_then(|n| n.seed)).or(args.seed).unwrap_or_else(
@@ -184,6 +191,15 @@ impl Game {
         }
         let mut world = World::new(generator, saved, settings.render_distance);
         world.set_simulation_distance(settings.simulation_distance);
+        // v1.0 Track 3b: unloaded chunks live in region files. A LAN client
+        // has none; scripted runs read them but never write.
+        let load_notice = if args.join.is_none() {
+            let writable = settings_path.is_some();
+            let region = dimension::attach_regions(&mut world, &storage, dimension, &dimension_props, writable);
+            load_notice.into_iter().chain(region).reduce(|a, b| format!("{a} {b}"))
+        } else {
+            load_notice
+        };
         world.set_tile_drops(gamerules.bool("block_drops"));
         log::info!("{} worker threads", world.worker_threads());
 
@@ -566,12 +582,12 @@ mod tests {
     }
 
     #[test]
-    fn new_worlds_save_and_reload_as_generation_6() {
+    fn new_worlds_save_and_reload_as_the_latest_generation() {
         let dir = std::env::temp_dir().join(format!("voxelcraft-worldgen-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let storage = Storage::new(&dir);
 
-        // A new world: generation 6 (v1.0 Track 8), written as `worldgen=6`.
+        // A new world: the latest generation (6 since v1.0 Track 8), written as `worldgen=6`.
         let generation = world_generation(None);
         assert_eq!(generation, Generation::V6);
         let generator = Generator::with_generation(7, Dimension::Overworld, generation);

@@ -369,10 +369,10 @@ pub struct Event {
 /// Crafters by position, kept while their chunk is unloaded.
 #[derive(Default, Debug)]
 pub struct Crafters {
-    map: BTreeMap<[i32; 3], Crafter>,
+    pub(in crate::world) map: BTreeMap<[i32; 3], Crafter>,
     /// Crafters whose countdown runs (`craftingTicksRemaining > 0`): the
     /// only ones the per-tick pass visits, so idle crafters cost nothing.
-    active: Vec<IVec3>,
+    pub(in crate::world) active: Vec<IVec3>,
     events: Vec<Event>,
 }
 

@@ -62,7 +62,23 @@ fn a_short_soak_keeps_every_queue_and_cache_bounded() {
         cap("e.entities.mob_paths", 400.0 * 64.0);
         cap("w.events.particles", 256.0);
         cap("e.entities.particles", 256.0);
+        // v1.0 Track 3b: unloaded chunks live in region files. Memory holds
+        // no unloaded chunk's blocks. Stored entities wait in memory only
+        // while their chunk loads or the level file holds them (after a
+        // reopen, until the next save): no more than the loaded area holds.
+        cap("w.chunks.saved_unloaded", 0.0);
+        cap("e.stored.mobs", 400.0);
+        cap("e.stored.items", 600.0);
+        cap("e.stored.entities", 1100.0);
+        cap("w.regions.pending", 4096.0);
+        cap("w.fluid.suspended", 16384.0);
+        // Block entities are the loaded area's (the base's chests, furnaces
+        // and spawner, and the structures in range).
+        cap("w.chests", 400.0);
+        cap("w.spawners", 200.0);
     }
+    let last = samples.last().unwrap();
+    assert!(last.get("w.regions.written").unwrap() > 0.0, "chunks were written to region files");
 }
 
 /// The soak's first finding: a cell rewritten with the state it already

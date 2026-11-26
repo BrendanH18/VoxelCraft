@@ -59,6 +59,9 @@ pub(super) struct FluidState {
     suspended: FxHashMap<IVec3, Suspended>,
 }
 
+/// A chunk's water, lava and bubble-column cells, for its record.
+pub(super) type FluidCells = (Vec<IVec3>, Vec<IVec3>, Vec<IVec3>);
+
 /// One unloaded chunk's pending water, lava and bubble-column cells.
 #[derive(Default)]
 struct Suspended {
@@ -138,6 +141,99 @@ impl World {
         };
         if modified && !(cells.water.is_empty() && cells.lava.is_empty() && cells.bubbles.is_empty()) {
             state.suspended.insert(pos, cells);
+        }
+    }
+
+    /// v1.0 Track 3b: takes the pending and suspended fluid cells of the
+    /// chunks `at` accepts out of the queues, by chunk (water, lava,
+    /// bubbles), for their records.
+    pub(super) fn take_fluid_cells(&mut self, at: &dyn Fn(IVec3) -> bool) -> FxHashMap<IVec3, FluidCells> {
+        let mut out: FxHashMap<IVec3, FluidCells> = FxHashMap::default();
+        let state = &mut self.fluids;
+        let here = |p: &IVec3| at(super::chunk::chunk_of(*p));
+        for p in state.pending.extract_if(here) {
+            out.entry(super::chunk::chunk_of(p)).or_default().0.push(p);
+        }
+        for p in state.lava_pending.extract_if(here) {
+            out.entry(super::chunk::chunk_of(p)).or_default().1.push(p);
+        }
+        for p in state.bubbles.extract_if(here) {
+            out.entry(super::chunk::chunk_of(p)).or_default().2.push(p);
+        }
+        for (c, cells) in state.suspended.extract_if(|c, _| at(*c)) {
+            let e = out.entry(c).or_default();
+            e.0.extend(cells.water);
+            e.1.extend(cells.lava);
+            e.2.extend(cells.bubbles);
+        }
+        for cells in out.values_mut() {
+            for list in [&mut cells.0, &mut cells.1, &mut cells.2] {
+                list.sort_unstable_by_key(|p| (p.x, p.y, p.z));
+            }
+        }
+        out
+    }
+
+    /// Holds a chunk's saved fluid cells until it loads ([`World::load_fluids`]).
+    pub(super) fn suspend_fluid_cells(&mut self, pos: IVec3, water: Vec<IVec3>, lava: Vec<IVec3>, bubbles: Vec<IVec3>) {
+        if water.is_empty() && lava.is_empty() && bubbles.is_empty() {
+            return;
+        }
+        let s = self.fluids.suspended.entry(pos).or_default();
+        s.water.extend(water);
+        s.lava.extend(lava);
+        s.bubbles.extend(bubbles);
+    }
+
+    /// v1.0 Track 3b: the `fluid_ticks` level file text, the scheduled fluid
+    /// ticks of the player-modified chunks, loaded or not (Java saves a
+    /// chunk's fluid ticks with it). Generated chunks wake their own again.
+    /// `w`, `l` or `b`, then the cell, `|`-separated.
+    pub fn fluid_ticks_to_string(&self) -> String {
+        let modified = |p: &IVec3| {
+            let c = super::chunk::chunk_of(*p);
+            self.chunks.get(&c).is_some_and(|s| s.modified) || self.fluids.suspended.contains_key(&c)
+        };
+        let mut entries: Vec<(char, IVec3)> = Vec::new();
+        let state = &self.fluids;
+        entries.extend(state.pending.iter().filter(|p| modified(p)).map(|&p| ('w', p)));
+        entries.extend(state.lava_pending.iter().filter(|p| modified(p)).map(|&p| ('l', p)));
+        entries.extend(state.bubbles.iter().filter(|p| modified(p)).map(|&p| ('b', p)));
+        for cells in state.suspended.values() {
+            entries.extend(cells.water.iter().map(|&p| ('w', p)));
+            entries.extend(cells.lava.iter().map(|&p| ('l', p)));
+            entries.extend(cells.bubbles.iter().map(|&p| ('b', p)));
+        }
+        entries.sort_unstable_by_key(|(k, p)| (*k, p.x, p.y, p.z));
+        entries.iter().map(|(k, p)| format!("{k}{},{},{}", p.x, p.y, p.z)).collect::<Vec<_>>().join("|")
+    }
+
+    /// Restores [`World::fluid_ticks_to_string`]: cells of loaded chunks go
+    /// back in the queues, the rest wait for their chunk.
+    pub fn load_fluid_ticks(&mut self, text: &str) {
+        for entry in text.split('|').filter(|e| !e.is_empty()) {
+            let (kind, rest) = entry.split_at_checked(1).unwrap_or(("", ""));
+            let c: Vec<i32> = rest.split(',').filter_map(|v| v.parse().ok()).collect();
+            let &[x, y, z] = &c[..] else { continue };
+            let p = IVec3::new(x, y, z);
+            let chunk = super::chunk::chunk_of(p);
+            let loaded = self.chunks.contains_key(&chunk);
+            let state = &mut self.fluids;
+            match (kind, loaded) {
+                ("w", true) => {
+                    state.pending.insert(p);
+                }
+                ("l", true) => {
+                    state.lava_pending.insert(p);
+                }
+                ("b", true) => {
+                    state.bubbles.insert(p);
+                }
+                ("w", false) => state.suspended.entry(chunk).or_default().water.push(p),
+                ("l", false) => state.suspended.entry(chunk).or_default().lava.push(p),
+                ("b", false) => state.suspended.entry(chunk).or_default().bubbles.push(p),
+                _ => {}
+            }
         }
     }
 

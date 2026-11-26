@@ -991,7 +991,7 @@ impl Entities {
         // The occupied village POIs within 64 blocks (a cube, as
         // `getInRange` filters by distance): their average is the centre.
         let mut claimed: FxHashSet<IVec3> = FxHashSet::default();
-        for m in self.mobs.iter().chain(self.storage.mobs()) {
+        for m in &self.mobs {
             if m.kind == MobKind::Villager
                 && m.alive()
                 && let Some(v) = &m.villager
@@ -1000,6 +1000,8 @@ impl Entities {
                 claimed.extend(v.job);
             }
         }
+        // Stored villagers' claims, in memory or in region records.
+        claimed.extend(self.storage.claimed_beds().chain(self.storage.claimed_jobs()));
         let mut sum = DVec3::ZERO;
         let mut count = 0;
         let r2 = f64::from(POI_RADIUS * POI_RADIUS);

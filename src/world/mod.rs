@@ -32,6 +32,7 @@ pub mod cave_blocks;
 pub mod caves;
 pub mod chest;
 pub mod chunk;
+mod chunk_records;
 pub mod climate;
 pub mod colors;
 pub mod colour_blocks;
@@ -115,10 +116,12 @@ pub mod redstone_blocks;
 pub mod redstone_catalogue;
 mod redstone_contacts;
 pub mod redstone_order;
+pub mod region;
 pub mod relics;
 pub mod ruined_portal;
 #[cfg(test)]
 mod rule_tests;
+pub use chunk_records::{CHUNK_KEYS, FLUID_TICKS_KEY, REGION_KEY};
 pub mod scaffolding;
 pub mod sculk;
 pub mod sculk_spread;
@@ -182,6 +185,12 @@ pub struct ChunkSlot {
     /// Authoritative skylight below the column heightmap; cells above it are
     /// implied sources. Absent until the column is lit, and for dark chunks.
     sky_light: Option<lighting::BlockLight>,
+    /// v1.0 Track 3b: the blocks changed since the chunk's record last
+    /// held them (or it has none), so a save writes them.
+    unsaved: bool,
+    /// The chunk loaded from a region record, so unloading rewrites it
+    /// even when there is nothing left to keep.
+    has_record: bool,
 }
 
 /// A generated chunk with its generator-only follow-up work done: surface
@@ -303,8 +312,13 @@ pub struct World {
     workers: Workers,
     chunks: FxHashMap<IVec3, ChunkSlot>,
     columns: FxHashMap<IVec2, Column>,
-    /// Player-modified chunks that are currently unloaded.
+    /// Player-modified chunks that are currently unloaded. With region
+    /// storage, only `chunks.bin` chunks not yet moved into records.
     saved: FxHashMap<IVec3, Arc<ChunkData>>,
+    /// v1.0 Track 3b: where unloaded chunks go (see [`chunk_records`]);
+    /// `None` keeps them in memory.
+    regions: Option<region::RegionStore>,
+    region_records: chunk_records::Records,
     gen_in_flight: FxHashSet<IVec3>,
     mesh_in_flight: usize,
     /// Chunks in mesh range that need (re)meshing.
@@ -718,6 +732,8 @@ impl World {
                 block_light: None,
                 light_mesh_dirty: false,
                 sky_light: None,
+                unsaved: false,
+                has_record: false,
             },
         );
         let key = column_of(pos);
@@ -783,6 +799,8 @@ impl World {
             chunks: FxHashMap::default(),
             columns: FxHashMap::default(),
             saved,
+            regions: None,
+            region_records: Default::default(),
             gen_in_flight: FxHashSet::default(),
             mesh_in_flight: 0,
             dirty: FxHashSet::default(),
@@ -895,7 +913,11 @@ impl World {
     /// loaded or saved (player-modified but unloaded); `None` if it has
     /// only ever been generated and isn't loaded.
     pub fn section_data(&self, cpos: IVec3) -> Option<Arc<ChunkData>> {
-        self.chunks.get(&cpos).map(|s| s.data.clone()).or_else(|| self.saved.get(&cpos).cloned())
+        self.chunks
+            .get(&cpos)
+            .map(|s| s.data.clone())
+            .or_else(|| self.saved.get(&cpos).cloned())
+            .or_else(|| self.regions.as_ref()?.read(cpos)?.blocks)
     }
 
     /// Lowest block y of this world's dimension.
@@ -1228,6 +1250,7 @@ impl World {
         if old != block {
             Arc::make_mut(&mut slot.data).set(l.x as usize, l.y as usize, l.z as usize, block);
             slot.modified = true;
+            slot.unsaved = true;
         }
         // Fire ages are saved state, but all ages have identical geometry
         // and lighting: don't invalidate meshes or copy light snapshots.
@@ -1627,6 +1650,8 @@ impl World {
         } else {
             self.chunks.keys().copied().filter(|&p| !self.in_keep_range(p)).collect()
         };
+        // v1.0 Track 3b: what they own goes to their records first.
+        self.evict_chunks(&far);
         for pos in far {
             self.remove_chunk(pos);
         }
@@ -1685,34 +1710,40 @@ impl World {
     pub(crate) fn insert_chunk(&mut self, pos: IVec3, data: Arc<ChunkData>, modified: bool) {
         if modified {
             self.load_fires(pos, &data);
-            self.install_chunk(pos, data, true);
+            self.install_chunk(pos, data, true, None);
         } else {
             let data = Arc::unwrap_or_clone(data);
-            self.insert_generated(pos, GeneratedChunk::new(&self.generator, pos, data));
+            self.insert_generated(pos, GeneratedChunk::new(&self.generator, pos, data), None);
         }
     }
 
-    /// Install a generated chunk whose generator-derived work is already done.
-    fn insert_generated(&mut self, pos: IVec3, chunk: GeneratedChunk) {
+    /// v1.0 Track 3b: installs a chunk read from its region record, blocks
+    /// and all. Its saved fire ticks are scheduled before the chunk's fires
+    /// are scanned, so they keep their delays.
+    fn insert_record(&mut self, pos: IVec3, record: region::ChunkRecord) {
+        let Some(data) = record.blocks.clone() else { return };
+        self.install_chunk(pos, data.clone(), true, Some(record));
+        self.load_fires(pos, &data);
+    }
+
+    /// Install a generated chunk whose generator-derived work is already
+    /// done, with its region record's state if it has one (v1.0 Track 3b).
+    fn insert_generated(&mut self, pos: IVec3, chunk: GeneratedChunk, record: Option<region::ChunkRecord>) {
         let GeneratedChunk { data, features, fluid_ticks, bubble_seeds, rolled } = chunk;
         self.register_features(&data, features, rolled);
         self.fluids.bubbles.extend(bubble_seeds);
         // Installed first, so `wake_fluids` sees this chunk's lava.
-        self.install_chunk(pos, Arc::new(data), false);
+        self.install_chunk(pos, Arc::new(data), false, record);
         for p in fluid_ticks {
             self.wake_fluids(p);
         }
     }
 
-    fn install_chunk(&mut self, pos: IVec3, data: Arc<ChunkData>, modified: bool) {
-        self.register_village_life(pos, &data);
-        self.register_banners(pos, &data);
-        self.register_shulker_boxes(pos, &data);
-        self.register_campfires(pos, &data);
-        self.register_beehives(pos, &data, modified);
-        self.register_creaking_hearts(pos, &data);
-        self.register_potent_sulfur(pos, &data);
-        self.register_sculk(pos, &data);
+    /// Installs a chunk. A region record's state goes back into the world's
+    /// tables once the chunk is in place (so its readers see its blocks) and
+    /// before the chunk's block entities register (so saved state wins over
+    /// what they would create).
+    fn install_chunk(&mut self, pos: IVec3, data: Arc<ChunkData>, modified: bool, record: Option<region::ChunkRecord>) {
         let heights = mesh::chunk_heights(&data, pos.y * CHUNK_SIZE_I);
         let workers = &self.workers;
         let col = self.columns.entry(column_of(pos)).or_insert_with(|| {
@@ -1737,7 +1768,7 @@ impl World {
         self.chunks.insert(
             pos,
             ChunkSlot {
-                data,
+                data: data.clone(),
                 modified,
                 version: 0,
                 meshed_version: None,
@@ -1745,8 +1776,23 @@ impl World {
                 block_light: None,
                 light_mesh_dirty: false,
                 sky_light: None,
+                // Blocks that came from `chunks.bin` (not a record) are
+                // written to one at the next save.
+                unsaved: modified && record.is_none(),
+                has_record: record.is_some(),
             },
         );
+        if let Some(record) = record {
+            self.restore_record(pos, record);
+        }
+        self.register_village_life(pos, &data);
+        self.register_banners(pos, &data);
+        self.register_shulker_boxes(pos, &data);
+        self.register_campfires(pos, &data);
+        self.register_beehives(pos, &data, modified);
+        self.register_creaking_hearts(pos, &data);
+        self.register_potent_sulfur(pos, &data);
+        self.register_sculk(pos, &data);
         self.load_block_light(pos);
         self.light_sky_column(column_of(pos));
         self.load_redstone_chunk(pos);
@@ -1784,7 +1830,8 @@ impl World {
         self.unload_block_light(pos, slot.block_light.as_ref());
         self.unload_fluids(pos, slot.modified);
         self.unload_fires(pos);
-        if slot.modified {
+        // With region storage the chunk's record already holds them.
+        if slot.modified && !self.writes_records() {
             self.saved.insert(pos, slot.data);
         }
         if let Some(col) = self.columns.get_mut(&column_of(pos)) {
@@ -1838,10 +1885,16 @@ impl World {
         // Collect finished work.
         while let Some(result) = self.workers.try_recv() {
             match result {
-                JobResult::Generated(pos, chunk) => {
+                JobResult::Generated(pos, chunk, record) => {
                     self.gen_in_flight.remove(&pos);
                     if self.in_keep_range(pos) && !self.chunks.contains_key(&pos) {
-                        self.insert_generated(pos, *chunk);
+                        self.insert_generated(pos, *chunk, record.map(|r| *r));
+                    }
+                }
+                JobResult::Loaded(pos, record) => {
+                    self.gen_in_flight.remove(&pos);
+                    if self.in_keep_range(pos) && !self.chunks.contains_key(&pos) {
+                        self.insert_record(pos, *record);
                     }
                 }
                 JobResult::Foliage { pos, colours, snow, biome_heights } => {
@@ -1875,6 +1928,11 @@ impl World {
             }
             if let Some(data) = self.saved.remove(&pos) {
                 self.insert_chunk(pos, data, true);
+            } else if let Some(store) = &self.regions {
+                // Java's `ChunkMap.scheduleChunkLoad`: the record first,
+                // then the generator for whatever it doesn't hold.
+                self.gen_in_flight.insert(pos);
+                self.workers.submit(Job::Load(pos, store.reader()));
             } else {
                 self.gen_in_flight.insert(pos);
                 self.workers.submit(Job::Generate(pos));

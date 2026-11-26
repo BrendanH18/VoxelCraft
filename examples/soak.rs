@@ -22,9 +22,10 @@ fn main() {
             "--seed" => o.seed = value().parse().expect("--seed"),
             "--data-dir" => o.data_dir = PathBuf::from(value()),
             "--csv" => o.csv = Some(PathBuf::from(value())),
+            "--chunks-file" => o.regions = false,
             _ => panic!(
                 "usage: soak [--hours H] [--leg-minutes M] [--sample-seconds S] [--autosave-seconds S] \
-                 [--rd N] [--seed N] [--data-dir DIR] [--csv FILE]"
+                 [--rd N] [--seed N] [--data-dir DIR] [--csv FILE] [--chunks-file]"
             ),
         }
     }

@@ -2290,8 +2290,9 @@ impl Game {
         if self.settings_path.is_some() && now - self.last_save > AUTOSAVE_EVERY {
             // A death the save's settling caused respawns at the next
             // frame's start, before its camera is sampled.
-            self.save();
+            self.autosave();
         }
+        self.poll_region_storage();
 
         // --- Render ---------------------------------------------------------
         // v0.18 Track 8: the sky, fog and clouds are Java 26.3's environment

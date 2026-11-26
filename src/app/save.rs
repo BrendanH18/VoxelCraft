@@ -1,7 +1,37 @@
 //! World save assembly and persistence, separate from event dispatch.
 use super::*;
 impl Game {
+    /// Saves the world and waits until it is on disk: quitting, changing
+    /// dimension, `/save` and the LAN host's save all finish here before
+    /// the world closes.
     pub(super) fn save(&mut self) {
+        self.save_world(true);
+    }
+
+    /// v1.0 Track 3b: the periodic save. With region storage, the chunk
+    /// records and level files are written by the I/O thread; write errors
+    /// reach the player from [`Game::poll_region_storage`].
+    pub(super) fn autosave(&mut self) {
+        self.save_world(false);
+    }
+
+    /// Reports what the region I/O thread found since the last frame: write
+    /// errors as a failed save, unreadable chunks as load damage.
+    pub(super) fn poll_region_storage(&mut self) {
+        let errors = self.world.take_region_errors();
+        if !errors.is_empty() {
+            let e = errors.join("; ");
+            log::error!("save failed: {e}");
+            self.show_popup(&format!("Could not save the world: {e}"));
+            self.save_error = Some(e);
+        }
+        let notices = self.world.take_region_notices();
+        if !notices.is_empty() {
+            self.report_load_damage(&notices.join(" "));
+        }
+    }
+
+    fn save_world(&mut self, wait: bool) {
         // LAN clients do not own the world; benchmark scenes never write saves.
         if self.lan.client.is_some() || self.benchmark.is_some() {
             self.last_save = Instant::now();
@@ -68,6 +98,11 @@ impl Game {
         }
         let seed = self.world.generator.seed;
         record_generation(&mut props, self.world.generator.generation);
+        if self.world.writes_records() {
+            self.save_regions(seed, props, wait);
+            self.last_save = Instant::now();
+            return;
+        }
         let chunks = self.world.modified_chunks();
         // The overworld saves with the player; the Nether in its own folder.
         let result = match self.dimension {
@@ -102,6 +137,63 @@ impl Game {
             }
         }
         self.last_save = Instant::now();
+    }
+}
+
+impl Game {
+    /// v1.0 Track 3b: a save with region storage. Entities stored in
+    /// unloaded chunks and the level file's state for chunks that aren't
+    /// loaded go to their records, loaded chunks whose blocks changed write
+    /// them, and the level files (the dimension's, then the player's) are
+    /// written by the I/O thread once those records are on disk, followed by
+    /// moving a migrated `chunks.bin` aside. `wait` blocks until all of it
+    /// is written.
+    fn save_regions(&mut self, seed: u64, mut props: std::collections::BTreeMap<String, String>, wait: bool) {
+        let started = Instant::now();
+        let stored = self.mobs.entities.take_stored_batches(&self.world);
+        let records = self.world.save_records(stored);
+        let player = Some((self.session.player.pos, self.session.player.yaw, self.session.player.pitch));
+        let dimension = dimension::storage_for(&self.storage, self.dimension);
+        let root = Storage::new(self.storage.dir());
+        let (own, player_level) = match self.dimension {
+            Dimension::Overworld => {
+                props.extend(self.dimension_props());
+                (LevelInfo { seed, player, props }, None)
+            }
+            Dimension::Nether | Dimension::End => {
+                let own = LevelInfo { seed, player: None, props: self.dimension_props() };
+                props.extend(self.overworld_props.clone());
+                (own, Some(LevelInfo { seed, player, props }))
+            }
+        };
+        let Some(store) = self.world.regions() else { return };
+        store.after_writes(move || {
+            dimension.save_level(&own)?;
+            if let Some(level) = player_level {
+                root.save_level(&level)?;
+            }
+            dimension.retire_chunks_file()
+        });
+        let result = if wait { self.world.flush_regions() } else { Ok(()) };
+        match result {
+            Ok(()) => {
+                if wait {
+                    self.save_error = None;
+                }
+                log::info!(
+                    "saved {records} {} chunk records to {} ({:.1} ms on the main thread{})",
+                    self.dimension.name(),
+                    self.storage.dir().display(),
+                    started.elapsed().as_secs_f64() * 1000.0,
+                    if wait { ", written" } else { "; writing" }
+                );
+            }
+            Err(e) => {
+                log::error!("save failed: {e}");
+                self.show_popup(&format!("Could not save the world: {e}"));
+                self.save_error = Some(e.to_string());
+            }
+        }
     }
 }
 

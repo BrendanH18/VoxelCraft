@@ -75,7 +75,29 @@ Palettes are expanded by row into meshing scratch storage, outside the lighting
 and greedy-meshing loops. Repeated edits reuse palette entries; a full palette
 is rebuilt to discard removed states before promoting to direct storage.
 
-Chunk files hold RLE records of `(u16 run length, u16 state ID)`, both
+Unloaded chunks live in region files (v1.0 Track 3b, after Java's
+`RegionFile`, `ChunkMap`, `IOWorker` and `EntityStorage`; the format and
+its rules are in [saves](saves.md#region-files)). `world::region` is the
+file format and its store: one file per 16 x 16 columns, a 4096-slot table
+and 4096-byte sectors, records queued as patches and written by a
+`region-io` thread, read by the generation workers (`Job::Load`, which
+generates whatever a record doesn't hold). `world::chunk_records` ties it to
+the world: when chunks unload, `World::evict_chunks` takes their changed
+blocks, block entity tables (each system's own level-file text for that
+chunk, by swapping the chunk's entries in for the whole table), fluid and
+fire ticks out of memory into their records; `World::restore_record` puts
+them back when a chunk installs, before its block entities register.
+`Entities::sync_chunk_entities` then stores the unloaded chunks' entities
+as batches of the level file's entity keys, appended to the record, and
+brings a loading chunk's batches back. Saves (`World::save_records`) queue
+only the loaded chunks whose blocks changed and the state the level file
+held for chunks that aren't loaded; the level file, written by the I/O
+thread after those records, holds the loaded chunks' state and names them
+(`region_chunks`). Worlds without a region store (tests, benchmarks, LAN
+replicas) keep unloaded chunks in memory, as before.
+
+Chunk files (`chunks.bin`, before 1.0, and the blocks inside region
+records) hold RLE records of `(u16 run length, u16 state ID)`, both
 little-endian, under a `VXC2` header, `VXC3` once any saved state is 4096
 or above, or `VXC4` once any is 16,384 or above. Builds from before each
 capacity raise refuse the newer header, and worlds that use no states newer
@@ -242,7 +264,7 @@ src/
     mob/turtle.rs    the turtle's travel, go-home, go-to-water and egg goals
     model/nether.rs  their box models
     item.rs          dropped items: physics, merging, despawning, saving
-    chunk_storage.rs entities of unloaded chunks, out of the level until the chunk loads
+    chunk_storage.rs entities of unloaded chunks: in their region records (in memory without one)
     model.rs         animated box models -> camera-relative box instances and triangles
   mesh.rs            lighting + greedy meshing (runs on workers)
   workers.rs         thread pool
@@ -286,7 +308,9 @@ src/
     brewing.rs       brewing stand contents and Java's brewing mixes
     spawner.rs       spawner table, structure spawners and chests on chunk load
     noise.rs         Perlin noise and hashing
-    storage.rs       save files
+    storage.rs       level files, chunks.bin (before 1.0), kept and damaged copies
+    region.rs        region files, chunk records and their I/O thread
+    chunk_records.rs what an unloading chunk takes to its record and gets back
   render/
     mod.rs           wgpu pipelines, culling, draw submission, screenshots
     arena.rs         pooled GPU storage for chunk quads
