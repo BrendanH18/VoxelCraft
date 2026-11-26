@@ -111,7 +111,7 @@ impl World {
             // The End reads block light alone; elsewhere
             // `getMaxLocalRawBrightness`.
             let brightness = if self.generator.dimension == super::terrain::Dimension::End {
-                self.update_block_light();
+                self.settle_light_at(p);
                 self.block_light(p)
             } else {
                 self.growth_light(p, true)

@@ -92,6 +92,13 @@ pub(super) enum Layer {
 
 #[derive(Default)]
 pub(super) struct LightUpdates {
+    /// Storage columns (32 x 32 blocks) that received queued work since the
+    /// queue was last empty: a superset of where work is pending, kept as
+    /// entries are queued (v1.0 Track 2, [`World::light_pending_near`]).
+    columns: rustc_hash::FxHashSet<IVec2>,
+    /// The column last added to `columns`, so runs of entries in one
+    /// column cost one comparison each.
+    last_column: Option<IVec2>,
     remove: Vec<(IVec3, u8)>,
     /// Seeds: cells that recompute their level from their neighbours.
     increase: Vec<IVec3>,
@@ -111,6 +118,40 @@ impl LightUpdates {
 
     fn note_peak(&mut self) {
         self.peak = self.peak.max(self.remove.len() + self.increase.len());
+    }
+
+    /// Notes that queued work reaches the column holding `p`.
+    fn note_column(&mut self, p: IVec3) {
+        let c = IVec2::new(p.x >> 5, p.z >> 5);
+        if self.last_column != Some(c) {
+            self.last_column = Some(c);
+            self.columns.insert(c);
+        }
+    }
+
+    fn push_remove(&mut self, entry: (IVec3, u8)) {
+        self.note_column(entry.0);
+        self.remove.push(entry);
+    }
+
+    fn push_increase(&mut self, p: IVec3) {
+        self.note_column(p);
+        self.increase.push(p);
+    }
+
+    /// Notes the columns of entries queued in bulk from `from` on.
+    fn note_increases_from(&mut self, from: usize) {
+        for i in from..self.increase.len() {
+            let p = self.increase[i];
+            self.note_column(p);
+        }
+    }
+
+    fn note_removals_from(&mut self, from: usize) {
+        for i in from..self.remove.len() {
+            let p = self.remove[i].0;
+            self.note_column(p);
+        }
     }
 }
 
@@ -325,12 +366,12 @@ impl World {
         let emission = new.emission();
         self.store(Layer::Block, p, emission);
         if old_level > emission {
-            self.light_updates.remove.push((p, old_level));
+            self.light_updates.push_remove((p, old_level));
         }
-        self.light_updates.increase.push(p);
+        self.light_updates.push_increase(p);
         for d in SIDES {
             if self.raw_block_light(p + d) > 1 {
-                self.light_updates.increase.push(p + d);
+                self.light_updates.push_increase(p + d);
             }
         }
     }
@@ -348,14 +389,14 @@ impl World {
         if new_height > old_height {
             for y in (old_height + 1).max(min_y)..=new_height {
                 let q = p.with_y(y);
-                self.sky_updates.remove.push((q, MAX_LIGHT));
-                self.sky_updates.increase.push(q);
+                self.sky_updates.push_remove((q, MAX_LIGHT));
+                self.sky_updates.push_increase(q);
             }
         } else if new_height < old_height {
             for y in (new_height + 1).max(min_y)..=old_height {
                 let q = p.with_y(y);
                 self.clear_sky(q);
-                self.sky_updates.increase.push(q);
+                self.sky_updates.push_increase(q);
             }
         } else if p.y <= new_height
             && (old.light_opacity() != new.light_opacity()
@@ -365,12 +406,12 @@ impl World {
             let old_level = self.stored(Layer::Sky, p);
             self.clear_sky(p);
             if old_level > 0 {
-                self.sky_updates.remove.push((p, old_level));
+                self.sky_updates.push_remove((p, old_level));
             }
-            self.sky_updates.increase.push(p);
+            self.sky_updates.push_increase(p);
             for d in SIDES {
                 if self.level(Layer::Sky, p + d) > 1 {
-                    self.sky_updates.increase.push(p + d);
+                    self.sky_updates.push_increase(p + d);
                 }
             }
         }
@@ -410,7 +451,7 @@ impl World {
                         b.light_opacity() < 15 && b.emission() < e.saturating_sub(b.light_opacity().max(1))
                     })
                 {
-                    self.light_updates.increase.push(base + l);
+                    self.light_updates.push_increase(base + l);
                 }
                 i += 1;
             });
@@ -437,7 +478,7 @@ impl World {
                     l[(axis + 2) % 3] = v;
                     let p = base + l;
                     if self.raw_block_light(p) > 1 {
-                        self.light_updates.increase.push(p);
+                        self.light_updates.push_increase(p);
                     }
                 }
             }
@@ -459,7 +500,7 @@ impl World {
                         l[(axis + 2) % 3] = v;
                         let level = light.get(l.x as usize, l.y as usize, l.z as usize);
                         if level > 1 {
-                            self.light_updates.remove.push((base + l, level));
+                            self.light_updates.push_remove((base + l, level));
                         }
                     }
                 }
@@ -491,6 +532,7 @@ impl World {
         let rows = self.generator.dimension.chunk_rows();
         let base = IVec3::new(key.x * CHUNK_SIZE_I, 0, key.y * CHUNK_SIZE_I);
         let mut seeds = std::mem::take(&mut self.sky_updates.increase);
+        let queued = seeds.len();
         for lz in 0..CHUNK_SIZE_I {
             for lx in 0..CHUNK_SIZE_I {
                 let p0 = base + IVec3::new(lx, 0, lz);
@@ -538,6 +580,7 @@ impl World {
             }
         }
         self.sky_updates.increase = seeds;
+        self.sky_updates.note_increases_from(queued);
         self.sky_updates.note_peak();
     }
 
@@ -551,6 +594,7 @@ impl World {
         let (min_y, max_y) = (self.min_y(), self.max_y());
         let base = IVec3::new(key.x * CHUNK_SIZE_I, 0, key.y * CHUNK_SIZE_I);
         let mut removals = std::mem::take(&mut self.sky_updates.remove);
+        let queued = removals.len();
         for i in 0..CHUNK_SIZE_I {
             let edges = [
                 (IVec3::new(CHUNK_SIZE_I - 1, 0, i), IVec3::X),
@@ -573,6 +617,7 @@ impl World {
             }
         }
         self.sky_updates.remove = removals;
+        self.sky_updates.note_removals_from(queued);
         self.sky_updates.note_peak();
         self.columns.get_mut(&key).unwrap().sky_lit = false;
         for cy in self.generator.dimension.chunk_rows() {
@@ -701,6 +746,89 @@ impl World {
         slot.increase = queue.increase;
         slot.flood = queue.flood;
         slot.flood_head = queue.flood_head;
+        // Work found while resolving stays within reach of the queued work
+        // it came from, so the columns noted when that was queued still
+        // bound it (see `light_pending_near`).
+        slot.columns = queue.columns;
+        slot.last_column = queue.last_column;
+        if slot.is_empty() {
+            slot.columns.clear();
+            slot.last_column = None;
+        }
+    }
+
+    /// v1.0 Track 2: whether queued light work could still change the light
+    /// at `p`. Light spreads at most 15 steps and loses a level each one
+    /// below the implied sky sources, so resolving the queues changes only
+    /// cells within 30 blocks of queued work (a removal clears at most 15
+    /// steps out and the relight from its edge reaches at most 15 more).
+    /// Work queued only in storage columns that are not `p`'s or one of its
+    /// eight neighbours is at least 33 blocks away horizontally, so the light
+    /// at `p` already holds its settled value.
+    pub(super) fn light_pending_near(&self, p: IVec3) -> bool {
+        if self.light_settled() {
+            return false;
+        }
+        let c = IVec2::new(p.x >> 5, p.z >> 5);
+        [&self.light_updates, &self.sky_updates]
+            .into_iter()
+            .filter(|q| !q.is_empty())
+            .any(|q| (-1..=1).any(|dx| (-1..=1).any(|dz| q.columns.contains(&(c + IVec2::new(dx, dz))))))
+    }
+
+    /// Whether queued light work could change the light anywhere in the
+    /// storage columns `lo..=hi` (each corner inclusive), with the same
+    /// one-column margin as [`World::light_pending_near`].
+    pub(super) fn light_pending_within(&self, lo: IVec2, hi: IVec2) -> bool {
+        if self.light_settled() {
+            return false;
+        }
+        let (lo, hi) = (lo - IVec2::ONE, hi + IVec2::ONE);
+        [&self.light_updates, &self.sky_updates]
+            .into_iter()
+            .filter(|q| !q.is_empty())
+            .any(|q| q.columns.iter().any(|c| c.cmpge(lo).all() && c.cmple(hi).all()))
+    }
+
+    /// v1.0 Track 2: before a tick, resolves queued light if it could change
+    /// the light anywhere the tick reads it: the block-ticking area around
+    /// every player (Java's level-32 chunks, which hold the random ticks,
+    /// precipitation, block entities and, one chunk inside, the entities).
+    /// Light still settling only farther out, such as that of chunks just
+    /// streamed in at the edge of a large render distance, is left to the
+    /// streaming budget; nothing the tick reads can see it. With no players
+    /// registered every loaded cell ticks, so everything is resolved.
+    /// Returns whether it resolved anything.
+    pub fn settle_light_for_ticks(&mut self) -> bool {
+        if self.light_settled() {
+            return false;
+        }
+        let near = match self.activity.block_columns() {
+            None => true,
+            Some(areas) => areas.iter().any(|&(lo, hi)| self.light_pending_within(lo, hi)),
+        };
+        if near {
+            self.update_block_light();
+        }
+        near
+    }
+
+    /// Whether the light the tick reads is settled (see
+    /// [`World::settle_light_for_ticks`]): what natural spawning waits for.
+    pub fn light_settled_for_ticks(&self) -> bool {
+        match self.activity.block_columns() {
+            None => self.light_settled(),
+            Some(areas) => !areas.iter().any(|&(lo, hi)| self.light_pending_within(lo, hi)),
+        }
+    }
+
+    /// Resolves queued light only if it could change the light at `p`: the
+    /// growth rules' read (v1.0 Track 2, owner decision of 2026-11-25 to
+    /// bound it). It reads exactly what a full flush would give it.
+    pub(super) fn settle_light_at(&mut self, p: IVec3) {
+        if self.light_pending_near(p) {
+            self.update_block_light();
+        }
     }
 }
 
@@ -1542,5 +1670,109 @@ mod tests {
         world.set_block(IVec3::new(10, 64, 8), Block::TORCH);
         assert_eq!(world.raw_brightness(open, 11), Some(12));
         assert_eq!(world.raw_brightness(open + IVec3::new(0, -1, 0), 0), Some(0), "inside stone");
+    }
+
+    /// v1.0 Track 2: a growth check resolves queued light only when it could
+    /// change the light it reads, and reads the settled value either way.
+    #[test]
+    fn growth_light_skips_far_light_work_and_reads_the_settled_value() {
+        let mut world = flat_test_world((-1..=5).flat_map(|x| (-1..=1).map(move |z| IVec2::new(x, z))), 63);
+        let crop = IVec3::new(16, 64, 16);
+        // A shelter and a torch by the crop, resolved.
+        world.set_block(IVec3::new(18, 64, 16), Block::TORCH);
+        let settled = (world.growth_light(crop, false), world.growth_light(crop, true));
+        // Work four columns away (x 128..160): a roof over open sky and torches.
+        for x in 136..150 {
+            for z in 8..24 {
+                world.edit(IVec3::new(x, 70, z), Block::STONE, true);
+            }
+        }
+        world.edit(IVec3::new(140, 64, 16), Block::TORCH, true);
+        assert!(!world.light_settled());
+        assert!(!world.light_pending_near(crop));
+        assert_eq!((world.growth_light(crop, false), world.growth_light(crop, true)), settled);
+        assert!(!world.light_settled(), "the far work is left queued");
+        // Work in a neighbouring column is resolved before the read.
+        world.edit(IVec3::new(40, 64, 16), Block::GLOWSTONE, true);
+        assert!(world.light_pending_near(crop));
+        let lit = world.growth_light(crop, false);
+        assert!(world.light_settled(), "a nearby change resolves everything queued");
+        assert_eq!(lit, world.raw_brightness(crop, 0).unwrap());
+    }
+
+    /// Whatever light work is queued, half resolved or not, a cell the
+    /// locality test calls clear holds its settled light.
+    #[test]
+    fn cells_clear_of_queued_light_work_already_hold_their_settled_light() {
+        let mut world = flat_test_world((-3..=3).flat_map(|x| (-3..=3).map(move |z| IVec2::new(x, z))), 63);
+        let mut rng = 0x1234_5678_9abc_def1u64;
+        let mut roll = |n: u64| {
+            rng ^= rng << 13;
+            rng ^= rng >> 7;
+            rng ^= rng << 17;
+            (rng % n) as i32
+        };
+        let (mut clear, mut checked) = (0usize, 0usize);
+        for round in 0..24 {
+            // Edits in a corner region two columns wide.
+            for _ in 0..1 + roll(6) {
+                let p = IVec3::new(-96 + roll(60), 58 + roll(14), -96 + roll(60));
+                let b = [Block::TORCH, Block::GLOWSTONE, Block::STONE, Block::AIR, Block::AIR][roll(5) as usize];
+                world.edit(p, b, true);
+            }
+            // Stream a column out and back in now and then, at either side.
+            if round % 6 == 5 {
+                let c = if round % 12 == 5 { IVec2::new(3, 3) } else { IVec2::new(-3, -3) };
+                world.unload_test_column(c);
+                world.load_test_column(c, 63);
+            }
+            // Leave the queues part way through.
+            for _ in 0..roll(4) {
+                world.update_block_light_within(std::time::Duration::ZERO);
+            }
+            let mut seen = Vec::new();
+            for x in (-96..=96).step_by(8) {
+                for z in (-96..=96).step_by(8) {
+                    for y in (58..=74).step_by(4) {
+                        let p = IVec3::new(x, y, z);
+                        if !world.light_pending_near(p) {
+                            seen.push((p, world.block_light(p), world.sky_light(p)));
+                        }
+                    }
+                }
+            }
+            clear += seen.len();
+            world.update_block_light();
+            for (p, block, sky) in seen {
+                assert_eq!((world.block_light(p), world.sky_light(p)), (block, sky), "round {round} at {p}");
+                checked += 1;
+            }
+        }
+        assert!(clear > 1000 && checked == clear, "{clear} cells were clear of queued work");
+    }
+
+    /// Before a tick, light settling only beyond the simulated area is left
+    /// queued; light the tick can read is resolved.
+    #[test]
+    fn ticks_resolve_only_the_light_they_can_read() {
+        let mut world = flat_test_world((-1..=8).flat_map(|x| (-1..=1).map(move |z| IVec2::new(x, z))), 63);
+        world.set_simulation_distance(5);
+        world.set_simulation_players([glam::DVec3::new(16.0, 64.0, 16.0)]);
+        // Block ticking reaches six 16-block chunks past the player's,
+        // x -80..=127: storage columns -3..=3, and one more of margin.
+        world.edit(IVec3::new(230, 64, 16), Block::GLOWSTONE, true);
+        assert!(!world.light_settled());
+        assert!(world.light_settled_for_ticks());
+        assert!(!world.settle_light_for_ticks());
+        assert!(!world.light_settled(), "far light is left to streaming");
+        world.edit(IVec3::new(150, 64, 16), Block::GLOWSTONE, true);
+        assert!(!world.light_settled_for_ticks());
+        assert!(world.settle_light_for_ticks());
+        assert!(world.light_settled());
+        // Without registered players every loaded cell ticks.
+        let mut fixture = flat_test_world((-1..=8).flat_map(|x| (-1..=1).map(move |z| IVec2::new(x, z))), 63);
+        fixture.edit(IVec3::new(230, 64, 16), Block::GLOWSTONE, true);
+        assert!(!fixture.light_settled_for_ticks());
+        assert!(fixture.settle_light_for_ticks() && fixture.light_settled());
     }
 }

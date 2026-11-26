@@ -785,7 +785,14 @@
    "value_label": "%s Chunks",
    "min": 2,
    "max": 128,
-   "default": 128
+   "option_default": 128,
+   "preset_values": {
+    "fast": 32,
+    "fancy": 64,
+    "fabulous": 128
+   },
+   "default_preset": "fancy",
+   "default": 64
   },
   "hide_sky_flashes": {
    "key": "hideLightningFlashes",

@@ -21,6 +21,8 @@ mod item_sprites;
 mod outline;
 pub mod panorama;
 pub mod particles;
+#[cfg(test)]
+mod shader_equivalence;
 pub mod signs;
 pub mod textures;
 pub mod ui;
@@ -76,6 +78,10 @@ struct Globals {
     sunrise: [f32; 4],
     /// sRGB cloud colour and alpha (Java's `visual/cloud_color`).
     cloud_color: [f32; 4],
+    /// rgb: the fog colour as the sRGB target encodes it, so the shaders'
+    /// sRGB fog blend need not convert a constant per fragment (v1.0
+    /// Track 2); w: unused.
+    fog_srgb: [f32; 4],
 }
 
 struct ChunkMesh {
@@ -1652,6 +1658,10 @@ impl Renderer {
             sky_light: [p.sky_light_color[0], p.sky_light_color[1], p.sky_light_color[2], 0.0],
             sunrise: p.sunrise,
             cloud_color: p.cloud_color,
+            fog_srgb: {
+                let [r, g, b] = voxelcraft::atmosphere::encode(p.fog_color);
+                [r, g, b, 0.0]
+            },
         };
         self.queue.write_buffer(&self.globals_buf, 0, bytemuck::bytes_of(&globals));
 

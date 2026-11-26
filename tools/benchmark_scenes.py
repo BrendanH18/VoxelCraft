@@ -15,6 +15,8 @@ TICKS_PER_SECOND = 20.0
 TICK_TOLERANCE = 0.005  # matches voxelcraft::performance::TICK_TOLERANCE
 DEFAULT_FRAME_LATENCY = 2  # matches voxelcraft::performance::DEFAULT_FRAME_LATENCY
 WINDOW_MODES = ["windowed", "borderless", "exclusive"]  # matches voxelcraft::performance::WINDOW_MODES
+# 32-block chunks: 256 blocks, the gate's view distance (benchmarks/scenes.json).
+REFERENCE_RENDER_DISTANCE = 8
 PER_FRAME_KEYS = (
     "frame_times_ms",
     "frame_acquire_ms",
@@ -152,7 +154,15 @@ def run_problems(report, specification):
 
 
 def reference_gate(
-    metadata, definitions, quick, native, repeats, offscreen=False, seconds=None, presentation_differences=()
+    metadata,
+    definitions,
+    quick,
+    native,
+    repeats,
+    offscreen=False,
+    seconds=None,
+    presentation_differences=(),
+    render_distance=REFERENCE_RENDER_DISTANCE,
 ):
     """Overall reference result: protocol, hardware, scene coverage and every run's validity and thresholds.
     Since 2026-11-14 the gate is the offscreen suite (the game's own frames: 1% low 120 FPS, p99 8.33 ms);
@@ -166,6 +176,8 @@ def reference_gate(
         problems.append("quick smoke protocol")
     if seconds:
         problems.append("sample period overridden")
+    if render_distance != REFERENCE_RENDER_DISTANCE:
+        problems.append(f"render distance {render_distance} is not the reference {REFERENCE_RENDER_DISTANCE}")
     if native:
         problems.append("native-resolution runs are reported separately")
     if repeats < 3:
@@ -210,6 +222,12 @@ def main():
         help="windowed (default), borderless (macOS native fullscreen) or exclusive (display mode switch, preferring 1920x1080); other than windowed is a presentation experiment, never acceptance evidence",
     )
     parser.add_argument(
+        "--rd",
+        type=int,
+        default=REFERENCE_RENDER_DISTANCE,
+        help="render distance in 32-block chunks (default 8, the gate's 256 blocks); any other is a comparison run, never acceptance evidence",
+    )
+    parser.add_argument(
         "--no-gpu-timestamps",
         action="store_true",
         help="do not time frames on the GPU (on by default where the adapter supports it), to check the timing costs nothing",
@@ -240,6 +258,8 @@ def main():
         "executable_sha256": hashlib.sha256(executable.read_bytes()).hexdigest(),
         "protocol": "quick smoke"
         if args.quick
+        else "render-distance comparison"
+        if args.rd != REFERENCE_RENDER_DISTANCE
         else "offscreen gate"
         if args.offscreen
         else "presentation experiment"
@@ -275,7 +295,7 @@ def main():
                 "--seed",
                 str(specification["seed"]),
                 "--rd",
-                "8",
+                str(args.rd),
                 "--graphics",
                 specification["graphics"],
                 "--no-vsync",
@@ -336,6 +356,7 @@ def main():
         args.offscreen,
         args.seconds,
         presentation_differences,
+        args.rd,
     )
     metadata["reference_gate_passed"] = passed
     metadata["reference_gate_problems"] = problems

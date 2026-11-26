@@ -25,6 +25,9 @@ struct Globals {
     // rgb: sRGB visual/sky_light_color (Java's gamma-space lightmap).
     sky_light: vec4<f32>,
     sunrise: vec4<f32>,
+    cloud_color: vec4<f32>,
+    // rgb: the fog colour, sRGB-encoded on the CPU (to_srgb(fog_color)).
+    fog_srgb: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> g: Globals;
@@ -54,10 +57,13 @@ fn linear_fog(d: f32, start: f32, end: f32) -> f32 {
 fn fog_value(d: vec2<f32>) -> f32 {
     return max(linear_fog(d.x, g.fog.x, g.fog.y), linear_fog(d.y, g.fog.z, g.fog.w));
 }
+// v1.0 Track 2: the fog colour's encode is a per-frame constant (g.fog_srgb),
+// and a fully fogged fragment is the fog colour itself.
 fn apply_fog(color: vec3<f32>, d: vec2<f32>) -> vec3<f32> {
     let f = fog_value(d);
     if f <= 0.0 { return color; }
-    return from_srgb(mix(to_srgb(color), to_srgb(g.fog_color.rgb), f));
+    if f >= 1.0 { return g.fog_color.rgb; }
+    return from_srgb(mix(to_srgb(color), g.fog_srgb.rgb, f));
 }
 
 // Night vision (Java's lightmap): brightens every light level toward full,
@@ -119,6 +125,13 @@ struct VsOut {
     @location(4) light: vec2<f32>,
     @location(5) rel: vec3<f32>,
     @location(6) @interpolate(flat) normal: vec3<f32>,
+    // v1.0 Track 2: rgb is the Overworld's converted lightmap and `sun_tint`
+    // its sun-facing tint (`overworld_parts`) when all four corners of the
+    // quad carry the same light, so both are the same at every fragment; w
+    // is 1 then, else 0 and the fragment works them out from the
+    // interpolated light.
+    @location(7) @interpolate(flat) lightmap: vec4<f32>,
+    @location(8) @interpolate(flat) sun_tint: vec3<f32>,
 };
 
 // Reserved detail coordinate 31 is the half-sixteenth frogspawn height.
@@ -237,6 +250,15 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>) -> Vs
         vec3<f32>(-0.707, 0.0, 0.707), vec3<f32>(0.707, 0.0, 0.707));
     out.normal = normals[face];
     out.light = vec2<f32>(f32(light & 15u), f32(light >> 4u)) / 15.0;
+    // Four equal corner bytes: the light is constant across the quad.
+    let uniform_light = w2 == (w2 & 255u) * 0x01010101u;
+    out.lightmap = vec4<f32>(0.0);
+    out.sun_tint = vec3<f32>(1.0);
+    if uniform_light && g.ambient.w <= 0.0 {
+        let o = overworld_parts(out.light.x, out.light.y, out.normal);
+        out.lightmap = vec4<f32>(o.lit, 1.0);
+        out.sun_tint = o.sun;
+    }
     return out;
 }
 
@@ -246,6 +268,9 @@ fn curve(l: vec2<f32>) -> vec2<f32> {
 }
 
 fn lighting(in: VsOut) -> vec3<f32> {
+    if in.lightmap.w > 0.5 {
+        return in.lightmap.rgb * in.shade * in.sun_tint;
+    }
     let l = curve(in.light);
     let sky = l.x * g.params.z * daylight_tint(in.normal);
     if g.ambient.w > 0.0 {
@@ -287,7 +312,16 @@ fn daylight_tint(normal: vec3<f32>) -> vec3<f32> {
 // outside the conversion (the tint weighted by the sky's share), so fully
 // sunlit faces look as before while shade, night and torch-lit interiors
 // take Java's darkness and warmth.
+struct OverworldLight {
+    // The converted lightmap, and the sun-facing tint weighted by the sky's share.
+    lit: vec3<f32>,
+    sun: vec3<f32>,
+};
 fn overworld_light(sky_level: f32, block_level: f32, normal: vec3<f32>, shade: f32) -> vec3<f32> {
+    let o = overworld_parts(sky_level, block_level, normal);
+    return o.lit * shade * o.sun;
+}
+fn overworld_parts(sky_level: f32, block_level: f32, normal: vec3<f32>) -> OverworldLight {
     let sky = (sky_level / (4.0 - 3.0 * sky_level)) * g.params.z * g.sky_light.rgb;
     let p = (2.0 * block_level - 1.0) * (2.0 * block_level - 1.0);
     let hue = mix(vec3<f32>(1.0, 0.847, 0.549), vec3<f32>(1.0), 0.9 * p);
@@ -297,7 +331,7 @@ fn overworld_light(sky_level: f32, block_level: f32, normal: vec3<f32>, shade: f
     let b = max(max(block.r, block.g), block.b);
     let share = clamp(s / max(s + b, 1e-4), 0.0, 1.0);
     let sun = mix(vec3<f32>(1.0), daylight_tint(normal), share);
-    return from_srgb(night_vision(java)) * shade * sun;
+    return OverworldLight(from_srgb(night_vision(java)), sun);
 }
 
 // Java 26.3 adds the environment ambient colour to sky and block light.

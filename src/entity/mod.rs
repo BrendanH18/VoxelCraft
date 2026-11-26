@@ -26,6 +26,7 @@ pub mod category;
 mod chunk_storage;
 pub mod decor;
 pub mod dispensed;
+pub mod draw_distance;
 pub mod path;
 pub use bobber::{CatchContext, roll_catch, set_damage};
 pub mod armadillo;
@@ -661,6 +662,12 @@ pub trait MobWorld: BlockSource {
     fn light_settled(&self) -> bool {
         true
     }
+    /// Whether the light natural spawning reads, around the players, is
+    /// settled; light still spreading farther out can't change a spawn
+    /// (v1.0 Track 2, [`World::light_settled_for_ticks`]).
+    fn spawn_light_settled(&self) -> bool {
+        self.light_settled()
+    }
     /// Java's `WORLD_SURFACE` heightmap: the highest non-air block of a
     /// loaded column. Defaults to the light-blocking surface.
     fn world_surface(&self, x: i32, z: i32) -> Option<i32> {
@@ -830,6 +837,9 @@ impl MobWorld for World {
     }
     fn light_settled(&self) -> bool {
         World::light_settled(self)
+    }
+    fn spawn_light_settled(&self) -> bool {
+        World::light_settled_for_ticks(self)
     }
     fn surface(&self, x: i32, z: i32) -> Option<i32> {
         self.surface_height(x, z)
@@ -2208,15 +2218,19 @@ impl Entities {
         }
     }
 
-    /// Camera-relative geometry for every visible mob and other entity, rebuilt for this view.
+    /// Camera-relative geometry for every visible mob and other entity,
+    /// rebuilt for this view. `view` is Java's draw distances for the view
+    /// ([`draw_distance::DrawDistance`]); a plain `f32` draws everything
+    /// within that many blocks.
     pub fn mesh(
         &mut self,
         camera: DVec3,
         forward: Vec3,
-        max_dist: f32,
+        view: impl Into<draw_distance::DrawDistance>,
         time: f32,
         alpha: f64,
     ) -> &mut model::EntityMesh {
+        let view = view.into();
         self.mesh.clear();
         // v0.18 Track 6: draw each mob turned and mid-stride as of `alpha`,
         // then put the simulation's values back.
@@ -2225,7 +2239,7 @@ impl Entities {
             self.poses.push(m.pose_values());
             m.set_pose_values(m.render_pose(alpha as f32));
         }
-        self.rendered = model::build(&self.mobs, camera, forward, max_dist, time, alpha, &mut self.mesh);
+        self.rendered = model::build(&self.mobs, camera, forward, view, time, alpha, &mut self.mesh);
         for (m, &pose) in self.mobs.iter_mut().zip(&self.poses) {
             m.set_pose_values(pose);
         }
@@ -2244,9 +2258,9 @@ impl Entities {
         model::build_shulker_bullets(&self.shulker_bullets, camera, time, alpha, &mut self.mesh);
         model::build_lightning(&self.lightning, camera, &mut self.mesh);
         model::build_puffs(&self.puffs, camera, alpha, &mut self.mesh);
-        model::build_orbs(&self.orbs, camera, max_dist, time, alpha, &mut self.mesh);
-        model::build_minecarts(&self.minecarts, camera, alpha, &mut self.mesh);
-        decor::build(&self.decor, camera, max_dist, alpha, &mut self.mesh);
+        model::build_orbs(&self.orbs, camera, &view, time, alpha, &mut self.mesh);
+        model::build_minecarts(&self.minecarts, camera, &view, alpha, &mut self.mesh);
+        decor::build(&self.decor, camera, &view, alpha, &mut self.mesh);
         dragon_model::build_crystals(&self.crystals, camera, time, alpha, &mut self.mesh);
         if let Some(fight) = &self.fight {
             dragon_model::build_fight(fight, &self.crystals, camera, time, alpha, &mut self.mesh);

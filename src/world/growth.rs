@@ -511,7 +511,7 @@ impl World {
             // `SnowLayerBlock.randomTick`: block light above 11 melts it
             // (`dropResources` without an entity: no snowballs).
             RandomRule::Snow => {
-                self.update_block_light();
+                self.settle_light_at(p);
                 if self.block_light(p) > 11 {
                     self.spill_block(p, b);
                     self.edit(p, Block::AIR, true);
@@ -552,8 +552,14 @@ impl World {
     /// weather `skyDarken`; otherwise `getRawBrightness(p, 0)`, the stored
     /// skylight at any hour. Where skylight is not exact yet (a partly loaded
     /// border) only block light counts.
+    ///
+    /// v1.0 Track 2 (owner, 2026-11-25: bound it): queued light work is
+    /// resolved first only when it could change the light here
+    /// ([`World::settle_light_at`]), so a growth check no longer pays for
+    /// the light of chunks streaming in far away, and still reads exactly
+    /// the settled light.
     pub(super) fn growth_light(&mut self, p: IVec3, darkened: bool) -> u8 {
-        self.update_block_light();
+        self.settle_light_at(p);
         let darken = if darkened { self.sky_darken() } else { 0 };
         self.raw_brightness(p, darken).unwrap_or_else(|| self.block_light(p))
     }

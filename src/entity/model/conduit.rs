@@ -32,8 +32,14 @@ fn cage() -> [Cuboid; 12] {
     ]
 }
 
-/// Every active conduit within `max_dist` of the camera.
-pub fn build_conduits(world: &crate::world::World, camera: DVec3, max_dist: f32, out: &mut EntityMesh) {
+/// Every active conduit within Java's 64 blocks (v1.0 Track 2).
+pub fn build_conduits(
+    world: &crate::world::World,
+    camera: DVec3,
+    view: impl Into<crate::entity::draw_distance::DrawDistance>,
+    out: &mut EntityMesh,
+) {
+    let view = view.into();
     let light = ([255, 255, 0, 255], 255);
     for (pos, c) in world.loaded_conduits() {
         if !c.active {
@@ -44,7 +50,8 @@ pub fn build_conduits(world: &crate::world::World, camera: DVec3, max_dist: f32,
         let bob = (t * 0.1).sin() / 2.0 + 0.5;
         let bob = bob * bob + bob;
         let centre = pos.as_dvec3() + DVec3::new(0.5, 0.3 + f64::from(bob) * 0.2, 0.5);
-        if (centre - camera).length() > f64::from(max_dist) {
+        // `BlockEntityRenderer.shouldRender` measures from the cell's centre.
+        if !view.conduit(pos.as_dvec3() + DVec3::splat(0.5), camera) {
             continue;
         }
         let rel = (centre - camera).as_vec3();

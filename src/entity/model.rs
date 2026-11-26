@@ -1333,30 +1333,40 @@ fn pose(m: &Mob, time: f32) -> Parts {
     }
 }
 
-/// Appends triangles for every mob within `max_dist` of the camera that
-/// isn't behind it; returns how many mobs were drawn.
+/// Appends triangles for every mob Java would draw at `view`'s distances
+/// (v1.0 Track 2: [`super::draw_distance`]) that isn't behind the camera;
+/// returns how many mobs were drawn. A plain `f32` draws everything within
+/// that many blocks.
 pub fn build(
     mobs: &[Mob],
     camera: DVec3,
     forward: Vec3,
-    max_dist: f32,
+    view: impl Into<super::draw_distance::DrawDistance>,
     time: f32,
     alpha: f64,
     out: &mut EntityMesh,
 ) -> usize {
+    let view = view.into();
     let mut drawn = 0;
     for m in mobs {
         if m.trader.as_ref().is_some_and(|t| t.invisible) {
             continue;
         }
-        let rel = (m.previous_pos.lerp(m.pos, alpha) - camera).as_vec3();
+        let pos = m.previous_pos.lerp(m.pos, alpha);
+        let rel = (pos - camera).as_vec3();
         let center = rel + Vec3::Y * m.selection_shape().height as f32 * 0.5;
         let radius = if m.polar_bear.is_some() {
             (m.selection_shape().height as f32 * 0.5 + m.shape().half_width as f32).max(1.5)
         } else {
             1.5
         };
-        if center.length() > max_dist + radius || center.dot(forward) < -radius {
+        if center.dot(forward) < -radius {
+            continue;
+        }
+        let shape = m.shape();
+        // Java measures from the entity's feet; the fog test takes the
+        // model's centre and reach.
+        if !view.mob(m.kind, pos, pos - camera, shape.half_width, shape.height, radius) || view.fogged(center, radius) {
             continue;
         }
         drawn += 1;
@@ -1855,10 +1865,19 @@ pub fn build_puffs(puffs: &[Puff], camera: DVec3, alpha: f64, out: &mut EntityMe
 
 /// Experience orbs: small glowing cubes, bigger for bigger values, that
 /// shimmer between yellow and green like Java's tinted sprites.
-pub fn build_orbs(orbs: &[XpOrb], camera: DVec3, max_dist: f32, time: f32, alpha: f64, out: &mut EntityMesh) {
+pub fn build_orbs(
+    orbs: &[XpOrb],
+    camera: DVec3,
+    view: &super::draw_distance::DrawDistance,
+    time: f32,
+    alpha: f64,
+    out: &mut EntityMesh,
+) {
+    // `EntityTypes.EXPERIENCE_ORB`: 0.5 x 0.5, tracked within 6 chunks.
+    let size = super::draw_distance::box_size(0.5, 0.5, 0.5);
     for (i, o) in orbs.iter().enumerate() {
         let pos = o.previous_pos.lerp(o.pos, alpha);
-        if pos.distance_squared(camera) > (max_dist as f64).powi(2) {
+        if !view.entity(pos, pos - camera, size, 6, 0.5) {
             continue;
         }
         // Java's sprites span about 4 to 12 texels at 0.3 scale; in model
@@ -1915,9 +1934,25 @@ fn humanoid_armor(parts: &[Part]) -> [super::player_model::Limb; 6] {
     ]
 }
 
-pub(super) fn build_minecarts(carts: &[super::minecart::Minecart], camera: DVec3, alpha: f64, out: &mut EntityMesh) {
+pub(super) fn build_minecarts(
+    carts: &[super::minecart::Minecart],
+    camera: DVec3,
+    view: &super::draw_distance::DrawDistance,
+    alpha: f64,
+    out: &mut EntityMesh,
+) {
     for cart in carts {
         let pos = cart.previous_pos.lerp(cart.pos, alpha);
+        // `EntityTypes`: minecarts are 0.98 x 0.7 and tracked within 8
+        // chunks; the cushion is 1 x 0.25 and tracked within 10.
+        let (size, tracking) = if cart.kind.cushion().is_some() {
+            (super::draw_distance::box_size(1.0, 0.25, 1.0), 10)
+        } else {
+            (super::draw_distance::box_size(0.98, 0.7, 0.98), 8)
+        };
+        if !view.entity(pos, pos - camera, size, tracking, 1.0) {
+            continue;
+        }
         let rel = (pos - camera).as_vec3();
         let rot = Quat::from_rotation_y(std::f32::consts::FRAC_PI_2 - cart.yaw);
         let xf = |p: Vec3| rel + rot * (p / 16.0);

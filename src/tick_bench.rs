@@ -62,6 +62,37 @@ pub struct Options {
     /// Frames per second the harness paces itself to (its frame work is
     /// measured, not the pacing).
     pub frame_rate: f64,
+    /// How far the entity mesh is built (v1.0 Track 2).
+    pub entity_cull: EntityCull,
+}
+
+/// Which entities the frame's entity mesh builds.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum EntityCull {
+    /// Java 26.3's distances ([`crate::entity::draw_distance`]), as the
+    /// game draws since v1.0.
+    #[default]
+    Java,
+    /// v0.18's: everything within the clear Overworld fog's end,
+    /// `min(1024, render distance * sqrt 2)` blocks (`Fog::end`).
+    Fog,
+}
+
+impl EntityCull {
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "java" => Some(Self::Java),
+            "fog" => Some(Self::Fog),
+            _ => None,
+        }
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::Java => "java",
+            Self::Fog => "fog",
+        }
+    }
 }
 
 impl Default for Options {
@@ -73,6 +104,7 @@ impl Default for Options {
             warmup: 10.0,
             seconds: 60.0,
             frame_rate: 240.0,
+            entity_cull: EntityCull::Java,
         }
     }
 }
@@ -368,6 +400,8 @@ struct Frame {
     /// `Entities::mesh`, the CPU side of the entity pass (reported, not in
     /// `total`: the frame loop's render half is outside this harness).
     entity_mesh: f32,
+    /// Mobs the entity mesh drew.
+    drawn_mobs: u32,
     ticks: TickTimes,
     ticked: u8,
 }
@@ -434,7 +468,8 @@ pub fn run(options: &Options) -> Result<Value, String> {
         f.stream = a.elapsed().as_secs_f32() * 1000.0;
         if next_tick <= Instant::now() {
             let a = Instant::now();
-            h.world.update_block_light();
+            // As the game does (v1.0 Track 2): only the light the tick can read.
+            h.world.settle_light_for_ticks();
             f.light = a.elapsed().as_secs_f32() * 1000.0;
         }
         // A fixed 20 Hz clock that never runs more than 10 ticks a frame.
@@ -458,9 +493,24 @@ pub fn run(options: &Options) -> Result<Value, String> {
         f.ticked = due as u8;
         let a = Instant::now();
         let forward = glam::Vec3::new(1.0, -0.2, 0.0).normalize();
-        let mesh = h.entities.mesh(h.camera, forward, 256.0, t as f32, 1.0);
+        // The clear Overworld's fog: environmental to 1,024 blocks, render
+        // distance to the drawn radius.
+        let (environmental_end, render_end) = (1024.0f32, options.render_distance as f32 * 32.0);
+        let view = match options.entity_cull {
+            EntityCull::Java => crate::entity::draw_distance::DrawDistance::new(
+                h.camera,
+                options.render_distance,
+                environmental_end,
+                render_end,
+            ),
+            EntityCull::Fog => crate::entity::draw_distance::DrawDistance::fog_only(
+                environmental_end.min(render_end * std::f32::consts::SQRT_2),
+            ),
+        };
+        let mesh = h.entities.mesh(h.camera, forward, view, t as f32, 1.0);
         std::hint::black_box(mesh.len());
         f.entity_mesh = a.elapsed().as_secs_f32() * 1000.0;
+        f.drawn_mobs = h.entities.rendered as u32;
         if t >= options.warmup {
             frames.push(f);
             mobs = mobs.max(h.entities.mobs.len());
@@ -483,6 +533,7 @@ pub fn run(options: &Options) -> Result<Value, String> {
     phases.insert("stream".into(), summary(frames.iter().map(|f| f.stream).collect()));
     phases.insert("pre_tick_light".into(), summary(frames.iter().map(|f| f.light).collect()));
     phases.insert("entity_mesh".into(), summary(frames.iter().map(|f| f.entity_mesh).collect()));
+    let drawn = frames.iter().map(|f| f64::from(f.drawn_mobs)).sum::<f64>() / frames.len().max(1) as f64;
     for (i, name) in TICK_PHASES.iter().enumerate() {
         phases.insert((*name).into(), summary(ticks.iter().map(|t: &TickTimes| t[i]).collect()));
     }
@@ -518,6 +569,8 @@ pub fn run(options: &Options) -> Result<Value, String> {
         "ticks": ticks.len(),
         "late_tick_frames": late_ticks,
         "max_mobs": mobs,
+        "entity_cull": options.entity_cull.name(),
+        "mean_drawn_mobs": (drawn * 10.0).round() / 10.0,
         "max_loaded_chunks": chunks,
         "frame_ms": summary(totals.clone()),
         "frames_over_8_33_ms": totals.iter().filter(|&&v| v > 8.33).count(),
