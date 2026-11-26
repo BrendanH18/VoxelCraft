@@ -1661,3 +1661,27 @@ scripts/boat-check.sh -- 'cargo test --profile ci --locked --test title_identity
 facts come from the 26.3 asset index (index 34), not the jar, and are
 recorded there: the panorama faces are 1024 x 1024 and
 `panorama_overlay.png` is a single transparent pixel.
+
+## Foods (v1.0 Track 4)
+
+`foods.json` lists every item `Items` registers with `Item$Properties.food`
+(40 in 26.3): its `Foods` properties (nutrition, saturation modifier,
+`alwaysEdible`), the saturation `FoodConstants.saturationByModifier` gives
+(`nutrition * modifier * 2.0F`, rounded to a float as Java computes it),
+its `Consumables` entry (consume seconds and ticks, eat or drink, status
+effects and their chance, removed effects, clear-all, random teleport),
+its stack size and its `usingConvertsTo` remainder. The extractor reads the
+bytecode with `javap`, checks the pinned server hash, fails on any
+registration or consume effect it doesn't know, and fails if a `Foods`
+constant has no item:
+
+```sh
+python3 tools/extract_java_food_fixtures.py /path/to/server.jar --output target/java-foods.json
+diff tests/fixtures/java/26.3/foods.json target/java-foods.json
+scripts/boat-check.sh -- 'cargo test --profile ci --locked --test java_foods'
+```
+
+`tests/java_foods.rs` checks it both ways: every Java food resolves to a
+VoxelCraft item with exactly these values, and every VoxelCraft item with
+food values is one of them
+([record](../../../../docs/verification/2026-11-25-v1.0-farming-weather.md)).

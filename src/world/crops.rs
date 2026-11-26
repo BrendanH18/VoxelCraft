@@ -12,6 +12,10 @@ pub const FIRST: u16 = 10816;
 /// `CropBlock.randomTick` and `StemBlock.randomTick`: `getRawBrightness(pos, 0)`
 /// of at least this (`tests/fixtures/java/26.3/growth.json`).
 pub const MIN_LIGHT: u8 = 9;
+/// `CropBlock.hasSufficientLight`: crops (and the pitcher crop's lower
+/// half) survive only at `getRawBrightness(pos, 0)` of at least this.
+/// 26.3 has no sky-access exception.
+pub const SURVIVE_LIGHT: u8 = 8;
 /// Both grow one time in `(int) (GROWTH_NUMERATOR / getGrowthSpeed) + 1`.
 pub const GROWTH_NUMERATOR: f32 = 25.0;
 pub const BEETROOT: u16 = FIRST + 24;
@@ -116,6 +120,14 @@ pub fn supports_fruit(b: Block) -> bool {
                 | ob::PALE_MOSS_BLOCK
         )
 }
+/// Blocks whose `canSurvive` asks for [`SURVIVE_LIGHT`]: the `CropBlock`s
+/// (wheat, carrots, potatoes, beetroots, the torchflower crop) and the
+/// pitcher crop's lower half (`PitcherCropBlock.canSurvive`). Stems don't.
+pub fn needs_light(b: Block) -> bool {
+    b.as_crop().is_some()
+        || super::sniffer_plants::torch_age(b).is_some()
+        || matches!(super::sniffer_plants::pitcher_state(b), Some((_, false)))
+}
 fn same_plant(a: Block, b: Block) -> bool {
     if super::sniffer_plants::torch_age(a).is_some() {
         return super::sniffer_plants::torch_age(b).is_some();
@@ -129,17 +141,43 @@ fn same_plant(a: Block, b: Block) -> bool {
     a.as_crop().zip(b.as_crop()).is_some_and(|((a, _), (b, _))| a == b)
 }
 impl World {
-    /// `CropBlock.getGrowthSpeed`: hydrated centre contributes 3, hydrated
-    /// neighbours 3/4 each, dry farmland 1 and 1/4. Crowding halves it once.
+    /// `CropBlock.hasSufficientLight` at `p`, from the light as it stands:
+    /// Java's shape updates read the light engine before it catches up
+    /// with the change that sent them, and so does this. Where skylight
+    /// isn't known yet (a partly loaded border) the crop is given the
+    /// benefit of the doubt: a block update there must not break a farm
+    /// over light that hasn't been worked out.
+    pub fn crop_has_light(&self, p: IVec3) -> bool {
+        self.raw_brightness(p, 0).is_none_or(|light| light >= SURVIVE_LIGHT)
+    }
+
+    /// The shape updates a change at `p` sends its six neighbours: a crop
+    /// among them without [`SURVIVE_LIGHT`] breaks and drops its loot
+    /// (`VegetationBlock.updateShape` returns air, `updateOrDestroy`). The
+    /// changed block itself gets no shape update, as in Java.
+    pub(super) fn update_crop_light(&mut self, p: IVec3) {
+        for q in [p - IVec3::Y, p + IVec3::Y, p + IVec3::X, p - IVec3::X, p + IVec3::Z, p - IVec3::Z] {
+            if let Some(b) = self.get_block(q).filter(|&b| needs_light(b))
+                && !self.crop_has_light(q)
+            {
+                self.spill_block(q, b);
+                self.set_block(q, Block::AIR);
+            }
+        }
+    }
+
+    /// `CropBlock.getGrowthSpeed`: farmland (`#grows_crops`) under the crop
+    /// contributes 1, or 3 at any moisture above 0; the eight around it a
+    /// quarter of that each. Crowding halves it once.
     pub fn crop_growth_speed(&self, p: IVec3, plant: Block) -> f32 {
         let mut speed = 1.0;
         for dx in -1..=1 {
             for dz in -1..=1 {
                 let b = self.get_block(p + IVec3::new(dx, -1, dz));
-                let mut v = match b {
-                    Some(Block::WET_FARMLAND) => 3.0,
-                    Some(Block::FARMLAND) => 1.0,
-                    _ => 0.0,
+                let mut v = match b.and_then(super::farmland::moisture) {
+                    Some(0) => 1.0,
+                    Some(_) => 3.0,
+                    None => 0.0,
                 };
                 if dx != 0 || dz != 0 {
                     v /= 4.0;

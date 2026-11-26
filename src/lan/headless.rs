@@ -172,6 +172,15 @@ impl HeadlessHost {
             if s.dead || s.connection.send(Packet::State(json!({"tick":self.tick,"sequence":s.input.sequence,"harness":true,"state":agent.observe(&self.world,0)}))).and_then(|()|s.connection.flush()).is_err() {s.dead=true;s.connection.close("Client is too slow or disconnected");}
         }
         crate::simulation::tick_world_rules(&mut self.world, self.spawn, true, 3);
+        // `Block.pushEntitiesUp` for snow layers and farmland turned to dirt.
+        let block_pushes = self.world.take_block_pushes();
+        for &(cell, bottom, top) in &block_pushes {
+            for agent in self.players.values_mut() {
+                let shape = agent.session.player.collision_shape();
+                crate::world::precipitation::push_entity_up(&mut agent.session.player.pos, shape, cell, bottom, top);
+            }
+        }
+        self.entities.apply_block_pushes(&block_pushes);
         // v0.17 Track B: moving blocks push the harness players and entities.
         for agent in self.players.values_mut() {
             crate::world::piston::push_player(&self.world, &mut agent.session.player);

@@ -265,19 +265,18 @@ impl Game {
             let entities = &self.mobs.entities;
             self.world.resolve_shrieks(&mut players, |at| entities.warden_near(at));
         }
-        let snow_pushes = self.world.take_snow_pushes();
-        for &(cell, height) in &snow_pushes {
+        // `Block.pushEntitiesUp` for snow layers and farmland turned to dirt.
+        let block_pushes = self.world.take_block_pushes();
+        for &(cell, bottom, top) in &block_pushes {
+            use crate::world::precipitation::push_entity_up;
             let shape = self.session.player.collision_shape();
-            crate::world::precipitation::push_entity(&mut self.session.player.pos, shape, cell, height);
+            push_entity_up(&mut self.session.player.pos, shape, cell, bottom, top);
             for bot in self.agents.players.values_mut().filter(|b| b.active) {
                 let shape = bot.agent.session.player.collision_shape();
-                crate::world::precipitation::push_entity(&mut bot.agent.session.player.pos, shape, cell, height);
-            }
-            for m in &mut self.mobs.entities.mobs {
-                let shape = m.shape();
-                crate::world::precipitation::push_entity(&mut m.pos, shape, cell, height);
+                push_entity_up(&mut bot.agent.session.player.pos, shape, cell, bottom, top);
             }
         }
+        self.mobs.entities.apply_block_pushes(&block_pushes);
         // v0.17 Track B: blocks pistons moved this tick push and launch
         // players and entities (`PistonMovingBlockEntity.moveCollidedEntities`).
         if !self.world.piston_pushes().is_empty() {

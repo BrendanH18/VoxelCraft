@@ -1282,11 +1282,14 @@ impl Block {
         let c = super::double_chest::plain_single(c.0).unwrap_or(c);
         // Aged sugar cane answers as the age-0 state.
         let c = if super::sugar_cane::owns(c.0) { Block::SUGAR_CANE } else { c };
+        // Farmland of moisture 1-6 answers as dry farmland (v1.0 Track 4).
+        let c = if super::farmland::owns(c.0) { Block::FARMLAND } else { c };
         (c != self).then_some(c)
     }
 
+    /// Farmland of any moisture ([`super::farmland`]).
     pub fn is_farmland(self) -> bool {
-        self == Block::FARMLAND || self == Block::WET_FARMLAND
+        super::farmland::is_farmland(self)
     }
 
     /// The block items, recipes and rules use for an oriented block (a
@@ -1397,6 +1400,9 @@ impl Block {
         }
         if super::sugar_cane::owns(self.0) {
             return Block::SUGAR_CANE;
+        }
+        if super::farmland::owns(self.0) {
+            return Block::FARMLAND;
         }
         if super::heavy_core::owns(self.0) {
             return super::heavy_core::HEAVY_CORE;
@@ -3365,6 +3371,10 @@ pub(super) const fn make(id: u16) -> BlockInfo {
         12256..=super::frosted_ice::LAST => super::frosted_ice::registry(id),
         // Sugar cane ages 1-15 (13952 itself stays unregistered).
         13953..=super::sugar_cane::LAST => super::sugar_cane::registry(id),
+        // v1.0 Track 4: farmland moistures 1-6.
+        super::farmland::FIRST..=super::farmland::LAST => {
+            super::farmland::registry(id, column(tex::DIRT, tex::FARMLAND, tex::DIRT))
+        }
         super::heavy_core::FIRST..=super::heavy_core::LAST => super::heavy_core::registry(id),
         super::conduit::FIRST..=super::conduit::LAST => super::conduit::registry(id),
         super::shulker_box::FIRST..=super::shulker_box::LAST => super::shulker_box::registry(id),
@@ -3781,7 +3791,10 @@ const fn shape_blocks_light(id: u16) -> bool {
     if id == 32766 {
         return true;
     }
-    if matches!(id, 57 | 58 | 900 | 1910 | 2516..=2522) || super::wood::shape_blocks_light(id) {
+    if matches!(id, 57 | 58 | 900 | 1910 | 2516..=2522)
+        || super::farmland::owns(id)
+        || super::wood::shape_blocks_light(id)
+    {
         return true;
     }
     if let Some((_, 0..=4)) = super::nether_blocks::form(id) {

@@ -26,7 +26,7 @@ const _: () = assert!(FIRST >= 1660 && END <= 1675);
 
 /// `Foods.CHORUS_FRUIT`: 4 hunger, saturation 4 × 0.3 × 2.
 pub const NUTRITION: u8 = 4;
-pub const SATURATION: f32 = 2.4;
+pub const SATURATION: f32 = crate::item::saturation_by_modifier(NUTRITION, 0.3);
 /// `useCooldown(1.0F)`: seconds before another can be eaten.
 pub const COOLDOWN: f32 = 1.0;
 /// `TeleportRandomlyConsumeEffect.DEFAULT_DIAMETER` and its tries.

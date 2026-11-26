@@ -57,6 +57,7 @@ pub mod explorer_maps;
 pub mod explosion;
 pub mod eyeblossom;
 pub mod falling;
+pub mod farmland;
 mod fire;
 mod fluid;
 mod foraging;
@@ -331,7 +332,10 @@ pub struct World {
     fluids: fluid::FluidState,
     fire: fire::FireState,
     lightning: lightning::State,
-    snow_pushes: Vec<(IVec3, f64)>,
+    /// Cells whose collision grew this tick (snow gaining a layer, farmland
+    /// turning to dirt), with the bottom and top of the added slice, for
+    /// `Block.pushEntitiesUp`.
+    block_pushes: Vec<(IVec3, f64, f64)>,
     redstone: redstone::RedstoneState,
     automation: automation::AutomationState,
     /// v0.17 Track B: moving pistons and piston block events.
@@ -793,7 +797,7 @@ impl World {
             fluids: Default::default(),
             fire: Default::default(),
             lightning: Default::default(),
-            snow_pushes: Vec::new(),
+            block_pushes: Vec::new(),
             redstone: Default::default(),
             automation: Default::default(),
             pistons: Default::default(),

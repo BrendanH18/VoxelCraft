@@ -42,7 +42,7 @@ fn crop_registry_seeds_shapes_and_food_match_reference() {
     assert_eq!(Item::BEETROOT_SOUP.name(), "beetroot soup");
     assert_eq!(Item::BEETROOT_SOUP.max_stack(), 1);
     assert!(
-        matches!(Item::BEETROOT_SOUP.info().kind,crate::item::ItemKind::Food {hunger:6,saturation} if saturation == 7.2)
+        matches!(Item::BEETROOT_SOUP.info().kind,crate::item::ItemKind::Food {hunger:6,saturation} if saturation == crate::item::saturation_by_modifier(6, 0.6))
     );
     assert_eq!(Item::BEETROOT_SOUP.remainder(), Some(Item::BOWL));
     assert_eq!(Item::from_name("beetroot_soup"), Some(Item::BEETROOT_SOUP));
@@ -214,4 +214,41 @@ fn every_crop_state_survives_chunk_storage_round_trip() {
         assert_eq!(loaded.get_block(at(id)), Some(Block(id)));
     }
     std::fs::remove_dir_all(dir).unwrap();
+}
+
+/// v1.0 Track 4: `CropBlock.canSurvive` asks for raw light 8 (no sky
+/// exception in 26.3), checked on shape updates and on placement.
+#[test]
+fn crops_break_without_light_on_the_next_shape_update() {
+    let mut w = crate::world::lighting::flat_test_world(
+        (-1..=1).flat_map(|x| (-1..=1).map(move |z| glam::IVec2::new(x, z))),
+        63,
+    );
+    assert!(needs_light(Block::wheat(3)) && needs_light(Block::crop(Crop::Beetroot, 0)));
+    assert!(needs_light(crate::world::sniffer_plants::pitcher(1, false)));
+    assert!(!needs_light(crate::world::sniffer_plants::pitcher(3, true)), "only the lower half");
+    assert!(!needs_light(stem_block(Fruit::Melon, 2)), "stems don't");
+    let soil = IVec3::new(16, 63, 16);
+    let crop = soil + IVec3::Y;
+    w.set_block(soil, Block::WET_FARMLAND);
+    w.set_block(crop, Block::wheat(7));
+    for d in [IVec3::X, IVec3::NEG_X, IVec3::Z, IVec3::NEG_Z] {
+        w.set_block(crop + d, Block::STONE);
+    }
+    // VoxelCraft's skylight under a new roof is known at once, so the
+    // roof's own shape update finds the crop dark and breaks it (Java's
+    // lagging light engine leaves it for the next update).
+    w.drops.clear();
+    w.set_block(crop + IVec3::Y, Block::STONE);
+    assert!(!w.crop_has_light(crop));
+    assert_eq!(w.get_block(crop), Some(Block::AIR), "a dark crop breaks on a shape update");
+    assert!(w.drops.iter().any(|&(_, s)| s.item == Item::WHEAT), "with its loot");
+    w.set_block(crop + IVec3::X, Block::COBBLESTONE);
+    // A torch beside it keeps a crop alive in the dark.
+    w.set_block(crop + IVec3::X, Block::TORCH);
+    w.update_block_light();
+    assert!(w.crop_has_light(crop));
+    w.set_block(crop, Block::wheat(0));
+    w.set_block(crop + IVec3::NEG_X, Block::COBBLESTONE);
+    assert_eq!(w.get_block(crop), Some(Block::wheat(0)));
 }

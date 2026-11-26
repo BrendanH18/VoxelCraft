@@ -148,6 +148,9 @@ impl World {
         self.update_nether_vines(p);
         self.update_overworld_plants(p);
         self.update_sniffer_plants(p);
+        // v1.0 Track 4: `FarmlandBlock.updateShape` and `CropBlock.canSurvive`'s light.
+        self.update_farmland_below(p);
+        self.update_crop_light(p);
         self.update_utilities(p);
         self.update_multiface(p);
         self.update_chorus(p);

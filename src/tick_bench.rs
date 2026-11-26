@@ -304,6 +304,8 @@ impl Harness {
             step = now;
         });
         mark(1, &mut times);
+        let block_pushes = w.take_block_pushes();
+        self.entities.apply_block_pushes(&block_pushes);
         if !w.piston_pushes().is_empty() {
             self.entities.apply_piston_pushes(w);
         }

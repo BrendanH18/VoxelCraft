@@ -34,6 +34,20 @@ const SIDES: [IVec3; 6] = [IVec3::NEG_Y, IVec3::Y, IVec3::NEG_Z, IVec3::Z, IVec3
 /// placement order: logs, leaves, hanging moss, then the heart, which
 /// replaces a log (callers must let it).
 pub fn pale_oak(ground: IVec3, seed: u64, creaking: bool, put: Put) {
+    pale_oak_feature(ground, seed, true, creaking, put);
+}
+
+/// `pale_oak_bonemeal`, the only feature of Java 26.3's
+/// `TreeGrower.PALE_OAK` (four pale oak saplings in a square): the same
+/// `DarkOakTrunkPlacer(6, 2, 1)`, `DarkOakFoliagePlacer(0, 0)` and
+/// `ThreeLayersFeatureSize(1, 1, 0, 1, 2)` as `pale_oak`, with no
+/// decorators, so no hanging moss.
+pub fn pale_oak_bonemeal(ground: IVec3, seed: u64, put: Put) {
+    pale_oak_feature(ground, seed, false, false, put);
+}
+
+/// The shared pale oak placers; `moss` adds the `PaleMossDecorator`.
+fn pale_oak_feature(ground: IVec3, seed: u64, moss: bool, creaking: bool, put: Put) {
     let mut rng = Rng(seed ^ 0x9A1E_0A4C);
     let origin = ground + IVec3::Y;
     // `TrunkPlacer.getTreeHeight`: base + nextInt(a + 1) + nextInt(b + 1).
@@ -98,6 +112,9 @@ pub fn pale_oak(ground: IVec3, seed: u64, creaking: bool, put: Put) {
     }
     for &p in &leaves {
         put(p, ob::PALE_OAK_LEAVES);
+    }
+    if !moss {
+        return;
     }
     // `PaleMossDecorator`: its ground patch is left to the biome's moss
     // surface; trunk and leaf hangers follow the reference odds.
@@ -244,6 +261,48 @@ mod tests {
         let mut out = Vec::new();
         pale_oak(IVec3::new(0, 64, 0), seed, creaking, &mut |p, b| out.push((p, b)));
         out
+    }
+
+    #[test]
+    fn sapling_pale_oaks_are_the_generation_3_shape_without_moss() {
+        // `TreeGrower.PALE_OAK` grows `pale_oak_bonemeal`: `pale_oak`'s
+        // placers with no `PaleMossDecorator`.
+        for seed in 0..40 {
+            let mut sapling = Vec::new();
+            pale_oak_bonemeal(IVec3::new(0, 64, 0), seed, &mut |p, b| sapling.push((p, b)));
+            let wild: Vec<_> = grow(seed, false)
+                .into_iter()
+                .filter(|(_, b)| *b != ob::PALE_HANGING_MOSS && *b != ob::PALE_HANGING_MOSS_TIP)
+                .collect();
+            assert_eq!(sapling, wild, "seed {seed}");
+            assert!(sapling.iter().all(|(_, b)| matches!(*b, ob::PALE_OAK_LOG | ob::PALE_OAK_LEAVES)));
+        }
+        // From four saplings in a square, in the world.
+        let mut w = crate::world::lighting::flat_test_world(
+            (-1..=1).flat_map(|x| (-1..=1).map(move |z| glam::IVec2::new(x, z))),
+            63,
+        );
+        let corner = IVec3::new(10, 64, 10);
+        for d in [IVec3::ZERO, IVec3::X, IVec3::Z, IVec3::X + IVec3::Z] {
+            w.set_block(corner - IVec3::Y + d, Block::DIRT);
+            w.set_block(corner + d, ob::PALE_OAK_SAPLING);
+        }
+        assert!(w.grow_tree(corner + IVec3::X));
+        assert_eq!(w.get_block(corner), Some(ob::PALE_OAK_LOG));
+        let mut moss = 0;
+        let mut leaves = 0;
+        for x in -4..=6 {
+            for z in -4..=6 {
+                for y in 0..14 {
+                    match w.get_block(corner + IVec3::new(x, y, z)) {
+                        Some(ob::PALE_HANGING_MOSS | ob::PALE_HANGING_MOSS_TIP) => moss += 1,
+                        Some(ob::PALE_OAK_LEAVES) => leaves += 1,
+                        _ => {}
+                    }
+                }
+            }
+        }
+        assert!(leaves > 20 && moss == 0, "{leaves} leaves, {moss} moss");
     }
 
     #[test]

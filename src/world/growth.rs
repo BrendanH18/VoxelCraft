@@ -1,7 +1,7 @@
 //! Things that grow and decay on their own, driven by Minecraft-style random
 //! block ticks: wheat and nether wart ripen, saplings become trees, grass
 //! spreads over lit dirt (and dies under cover), farmland gets wet near
-//! water or dries back to dirt. Leaves cut off from their tree's logs decay
+//! water or dries back to dirt (`world::farmland`). Leaves cut off from their tree's logs decay
 //! a few seconds after the last log near them goes.
 
 use glam::{DVec3, IVec3};
@@ -71,7 +71,7 @@ fn growth_rule(b: Block) -> RandomRule {
     use super::redstone_blocks::{Component, component};
     match b {
         Block::GRASS => RandomRule::Grass,
-        Block::FARMLAND | Block::WET_FARMLAND => RandomRule::Farmland,
+        b if super::farmland::is_farmland(b) => RandomRule::Farmland,
         b if b.is_sapling() => RandomRule::Sapling,
         b if super::overworld_blocks::snow_layers(b).is_some() => RandomRule::Snow,
         b if matches!(component(b), Some(Component::GlowingOre(_))) => RandomRule::GlowingOre,
@@ -608,40 +608,6 @@ impl World {
         self.tick_spreader(p, Block::GRASS);
     }
 
-    /// Farmland is wet with water within 4 blocks across (at its level or
-    /// one up); dry farmland with no crop on it turns back to dirt.
-    fn tick_farmland(&mut self, p: IVec3, b: Block) {
-        let above = self.get_block(p + IVec3::Y);
-        if above.is_some_and(|a| a.is_solid()) {
-            self.edit(p, Block::DIRT, false);
-            return;
-        }
-        let wet = self.rains_on(p + IVec3::Y)
-            || (-4..=4).any(|dx| {
-                (-4..=4).any(|dz| {
-                    (0..=1).any(|dy| self.get_block(p + IVec3::new(dx, dy, dz)).is_some_and(|w| w.holds_water()))
-                })
-            });
-        let crop = above.is_some_and(|a| {
-            a.crop_stage().is_some()
-                || super::crops::stem(a).is_some()
-                || super::sniffer_plants::torch_age(a).is_some()
-                || super::sniffer_plants::pitcher_state(a).is_some()
-        });
-        match (wet, b) {
-            (true, Block::FARMLAND) => {
-                self.edit(p, Block::WET_FARMLAND, false);
-            }
-            (false, Block::WET_FARMLAND) => {
-                self.edit(p, Block::FARMLAND, false);
-            }
-            (false, _) if !crop => {
-                self.edit(p, Block::DIRT, false);
-            }
-            _ => {}
-        }
-    }
-
     /// Java's `SaplingBlock.advanceTree`: a stage-0 sapling becomes stage 1,
     /// and a stage-1 sapling grows its tree. Returns whether a tree grew.
     pub fn advance_tree(&mut self, p: IVec3) -> bool {
@@ -679,6 +645,10 @@ impl World {
                 super::trees::mega_spruce_v2(ground, v, v & 0x100 != 0, &mut |q, b| blocks.push((q, b)))
             }
             Wood::Jungle if giant => super::trees::mega_jungle_v2(ground, v, &mut |q, b| blocks.push((q, b))),
+            // v1.0 Track 4: `TreeGrower.PALE_OAK` grows `pale_oak_bonemeal`.
+            Wood::PaleOak => {
+                super::pale_garden::pale_oak_bonemeal(ground, u64::from(v), &mut |q, b| blocks.push((q, b)))
+            }
             _ => super::trees::tree(wood, ground, v, &mut |q, b| blocks.push((q, b))),
         }
         let room = blocks.iter().filter(|(_, b)| b.is_log()).all(|&(q, _)| {
