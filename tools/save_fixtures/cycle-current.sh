@@ -6,9 +6,11 @@
 # Runs in the worktree's Boat sandbox: installs Xvfb and Mesa's software Vulkan the first
 # time, builds the game and the agent client with the `ci` profile, runs make-fixture.sh on
 # this tree (a new world built and saved by closing the window, then reopened and closed
-# again), turns the run into a fixture with collect.py and runs tests/save_compat.rs's
-# ignored live-run test on it. Linux has no release package, so this is the source build;
-# installing, the app bundle and the Windows installer stay with the owner (docs/saves.md).
+# again), turns the run into a fixture with collect.py (from 1.0 its region files cut to the
+# fixture's chunks by trim_regions.py), prints the manifest's counts and runs
+# tests/save_compat.rs's ignored live-run test on it. Linux has no release package, so this is
+# the source build; installing, the app bundle and the Windows installer stay with the owner
+# (docs/saves.md).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 pkgs="xvfb xauth mesa-vulkan-drivers libvulkan1 libx11-6 libxcursor1 libxrandr2 libxi6 libxkbcommon-x11-0 xdotool"
@@ -25,4 +27,8 @@ VC_FIXTURE_SRC=$PWD VC_FIXTURE_TARGET=$CARGO_TARGET_DIR VC_FIXTURE_OUT=$out \
     bash tools/save_fixtures/make-fixture.sh current 93 4244
 python3 tools/save_fixtures/collect.py --dest "$out/fixtures" "$out/current"
 grep -h 'exit\|chest' "$out/current/agent.log" | grep -v '^{'
+python3 -c 'import json, sys
+m = json.load(open(sys.argv[1]))
+print("chunks", m["chunks"])
+print({k: v for k, v in m.items() if k.startswith(("create_", "reopen_"))})' "$out/fixtures/current/manifest.json"
 VC_SAVE_FIXTURES=$out/fixtures cargo test --profile ci --locked --test save_compat -- --ignored --nocapture live_run

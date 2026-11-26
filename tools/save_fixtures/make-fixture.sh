@@ -5,9 +5,9 @@
 # small world (blocks of that build's era, a stone platform, a chest an agent player fills,
 # inventory, worn armour, mobs, a dropped stack), saves it by closing the window (the game's
 # save on quit), then opens a copy once more and closes it again: start, save, quit, reopen.
-# Writes $VC_FIXTURE_OUT/NAME (default ~/out/NAME): world/ (the save, its chunks.bin cut to the
-# fixture's own chunk records by trim_chunks.py), options.txt, the logs and what was placed,
-# for collect.py. Never run it on the owner's machines: it builds and runs the game.
+# Writes $VC_FIXTURE_OUT/NAME (default ~/out/NAME): world/ (the save, its chunks.bin or, from
+# 1.0, its region files cut to the fixture's own chunk records by trim_chunks.py or
+# trim_regions.py), options.txt, the logs and what was placed, for collect.py. Never run it on the owner's machines: it builds and runs the game.
 #
 #   VC_FIXTURE_SRC     the source tree (default ~/t/NAME, a worktree build-tag.sh made)
 #   VC_FIXTURE_TARGET  its cargo target directory with a `ci` build (default ~/tgt/NAME)
@@ -116,8 +116,16 @@ cp "$out/data/voxelcraft.log" "$out/create.log" 2>/dev/null
 mkdir -p "$out/world"
 cp -a "$out/data/saves/fixture/." "$out/world/"
 rm -f "$out/world/session.lock" "$out/world/icon.png"
-# Keep the fixture's own chunks (chunk y 4, blocks 128-159), record for record.
-python3 "$here/trim_chunks.py" "$out/data/saves/fixture/chunks.bin" "$out/world/chunks.bin" 4 >"$out/trim.txt"
+# Keep the fixture's own chunks (chunk y 4, blocks 128-159), record for record: chunks.bin
+# before 1.0, the region files from 1.0 (v1.0 Track 1b).
+saved=$out/data/saves/fixture
+if [ -f "$saved/chunks.bin" ]; then
+  python3 "$here/trim_chunks.py" "$saved/chunks.bin" "$out/world/chunks.bin" 4 >"$out/trim.txt"
+fi
+if [ -d "$saved/region" ]; then
+  rm -rf "$out/world/region"
+  python3 "$here/trim_regions.py" "$saved/region" "$out/world/region" 4 >"$out/trim.txt"
+fi
 cp "$out/data/saves/options.txt" "$out/options.txt" 2>/dev/null
 
 # Reopen a copy once with the same build: start, load, save on quit.

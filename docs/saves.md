@@ -316,7 +316,13 @@ closed once more. `collect.py` copies the save into the repository with a
 `manifest.json` of what the run placed. The world's `chunks.bin` keeps only
 the run's own chunk records (`trim_chunks.py`, byte for byte): the dozens of
 terrain chunks the simulation touched near spawn would make each fixture
-close to a megabyte. Nothing else in a fixture is edited.
+close to a megabyte. From 1.0 a world keeps its chunks in region files, and
+`trim_regions.py` keeps the same records in them, each frame byte for byte
+in its table slot (v1.0 Track 1b). Nothing else in a fixture is edited. The
+game logs `region storage: N chunk records in the overworld` when it opens
+a world's region files, and `saved N overworld chunk records to … written)`
+when a save it waited for is on disk; `collect.py` reads both, and counts
+the records in the first run's region files itself.
 
 ```sh
 id=$(boat new --name voxelcraft-saves-v0-18 --type large --from voxelcraft-warm --json | jq -r 'select(.event=="ready") | .id')
