@@ -302,7 +302,10 @@ src/
 ## Procedural sound
 
 Every sound is synthesized from noise, damped sinusoids, envelopes and
-filters on a background thread at startup, with 2–4 seeded variants each.
+filters on a background thread, with 2–4 seeded variants each: at startup,
+except the blocks' own sounds, which that thread renders on their first use
+or when the player first steps on or hears the block, then hands the play
+to the mixer (v1.0 Track 3, 44 MB less at startup, the same bits).
 Crunchy materials use filtered random-impulse "crackle" with a resonant
 body band and a low thump; wood is a few inharmonic damped modes (a hollow
 knock); glass breaks with a bright burst and falling tinkles; water is

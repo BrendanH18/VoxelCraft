@@ -93,3 +93,65 @@ impl World {
         out
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use glam::{IVec2, IVec3};
+
+    use super::super::World;
+    use super::super::block::Block;
+    use super::super::terrain::Generator;
+
+    fn count(world: &World, name: &str) -> usize {
+        world.diagnostics().into_iter().find(|(n, _)| *n == name).map(|(_, v)| v).expect(name)
+    }
+
+    /// Nine flat columns around the origin, ground at y 60.
+    fn world() -> World {
+        let mut world = World::new_headless(Arc::new(Generator::new(7)), Default::default(), 2);
+        for x in -1..=1 {
+            for z in -1..=1 {
+                world.load_test_column(IVec2::new(x, z), 60);
+            }
+        }
+        world
+    }
+
+    #[test]
+    fn an_unloading_chunk_takes_its_fluid_cells_with_it() {
+        let mut world = world();
+        let spring = IVec3::new(16, 70, 16);
+        world.set_block(spring, Block::WATER);
+        let pending = count(&world, "fluid.pending");
+        let bubbles = count(&world, "fluid.bubbles");
+        assert!(pending >= 7, "{pending}");
+        // The test columns count as modified, so their cells wait for them.
+        world.unload_test_column(IVec2::ZERO);
+        assert_eq!((count(&world, "fluid.pending"), count(&world, "fluid.bubbles")), (0, 0));
+        assert_eq!(count(&world, "fluid.suspended"), pending + bubbles);
+        // Nothing is scheduled where no chunk is loaded (`LevelTicks.schedule`).
+        world.wake_fluids(spring);
+        assert_eq!(count(&world, "fluid.pending"), 0);
+        world.load_test_column(IVec2::ZERO, 60);
+        assert_eq!((count(&world, "fluid.pending"), count(&world, "fluid.bubbles")), (pending, bubbles));
+        assert_eq!(count(&world, "fluid.suspended"), 0);
+    }
+
+    #[test]
+    fn an_unloading_chunk_takes_its_scheduled_fires_with_it() {
+        let mut world = world();
+        let fire = IVec3::new(40, 61, 40);
+        world.set_block(fire - IVec3::Y, Block::NETHERRACK);
+        world.set_block(fire, Block::FIRE);
+        assert_eq!((count(&world, "fire.pending"), count(&world, "fire.scheduled")), (1, 1));
+        world.unload_test_column(IVec2::ONE);
+        assert_eq!(count(&world, "fire.pending"), 0);
+        assert_eq!(count(&world, "fire.columns"), 0, "no container is left to peek at every tick");
+        // Its fire comes back with the chunk.
+        world.load_test_column(IVec2::ONE, 60);
+        assert_eq!(world.get_block(fire), Some(Block::FIRE));
+        assert_eq!(count(&world, "fire.pending"), 1);
+    }
+}

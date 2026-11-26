@@ -53,6 +53,9 @@ fn a_short_soak_keeps_every_queue_and_cache_bounded() {
         cap("w.light.sky_flood_raw", 65536.0);
         cap("w.redstone.order.trace", 0.0);
         cap("w.fire.scheduled", 4096.0);
+        // Cells of unloaded chunks leave the fluid queue (they used to pile up
+        // behind the walker and be scanned every fluid tick).
+        cap("w.fluid.pending", 16384.0);
         cap("e.entities.mobs", 400.0);
         cap("e.entities.items", 600.0);
         cap("e.entities.pending_sounds", 0.0);

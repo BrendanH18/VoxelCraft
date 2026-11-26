@@ -83,6 +83,29 @@ impl World {
         }
     }
 
+    /// v1.0 Track 3: drops an unloading chunk's scheduled fires, as Java's
+    /// `LevelTicks` drops a chunk's container with it. Its fires reschedule
+    /// when it loads ([`World::load_fires`]); before, the entries stayed
+    /// and every tick peeked at the containers of every chunk with fire the
+    /// player had ever passed.
+    pub(super) fn unload_fires(&mut self, pos: IVec3) {
+        if self.fire.pending.is_empty() {
+            return;
+        }
+        let here = |p: IVec3| super::chunk::chunk_of(p) == pos;
+        self.fire.pending.retain(|&p, _| !here(p));
+        let columns =
+            [(0, 0), (1, 0), (0, 1), (1, 1)].map(|(x, z)| java_chunk(pos * CHUNK_SIZE_I + IVec3::new(x, 0, z) * 16));
+        for column in columns {
+            if let Some(container) = self.fire.containers.get_mut(&column) {
+                container.retain(|Reverse((_, _, xyz))| !here(IVec3::from_array(*xyz)));
+                if container.is_empty() {
+                    self.fire.containers.remove(&column);
+                }
+            }
+        }
+    }
+
     /// Generated terrain contains no fire. Scan saved chunks once on load
     /// to resume their fires, preserving ages stored in the block ids.
     pub(super) fn load_fires(&mut self, cpos: IVec3, data: &ChunkData) {

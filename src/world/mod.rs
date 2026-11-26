@@ -1740,6 +1740,7 @@ impl World {
         if let Some(blocks) = self.stored_falling.remove(&pos) {
             self.falling.extend(blocks);
         }
+        self.load_fluids(pos);
         if self.in_mesh_range(pos) {
             self.dirty.insert(pos);
         }
@@ -1766,6 +1767,8 @@ impl World {
         self.forget_shulker_boxes(pos);
         self.forget_campfires(pos);
         self.unload_block_light(pos, slot.block_light.as_ref());
+        self.unload_fluids(pos, slot.modified);
+        self.unload_fires(pos);
         if slot.modified {
             self.saved.insert(pos, slot.data);
         }
