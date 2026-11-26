@@ -809,6 +809,8 @@ impl Generator {
             features.extend(self.ruined_portals.features(self, cpos));
             features.extend(self.buried_treasure.features(self, cpos));
             features.extend(self.trial_chambers.features(self, cpos));
+            // v1.0 Track 5: trail ruins' suspicious gravel.
+            features.extend(self.trail_ruins.features(self, cpos));
         }
         features
     }

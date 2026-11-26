@@ -12,7 +12,7 @@
 //! cached, and painted clipped into every chunk they cross.
 
 pub mod camp_templates;
-mod ocean_ruins;
+pub(super) mod ocean_ruins;
 mod outpost_templates;
 
 /// The generated abandoned camp catalogue (`jigsaw::abandoned_camps`).

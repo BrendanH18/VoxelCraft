@@ -76,8 +76,11 @@ fn append_only_orderings_keep_distinct_positions_that_fit_their_encodings() {
     assert_eq!(all.mask().count_ones() as usize, lasting.len(), "the effect mask has run out of bits: widen it");
     // Enchantments: a stack's levels are saved by bit position.
     for enchantment in Enchantment::ALL {
-        let one = Enchants::NONE.with(enchantment, 7);
-        assert_eq!(one.iter().collect::<Vec<_>>(), [(enchantment, 7)], "the level bits of {enchantment:?} don't fit");
+        // Seven, or three for Soul Speed in the last two bits.
+        let top = Enchants::max_stored(enchantment);
+        assert!(top >= enchantment.def().max_level, "{enchantment:?}'s levels don't fit");
+        let one = Enchants::NONE.with(enchantment, top);
+        assert_eq!(one.iter().collect::<Vec<_>>(), [(enchantment, top)], "the level bits of {enchantment:?} don't fit");
         assert_eq!(Enchants::from_hex(&one.to_hex()), Some(one), "{enchantment:?} doesn't survive a save");
     }
 }

@@ -424,8 +424,9 @@ fn enchant_options(v: &serde_json::Value) -> Vec<&str> {
 fn contains(v: &serde_json::Value, name: &str) -> bool {
     v.as_array().is_some_and(|a| a.iter().any(|s| s.as_str() == Some(name)))
 }
-/// Enchantments the game lacks (Soul Speed) leave the item as it was, so a
-/// book stays a plain book rather than an empty enchanted one.
+/// An enchantment the game lacked would leave the item as it was, so a book
+/// stays a plain book rather than an empty enchanted one (none is missing
+/// since v1.0 Track 5 registered Soul Speed).
 fn apply_enchantment(stack: &mut Stack, name: &str, level: u8) {
     if let Some(e) = crate::enchant::Enchantment::from_name(name) {
         if stack.item == crate::item::Item::BOOK {
@@ -831,7 +832,9 @@ impl super::World {
 /// `chests/` folder here; spawner, dispenser, equipment and entity tables
 /// keep theirs.
 pub fn sequence_key(name: &str) -> String {
-    if ["spawners/", "dispensers/", "equipment/", "entities/", "pots/", "barrels/"].iter().any(|f| name.starts_with(f))
+    if ["spawners/", "dispensers/", "equipment/", "entities/", "pots/", "barrels/", "archaeology/"]
+        .iter()
+        .any(|f| name.starts_with(f))
     {
         format!("minecraft:{name}")
     } else {
@@ -968,8 +971,13 @@ mod pool_modifier_tests {
         assert_eq!(enchant_options(&serde_json::json!("minecraft:soul_speed")), ["soul_speed"]);
         assert!(enchant_options(&serde_json::json!("#minecraft:on_random_loot")).len() > 1);
         let mut book = Stack::new(crate::item::Item::BOOK, 1);
-        apply_enchantment(&mut book, "soul_speed", 1);
+        apply_enchantment(&mut book, "unknown_enchantment", 1);
         assert_eq!(book.item, crate::item::Item::BOOK);
+        // v1.0 Track 5: Soul Speed is registered, so `bastion_other`'s
+        // books and boots carry it.
+        apply_enchantment(&mut book, "soul_speed", 2);
+        assert_eq!(book.item, crate::item::Item::ENCHANTED_BOOK);
+        assert_eq!(book.enchants.level(crate::enchant::Enchantment::SoulSpeed), 2);
     }
 }
 

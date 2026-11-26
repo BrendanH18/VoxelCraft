@@ -19,6 +19,7 @@ mod drowned;
 mod endermite;
 mod frog;
 pub(crate) mod goals;
+mod hazards;
 mod illager;
 mod navigate;
 mod nether_ai;
@@ -1275,6 +1276,10 @@ pub struct Mob {
     /// The damage type of the hit being applied, when a caller knows it (an
     /// arrow or a blast); consumed by `take_damage`. Never saved.
     pub(crate) hit_cause: Option<Cause>,
+    /// v1.0 Track 5: blocks fallen since the last landing (`fallDistance`,
+    /// not saved) and the fall damage the last moves queued.
+    pub(super) fall_distance: f64,
+    pub(super) pending_fall: f32,
     pub phantom: Option<Box<super::phantom::State>>,
     pub freezing: Option<super::hostiles::Freezing>,
     pub mooshroom: Option<Box<super::mooshroom::State>>,
@@ -1516,6 +1521,8 @@ impl Mob {
             },
             armor_effectiveness: 0.0,
             hit_cause: None,
+            fall_distance: 0.0,
+            pending_fall: 0.0,
             phantom: (kind == MobKind::Phantom).then(|| Box::new(super::phantom::State::new(pos))),
             mooshroom: (kind == MobKind::Mooshroom).then(Box::default),
             bat: (kind == MobKind::Bat).then(Box::default),
@@ -2376,8 +2383,9 @@ impl Mob {
         }
         let wolf_fall = self.wolf_armor.as_mut().map_or(0.0, |s| std::mem::take(&mut s.pending_fall));
         if wolf_fall > 0.0 {
-            self.damage(wolf_fall, None, rng);
+            self.damage_from(wolf_fall, Cause::FALL, rng);
         }
+        self.take_fall(rng);
         if let Some(s) = &mut self.mount {
             let damage = std::mem::take(&mut s.rider_fall);
             if damage > 0.
@@ -3682,7 +3690,16 @@ impl Mob {
                 self.vel.y += (dy * 20.0 - self.vel.y) * (dt * 20.0).min(1.0);
             }
         }
-        let delta = self.vel * dt;
+        // v1.0 Track 5: `makeStuckInBlock` in a cobweb (see `hazards`).
+        let delta = match self.web_hold(world) {
+            Some(hold) => {
+                let delta = self.vel * dt * hold;
+                self.vel = DVec3::ZERO;
+                self.fall_distance = 0.0;
+                delta
+            }
+            None => self.vel * dt,
+        };
         let from_y = self.pos.y;
         let falling = self.vel.y;
         let step_height = if super::mounts::camel_like(self.kind) {
@@ -3706,6 +3723,11 @@ impl Mob {
         // gravity (0.08 a tick).
         let below = world.block(super::item::below_pos(self.pos));
         self.wolf_fall(from_y, hit.on_ground, below);
+        // v1.0 Track 5: every other mob's fall (mounts and wolves keep
+        // their own).
+        if self.mount.is_none() && self.wolf_armor.is_none() {
+            self.track_fall(world, from_y, hit.on_ground);
+        }
         let bounce = crate::player::bounciness(below);
         if hit.on_ground && bounce > 0.0 && -falling > 0.08 * 20.0 {
             self.vel.y = -falling * bounce * BOUNCE_DRAG;
@@ -3760,6 +3782,9 @@ impl Mob {
             && !ctx.raining
             && !self.in_water
             && world.exposed(head);
+        // v1.0 Track 5: `Mob.burnUndead`: anything on the head keeps the
+        // sun off, and a helmet wears instead.
+        let sunburn = sunburn && !(self.alive() && self.sun_blocked(ctx.daylight, rng));
         if self.kind.fire_immune() {
             self.fire_left = 0.0;
         } else if in_lava {
@@ -3769,7 +3794,7 @@ impl Mob {
         } else if sunburn || in_fire {
             self.fire_left = 8.0;
             if in_fire && !self.burning {
-                self.damage(1.0, None, rng);
+                self.damage_from(1.0, Cause::IN_FIRE, rng);
             }
         } else {
             self.fire_left = (self.fire_left - dt).max(0.0);
@@ -3789,17 +3814,19 @@ impl Mob {
             self.burn_timer = 0.0;
             return;
         }
-        let (interval, amount) = if in_lava {
-            (0.5, 4.0)
+        // v1.0 Track 5: `lava`, `in_fire` and `on_fire` damage, so armor
+        // and Fire Protection reduce it as Java's do.
+        let (interval, amount, cause) = if in_lava {
+            (0.5, 4.0, Cause::LAVA)
         } else if in_fire {
-            (0.5, 1.0)
+            (0.5, 1.0, Cause::IN_FIRE)
         } else {
-            (1.0, if sunburn { 2.0 } else { 1.0 })
+            (1.0, if sunburn { 2.0 } else { 1.0 }, Cause::ON_FIRE)
         };
         self.burn_timer += dt;
         if self.burn_timer >= interval {
             self.burn_timer -= interval;
-            self.damage(amount, None, rng);
+            self.damage_from(amount, cause, rng);
         }
     }
 

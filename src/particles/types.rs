@@ -47,10 +47,13 @@ pub enum Kind {
     /// v0.16 Track F: `FlyTowardsPositionParticle.NautilusProvider`, the
     /// conduit's motes flying in from its frame and around its target.
     Nautilus,
+    /// v1.0 Track 5: `soul` (`EmissiveRisingParticle.EmissiveProvider`),
+    /// from Soul Speed boots on soul sand and soul soil.
+    Soul,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 28] = [
+    pub const ALL: [Kind; 29] = [
         Kind::Smoke,
         Kind::LargeSmoke,
         Kind::Rain,
@@ -79,6 +82,7 @@ impl Kind {
         Kind::FireworkFlash,
         Kind::EndRod,
         Kind::Nautilus,
+        Kind::Soul,
     ];
 
     pub fn sprite(self) -> u16 {
@@ -106,6 +110,8 @@ impl Kind {
             Self::EndRod => 2,
             // The enchanting glyphs' flight, tinted sea-blue.
             Self::Nautilus => 6,
+            // The soul flame's sprite stands in for Java's soul wisp.
+            Self::Soul => 14,
         }
     }
 }
@@ -388,13 +394,18 @@ impl System {
                 p.size = 0.1 * (rng.next_f32() * rng.next_f32() * 6.0 + 1.0);
                 p.lifetime = (16.0 / rng.range(0.2, 1.0)) as u16 + 2;
             }
-            Kind::Flame | Kind::SoulFlame => {
+            Kind::Flame | Kind::SoulFlame | Kind::Soul => {
                 p.physics = false;
                 p.friction = 0.96;
                 p.velocity = p.velocity * 0.01 + velocity;
                 p.pos += (random_vec(rng) - random_vec(rng)) * 0.05;
                 p.previous = p.pos;
                 p.lifetime = (8.0 / rng.range(0.2, 1.0)) as u16 + 4;
+                // `EmissiveRisingParticle`: `scale(1.5F)`, full bright.
+                if kind == Kind::Soul {
+                    p.size *= 1.5;
+                    p.emissive = true;
+                }
             }
             Kind::Lava => {
                 p.gravity = 0.75;

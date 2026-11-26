@@ -1228,6 +1228,7 @@ impl Agent {
         // Frost Walker's ice.
         self.session.settle_effect_hooks(entities);
         self.session.frost_walk(world, entities);
+        self.session.tick_soul_speed(world);
         self.session.tick_elytra();
         if self.session.vitals.is_dead() {
             self.drop_everything(entities);

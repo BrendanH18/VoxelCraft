@@ -288,13 +288,17 @@ pub enum Barter {
     Splash(&'static str),
     /// Java's item, which doesn't exist here: the roll gives nothing.
     Missing(&'static str),
+    /// The item with `enchant_randomly` limited to Soul Speed: a random
+    /// level 1–3 (`Mth.nextInt(random, 1, 3)`); a book becomes an
+    /// enchanted book (v1.0 Track 5).
+    SoulSpeed(Item),
 }
 
-/// Java 1.21's bartering table: (output, weight, min count, max count).
-/// Iron boots come without Soul Speed, which isn't an enchantment here.
+/// Java 26.3's bartering table (`gameplay/piglin_bartering`): (output,
+/// weight, min count, max count).
 pub const BARTERING: [(Barter, u32, u8, u8); 18] = [
-    (Barter::Missing("enchanted book (soul speed)"), 5, 1, 1),
-    (Barter::Item(Item::armor(ArmorPiece::Boots, ArmorMaterial::Iron)), 8, 1, 1),
+    (Barter::SoulSpeed(Item::BOOK), 5, 1, 1),
+    (Barter::SoulSpeed(Item::armor(ArmorPiece::Boots, ArmorMaterial::Iron)), 8, 1, 1),
     (Barter::Potion("fire_resistance"), 8, 1, 1),
     (Barter::Splash("fire_resistance"), 8, 1, 1),
     (Barter::Potion("water"), 10, 1, 1),
@@ -342,6 +346,13 @@ pub fn barter(rng: &mut Rng) -> Option<Stack> {
         Barter::Potion(id) => Item::potion(crate::potion::Potion::from_id(id)?),
         Barter::Splash(id) => Item::splash_potion(crate::potion::Potion::from_id(id)?),
         Barter::Missing(_) => return None,
+        Barter::SoulSpeed(item) => {
+            let level = 1 + rng.next_int(3) as u8;
+            let item = if item == Item::BOOK { Item::ENCHANTED_BOOK } else { item };
+            let mut stack = Stack::new(item, count);
+            stack.enchants.set(crate::enchant::Enchantment::SoulSpeed, level);
+            return Some(stack);
+        }
     };
     Some(Stack::new(item, count))
 }
@@ -2075,6 +2086,36 @@ mod tests {
         events.iter().filter(|e| matches!(e, EntityEvent::PlayerHit { .. })).count()
     }
 
+    /// v1.0 Track 5: the table's first two entries carry Soul Speed I–III
+    /// (`enchant_randomly` with `options: minecraft:soul_speed`).
+    #[test]
+    fn bartering_gives_soul_speed_books_and_iron_boots() {
+        use crate::enchant::Enchantment;
+        let mut rng = Rng::new(7);
+        let (mut books, mut boots) = ([0u32; 4], [0u32; 4]);
+        for _ in 0..20_000 {
+            let Some(s) = barter(&mut rng) else { panic!("no empty rolls") };
+            let level = s.enchants.level(Enchantment::SoulSpeed) as usize;
+            if s.item == Item::ENCHANTED_BOOK {
+                books[level] += 1;
+            } else if s.item == Item::armor(ArmorPiece::Boots, ArmorMaterial::Iron) {
+                boots[level] += 1;
+            } else {
+                assert_eq!(level, 0, "{:?}", s.item);
+            }
+        }
+        for counts in [books, boots] {
+            assert_eq!(counts[0], 0, "always enchanted");
+            for level in 1..=3 {
+                assert!(counts[level] > 0, "level {level}: {counts:?}");
+            }
+        }
+        // 5 and 8 of 459.
+        let (b, o): (u32, u32) = (books.iter().sum(), boots.iter().sum());
+        assert!((150..290).contains(&b), "{b}");
+        assert!((260..440).contains(&o), "{o}");
+    }
+
     #[test]
     fn bartering_uses_javas_weights_and_counts_deterministically() {
         assert_eq!(BARTER_TOTAL, 459);
@@ -2115,11 +2156,11 @@ mod tests {
                 None => empty += 1,
             }
         }
-        // Expected 4000 obsidian, 1000 pearls and 500 missing-item rolls
-        // (the Soul Speed book; spectral arrows exist since v0.15 Track D).
+        // Expected 4000 obsidian and 1000 pearls; no roll is empty since
+        // v1.0 Track 5 registered Soul Speed for the book.
         assert!((3700..4300).contains(&obsidian), "{obsidian}");
         assert!((850..1150).contains(&pearls), "{pearls}");
-        assert!((400..600).contains(&empty), "{empty}");
+        assert_eq!(empty, 0);
         // Every existing output is a real item.
         let mut rng = Rng::new(1);
         assert!((0..2000).filter_map(|_| barter(&mut rng)).all(|s| s.item.is_valid()));

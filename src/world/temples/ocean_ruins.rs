@@ -29,7 +29,8 @@ impl Palette for Materials {
         0
     }
 }
-fn long(r: &mut JavaRandom) -> u64 {
+/// `RandomSource.nextLong` of a legacy random.
+pub(in crate::world) fn long(r: &mut JavaRandom) -> u64 {
     ((r.next_int() as i64) << 32).wrapping_add(r.next_int() as i64) as u64
 }
 pub(super) fn structure_seed(g: &Generator, centre: IVec2) -> u64 {
@@ -37,7 +38,8 @@ pub(super) fn structure_seed(g: &Generator, centre: IVec2) -> u64 {
     let (a, b) = (long(&mut r), long(&mut r));
     (centre.x.div_euclid(16) as u64).wrapping_mul(a) ^ (centre.y.div_euclid(16) as u64).wrapping_mul(b) ^ g.seed
 }
-fn position_seed(at: IVec3) -> u64 {
+/// `Mth.getSeed(pos)`, the positional fork's seed.
+pub(in crate::world) fn position_seed(at: IVec3) -> u64 {
     let s = i64::from(at.x.wrapping_mul(3_129_871)) ^ i64::from(at.z).wrapping_mul(116_129_781) ^ i64::from(at.y);
     (s.wrapping_mul(s).wrapping_mul(42_317_861).wrapping_add(s.wrapping_mul(11)) >> 16) as u64
 }

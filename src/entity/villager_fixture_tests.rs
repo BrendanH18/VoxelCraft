@@ -200,12 +200,8 @@ fn enchantment_potion_and_stew_tags_match_java() {
     assert_eq!(tradeable, names(&f["enchantment_tags"]["tradeable"]));
     let double: std::collections::BTreeSet<String> =
         crate::enchant::Enchantment::ALL.into_iter().filter(|&e| trades::double_trade_price(e)).map(id).collect();
-    // Soul speed isn't in the game yet; the rest of the tag must match.
-    let java_double: std::collections::BTreeSet<String> = names(&f["enchantment_tags"]["double_trade_price"])
-        .into_iter()
-        .filter(|n| crate::enchant::Enchantment::from_name(n).is_some())
-        .collect();
-    assert_eq!(double, java_double);
+    // Every member is registered since v1.0 Track 5 (Soul Speed).
+    assert_eq!(double, names(&f["enchantment_tags"]["double_trade_price"]));
     let potions: Vec<&str> =
         f["potion_tags"]["tradeable"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect();
     assert_eq!(trades::TRADEABLE_POTIONS.to_vec(), potions);
