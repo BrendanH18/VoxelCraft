@@ -78,12 +78,14 @@ Docs: https://docs.boat.dev/llms.txt. Prices and limits: run `boat limits`; neve
   local `cargo fmt` would install it.
 - The only exceptions stay on the owner's Mac: running the game (Metal
   rendering, screenshots, scripted scenes, hands-on runs) and benchmarks,
-  whose frame-time gate is measured on the reference M5. Boat is x86_64
-  Linux with no GPU, so it can't check macOS-only code either; CI covers
-  macOS and Windows. An agent on the Pi can't run these, so it leaves them
-  to the owner and says so in its hand-off. `cargo fmt`, Ruff and the
-  doc-link check stay local too where they're installed: they don't build
-  or run tests. On the Pi, run them on Boat.
+  whose frame-time gate is measured on the reference M5, along with the
+  local build they run. Boat is x86_64 Linux with no GPU, so it can't check
+  macOS-only code either; CI covers macOS and Windows. An agent on the Pi
+  leaves these to the owner and says so in its hand-off; to see how a change
+  looks, it renders screenshots on Boat with `scripts/boat-capture.sh`
+  ([Screenshots on Boat](docs/development.md#screenshots-on-boat)).
+  `cargo fmt`, Ruff and the doc-link check stay local too: they don't build
+  or run tests.
 
 ## Delegation and builds
 
