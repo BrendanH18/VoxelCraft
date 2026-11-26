@@ -555,6 +555,7 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                     Some(crate::world::redstone_blocks::Component::Trapdoor { .. })
                 )
                 || b.is_ladder()
+                || crate::world::overworld_blocks::vine_wall(b).is_some()
                 || b.is_door()
                 || b.is_rail()
                 || b == crate::world::frog_blocks::FROGSPAWN
@@ -1157,6 +1158,16 @@ mod tests {
         let ladder = m.quads_of(CUTOUT);
         assert_eq!(ladder.quads.len(), 6);
         assert!(ladder.quads.iter().all(|q| q[1] & 0xFF == tex::LADDER as u32));
+    }
+
+    /// Vines are a see-through plate against their wall (v1.0 Track 10b):
+    /// drawn in the alpha-tested pass, so the wall shows between the leaves.
+    #[test]
+    fn vines_are_cutout() {
+        let vine = crate::world::overworld_blocks::vine(crate::world::block::Facing::South);
+        let m = mesh_blocks(&[([5, 5, 5], vine)]);
+        assert_eq!(m.pass_quads(OPAQUE), 0);
+        assert!(m.pass_quads(CUTOUT) > 0);
     }
 
     #[test]
