@@ -374,3 +374,14 @@ impl World {
         0
     }
 }
+
+/// v1.0 Track 3: entry counts for the long-session soak (`crate::soak`).
+impl FluidState {
+    pub(super) fn soak_counts(&self, out: &mut super::diagnostics::Counts) {
+        out.extend([
+            ("fluid.pending", self.pending.len()),
+            ("fluid.lava_pending", self.lava_pending.len()),
+            ("fluid.bubbles", self.bubbles.len()),
+        ]);
+    }
+}

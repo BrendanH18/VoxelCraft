@@ -944,5 +944,23 @@ impl World {
     }
 }
 
+/// v1.0 Track 3: entry counts for the long-session soak (`crate::soak`).
+impl SculkState {
+    pub(crate) fn soak_counts(&self, out: &mut super::diagnostics::Counts) {
+        out.extend([
+            ("sculk.entities", self.entities.len()),
+            ("sculk.index", self.index.values().map(Vec::len).sum()),
+            ("sculk.busy", self.busy.len()),
+            ("sculk.catalysts", self.catalysts.len()),
+            ("sculk.entity_events", self.entity_events.len()),
+            ("sculk.sounds", self.sounds.len()),
+            ("sculk.shriek_triggers", self.shriek_triggers.len()),
+            ("sculk.responses", self.responses.len()),
+            ("sculk.players", self.players.len()),
+            ("sculk.bodies", self.bodies.len()),
+        ]);
+    }
+}
+
 #[cfg(test)]
 mod tests;

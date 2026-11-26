@@ -791,6 +791,14 @@ impl World {
     }
 }
 
+/// v1.0 Track 3: entry counts for the long-session soak (`crate::soak`).
+impl LightUpdates {
+    pub(super) fn soak_counts(&self, name: &'static [&'static str; 2], out: &mut super::diagnostics::Counts) {
+        out.push((name[0], self.remove.len() + self.increase.len() + (self.flood.len() - self.flood_head)));
+        out.push((name[1], self.flood.len()));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

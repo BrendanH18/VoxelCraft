@@ -34,6 +34,7 @@ pub mod rules;
 pub mod session;
 pub mod simulation;
 pub mod smithing;
+pub mod soak;
 pub mod survival_items;
 pub mod tick_bench;
 pub mod title;

@@ -410,6 +410,15 @@ fn spread_odds(fuel: u64, age: u64, difficulty: u8, humid: bool) -> u64 {
     (fuel + 40 + 7 * u64::from(difficulty)) / (age + 30) / if humid { 2 } else { 1 }
 }
 
+/// v1.0 Track 3: entry counts for the long-session soak (`crate::soak`).
+impl FireState {
+    pub(super) fn soak_counts(&self, out: &mut super::diagnostics::Counts) {
+        out.push(("fire.pending", self.pending.len()));
+        out.push(("fire.scheduled", self.containers.values().map(BinaryHeap::len).sum()));
+        out.push(("fire.columns", self.containers.len()));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;

@@ -44,6 +44,7 @@ pub mod crafter;
 pub mod creaking;
 pub mod crops;
 pub mod deep_dark;
+pub mod diagnostics;
 pub mod dismount;
 pub mod dispensing;
 pub mod double_chest;
@@ -1203,8 +1204,16 @@ impl World {
         let old = slot.data.get(l.x as usize, l.y as usize, l.z as usize);
         let old_light =
             slot.block_light.as_ref().map_or(0, |light| light.get(l.x as usize, l.y as usize, l.z as usize));
-        Arc::make_mut(&mut slot.data).set(l.x as usize, l.y as usize, l.z as usize, block);
-        slot.modified = true;
+        // v1.0 Track 3: only a real change marks the chunk as player-modified
+        // (saved, and kept in memory once unloaded) or copies its shared data.
+        // Rewriting a cell with the state it already holds (fluid, redstone
+        // and growth ticks do) used to mark every chunk near the player, so
+        // the save and the memory it holds grew with the distance travelled.
+        // Java's `LevelChunk.setBlockState` changes nothing in that case.
+        if old != block {
+            Arc::make_mut(&mut slot.data).set(l.x as usize, l.y as usize, l.z as usize, block);
+            slot.modified = true;
+        }
         // Fire ages are saved state, but all ages have identical geometry
         // and lighting: don't invalidate meshes or copy light snapshots.
         if old.fire_age().is_some() && block.fire_age().is_some() {

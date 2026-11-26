@@ -7,7 +7,8 @@
 //! play.
 //!
 //! Nothing here allocates or locks after construction: voices index into the
-//! shared, immutable [`Bank`], and all scratch space is fixed-size.
+//! shared [`Bank`] (whose lazily synthesized buffers are set once, by another
+//! thread, and read without locking), and all scratch space is fixed-size.
 
 use std::sync::Arc;
 
@@ -263,6 +264,11 @@ impl Mixer {
         if count > 1 && idx == self.last_variant[key] {
             idx = (idx + 1) % count as u16;
         }
+        // v1.0 Track 3: a lazily synthesized sound plays only once ready
+        // (`Audio::play_in` routes its first use through the synthesis thread).
+        if self.bank.buffers[start + idx as usize].len() < 2 {
+            return;
+        }
         self.last_variant[key] = idx;
         let mut voice = Voice {
             buf: start as u16 + idx,
@@ -327,7 +333,7 @@ impl Mixer {
             let target = heard(&v, self.listener, self.yaw, &self.others[..self.other_count]);
             let category = ramp[v.source as usize].1;
             let target = (target.0 * category, target.1 * category);
-            let buf = &self.bank.buffers[v.buf as usize];
+            let buf: &[f32] = &self.bank.buffers[v.buf as usize];
             let len = buf.len();
             let (dl, dr) = ((target.0 - v.cur.0) * inv_n, (target.1 - v.cur.1) * inv_n);
             let (mut gl, mut gr) = v.cur;
@@ -359,7 +365,7 @@ impl Mixer {
             let start = amb.gain * c0;
             amb.gain += (amb.target - amb.gain) * k;
             let end = amb.gain * c1;
-            let buf = &self.bank.buffers[amb.buf as usize];
+            let buf: &[f32] = &self.bank.buffers[amb.buf as usize];
             let len = buf.len() as f64;
             if start.max(end) < 1e-4 || len < 2.0 {
                 amb.pos = (amb.pos + step * n as f64) % len.max(1.0);

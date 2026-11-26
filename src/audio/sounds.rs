@@ -5,6 +5,7 @@
 //! footsteps and breaks don't sound identical.
 
 use std::f32::consts::TAU;
+use std::sync::OnceLock;
 
 use super::dsp::{self, Biquad, Mode, OnePole, RATE, Rng, add_mode, crackle, mix_into, noise, samples};
 pub use super::source::SoundSource;
@@ -778,63 +779,145 @@ impl Sound {
     }
 }
 
-/// All sounds, synthesized once and shared with the mixer.
+/// One synthesized buffer. A lazily synthesized sound's buffers stay empty
+/// until [`Bank::ensure`] renders them; readers (the mixer) see an empty
+/// slice until then, and reading never blocks or allocates.
+#[derive(Default)]
+pub struct Buffer(OnceLock<Vec<f32>>);
+
+impl Buffer {
+    #[cfg(test)]
+    fn ready(data: Vec<f32>) -> Self {
+        Self(OnceLock::from(data))
+    }
+
+    pub fn is_ready(&self) -> bool {
+        self.0.get().is_some()
+    }
+}
+
+impl std::ops::Deref for Buffer {
+    type Target = [f32];
+
+    fn deref(&self) -> &[f32] {
+        self.0.get().map_or(&[], Vec::as_slice)
+    }
+}
+
+/// All sounds, shared with the mixer. v1.0 Track 3 (owner, 2026-11-25):
+/// the blocks' own sounds ([`Bank::lazy`]) are no longer synthesized at
+/// startup but on their first use, off the audio callback (see
+/// [`super::Audio::play_in`]); every other sound is synthesized at startup
+/// as before. A sound's buffers are the same bits either way: both run
+/// [`Sound::render`].
 pub struct Bank {
-    pub buffers: Vec<Vec<f32>>,
+    pub buffers: Vec<Buffer>,
+    /// The sound and variant each buffer holds.
+    sources: Vec<(Sound, u32)>,
     /// Per `Sound::key`: first buffer index and variant count.
     ranges: [(u16, u16); Sound::COUNT],
 }
 
 impl Bank {
+    /// Every sound synthesized now (tests, `--export-sounds`).
     pub fn synthesize() -> Bank {
+        let bank = Bank::layout();
+        bank.render(|_| true);
+        bank
+    }
+
+    /// The bank the game starts with: every sound but the lazy ones (the
+    /// game's `Audio` renders [`Bank::empty`] the same way on its thread).
+    #[cfg(test)]
+    pub fn startup() -> Bank {
+        let bank = Bank::layout();
+        bank.render_startup();
+        bank
+    }
+
+    /// Every buffer's place, none rendered yet (the game's `Audio` holds
+    /// this before the audio thread renders it).
+    pub fn empty() -> Bank {
+        Bank::layout()
+    }
+
+    /// Renders every sound but the lazy ones.
+    pub fn render_startup(&self) {
+        self.render(|s| !Bank::lazy(s));
+    }
+
+    /// Sounds synthesized on first use: the blocks' own (v0.18 Track 9),
+    /// 229 s of audio that most sessions mostly never play.
+    pub fn lazy(sound: Sound) -> bool {
+        matches!(sound, Sound::Block(..))
+    }
+
+    /// Every buffer's place, none rendered yet.
+    fn layout() -> Bank {
         // v0.18 Track 9: a block's hit and fall share its step buffers.
-        let sounds: Vec<Sound> = Sound::all().filter(|&s| super::block_sounds::shares(s).is_none()).collect();
-        // Sounds are independent: render them across a few threads.
-        let threads = std::thread::available_parallelism().map_or(1, |n| n.get()).clamp(1, 4);
-        let rendered: Vec<Vec<Vec<f32>>> = std::thread::scope(|s| {
-            let handles: Vec<_> = (0..threads)
-                .map(|t| {
-                    let sounds = &sounds;
-                    s.spawn(move || {
-                        sounds
-                            .iter()
-                            .enumerate()
-                            .filter(|(i, _)| i % threads == t)
-                            .map(|(_, &snd)| (0..snd.variants()).map(|v| snd.render(v)).collect::<Vec<_>>())
-                            .collect::<Vec<_>>()
-                    })
-                })
-                .collect();
-            let per_thread: Vec<Vec<Vec<Vec<f32>>>> =
-                handles.into_iter().map(|h| h.join().unwrap_or_default()).collect();
-            let mut iters: Vec<_> = per_thread.into_iter().map(|v| v.into_iter()).collect();
-            (0..sounds.len()).map(|i| iters[i % threads].next().unwrap_or_default()).collect()
-        });
-        let mut bank = Bank { buffers: Vec::new(), ranges: [(0, 0); Sound::COUNT] };
-        for (snd, variants) in sounds.iter().zip(rendered) {
-            bank.ranges[snd.key()] = (bank.buffers.len() as u16, variants.len() as u16);
-            bank.buffers.extend(variants);
+        let mut bank = Bank { buffers: Vec::new(), sources: Vec::new(), ranges: [(0, 0); Sound::COUNT] };
+        for snd in Sound::all().filter(|&s| super::block_sounds::shares(s).is_none()) {
+            let count = snd.variants();
+            bank.ranges[snd.key()] = (bank.buffers.len() as u16, count as u16);
+            bank.buffers.extend((0..count).map(|_| Buffer::default()));
+            bank.sources.extend((0..count).map(|v| (snd, v)));
         }
         for s in Sound::all() {
             if let Some(step) = super::block_sounds::shares(s) {
                 bank.ranges[s.key()] = bank.ranges[step.key()];
             }
         }
-        if let Some(entry) =
-            voxelcraft::assets::CATALOGUE["resources"].as_array().and_then(|r| r.iter().find(|e| e["sound"] == "pop"))
-        {
-            let key = entry["key"].as_str().expect("audio resource key");
-            let sample = voxelcraft::assets::audio_samples(key).expect("invalid original audio resource");
-            let (first, count) = bank.ranges[Sound::Pop.key()];
-            bank.buffers[usize::from(first)..usize::from(first + count)].fill(sample);
-        }
         bank
+    }
+
+    /// Renders the buffers of the sounds `pick` chooses, across a few threads.
+    fn render(&self, pick: impl Fn(Sound) -> bool + Sync) {
+        // Sounds are independent: render them across a few threads.
+        let threads = std::thread::available_parallelism().map_or(1, |n| n.get()).clamp(1, 4);
+        let wanted: Vec<usize> = (0..self.buffers.len()).filter(|&i| pick(self.sources[i].0)).collect();
+        std::thread::scope(|s| {
+            for t in 0..threads {
+                let wanted = &wanted;
+                s.spawn(move || {
+                    for &i in wanted.iter().skip(t).step_by(threads) {
+                        self.fill(i);
+                    }
+                });
+            }
+        });
+    }
+
+    /// Renders buffer `i` if nobody has yet.
+    fn fill(&self, i: usize) {
+        let (snd, v) = self.sources[i];
+        self.buffers[i].0.get_or_init(|| {
+            if snd == Sound::Pop
+                && let Some(sample) = pop_sample()
+            {
+                return sample;
+            }
+            snd.render(v)
+        });
+    }
+
+    /// Whether every buffer of `sound` is ready to play.
+    pub fn is_ready(&self, sound: Sound) -> bool {
+        let (first, count) = self.variants(sound);
+        self.buffers[first..first + count].iter().all(Buffer::is_ready)
+    }
+
+    /// Renders whatever of `sound` isn't ready yet (on the calling thread).
+    pub fn ensure(&self, sound: Sound) {
+        let (first, count) = self.variants(sound);
+        for i in first..first + count {
+            self.fill(i);
+        }
     }
 
     /// A bank where every sound is the same single buffer (mixer tests).
     #[cfg(test)]
     pub fn uniform(buf: Vec<f32>) -> Bank {
-        Bank { buffers: vec![buf], ranges: [(0, 1); Sound::COUNT] }
+        Bank { buffers: vec![Buffer::ready(buf)], sources: vec![(Sound::Pop, 0)], ranges: [(0, 1); Sound::COUNT] }
     }
 
     pub fn variants(&self, sound: Sound) -> (usize, usize) {
@@ -842,9 +925,18 @@ impl Bank {
         (start as usize, count as usize)
     }
 
+    /// Samples in the buffers rendered so far.
     pub fn total_samples(&self) -> usize {
-        self.buffers.iter().map(Vec::len).sum()
+        self.buffers.iter().map(|b| b.len()).sum()
     }
+}
+
+/// The pop's original recorded sample, when the asset catalogue has one.
+fn pop_sample() -> Option<Vec<f32>> {
+    let entry =
+        voxelcraft::assets::CATALOGUE["resources"].as_array().and_then(|r| r.iter().find(|e| e["sound"] == "pop"))?;
+    let key = entry["key"].as_str().expect("audio resource key");
+    Some(voxelcraft::assets::audio_samples(key).expect("invalid original audio resource"))
 }
 
 // --- Recipes ------------------------------------------------------------------
