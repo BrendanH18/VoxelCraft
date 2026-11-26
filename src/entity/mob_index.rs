@@ -171,6 +171,19 @@ impl Separation {
     }
 }
 
+/// v1.0 Track 3: entry counts for the long-session soak (`crate::soak`).
+impl MobIndex {
+    pub(super) fn soak_len(&self) -> usize {
+        self.heads.len() + self.next.len()
+    }
+}
+
+impl Separation {
+    pub(super) fn soak_len(&self) -> usize {
+        self.heads.len() + self.next.len() + self.parts.len() + self.push.len()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1156,6 +1156,26 @@ fn item_above_cart(cell: IVec3, entities: &crate::entity::Entities) -> Option<us
     })
 }
 
+/// v1.0 Track 3: entry counts for the long-session soak (`crate::soak`).
+impl AutomationState {
+    pub(super) fn soak_counts(&self, out: &mut super::diagnostics::Counts) {
+        out.extend([
+            ("automation.powered", self.powered.len()),
+            ("automation.cooldown", self.cooldown.len()),
+            ("automation.hopper_ticked", self.hopper_ticked.len()),
+            ("automation.hoppers", self.hoppers.len()),
+            ("automation.hopper_set", self.hopper_set.len()),
+            ("automation.output", self.output.len()),
+            ("automation.creatures", self.creatures.len()),
+            ("automation.cube_feeds", self.cube_feeds.len()),
+            ("automation.deferred", self.deferred.len()),
+            ("automation.cart_cells", self.cart_cells.len()),
+            ("automation.cart_hoppers", self.cart_hoppers.len()),
+            ("automation.suck_hoppers", self.suck_hoppers.len()),
+        ]);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -299,6 +299,21 @@ impl Entities {
     }
 }
 
+/// v1.0 Track 3: entry counts for the long-session soak (`crate::soak`).
+impl EntityStorage {
+    pub(super) fn soak_counts(&self, out: &mut crate::world::diagnostics::Counts) {
+        out.extend([
+            ("stored.chunks", self.chunks.len()),
+            ("stored.entities", self.len),
+            ("stored.mobs", self.chunks.values().map(|c| c.mobs.len()).sum()),
+            ("stored.items", self.chunks.values().map(|c| c.items.len()).sum()),
+            ("stored.bed_claims", self.beds.len()),
+            ("stored.job_claims", self.jobs.len()),
+            ("stored.claim_cells", self.claim_cells.values().map(Vec::len).sum()),
+        ]);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

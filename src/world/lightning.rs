@@ -135,6 +135,13 @@ impl World {
     }
 }
 
+/// v1.0 Track 3: entry counts for the long-session soak (`crate::soak`).
+impl State {
+    pub(super) fn soak_counts(&self, out: &mut super::diagnostics::Counts) {
+        out.push(("lightning.rods", self.rods.values().map(|s| s.len()).sum()));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1789,6 +1789,33 @@ impl World {
     }
 }
 
+/// v1.0 Track 3: entry counts for the long-session soak (`crate::soak`).
+impl RedstoneState {
+    pub(super) fn soak_counts(&self, out: &mut super::diagnostics::Counts) {
+        let sum = |m: &FxHashMap<IVec3, Vec<IVec3>>| m.values().map(Vec::len).sum::<usize>();
+        out.extend([
+            ("redstone.contacts", self.contacts.len()),
+            ("redstone.updates", self.updates.len()),
+            ("redstone.queued", self.queued.len()),
+            ("redstone.pending", self.pending.len()),
+            ("redstone.scheduled", self.scheduled.len()),
+            ("redstone.suspended", self.suspended.values().map(Vec::len).sum()),
+            ("redstone.sleeping_updates", sum(&self.sleeping_updates)),
+            ("redstone.sleeping_changes", sum(&self.sleeping_changes)),
+            ("redstone.unloaded_at", self.unloaded_at.len()),
+            ("redstone.cart_signal", self.cart_signal.len()),
+            ("redstone.frame_signal", self.frame_signal.len()),
+            ("redstone.trip_pulse", self.trip_pulse.len()),
+            ("redstone.toggles", self.toggles.len()),
+            ("redstone.comparator", self.comparator.len()),
+            ("redstone.powered", self.powered.len()),
+            ("redstone.changed", self.changed.len()),
+            ("redstone.changed_set", self.changed_set.len()),
+        ]);
+        self.order.soak_counts(out);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

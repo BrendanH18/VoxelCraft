@@ -35,6 +35,7 @@ pub mod conduit_hunt;
 pub mod copper_golem;
 pub mod creaking;
 pub mod crystal;
+mod diagnostics;
 pub mod dragon;
 mod dragon_model;
 mod effect_triggers;

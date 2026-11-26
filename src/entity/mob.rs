@@ -4068,6 +4068,13 @@ pub(super) fn turn_toward(from: f32, to: f32, max: f32) -> f32 {
     wrap(from + d.clamp(-max, max))
 }
 
+/// v1.0 Track 3: the long-session soak (`crate::soak`) sums path lengths.
+impl Mob {
+    pub(super) fn soak_path_len(&self) -> usize {
+        self.nav.path.as_ref().map_or(0, |p| p.nodes.len())
+    }
+}
+
 #[cfg(test)]
 mod skylight_tests {
     use super::*;

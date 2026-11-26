@@ -46,3 +46,11 @@ impl World {
         }
     }
 }
+
+/// v1.0 Track 3: entry counts for the long-session soak (`crate::soak`).
+impl PistonState {
+    pub(crate) fn soak_counts(&self, out: &mut crate::world::diagnostics::Counts) {
+        out.push(("piston.moving", self.moving.len()));
+        out.push(("piston.pushes", self.pushes.len()));
+    }
+}

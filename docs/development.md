@@ -291,6 +291,37 @@ perf report --comm voxelcraft --children --percentage relative
 The [v0.18 performance record](verification/2026-11-23-v0.18-performance.md)
 has the measurements taken with it.
 
+### Long-session soak
+
+`examples/soak.rs` (v1.0 Track 3, `src/soak.rs`) runs a headless session
+for hours of simulated time and samples everything that could grow without
+bound. A creative-mode CLI-agent player (`Agent`, with its real session
+tick) idles at a base in the Overworld (a wheat farm, the reference
+contraptions' self-harvesting cane farm, an observer clock, a repeater
+loop, a hopper chain, furnaces and a zombie spawner), walks and flies out
+on a new heading each cycle, walks and flies in the Nether and flies out
+across the End, `--leg-minutes` (default 10) of simulated time each. The
+library's steps of `Game::tick` run around it, natural spawning on; it
+autosaves every 5 simulated minutes, quits and reopens the world before
+each Overworld walk and saves and reopens on every change of dimension.
+Ticks run as fast as the machine allows, but the player only moves once
+the chunks within 4 (128 blocks) of it have loaded, so the simulation never
+runs on an empty world.
+
+Every `--sample-seconds` (default 60) it writes a CSV row: resident memory
+and threads (Linux), tick and streaming time, the save's size and time,
+every entry count `World::diagnostics` and `Entities::diagnostics` expose
+(queues, caches, retained per-position state, stored entities) and the size
+of each saved property.
+
+```sh
+scripts/boat-check.sh -- 'cargo build --profile ci --locked --no-default-features --example soak && /home/user/target/ci/examples/soak --hours 4 --rd 6 --csv target/soak/soak.csv; cat target/soak/soak.csv'
+```
+
+`tests/soak.rs` runs six simulated minutes of the same itinerary (about 12
+seconds on Boat) and checks the bounds; the
+[record](verification/2026-11-25-v1.0-soak.md) has the multi-hour runs.
+
 ## Screenshots and scripted scenes
 
 `--screenshot` waits for the world to load, writes a PNG, then exits.
@@ -549,6 +580,8 @@ cargo run --release -- --export-sounds
 ```
 
 Writes every synthesized sound to `target/sounds/*.wav` and prints statistics.
+The game itself synthesizes the blocks' own sounds on their first use (v1.0
+Track 3); the export renders all of them, the same bits.
 This command exits without opening the game window. See [procedural sound](architecture.md#procedural-sound)
 for synthesis and mixer details.
 
