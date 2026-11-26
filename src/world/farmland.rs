@@ -36,7 +36,7 @@ pub const WATER_REACH: i32 = 4;
 pub const TRAMPLE_VOLUME: f32 = 0.512;
 /// `Level.setBlock` flags of the moisture changes (`UPDATE_CLIENTS`): no
 /// neighbour updates.
-pub const MOISTURE_FLAGS: u16 = 0;
+pub const MOISTURE_FLAGS: u16 = super::redstone_order::flags::UPDATE_CLIENTS;
 
 /// Moistures 1..=6 (0 and 7 are the original states).
 pub const fn owns(id: u16) -> bool {

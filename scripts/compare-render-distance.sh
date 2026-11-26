@@ -116,13 +116,22 @@ build head "$head_commit"
 
 awake=()
 command -v caffeinate >/dev/null && awake=(caffeinate -d)
+failed=()
 for rd in $rds; do
     for label in base head; do
         echo "== $label at render distance $rd" >&2
-        ${awake[@]+"${awake[@]}"} python3 tools/benchmark_scenes.py --executable "$out/bin/voxelcraft-$label" --offscreen \
+        if ! ${awake[@]+"${awake[@]}"} python3 tools/benchmark_scenes.py --executable "$out/bin/voxelcraft-$label" --offscreen \
             --scenes "$scenes" --repeats "$repeats" --seconds "$seconds" --rd "$rd" --output "$out/$label/rd$rd" \
-            || echo "compare-render-distance: $label at render distance $rd failed; see $out/$label/rd$rd" >&2
+            || [ ! -f "$out/$label/rd$rd/summary.json" ]; then
+            echo "compare-render-distance: $label at render distance $rd failed; see $out/$label/rd$rd" >&2
+            failed+=("$label rd$rd")
+        fi
     done
 done
+# A partial table is still printed for diagnosis, but an incomplete comparison fails.
 table "$out" | tee "$out/table.md"
 echo "results: $out" >&2
+if [ ${#failed[@]} -gt 0 ]; then
+    echo "compare-render-distance: INCOMPLETE, failed runs: ${failed[*]}" >&2
+    exit 1
+fi

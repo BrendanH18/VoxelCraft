@@ -535,10 +535,15 @@ impl RegionFile {
                 let size = frame.len() as u64;
                 let count = sectors(size) as usize;
                 frame.resize(count * SECTOR as usize, 0);
-                let first = self.allocate(count);
-                self.file.seek(SeekFrom::Start(first as u64 * SECTOR))?;
-                self.file.write_all(&frame)?;
                 let size = u32::try_from(size).map_err(|_| io::Error::other("a chunk record is over 4 GiB"))?;
+                let first = self.allocate(count);
+                // A failed write frees its sectors again, so retries don't grow the file.
+                if let Err(e) =
+                    self.file.seek(SeekFrom::Start(first as u64 * SECTOR)).and_then(|_| self.file.write_all(&frame))
+                {
+                    self.used[first..first + count].fill(false);
+                    return Err(e);
+                }
                 (first as u32, size)
             }
         };
