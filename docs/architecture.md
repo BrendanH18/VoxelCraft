@@ -1435,6 +1435,32 @@ saved). The benchmark scene list (`performance::SCENES` and
 `benchmarks/scenes.json`) gains `weather`, `underwater` and `nether` after
 `streaming`.
 
+### v1.0 acceptance track reservations
+
+Reserved on 2026-11-25 when the owner approved the v1.0 acceptance build
+plan ([roadmap](roadmap.md#v10-plan-2026-11-25)), for ten parallel tracks,
+after `examples/id_map.rs` at `cfa8195` showed states 13968–14335, items
+1937–2199 and texture layers 4066–4095 unregistered. Item 1937 stays the
+Ender Dragon's spawn egg, as Track 4 of v0.18 kept it. Each track
+allocates only inside its own row, records what it used in its
+verification record (the integrator copies it here), and leaves unused IDs
+unregistered. Texture layers are never saved and may be repacked at
+integration; new block textures should replace layers rather than add
+them, since only the 30 layers from the current count are certainly free.
+The integrator makes appended orderings (enchantments, sounds, particle
+kinds, item icons, options, game events) contiguous in landing order.
+
+| Block states | Item IDs | Texture layers | Track |
+| --- | --- | --- | --- |
+| 13968–14015 | — | — | 4. Farming and weather (farmland moisture 0–7) |
+| — | 1950–1959 | — | 5. Enchanting, loot and damage |
+| — | 1960–1969 | — | 6. Companions and villages |
+| — | 1937, 1970–1979 | — | 7. Hostiles and mounts (1937: the Ender Dragon spawn egg) |
+| 14016–14079 | 1980–1989 | — | 8. Generation (amethyst bud wall states and anything else it needs) |
+| — | — | 4066–4079 | 10. Final art round (only if a redrawn tile can't replace its layer) |
+| — | — | — | 1. Save compatibility; 2. Render-distance performance; 3. Long-session soak; 9. Controls and sculk |
+| 14080–14335 | 1938–1949, 1990–2199 | 4080–4095 | Integrator |
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating

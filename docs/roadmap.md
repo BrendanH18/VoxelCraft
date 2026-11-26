@@ -78,8 +78,8 @@ its release notes without its frame-time runs, which need the reference
 Mac (an owner exception, recorded in the [release plan](#release-plan)).
 v0.18's exit, rows Verified, is not met, so its rows stay Implemented,
 unverified or Partial. The frame-time runs it carried move to v1.0's
-acceptance pass. The next version is v1.0 (acceptance), once the owner
-approves its plan.
+acceptance pass. The next version is v1.0 (acceptance); the owner
+approved its plan on 2026-11-25 ([v1.0 plan](#v10-plan-2026-11-25)).
 
 **Versions (owner, 2026-11-13): the next release is v0.14.** The owner
 asked for everything built since v0.13 to ship as one release, v0.14,
@@ -638,7 +638,7 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 | v0.16 | The End and the Wither | Close M3; M5 | End cities and ships (the last GEN-05 structures, then the M3 exit checks), shulkers and shulker boxes, elytra and fireworks, dragon respawn; Wither summoning, Nether stars and beacons; the no-cheat progression playthrough. Added by the 2026-11-09 audit ([list](#content-assigned-by-the-2026-11-09-audit)): poplar, cinnabar and sulfur with their terrain and the sulfur cube, abandoned camps, mob heads, infested blocks, nether gold ore, conduits, and the reassessment of dungeons, mineshafts, strongholds, shipwrecks and monuments | Released (owner, 2026-11-23): played by the owner, tagged `v0.16` at `0848508` ([#113](https://github.com/BrendanH18/VoxelCraft/pull/113)) and published as the latest release, without its offscreen frame-time run (owner exception above). Rows stay Implemented, unverified. Implemented (2026-11-21): scope approved by the owner, eight tracks in two waves, all merged and integrated: wave 1 (Outer End, flight and storage, Wither and beacons, generation 5 Overworld) on 2026-11-20, wave 2 (classic and ocean structures, dragon respawn and the M5 audit, wave 1 leftovers, the M3 exit audit) on 2026-11-21. The offscreen frame-time run remains. See the [v0.16 scope](#v016-scope-the-end-and-the-wither) |
 | v0.17 | Redstone and automation | M6 | Java update order, pistons with entity push and slime/honey, the crafter, remaining sensors and workstations; reference farms, clocks and sorters across save/reload. Added by the 2026-11-09 audit: the furnace minecart | Released (owner, 2026-11-23): played by the owner, tagged `v0.17` at `d5c1fee` after [#116](https://github.com/BrendanH18/VoxelCraft/pull/116) and [#117](https://github.com/BrendanH18/VoxelCraft/pull/117) and published as the latest release, without its offscreen frame-time run (owner exception above). Rows stay Implemented, unverified. Implemented (2026-11-23): scope approved by the owner; all ten tracks merged and integrated ([#115](https://github.com/BrendanH18/VoxelCraft/pull/115)), and every reference contraption matches Java. The offscreen frame-time run remains. See the [v0.17 scope](#v017-scope-redstone-and-automation) |
 | v0.18 | Polish and performance | M7: UX, §6 | Typography/contrast, material and mob art, inventory/recipe navigation, HUD/workstations, title/world identity, atmosphere and accessibility ([scope](#v020-scope-presentation-and-performance)); subtitles, asset and sound review in play (including the v0.12 blocks' own sounds), and menu fixes found since v0.11; the 120 FPS gate in every scene, including v0.8's streaming budget (PERF-03), and the performance check for the v0.8 and v0.9 rows, v0.11's menu and title frame-time run and v0.12's `materials` runs, which moved here unverified ([v0.12 profile](verification/2026-10-29-v0.12-finish.md#frame-time)). The per-frame entity model rebuild that profile found was removed on 2026-11-09 ([record](verification/2026-11-09-entity-frame-time.md)); the streaming route's main-thread terrain column rebuilds from mob biome queries were addressed in the [streaming follow-up](verification/2026-11-09-streaming-biomes-and-gen07.md); the remaining tick work and per-frame sign text are still owed, and the gate is measured again here (v0.14 passed it on 2026-11-16, [record](verification/2026-11-16-tag-gate-run.md)) | Played by the owner (2026-11-25); to be tagged and released without its frame-time runs (owner exception above), which move to v1.0 with v0.18's unmet exit. The tag and the published release follow this record's merge. Rows stay Implemented, unverified or Partial. Implemented, unverified (2026-11-24): the owner approved an eleven-track plan ([v0.18 plan](#v018-plan-2026-11-23)); all eleven tracks are merged and integrated, every art round's look approved by the owner and the code reviewed; the owner's play and the frame-time runs remain. Presentation scope expanded by the owner on 2026-11-05. Each release now records its own frame-time run ([§6.1](#61-reference-configuration-and-frame-time-gate)), so what stays here is the final gate, not every release's first measurement |
-| v1.0 | Acceptance | M7 exit, §8 | Every mandatory row Verified; the frame-time runs moved from v0.16, v0.17 and v0.18 (with PERF-03 and the v0.11 and v0.12 runs v0.18 carried); fresh-world and long-session playthroughs; save-compatibility policy; installer and update checks; current stable Java scope reconciled | Planned |
+| v1.0 | Acceptance | M7 exit, §8 | Every mandatory row Verified; the frame-time runs moved from v0.16, v0.17 and v0.18 (with PERF-03 and the v0.11 and v0.12 runs v0.18 carried); fresh-world and long-session playthroughs; save-compatibility policy; installer and update checks; current stable Java scope reconciled | In progress (2026-11-25): the owner approved a ten-track acceptance build ([v1.0 plan](#v10-plan-2026-11-25)); Java 26.3 is still the current stable release |
 
 Notes:
 
@@ -2071,6 +2071,64 @@ adapter and persistence checks. Close the carried v0.11 menu/title checks for
 UX-03a/b and all carried performance runs, including PERF-03, with the final
 visuals enabled. Rows reach Verified; any unfinished work requires an explicit
 owner-approved move under the release policy, not a silent deferral past 1.0.
+
+#### v1.0 scope: acceptance
+
+<a id="v10-plan-2026-11-25"></a>
+
+**v1.0 plan (owner, 2026-11-25).** Rows reach Verified only through the
+owner's play and the frame-time runs on the reference Mac, so agents can't
+finish v1.0 alone. The owner approved a ten-track acceptance build that
+closes every remaining Partial gap agents can close, so that those two
+steps are what remains. Java 26.3 is still the current stable release
+(checked 2026-11-25: 26.4 is at its first pre-release), so the reference
+and the core scope are unchanged ([§1.2](#12-reference-version-policy)).
+Each track works in its own worktree with IDs from the
+[architecture reservations](architecture.md#v10-acceptance-track-reservations),
+checks on Boat and writes a verification record; the integrator applies
+the requirement inventory changes. Track 10 merges only once the owner
+approves its look.
+
+1. **Save compatibility** (UX-05b, UX-04a): a written 1.0 save policy;
+   save fixtures from every tagged release v0.8 to v0.18, made on Boat,
+   with load and migration tests for each; interrupted-save tests.
+2. **Render-distance performance**: the v0.18 suspects (entities, beams
+   and conduits built to `Fog::end()` instead of Java's distance, Fancy
+   cloud cost, the chunk shader's sRGB and fog math), growth light bounded
+   instead of flushing the whole light queue (owner, 2026-11-25), headless
+   profiles on Boat, and a one-command v0.17 against v1.0 comparison for
+   the reference Mac.
+3. **Long-session soak**: a headless multi-hour session that wanders,
+   streams and saves, checking memory, queues, caches and entity counts;
+   the startup sound bank's extra 44 MB cut (owner, 2026-11-25).
+4. **Farming and weather** (FOO-01a, FOO-02, ENV-03): farmland moisture
+   0–7, low-light crop removal, sapling-grown pale oaks, 26.3 food values
+   against the jar; lightning on items, vehicles and decorations, snow
+   pushing, Java's weather random.
+5. **Enchanting, loot and damage** (PRO-03, PRO-04, MOB-02d, PLY-03b):
+   Soul Speed; trail-ruin archaeology, End city and mansion loot; mob
+   armor against fire, lava and fall damage; mobs slowed by cobwebs.
+6. **Companions and villages** (MOB-03a/b/d, MOB-01c, MOB-05d): taming,
+   following and teleporting; leads and fence knots; farm-animal parity;
+   structure spawn overrides on Java's piece bounds; witch healing, bell
+   ringing, villager fireworks and raid statistics.
+7. **Hostiles and mounts** (MOB-04a/c, FOO-04a/c): remaining hostile
+   parity, zombie-jockey spears, trap enchantments, equine travel, boats
+   tick by tick; the Ender Dragon spawn egg with a free-roaming dragon
+   (owner, 2026-11-25).
+8. **Generation** (GEN-04a, GEN-05g, BLD-05b/c): Nether biome, feature
+   and placement parity; Java's full bastion pool catalogue; maps in item
+   frames; amethyst bud wall states.
+9. **Controls and sculk** (PLY-06a, AUT-01b): Auto-Jump, Attack/Use
+   Toggle, camera and view-bobbing parity; the game events still not
+   posted.
+10. **Final art round** (UX-01, MOB-06): wooden doors, trapdoors and
+    chests, the dirt path, hay bale, bell, anvil, TNT and plants, and hand
+    detail for the remaining pattern-only mobs.
+
+What stays for the owner: play of the build, and the frame-time runs this
+release carries (the offscreen and windowed suites, PERF-03, v0.11's menu
+and title run and v0.12's `materials` runs).
 
 **M7 exit:** all mandatory core rows are Verified; every remaining exception/
 deferral is explicit; current stable Java scope has been reconciled;
