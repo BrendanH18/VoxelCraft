@@ -130,13 +130,16 @@ fn spider_climbs_a_three_high_wall_to_its_unreachable_target() {
             }
         }
     }
-    let ctx = night(DVec3::new(7.5, 4.0, 0.5));
+    // The target stands near the edge, so the spider sees it over the top
+    // (Java's spiders only take a target they can see, v1.0 Track 7).
+    let ctx = night(DVec3::new(3.5, 4.0, 0.5));
     let mut e = Entities::new(19);
     e.spawn(MobKind::Spider, DVec3::new(0.5, 1.0, 0.5));
     let mut climbed = false;
     for _ in 0..400 {
         e.update(0.05, &scene, &ctx);
-        climbed |= e.mobs[0].pos.y >= 3.9 && e.mobs[0].pos.x > 3.0;
+        // On top: its 0.7-wide box overlaps the platform, whose face is x = 3.
+        climbed |= e.mobs[0].pos.y >= 3.9 && e.mobs[0].pos.x + 0.35 > 3.0;
     }
     assert!(climbed, "spider did not climb: {:?}", e.mobs[0].pos);
 }

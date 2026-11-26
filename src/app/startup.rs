@@ -566,27 +566,29 @@ mod tests {
     }
 
     #[test]
-    fn new_worlds_save_and_reload_as_generation_5() {
+    fn new_worlds_save_and_reload_as_generation_6() {
         let dir = std::env::temp_dir().join(format!("voxelcraft-worldgen-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let storage = Storage::new(&dir);
 
-        // A new world: generation 5, written as `worldgen=5`.
+        // A new world: generation 6 (v1.0 Track 8), written as `worldgen=6`.
         let generation = world_generation(None);
-        assert_eq!(generation, Generation::V5);
+        assert_eq!(generation, Generation::V6);
         let generator = Generator::with_generation(7, Dimension::Overworld, generation);
         let mut props = std::collections::BTreeMap::new();
         super::super::save::record_generation(&mut props, generator.generation);
         storage.save(&LevelInfo { seed: 7, player: None, props }, &[]).unwrap();
         let text = std::fs::read_to_string(dir.join("level.txt")).unwrap();
-        assert!(text.lines().any(|line| line == "worldgen=5"), "{text}");
+        assert!(text.lines().any(|line| line == "worldgen=6"), "{text}");
 
-        // Reloaded, it stays generation 5.
+        // Reloaded, it stays generation 6.
         let saved = storage.load_level().unwrap();
-        assert_eq!(world_generation(Some(&saved)), Generation::V5);
-        assert_eq!(Generator::with_generation(saved.seed, Dimension::Overworld, Generation::V5).generation.number(), 5);
+        assert_eq!(world_generation(Some(&saved)), Generation::V6);
+        assert_eq!(Generator::with_generation(saved.seed, Dimension::Overworld, Generation::V6).generation.number(), 6);
 
         // Older worlds keep theirs.
+        storage.set_props(&[(Generation::KEY, "5")]).unwrap();
+        assert_eq!(world_generation(Some(&storage.load_level().unwrap())), Generation::V5);
         storage.set_props(&[(Generation::KEY, "2")]).unwrap();
         assert_eq!(world_generation(Some(&storage.load_level().unwrap())), Generation::V2);
         let mut legacy = storage.load_level().unwrap();

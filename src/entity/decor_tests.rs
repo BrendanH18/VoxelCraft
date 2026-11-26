@@ -419,7 +419,7 @@ fn framed_maps_draw_their_image_at_javas_scale_and_turn() {
     let red_rgb = &rgba(red)[..3];
     let tile = |d: &Decor, maps: &MapStorage| {
         let mut mesh = EntityMesh::flat();
-        build(std::slice::from_ref(d), maps, DVec3::ZERO, 256.0, 1.0, &mut mesh);
+        build(std::slice::from_ref(d), maps, DVec3::ZERO, &256.0.into(), 1.0, &mut mesh);
         let verts: Vec<_> = mesh.expanded().into_iter().filter(|v| v.color[..3] == *red_rgb).collect();
         let lo = verts.iter().fold(Vec3::splat(f32::MAX), |a, v| a.min(Vec3::from_array(v.pos)));
         let hi = verts.iter().fold(Vec3::splat(f32::MIN), |a, v| a.max(Vec3::from_array(v.pos)));

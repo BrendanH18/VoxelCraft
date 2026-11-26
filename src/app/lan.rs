@@ -2878,9 +2878,17 @@ mod tests {
         assert_eq!(encode_slot(SlotRef::Palette(crystal)), Some(LEGACY_END_CRYSTAL_CODE));
         let decoded = decode_slot(LEGACY_END_CRYSTAL_CODE, Container::Inventory, GameMode::Creative, 2);
         assert_eq!(decoded, Some(SlotRef::Palette(crystal)));
-        let eggs = voxelcraft::content::spawn_egg::EGGS.len();
+        // The eggs (with v1.0 Track 7's Ender Dragon egg), then v1.0 Track
+        // 5's trail sherds, all after the End crystal.
         let palette: Vec<_> = crate::item::Item::creative_palette().collect();
-        assert!(palette[palette.len() - eggs..].iter().all(|&i| voxelcraft::content::spawn_egg::is_spawn_egg(i)));
+        let crystal_at = palette.iter().position(|&i| i == crate::entity::crystal::END_CRYSTAL).unwrap();
+        let eggs = voxelcraft::content::spawn_egg::all().count();
+        let sherds = usize::from(
+            voxelcraft::world::archaeology::TRAIL_ITEM_END - voxelcraft::world::archaeology::TRAIL_ITEM_FIRST,
+        );
+        let after = &palette[crystal_at + 1..];
+        assert_eq!(after.len(), eggs + sherds, "nothing else follows the End crystal");
+        assert!(after[..eggs].iter().all(|&i| voxelcraft::content::spawn_egg::is_spawn_egg(i)));
     }
     /// 1000 + 1645: the End crystal was the last of v0.17's 1646 palette entries.
     const LEGACY_END_CRYSTAL_CODE: u16 = 2645;

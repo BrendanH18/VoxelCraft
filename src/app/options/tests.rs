@@ -785,7 +785,8 @@ fn cloud_and_sky_flash_options_use_javas_labels_and_order() {
         assert_eq!(host.settings.clouds, want);
         assert_eq!(label(&video, &host, video::Id::Clouds), format!("Clouds: {caption}"));
     }
-    assert_eq!(label(&video, &host, video::Id::CloudDistance), "Cloud Distance: 128 Chunks");
+    // Java's Fancy preset sets 64 (v1.0 Track 2).
+    assert_eq!(label(&video, &host, video::Id::CloudDistance), "Cloud Distance: 64 Chunks");
     video.slide(&mut host, video::Id::CloudDistance, 0.0);
     assert_eq!(label(&video, &host, video::Id::CloudDistance), "Cloud Distance: 2 Chunks");
     video.slide(&mut host, video::Id::CloudDistance, 0.5);
