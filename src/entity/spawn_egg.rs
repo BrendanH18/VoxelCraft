@@ -16,7 +16,7 @@
 use glam::{DVec3, IVec3};
 
 use super::{Entities, Mob, MobKind};
-use crate::content::spawn_egg::{self, Baby};
+use crate::content::spawn_egg::{self, Baby, Spawns};
 use crate::physics::BlockSource;
 use crate::simulation::difficulty::Difficulty;
 
@@ -26,7 +26,16 @@ pub const BABY_START_AGE: i32 = -24000;
 /// `EntityType.getYOffset`: how far above `cell`'s floor a mob of `kind`
 /// lands when `EntityType.create` is told to try moving it down.
 pub fn y_offset<W: BlockSource + ?Sized>(world: &W, kind: MobKind, cell: IVec3, moved_up: bool) -> f64 {
-    let shape = kind.shape();
+    y_offset_for(world, kind.shape(), cell, moved_up)
+}
+
+/// [`y_offset`] for an entity of `shape`.
+pub fn y_offset_for<W: BlockSource + ?Sized>(
+    world: &W,
+    shape: crate::physics::Shape,
+    cell: IVec3,
+    moved_up: bool,
+) -> f64 {
     let base = cell.as_dvec3();
     // The cell, stretched one block down when the egg went on a top face.
     let (lo, hi) = (base - DVec3::Y * if moved_up { 1.0 } else { 0.0 }, base + DVec3::ONE);
@@ -42,6 +51,54 @@ impl Entities {
     pub fn egg_can_spawn(&self, kind: MobKind) -> bool {
         self.difficulty != Difficulty::Peaceful
             || spawn_egg::EGGS.iter().find(|e| e.kind == kind).is_none_or(|e| e.peaceful)
+    }
+
+    /// Whether a spawn egg of `spawns` can spawn (`EntityType.canSpawn`).
+    pub fn egg_spawns_allowed(&self, spawns: Spawns) -> bool {
+        match spawns {
+            Spawns::Mob(kind) => self.egg_can_spawn(kind),
+            Spawns::EnderDragon => self.difficulty != Difficulty::Peaceful || spawn_egg::ENDER_DRAGON_PEACEFUL,
+        }
+    }
+
+    /// [`Entities::spawn_from_egg`] for any egg: returns where the mob or
+    /// dragon stands.
+    pub fn spawn_egg_spawns<W: BlockSource + ?Sized>(
+        &mut self,
+        world: &W,
+        spawns: Spawns,
+        cell: IVec3,
+        try_move_down: bool,
+        moved_up: bool,
+    ) -> Option<DVec3> {
+        match spawns {
+            Spawns::Mob(kind) => {
+                self.spawn_from_egg(world, kind, cell, try_move_down, moved_up).map(|i| self.mobs[i].pos)
+            }
+            Spawns::EnderDragon => self.spawn_dragon_from_egg(world, cell, try_move_down, moved_up),
+        }
+    }
+
+    /// v1.0 Track 7: `EntityType.spawn` for the Ender Dragon's egg: a
+    /// dragon no fight owns, hovering at the centre of `cell` (dropped as
+    /// [`y_offset_for`] says), facing a random way (`EntityType.create`
+    /// snaps it to `wrapDegrees(random * 360)`), then its ambient growl.
+    pub fn spawn_dragon_from_egg<W: BlockSource + ?Sized>(
+        &mut self,
+        world: &W,
+        cell: IVec3,
+        try_move_down: bool,
+        moved_up: bool,
+    ) -> Option<DVec3> {
+        if !self.egg_spawns_allowed(Spawns::EnderDragon) {
+            return None;
+        }
+        let y = if try_move_down { y_offset_for(world, super::dragon::WILD_SHAPE, cell, moved_up) } else { 0.0 };
+        let at = DVec3::new(cell.x as f64 + 0.5, cell.y as f64 + y, cell.z as f64 + 0.5);
+        let yaw = self.rng.next_f32() * 360.0;
+        self.wild_dragons.spawn(at, yaw);
+        self.pending_sounds.push(super::EntityEvent::Sound { sound: super::MobSound::DragonGrowl, pos: at });
+        Some(at)
     }
 
     /// `EntityType.spawn` with a spawn egg's reasons (`SPAWN_ITEM_USE` or

@@ -162,6 +162,8 @@ fn friction(b: Option<Block>) -> f64 {
         Some(Block::ICE | crate::world::gadgets::PACKED_ICE) => 0.98,
         Some(b) if crate::world::frosted_ice::owns(b.0) => 0.98,
         Some(crate::world::overworld_blocks::BLUE_ICE) => 0.989,
+        // v1.0 Track 7: `Blocks.SLIME_BLOCK.friction(0.8F)`.
+        Some(crate::world::stone_blocks::SLIME_BLOCK) => 0.8,
         _ => 0.6,
     }
 }
@@ -221,7 +223,14 @@ impl Mob {
 
     /// `maxUpStep` (the `STEP_HEIGHT` attribute).
     fn step_height(&self) -> f64 {
-        if matches!(self.kind, MobKind::Turtle | MobKind::Axolotl | MobKind::Frog) { 1.0 } else { 0.6 }
+        match self.kind {
+            MobKind::Turtle | MobKind::Axolotl | MobKind::Frog => 1.0,
+            // `AbstractHorse.createBaseHorseAttributes` (v1.0 Track 7);
+            // camels set 1.5.
+            k if super::super::mounts::camel_like(k) => 1.5,
+            k if super::super::mounts::equine(k) => super::equine::STEP_HEIGHT,
+            _ => 0.6,
+        }
     }
 
     /// `LivingEntity.travelInAir` with `input` and the mob's `getSpeed()`.

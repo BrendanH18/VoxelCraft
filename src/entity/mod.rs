@@ -1160,6 +1160,8 @@ pub struct Entities {
     storage: chunk_storage::EntityStorage,
     /// The dragon fight, in the End.
     pub fight: Option<dragon::Fight>,
+    /// v1.0 Track 7: Ender Dragons no fight owns (spawn eggs), in any dimension.
+    pub wild_dragons: dragon::Wild,
     /// v0.16 Track G: End crystals, in any dimension (the End's tick with
     /// the fight).
     pub crystals: crystal::Crystals,
@@ -1312,6 +1314,7 @@ impl Entities {
             decor_clock: 0,
             storage: Default::default(),
             fight: None,
+            wild_dragons: dragon::Wild::default(),
             crystals: crystal::Crystals::default(),
             crystal_time: 0.0,
             mob_loot: true,
@@ -1578,6 +1581,7 @@ impl Entities {
         if let Some(fight) = &mut self.fight {
             fight.explode(center, power);
         }
+        self.wild_dragons.explode(center, power);
         self.crystals.explode(center, power);
         // v0.16 Track C: a charged creeper's blast knocks one head off.
         let charged = self
@@ -2101,6 +2105,10 @@ impl Entities {
         // v0.16 Track G: End crystals, saved even when there are none, so
         // a load knows the pillars' crystals are among them.
         props.insert("end_crystals".to_string(), self.crystals.serialize());
+        // v1.0 Track 7: dragons no fight owns.
+        if !self.wild_dragons.dragons.is_empty() {
+            props.insert("ender_dragons".to_string(), self.wild_dragons.serialize());
+        }
     }
 
     /// Restores [`Entities::save_props`]. Every entity starts in the level;
@@ -2143,6 +2151,7 @@ impl Entities {
         if let Some(c) = props.get("end_crystals") {
             self.crystals.load(c);
         }
+        self.wild_dragons = props.get("ender_dragons").map(|d| dragon::Wild::load(d)).unwrap_or_default();
     }
 
     pub fn load_items(&mut self, text: &str) {
@@ -2251,6 +2260,7 @@ impl Entities {
         if let Some(fight) = &self.fight {
             dragon_model::build_fight(fight, &self.crystals, camera, time, alpha, &mut self.mesh);
         }
+        dragon_model::build_wild(&self.wild_dragons, &self.crystals, camera, time, alpha, &mut self.mesh);
         &mut self.mesh
     }
 
@@ -2293,7 +2303,12 @@ impl Entities {
         let tnt = self.tnt.iter().map(|t| t.previous_pos.lerp(t.pos, alpha)).map(at(shadow::BLOCK_RADIUS, 1.0));
         let crystals = self.crystals.list.iter().map(|c| c.pos).map(at(shadow::CRYSTAL_RADIUS, 1.0));
         let dragon = self.fight.as_ref().and_then(|f| f.dragon.as_ref());
-        let dragon = dragon.map(|d| d.previous_pos.lerp(d.pos, alpha)).map(at(shadow::DRAGON_RADIUS, 1.0));
+        let wild = self.wild_dragons.dragons.iter().map(|w| &w.dragon);
+        let dragon = dragon
+            .into_iter()
+            .chain(wild)
+            .map(|d| d.previous_pos.lerp(d.pos, alpha))
+            .map(at(shadow::DRAGON_RADIUS, 1.0));
         let all = items.chain(orbs).chain(carts).chain(tnt).chain(crystals).chain(dragon);
         casters.extend(all.chain(others.iter().copied()).filter(|c| c.radius > 0.0 && near(c)));
         shadow::build(ground, &casters, camera, &mut self.mesh);
@@ -2358,7 +2373,7 @@ impl Entities {
 
     /// The End crystal or dragon part a ray hits within `max_dist`.
     fn fight_raycast_all(&self, origin: DVec3, dir: DVec3, max_dist: f64) -> Option<(dragon::Hit, f64)> {
-        dragon::raycast(self.fight.as_ref(), &self.crystals, origin, dir, max_dist)
+        dragon::raycast(self.fight.as_ref(), &self.wild_dragons, &self.crystals, origin, dir, max_dist)
     }
 
     /// The End crystal (in any dimension) or dragon part a ray hits within
@@ -2395,6 +2410,7 @@ impl Entities {
         match hit {
             dragon::Hit::Crystal(id) => self.crystals.hit(id, crystal::Blow::Player { id: by, creative }),
             dragon::Hit::Dragon(_) => self.fight.as_mut().is_some_and(|f| f.strike(hit, damage, false)),
+            dragon::Hit::Wild(id, part) => self.wild_dragons.strike(id, part, damage, false),
         }
     }
 
@@ -4354,7 +4370,11 @@ mod tests {
                 &ctx(DVec3::new(0.0, 10.0, 0.0)),
                 &mut mobs,
                 &[],
-                Some(&mut dragon::Targets { fight: Some(&mut fight), crystals: &mut crystals }),
+                Some(&mut dragon::Targets {
+                    fight: Some(&mut fight),
+                    wild: &mut Default::default(),
+                    crystals: &mut crystals,
+                }),
                 &mut Rng::new(1),
                 &mut events,
             );

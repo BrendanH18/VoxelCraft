@@ -141,10 +141,17 @@ struct Current {
 impl Current {
     /// `CurrentAccumulator.applyTo` for a player: the average flow.
     fn impulse(&self, movement: DVec3, scale: f64) -> DVec3 {
+        self.impulse_for(movement, scale, true)
+    }
+
+    /// `CurrentAccumulator.applyTo`: a player takes the average flow, any
+    /// other entity the normalised sum.
+    fn impulse_for(&self, movement: DVec3, scale: f64, player: bool) -> DVec3 {
         if self.count == 0 || self.sum.length_squared() < 1.0e-5_f32 as f64 {
             return DVec3::ZERO;
         }
-        let mut impulse = self.sum * (1.0 / self.count as f64) * scale;
+        let flow = if player { self.sum * (1.0 / self.count as f64) } else { normalize(self.sum) };
+        let mut impulse = flow * scale;
         if movement.x.abs() < 0.003 && movement.z.abs() < 0.003 && impulse.length() < 0.0045000000000000005 {
             impulse = normalize(impulse) * 0.0045000000000000005;
         }
@@ -166,6 +173,21 @@ impl FluidContact {
             Fluid::Water => self.water_height,
             Fluid::Lava => self.lava_height,
         }
+    }
+
+    /// v1.0 Track 7: [`FluidContact::current_impulse`] for an entity that
+    /// isn't a player (a boat): Java normalises the summed flow instead of
+    /// averaging it.
+    pub fn entity_current_impulse(&self, movement: DVec3, fast_lava: bool) -> DVec3 {
+        let mut push = DVec3::ZERO;
+        if self.in_water() {
+            push += self.water_current.impulse_for(movement, 0.014, false);
+        }
+        if self.in_lava() {
+            let scale = if fast_lava { 0.007 } else { 0.0023333333333333335 };
+            push += self.lava_current.impulse_for(movement + push, scale, false);
+        }
+        push
     }
 
     /// The push water (0.014) and lava give this tick, given the movement before it.

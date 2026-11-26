@@ -468,8 +468,9 @@ impl System {
             b.velocity = velocity;
             self.burst(b, setting);
         }
-        if let Some(fight) = &entities.fight {
-            for cloud in &fight.clouds {
+        let fight = entities.fight.iter().flat_map(|f| f.clouds.iter());
+        {
+            for cloud in fight.chain(entities.wild_dragons.clouds.iter()) {
                 if !near(cloud.pos) {
                     continue;
                 }

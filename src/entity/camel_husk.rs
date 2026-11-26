@@ -22,11 +22,12 @@ pub const ZOMBIE_RIDING_OFFSET: f64 = 0.7;
 
 /// Mobs that carry mob riders: undead horses, camel husks and zombie nautiluses.
 pub fn mob_mount(kind: MobKind) -> bool {
-    super::undead_mounts::undead(kind) || matches!(kind, MobKind::CamelHusk | MobKind::ZombieNautilus)
+    super::undead_mounts::undead(kind)
+        || matches!(kind, MobKind::CamelHusk | MobKind::ZombieNautilus | MobKind::Strider)
 }
 
 /// Where the `n`th of `riders` mob riders of `vehicle` sits (feet).
-pub fn rider_seat(vehicle: &Mob, n: usize, riders: usize) -> DVec3 {
+pub fn rider_seat(vehicle: &Mob, n: usize, riders: usize, rider_offset: f64) -> DVec3 {
     match vehicle.kind {
         MobKind::CamelHusk => {
             // As the camel's player seats: half a block fore and aft with two aboard.
@@ -41,6 +42,10 @@ pub fn rider_seat(vehicle: &Mob, n: usize, riders: usize) -> DVec3 {
             }
         }
         MobKind::ZombieNautilus => vehicle.pos + DVec3::Y * (super::nautilus::PASSENGER_HEIGHT - ZOMBIE_RIDING_OFFSET),
+        // v1.0 Track 7: a strider seats at its full height (Java's default
+        // passenger attachment, 1.7 for an adult); a zombified piglin's
+        // `ridingOffset` of -0.7 sinks it in, a baby strider sits on top.
+        MobKind::Strider => vehicle.pos + DVec3::Y * (vehicle.shape().height - rider_offset),
         _ => vehicle.pos + DVec3::Y * (vehicle.shape().height - 0.25),
     }
 }
@@ -57,6 +62,19 @@ impl Entities {
                 let clear = !physics::overlaps_solid(world, pos, MobKind::CamelHusk.shape());
                 if clear && self.rng.next_f32() < CAMEL_HUSK_CHANCE {
                     self.spawn_camel_husk_jockey(last);
+                }
+            }
+            // v1.0 Track 7: `Strider.finalizeSpawn` for an adult: one time in
+            // thirty (while monsters spawn) a zombified piglin with a warped
+            // fungus on a stick rides it saddled; else one in ten a baby
+            // strider rides it.
+            MobKind::Strider if !self.mobs[last].baby => {
+                let monsters =
+                    self.monster_spawning && self.difficulty != crate::simulation::difficulty::Difficulty::Peaceful;
+                if self.rng.next_int(30) == 0 && monsters {
+                    self.spawn_strider_jockey(last, MobKind::ZombifiedPiglin);
+                } else if self.rng.next_int(10) == 0 {
+                    self.spawn_strider_jockey(last, MobKind::Strider);
                 }
             }
             MobKind::Drowned => {
@@ -93,6 +111,37 @@ impl Entities {
         parched.persistent = false;
         parched.yaw = yaw;
         parched.riding = Some(vehicle);
+        self.position_mob_riders();
+    }
+
+    /// `Strider.spawnJockey`: `rider` (a zombified piglin, or a baby
+    /// strider) spawns on strider `mount` facing its way and rides it. The
+    /// piglin holds a warped fungus on a stick and the strider gets a saddle
+    /// that always drops.
+    pub(super) fn spawn_strider_jockey(&mut self, mount: usize, rider: MobKind) {
+        let (pos, yaw) = (self.mobs[mount].pos, self.mobs[mount].yaw);
+        self.ensure_mob_ids();
+        let vehicle = MOB_VEHICLE | self.mobs[mount].uid;
+        if rider == MobKind::ZombifiedPiglin
+            && let Some(s) = self.mobs[mount].mount.as_mut()
+        {
+            s.slots[0] = Some(Stack::new(crate::item::Item::SADDLE, 1));
+        }
+        self.spawn(rider, pos);
+        let m = self.mobs.last_mut().unwrap();
+        m.persistent = false;
+        m.yaw = yaw;
+        m.riding = Some(vehicle);
+        if rider == MobKind::ZombifiedPiglin {
+            // The stick replaces its golden sword (and adds no attack damage).
+            let stick = Stack::new(crate::item::Item::WARPED_FUNGUS_ON_A_STICK, 1);
+            m.equipment.set(super::equipment::Slot::MainHand, Some(stick));
+            m.held = Some(super::nether::Weapon::None);
+        } else {
+            // `setAge(-24000)`.
+            m.baby = true;
+            m.age = -24000;
+        }
         self.position_mob_riders();
     }
 
@@ -134,7 +183,8 @@ impl Entities {
                 let uid = m.riding.filter(|v| v & MOB_VEHICLE != 0)? & !MOB_VEHICLE;
                 let &i = vehicles.get(&uid)?;
                 let n = seated.entry(uid).or_default();
-                let seat = rider_seat(&self.mobs[i], *n, counts.get(&uid).copied().unwrap_or(1));
+                let offset = -super::minecart::riding_offset(m.kind) * if m.baby { 0.5 } else { 1.0 };
+                let seat = rider_seat(&self.mobs[i], *n, counts.get(&uid).copied().unwrap_or(1), offset);
                 *n += 1;
                 Some((seat, self.mobs[i].vel))
             })

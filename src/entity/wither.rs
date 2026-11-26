@@ -865,6 +865,7 @@ impl Entities {
         if let Some(fight) = &mut self.fight {
             fight.explode(center, power);
         }
+        self.wild_dragons.explode(center, power);
         self.crystals.explode(center, power);
         let mut killed = Vec::new();
         for m in &mut self.mobs {

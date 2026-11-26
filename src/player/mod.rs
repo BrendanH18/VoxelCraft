@@ -4,8 +4,8 @@
 //! `LivingEntity.travel` and `Entity.move` (see [`travel`]). Velocity is
 //! kept in blocks per second (Java's `deltaMovement` times 20).
 
-mod fluid;
-mod travel;
+pub(crate) mod fluid;
+pub(crate) mod travel;
 
 pub use fluid::{FluidCell, FluidContact, fluid_at};
 pub use travel::{bounciness, friction};

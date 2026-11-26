@@ -287,7 +287,7 @@ different pitches.
 
 ## Known gaps
 
-- **Riding**: saddled strider riding and warped-fungus-on-a-stick steering are implemented. Strider jockeys, baby riders and piglins riding hoglins remain unassessed.
+- **Riding**: saddled strider riding and warped-fungus-on-a-stick steering are implemented. Strider jockeys (a zombified piglin with a fungus stick on a saddled strider, 1 in 30 while monsters spawn; else a baby strider rider, 1 in 10) follow `Strider.finalizeSpawn` since v1.0 Track 7, though the piglin doesn't steer. Piglins riding hoglins (`babySometimesRideBabyHoglin`) remain.
 - **Breeding**: hoglins and striders use the retained shared breeding/temptation pipeline. Complete selected-reference acceptance remains under MOB-03.
 - **Bartering**: spectral arrows and Soul Speed don't exist (see the table).
 - **Piglin details**:

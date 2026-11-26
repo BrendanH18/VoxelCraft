@@ -1,9 +1,9 @@
 //! v0.18 Track 4: Java 26.3's spawn eggs (`SpawnEggItem`), one item per egg
 //! whose mob VoxelCraft has: item ids 1850..=1936 in the order of
 //! `tests/fixtures/java/26.3/spawn_eggs.json` (the Spawn Eggs tab's, then
-//! the Wither's egg, which no tab lists). The Ender Dragon's egg (Java's
-//! last) is not registered: the dragon only exists as the End fight's boss,
-//! so 1937 stays free for it.
+//! the Wither's egg, which no tab lists). v1.0 Track 7 registers the Ender
+//! Dragon's egg (Java's last, which no tab lists either) as item 1937, where
+//! Track 4 kept it: it makes a dragon no fight owns (`entity::dragon::Wild`).
 //!
 //! Each egg stacks to 64 and is creative-only, as in Java: no recipe, loot
 //! or trade makes one. Its icon is VoxelCraft's own two-colour egg; the
@@ -55,6 +55,33 @@ pub struct Egg {
 
 const fn entry(name: &'static str, kind: MobKind, base: [u8; 3], spots: [u8; 3], peaceful: bool, baby: Baby) -> Egg {
     Egg { name, kind, base, spots, peaceful, baby }
+}
+
+/// v1.0 Track 7: the Ender Dragon's egg, the item after the Wither's. It
+/// is not in [`EGGS`]: the dragon isn't a [`MobKind`].
+pub const ENDER_DRAGON: Item = Item(ITEM_END);
+/// Its colours, from the 26.3 jar like the others' (`spawn_eggs.json`).
+pub const ENDER_DRAGON_BASE: [u8; 3] = [0x1c, 0x1b, 0x1c];
+pub const ENDER_DRAGON_SPOTS: [u8; 3] = [0x96, 0x42, 0xa8];
+/// `EntityType.isAllowedInPeaceful` for the dragon.
+pub const ENDER_DRAGON_PEACEFUL: bool = true;
+/// One past the last egg item, the dragon's included.
+pub const ALL_END: u16 = ENDER_DRAGON.0 + 1;
+
+/// What an egg makes.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Spawns {
+    Mob(MobKind),
+    /// An Ender Dragon no fight owns.
+    EnderDragon,
+}
+
+/// What the spawn egg `item` makes.
+pub fn spawns(item: Item) -> Option<Spawns> {
+    if item == ENDER_DRAGON {
+        return Some(Spawns::EnderDragon);
+    }
+    mob(item).map(Spawns::Mob)
 }
 
 /// Every registered egg, in item id order.
@@ -160,7 +187,7 @@ pub fn mob(item: Item) -> Option<MobKind> {
 
 /// Whether `item` is a spawn egg.
 pub fn is_spawn_egg(item: Item) -> bool {
-    egg_of(item).is_some()
+    egg_of(item).is_some() || item == ENDER_DRAGON
 }
 
 /// The spawn egg for `kind`, if Java has one (the illusioner has none).
@@ -168,12 +195,20 @@ pub fn egg(kind: MobKind) -> Option<Item> {
     EGGS.iter().position(|e| e.kind == kind).map(|i| Item(ITEM_FIRST + i as u16))
 }
 
-/// Every spawn egg, in item id order.
+/// Every spawn egg, in item id order (the Ender Dragon's last).
 pub fn all() -> impl Iterator<Item = Item> {
-    (ITEM_FIRST..ITEM_END).map(Item)
+    (ITEM_FIRST..ALL_END).map(Item)
 }
 
 pub(crate) fn item_info(item: Item) -> Option<ItemInfo> {
+    if item == ENDER_DRAGON {
+        return Some(ItemInfo {
+            name: "ender dragon spawn egg",
+            kind: ItemKind::Material,
+            max_stack: MAX_STACK,
+            sprite: Sprite::SpawnEgg(ENDER_DRAGON_BASE, ENDER_DRAGON_SPOTS),
+        });
+    }
     let e = egg_of(item)?;
     Some(ItemInfo {
         name: e.name,

@@ -13,6 +13,8 @@ use crate::world::World;
 use crate::world::block::{Block, RailShape};
 use crate::world::rails::{self, RailKind};
 
+pub mod boat;
+
 /// Java's rideable minecart: 0.98 wide, 0.7 tall.
 pub const SHAPE: Shape = Shape::new(0.49, 0.7);
 /// Blocks per tick. 0.4 × 20 = 8 m/s.
@@ -44,6 +46,39 @@ const ALIGNMENT: f64 = 0.8f32 as f64;
 /// `OldMinecartBehavior.pushAndPickupEntities`: the cart's box grows this
 /// much sideways to find what it touches.
 const REACH: f64 = 0.2f32 as f64;
+
+/// v1.0 Track 7: what a rider does to the vehicle this tick: a minecart's
+/// push (blocks a tick) and a boat's keys.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct RiderInput {
+    pub push: DVec3,
+    pub keys: boat::Keys,
+}
+
+/// `EntityType.Builder.ridingOffset` (Java 26.3 `EntityTypes`): a mob's
+/// vehicle attachment is the negative of it.
+pub fn riding_offset(kind: super::MobKind) -> f64 {
+    use super::MobKind as K;
+    match kind {
+        K::Allay | K::Vex => 0.04f32 as f64,
+        K::Ghast | K::HappyGhast => 0.5,
+        K::Phantom => -0.125,
+        K::WitherSkeleton => -0.875,
+        K::Evoker | K::Illusioner | K::Pillager | K::Vindicator => -0.6f32 as f64,
+        K::Bogged
+        | K::Drowned
+        | K::Husk
+        | K::Parched
+        | K::Piglin
+        | K::PiglinBrute
+        | K::Skeleton
+        | K::Stray
+        | K::Zombie
+        | K::ZombieVillager
+        | K::ZombifiedPiglin => -0.7f32 as f64,
+        _ => 0.0,
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum CartKind {
@@ -203,6 +238,12 @@ pub struct Minecart {
     /// arrow), and whether it had been primed first: only a primed cart's
     /// blast spares rails and what holds them (`MinecartTNT.isPrimed`).
     impact_blast: Option<bool>,
+    /// v1.0 Track 7: a boat's `AbstractBoat` state (never saved, as in Java).
+    pub boat: boat::State,
+    /// The controlling player's keys for this tick's boat step.
+    pub boat_keys: Option<boat::Keys>,
+    /// Players and mobs aboard at the last tick (boat seats depend on it).
+    pub passengers: u8,
 }
 
 impl Minecart {
@@ -234,6 +275,9 @@ impl Minecart {
             fuel: 0,
             push: DVec3::ZERO,
             impact_blast: None,
+            boat: boat::State::default(),
+            boat_keys: None,
+            passengers: 0,
         }
     }
 
@@ -303,9 +347,9 @@ impl Minecart {
             return crate::world::colour_blocks::cushion::seat(self.pos);
         }
         if self.kind.boat().is_some() {
-            self.pos
-                + DVec3::Y * -0.1
-                + DVec3::new(self.yaw.cos() as f64, 0.0, self.yaw.sin() as f64) * if index == 0 { 0.2 } else { -0.6 }
+            // A player's feet: the attachment point less its own 0.6.
+            let count = usize::from(self.passengers).max(index + 1);
+            self.pos + self.boat_attachment(index, count, false) - DVec3::Y * boat::PLAYER_ATTACHMENT
         } else {
             self.seat()
         }
@@ -335,12 +379,40 @@ impl Minecart {
 
     /// One punch. Creative breaks immediately. Returns the dropped item when it breaks.
     pub fn hurt(&mut self, creative: bool) -> Option<Item> {
+        self.hurt_by(creative, 1.0)
+    }
+
+    /// `VehicleEntity.hurtServer`: a hit for `damage` adds ten times it,
+    /// and past 40 the vehicle breaks. Creative breaks it at once.
+    pub fn hurt_by(&mut self, creative: bool, damage: f32) -> Option<Item> {
         // `BlockAttachedEntity.hurtServer`: any hit breaks a cushion.
         if creative || self.kind.cushion().is_some() {
             return Some(self.kind.item());
         }
-        self.damage += 10.0;
+        self.damage += damage * 10.0;
         (self.damage > 40.0).then(|| self.kind.item())
+    }
+
+    /// The feet of mob passenger `index`: the boat's attachment point less
+    /// the mob's own vehicle attachment (`EntityType.ridingOffset`).
+    pub fn mob_seat(&self, index: usize, mob: &super::Mob) -> DVec3 {
+        if self.kind.boat().is_none() {
+            return self.passenger_seat(index);
+        }
+        let count = usize::from(self.passengers).max(index + 1);
+        let scale = if mob.baby { 0.5 } else { 1.0 };
+        let attach = -riding_offset(mob.kind) * scale;
+        self.pos + self.boat_attachment(index, count, mob.kind.is_breedable()) - DVec3::Y * attach
+    }
+
+    /// `AbstractBoat.clampRotation` for a mob aboard: it faces the boat's
+    /// way, or sideways when an animal fills the last seat.
+    pub fn boat_mob_yaw(&self, mob: &super::Mob) -> Option<f32> {
+        self.kind.boat()?;
+        let full = usize::from(self.passengers) >= self.kind.seats();
+        let turn =
+            if mob.kind.is_breedable() && full { if mob.uid.is_multiple_of(2) { 90.0f32 } else { 270.0 } } else { 0.0 };
+        Some(self.yaw + turn.to_radians())
     }
 
     pub fn step(&mut self, world: &World, passenger: DVec3, mob_passenger: bool) {
@@ -367,7 +439,8 @@ impl Minecart {
             self.ignited_by_fire = true;
         }
         if self.kind.boat().is_some() {
-            self.step_boat(world, passenger);
+            let keys = self.boat_keys.take();
+            self.step_boat(world, keys);
             return;
         }
         // `isInWater` counts a waterlogged block's water too, so a cart on a
@@ -404,79 +477,6 @@ impl Minecart {
             if self.fuel == 0 {
                 self.push = DVec3::ZERO;
             }
-        }
-    }
-
-    fn step_boat(&mut self, world: &World, passenger: DVec3) {
-        let shape = self.shape();
-        let cell = self.pos.floor().as_ivec3();
-        let water = physics::touches_block(world, self.pos, shape, |b| b.is_water());
-        let submerged =
-            world.get_block((self.pos + DVec3::Y * shape.height).floor().as_ivec3()).is_some_and(|b| b.is_water());
-        let ground = world.get_block(cell - IVec3::Y).unwrap_or(Block::AIR);
-        let friction = if water {
-            0.9
-        } else if self.on_ground {
-            if ground == crate::world::overworld_blocks::BLUE_ICE {
-                0.989
-            } else if ground == Block::ICE
-                || ground == crate::world::gadgets::PACKED_ICE
-                || crate::world::frosted_ice::owns(ground.0)
-            {
-                0.98
-            } else {
-                0.3
-            }
-        } else {
-            0.9
-        };
-        self.vel.x *= friction;
-        self.vel.z *= friction;
-        self.vel.y -= if water { 0.0 } else { 0.04 };
-        if water {
-            self.fall_distance = 0.0;
-            let drop = world.get_block(cell).filter(|b| b.is_water()).map_or(0.0, |b| b.fluid_drop() as f64 / 16.0);
-            let surface = cell.y as f64 + 1.0 - drop;
-            // A bubble column overrides the surface spring: it lifts the boat
-            // out of the water or drags it under (`Boat.onAboveBubbleColumn`).
-            let (min, max) = shape.aabb(self.pos);
-            match crate::world::bubble::apply(|p| world.get_block(p), min, max, self.vel.y) {
-                Some(dy) => self.vel.y = dy,
-                None => {
-                    self.vel.y = (self.vel.y * 0.75 + (surface - self.pos.y - 0.15) * 0.1).clamp(-0.04, 0.1);
-                }
-            }
-            self.underwater_ticks = if submerged { self.underwater_ticks.saturating_add(1) } else { 0 };
-            if submerged {
-                self.vel.y = (self.vel.y + 0.01) * 0.95;
-                if self.underwater_ticks >= 60 {
-                    self.rider = None;
-                    self.second_rider = None;
-                    self.eject = true;
-                }
-            }
-        }
-        let input = passenger.with_y(0.0);
-        if input.length_squared() > 1e-8 {
-            let direction = input.normalize();
-            let target = direction.z.atan2(direction.x) as f32;
-            self.yaw += wrap_radians(target - self.yaw).clamp(-0.1, 0.1);
-            let forward = DVec3::new(self.yaw.cos() as f64, 0.0, self.yaw.sin() as f64);
-            self.vel += forward * if water || !self.on_ground { 0.04 } else { 0.02 };
-            self.paddle += std::f32::consts::PI / 8.0;
-        }
-        let from = self.pos.y;
-        let mut velocity = self.vel * 20.0;
-        let hit = physics::move_box(world, &mut self.pos, &mut velocity, self.vel, shape);
-        self.vel = velocity / 20.0;
-        self.on_ground = hit.on_ground;
-        if !water {
-            self.fall_distance += (from - self.pos.y).max(0.0);
-        }
-        if hit.on_ground {
-            // Java 26.3 AbstractBoat.checkFallDamage only resets the
-            // distance on landing; boats no longer break from a hard fall.
-            self.fall_distance = 0.0;
         }
     }
 
@@ -1076,6 +1076,12 @@ impl super::Entities {
 
     /// Punch the cart under the crosshair. A broken cart becomes its item.
     pub fn hurt_cart(&mut self, eye: DVec3, dir: DVec3, reach: f64, creative: bool) -> bool {
+        self.hurt_cart_by(eye, dir, reach, creative, 1.0)
+    }
+
+    /// [`Entities::hurt_cart`] with the attack's `damage` (Java adds ten
+    /// times it to the vehicle's damage).
+    pub fn hurt_cart_by(&mut self, eye: DVec3, dir: DVec3, reach: f64, creative: bool, damage: f32) -> bool {
         let Some(i) = self.cart_ray(eye, dir, reach) else { return false };
         if !creative
             && self.minecarts[i].kind == CartKind::Tnt
@@ -1089,7 +1095,7 @@ impl super::Entities {
         if !creative && self.minecarts[i].fuse.is_some() && self.minecarts[i].kind == CartKind::Tnt {
             return true;
         }
-        if let Some(item) = self.minecarts[i].hurt(creative) {
+        if let Some(item) = self.minecarts[i].hurt_by(creative, damage) {
             let pos = self.minecarts[i].pos;
             let id = self.minecarts[i].id;
             self.drop_cart(i, item, pos, !creative);
@@ -1390,8 +1396,9 @@ impl super::Entities {
         }
     }
 
-    /// Advance every cart one game tick. `wish` is each rider's blocks-per-tick push.
-    pub fn tick_minecarts(&mut self, world: &mut World, wish: &[(super::PlayerId, DVec3)]) {
+    /// Advance every cart one game tick. `wish` is each rider's blocks-per-tick
+    /// push and movement keys.
+    pub fn tick_minecarts(&mut self, world: &mut World, wish: &[(super::PlayerId, RiderInput)]) {
         if self.minecarts.is_empty() {
             world.refresh_cart_signals([]);
             return;
@@ -1412,18 +1419,17 @@ impl super::Entities {
             let mob_passenger = self.mobs.iter().any(|m| m.riding == Some(self.minecarts[i].id) && m.alive());
             let id = self.minecarts[i].id;
             self.minecarts[i].previous_pos = self.minecarts[i].pos;
-            let paddle = self.minecarts[i].paddle;
-            self.minecarts[i].step(world, passenger.unwrap_or(DVec3::ZERO), mob_passenger);
+            // v1.0 Track 7: a boat steers by its controlling player's keys.
+            self.minecarts[i].boat_keys = passenger.map(|p| p.keys);
+            self.minecarts[i].step(world, passenger.map_or(DVec3::ZERO, |p| p.push), mob_passenger);
             if std::mem::take(&mut self.minecarts[i].ignited_by_fire) {
                 let fuse = self.rng.next_int(20) + self.rng.next_int(20);
                 self.minecarts[i].fuse = Some(fuse as u16);
             }
             let cart = &self.minecarts[i];
-            if (paddle / std::f32::consts::PI).floor() < (cart.paddle / std::f32::consts::PI).floor() {
-                self.pending_sounds.push(super::EntityEvent::Sound {
-                    sound: super::MobSound::BoatPaddle(!cart.on_ground),
-                    pos: cart.pos,
-                });
+            if let Some(water) = cart.boat.stroke {
+                self.pending_sounds
+                    .push(super::EntityEvent::Sound { sound: super::MobSound::BoatPaddle(water), pos: cart.pos });
             }
 
             if self.minecarts[i].eject {
@@ -1460,10 +1466,15 @@ impl super::Entities {
             }
             let mut passenger_index =
                 usize::from(self.minecarts[i].rider.is_some()) + usize::from(self.minecarts[i].second_rider.is_some());
+            let aboard = passenger_index + self.mobs.iter().filter(|m| m.riding == Some(id) && m.alive()).count();
+            self.minecarts[i].passengers = aboard.min(255) as u8;
             for mob in &mut self.mobs {
                 if mob.riding == Some(id) && mob.alive() {
-                    let seat = self.minecarts[i].passenger_seat(passenger_index);
+                    let seat = self.minecarts[i].mob_seat(passenger_index, mob);
                     passenger_index += 1;
+                    if let Some(yaw) = self.minecarts[i].boat_mob_yaw(mob) {
+                        mob.yaw = yaw;
+                    }
                     mob.pos = seat;
                     mob.previous_pos = seat;
                     mob.vel = DVec3::ZERO;
@@ -1475,12 +1486,14 @@ impl super::Entities {
             }
         }
         world.refresh_cart_signals(signals);
-        // Boats pick up small nearby mobs even while stationary; chest boats have one seat.
+        // Boats pick up small nearby mobs even while stationary; chest boats
+        // have one seat. Java adds none while a player steers
+        // (`addNewPassengers` needs a controller that isn't a player).
         for cart in &self.minecarts {
             let players = usize::from(cart.rider.is_some()) + usize::from(cart.second_rider.is_some());
             let taken = self.mobs.iter().filter(|m| m.alive() && m.riding == Some(cart.id)).count();
             let free = cart.kind.seats().saturating_sub(players + taken);
-            if free == 0 || cart.fuse.is_some() || cart.kind.boat().is_none() {
+            if free == 0 || cart.fuse.is_some() || cart.kind.boat().is_none() || cart.rider.is_some() {
                 continue;
             }
             for (offset, mob) in self
@@ -1498,7 +1511,7 @@ impl super::Entities {
             {
                 mob.riding = Some(cart.id);
                 mob.persistent = true;
-                mob.pos = cart.passenger_seat(players + taken + offset);
+                mob.pos = cart.mob_seat(players + taken + offset, mob);
                 mob.vel = DVec3::ZERO;
             }
         }
@@ -1529,23 +1542,13 @@ impl super::Entities {
         let mut i = 0;
         while i < self.minecarts.len() {
             let void = self.minecarts[i].pos.y < -64.0;
+            // `VehicleEntity.destroy`: a boat past 40 damage drops its own
+            // item (Java 26.3 has no planks-and-sticks break) and, from a
+            // chest boat, its contents (`chestVehicleDestroyed`).
             if self.minecarts[i].kind.boat().is_some() && self.minecarts[i].damage > 40.0 && !void {
-                let cart = self.minecarts.swap_remove(i);
-                self.clear_cart(cart.id);
-                if let Some((wood, _)) = cart.kind.boat().filter(|_| self.entity_drops) {
-                    let plank = Item::boat_planks(wood);
-                    for stack in [
-                        Some(Stack::new(plank, 3)),
-                        Some(Stack::new(Item::STICK, 2)),
-                        cart.kind.boat().is_some_and(|(_, chest)| chest).then(|| Stack::new(Block::CHEST, 1)),
-                    ]
-                    .into_iter()
-                    .chain(cart.slots)
-                    .flatten()
-                    {
-                        self.items.push(super::ItemEntity::new(stack, cart.pos, DVec3::ZERO, 0.5, &mut self.rng));
-                    }
-                }
+                let (id, item, pos) = (self.minecarts[i].id, self.minecarts[i].kind.item(), self.minecarts[i].pos);
+                self.drop_cart(i, item, pos, true);
+                self.clear_cart(id);
                 continue;
             }
             // Carts mark themselves broken below the world; boats never take
@@ -1826,9 +1829,11 @@ mod tests {
             c.step(&w, DVec3::ZERO, false);
             speeds.push(c.vel.x);
         }
-        assert!((speeds[0] - 0.03).abs() < 1e-8);
-        assert!((speeds[1] - 0.098).abs() < 1e-8);
-        assert!((speeds[2] - 0.0989).abs() < 1e-8);
+        // `getGroundFriction`: stone's 0.6, packed ice's 0.98 and blue
+        // ice's 0.989 (as floats), applied once by `floatBoat`.
+        assert!((speeds[0] - 0.1 * 0.6f32 as f64).abs() < 1e-12, "{speeds:?}");
+        assert!((speeds[1] - 0.1 * 0.98f32 as f64).abs() < 1e-12);
+        assert!((speeds[2] - 0.1 * 0.989f32 as f64).abs() < 1e-12);
     }
 
     #[test]
@@ -1861,10 +1866,13 @@ mod tests {
             }
         }
         let mut c = Minecart::new(1, CartKind::Boat { wood: 0, chest: false }, DVec3::new(3., 140.45, 3.));
+        c.rider = Some(super::super::PlayerId::HOST);
         for _ in 0..30 {
-            c.step(&w, DVec3::X, false);
+            // Forward: the boat faces +x (yaw 0).
+            c.boat_keys = Some(boat::Keys { up: true, ..Default::default() });
+            c.step(&w, DVec3::ZERO, false);
         }
-        assert!(c.pos.x > 5. && c.pos.y > 140.6 && c.pos.y < 141.);
+        assert!(c.pos.x > 5. && c.pos.y > 140.5 && c.pos.y < 141., "{:?}", c.pos);
         let before = c.vel.x;
         c.step(&w, DVec3::ZERO, false);
         assert!(c.vel.x > 0. && c.vel.x < before);
@@ -2187,13 +2195,17 @@ mod tests {
             e.cart_mut(id).unwrap().slots[0] = Some(Stack::new(Item::STICK, 3));
             e.drop_cart(0, Item::CHEST_MINECART, pos, true);
             assert_eq!(e.items.len(), if drops { 2 } else { 0 }, "cart item and contents, entity_drops = {drops}");
-            // A boat broken by damage drops planks and sticks.
+            // A boat broken by damage drops its own item (`VehicleEntity.destroy`).
             let id = e.spawn_cart(CartKind::Boat { wood: 0, chest: false }, pos);
             e.cart_mut(id).unwrap().damage = 45.0;
             e.items.clear();
             e.tick_minecarts(&mut w, &[]);
             assert!(e.minecarts.is_empty(), "the boat is destroyed either way");
             assert_eq!(!e.items.is_empty(), drops, "boat drops, entity_drops = {drops}");
+            if drops {
+                assert_eq!(e.items.len(), 1);
+                assert_eq!(e.items[0].stack.item, CartKind::Boat { wood: 0, chest: false }.item());
+            }
         }
     }
 

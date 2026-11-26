@@ -12,9 +12,14 @@ storage screen supports normal click and shift-click transfers. Boats share
 the existing saved vehicle/rider plumbing with minecarts, including CLI and
 controller riders. Hulls, wood colours and animated paddles are procedural.
 
-Water gives buoyancy and momentum; ice and packed ice keep more momentum,
-and blue ice keeps the most. Land travel is slow. Submerged boats eject
-players. Punching breaks a boat into its item. Java 26.3 boats and rafts survive
+Since v1.0 Track 7 boats run Java 26.3's `AbstractBoat` tick by tick
+([record](verification/2026-11-25-v1.0-track-07-hostiles-mounts.md)): the
+forward key paddles, left and right turn the boat (and the rider's view
+with it), water friction 0.9 gives a top speed of 8 m/s, ice 2 blocks a
+tick and blue ice about 3.6; currents carry boats, a bubble column throws a
+boat up or drags it down after three seconds on it, and sixty ticks under
+water eject the riders. A hit adds ten times its damage, breaking past 40
+into the boat's own item. Java 26.3 boats and rafts survive
 hard falls: `AbstractBoat.checkFallDamage` resets the accumulated distance on
 landing without a damage/destroy/drop call. Ordinary and chest variants now
 retain riders and cargo through hard landings; landing/save tests cover both
@@ -53,8 +58,11 @@ Horse coats have seven colours and five marking patterns. Each has Java's
 random health (15–30), speed (0.1125–0.3375 attribute), and jump (0.4–1.0)
 distributions. Donkeys/mules use 0.175 speed and 0.5 jump. Hold jump to charge
 and release to jump; the blue charge bar replaces XP and mount hearts replace
-hunger while riding. Equines step over one-block obstacles and share their reduced fall damage
-with riders. Saddles, armor,
+hunger while riding. Ridden horses, donkeys, mules and undead horses move by Java's
+`travelRidden` on land (v1.0 Track 7): step height 1, the jump strength
+attribute as the launch speed, a 0.4 forward leap on a running jump. A fall
+hurts a horse `floor((fall − 6) × 0.5)`; only then does the rider take
+their own fall damage for the same distance. Saddles, armor,
 stats, temper, owner, riders and storage survive saves; equipment and cargo
 spill when the animal dies.
 
@@ -102,12 +110,13 @@ red mushrooms. Both accept horse armor, never breed, and keep their saddles,
 attributes, riders and trap timers through saves. Skeleton horses drop bones;
 zombie horses drop rotten flesh. Original skeleton and green horse models use
 the shared horse rig. See [evidence and differences](verification/2026-11-04-v0.15-lightning.md),
-including missing jockey spears, trap enchantments and exact underwater travel.
+Natural zombie horsemen carry an iron spear (v1.0 Track 7), though no mob
+uses a spear's charge yet; trap riders' bows and helmets are enchanted.
 
 Current parity gaps:
 horse coats/armor and sounds are procedural approximations; horse herds now share the first
 member's coat while keeping independent markings, as Java 26.3
-`Horse.finalizeSpawn`/`HorseGroupData` do. Saved coat/marking IDs are unchanged. Water-current steering/bubble columns and exact
-Java land-status fall quirks for boats remain future work. Offhand controls
+`Horse.finalizeSpawn`/`HorseGroupData` do. Saved coat/marking IDs are unchanged. Boat currents, bubble columns and
+Java's boat statuses are followed since v1.0 Track 7; boat leashes remain future work. Offhand controls
 await a player offhand system. Horse armor dyeing and Java's dedicated horse
 inventory layout are not yet implemented.
