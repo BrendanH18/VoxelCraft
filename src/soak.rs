@@ -405,7 +405,7 @@ impl Soak {
     /// The walkable floor under `(x, z)`: the top of the first non-air
     /// block below an air gap of two, scanning down from the dimension's
     /// top (so the Nether's roof never counts). `None` over the void or
-    /// where the column hasn't loaded.
+    /// where nothing of the column has loaded.
     fn floor(&self, x: f64, z: f64) -> Option<f64> {
         let (x, z) = (x.floor() as i32, z.floor() as i32);
         let top = match self.dimension {
@@ -414,7 +414,12 @@ impl Soak {
         };
         let mut air = 0;
         for y in (self.world.min_y()..=top).rev() {
-            let b = self.world.get_block(IVec3::new(x, y, z))?;
+            // Streaming loads the rows near the walker first: an unloaded
+            // chunk above it is unknown, not ground.
+            let Some(b) = self.world.get_block(IVec3::new(x, y, z)) else {
+                air = 0;
+                continue;
+            };
             if b == Block::AIR {
                 air += 1;
             } else {
@@ -440,7 +445,15 @@ impl Soak {
         let h = self.heading;
         let dir = DVec3::new(h.x * c - h.z * s, 0.0, h.x * s + h.z * c);
         let mut next = self.pos() + dir * speed * TICK_SECONDS;
-        let floor = self.floor(next.x, next.z);
+        // The Overworld walker follows the generator's surface (above the sea),
+        // as the benchmark routes do, so it never wanders into caves while the
+        // rows above stream in; the Nether and End have no such surface.
+        let floor = if self.dimension == Dimension::Overworld {
+            let column = self.world.generator.column(next.x.floor() as i32, next.z.floor() as i32);
+            Some(f64::from(column.height.max(crate::world::terrain::SEA_LEVEL) + 1))
+        } else {
+            self.floor(next.x, next.z)
+        };
         let target = match (floor, self.dimension) {
             (Some(f), Dimension::Nether) => (f + clearance).min(120.0),
             (Some(f), _) => f + clearance,
