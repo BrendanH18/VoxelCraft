@@ -1,6 +1,7 @@
 //! Procedural textures for the v0.13 underground blocks (layers from
-//! `cave_blocks::TEX`): original artwork for glow lichen and the sculk
-//! family in the palette of Java's deep dark.
+//! `cave_blocks::TEX`): original artwork for the sculk family in the
+//! palette of Java's deep dark. Glow lichen is drawn by the material
+//! generator (v1.0 Track 10b).
 
 use super::{Rgba, SIZE, noisy, rnd, shade};
 use crate::world::cave_blocks::{ct, t};
@@ -11,8 +12,6 @@ const SCULK: [u8; 3] = [13, 30, 36];
 const SCULK_DEEP: [u8; 3] = [7, 18, 24];
 const GLOW: [u8; 3] = [40, 200, 210];
 const BONE: [u8; 3] = [214, 208, 186];
-const LICHEN: [u8; 3] = [112, 132, 112];
-const LICHEN_GLOW: [u8; 3] = [236, 214, 148];
 
 /// Sculk flesh: dark mottling with sparse glowing specks.
 fn sculk(layer: u16, x: usize, y: usize) -> Rgba {
@@ -51,14 +50,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     let r = rnd(layer, x, y, 0);
     let (fx, fy) = (x as f32 - 7.5, y as f32 - 7.5);
     match layer {
-        t::GLOW_LICHEN => {
-            // Irregular lichen crust with glowing knots; gaps show the wall.
-            let crust = rnd(layer, x / 2, y / 2, 3) < 0.55 || rnd(layer, x, y, 4) < 0.3;
-            if !crust {
-                return CLEAR;
-            }
-            if rnd(layer, x, y, 5) < 0.14 { shade(LICHEN_GLOW, 0.9 + r * 0.15) } else { shade(LICHEN, 0.75 + r * 0.35) }
-        }
         t::SCULK_VEIN => {
             // Branching dark veins with a few glowing nodes.
             let branch = (x + y / 2).is_multiple_of(5)

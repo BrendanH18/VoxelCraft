@@ -1,8 +1,10 @@
 //! Procedural textures for the v0.6 Overworld blocks (layers from
 //! `overworld_blocks::TEX`): original artwork in the palette of Java's
-//! moss, dripstone, amethyst, ocean, coral, new woods and flowers.
+//! moss, dripstone, amethyst, ocean blocks and new woods. The plants,
+//! corals and sea pickles are drawn by the material generator (v1.0
+//! Tracks 10 and 10b).
 
-use super::{Rgba, SIZE, noisy, pixel as base_pixel, rnd, shade};
+use super::{Rgba, SIZE, noisy, rnd, shade};
 use crate::world::overworld_blocks::t;
 
 const CLEAR: Rgba = [0, 0, 0, 0];
@@ -10,9 +12,6 @@ const MOSS: [u8; 3] = [89, 109, 45];
 const PALE_MOSS: [u8; 3] = [108, 118, 104];
 const DRIPSTONE: [u8; 3] = [134, 107, 92];
 const PRISMARINE: [u8; 3] = [99, 156, 151];
-const STEM: [u8; 3] = [64, 120, 40];
-const CORAL: [[u8; 3]; 5] = [[50, 90, 210], [206, 80, 160], [160, 30, 190], [190, 36, 46], [216, 200, 66]];
-const DEAD_CORAL: [u8; 3] = [130, 122, 118];
 
 pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     let r = rnd(layer, x, y, 0);
@@ -44,89 +43,11 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
                 CLEAR
             }
         }
-        l if (t::CAVE_VINES..t::CAVE_VINES + 4).contains(&l) => {
-            let i = l - t::CAVE_VINES;
-            let lit = i % 2 == 1;
-            let wave = ((fy * 0.6).sin() * 1.5) as i32;
-            let on = (x as i32 - 7 - wave).abs() <= 1;
-            let leaf = (x as i32 - 7 - wave).abs() <= 3 && (y % 5 == 1 || y % 5 == 2);
-            let berry = lit
-                && ((x as i32 - 10).pow(2) + (y as i32 - 9).pow(2) <= 3
-                    || (x as i32 - 4).pow(2) + (y as i32 - 4).pow(2) <= 2);
-            if berry {
-                shade([255, 186, 70], 0.9 + r * 0.15)
-            } else if on || leaf {
-                shade([84, 116, 40], 0.8 + r * 0.3)
-            } else {
-                CLEAR
-            }
-        }
-        t::SPORE_BLOSSOM => {
-            let (dx, dy) = (fx - 8.0, fy - 3.0);
-            let d = (dx * dx + dy * dy).sqrt();
-            if d < 2.0 {
-                shade([90, 140, 50], 0.9 + r * 0.1)
-            } else if y > 3 && y < 12 && (dx.abs() * 2.0 < (12 - y) as f32) && !(x + y).is_multiple_of(3) {
-                shade([226, 120, 200], 0.85 + r * 0.25)
-            } else {
-                CLEAR
-            }
-        }
-        t::HANGING_ROOTS => {
-            let strand = [3usize, 6, 9, 12].iter().any(|&c| x == c + (y / 6) % 2) && y < 12 + (x % 4);
-            if strand { shade([160, 118, 84], 0.85 + r * 0.2) } else { CLEAR }
-        }
         t::BIG_DRIPLEAF_TOP => {
             let vein = x == 8 || (x as i32 - 8).abs() == (y as i32 - 8).abs();
             shade([112, 160, 40], if vein { 0.8 } else { 0.95 + r * 0.12 })
         }
         t::BIG_DRIPLEAF_SIDE => shade([96, 140, 34], 0.9 + r * 0.1),
-        t::BIG_DRIPLEAF_STEM => {
-            if (7..=8).contains(&x) {
-                shade([96, 140, 34], 0.85 + r * 0.2)
-            } else {
-                CLEAR
-            }
-        }
-        t::SMALL_DRIPLEAF | t::SMALL_DRIPLEAF_TOP => {
-            let stalk = (7..=8).contains(&x) && (layer == t::SMALL_DRIPLEAF || y > 6);
-            let leaf = layer == t::SMALL_DRIPLEAF_TOP && y < 7 && (x as i32 - 8).abs() <= 6 - y as i32 / 2;
-            if stalk || leaf { shade([96, 150, 40], 0.85 + r * 0.25) } else { CLEAR }
-        }
-        t::KELP | t::KELP_PLANT => {
-            let wave = ((fy * 0.5 + if layer == t::KELP { 0.0 } else { 1.0 }).sin() * 2.0) as i32;
-            let c = x as i32 - 8 - wave;
-            let blade = c.abs() <= 1 || (y % 4 < 2 && c.abs() <= 4 && (c > 0) == (y % 8 < 4));
-            let top = layer == t::KELP && y < 3;
-            if blade && !top { shade([66, 120, 40], 0.75 + r * 0.35) } else { CLEAR }
-        }
-        t::SEAGRASS | t::TALL_SEAGRASS_BOTTOM | t::TALL_SEAGRASS_TOP => {
-            let start = if layer == t::SEAGRASS {
-                3
-            } else if layer == t::TALL_SEAGRASS_TOP {
-                1
-            } else {
-                0
-            };
-            let blade = [2usize, 5, 8, 11, 14].iter().any(|&c| {
-                let lean = (SIZE - y) / 5;
-                x == (c + lean) % SIZE && y >= start + c % 3
-            });
-            if blade { shade([50, 132, 40], 0.75 + r * 0.35) } else { CLEAR }
-        }
-        l if (t::SEA_PICKLES..t::SEA_PICKLES + 4).contains(&l) => {
-            let n = (l - t::SEA_PICKLES) as usize + 1;
-            const SPOTS: [(usize, usize); 4] = [(7, 10), (3, 11), (11, 9), (6, 5)];
-            let hit = SPOTS[..n].iter().any(|&(cx, cy)| x.abs_diff(cx) <= 1 && y >= cy && y <= cy + 5);
-            let glow = SPOTS[..n].iter().any(|&(cx, cy)| x.abs_diff(cx) <= 1 && y + 1 == cy);
-            if glow {
-                shade([230, 250, 140], 1.0)
-            } else if hit {
-                shade([100, 120, 40], 0.85 + r * 0.25)
-            } else {
-                CLEAR
-            }
-        }
         t::DRIED_KELP_SIDE => {
             let strap = y.is_multiple_of(4);
             shade([58, 64, 36], if strap { 0.7 } else { 0.9 + r * 0.15 })
@@ -172,21 +93,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
                 None => CLEAR,
             }
         }
-        l if (t::CORAL..t::CORAL + 30).contains(&l) => coral_pixel(l - t::CORAL, x, y, r),
-        t::DARK_OAK_SAPLING => sapling(x, y, r, [44, 92, 24], [70, 50, 30]),
-        t::CHERRY_SAPLING => sapling(x, y, r, [238, 170, 206], [70, 40, 46]),
-        t::PALE_OAK_SAPLING => sapling(x, y, r, [140, 150, 134], [200, 196, 188]),
-        t::MANGROVE_PROPAGULE => {
-            let pod = (7..=8).contains(&x) && (6..15).contains(&y);
-            let leaf = y < 6 && (x as i32 - 8).abs() <= (y as i32 + 1) / 2 + 1;
-            if leaf {
-                shade([90, 140, 50], 0.85 + r * 0.2)
-            } else if pod {
-                shade([100, 120, 40], 0.85 + r * 0.2)
-            } else {
-                CLEAR
-            }
-        }
         t::BAMBOO_PLANKS => planks(layer, x, y, [196, 176, 82]),
         t::MANGROVE_ROOTS_SIDE | t::MANGROVE_ROOTS_TOP => {
             let root = (x + y).is_multiple_of(5) || (x + 16 - y).is_multiple_of(6);
@@ -195,25 +101,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
         t::MUDDY_ROOTS_SIDE | t::MUDDY_ROOTS_TOP => {
             let root = (x + y).is_multiple_of(5) || (x + 16 - y).is_multiple_of(6);
             if root { shade([96, 74, 50], 0.85 + r * 0.25) } else { noisy(layer, x, y, [60, 57, 60], 0.12) }
-        }
-        t::BAMBOO | t::BAMBOO_SMALL_LEAVES | t::BAMBOO_LARGE_LEAVES => {
-            // The post samples columns 6..10.
-            let node = y.is_multiple_of(8);
-            let leaf = match layer {
-                t::BAMBOO_SMALL_LEAVES => y < 4,
-                t::BAMBOO_LARGE_LEAVES => y < 8,
-                _ => false,
-            };
-            if leaf && !(x + y).is_multiple_of(3) {
-                shade([80, 150, 40], 0.85 + r * 0.25)
-            } else {
-                shade([110, 160, 40], if node { 0.72 } else { 0.9 + r * 0.12 })
-            }
-        }
-        t::BAMBOO_SAPLING => {
-            let shoot = (7..=8).contains(&x) && y > 8;
-            let leaf = (5..11).contains(&y) && (x as i32 - 8).abs() <= (11 - y as i32) / 2 && x.is_multiple_of(2);
-            if shoot || leaf { shade([96, 150, 40], 0.85 + r * 0.25) } else { CLEAR }
         }
         t::BAMBOO_BLOCK_SIDE => {
             let groove = x.is_multiple_of(4);
@@ -237,43 +124,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
                     0.85
                 },
             )
-        }
-        t::PINK_PETALS => {
-            let petal = rnd(layer, x / 2, y / 2, 4) < 0.45;
-            if petal { shade([246, 168, 210], 0.88 + r * 0.16) } else { CLEAR }
-        }
-        t::PALE_HANGING_MOSS | t::PALE_HANGING_MOSS_TIP => {
-            let len = if layer == t::PALE_HANGING_MOSS_TIP { 10 + x % 4 } else { SIZE };
-            let strand = !x.is_multiple_of(3) && y < len;
-            if strand { shade(PALE_MOSS, 0.8 + r * 0.35) } else { CLEAR }
-        }
-        l if (t::FLOWERS..t::FLOWERS + 9).contains(&l) => flower(l - t::FLOWERS, x, y, r),
-        l if (t::DOUBLE..t::DOUBLE + 12).contains(&l) => {
-            let i = l - t::DOUBLE;
-            double_plant(i / 2, i % 2 == 1, x, y, r)
-        }
-        t::LILY_PAD => {
-            let d = ((fx - 8.0).powi(2) + (fy - 8.0).powi(2)).sqrt();
-            let notch = fx > 8.0 && (fy - 8.0).abs() < (fx - 8.0) * 0.3;
-            if d < 7.5 && !notch { shade([32, 128, 48], 0.85 + r * 0.2) } else { CLEAR }
-        }
-        t::VINE => {
-            let stem = (x + y / 2).is_multiple_of(5) || (x + 16 - y / 3).is_multiple_of(7);
-            let leaf = rnd(layer, x / 2, y / 2, 3) < 0.35;
-            if stem || leaf { shade([62, 110, 30], 0.75 + r * 0.35) } else { CLEAR }
-        }
-        l if (t::BERRY_BUSH..t::BERRY_BUSH + 4).contains(&l) => {
-            let age = (l - t::BERRY_BUSH) as usize;
-            let height = 6 + age * 3;
-            let bush = y + height >= SIZE && rnd(l, x, y, 3) < 0.7;
-            let berry = age >= 2 && rnd(l, x / 2, y / 2, 4) < if age == 3 { 0.25 } else { 0.12 };
-            if bush && berry {
-                shade([186, 20, 40], 0.9 + r * 0.15)
-            } else if bush {
-                shade([40, 90, 50], 0.8 + r * 0.3)
-            } else {
-                CLEAR
-            }
         }
         l if (t::COCOA..t::COCOA + 3).contains(&l) => {
             let age = l - t::COCOA;
@@ -320,17 +170,6 @@ fn planks(layer: u16, x: usize, y: usize, colour: [u8; 3]) -> Rgba {
     shade(colour, if seam { 0.68 } else { 0.92 + rnd(layer, x, board, 2) * 0.12 })
 }
 
-fn sapling(x: usize, y: usize, r: f32, leaf: [u8; 3], trunk: [u8; 3]) -> Rgba {
-    let (dx, dy) = (x as f32 - 7.5, y as f32 - 6.0);
-    if dx * dx + dy * dy * 1.4 < 20.0 && !(x + y).is_multiple_of(4) {
-        shade(leaf, 0.8 + r * 0.3)
-    } else if (7..=8).contains(&x) && y >= 8 {
-        shade(trunk, 0.85 + r * 0.2)
-    } else {
-        CLEAR
-    }
-}
-
 /// Pointed dripstone: `i` 0..5 points up (tip, tip merge, frustum,
 /// middle, base), 5..10 the same pointing down.
 fn pointed(i: u16, x: usize, y: usize, r: f32) -> Rgba {
@@ -370,129 +209,4 @@ fn bud(size: u16, down: bool, x: usize, y: usize, r: f32) -> Rgba {
         }
     }
     CLEAR
-}
-
-fn coral_pixel(i: u16, x: usize, y: usize, r: f32) -> Rgba {
-    let (kind, dead, colour) = (i / 10, i % 10 >= 5, (i % 5) as usize);
-    let c = if dead { DEAD_CORAL } else { CORAL[colour] };
-    match kind {
-        0 => {
-            let pattern = match colour {
-                0 => (x + y / 2).is_multiple_of(4),
-                1 => ((x as i32 - 8).pow(2) + (y as i32 - 8).pow(2)) % 9 < 3,
-                2 => rnd(200 + i, x / 2, y / 2, 3) < 0.3,
-                3 => (x * 3 + y) % 7 < 2,
-                _ => (x + y).is_multiple_of(5) || (x + 16 - y).is_multiple_of(5),
-            };
-            shade(c, if pattern { 0.75 } else { 0.92 + r * 0.14 })
-        }
-        1 => {
-            // Branching coral: a few stalks from the bottom.
-            let stalk = [4usize, 8, 12].iter().any(|&cx| {
-                let lean = (SIZE - y) / 4;
-                (x as i32
-                    - cx as i32
-                    - if cx == 4 {
-                        -(lean as i32)
-                    } else if cx == 12 {
-                        lean as i32
-                    } else {
-                        0
-                    })
-                .abs()
-                    <= 1
-                    && y >= 3 + cx % 5
-            });
-            if stalk { shade(c, 0.85 + r * 0.25) } else { CLEAR }
-        }
-        _ => {
-            // A fan spreading from the bottom middle.
-            let (dx, dy) = (x as f32 - 7.5, SIZE as f32 - y as f32);
-            let inside = dy > 1.0 && dy < 12.0 && dx.abs() < dy * 0.75;
-            let rib = ((dx.atan2(dy) * 6.0).round() as i32 - (dx.atan2(dy) * 6.0) as i32) == 0 && x.is_multiple_of(2);
-            if inside { shade(c, if rib { 0.8 } else { 0.92 + r * 0.14 }) } else { CLEAR }
-        }
-    }
-}
-
-fn flower(i: u16, x: usize, y: usize, r: f32) -> Rgba {
-    const PETALS: [[u8; 3]; 9] = [
-        [70, 110, 220],
-        [240, 240, 240],
-        [236, 236, 230],
-        [220, 228, 240],
-        [190, 120, 230],
-        [210, 40, 30],
-        [236, 120, 30],
-        [236, 236, 236],
-        [240, 170, 200],
-    ];
-    let (dx, dy) = (x as f32 - 7.5, y as f32 - 5.0);
-    let d = (dx * dx + dy * dy * 1.3).sqrt();
-    let stem = (7..=8).contains(&x) && y >= 7 && x == 7 + (y / 5) % 2;
-    let leaf = (y == 10 && (4..7).contains(&x)) || (y == 12 && (9..12).contains(&x));
-    let head = match i {
-        // Lily of the valley: little bells along an arched stem.
-        1 => [(5usize, 5usize), (8, 3), (11, 5)].iter().any(|&(cx, cy)| x.abs_diff(cx) <= 1 && y.abs_diff(cy) <= 1),
-        // Tulips: a cup.
-        5..=8 => d < 3.0 && y >= 3,
-        // Allium: a round purple ball.
-        4 => d < 3.6,
-        _ => d < 3.2,
-    };
-    let centre = matches!(i, 2 | 3) && d < 1.2;
-    if centre {
-        shade([236, 200, 50], 1.0)
-    } else if head {
-        shade(PETALS[i as usize], 0.85 + r * 0.2)
-    } else if stem || leaf {
-        shade(STEM, 0.85 + r * 0.2)
-    } else {
-        CLEAR
-    }
-}
-
-fn double_plant(kind: u16, top: bool, x: usize, y: usize, r: f32) -> Rgba {
-    let stem = (7..=8).contains(&x);
-    match (kind, top) {
-        // Sunflower: a big yellow face up top.
-        (0, true) => {
-            let d = ((x as f32 - 7.5).powi(2) + (y as f32 - 8.0).powi(2)).sqrt();
-            if d < 2.5 {
-                shade([90, 60, 20], 0.9 + r * 0.2)
-            } else if d < 5.5 {
-                shade([250, 210, 40], 0.9 + r * 0.15)
-            } else if stem && y > 12 {
-                shade(STEM, 0.9)
-            } else {
-                CLEAR
-            }
-        }
-        // Lilac, rose bush, peony: leafy below, blooms above.
-        (1..=3, true) => {
-            let bloom = [[200, 160, 220], [196, 30, 40], [236, 180, 220]][kind as usize - 1];
-            let d = ((x as f32 - 7.5).powi(2) * 0.8 + (y as f32 - 7.0).powi(2)).sqrt();
-            if d < 6.0 && rnd(300 + kind, x, y, 3) < 0.8 {
-                shade(if rnd(301 + kind, x / 2, y / 2, 3) < 0.6 { bloom } else { [60, 120, 40] }, 0.85 + r * 0.2)
-            } else {
-                CLEAR
-            }
-        }
-        // Large fern and tall grass: blades in both halves.
-        (4 | 5, _) => {
-            let blades = if kind == 4 { [1usize, 4, 8, 11, 14] } else { [2, 5, 7, 10, 13] };
-            let start = if top { 3 } else { 0 };
-            let blade = blades.iter().any(|&c| x == (c + (SIZE - y) / 6) % SIZE && y >= start + c % 3);
-            if blade { shade([72, 140, 50], 0.75 + r * 0.35) } else { CLEAR }
-        }
-        // Lower halves of the flowering plants: stems and leaves.
-        (_, false) => {
-            let leaf = (y % 5 < 2) && (x as i32 - 8).abs() <= 4 && rnd(310 + kind, x, y, 3) < 0.7;
-            if stem || leaf { shade([62, 124, 40], 0.8 + r * 0.25) } else { CLEAR }
-        }
-        _ => {
-            let _ = base_pixel;
-            CLEAR
-        }
-    }
 }
