@@ -58,16 +58,6 @@ fn in_reach(pos: DVec3, half_width: f64, height: f64, deflate: f64, other: DVec3
         && pos.y + height > other.y
 }
 
-/// A closed door a mob can open by hand (`DoorBlock.isWoodenDoor`).
-fn wooden_door(b: crate::world::block::Block) -> bool {
-    b.is_door()
-        && !matches!(
-            crate::world::redstone_blocks::component(b),
-            Some(crate::world::redstone_blocks::Component::IronDoor { .. })
-        )
-        && matches!(b.shaped(), Some(crate::world::block::Shaped::Door { open: false, .. }))
-}
-
 impl Mob {
     /// `HurtByTargetGoal.start` against a player, for the entity pass.
     pub(in crate::entity) fn hurt_by_target_player(&mut self, player: PlayerId) {
@@ -313,10 +303,11 @@ impl Mob {
         Some((self.pursue(world, aim.pos(), speed, sees || follow_unseen, true, rng), speed))
     }
 
-    /// `VindicatorBreakDoorGoal` (`BreakDoorGoal(mob, 6, Normal or Hard)`):
-    /// in an active raid, pressed against a closed wooden door, a 1 in
-    /// `reducedTickDelay(10)` start; then 240 ticks of blows before the
-    /// door is removed without drops.
+    /// `VindicatorBreakDoorGoal` (`BreakDoorGoal(mob, 6, Normal or Hard)`,
+    /// [`super::door_break`]): in an active raid, pressed against a closed
+    /// wooden door its path crosses, a 1 in `reducedTickDelay(10)` start;
+    /// then 240 ticks of blows before the door breaks. It holds `MOVE`, so
+    /// the vindicator stands facing the door meanwhile.
     fn break_door<W: MobWorld + ?Sized>(
         &mut self,
         full: bool,
@@ -325,41 +316,19 @@ impl Mob {
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
     ) -> Option<(Option<DVec3>, f64)> {
-        let s = self.illager.as_ref()?;
-        let allowed = il::breaks_doors(self.difficulty, s.raider.raid_active);
-        let door_at = |c: IVec3| world.block(c).filter(|&b| wooden_door(b));
-        if let Some((cell, time)) = s.door {
-            let lower = door_at(cell);
-            let near = (cell.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)).distance_squared(self.pos) < 4.0;
-            if !allowed || lower.is_none() || !near || time > il::DOOR_BREAK_TIME {
-                self.illager.as_mut().unwrap().door = None;
-                return None;
+        let mut running = false;
+        for n in 0..ticks.max(1) {
+            running = self.door_goal(world, full && n == 0, rng, events);
+            if !running {
+                break;
             }
-            let time = time + ticks;
-            self.illager.as_mut().unwrap().door = Some((cell, time));
-            if rng.next_int(20) == 0 {
-                self.attack_anim = 0.35;
-            }
-            if time >= il::DOOR_BREAK_TIME {
-                for c in [cell, cell + IVec3::Y] {
-                    if let Some(block) = world.block(c).filter(|b| b.is_door()) {
-                        events.push(EntityEvent::MobGrief { cell: c, block, drops: false });
-                    }
-                }
-                self.illager.as_mut().unwrap().door = None;
-            }
-            self.face(cell.as_dvec3() + DVec3::splat(0.5));
-            return Some((None, 0.0));
         }
-        if !allowed || !full || !self.blocked || rng.next_int(selector::reduced(10) as u32) != 0 {
+        if !running {
             return None;
         }
-        let ahead = DVec3::new(f64::from(self.yaw.cos()), 0.0, f64::from(self.yaw.sin()));
-        let feet = (self.pos + ahead * 0.8).floor().as_ivec3();
-        let cell = [feet, feet + IVec3::Y].into_iter().find(|&c| door_at(c).is_some())?;
-        let cell = if world.block(cell).is_some_and(|b| b.is_door_upper()) { cell - IVec3::Y } else { cell };
-        self.illager.as_mut().unwrap().door = Some((cell, 0));
+        let cell = self.door_break?.cell;
         self.stop_navigation();
+        self.face(cell.as_dvec3() + DVec3::splat(0.5));
         Some((None, 0.0))
     }
 

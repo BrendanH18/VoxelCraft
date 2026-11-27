@@ -84,8 +84,24 @@ impl Entities {
         // own skeleton bow/zombie attack goal continues ticking in place.
         // The first rider controls (Java's first passenger): a camel husk's husk.
         let mut ridden: rustc_hash::FxHashMap<u32, MobKind> = rustc_hash::FxHashMap::default();
+        // v1.0 gap Track 2: a rider's `SpearUseGoal` moves its mount
+        // (`getNavigation` is the vehicle's) where the goal goes.
+        let mut spear_dest: rustc_hash::FxHashMap<u32, DVec3> = rustc_hash::FxHashMap::default();
+        // The chase target of each first rider (a strider's zombified piglin
+        // steers it there with its `ZombieAttackGoal`).
+        let mut rider_target: rustc_hash::FxHashMap<u32, Option<DVec3>> = rustc_hash::FxHashMap::default();
         for r in self.mobs.iter().filter(|r| r.alive()) {
             if let Some(v) = r.riding.filter(|v| v & super::mounts::MOB_VEHICLE != 0) {
+                if !ridden.contains_key(&v) {
+                    if let Some(dest) = r.spear.and_then(|s| s.dest) {
+                        spear_dest.insert(v, dest);
+                    }
+                    let chased = (r.ai == super::mob::Ai::Chase)
+                        .then(|| r.chase_target.and_then(|id| ctx.players.iter().find(|t| t.id == id)))
+                        .flatten()
+                        .map(|t| t.pos);
+                    rider_target.insert(v, chased);
+                }
                 ridden.entry(v).or_insert(r.kind);
             }
         }
@@ -98,7 +114,33 @@ impl Entities {
                 s.sit_ticks = 0;
                 s.stand_ticks = 0;
             }
-            if let Some(&rider) = ridden.get(&(super::mounts::MOB_VEHICLE | m.uid)) {
+            m.hunt_charge = false;
+            if super::piglin_ride::carries_piglins(m.kind) {
+                // Baby piglins ride without steering (`entity::piglin_ride`).
+                continue;
+            }
+            if m.kind == MobKind::Strider {
+                // v1.0 gap Track 2: `Mob.getControllingPassenger` makes a
+                // zombified piglin riding first (not in
+                // `#non_controlling_rider`) the strider's controller, and
+                // `updateControlFlags` turns off the strider's `MOVE`,
+                // `LOOK` and `JUMP` goals; the piglin's goals walk the
+                // strider's navigation. A baby strider rider runs the same
+                // goal table as the strider, which keeps its own.
+                let key = super::mounts::MOB_VEHICLE | m.uid;
+                let piglin = ridden.get(&key) == Some(&MobKind::ZombifiedPiglin);
+                m.mob_steered = piglin;
+                m.hunt = if piglin {
+                    spear_dest.get(&key).copied().or(rider_target.get(&key).copied().flatten())
+                } else {
+                    None
+                };
+                continue;
+            }
+            if let Some(&dest) = spear_dest.get(&(super::mounts::MOB_VEHICLE | m.uid)) {
+                m.hunt = Some(dest);
+                m.hunt_charge = true;
+            } else if let Some(&rider) = ridden.get(&(super::mounts::MOB_VEHICLE | m.uid)) {
                 m.hunt = ctx
                     .nearest_target(m.pos)
                     .filter(|p| p.pos.distance_squared(m.pos) < 48. * 48.)

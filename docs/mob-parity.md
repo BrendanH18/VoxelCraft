@@ -165,3 +165,53 @@ Membranes now brew Slow Falling. Natural size is zero; size/anchor persist.
 Original blue ray geometry has animated wings. See the
 [hostiles record](verification/2026-11-04-v0.15-hostiles.md) for source classes,
 AI scheduling/equipment differences, checks and missing graphical evidence.
+
+## Hostile goal scheduling, door breaking and spears (v1.0 gap Track 2, implemented, unverified)
+
+The [gap-closing record](verification/2026-11-27-v1.0-gap-track-02-hostile-ai.md)
+has the Java sources and checks. Code: `src/entity/mob/chase.rs` and
+`src/entity/mob/door_break.rs`.
+
+- **Targets** in the shared hostile chase (zombies, spiders, creepers,
+  slimes, silverfish, witches and the rest of `think`'s chase) follow
+  `NearestAttackableTargetGoal` and `TargetGoal`: a search only on the goal
+  selector's full update (every other tick, staggered by entity id) and
+  then one time in five (`reducedTickDelay(10)`), for the nearest player
+  in sight within the follow range; the target is kept, even when a nearer
+  player turns up, until it dies, leaves the follow range, stops being
+  targetable or has been out of sight for 30 full updates (about 62
+  ticks). Reinforcements and hits set the target at once, as `setTarget`
+  and `HurtByTargetGoal` do. Spiders let go one full update in 100 in
+  daylight (`SpiderAttackGoal`).
+- **`MeleeAttackGoal`** (zombies, drowned without a trident, spiders, cave
+  spiders, silverfish and wither skeletons in the chase):
+  `canUse` at most every 20 ticks with a path to the target; the goal ends
+  when the path runs out (spiders keep following); a start may hit at
+  once, then one hit per 20 ticks when the attack box (the mob's box
+  widened by `sqrt(2.04) − 0.6`) meets the target's and it is in sight.
+- **Zombies' goal table**: the door goal (flagless), `SpearUseGoal`
+  (priority 2, zombified piglins 1) and `ZombieAttackGoal` (3, or 2) run
+  through the shared `GoalSelector` port (`mob::selector`), so a held
+  spear takes the move and look flags from the melee goal.
+- **Door breaking** (`BreakDoorGoal`): zombies, husks, drowned, zombie
+  villagers and zombified piglins with `CanBreakDoors`, on Hard only and
+  with `mobGriefing`, path through closed wooden doors
+  (`setCanOpenDoors`) and, pressed against one, hammer it for 240 ticks:
+  `zombie.attack_wooden_door` and an arm swing one tick in 20, the block
+  crack stage `breakTime / 240 × 10` (drawn like a player's), then the
+  door goes: the half above the path node silently, the other half with
+  its break particles and sound and, for a lower half, the door item;
+  then `zombie.break_wooden_door`. Vindicators in raids share the goal
+  (Normal or Hard) and now drop the door too. The two zombie door sounds
+  are original procedural stand-ins.
+- **Spears** (`SpearUseGoal`): a zombie, husk, zombie villager or
+  zombified piglin holding a spear walks at its target until within 10
+  blocks, lowers the spear for `reducedTickDelay(delay + damage window)`
+  full updates (119 for iron), charges, runs on 6–7 blocks past the
+  target within 2 blocks of it, charges again, and when the time is up
+  retreats 9–11 blocks (`LandRandomPos.getPosAway`). A lowered spear stabs
+  players along the mob's look with the mob range (1–2.25 blocks): the
+  base attack damage plus `floor(relative speed × multiplier)`, the 0.2
+  mob factor on every speed threshold, one contact per player per 10
+  ticks. Zombie horsemen and husks on camel husks steer their mounts there
+  at the mount's `chargeSpeedModifier` (1.4 and 4).

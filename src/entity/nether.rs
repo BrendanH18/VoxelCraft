@@ -216,6 +216,8 @@ pub struct NetherMob {
     pub dancing: bool,
     /// Where the last target stood and whether it was a hoglin, to tell if it died.
     pub(super) prey: Option<(DVec3, bool)>,
+    /// v1.0 gap Track 2: a baby piglin's riding memories (not saved).
+    pub(super) ride: super::piglin_ride::Ride,
 }
 
 impl NetherMob {
@@ -258,6 +260,7 @@ impl NetherMob {
                     celebrate_at: DVec3::ZERO,
                     dancing: false,
                     prey: None,
+                    ride: Default::default(),
                 })
             })
     }

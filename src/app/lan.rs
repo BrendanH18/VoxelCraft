@@ -237,6 +237,8 @@ impl Game {
                 .or_else(|| self.lan.bodies().find(|b| b.0 == name).map(|b| b.1));
             out.extend(body.unwrap_or_else(|| bot.agent.breaking(&self.world)));
         }
+        // v1.0 gap Track 2: doors mobs are breaking (`destroyBlockProgress`).
+        out.extend(self.mobs.entities.door_cracks());
         out.retain(|&(_, f)| f > 0.0);
         out
     }

@@ -94,6 +94,35 @@ pub(super) fn render(cue: Cue, rng: &mut Rng) -> Vec<f32> {
             add_mode(&mut out, 0, Mode { freq: 180.0 * jitter, amp: 0.6, tau: 0.08, glide: 0.6, glide_tau: 0.08 });
             out.truncate(samples(0.35));
         }
+        Cue::DoorAttack => {
+            // A heavy blow on planks: a low wooden knock with a dull thud.
+            for (freq, amp, tau) in [(110.0, 0.9, 0.09), (235.0, 0.5, 0.06), (520.0, 0.25, 0.04)] {
+                add_mode(&mut out, 0, Mode { freq: freq * jitter, amp, tau, glide: 0.92, glide_tau: 0.08 });
+            }
+            burst(&mut out, rng, 0.0, 0.16, 700.0, 0.8, 0.8);
+            out.truncate(samples(0.45));
+        }
+        Cue::DoorBreak => {
+            // Splintering wood: a crack, then a rattle of falling boards.
+            burst(&mut out, rng, 0.0, 0.12, 2200.0, 0.7, 1.0);
+            add_mode(&mut out, 0, Mode { freq: 95.0 * jitter, amp: 0.9, tau: 0.15, glide: 0.85, glide_tau: 0.12 });
+            for i in 0..5 {
+                let at = 0.08 + i as f32 * 0.07 + rng.range(0.0, 0.03);
+                burst(&mut out, rng, at, 0.09, 900.0 + 260.0 * i as f32, 1.6, 0.45);
+                add_mode(
+                    &mut out,
+                    samples(at),
+                    Mode {
+                        freq: (300.0 + 70.0 * i as f32) * jitter,
+                        amp: 0.25,
+                        tau: 0.05,
+                        glide: 1.0,
+                        glide_tau: 0.05,
+                    },
+                );
+            }
+            out.truncate(samples(0.8));
+        }
         Cue::Celebrate(_) => {
             // A short, gleeful "hah-hah".
             for i in 0..3 {
