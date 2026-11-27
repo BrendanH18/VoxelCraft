@@ -1,6 +1,7 @@
 //! Procedural Java-like equine proportions, coats, markings and equipment.
-use super::{Cuboid, Mob, MobKind, Parts, cube, part};
+use super::{Cuboid, Mob, MobKind, Parts, cube, motion, part, walk_cos};
 use glam::Quat;
+use std::f32::consts::PI;
 const COLORS: [[u8; 3]; 9] = [
     [236, 232, 218],
     [208, 177, 126],
@@ -112,20 +113,27 @@ pub(super) fn pose(m: &Mob) -> Parts {
         MobKind::Horse => s.variant as usize,
         _ => 5,
     };
-    let stride = m.limb_phase.sin() * m.limb_amp * 0.8;
+    // v1.0 gap Track 7: `AbstractEquineModel`: the front legs swing 0.8
+    // and the hind legs 0.5 of `cos(pos * 0.6662 + pi) * speed` (a fifth
+    // as fast in water), and above speed 0.2 the head nods.
+    let (pos, speed) = (m.limb_phase, m.limb_amp);
+    let water = if m.in_water { 0.2 } else { 1.0 };
+    let leg = (water * pos * motion::WALK_FREQ + PI).cos() * speed;
+    let nod = if speed > 0.2 { (pos * 0.8).cos() * 0.15 * speed } else { 0.0 };
     let head_y = match m.kind {
         MobKind::Donkey => 13.,
         MobKind::Mule => 14.,
         _ => 15.,
     };
-    let head = Quat::from_rotation_y(-m.head_yaw) * Quat::from_rotation_x(-0.35 - m.head_pitch);
+    let head = Quat::from_rotation_y(-m.head_yaw) * Quat::from_rotation_x(-0.35 - m.head_pitch + nod);
     let mut p = Parts::new();
     p.push(part(
         if m.kind == MobKind::SkeletonHorse { SKELETON_BODY } else { &BODIES[color] },
         [0.; 3],
         Quat::IDENTITY,
     ));
-    for (x, z, phase) in [(-3.5, 7., stride), (3.5, 7., -stride), (-3.5, -8., -stride), (3.5, -8., stride)] {
+    for (x, z, phase) in [(-3.5, 7., leg * 0.8), (3.5, 7., -leg * 0.8), (-3.5, -8., -leg * 0.5), (3.5, -8., leg * 0.5)]
+    {
         p.push(part(&LEGS[color], [x, 12., z], Quat::from_rotation_x(phase)));
     }
     p.push(part(&HEADS[color], [0., head_y, 6.], head));
@@ -192,7 +200,8 @@ const LLAMA_CHESTS: &[Cuboid] = &[
 pub(super) fn llama(m: &Mob) -> Parts {
     use super::trader_model::{LLAMA_HEAD, LLAMA_LEG};
     let s = m.mount.as_ref();
-    let swing = m.limb_phase.sin() * m.limb_amp * 0.9;
+    // `LlamaModel`: the quadruped's `cos(pos * 0.6662) * 1.4 * speed`.
+    let swing = walk_cos(m) * motion::LEG_SWING;
     let rx = Quat::from_rotation_x;
     let head = Quat::from_rotation_y(-m.head_yaw) * rx(-m.head_pitch);
     let mut p = Parts::new();
@@ -240,7 +249,10 @@ const CAMEL_SADDLE: &[Cuboid] = &[
 pub(super) fn camel(m: &Mob) -> Parts {
     let s = m.mount.as_ref();
     let sitting = s.is_some_and(|s| s.sit_ticks > 0);
-    let swing = m.limb_phase.sin() * m.limb_amp * 0.7;
+    // `CamelModel` plays a keyframe walk; these legs keep its loop and
+    // strength.
+    let (phase, scale) = motion::keyframe_phase(m.limb_phase, m.limb_amp, motion::CAMEL_WALK);
+    let swing = phase.sin() * 0.7 * scale;
     let rx = Quat::from_rotation_x;
     let head = Quat::from_rotation_y(-m.head_yaw) * rx(-m.head_pitch);
     // Sitting: the body rests on folded legs.

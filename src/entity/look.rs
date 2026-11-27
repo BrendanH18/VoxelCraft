@@ -5,7 +5,6 @@ use super::{Mob, MobKind, villager::Profession};
 use crate::{color::DyeColor, inventory::StackName, item::Item};
 use glam::DVec3;
 use serde_json::{Value, json};
-use std::f32::consts::TAU;
 
 fn dye(v: &Value) -> Option<DyeColor> {
     DyeColor::ALL.get(usize::try_from(v.as_u64()?).ok()?).copied()
@@ -329,12 +328,16 @@ impl Mob {
 
     /// Advances the walk cycle of a replicated mob from its observed movement, as
     /// the host's physics does from velocity.
+    /// v1.0 gap Track 7: as Java's client does, from the snapshot's
+    /// movement (`calculateEntityAnimation`) and a newly replicated attack
+    /// (the swing), a tick per 50 ms.
     pub fn animate_replica(&mut self, dt: f32) {
-        let moved = (self.pos - self.previous_pos) * DVec3::new(1.0, 0.0, 1.0);
-        let hspeed = (moved.length() / dt as f64) as f32;
-        self.limb_phase = (self.limb_phase + hspeed * dt * 3.2) % (TAU * 64.0);
-        let amp = (hspeed / 2.0).min(1.0);
-        self.limb_amp += (amp - self.limb_amp) * (dt * 10.0).min(1.0);
+        let ticks = ((dt / super::motion::TICK).round() as u32).max(1);
+        let moved = (self.pos - self.previous_pos) / f64::from(ticks);
+        for _ in 0..ticks {
+            self.advance_walk(moved);
+            self.advance_swing();
+        }
     }
 }
 

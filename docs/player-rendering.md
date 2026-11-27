@@ -184,5 +184,43 @@ Java's renderers lerp them with the partial tick. `Entities::mesh` draws
 the interpolated pose and restores the simulation's values; LAN replicas
 interpolate from the previous snapshot's pose.
 
+## Mob motion against Java's client (v1.0 gap Track 7)
+
+Checked against the Java 26.3 client
+([record](verification/2026-11-27-v1.0-gap-track-07-art-motion.md));
+the shared code is `src/entity/motion.rs`.
+
+- **Walk cycle.** `Mob::limb_phase` and `limb_amp` are Java's
+  `WalkAnimationState` position and speed. Each tick the speed moves 0.4
+  of the way to `min(distance moved * 4, 1)` and the position advances by
+  the speed (the camel, frog and creaking keep Java's own gains; bees and
+  parrots count their climb). A hit sets the speed to 1.5, dying or riding
+  stops it, and a baby's legs cycle three times as fast. Models read
+  `walkAnimationPos` (interpolated as `position - speed * (1 - partial)`)
+  and `walkAnimationSpeed` (lerped, capped at 1).
+- **Limbs.** Each family swings as its Java model does: quadrupeds, the
+  creeper, chicken, llama, wolf, fox and goat `cos(pos * 0.6662) * 1.4 *
+  speed` in diagonal pairs; humanoids (zombies, skeletons, piglins,
+  endermen) the same for legs and `* 1` for arms, with the idle arm bob;
+  villagers, witches and illagers at half stride; cats and ocelots at
+  amplitude 1 (galloping while sprinting); horses 0.8 front and 0.5 hind;
+  the hoglin `cos(pos) * 1.2`; the ravager 0.4; the strider, spider,
+  iron golem, turtle and warden their own formulas. Keyframe-animated
+  mobs (armadillo, camel, copper golem, creaking, frog, sniffer) keep their
+  own drawn limbs on Java's `applyWalk` loop length and strength.
+- **Attacks.** An attack starts Java's 6-tick arm swing (`SwingState`):
+  zombies and zombified piglins swing their raised arms
+  (`animateZombieArms`), armed illagers and piglins swing the weapon down
+  (`swingWeaponDown`), other humanoids twist the body (`WHACK`); the
+  iron golem throws both arms over 10 ticks, the hoglin butts its head
+  over 10, the ravager lunges its neck and opens its mouth.
+- **Death.** A dead mob topples over about its feet onto its left side
+  (spiders, silverfish and endermites onto their backs), on
+  `sqrt((deathTime - 1) / 20 * 1.6)`, landing 13.5 ticks in, and is
+  removed as `deathTime` reaches 20.
+- **Hurt flash.** The red overlay is on, not fading, for the 10 ticks of
+  `hurtTime` and from death on, mixed as Java's `OverlayTexture` does: 70 %
+  of the shaded texel and 30 % red, in sRGB, under the light.
+
 **Cost.** `cargo run --profile ci --example entity_submission_bench`
 times the per-frame entity build headless; see the record for numbers.

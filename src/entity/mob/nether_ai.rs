@@ -255,7 +255,8 @@ impl Mob {
         let tusks = matches!(self.kind, MobKind::Hoglin | MobKind::Zoglin);
         let reach = ATTACK_RANGE + if tusks { self.shape().half_width } else { 0.0 };
         if hdist <= reach && to.y.abs() < 1.6 && self.attack_cooldown <= 0.0 {
-            self.attack_anim = 0.35;
+            // `Hoglin.doHurtTarget`: `attackAnimationRemainingTicks = 10`.
+            self.attack_anim = if tusks { 10.0 * crate::entity::motion::TICK } else { 0.35 };
             let (base, cause) = self.kind.melee();
             let mut knockback = dir * 6.0 + DVec3::Y * 5.0;
             let mut throw = None;

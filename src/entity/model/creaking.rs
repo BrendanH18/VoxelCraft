@@ -25,7 +25,10 @@ const ARM: &[Cuboid] =
     &[cube([-1.1, -19., -1.1], [1.1, 0., 1.1], BARK, 60), cube([-1.5, -20., -1.8], [1.7, -17., 1.8], [87, 87, 73], 60)];
 pub(super) fn pose(m: &Mob, time: f32) -> Parts {
     let s = m.creaking.as_ref().unwrap();
-    let swing = if s.can_move { m.limb_phase.sin() * m.limb_amp * 0.6 } else { 0. };
+    // v1.0 gap Track 7: `CreakingModel` plays a keyframe walk; these limbs keep
+    // its loop and strength (`applyWalk`).
+    let (phase, scale) = super::motion::keyframe_phase(m.limb_phase, m.limb_amp, super::motion::CREAKING_WALK);
+    let swing = if s.can_move { phase.sin() * 0.6 * scale } else { 0. };
     let twitch = if s.teardown > 0. || s.hit_cooldown > 0. { (time * 49.).sin() * 0.13 } else { 0. };
     parts![
         part(BODY, [0.; 3], Quat::from_rotation_z(twitch)),

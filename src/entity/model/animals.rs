@@ -108,7 +108,12 @@ const PARROT: &[Cuboid] = &[
 const PARROT_WING: &[Cuboid] = &[cube([0.0, -6.0, -1.0], [1.0, 0.0, 2.0], [61, 82, 185], 18)];
 pub(super) fn pose(m: &Mob, time: f32) -> Parts {
     let a = m.animal.as_deref();
-    let swing = m.limb_phase.sin() * m.limb_amp * 0.7;
+    // v1.0 gap Track 7: `WolfModel`, `AdultFoxModel` and `GoatModel` (a
+    // `QuadrupedModel`) trot, `cos(pos * 0.6662) * 1.4 * speed` with each
+    // diagonal pair together. (The rabbit hops; its feet keep this swing.)
+    let swing = walk_cos(m) * motion::LEG_SWING;
+    // Left front, right front, left hind, right hind.
+    let trot = [1.0, -1.0, -1.0, 1.0];
     let head = Quat::from_rotation_y(-m.head_yaw) * Quat::from_rotation_x(-m.head_pitch);
     let rx = Quat::from_rotation_x;
     match m.kind {
@@ -130,20 +135,16 @@ pub(super) fn pose(m: &Mob, time: f32) -> Parts {
                 p.push(part(
                     if wolf { WOLF_LEG } else { FOX_LEG },
                     [x, if wolf { 6.0 } else { 4.0 } + y, z],
-                    rx(if sitting || sleeping {
-                        1.2
-                    } else if i % 2 == 0 {
-                        swing
-                    } else {
-                        -swing
-                    }),
+                    rx(if sitting || sleeping { 1.2 } else { swing * trot[i] }),
                 ));
             }
             let tail_pitch = if wolf { 1.0 - m.health / m.max_health() * 1.2 } else { -0.25 };
+            // A wolf wags its tail with the walk unless it is angry.
+            let wag = if wolf && m.ai != Ai::Chase { swing } else { 0.0 };
             p.push(part(
                 if wolf { WOLF_TAIL } else { FOX_TAIL },
                 [0.0, if wolf { 10.0 } else { 7.0 } + y, -6.0],
-                rx(tail_pitch) * Quat::from_rotation_y((time * 3.0).sin() * 0.08),
+                Quat::from_rotation_y(wag) * rx(tail_pitch),
             ));
             if wolf {
                 for armor in super::passive::wolf_armor(m, [0.0, y, 0.0], body_rot).iter().copied() {
@@ -170,7 +171,7 @@ pub(super) fn pose(m: &Mob, time: f32) -> Parts {
                 )
             ];
             for (i, x, z) in [(0, -3.0, 4.0), (1, 3.0, 4.0), (2, -3.0, -5.0), (3, 3.0, -5.0)] {
-                p.push(part(GOAT_LEG, [x, 8.0, z], rx(if i % 2 == 0 { swing } else { -swing })));
+                p.push(part(GOAT_LEG, [x, 8.0, z], rx(swing * trot[i])));
             }
             let horns = if m.baby { 0 } else { a.map_or(2, |a| a.horns) };
             for i in 0..horns {

@@ -2369,6 +2369,11 @@ fn layers() -> Vec<u16> {
     out.extend(round_five());
     out.extend(final_art::layers());
     out.extend(final_art::round_b_layers());
+    // Round B's bamboo leaves are redrawn by gap Track 7; each layer is
+    // pinned once, as drawn last.
+    let c = final_art::round_c_layers();
+    out.retain(|l| !c.contains(l));
+    out.extend(c);
     out
 }
 
@@ -3860,12 +3865,22 @@ mod tests {
         (1508, 0x6a16e03e6d7c12d3),
         (1509, 0x673668fba214e128),
         (1567, 0x9c54ca289455c1a3),
-        (1568, 0x5fd7c125106f2327),
-        (1569, 0x305a6b6163c53b61),
         (3443, 0x6fac2f71524ef0fe),
         (2679, 0x87c16b5959bd7f50),
         (2680, 0xe4f19cbd4fd82c29),
         (2681, 0x0c6755a053073d90),
+        (1475, 0xcd33b0228e0c2508),
+        (1476, 0xab1e895092dc492c),
+        (1477, 0x569561ff4d353bd1),
+        (1478, 0x21981e96f97b1b8f),
+        (1479, 0x030f12ae177c0974),
+        (1480, 0xf9af428bf376d0b4),
+        (1481, 0xca75119e3e685805),
+        (1482, 0xf206311a920153e7),
+        (1568, 0x432c26bbd75ed7d1),
+        (1569, 0x7771636c9a6e06cc),
+        (2612, 0xe65da621fafeaf54),
+        (4066, 0xdb07423eb14c3776),
     ];
 
     /// The measurable rules of `docs/art-and-ui.md` for natural materials.

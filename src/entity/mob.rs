@@ -54,8 +54,14 @@ const JUMP_VELOCITY: f64 = 8.4;
 const MAX_STEP: f64 = 1.0 / 60.0;
 /// Seconds of red flash (and knockback immunity) after taking damage.
 pub const HURT_TIME: f32 = 0.5;
-/// Length of the death animation before the mob is removed.
-pub const DEATH_TIME: f32 = 0.9;
+/// How long a dead mob stays before it is removed. v1.0 gap Track 7:
+/// Java's `tickDeath` removes it as its `deathTime` reaches 20 ticks after
+/// death; this game removes it at the start of a tick, before that tick's
+/// update, so the threshold sits between 18 and 19 ticks of
+/// [`Mob::dying`] and the mob is last drawn at the same `deathTime` 19.
+pub const DEATH_TIME: f32 = (super::motion::DEATH_TICKS - 1.5) * super::motion::TICK;
+/// What [`Mob::pose_values`] holds (see there).
+pub type Pose = [f32; 7];
 /// Hostile mobs notice players within this many blocks.
 const CHASE_RANGE: f64 = 24.0;
 const ATTACK_RANGE: f64 = 1.2;
@@ -1356,7 +1362,7 @@ pub struct Mob {
     /// v0.18 Track 6: [`Mob::pose_values`] at the start of the last
     /// simulation step, so the model turns and walks smoothly between ticks
     /// as Java's renderers do with the partial tick. Not saved.
-    pub previous_pose: [f32; 5],
+    pub previous_pose: Pose,
     pub vel: DVec3,
     /// Body facing, same convention as the player: forward = (cos, 0, sin).
     pub yaw: f32,
@@ -1375,11 +1381,19 @@ pub struct Mob {
     pub on_ground: bool,
     pub in_water: bool,
     pub burning: bool,
-    /// Walk cycle phase (radians) and amplitude (0..1).
+    /// v1.0 gap Track 7: Java's `WalkAnimationState` position and speed
+    /// ([`super::motion`]). While a model is built they hold what Java's
+    /// renderer hands its model instead: `walkAnimationPos` (scaled for
+    /// babies, interpolated) and `walkAnimationSpeed` (at most 1).
     pub limb_phase: f32,
     pub limb_amp: f32,
     /// Seconds left of the arm swing after an attack.
     pub attack_anim: f32,
+    /// v1.0 gap Track 7: Java's `SwingState`, started when an attack sets
+    /// [`Self::attack_anim`]. Not saved.
+    pub swing: super::motion::Swing,
+    /// [`Self::attack_anim`] as the last tick left it, to see a new attack.
+    swing_seen: f32,
     /// Sky light estimate at the mob, 0..1 (refreshed a few times a second).
     pub sky_light: f32,
     /// Torch light where it stands, 0..1.
@@ -1610,7 +1624,7 @@ impl Mob {
             riding: None,
             pos,
             previous_pos: pos,
-            previous_pose: [yaw, 0.0, 0.0, 0.0, 0.0],
+            previous_pose: [yaw, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
             vel: DVec3::ZERO,
             yaw,
             head_yaw: 0.0,
@@ -1625,6 +1639,8 @@ impl Mob {
             limb_phase: 0.0,
             limb_amp: 0.0,
             attack_anim: 0.0,
+            swing: Default::default(),
+            swing_seen: 0.0,
             sky_light: 1.0,
             block_light: 0.0,
             ai: Ai::Idle,
@@ -2106,6 +2122,8 @@ impl Mob {
         }
         self.hurt = HURT_TIME;
         self.hurt_age = 0;
+        // `LivingEntity.handleDamageEvent`: the hit kicks the legs.
+        self.limb_amp = super::motion::HURT_KICK;
         if let Some(s) = &mut self.bat {
             s.resting = false;
         }
@@ -2196,34 +2214,87 @@ impl Mob {
         }
     }
 
-    /// Advances the mob by `dt` seconds.
     /// v0.18 Track 6: what the model's pose is drawn from: body yaw, head
-    /// yaw and pitch, walk-cycle phase and amplitude.
-    pub fn pose_values(&self) -> [f32; 5] {
-        [self.yaw, self.head_yaw, self.head_pitch, self.limb_phase, self.limb_amp]
+    /// yaw and pitch, walk position and speed, and (v1.0 gap Track 7) the
+    /// arm swing and the attack countdown.
+    pub fn pose_values(&self) -> Pose {
+        [self.yaw, self.head_yaw, self.head_pitch, self.limb_phase, self.limb_amp, self.swing.anim, self.attack_anim]
     }
 
-    pub fn set_pose_values(&mut self, [yaw, head_yaw, head_pitch, limb_phase, limb_amp]: [f32; 5]) {
+    pub fn set_pose_values(&mut self, [yaw, head_yaw, head_pitch, limb_phase, limb_amp, swing, attack]: Pose) {
         (self.yaw, self.head_yaw, self.head_pitch, self.limb_phase, self.limb_amp) =
             (yaw, head_yaw, head_pitch, limb_phase, limb_amp);
+        (self.swing.anim, self.attack_anim) = (swing, attack);
+    }
+
+    /// Whether Java draws this mob as a baby (`isBaby`).
+    pub fn is_baby(&self) -> bool {
+        self.baby || self.age < 0
     }
 
     /// The pose `alpha` of the way from the last step's start to now, as
-    /// `Mth.rotLerp` and `WalkAnimationState` interpolate it: angles the
-    /// short way round, the walk phase across its wrap.
-    pub fn render_pose(&self, alpha: f32) -> [f32; 5] {
-        use std::f32::consts::{PI, TAU};
+    /// Java's renderers interpolate it: angles the short way round
+    /// (`Mth.rotLerp`); the walk as `WalkAnimationState.position(partial)`
+    /// and `speed(partial)` (scaled three times for babies, capped at 1,
+    /// and still while dead or riding); the swing as
+    /// `SwingState.getAnimation`; and the attack countdown less the
+    /// partial tick, as the iron golem's and ravager's renderers do.
+    pub fn render_pose(&self, alpha: f32) -> Pose {
+        use super::motion;
         let (from, to) = (self.previous_pose, self.pose_values());
         let angle = |a: f32, b: f32| a + ((b - a + PI).rem_euclid(TAU) - PI) * alpha;
-        let wrap = TAU * 64.0;
-        let phase = from[3] + ((to[3] - from[3] + wrap / 2.0).rem_euclid(wrap) - wrap / 2.0) * alpha;
+        let scale = if self.is_baby() { motion::BABY_WALK_SCALE } else { 1.0 };
+        let (walk_pos, walk_speed) = if self.alive() && self.riding.is_none() {
+            motion::walk_render(to[3], from[4], to[4], alpha, scale)
+        } else {
+            (0.0, 0.0)
+        };
         [
             angle(from[0], to[0]),
             angle(from[1], to[1]),
             angle(from[2], to[2]),
-            phase,
-            from[4] + (to[4] - from[4]) * alpha,
+            walk_pos,
+            walk_speed,
+            motion::swing_render(from[5], to[5], alpha),
+            (to[6] - alpha * motion::TICK).max(0.0),
         ]
+    }
+
+    /// v1.0 gap Track 7: `deathTime` with the partial tick, as
+    /// `LivingEntityRenderer.extractRenderState` reads it (0 alive, and in
+    /// the tick the mob died).
+    pub fn death_ticks(&self, alpha: f32) -> f32 {
+        match self.dying {
+            Some(t) if t > 0.0 => t / super::motion::TICK + alpha,
+            _ => 0.0,
+        }
+    }
+
+    /// One tick of the walk cycle after the mob moved by `moved`:
+    /// `LivingEntity.calculateEntityAnimation`, which stops it while dead
+    /// or riding.
+    pub(crate) fn advance_walk(&mut self, moved: DVec3) {
+        use super::motion;
+        if !self.alive() || self.riding.is_some() {
+            (self.limb_phase, self.limb_amp) = (0.0, 0.0);
+            return;
+        }
+        let rule = motion::walk_rule(self.kind);
+        let carrying = self.sulfur_body().is_some();
+        let y = if rule.with_y || carrying { moved.y } else { 0.0 };
+        let distance = DVec3::new(moved.x, y, moved.z).length() as f32;
+        motion::walk_step(&mut self.limb_phase, &mut self.limb_amp, distance, rule);
+    }
+
+    /// Starts Java's arm swing when an attack set [`Self::attack_anim`]
+    /// since the last tick, then advances it a tick
+    /// (`LivingEntity.swing` and `SwingState.tick`).
+    pub(crate) fn advance_swing(&mut self) {
+        if self.attack_anim > self.swing_seen {
+            self.swing.start_if_able(super::motion::SWING_TICKS);
+        }
+        self.swing.tick();
+        self.swing_seen = self.attack_anim;
     }
 
     /// v0.18 Track 6: `--still-mobs`. Holds a landed mob in place facing
@@ -2247,6 +2318,8 @@ impl Mob {
         events: &mut Vec<EntityEvent>,
     ) {
         let event_start = events.len();
+        let tick_start = self.pos;
+        self.advance_swing();
         let before = self.kind;
         self.tick_water_conversion(dt, world);
         if self.kind != before {
@@ -2336,6 +2409,7 @@ impl Mob {
             v.bell_hide = (v.bell_hide - dtf).max(0.0);
         }
         self.attack_anim = (self.attack_anim - dtf).max(0.0);
+        self.swing_seen = self.attack_anim;
 
         self.light_timer -= dtf;
         if self.light_timer <= 0.0 {
@@ -2495,11 +2569,12 @@ impl Mob {
             });
         }
 
-        // Walk cycle follows ground speed.
-        let hspeed = self.vel.x.hypot(self.vel.z) as f32;
-        self.limb_phase = (self.limb_phase + hspeed * dtf * 3.2) % (TAU * 64.0);
-        let amp = (hspeed / 2.0).min(1.0);
-        self.limb_amp += (amp - self.limb_amp) * (dtf * 10.0).min(1.0);
+        // v1.0 gap Track 7: the walk cycle follows the distance moved this
+        // tick, as Java's `calculateEntityAnimation` does.
+        for _ in 0..((dtf / super::motion::TICK).round() as u32).max(1) - 1 {
+            self.advance_walk(DVec3::ZERO);
+        }
+        self.advance_walk(self.pos - tick_start);
 
         // Head eases toward its target.
         let k = (dtf * 6.0).min(1.0);
@@ -2790,7 +2865,8 @@ impl Mob {
                     && (golem || self.kind.is_zombie() || self.kind == MobKind::Enderman)
                 {
                     self.attack_cooldown = if golem { 1.2 } else { ATTACK_COOLDOWN };
-                    self.attack_anim = 0.4;
+                    // `IronGolem.doHurtTarget`: `attackAnimationTick = 10`.
+                    self.attack_anim = if golem { 10.0 * super::motion::TICK } else { 0.4 };
                     self.strike = true;
                 }
                 if dist <= 0.9 {
@@ -3973,11 +4049,6 @@ impl Mob {
             self.damage_from(amount, cause, rng);
         }
     }
-
-    /// Visual rotation of the whole body for the death animation (0..1).
-    pub fn death_progress(&self) -> f32 {
-        self.dying.map_or(0.0, |t| (t / (DEATH_TIME * 0.6)).min(1.0))
-    }
 }
 
 /// Whether stepping in `dir` would drop more than [`MAX_SAFE_DROP`] blocks.
@@ -4382,5 +4453,111 @@ impl super::Entities {
                 m.hurt_by_target(player);
             }
         }
+    }
+}
+
+/// v1.0 gap Track 7: the motion Java's client draws mobs with, through the
+/// mob's own tick ([`super::motion`] tests the formulas themselves).
+#[cfg(test)]
+mod motion_tests {
+    use super::*;
+    use crate::entity::{PlayerId, Target, motion};
+    use crate::physics::test_util::Grid;
+
+    fn ctx(player: DVec3) -> Ctx {
+        Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::DAY,
+            players: vec![Target::new(PlayerId::HOST, player, false)],
+            daylight: 1.0,
+            spawning: false,
+            raining: false,
+            dimension: Dimension::Overworld,
+        }
+    }
+
+    fn close(a: f32, b: f32) -> bool {
+        (a - b).abs() < 1e-5
+    }
+
+    /// `calculateEntityAnimation`: the walk speed eases toward four times
+    /// the distance moved in the tick (vertical distance only for bees and
+    /// parrots); babies' legs cycle three times as fast; dead or riding
+    /// mobs stop.
+    #[test]
+    fn the_walk_follows_the_distance_moved_each_tick() {
+        let mut pig = Mob::new(MobKind::Pig, DVec3::ZERO, 0.0);
+        pig.advance_walk(DVec3::new(0.1, 0.5, 0.0));
+        assert!(close(pig.limb_amp, 0.16) && close(pig.limb_phase, 0.16), "{} {}", pig.limb_amp, pig.limb_phase);
+        pig.previous_pose = pig.pose_values();
+        pig.advance_walk(DVec3::new(0.0, 0.0, 0.1));
+        assert!(close(pig.limb_amp, 0.256) && close(pig.limb_phase, 0.416));
+        // Drawn half way through the tick, a step behind by half its speed.
+        let half = pig.render_pose(0.5);
+        assert!(close(half[3], 0.416 - 0.128) && close(half[4], 0.208), "{half:?}");
+        pig.baby = true;
+        assert!(close(pig.render_pose(1.0)[3], 0.416 * motion::BABY_WALK_SCALE));
+
+        let mut bee = Mob::new(MobKind::Bee, DVec3::ZERO, 0.0);
+        bee.advance_walk(DVec3::new(0.0, 0.1, 0.0));
+        assert!(close(bee.limb_amp, 0.16), "a bee counts its climb");
+
+        pig.dying = Some(0.0);
+        pig.health = 0.0;
+        pig.advance_walk(DVec3::new(0.1, 0.0, 0.0));
+        assert_eq!((pig.limb_phase, pig.limb_amp), (0.0, 0.0), "`walkAnimation.stop()`");
+        let mut rider = Mob::new(MobKind::Skeleton, DVec3::ZERO, 0.0);
+        rider.limb_amp = 0.5;
+        rider.riding = Some(7);
+        rider.advance_walk(DVec3::new(0.1, 0.0, 0.0));
+        assert_eq!(rider.limb_amp, 0.0);
+    }
+
+    /// `handleDamageEvent`: a hit sets the walk speed to 1.5, which the
+    /// legs show capped at 1 and which eases back over the next ticks.
+    #[test]
+    fn a_hit_kicks_the_legs() {
+        let mut rng = Rng::new(3);
+        let mut m = Mob::new(MobKind::Cow, DVec3::ZERO, 0.0);
+        assert!(!m.damage(1.0, None, &mut rng), "not killed");
+        assert_eq!(m.limb_amp, motion::HURT_KICK);
+        m.previous_pose = m.pose_values();
+        assert_eq!(m.render_pose(0.5)[4], 1.0);
+        m.advance_walk(DVec3::ZERO);
+        assert!(close(m.limb_amp, 0.9) && close(m.limb_phase, 0.9));
+    }
+
+    /// An attack (here set between ticks, as a raid's or a mount's code
+    /// does) starts Java's 6-tick swing on the next tick: 0, 1/6, ... 1.
+    #[test]
+    fn an_attack_swings_the_arm_over_six_ticks() {
+        let world = Grid::flat(10);
+        let c = ctx(DVec3::new(60.5, 10.0, 0.5));
+        let (mut rng, mut events) = (Rng::new(5), Vec::new());
+        let mut m = Mob::new(MobKind::Zombie, DVec3::new(0.5, 10.0, 0.5), 0.0);
+        m.update(0.05, &world, &c, &mut rng, &mut events);
+        assert!(!m.swing.swinging());
+        m.attack_anim = 0.35;
+        let mut seen = Vec::new();
+        for _ in 0..9 {
+            m.update(0.05, &world, &c, &mut rng, &mut events);
+            seen.push(m.swing.anim);
+        }
+        let want = [0.0, 1.0 / 6.0, 2.0 / 6.0, 0.5, 4.0 / 6.0, 5.0 / 6.0, 1.0, 0.0, 0.0];
+        assert!(seen.iter().zip(want).all(|(a, b)| close(*a, b)), "{seen:?}");
+    }
+
+    /// `deathTime` counts the ticks since death; the overlay is red from
+    /// the hit through the death, and off ten ticks after a hit.
+    #[test]
+    fn death_time_counts_ticks_with_the_partial_tick() {
+        let mut m = Mob::new(MobKind::Zombie, DVec3::ZERO, 0.0);
+        assert_eq!(m.death_ticks(0.7), 0.0);
+        m.dying = Some(0.0);
+        assert_eq!(m.death_ticks(0.7), 0.0, "drawn upright in the tick it died");
+        m.dying = Some(3.0 * motion::TICK);
+        assert!(close(m.death_ticks(0.25), 3.25));
+        // Removed between its 19th and 20th tick of `dying`.
+        let ticks = std::hint::black_box(DEATH_TIME) / motion::TICK;
+        assert!(ticks > 18.0 && ticks < 19.0, "{ticks}");
     }
 }

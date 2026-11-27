@@ -767,7 +767,8 @@ mod tests {
         let first: std::collections::BTreeSet<u16> = super::super::layers().into_iter().collect();
         assert!(layers.iter().all(|l| !first.contains(l)), "a layer Track 10 already draws");
         assert!(layers.iter().all(|&l| (l as u32) < crate::world::block::tex::COUNT), "a layer past the block array");
-        assert_eq!(crate::world::block::tex::COUNT, 4066, "the block array grew");
+        // Only gap Track 7 has grown the array since: its potted bamboo leaf, 4066.
+        assert_eq!(crate::world::block::tex::COUNT, 4067, "the block array grew");
         for &l in &layers {
             tile(l);
         }
@@ -866,21 +867,17 @@ mod tests {
         }
     }
 
-    /// The bamboo post's columns are opaque on every row in all three
-    /// tiles, and the leafy ones carry leaves.
+    /// The bamboo post's columns are opaque on every row. (The leafy
+    /// tiles drawn here are redrawn by gap Track 7 as leaves for the
+    /// crossed planes; the leafy bamboo's post now shows this bare stalk.)
     #[test]
     fn bamboo_keeps_a_solid_cane() {
-        let bare = tile(ob::BAMBOO);
-        for layer in [ob::BAMBOO, ob::BAMBOO_SMALL_LEAVES, ob::BAMBOO_LARGE_LEAVES] {
+        for layer in [ob::BAMBOO] {
             let t = tile(layer);
             for y in 0..N {
                 for x in 6..10 {
                     assert_eq!(t[y * N + x][3], 255, "layer {layer}: cane texel {x},{y} is see-through");
                 }
-            }
-            if layer != ob::BAMBOO {
-                let leafy = (0..N * N).filter(|&i| t[i] != bare[i]).count();
-                assert!(leafy >= 12, "layer {layer}: {leafy} leaf texels");
             }
         }
     }

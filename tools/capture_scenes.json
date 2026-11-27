@@ -8707,6 +8707,94 @@
     "advance_weather=false",
     "random_tick_speed=0"
    ]
+  },
+  {
+   "name": "material-amethyst-bamboo",
+   "group": "materials",
+   "description": "v1.0 gap Track 7: amethyst buds (small, medium, large) and the cluster standing on budding amethyst, hanging from an amethyst ledge and on its wall; bamboo bare and with small and large leaves on posts one to three blocks tall; the potted bamboo beside a potted fern, from in front at noon; random ticks off",
+   "pose": [
+    0.5,
+    153.5,
+    14.5,
+    90,
+    -12
+   ],
+   "hud": false,
+   "fill": [
+    [
+     -8,
+     149,
+     16,
+     8,
+     149,
+     26,
+     "dirt"
+    ],
+    [
+     -8,
+     150,
+     16,
+     8,
+     150,
+     26,
+     "grass"
+    ],
+    [
+     -7,
+     150,
+     20,
+     -1,
+     150,
+     20,
+     "budding amethyst"
+    ],
+    [
+     -7,
+     154,
+     20,
+     -1,
+     154,
+     22,
+     "block of amethyst"
+    ],
+    [
+     -7,
+     151,
+     22,
+     -1,
+     153,
+     22,
+     "budding amethyst"
+    ]
+   ],
+   "place": [
+    "-7,151,20,1926",
+    "-5,151,20,1927",
+    "-3,151,20,1928",
+    "-1,151,20,1929",
+    "-7,153,20,1930",
+    "-5,153,20,1931",
+    "-3,153,20,1932",
+    "-1,153,20,1933",
+    "-6,152,21,2404",
+    "-4,152,21,2405",
+    "-2,152,21,2406",
+    "2,151,20,2022",
+    "2,152,20,2022",
+    "2,153,20,2022",
+    "4,151,20,2022",
+    "4,152,20,2023",
+    "6,151,20,2022",
+    "6,152,20,2022",
+    "6,153,20,2024",
+    "3,151,18,potted bamboo",
+    "5,151,18,potted fern"
+   ],
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "random_tick_speed=0"
+   ]
   }
  ]
 }

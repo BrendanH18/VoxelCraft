@@ -64,6 +64,7 @@ mod mob_index;
 pub mod model;
 mod monster_spawns;
 pub mod mooshroom;
+pub mod motion;
 pub mod mounts;
 pub mod nautilus;
 pub mod nether;
@@ -1302,7 +1303,7 @@ pub struct Entities {
     /// v0.18 Track 6: this frame's shadow casters, kept to reuse the allocation.
     casters: Vec<shadow::Caster>,
     /// v0.18 Track 6: the mobs' simulation poses while `mesh` draws interpolated ones.
-    poses: Vec<[f32; 5]>,
+    poses: Vec<mob::Pose>,
 }
 
 impl Entities {
@@ -3404,13 +3405,15 @@ mod tests {
         e.mobs[0].limb_amp = 0.0;
         e.snapshot_positions();
         // One tick turns it across the -pi/pi seam and starts it walking.
-        e.mobs[0].set_pose_values([-3.0, 0.4, -0.2, 2.0, 1.0]);
+        e.mobs[0].set_pose_values([-3.0, 0.4, -0.2, 2.0, 1.0, 0.0, 0.0]);
         let half =
             e.mesh(&Default::default(), DVec3::new(0.0, 11.0, 0.0), glam::Vec3::X, 64.0, 0.0, 0.5).boxes().to_vec();
-        assert_eq!(e.mobs[0].pose_values(), [-3.0, 0.4, -0.2, 2.0, 1.0], "the simulation keeps its pose");
+        assert_eq!(e.mobs[0].pose_values(), [-3.0, 0.4, -0.2, 2.0, 1.0, 0.0, 0.0], "the simulation keeps its pose");
         let mid = e.mobs[0].render_pose(0.5);
         assert!((mid[0] - std::f32::consts::PI).abs() < 1e-4, "the short way round: {}", mid[0]);
-        for (got, want) in mid[1..].iter().zip([0.2, -0.1, 1.0, 0.5]) {
+        // v1.0 gap Track 7: the walk position runs back by half the tick's
+        // speed (`WalkAnimationState.position(partial)`).
+        for (got, want) in mid[1..].iter().zip([0.2, -0.1, 1.5, 0.5, 0.0, 0.0]) {
             assert!((got - want).abs() < 1e-5, "{mid:?}");
         }
         // The same mob posed halfway, drawn at the end of its tick, looks the same.
@@ -3426,6 +3429,47 @@ mod tests {
                 assert!(ra.iter().zip(rb).all(|(x, y)| (x - y).abs() < 1e-4), "{ra:?} vs {rb:?}");
             }
         }
+    }
+
+    /// v1.0 gap Track 7: a dead mob is drawn at Java's `deathTime` 1 to 19
+    /// (toppled over by 13.5) and is gone as that reaches 20; it shows red
+    /// throughout, as a hit does for exactly ten ticks.
+    #[test]
+    fn the_dead_topple_for_twenty_ticks_and_the_hurt_flash_ten() {
+        let world = Grid::flat(10);
+        let c = ctx(DVec3::new(40.5, 10.0, 0.5));
+        let red = |e: &mut Entities| {
+            let mesh = e.mesh(&Default::default(), DVec3::new(0.0, 11.0, -6.0), glam::Vec3::Z, 64.0, 0.0, 1.0);
+            let boxes = mesh.boxes();
+            assert!(!boxes.is_empty());
+            assert!(boxes.iter().all(|b| b.light[2] == boxes[0].light[2]));
+            boxes[0].light[2] == 255
+        };
+        let mut e = Entities::new(5);
+        e.spawn(MobKind::Pig, DVec3::new(0.5, 10.0, 0.5));
+        e.update(0.05, &world, &c);
+        assert!(!red(&mut e));
+        let mut rng = Rng::new(1);
+        assert!(!e.mobs[0].damage(1.0, None, &mut rng), "not killed");
+        let mut flash = 0;
+        for _ in 0..12 {
+            flash += usize::from(red(&mut e));
+            e.update(0.05, &world, &c);
+        }
+        assert_eq!(flash, 10, "`hurtTime` 10 down to 1");
+
+        e.mobs[0].health = 0.0;
+        e.update(0.05, &world, &c);
+        assert_eq!(e.mobs[0].dying, Some(0.0));
+        for tick in 1..20 {
+            e.update(0.05, &world, &c);
+            assert_eq!(e.mobs.len(), 1, "still there at deathTime {tick}");
+            assert!((e.mobs[0].death_ticks(0.0) - tick as f32).abs() < 1e-3);
+            assert!(red(&mut e));
+        }
+        assert_eq!(motion::death_fall(e.mobs[0].death_ticks(1.0)), 1.0);
+        e.update(0.05, &world, &c);
+        assert!(e.mobs.is_empty(), "removed as deathTime reaches 20");
     }
 
     /// v0.18 Track 6: `--still-mobs` holds landed mobs where they are,
