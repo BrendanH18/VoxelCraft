@@ -178,7 +178,11 @@ compact counter.
   blended around the eye, the day timeline, rain and thunder, the lava,
   powder snow, water, Blindness and Darkness fogs, and Java's flat (Fast)
   and block-shaped (Fancy) clouds drifting east, with the Clouds, Cloud
-  Distance and Hide Sky Flashes options ([atmosphere record](verification/2026-11-23-v0.18-atmosphere.md))
+  Distance and Hide Sky Flashes options ([atmosphere record](verification/2026-11-23-v0.18-atmosphere.md)).
+  Darkness also darkens the lightmap as Java's client does: it fades in and
+  out over 22 ticks, lowers the Brightness option by its blend and takes a
+  pulse of up to 0.45 off every light level every four seconds, so dim
+  places go black while daylight and torchlight stay lit ([v1.0 gap Track 1](verification/2026-11-27-v1.0-gap-track-01-effects-damage.md))
 - Flowing water: falls, spreads up to 7 blocks toward the nearest drop,
   dries up without a source, and forms infinite sources; lowered surfaces
 - Lava: flows like water but six times slower and only 3 blocks, glows
@@ -315,7 +319,8 @@ compact counter.
   and swords in five tiers with durability bars. Coal and diamond ore drop
   their items
 - Survival health: 10 hearts, fall damage (1 per block beyond 3; water
-  breaks falls), 15 s of air then drowning, a red hurt flash and shaking
+  breaks falls; landing on an upward pointed dripstone tip adds 2.5 blocks
+  and doubles it, "impaled on a stalagmite"), 15 s of air then drowning, a red hurt flash and shaking
   hearts. Dying shows
   Java's death screen ("You Died!", the cause and your score); everything
   you carried drops where you died. After a second its Respawn button
@@ -394,7 +399,8 @@ compact counter.
   long), aqua affinity, thorns (15% a level to hit back for 1-5 damage,
   using mainhand Looting), depth strider (half the bonus off the ground),
   sharpness (+0.5 a level + 0.5), smite and bane of arthropods
-  (+2.5 a level against undead / spiders and silverfish), knockback, fire
+  (+2.5 a level against undead / spiders and silverfish, from a mob's
+  weapon too, with Bane's slowness), knockback, fire
   aspect (4 s of fire a level; melee kills cook meat even in water, and fire
   kills within five seconds of a player hit award XP), looting (up to one
   more of each eligible drop a level; sheep still drop one wool), sweeping
@@ -565,7 +571,7 @@ session there, as if you had just come through a portal.
 | Chicken | 4 | like pigs; flutters down instead of falling | 1 raw chicken, 0–2 feathers |
 | Zombie | 20 | chases within 24 blocks, hits for 3 every second; burns in sunlight | 0–2 rotten flesh |
 | Skeleton | 20 | keeps 5–10 blocks away, strafes, and shoots arrows (about 3 damage) when it can see you; burns in sunlight | 0–2 bones, 0–2 arrows |
-| Creeper | 20 | walks up and lights a 1.5 s fuse within 3 blocks (kept lit within 7); explodes for up to 43 damage over 6 blocks, destroying blocks (not bedrock, obsidian or fluids) | 0–2 gunpowder |
+| Creeper | 20 | walks up and lights a 1.5 s fuse within 3 blocks (kept lit within 7); a fall adds 1.5 ticks a block to the fuse (to 0.25 s short of going off), which then burns down; explodes for up to 43 damage over 6 blocks, destroying blocks (not bedrock, obsidian or fluids) | 0–2 gunpowder |
 | Spider | 16 | fast; climbs walls; hunts only in the dark or after being hit, bites for 2 | 0–2 string |
 | Zombified piglin | 20 | Nether only, in packs; ignores you until you hit one, then the whole pack within 32 blocks chases you for 30 s and strikes with gold swords for 5 | 0–1 rotten flesh, 0–1 gold nuggets |
 | Enderman | 40 | 2.9 blocks tall; rare at night in the Overworld and Nether, common in the End. Neutral until hit or until you look it in the eyes (within 64 blocks), then screams, opens its jaw and hits for 7. Freezes while you watch it (up close it teleports away), teleports toward you from more than 16 blocks, dodges arrows by teleporting, is hurt by water and rain, and wanders off by teleporting in daylight | 0–1 ender pearls |
