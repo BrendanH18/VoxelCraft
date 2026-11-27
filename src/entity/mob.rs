@@ -13,8 +13,10 @@ use crate::world::terrain::Dimension;
 use super::{Ctx, EntityEvent, MobSound, MobWorld, Rng, path};
 
 mod breeze;
+pub(crate) mod chase;
 mod creaking;
 pub(crate) mod dolphin;
+pub(crate) mod door_break;
 mod drowned;
 mod endermite;
 pub(crate) mod equine;
@@ -1465,9 +1467,6 @@ pub struct Mob {
     pub(crate) goals: goals::Goals,
     /// Java's `MoveControl` for swimmers, ghasts and airborne blazes.
     pub(crate) move_ctl: swim::MoveCtl,
-    /// v1.0 Track 7: seconds the chased player has been out of sight
-    /// (`TargetGoal.unseenTicks`, never saved).
-    pub(crate) target_unseen: f32,
     /// `Mob.homePosition` and `homeRadius` (`restrictTo`): random targets
     /// and attack targets stay within the radius. Elder guardians set one
     /// around where they first act; saved as Java saves it.
@@ -1481,6 +1480,29 @@ pub struct Mob {
     pub(super) reinforce_call: Option<Option<super::PlayerId>>,
     /// The player a reinforcement was sent after (`setTarget`). Never saved.
     pub(super) reinforce_target: Option<super::PlayerId>,
+    /// v1.0 gap Track 2: a running `BreakDoorGoal` (not saved).
+    pub(crate) door_break: Option<door_break::DoorBreak>,
+    /// The `mobGriefing` rule, refreshed before each update.
+    pub(crate) griefing: bool,
+    /// v1.0 gap Track 2: the shared chase's `TargetGoal` target and its
+    /// unseen full updates, `MeleeAttackGoal`, the zombie goal selector,
+    /// `SpearUseGoal` and a lowered spear (none saved, as in Java).
+    pub(crate) chase_target: Option<super::PlayerId>,
+    pub(crate) chase_unseen: i32,
+    pub(crate) melee: chase::Melee,
+    pub(crate) chase_goals: selector::Selector,
+    pub(crate) spear: Option<chase::SpearUse>,
+    pub(crate) spear_use: Option<chase::SpearCharge>,
+    /// A mount carrying a rider's spear charge: `hunt` at its
+    /// `chargeSpeedModifier` (1.4 for zombie horses, 4 for camel husks).
+    pub(crate) hunt_charge: bool,
+    /// A strider a zombified piglin rider steers (never saved; refreshed
+    /// every update).
+    pub(crate) mob_steered: bool,
+    /// Ticks since it was last hurt (`HURT_BY` lasts 40), and where a baby
+    /// piglin walks to mount (`Mount`); never saved.
+    pub(crate) hurt_age: u32,
+    pub(crate) ride_walk: Option<DVec3>,
     /// v1.0 Track 9: how many times a slime block or bed has bounced it
     /// (`restituteMovementAfterCollisions`), for the `bounce` game event.
     /// Never saved.
@@ -1650,7 +1672,6 @@ impl Mob {
             idle: 0.0,
             goals: Default::default(),
             move_ctl: Default::default(),
-            target_unseen: 0.0,
             restrict: None,
             java_goals: match kind {
                 MobKind::Dolphin => Some(Box::new(JavaGoals::Dolphin(Default::default()))),
@@ -1660,6 +1681,18 @@ impl Mob {
             attrs: Default::default(),
             reinforce_call: None,
             reinforce_target: None,
+            door_break: None,
+            griefing: true,
+            chase_target: None,
+            chase_unseen: 0,
+            melee: Default::default(),
+            chase_goals: Default::default(),
+            spear: None,
+            spear_use: None,
+            hunt_charge: false,
+            mob_steered: false,
+            hurt_age: u32::MAX,
+            ride_walk: None,
             bounces: 0,
         }
     }
@@ -2064,6 +2097,7 @@ impl Mob {
             s.interrupt();
         }
         self.hurt = HURT_TIME;
+        self.hurt_age = 0;
         if let Some(s) = &mut self.bat {
             s.resting = false;
         }
@@ -2264,6 +2298,7 @@ impl Mob {
             events.push(EntityEvent::Sound { sound: MobSound::TraderDrink(vanished), pos: self.pos + DVec3::Y });
         }
         self.hurt = (self.hurt - dtf).max(0.0);
+        self.hurt_age = self.hurt_age.saturating_add(1);
         self.provoked = (self.provoked - dtf).max(0.0);
         if matches!(self.kind, MobKind::Wolf | MobKind::Llama | MobKind::Enderman | MobKind::ZombifiedPiglin)
             && self.provoked == 0.0
@@ -2572,7 +2607,8 @@ impl Mob {
         if self.kind == MobKind::CamelHusk
             && let Some(goal) = self.hunt
         {
-            let speed = self.mount.as_ref().map_or(2.2, |s| s.speed * 43.17);
+            let charge = if self.hunt_charge { 4.0 } else { 1.0 };
+            let speed = self.mount.as_ref().map_or(2.2, |s| s.speed * 43.17) * charge;
             if ((goal - self.pos) * DVec3::new(1.0, 0.0, 1.0)).length() <= 0.9 {
                 return (None, 0.0);
             }
@@ -2636,6 +2672,9 @@ impl Mob {
         }
         if self.kind == MobKind::Strider {
             self.update_strider_cold(world);
+            if self.mob_steered {
+                return self.steered_strider(world, ctx, rng);
+            }
         }
         // A guardian aiming its beam stands still, and an axolotl playing
         // dead (`PLAY_DEAD`, its top activity) does nothing else.
@@ -2749,7 +2788,8 @@ impl Mob {
                     return (None, 0.0);
                 }
                 let speed = if super::undead_mounts::undead(self.kind) {
-                    self.mount.as_ref().map_or(2.2, |s| s.speed * 43.17)
+                    let charge = if self.hunt_charge && self.kind == MobKind::ZombieHorse { 1.4 } else { 1.0 };
+                    self.mount.as_ref().map_or(2.2, |s| s.speed * 43.17) * charge
                 } else if self.kind == MobKind::IronGolem {
                     1.5
                 } else {
@@ -2769,6 +2809,16 @@ impl Mob {
             && let Some(wish) = self.raider_goals(world, rng)
         {
             return wish;
+        }
+        // v1.0 gap Track 2: `Mount.create(0.8)` walks a baby piglin to its
+        // ride target.
+        if self.kind == MobKind::Piglin
+            && self.riding.is_none()
+            && let Some(at) = self.ride_walk
+        {
+            let speed = self.kind.chase_speed() * 0.8 * if self.baby { nether_ai::BABY_SPEED } else { 1.0 };
+            let sees = line_of_sight(world, self.pos + DVec3::Y * (self.shape().height * 0.85), at + DVec3::Y * 0.5);
+            return (self.pursue(world, at, speed, sees, false, rng), speed);
         }
         if self.nether.is_some()
             && let Some(wish) = self.nether_think(dt, world, ctx, rng, events)
@@ -2806,16 +2856,16 @@ impl Mob {
         } else {
             ctx.nearest_target(self.pos)
         };
-        let to_player = target.map_or(DVec3::ZERO, |t| t.pos - self.pos);
-        let flat = DVec3::new(to_player.x, 0.0, to_player.z);
-        let hdist = flat.length();
-
-        if self.kind.is_hostile()
+        // v1.0 gap Track 2: the shared hostile chase follows Java's target
+        // goal scheduling (`chase::chase_schedule`).
+        let mut full = false;
+        let target = if self.kind.is_hostile()
             && self.nether.is_none()
             && self.kind != MobKind::Blaze
             && self.kind != MobKind::Endermite
             && (self.illager.is_none() || self.kind == MobKind::Witch)
         {
+            full = self.chase_full();
             let aggressive = match self.kind {
                 MobKind::Spider | MobKind::CaveSpider => ctx.daylight < SPIDER_CALM_DAYLIGHT || self.provoked > 0.0,
                 MobKind::ZombifiedPiglin => self.provoked > 0.0,
@@ -2826,42 +2876,34 @@ impl Mob {
                 _ => true,
             };
             let (range, height) = match self.kind {
+                // Slimes' and magma cubes' target predicate: 4 blocks up or down.
                 MobKind::CaveSpider | MobKind::Slime | MobKind::MagmaCube => (16.0, 4.0),
                 // `NearestAttackableTargetGoal` searches the follow range.
-                k if k.is_zombie() => (self.follow_range(), 12.0),
-                _ => (CHASE_RANGE, 12.0),
+                k if k.is_zombie() => (self.follow_range(), f64::INFINITY),
+                _ => (CHASE_RANGE, f64::INFINITY),
             };
+            // A reinforcement's `setTarget` and a hit (`HurtByTargetGoal`)
+            // set the target outside the goal, at once.
             let sent = self.reinforce_target;
-            // v1.0 Track 7: `NearestAttackableTargetGoal` with `mustSee`
-            // (zombies, skeletons, creepers, spiders, slimes, silverfish,
-            // witches): a player is taken only in sight (eye to eye through
-            // collision shapes), and `TargetGoal.canContinueToUse` lets go
-            // after 60 ticks out of sight. Reinforcements and mobs hurt into
-            // a fight keep their target, as `setTarget` and
-            // `HurtByTargetGoal` set it outside this goal.
-            let seen = target.is_some_and(|t| {
-                let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
-                line_of_sight(world, eye, t.pos + DVec3::Y * (t.shape.height * 0.9))
-            });
-            if seen || self.ai != Ai::Chase {
-                self.target_unseen = 0.0;
-            } else {
-                self.target_unseen += dt;
-            }
-            let held = sent.is_some() && target.is_some_and(|t| sent == Some(t.id)) || self.provoked > 0.0;
-            let in_sight = seen || held || (self.ai == Ai::Chase && self.target_unseen < UNSEEN_MEMORY);
-            let chasing = aggressive
-                && in_sight
-                && target.is_some_and(|t| hdist < t.detection_range_for(range, self.kind) || sent == Some(t.id))
-                && to_player.y.abs() < height;
-            if chasing {
-                self.ai = Ai::Chase;
-            } else if self.ai == Ai::Chase {
-                self.ai = Ai::Idle;
-                self.ai_timer = 1.0;
-                self.stop_navigation();
-            }
+            let forced = target.filter(|t| sent == Some(t.id) || self.provoked > 0.0);
+            self.chase_schedule(world, ctx, forced, aggressive, range, height, full, rng)
+        } else {
+            target
+        };
+        // A lowered spear stabs every tick (`updatingUsingItem`), and the
+        // flagless door goal runs beside everything else.
+        if self.spear_use.is_some() {
+            self.spear_charge_tick(ctx, events);
         }
+        if self.kind != MobKind::Vindicator && self.has_door_goal() {
+            self.door_goal(world, full, rng, events);
+        } else {
+            self.door_break = None;
+        }
+        let to_player = target.map_or(DVec3::ZERO, |t| t.pos - self.pos);
+        let flat = DVec3::new(to_player.x, 0.0, to_player.z);
+        let hdist = flat.length();
+
         if self.ai != Ai::Chase {
             self.fuse = (self.fuse - dt).max(0.0);
             self.lift = false;
@@ -2892,6 +2934,16 @@ impl Mob {
                         if let Some(stop) = self.creeper_fuse(dt, hdist, events) {
                             return stop;
                         }
+                    }
+                    // v1.0 gap Track 2: Java's `MeleeAttackGoal`, and the
+                    // zombies' goal table with `SpearUseGoal`.
+                    k if chase::java_melee(k) => {
+                        let speed = self.kind.chase_speed() * if self.baby { 1.5 } else { 1.0 };
+                        return if chase::zombie_table(k) {
+                            self.zombie_chase(world, ctx, &target, speed, full, rng, events)
+                        } else {
+                            self.chase_melee(world, &target, speed, full, rng, events)
+                        };
                     }
                     _ => {
                         let reach = if self.kind.is_cube() { 0.6 * self.size as f64 } else { ATTACK_RANGE };
@@ -3985,9 +4037,6 @@ fn estimate_sky_light<W: MobWorld + ?Sized>(world: &W, p: DVec3) -> f32 {
 /// Java 26.3 LivingEntity.hasLineOfSight clips collision shapes with
 /// Fluid.NONE, capped at 128 blocks. DDA visits each crossed cell once;
 /// the old quarter-block samples missed thin/corner hits and filled slab gaps.
-/// `TargetGoal.unseenMemoryTicks` (60 ticks), in seconds.
-pub const UNSEEN_MEMORY: f32 = 3.0;
-
 pub(super) fn line_of_sight<W: BlockSource + ?Sized>(world: &W, from: DVec3, to: DVec3) -> bool {
     if !from.is_finite() || !to.is_finite() || from.distance_squared(to) > 128.0 * 128.0 {
         return false;

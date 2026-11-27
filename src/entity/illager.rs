@@ -82,11 +82,16 @@ pub enum Cue {
     CrossbowShoot,
     /// `*.celebrate`.
     Celebrate(MobKind),
+    /// v1.0 gap Track 2: `zombie.attack_wooden_door` (level event 1019) and
+    /// `zombie.break_wooden_door` (1021), played by `BreakDoorGoal` for
+    /// zombies and vindicators alike.
+    DoorAttack,
+    DoorBreak,
 }
 
 impl Cue {
     /// Every cue, for the sound bank.
-    pub const ALL: [Cue; 16] = [
+    pub const ALL: [Cue; 18] = [
         Cue::Prepare(Spell::SummonVex),
         Cue::Prepare(Spell::Fangs),
         Cue::Prepare(Spell::Wololo),
@@ -103,6 +108,8 @@ impl Cue {
         Cue::Celebrate(MobKind::Vindicator),
         Cue::Celebrate(MobKind::Evoker),
         Cue::Celebrate(MobKind::Pillager),
+        Cue::DoorAttack,
+        Cue::DoorBreak,
     ];
 
     /// A stable key for sound banks and LAN.
@@ -124,6 +131,8 @@ impl Cue {
             Cue::Celebrate(MobKind::Evoker) => "evoker.celebrate",
             Cue::Celebrate(MobKind::Pillager) => "pillager.celebrate",
             Cue::Celebrate(_) => "vindicator.celebrate",
+            Cue::DoorAttack => "zombie.attack_wooden_door",
+            Cue::DoorBreak => "zombie.break_wooden_door",
         }
     }
 
@@ -463,7 +472,8 @@ pub enum Crossbow {
 
 /// `Vindicator.setCustomName`: this name makes it attack everything.
 pub const JOHNNY: &str = "Johnny";
-/// `BreakDoorGoal.DEFAULT_DOOR_BREAK_TIME`.
+/// `BreakDoorGoal.DEFAULT_DOOR_BREAK_TIME` (the goal itself is shared with
+/// zombies in `mob::door_break`).
 pub const DOOR_BREAK_TIME: u32 = 240;
 
 /// `VindicatorBreakDoorGoal`'s predicate: Normal or Hard, and only in an
@@ -641,8 +651,6 @@ pub struct State {
     pub(crate) wololo: Option<(u32, DVec3)>,
     /// `Vindicator.isJohnny` (`johnny`).
     pub johnny: bool,
-    /// A door being broken (`BreakDoorGoal.breakTime`).
-    pub(crate) door: Option<(IVec3, u32)>,
     /// The vex's owner (`owner`), bound origin (`bound_pos`) and limited
     /// life (`life_ticks`).
     pub owner: Option<u32>,
@@ -693,7 +701,6 @@ impl Default for State {
             last_blind: None,
             wololo: None,
             johnny: false,
-            door: None,
             owner: None,
             bound: None,
             life: None,

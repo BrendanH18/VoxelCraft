@@ -95,6 +95,7 @@ impl Entities {
         self.tick_boat_leashes(dt as f32, world, ctx);
         self.tick_llamas(ctx);
         self.tick_undead_mounts(dt, world, ctx);
+        self.piglin_rides(world, ctx);
         self.sense_goals(world);
         self.sense_schools();
         self.sense_dolphins(world, &moved);
@@ -250,6 +251,7 @@ impl Entities {
             let before_tame = self.mobs[i].mount.as_ref().map(|s| (s.tame, s.rider));
             let grounded = self.mobs[i].on_ground;
             self.mobs[i].difficulty = difficulty;
+            self.mobs[i].griefing = self.villager_griefing;
             self.mobs[i].local_difficulty = local_difficulty;
             self.mobs[i].trader_night = (0.5..0.96).contains(&self.village_time);
             self.mobs[i].update(dt, world, ctx, &mut self.rng, &mut events);

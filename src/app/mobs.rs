@@ -567,6 +567,34 @@ impl Game {
                         self.audio.block_break(block, cell);
                     }
                 }
+                EntityEvent::DoorBroken { cell } => {
+                    // v1.0 gap Track 2: `BreakDoorGoal.tick` at 240. The goal
+                    // checked `mobGriefing` when it started, so it isn't checked
+                    // again. `removeBlock` takes the cell silently; the door's
+                    // other half loses its support and `destroyBlock`s with
+                    // particles, its break sound and its loot (the door item from
+                    // a lower half); then `levelEvent(1021)`.
+                    use crate::world::block::{Block, Shaped};
+                    let door = |b: Option<Block>| b.filter(|b| b.is_door());
+                    if door(self.world.get_block(cell)).is_some() {
+                        self.world.set_block(cell, Block::AIR);
+                        for other in [cell + IVec3::Y, cell - IVec3::Y] {
+                            let Some(block) = door(self.world.get_block(other)) else { continue };
+                            if matches!(block.shaped(), Some(Shaped::Door { upper: false, .. })) {
+                                self.world.spill_block(other, block);
+                            }
+                            self.world.set_block(other, Block::AIR);
+                            self.world.particles.push(crate::particles::Request::Break { cell: other, block });
+                            self.audio.block_break(block, other);
+                            let none = crate::world::vibration::EventSource::NONE;
+                            let destroy = crate::world::vibration::GameEvent::BlockDestroy;
+                            self.world.emit_block_event(other, destroy, none, Some(block));
+                        }
+                    }
+                    let sound = Sound::Illager(voxelcraft::entity::illager::Cue::DoorBreak);
+                    let at = cell.as_dvec3() + DVec3::splat(0.5);
+                    self.audio.play_in(SoundSource::Hostile, sound, Some(at), 2.0, (0.8, 1.2));
+                }
                 EntityEvent::TridentBrokeDripstone { cell, mob_owned } => {
                     // `Projectile.mayInteract` (a mob's needs `mobGriefing`) and `mayBreak`.
                     let may = self.gamerules.bool("projectiles_can_break_blocks")
@@ -612,6 +640,10 @@ impl Game {
                             continue;
                         }
                         MobSound::Breeze(cue) => (Sound::Breeze(cue), 1.0),
+                        // `levelEvent(1019)` plays at volume 2.
+                        MobSound::Illager(cue @ voxelcraft::entity::illager::Cue::DoorAttack) => {
+                            (Sound::Illager(cue), 2.0)
+                        }
                         MobSound::Illager(cue) => (Sound::Illager(cue), 1.0),
                         MobSound::Raid(cue) => (Sound::Raid(cue), 1.0),
                         MobSound::Flight(cue) => (Sound::Flight(self.far_firework(cue, pos)), 1.0),

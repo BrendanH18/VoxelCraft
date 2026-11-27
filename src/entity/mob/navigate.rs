@@ -253,6 +253,12 @@ impl Mob {
             caps.max_fall = (spare.max(0) as f32 + 3.0).floor() as i32;
         }
         // `FollowOwnerGoal.start` sets the water malus to 0 until it stops.
+        // v1.0 gap Track 2: `Zombie.setCanBreakDoors` sets
+        // `navigation.setCanOpenDoors`, so its paths go through closed
+        // wooden doors (which its door goal then breaks).
+        if super::door_break::zombie_family(self.kind) && self.attrs.can_break_doors {
+            caps.can_open_doors = true;
+        }
         if self.goals.water_free {
             caps.malus = caps.malus.with(PathType::Water, 0.0);
         }
@@ -690,7 +696,7 @@ impl Mob {
     /// stand on (`PathNavigation`), anything below but air
     /// (`AmphibiousPathNavigation`, for axolotls and turtles), or not a solid
     /// cube itself (`WaterBoundPathNavigation`).
-    fn stable_destination<W: MobWorld + ?Sized>(&self, world: &W, p: IVec3) -> bool {
+    pub(crate) fn stable_destination<W: MobWorld + ?Sized>(&self, world: &W, p: IVec3) -> bool {
         match self.kind {
             // `TurtlePathNavigation`: water while travelling.
             MobKind::Turtle if self.turtle_travelling() => world.block(p).is_some_and(Block::is_water),

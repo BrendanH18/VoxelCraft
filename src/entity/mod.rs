@@ -73,6 +73,7 @@ pub mod orb;
 pub mod panda;
 pub mod pearl;
 pub mod phantom;
+pub mod piglin_ride;
 mod piston_push;
 pub mod player_model;
 mod player_pose;
@@ -359,6 +360,13 @@ pub enum EntityEvent {
         cell: IVec3,
         block: Block,
         drops: bool,
+    },
+    /// v1.0 gap Track 2: `BreakDoorGoal` finished on the door at `cell`
+    /// (a zombie's or a vindicator's): `removeBlock(cell)`, whose shape
+    /// update destroys the door's other half with particles, its break sound
+    /// and (for a lower half) the door item, then `zombie.break_wooden_door`.
+    DoorBroken {
+        cell: IVec3,
     },
     /// A drowned threw its trident at `target` (turned into a thrown trident internally).
     ThrowTrident {
@@ -1291,6 +1299,14 @@ pub struct Entities {
     casters: Vec<shadow::Caster>,
     /// v0.18 Track 6: the mobs' simulation poses while `mesh` draws interpolated ones.
     poses: Vec<[f32; 5]>,
+}
+
+impl Entities {
+    /// v1.0 gap Track 2: the cracks of the doors mobs are breaking
+    /// (`BreakDoorGoal`'s `destroyBlockProgress`), as crack fractions.
+    pub fn door_cracks(&self) -> impl Iterator<Item = (IVec3, f32)> + '_ {
+        self.mobs.iter().filter(|m| m.alive()).filter_map(|m| m.door_crack())
+    }
 }
 
 impl Entities {

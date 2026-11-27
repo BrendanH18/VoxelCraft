@@ -26,7 +26,7 @@ const GOLDEN_AXE_BONUS: f32 = 6.0;
 const TUSK_COOLDOWN: f32 = 2.0;
 const BABY_TUSK_COOLDOWN: f32 = 0.75;
 /// Baby piglins are 20% faster (Java's speed modifier).
-const BABY_SPEED: f64 = 1.2;
+pub(super) const BABY_SPEED: f64 = 1.2;
 /// Height of `LiquidBlock.STABLE_SHAPE` (8/16), which a lava source offers
 /// mobs that can stand on lava.
 pub(crate) const STABLE_LAVA_HEIGHT: f64 = 0.5;
