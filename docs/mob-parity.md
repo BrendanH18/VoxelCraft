@@ -184,7 +184,7 @@ has the Java sources and checks. Code: `src/entity/mob/chase.rs` and
   and `HurtByTargetGoal` do. Spiders let go one full update in 100 in
   daylight (`SpiderAttackGoal`).
 - **`MeleeAttackGoal`** (zombies, drowned without a trident, spiders, cave
-  spiders, silverfish, wither skeletons, endermites in the chase):
+  spiders, silverfish and wither skeletons in the chase):
   `canUse` at most every 20 ticks with a path to the target; the goal ends
   when the path runs out (spiders keep following); a start may hit at
   once, then one hit per 20 ticks when the attack box (the mob's box
