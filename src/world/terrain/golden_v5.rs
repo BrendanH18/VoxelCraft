@@ -1,6 +1,7 @@
 //! GEN-07 (v0.16): golden block IDs and structure features of
-//! [`Generation::V5`]. Every later world change goes in a new generation,
-//! so this pin fails when one leaks into generation 5 worlds.
+//! [`Generation::V5`], and (v1.0 gap Track 5) of [`Generation::V6`]. Every
+//! later world change goes in a new generation, so these pins fail when one
+//! leaks into generation 5 or 6 worlds.
 //!
 //! On two seeds (the M3 corpus's, whose structure positions the corpus
 //! table pins), each dimension hashes its chunks' block IDs and, as their
@@ -182,15 +183,14 @@ fn missing(dimension: Dimension, blocks: &HashSet<Block>, features: &[Feature]) 
     checks.into_iter().filter(|(_, ok)| !ok).map(|(name, _)| name).collect()
 }
 
-/// Generation 5 (v0.16) must never change: every later world change goes
-/// in a new generation. See the module notes for what the set covers.
-#[test]
-fn generation_5_chunk_hashes_stay_identical() {
+/// The block and feature hashes of every pinned set of `generation`, by
+/// seed and dimension, and what any set lacks. See the module notes.
+fn hashes(generation: Generation) -> (Vec<(u64, &'static str, u64, u64)>, Vec<String>) {
     let mut got = Vec::new();
     let mut failures = Vec::new();
     for seed in SEEDS {
         for dimension in [Dimension::Overworld, Dimension::Nether, Dimension::End] {
-            let g = Generator::with_generation(seed, dimension, Generation::V5);
+            let g = Generator::with_generation(seed, dimension, generation);
             let rows = dimension.chunk_rows();
             let (mut blocks, mut features) = (0xcbf2_9ce4_8422_2325u64, 0xcbf2_9ce4_8422_2325u64);
             let mut positions: Vec<IVec3> = match dimension {
@@ -234,6 +234,14 @@ fn generation_5_chunk_hashes_stay_identical() {
     for got in &got {
         println!("PIN ({}, \"{}\", {:#x}, {:#x}),", got.0, got.1, got.2, got.3);
     }
+    (got, failures)
+}
+
+/// Generation 5 (v0.16) must never change: every later world change goes
+/// in a new generation. See the module notes for what the set covers.
+#[test]
+fn generation_5_chunk_hashes_stay_identical() {
+    let (got, failures) = hashes(Generation::V5);
     assert!(failures.is_empty(), "the pinned set lacks content:\n{}", failures.join("\n"));
     let expected: [(u64, &str, u64, u64); 6] = [
         (12345, "overworld", 0x741c_0fc3_eb2c_9335, 0x0bc1_396f_498c_75f7),
@@ -245,5 +253,25 @@ fn generation_5_chunk_hashes_stay_identical() {
     ];
     for (got, expected) in got.iter().zip(expected) {
         assert_eq!(*got, expected, "generation 5 changed: {got:#x?}");
+    }
+}
+
+/// Generation 6 (v1.0) must never change either (v1.0 gap Track 5, which
+/// put its Nether changes in generation 7): the same sets as generation
+/// 5's, pinned at `53505dd`.
+#[test]
+fn generation_6_chunk_hashes_stay_identical() {
+    let (got, failures) = hashes(Generation::V6);
+    assert!(failures.is_empty(), "the pinned set lacks content:\n{}", failures.join("\n"));
+    let expected: [(u64, &str, u64, u64); 6] = [
+        (12345, "overworld", 0x18df_bde6_d0bc_1fc5, 0x394d_f80a_1ffd_08cc),
+        (12345, "nether", 0xb0a0_e507_4c97_54aa, 0x45cf_f51d_8015_3972),
+        (12345, "end", 0x1e25_f271_38e6_1cc6, 0x53b5_ed1f_fed3_fac9),
+        (42, "overworld", 0x4687_72c6_6d42_f99e, 0xde4b_a576_3388_1552),
+        (42, "nether", 0x2297_bb69_e728_f2ec, 0x514b_0c73_e7a1_f87e),
+        (42, "end", 0x360b_40d6_6887_c9ad, 0x14ce_6254_3838_2d7a),
+    ];
+    for (got, expected) in got.iter().zip(expected) {
+        assert_eq!(*got, expected, "generation 6 changed: {got:#x?}");
     }
 }

@@ -1,0 +1,528 @@
+{
+ "border": {
+  "max_x": 29999984.0,
+  "max_z": 29999984.0,
+  "min_x": -29999984.0,
+  "min_z": -29999984.0
+ },
+ "clamp": [
+  {
+   "at": [
+    12.7,
+    70.2,
+    -3.4
+   ],
+   "block": [
+    12,
+    70,
+    -4
+   ]
+  },
+  {
+   "at": [
+    -0.5,
+    64.0,
+    0.5
+   ],
+   "block": [
+    -1,
+    64,
+    0
+   ]
+  },
+  {
+   "at": [
+    30000000.0,
+    80.9,
+    -30000000.0
+   ],
+   "block": [
+    29999983,
+    80,
+    -29999984
+   ]
+  },
+  {
+   "at": [
+    29999983.5,
+    64.0,
+    -29999984.5
+   ],
+   "block": [
+    29999983,
+    64,
+    -29999984
+   ]
+  },
+  {
+   "at": [
+    -240000000.0,
+    30.0,
+    240000000.0
+   ],
+   "block": [
+    -29999984,
+    30,
+    29999983
+   ]
+  },
+  {
+   "at": [
+    29999984.0,
+    10.0,
+    29999983.99
+   ],
+   "block": [
+    29999983,
+    10,
+    29999983
+   ]
+  }
+ ],
+ "constants": {
+  "nether_portal_radius": 16,
+  "overworld_portal_radius": 128
+ },
+ "dimension_types": {
+  "overworld": {
+   "coordinate_scale": 1.0,
+   "height": 384,
+   "logical_height": 384,
+   "min_y": -64
+  },
+  "the_end": {
+   "coordinate_scale": 1.0,
+   "height": 256,
+   "logical_height": 256,
+   "min_y": 0
+  },
+  "the_nether": {
+   "coordinate_scale": 8.0,
+   "height": 256,
+   "logical_height": 128,
+   "min_y": 0
+  }
+ },
+ "rectangles": {
+  "huge": {
+   "min_corner": [
+    0,
+    64,
+    0
+   ],
+   "sizes": [
+    23,
+    23
+   ]
+  },
+  "plain_x": {
+   "min_corner": [
+    0,
+    64,
+    0
+   ],
+   "sizes": [
+    2,
+    3
+   ]
+  },
+  "plain_z": {
+   "min_corner": [
+    0,
+    64,
+    0
+   ],
+   "sizes": [
+    2,
+    3
+   ]
+  },
+  "stacked": {
+   "min_corner": [
+    0,
+    64,
+    0
+   ],
+   "sizes": [
+    2,
+    5
+   ]
+  },
+  "stacked_top": {
+   "min_corner": [
+    -1,
+    67,
+    0
+   ],
+   "sizes": [
+    4,
+    2
+   ]
+  },
+  "stepped": {
+   "min_corner": [
+    0,
+    65,
+    0
+   ],
+   "sizes": [
+    2,
+    3
+   ]
+  },
+  "wide": {
+   "min_corner": [
+    -2,
+    64,
+    0
+   ],
+   "sizes": [
+    6,
+    4
+   ]
+  }
+ },
+ "reference": {
+  "server_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "sources": [
+   "tools/JavaPortalVectors.java run against the jar: PortalForcer's radii, new WorldBorder() (isWithinBounds, clampToBounds), PortalShape.getRelativePosition, BlockUtil.getLargestRectangleAround",
+   "data/minecraft/dimension_type/{overworld,the_nether,the_end}.json"
+  ],
+  "version": "26.3"
+ },
+ "relative": [
+  {
+   "axis": "x",
+   "dimensions": [
+    0.6,
+    1.8
+   ],
+   "min_corner": [
+    10,
+    64,
+    -3
+   ],
+   "position": [
+    11.0,
+    64.0,
+    -2.5
+   ],
+   "relative": [
+    0.5,
+    0.0,
+    0.0
+   ],
+   "sizes": [
+    2,
+    3
+   ]
+  },
+  {
+   "axis": "x",
+   "dimensions": [
+    0.6,
+    1.8
+   ],
+   "min_corner": [
+    10,
+    64,
+    -3
+   ],
+   "position": [
+    10.3,
+    64.0,
+    -2.2
+   ],
+   "relative": [
+    0.0,
+    0.0,
+    0.2999999999999998
+   ],
+   "sizes": [
+    2,
+    3
+   ]
+  },
+  {
+   "axis": "x",
+   "dimensions": [
+    0.6,
+    1.8
+   ],
+   "min_corner": [
+    10,
+    64,
+    -3
+   ],
+   "position": [
+    11.7,
+    65.2,
+    -2.9
+   ],
+   "relative": [
+    1.0,
+    0.9999999602635741,
+    -0.3999999999999999
+   ],
+   "sizes": [
+    2,
+    3
+   ]
+  },
+  {
+   "axis": "x",
+   "dimensions": [
+    0.6,
+    1.8
+   ],
+   "min_corner": [
+    10,
+    64,
+    -3
+   ],
+   "position": [
+    9.2,
+    63.0,
+    -1.7
+   ],
+   "relative": [
+    0.0,
+    0.0,
+    0.8
+   ],
+   "sizes": [
+    2,
+    3
+   ]
+  },
+  {
+   "axis": "x",
+   "dimensions": [
+    0.6,
+    1.5
+   ],
+   "min_corner": [
+    10,
+    64,
+    -3
+   ],
+   "position": [
+    12.9,
+    70.0,
+    -3.4
+   ],
+   "relative": [
+    1.0,
+    1.0,
+    -0.8999999999999999
+   ],
+   "sizes": [
+    2,
+    3
+   ]
+  },
+  {
+   "axis": "z",
+   "dimensions": [
+    0.6,
+    1.8
+   ],
+   "min_corner": [
+    -7,
+    40,
+    21
+   ],
+   "position": [
+    -6.5,
+    40.0,
+    22.25
+   ],
+   "relative": [
+    0.6785714316124819,
+    0.0,
+    0.0
+   ],
+   "sizes": [
+    2,
+    3
+   ]
+  },
+  {
+   "axis": "z",
+   "dimensions": [
+    0.6,
+    1.8
+   ],
+   "min_corner": [
+    -7,
+    40,
+    21
+   ],
+   "position": [
+    -6.8,
+    40.6,
+    21.3
+   ],
+   "relative": [
+    0.0,
+    0.49999998013178704,
+    -0.2999999999999998
+   ],
+   "sizes": [
+    2,
+    3
+   ]
+  },
+  {
+   "axis": "z",
+   "dimensions": [
+    0.6,
+    1.8
+   ],
+   "min_corner": [
+    -7,
+    40,
+    21
+   ],
+   "position": [
+    -6.1,
+    43.5,
+    24.9
+   ],
+   "relative": [
+    0.8181818199059192,
+    0.6730769169048445,
+    0.40000000000000036
+   ],
+   "sizes": [
+    5,
+    7
+   ]
+  },
+  {
+   "axis": "z",
+   "dimensions": [
+    0.6,
+    1.5
+   ],
+   "min_corner": [
+    -7,
+    40,
+    21
+   ],
+   "position": [
+    -7.4,
+    50.0,
+    30.0
+   ],
+   "relative": [
+    0.42647058814935895,
+    0.5128205128205128,
+    -0.9000000000000004
+   ],
+   "sizes": [
+    21,
+    21
+   ]
+  },
+  {
+   "axis": "x",
+   "dimensions": [
+    3.9,
+    4.0
+   ],
+   "min_corner": [
+    100,
+    70,
+    100
+   ],
+   "position": [
+    101.0,
+    70.5,
+    100.5
+   ],
+   "relative": [
+    0.5,
+    0.0,
+    0.0
+   ],
+   "sizes": [
+    2,
+    3
+   ]
+  },
+  {
+   "axis": "x",
+   "dimensions": [
+    1.4,
+    2.9
+   ],
+   "min_corner": [
+    100,
+    70,
+    100
+   ],
+   "position": [
+    103.0,
+    71.0,
+    100.5
+   ],
+   "relative": [
+    0.8846153810884826,
+    1.0,
+    0.0
+   ],
+   "sizes": [
+    4,
+    3
+   ]
+  }
+ ],
+ "within": [
+  {
+   "within": true,
+   "x": 0,
+   "z": 0
+  },
+  {
+   "within": true,
+   "x": 29999983,
+   "z": 0
+  },
+  {
+   "within": false,
+   "x": 29999984,
+   "z": 0
+  },
+  {
+   "within": true,
+   "x": -29999984,
+   "z": 7
+  },
+  {
+   "within": false,
+   "x": -29999985,
+   "z": 7
+  },
+  {
+   "within": true,
+   "x": 5,
+   "z": -29999984
+  },
+  {
+   "within": false,
+   "x": 5,
+   "z": -29999985
+  },
+  {
+   "within": true,
+   "x": 5,
+   "z": 29999983
+  },
+  {
+   "within": false,
+   "x": 5,
+   "z": 29999984
+  }
+ ]
+}
