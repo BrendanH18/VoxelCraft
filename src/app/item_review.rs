@@ -1,13 +1,16 @@
 //! v1.0 gap track 6: `--item-review DIR`, contact sheets for reviewing every
 //! registered item's icon, dropped model and held model against the world.
 //!
-//! With `--screenshot`, once the scene has settled each item in
-//! [`Item::all_items`] (or the `--item-review-range` part of it) is staged
+//! With `--screenshot`, once the scene has settled every registered item is
+//! staged (or the `--item-review-range` part of the list): each Java 26.3
+//! item id the game resolves, in the reference's order
+//! (`registry_names.json`), then the game's other items (its potions,
+//! tipped arrows and other variants Java tells apart by components), each
 //! for one frame: held in the first-person hand, lying at rest (the lowest
 //! point of its bob, turned to show two sides) on a block 1.15 ahead of
 //! the pose, a little left and one up, and drawn in the corner as its
 //! 16-pixel slot icon and the same icon three times as large, under its
-//! list index and name. Each frame is read back and laid into a sheet of
+//! list index and Java id (or name). Each frame is read back and laid into a sheet of
 //! [`COLUMNS`] x [`ROWS`] tiles, written as `items-NN.png` in DIR; the
 //! screenshot is taken after the last sheet. Run it at the smallest
 //! `--size`, 320x320 (1920x1600 sheets), with that block placed.
@@ -34,8 +37,8 @@ const RISE: f64 = 1.0;
 
 pub(super) struct ItemReview {
     dir: PathBuf,
-    /// Indices into `Item::all_items` and the items, in sheet order.
-    items: Vec<(usize, Item)>,
+    /// List indices, labels and items, in sheet order.
+    items: Vec<(usize, String, Item)>,
     next: usize,
     /// The item staged for the frame being read back.
     staged: Option<(usize, Item)>,
@@ -47,7 +50,12 @@ pub(super) struct ItemReview {
 impl ItemReview {
     pub(super) fn new(dir: PathBuf, range: Option<(usize, usize)>) -> Self {
         let (from, to) = range.unwrap_or((0, usize::MAX));
-        let items = Item::all_items().enumerate().filter(|&(i, _)| (from..=to).contains(&i)).collect();
+        let items = registered()
+            .into_iter()
+            .enumerate()
+            .filter(|(i, _)| (from..=to).contains(i))
+            .map(|(i, (label, item))| (i, label, item))
+            .collect();
         Self { dir, items, next: 0, staged: None, sheet: Vec::new(), tile: (0, 0), sheets: 0 }
     }
 
@@ -107,7 +115,7 @@ impl Game {
         if self.renderer.capture_pending() {
             return;
         }
-        let Some(&(index, item)) = review.items.get(review.next) else {
+        let Some(&(index, _, item)) = review.items.get(review.next) else {
             review.flush();
             self.item_review = None;
             return;
@@ -131,9 +139,11 @@ impl Game {
     /// The tile's label and icons; returns whether the review is drawing
     /// (the rest of the HUD stays hidden).
     pub(super) fn item_review_ui(&self, ui: &mut Ui) -> bool {
-        let Some((index, item)) = self.item_review.as_ref().and_then(|r| r.staged) else { return false };
+        let Some(review) = self.item_review.as_ref() else { return false };
+        let Some((index, item)) = review.staged else { return false };
         let stack = Stack::new(item, 1);
-        let label = format!("{index} {}", super::capitalize(item.name()));
+        let name = review.items.iter().find(|e| e.0 == index).map_or("", |e| e.1.as_str());
+        let label = format!("{index} {name}");
         let w = Ui::text_width(&label);
         ui.rect(0.0, 0.0, w + 4.0, 11.0, [0.0, 0.0, 0.0, 0.6]);
         ui.text(2.0, 2.0, &label, WHITE);
@@ -143,4 +153,26 @@ impl Game {
         super::hud::draw_model_sized(ui, 2.0, 34.0, 48.0, stack, dial);
         true
     }
+}
+
+/// Every registered item: the Java 26.3 item ids the game resolves, then
+/// the game's own items no id stands for, each item once, with its label.
+fn registered() -> Vec<(String, Item)> {
+    let reference: serde_json::Value =
+        serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/registry_names.json")).unwrap_or_default();
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for (id, english) in reference["items"].as_object().into_iter().flatten() {
+        if let Some(item) = voxelcraft::java_registry::item(id, english.as_str().unwrap_or(""))
+            && seen.insert(item)
+        {
+            out.push((id.clone(), item));
+        }
+    }
+    for item in Item::all_items() {
+        if seen.insert(item) {
+            out.push((item.name().replace(' ', "_"), item));
+        }
+    }
+    out
 }
