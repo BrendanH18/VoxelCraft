@@ -1256,6 +1256,31 @@ both ways, and `entity::shulker` its constants and loot. The
 `src/world/loot_tables.json` (added to `tools/extract_java_structure_loot.py`'s
 list).
 
+## The End's islands (v1.0 gap-closing Track 4)
+
+`end_islands.json` holds Java 26.3's End terrain for three seeds (0, 42
+and -4172144997902289642), written by
+`tools/extract_java_end_islands_fixtures.py`, which compiles
+`tools/JavaEndIslands.java` against the pinned server (SHA-1 checked) and
+runs the jar's own End noise router (`RandomState.create` with
+`NoiseGeneratorSettings.END`): `EndIslandFunction`
+(`DensityFunctions.endOuterIslands`) and the router's `erosion`
+(`end/islands`) as raw float bits on a 31 x 31 grid of points, and the
+noise columns `NoiseBasedChunkGenerator.getBaseColumn` generates for every
+column of five chunks per seed (the central island, its edge and the first
+island chunks along rays past the void) as solid y ranges. Regenerate and
+compare with (JDK 25 on `PATH`):
+
+```sh
+python3 tools/extract_java_end_islands_fixtures.py /path/to/server.jar --output target/java-end-islands.json
+diff tests/fixtures/java/26.3/end_islands.json target/java-end-islands.json
+scripts/boat-check.sh -- 'cargo test --profile ci --locked --lib world::end_islands'
+```
+
+`world::end_islands` (generation 7's End) must match every value bit for
+bit and every column block for block
+([record](../../../../docs/verification/2026-11-27-v1.0-gap-track-04-the-end.md)).
+
 ## Generation 5 Overworld (v0.16 Track D)
 
 `gen5_overworld.json` holds the generation 5 facts v0.16 Track D follows:
