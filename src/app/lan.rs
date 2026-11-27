@@ -1040,6 +1040,11 @@ impl Game {
         if !self.container_still_valid(session, peer.body.container) || session.vitals.is_dead() {
             return;
         }
+        // During a multipart update the guest can still see slots from before
+        // a substantial change. Small updates keep ordinary rapid clicks ordered.
+        if peer.inventory.awaiting_large_update(revision) {
+            return;
+        }
         if encoded == LAN_OUTSIDE_SLOT {
             if !peer.inventory.cursor_matches(revision, session.inventory.cursor) {
                 return;
@@ -1564,7 +1569,8 @@ impl Game {
             // v0.18 Track 9: chest lids and barrel tops in use or moving.
             snapshot["lids"] = json!(self.world.lids_near(here, 160.0));
             if let Some((open, serial)) = &peer.book_open
-                && (open["lectern"].is_array() || peer.inventory.current(inventory))
+                && (open["lectern"].is_array()
+                    || open["slot"].as_u64().is_some_and(|slot| peer.inventory.held_matches(slot as usize, inventory)))
             {
                 let mut open = open.clone();
                 open["serial"] = json!(serial);

@@ -153,8 +153,13 @@ inventory, such as a book moving to the cursor, travel as references.
 The guest keeps the previous inventory until all parts arrive and continues
 receiving movement acknowledgments during the transfer. Clicks outside the
 inventory panel include the displayed revision so a delayed click cannot toss
-a different stack after the cursor changes. Crafting clicks include the grid
-size so a delayed click from the 2×2 panel cannot affect the 3×3 table.
+a different stack after the cursor changes. The host ignores slot clicks
+from before a pending multipart update. Crafting clicks include the grid size
+so a delayed click from the 2×2 panel cannot affect the 3×3 table.
+Spill stacks awaiting a drop stay on the host. Inventory updates are capped
+at 32 MiB. If a storage payload exceeds the stack decoder's field limit or
+the remaining update budget, the guest sees the item and the host retains its
+contents.
 
 Sockets are nonblocking during gameplay. Each peer has at most 2 MiB queued;
 chunk sending yields at 512 KiB backlog and sends at most 32 new chunks per

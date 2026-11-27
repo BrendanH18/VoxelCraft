@@ -1,4 +1,4 @@
-//! VoxelCraft LAN protocol v1. Nonblocking, bounded TCP; all simulation stays on the authority.
+//! VoxelCraft LAN protocol. Nonblocking, bounded TCP; all simulation stays on the authority.
 pub mod headless;
 
 use std::collections::VecDeque;
