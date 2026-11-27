@@ -70,6 +70,11 @@ const SPECS: [Spec; 12] = [
     spec(9, MOVE),
 ];
 
+/// `AgeableMobGroupData(0.1F)` from `Dolphin.finalizeSpawn` (v1.0 gap Track 3).
+pub const BABY_SPAWN_CHANCE: f32 = 0.1;
+/// `Dolphin.BABY_SCALE`: a baby's box is the adult's times this.
+pub const BABY_SCALE: f64 = 0.65;
+
 /// Air (seconds) below which `BreathAirGoal` runs: 140 ticks.
 const BREATH_AIR: f32 = 7.0;
 /// `DolphinSwimToTreasureGoal` needs 100 ticks of air.
@@ -677,7 +682,15 @@ impl Entities {
         if m.kind != MobKind::Dolphin || !m.alive() || !held.is_some_and(|s| is_fish(s.item)) {
             return None;
         }
-        m.dolphin_mut()?.got_fish = true;
+        // v1.0 gap Track 3: `Dolphin.mobInteract` grows a baby that can
+        // still age (`canAgeUp`) by a tenth of its remaining time
+        // (`ageUp(getSpeedUpSecondsWhenFeeding(-age), true)`); otherwise the
+        // fish sends it looking for treasure.
+        if m.baby && !m.age_locked {
+            m.feed_growth();
+        } else {
+            m.dolphin_mut()?.got_fish = true;
+        }
         Some(true)
     }
 

@@ -62,7 +62,16 @@ hunger while riding. Ridden horses, donkeys, mules and undead horses move by Jav
 `travelRidden` on land (v1.0 Track 7): step height 1, the jump strength
 attribute as the launch speed, a 0.4 forward leap on a running jump. A fall
 hurts a horse `floor((fall − 6) × 0.5)`; only then does the rider take
-their own fall damage for the same distance. Saddles, armor,
+their own fall damage for the same distance. Since v1.0 gap Track 3 the
+same Java tick carries them through water and lava
+([record](verification/2026-11-27-v1.0-gap-track-03-mounts-water.md)):
+`travelInWater` pushes 0.02 a tick against a 0.8 drag (a top speed of
+0.08 blocks a tick, 1.6 a second), the mount's float goal and
+`#can_float_while_ridden` lift it to the surface, currents carry it, and
+it climbs out where the bank is free. A skeleton horse has no float goal:
+it walks the bottom with its 0.96 water drag, much faster than other
+horses. The rider's jump charges only for a vehicle that can jump, and
+starts at nothing on the press tick as Java's client does. Saddles, armor,
 stats, temper, owner, riders and storage survive saves; equipment and cargo
 spill when the animal dies.
 
@@ -92,12 +101,49 @@ off. Hold and release jump to dash forward (2.75 s cooldown; sprinting adds
 speed while the dash is ready). Camels step up 1.5 blocks, sit down now and
 then when idle, take 2.6 s to stand after a rider presses forward, eat and breed on cactus.
 
-Camels already sit automatically. Java 26.3 has no right-click sit command
-(`Camel.mobInteract`); merely mounting now keeps them seated, and forward
-input starts the 52-tick stand transition (`Camel.tickRidden`). Sitting and
-standing timers survive mount save/reload; old saves default to standing.
-Random sitting still uses the retained simplified idle schedule, and exact
-pose-transition animation, collision height and input acceptance remain open.
+Since v1.0 gap Track 3 camels and camel husks ride on Java 26.3's own
+`Camel` code ([record](verification/2026-11-27-v1.0-gap-track-03-mounts-water.md)):
+
+- **Pose.** A camel keeps Java's pose clock (`LAST_POSE_CHANGE_TICK`):
+  sitting down takes 40 ticks, standing up 52, and while it sits or changes
+  pose it neither moves, turns for its rider nor dashes (`refuseToMove`).
+  Sitting shrinks its box to 1.7 × 0.945 (a calf's to 0.95 × 0.425; standing
+  calves are 0.95 × 1.4). Its brain's idle choice (`RandomStroll`,
+  `RandomSitting(20)` or `DoNothing(30, 60)`, picked evenly among those
+  that can start) sits it down after 20 seconds standing and up after 20
+  sitting, only on the ground, out of water, unleashed and with no rider
+  steering. Water or a hit stands it up at once; wanting to walk somewhere
+  stands it up through the transition. The pose and its clock save; older
+  saves load seated (if they were sitting) or partway up.
+- **Riding.** Java has no right-click sit command (`Camel.mobInteract`):
+  mounting a seated camel leaves it seated, and a saddled camel's rider
+  stands it with forward input (`Camel.tickRidden`). Ridden, it walks at
+  0.09 (Java's `travelRidden`, 2.2 blocks a second on stone), 0.1 faster
+  while the rider sprints with the dash ready, steps up 1.5 blocks and
+  swims and floats as horses do.
+- **Dash.** Hold and release jump: the charge (`LocalPlayer`'s
+  `jumpRidingScale`) grows only while the dash is ready and the camel is
+  standing, and the released jump, from the ground, throws the camel
+  `22.2222 × scale × 0.09` blocks a tick along its heading and
+  `1.4285 × scale × 0.42` up, then waits 55 ticks.
+- **Seats.** Java's `getPassengerAttachmentPoint`: a lone rider sits half a
+  block forward of the middle; with two, the driver half a block forward
+  and the other 0.7 back (an animal 0.2 further forward). The seat height
+  follows the body through both transitions, and the model's body sinks
+  and rises with it.
+
+## Nautiluses
+
+Tame a nautilus with a pufferfish (one in three), saddle it to steer it
+under water, and dash with the jump key. Since v1.0 gap Track 3 a tame
+adult nautilus (or zombie nautilus) has Java's mount inventory screen
+(`NautilusInventoryMenu`): sneak-use it, or open the inventory while riding
+it, to manage its saddle and nautilus armor slots. It opens on every input
+path the horse screens do (keyboard, controller, LAN and the CLI's `chest
+take/put`), and not while someone else rides it. Shift-clicking an item no
+mount slot takes moves it between the hotbar and the main inventory, as
+Java's `AbstractMountInventoryMenu` does for horses too. See the
+[record](verification/2026-11-27-v1.0-gap-track-03-mounts-water.md).
 
 ## Undead horses (v0.15, implemented/unverified)
 
@@ -114,7 +160,8 @@ Natural zombie horsemen carry an iron spear (v1.0 Track 7), though no mob
 uses a spear's charge yet; trap riders' bows and helmets are enchanted.
 
 Current parity gaps:
-horse coats/armor and sounds are procedural approximations; horse herds now share the first
+horse coats/armor and sounds are procedural approximations;
+camels' sit, stand and dash sounds aren't played; horse herds now share the first
 member's coat while keeping independent markings, as Java 26.3
 `Horse.finalizeSpawn`/`HorseGroupData` do. Saved coat/marking IDs are unchanged. Boat currents, bubble columns and
 Java's boat statuses are followed since v1.0 Track 7; boat leashes remain future work. Offhand controls

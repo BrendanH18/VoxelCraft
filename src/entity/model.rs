@@ -1546,6 +1546,10 @@ pub fn build(
                     0.6
                 } else if m.kind == MobKind::HappyGhast {
                     super::happy_ghast::BABY_SCALE as f32
+                } else if m.kind == MobKind::Dolphin {
+                    // v1.0 gap Track 3: `DolphinRenderer` draws babies with
+                    // their own smaller model (`BabyDolphinModel`) at full scale.
+                    1.0
                 } else {
                     0.5
                 }

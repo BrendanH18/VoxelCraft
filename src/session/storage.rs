@@ -467,7 +467,15 @@ impl StorageScreen<'_> {
                 if self.entities.vehicle_slots(id).is_none() {
                     return Some(Some(stack));
                 }
-                Some(self.entities.insert_vehicle(id, stack))
+                let left = self.entities.insert_vehicle(id, stack);
+                // `AbstractMountInventoryMenu.quickMoveStack`: a stack no
+                // mount slot takes moves between the hotbar and the main
+                // grid instead (v1.0 gap Track 3); cart and boat chests
+                // (`ChestMenu`) leave it where it was.
+                if id & crate::entity::mounts::MOB_VEHICLE != 0 && left == Some(stack) {
+                    return None;
+                }
+                Some(left)
             }
             Storage::Ender => {
                 let order: Vec<usize> = (0..crate::world::chest::SLOTS).collect();

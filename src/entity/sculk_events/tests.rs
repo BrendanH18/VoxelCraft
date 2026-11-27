@@ -72,9 +72,9 @@ fn armadillos_post_rolling_up_and_out_but_not_peeking() {
 #[test]
 fn camels_post_sitting_standing_and_dashing() {
     let (mut e, mut w) = one(MobKind::Camel);
-    e.mobs[0].mount.as_mut().unwrap().sit_ticks = 600;
+    e.mobs[0].mount.as_mut().unwrap().sit_down();
     assert_eq!(next(&mut e, &mut w), [GameEvent::EntityAction], "sitDown");
-    e.mobs[0].mount.as_mut().unwrap().sit_ticks = 0;
+    e.mobs[0].mount.as_mut().unwrap().stand_up();
     assert_eq!(next(&mut e, &mut w), [GameEvent::EntityAction], "standUp");
     e.mobs[0].mount.as_mut().unwrap().dash_cooldown = crate::entity::mounts::DASH_COOLDOWN;
     assert_eq!(next(&mut e, &mut w), [GameEvent::EntityAction], "handleStartJump");

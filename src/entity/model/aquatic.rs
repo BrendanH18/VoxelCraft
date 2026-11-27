@@ -73,6 +73,21 @@ const DOLPHIN: &[Cuboid] = &[
     cube([-3.5, 0.95, -7.0], [3.5, 1.0, 7.0], [176, 196, 200], 0),
 ];
 const FLUKE: &[Cuboid] = &[cube([-5.0, -0.5, -5.0], [5.0, 0.5, 0.0], [112, 140, 150], 12)];
+/// v1.0 gap Track 3: an original baby dolphin on `BabyDolphinModel`'s
+/// proportions (a 6 × 5 × 8 body, a 6 × 5 × 4 head with a 2-pixel nose, a
+/// 4 × 3 × 7 tail and an 8-wide fluke), paler than the adult.
+const BABY_DOLPHIN: &[Cuboid] = &[
+    cube([-3.0, 0.0, -4.0], [3.0, 5.0, 4.0], [128, 155, 165], 14),
+    cube([-3.0, -0.5, 4.0], [3.0, 4.5, 8.0], [140, 164, 172], 12),
+    cube([-1.0, 1.0, 8.0], [1.0, 3.0, 10.0], [150, 172, 178], 10),
+    cube([-2.0, 1.0, -11.0], [2.0, 4.0, -4.0], [128, 155, 165], 12),
+    cube([-0.5, 4.5, -2.0], [0.5, 7.0, 1.5], [110, 140, 152], 10),
+    cube([-6.0, 0.5, -1.0], [6.0, 1.3, 1.5], [116, 146, 156], 10),
+    cube([-3.05, 2.8, 6.0], [-3.0, 3.6, 6.8], [20, 25, 29], 0),
+    cube([3.0, 2.8, 6.0], [3.05, 3.6, 6.8], [20, 25, 29], 0),
+    cube([-2.5, -0.05, -3.5], [2.5, 0.0, 3.5], [186, 204, 208], 0),
+];
+const BABY_FLUKE: &[Cuboid] = &[cube([-4.0, -0.5, -4.0], [4.0, 0.5, 0.0], [124, 150, 160], 10)];
 const AXOLOTL: &[Cuboid] = &[
     cube([-3.0, 1.0, -5.0], [3.0, 4.0, 3.0], [237, 160, 184], 14),
     cube([-4.0, 0.5, 2.0], [4.0, 5.0, 7.0], [243, 179, 198], 14),
@@ -191,6 +206,10 @@ pub(super) fn pose(m: &Mob, time: f32) -> Parts {
             }
             p
         }
+        MobKind::Dolphin if m.baby || m.age < 0 => parts![
+            part(BABY_DOLPHIN, [0.0; 3], Quat::IDENTITY),
+            part(BABY_FLUKE, [0.0, 2.5, -11.0], Quat::from_rotation_x((time * 5.0).sin() * 0.3))
+        ],
         MobKind::Dolphin => parts![
             part(DOLPHIN, [0.0; 3], Quat::IDENTITY),
             part(FLUKE, [0.0, 3.0, -9.0], Quat::from_rotation_x((time * 4.0).sin() * 0.25))

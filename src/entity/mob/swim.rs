@@ -192,6 +192,48 @@ impl Mob {
         }
     }
 
+    /// v1.0 gap Track 3: `Entity.isPushedByFluid`. `WaterAnimal` (fish and
+    /// tadpoles), `AgeableWaterCreature` (squid, glow squid and dolphins),
+    /// turtles, axolotls, frogs and nautiluses return false; a drowned only
+    /// while it swims; every other mob (guardians included) is pushed.
+    pub(crate) fn pushed_by_fluid(&self, swimming: bool) -> bool {
+        match self.kind {
+            k if k.is_fish() => false,
+            MobKind::Tadpole
+            | MobKind::Squid
+            | MobKind::GlowSquid
+            | MobKind::Dolphin
+            | MobKind::Turtle
+            | MobKind::Axolotl
+            | MobKind::Frog
+            | MobKind::Nautilus
+            | MobKind::ZombieNautilus => false,
+            MobKind::Drowned => !swimming,
+            _ => true,
+        }
+    }
+
+    /// The fluid this mob's box touches (`EntityFluidInteraction.update`),
+    /// with currents gathered when it is pushed.
+    pub(crate) fn fluid_contact<W: BlockSource + ?Sized>(
+        &self,
+        world: &W,
+        pushed: bool,
+    ) -> crate::player::fluid::FluidContact {
+        let (min, max) = self.aabb();
+        let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
+        crate::player::fluid::contact(world, min, max, eye, pushed)
+    }
+
+    /// `Entity.updateFluidInteraction`'s push from flowing water this tick
+    /// (blocks a tick), for a pushed mob; `dm` is its movement before it.
+    pub(crate) fn water_current<W: BlockSource + ?Sized>(&self, world: &W, dm: DVec3, swimming: bool) -> DVec3 {
+        if !self.pushed_by_fluid(swimming) || !self.touching_water(world) {
+            return DVec3::ZERO;
+        }
+        self.fluid_contact(world, true).entity_water_impulse(dm)
+    }
+
     /// `isInWater`: the box touches water.
     pub(crate) fn touching_water<W: BlockSource + ?Sized>(&self, world: &W) -> bool {
         physics::touches_block(world, self.pos, self.shape(), Block::holds_water)
@@ -222,7 +264,7 @@ impl Mob {
     }
 
     /// `maxUpStep` (the `STEP_HEIGHT` attribute).
-    fn step_height(&self) -> f64 {
+    pub(super) fn step_height(&self) -> f64 {
         match self.kind {
             MobKind::Turtle | MobKind::Axolotl | MobKind::Frog => 1.0,
             // `AbstractHorse.createBaseHorseAttributes` (v1.0 Track 7);
@@ -237,9 +279,14 @@ impl Mob {
     pub(crate) fn travel_in_air<W: BlockSource + ?Sized>(&mut self, world: &W, dm: &mut DVec3, input: DVec3) {
         let below = (self.pos - DVec3::Y * 0.5).floor().as_ivec3();
         let f = if self.on_ground { friction(world.block(below)) } else { 1.0 };
-        // `getFrictionInfluencedSpeed`.
+        // `getFrictionInfluencedSpeed`; in the air `getFlyingSpeed`, a
+        // tenth of the speed under a steering player (v1.0 gap Track 3).
         let speed = if !self.on_ground {
-            0.02
+            if self.mount.as_ref().is_some_and(|s| s.controlled()) {
+                f64::from(self.move_ctl.cur as f32 * 0.1)
+            } else {
+                0.02
+            }
         } else if f > 0.6 {
             self.move_ctl.cur * (0.216 / (f * f * f))
         } else {
@@ -274,6 +321,9 @@ impl Mob {
         }
         let from_y = self.pos.y;
         let mut dm = self.vel * TICK;
+        // `Entity.baseTick`: flowing water pushes guardians, polar bears and
+        // the other pushed mobs before they move (v1.0 gap Track 3).
+        dm += self.water_current(world, dm, false);
         let in_water = self.touching_water(world);
         self.in_water = in_water;
         if in_water && self.polar_water_tick(world, wish, speed, rng) {
@@ -691,6 +741,78 @@ mod tests {
             last = m.pos;
         }
         v
+    }
+
+    /// v1.0 gap Track 3: a channel three blocks deep (y 0 to 2) whose
+    /// water runs toward +x from sources at x = -4 (each layer's level
+    /// rises a step a block, its amount falling, to 7 at x = 3); `still`
+    /// fills it with source water instead.
+    fn channel(still: bool) -> Grid {
+        let mut w = Grid::flat(0);
+        for x in -4..=3 {
+            for y in 0..=2 {
+                for z in -4..=4 {
+                    let b = if still || x == -4 { Block::WATER } else { Block::flowing_water((x + 4) as u8) };
+                    w.set(IVec3::new(x, y, z), b);
+                }
+            }
+        }
+        w
+    }
+
+    /// How far along x `kind` ends up after `ticks` Java ticks from x 0.5.
+    fn drift(kind: MobKind, still: bool, ticks: usize) -> f64 {
+        let w = channel(still);
+        let mut m = Mob::new(kind, DVec3::new(-1.5, 0.5, 0.5), 0.0);
+        m.uid = 3;
+        let mut rng = Rng::new(1);
+        for _ in 0..ticks {
+            if m.java_moves(&w) {
+                m.java_tick(&w, None, 0.0, &mut rng);
+            } else {
+                m.physics_step(TICK, &w, None, 0.0);
+            }
+        }
+        m.pos.x + 1.5
+    }
+
+    #[test]
+    fn currents_push_the_mobs_java_pushes() {
+        // `isPushedByFluid`: false for `WaterAnimal`, `AgeableWaterCreature`,
+        // turtles, axolotls, frogs and nautiluses; a drowned only while it
+        // doesn't swim.
+        for kind in [
+            MobKind::Cod,
+            MobKind::Tadpole,
+            MobKind::Squid,
+            MobKind::GlowSquid,
+            MobKind::Dolphin,
+            MobKind::Turtle,
+            MobKind::Axolotl,
+            MobKind::Frog,
+            MobKind::Nautilus,
+            MobKind::ZombieNautilus,
+        ] {
+            assert!(!Mob::new(kind, DVec3::ZERO, 0.0).pushed_by_fluid(false), "{kind:?}");
+        }
+        let guardian = Mob::new(MobKind::Guardian, DVec3::ZERO, 0.0);
+        assert!(guardian.pushed_by_fluid(false));
+        let drowned = Mob::new(MobKind::Drowned, DVec3::ZERO, 0.0);
+        assert!(drowned.pushed_by_fluid(false) && !drowned.pushed_by_fluid(true));
+        // Guardians (their own Java tick) and land mobs (the continuous
+        // water model) drift downstream; a cod doesn't.
+        for kind in [MobKind::Guardian, MobKind::Cow, MobKind::Zombie] {
+            let (river, pool) = (drift(kind, false, 20), drift(kind, true, 20));
+            assert!(river - pool > 0.3, "{kind:?}: {river} vs {pool}");
+        }
+        assert!((drift(MobKind::Cod, false, 20) - drift(MobKind::Cod, true, 20)).abs() < 1e-9);
+        // `CurrentAccumulator.applyTo`: 0.014 a tick along the normalised
+        // flow, so a guardian's water drag of 0.9 settles it near
+        // 0.014 × 0.9 / 0.1 = 0.126 blocks a tick downstream.
+        let w = channel(false);
+        let m = Mob::new(MobKind::Guardian, DVec3::new(-1.5, 0.5, 0.5), 0.0);
+        let push = m.water_current(&w, DVec3::new(0.1, 0.0, 0.0), false);
+        assert!((push.length() - 0.014).abs() < 1e-9 && push.x > 0.0, "{push}");
     }
 
     #[test]

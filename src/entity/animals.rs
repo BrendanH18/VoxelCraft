@@ -203,6 +203,16 @@ impl Mob {
         if self.baby && self.age == 0 {
             self.age = if self.kind == MobKind::Sniffer { -48000 } else { BABY_AGE };
         }
+        // v1.0 gap Track 3: `AgeableMob.aiStep` for a baby dolphin, which
+        // has no animal state: a tick older each tick until grown.
+        if self.kind == MobKind::Dolphin && self.age < 0 {
+            self.grow += dt * 20.0;
+            let ticks = self.grow.floor() as i32;
+            self.grow -= ticks as f32;
+            self.age = (self.age + ticks).min(0);
+            self.baby = self.age < 0;
+            return;
+        }
         if let Some(a) = &mut self.animal {
             a.growth += dt * 20.0;
             let ticks = a.growth.floor() as i32;
@@ -224,7 +234,7 @@ impl Entities {
         let m = self.mobs.get_mut(index)?;
         if !m.alive()
             || !m.baby
-            || (m.animal.is_none() && m.kind != MobKind::SulfurCube)
+            || (m.animal.is_none() && !matches!(m.kind, MobKind::SulfurCube | MobKind::Dolphin))
             || matches!(m.kind, MobKind::ZombieHorse | MobKind::SkeletonHorse | MobKind::Villager)
         {
             return None;
