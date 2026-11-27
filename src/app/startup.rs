@@ -286,6 +286,8 @@ impl Game {
             sprint_toggled: false,
             respawn_due: false,
             scroll: 0.0,
+            bundle_selection: None,
+            bundle_scroll: 0.0,
             frame_limit: Default::default(),
             distortion: Default::default(),
             modifiers: Default::default(),

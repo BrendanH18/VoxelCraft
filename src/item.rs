@@ -363,6 +363,10 @@ pub enum Sprite {
     FireworkStar,
     /// v0.16 Track C: the Wither's Nether star.
     NetherStar,
+    /// v1.0 gap track 6: the back and the front of an open bundle of this
+    /// colour, drawn behind and over its selected stack in a slot.
+    BundleOpenBack([u8; 3]),
+    BundleOpenFront([u8; 3]),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -2388,6 +2392,32 @@ impl Item {
 /// item and the compass and clock frames.
 pub fn effect_icon_layer(effect: crate::simulation::effects::Effect) -> u16 {
     tex::item_layer(icon_count() as u16 + animated_icons() as u16 + effect as u16)
+}
+
+/// v1.0 gap track 6: the open-bundle icons, after the status effects: each
+/// bundle's back then front, plain first (`bundle_open_back` and
+/// `bundle_open_front` in Java's item models).
+pub const OPEN_BUNDLE_ICONS: u32 = 2 * (crate::content::bundle::ITEM_END - crate::content::bundle::ITEM_FIRST) as u32;
+
+/// The first open-bundle icon's index in the item icon array.
+pub fn open_bundle_icon_base() -> u16 {
+    (icon_count() + animated_icons() + crate::simulation::effects::Effect::ALL.len() as u32) as u16
+}
+
+/// v1.0 gap track 6: the layers of bundle `item`'s open back and front.
+pub fn open_bundle_layers(item: Item) -> Option<(u16, u16)> {
+    let i =
+        item.0.checked_sub(crate::content::bundle::ITEM_FIRST).filter(|_| crate::content::bundle::is_bundle(item))?;
+    let back = open_bundle_icon_base() + 2 * i;
+    Some((tex::item_layer(back), tex::item_layer(back + 1)))
+}
+
+/// The open-bundle sprite on item icon `index` past the status effects.
+pub fn open_bundle_sprite(index: u16) -> Option<Sprite> {
+    let i = index.checked_sub(open_bundle_icon_base())?;
+    let item = Item(crate::content::bundle::ITEM_FIRST + i / 2);
+    let Sprite::Bundle(c) = crate::content::bundle::is_bundle(item).then(|| item.info().sprite)? else { return None };
+    Some(if i % 2 == 0 { Sprite::BundleOpenBack(c) } else { Sprite::BundleOpenFront(c) })
 }
 
 /// The sprite drawn on item icon `index` (see `tex::item_layer`).

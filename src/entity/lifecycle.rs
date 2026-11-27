@@ -630,7 +630,21 @@ impl Entities {
                     | EntityEvent::DropEquipment { .. }
             )
         });
-        self.items.retain_mut(|item| !world.entity_ticking(item.pos.floor().as_ivec3()) || item.update(dt, world));
+        let mut destroyed = Vec::new();
+        self.items.retain_mut(|item| {
+            if !world.entity_ticking(item.pos.floor().as_ivec3()) {
+                return true;
+            }
+            let alive = item.update(dt, world);
+            // Burnt, not despawned: a bundle spills what it holds.
+            if !alive && item.age < item::LIFETIME {
+                destroyed.push(*item);
+            }
+            alive
+        });
+        for item in destroyed {
+            self.spill_destroyed(&item);
+        }
         self.orbs.retain_mut(|orb| !world.entity_ticking(orb.pos.floor().as_ivec3()) || orb.update(dt, world, ctx));
         let tnt_explodes = self.tnt_explodes;
         self.tnt.retain_mut(|t| {

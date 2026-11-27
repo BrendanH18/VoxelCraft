@@ -10,6 +10,7 @@ mod benchmark;
 mod books;
 mod bow;
 mod bucket;
+mod bundles;
 mod conduit;
 mod console;
 mod containers;
@@ -185,6 +186,10 @@ struct Game {
     respawn_due: bool,
     /// Java's `ScrollWheelHandler`: wheel movement short of a whole notch.
     scroll: f64,
+    /// v1.0 gap track 6: the hovered bundle's selected stack, and the
+    /// bundle wheel's own part-notches (`BundleMouseActions`).
+    bundle_selection: Option<(hud::SlotRef, usize)>,
+    bundle_scroll: f64,
     frame_limit: frame_limit::FrameLimit,
     /// Nausea and portal warp (Distortion Effects).
     distortion: distortion::Distortion,
@@ -1083,6 +1088,9 @@ impl Game {
         let lines = if s.discrete_scroll && lines != 0.0 { lines.signum() } else { lines } * s.scroll_sensitivity;
         if self.menu.is_open() {
             self.menu_wheel(lines as f32);
+        } else if self.inventory_open && self.bundle_wheel(lines) {
+            // v1.0 gap track 6: a hovered bundle takes the wheel first, as
+            // `AbstractContainerScreen.mouseScrolled` asks its slot actions.
         } else if self.inventory_open && self.shows_palette() {
             // v0.18 Track 4: `CreativeModeInventoryScreen.mouseScrolled`
             // takes the scaled wheel as it comes.
@@ -1438,14 +1446,21 @@ impl Game {
                 return;
             }
             if self.session.inventory.cursor.is_some() && self.cursor_off_panel() {
-                self.lan_click(lan::LAN_OUTSIDE_SLOT, right, false);
+                self.lan_click(lan::LAN_OUTSIDE_SLOT, right, false, None);
                 return;
             }
             if let Some(slot) = self.slot_under_cursor() {
                 self.recipe_slot_clicked(slot);
             }
-            if let Some(slot) = self.slot_under_cursor().and_then(lan::encode_slot) {
-                self.lan_click(slot, right, self.modifiers.shift_key());
+            let hovered = self.slot_under_cursor();
+            if let Some(slot) = hovered.and_then(lan::encode_slot) {
+                let shift = self.modifiers.shift_key();
+                let selected = hovered.and_then(|h| self.bundle_selected_at(h)).filter(|_| !shift);
+                self.lan_click(slot, right, shift, selected);
+                // The host's answer arrives later; Java clears the selection
+                // on every click but a stack going in, which the guest
+                // can't tell yet, so it clears it.
+                self.bundle_selection = None;
             }
             return;
         }
@@ -1483,6 +1498,8 @@ impl Game {
             if let Some(slot) = slot {
                 self.quick_move(slot);
             }
+            // `BundleMouseActions.onSlotClicked`: a quick move clears it.
+            self.bundle_selection = None;
             return;
         }
         if let Some(slot) = slot {
@@ -1517,7 +1534,9 @@ impl Game {
     }
 
     fn click_slot(&mut self, slot: hud::SlotRef, right: bool) {
-        self.with_screen(|s| s.click_slot(slot, right));
+        let selected = self.bundle_selected_at(slot);
+        let click = self.with_screen(|s| s.click_slot_selected(slot, right, selected));
+        self.bundle_clicked(click);
     }
 
     fn quick_move(&mut self, slot: hud::SlotRef) {
@@ -2169,6 +2188,7 @@ impl Game {
         );
         self.respawn_if_due();
         self.sync_death_screen();
+        self.track_bundle_hover();
         let elapsed = now - self.last_frame;
         self.last_frame = now;
         let ticks = self.clock.advance(elapsed, paused);

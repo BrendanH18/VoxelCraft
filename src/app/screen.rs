@@ -418,6 +418,23 @@ impl Screen<'_> {
         }
     }
 
+    /// v1.0 gap track 6: [`Self::click_slot`] with the clicked bundle's
+    /// selected stack (`selected`, from the front), playing the sound of
+    /// any bundle click (`BundleItem.play*Sound`, by the player). Returns
+    /// what the bundle override did.
+    pub(super) fn click_slot_selected(
+        &mut self,
+        slot: SlotRef,
+        right: bool,
+        selected: Option<usize>,
+    ) -> Option<voxelcraft::content::bundle::Click> {
+        let ((), click) = voxelcraft::content::bundle::clicking(selected, || self.click_slot(slot, right));
+        if let Some(cue) = click.and_then(voxelcraft::content::bundle::Click::cue) {
+            super::items::bundle_sound(self.audio, cue, Some(self.session.player.pos));
+        }
+        click
+    }
+
     /// A left (or right) click on a slot of the open container screen.
     pub(super) fn click_slot(&mut self, slot: SlotRef, right: bool) {
         if self.workstation_click(slot, right) {

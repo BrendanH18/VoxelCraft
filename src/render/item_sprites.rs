@@ -1044,6 +1044,38 @@ pub fn pixel(sprite: Sprite, x: usize, y: usize) -> Rgba {
                 None
             }
         }
+        Sprite::BundleOpenBack(c) => {
+            // Original v1.0 icon: the open pouch's far rim and its dark
+            // inside, drawn behind the stack the bundle holds up.
+            let (px, py) = centre(x, y);
+            let mouth = ((px - 8.0) / 6.2).powi(2) + ((py - 8.4) / 3.4).powi(2);
+            if mouth > 1.0 || py > 10.5 {
+                None
+            } else if mouth > 0.62 && py < 8.4 {
+                Some(tint(c, if x <= 7 { 1.12 } else { 0.98 }))
+            } else {
+                Some(tint(c, 0.34))
+            }
+        }
+        Sprite::BundleOpenFront(c) => {
+            // Original v1.0 icon: the pouch's front, rounded below a pale
+            // frilled near rim, with the string tie hanging at its side;
+            // it covers the lower part of the stack held up in it.
+            let body = |x: i32, y: i32| {
+                let (px, py) = centre(x, y);
+                ((px - 8.0) / 6.6).powi(2) + ((py - 10.9) / 4.6).powi(2) <= 1.0 && y >= 9
+            };
+            if (x == 13 && (9..=11).contains(&y)) || (x == 14 && y == 12) {
+                Some(tint([214, 196, 150], 0.95))
+            } else if body(x, y) && y == 9 {
+                Some(tint(c, if (x + y) % 3 == 0 { 1.25 } else { 1.12 }))
+            } else if body(x, y) {
+                let seam = x == 8 && (11..=14).contains(&y);
+                shaded(&body, x, y, c, 0.06).map(|p| if seam { tint(c, 0.74) } else { p })
+            } else {
+                None
+            }
+        }
         Sprite::Harness(c) => {
             // Original v0.14 icon: a quilted pad of the dye's colour under a
             // leather strap carrying two round glass goggles.

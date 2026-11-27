@@ -317,6 +317,12 @@ pub(super) fn shot_sound(audio: &mut Audio, ranged: voxelcraft::session::ranged:
     }
 }
 
+/// v1.0 gap track 6: one of the bundle sounds at Java's volume and pitch.
+pub(super) fn bundle_sound(audio: &mut Audio, cue: voxelcraft::content::bundle::Cue, at: Option<DVec3>) {
+    let (volume, pitch) = cue.volume_pitch();
+    audio.play(Sound::Bundle(cue), at, volume, pitch);
+}
+
 /// A v0.16 weapon sound at `at`, at Java's volume 1 and pitch 1.
 pub(super) fn weapon_sound(audio: &mut Audio, cue: voxelcraft::weapons::Cue, at: DVec3) {
     audio.play(Sound::Weapon(cue), Some(at), 1.0, (0.95, 1.05));

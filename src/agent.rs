@@ -34,6 +34,8 @@ pub enum Event {
     EyeThrown(DVec3),
     /// Put an eye in the End portal frame here; whether that opened the portal.
     FrameFilled(IVec3, bool),
+    /// v1.0 gap track 6: threw a stack out of the bundle in use.
+    BundleThrown(crate::session::bundles::Emptied),
 }
 
 /// Unheard events kept per agent (a host without audio never drains them).
@@ -306,6 +308,9 @@ impl Agent {
             Command::Eat => {
                 let duration = if self.session.start_brushing(self.selected, world) {
                     200
+                } else if self.session.start_bundle_use(self.selected, entities) {
+                    // v1.0 gap track 6: holding use empties a bundle.
+                    crate::session::bundles::USE_TICKS
                 } else {
                     self.session.consumption_duration_either(self.selected)?
                 };
@@ -1260,7 +1265,13 @@ impl Agent {
         }
         self.draw(world, entities);
         self.session.tick_blocking_unless_ticked(self.selected, self.eating && self.remaining > 0);
-        if self.session.brushing() && self.eating && self.remaining > 0 {
+        if self.session.bundle_in_use() {
+            let using = self.eating && self.remaining > 0;
+            if let Some(out) = self.session.tick_bundle_use(self.selected, using, entities) {
+                self.swings += 1;
+                self.emit(Event::BundleThrown(out));
+            }
+        } else if self.session.brushing() && self.eating && self.remaining > 0 {
             self.session.tick_brushing(self.selected, true, world);
         } else {
             self.chew(world, entities);
