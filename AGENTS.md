@@ -77,9 +77,10 @@ Docs: https://docs.boat.dev/llms.txt. Prices and limits: run `boat limits`; neve
   so on the Mac check `rustup toolchain list` and ask the owner before a
   local `cargo fmt` would install it.
 - The only exceptions stay on the owner's Mac: running the game (Metal
-  rendering, screenshots, scripted scenes, hands-on runs) and benchmarks,
-  whose frame-time gate is measured on the reference M5, along with the
-  local build they run. Boat is x86_64 Linux with no GPU, so it can't check
+  rendering, screenshots, scripted scenes, hands-on runs) and the
+  frame-time benchmarks, on the rare occasions one is run (see
+  [Engineering and acceptance](#engineering-and-acceptance)), along with
+  the local build they run. Boat is x86_64 Linux with no GPU, so it can't check
   macOS-only code either; CI covers macOS and Windows. An agent on the Pi
   leaves these to the owner and says so in its hand-off; to see how a change
   looks, it renders screenshots on Boat with `scripts/boat-capture.sh`
@@ -195,9 +196,9 @@ optimisations and assertions without its cross-crate link-time optimisation
      names (`test_benchmark_scenes.py`, `test_check_doc_links.py` and
      `test_campaign_ledger.py`), so run a new one on Boat until it's added
      there;
-   - the relevant frame-time, visual and persistence checks below. CI runs
-     only the headless generation and meshing benchmark; the frame-time
-     suite, scripted scenes and screenshots stay on this Mac.
+   - the relevant visual and persistence checks below. CI runs the
+     headless generation and meshing benchmark; scripted scenes and
+     screenshots stay on this Mac. No frame-time run is required.
 
 The hand-off report names the targeted checks that ran, with their
 commands and results, and says CI is the full check (with its result on
@@ -221,25 +222,28 @@ Keep documentation and test evidence aligned with the delivered behavior.
   Measure performance changes in representative scenes rather than assuming a
   refactor improves speed.
 - A feature needs correctness, ordinary player interaction, relevant input-path
-  integration, save/reload and performance evidence before it is marked Verified.
+  integration and save/reload evidence before it is marked Verified. The
+  owner's play is its performance evidence (owner, 2026-11-27); no
+  frame-time run is needed.
 - Player evidence is the owner's own ordinary play (owner, 2026-10-22). Don't
   write formal acceptance checklists or ask for physical-controller sessions;
   controller and CLI paths are covered by the automated adapter tests, and the
   owner reports problems found in play.
 - Before a version is offered to the owner (2026-11-09 audit; details in
-  [roadmap §7](docs/roadmap.md#7-feature-completion-and-release-policy) and
-  [§6.1](docs/roadmap.md#61-reference-configuration-and-frame-time-gate)):
-  a frame-time run is recorded at that commit and the
-  [requirement inventory](docs/requirements.md) is refreshed. No agent
+  [roadmap §7](docs/roadmap.md#7-feature-completion-and-release-policy)):
+  the [requirement inventory](docs/requirements.md) is refreshed. No agent
   play-through comes first: the owner plays it (owner, 2026-11-14). At most
   one version waits for the owner's play while the next is built.
-- The frame-time gate is 120 FPS on the game's own frames (owner,
-  2026-11-14; it was 240 FPS windowed before): a 1% low of at least 120 FPS
-  and p99 at most 8.33 ms in every scene of the offscreen suite
-  (`tools/benchmark_scenes.py --offscreen`). The windowed suite still runs
-  each release and fails only on a frame over 50 ms. Older records judge
-  runs by the old gate ([§6.1](docs/roadmap.md#61-reference-configuration-and-frame-time-gate),
-  [drawable wait](docs/verification/2026-11-14-drawable-wait.md)).
+- No frame-time runs for releases (owner, 2026-11-27). The owner is happy
+  with performance: releases, v1.0 included, no longer run the offscreen or
+  windowed benchmark suites, and the runs earlier releases left owed are
+  dropped. Performance problems come in as GitHub issues from players and
+  the owner, and are measured and fixed then. Keep hot paths bounded as
+  above; CI's headless benchmark and the tools in
+  `tools/benchmark_scenes.py` stay for that diagnosis, or when the owner
+  asks for a run. Older records judge runs by the gate of their time
+  (120 FPS offscreen from 2026-11-14, 240 FPS windowed before;
+  [§6.1](docs/roadmap.md#61-reference-configuration-and-frame-time-gate)).
 - Every Java 26.3 block, item and potion the game lacks is listed with the
   release that owns it in `tests/fixtures/java/26.3/registry_gaps.json`
   (2026-11-09 audit). `cargo test` fails when that list is out of date or

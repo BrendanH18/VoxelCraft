@@ -16,14 +16,16 @@ distance** (Java's 16 chunks; VoxelCraft's current `--rd 8`), measured on
 the game's own frames (owner, 2026-11-14; it was 240 FPS before, see
 [§6.1](#61-reference-configuration-and-frame-time-gate)). Also measure
 native-resolution performance; a native-resolution numerical gate is not yet
-specified.
+specified. Since 2026-11-27 this is no longer measured for each release
+(owner; see below).
 
 Original handmade textures, models, sounds and music are allowed when they
 improve quality. Keep procedural generation where it is useful. All
 implementation and shipped assets remain original or appropriately licensed.
 
-A feature is complete only after correctness checks, player testing,
-save/reload checks and performance verification. Dates remain flexible.
+A feature is complete only after correctness checks, player testing and
+save/reload checks; the owner's play covers its performance (owner,
+2026-11-27). Dates remain flexible.
 Milestones follow dependencies and acceptance evidence, not a fixed release
 calendar or the number of implementation tasks completed.
 
@@ -41,6 +43,28 @@ Immediate order:
 Releases follow the [release plan](#release-plan): small, themed versions from
 v0.8 to v1.0, taken in order with no dates. Work on the earliest unreleased
 version; v1.0 is everything in this roadmap.
+
+**Performance (owner, 2026-11-27): no more frame-time runs.** The owner
+is happy with the game's performance and dropped the benchmark runs from
+releases. No release, v1.0 included, waits for the offscreen or windowed
+suites on the reference Mac, and the runs v0.16, v0.17 and v0.18 left
+owed to v1.0 (with PERF-03 and the v0.11 and v0.12 runs they carried) are
+dropped rather than run. Performance problems are reported as
+[GitHub issues](https://github.com/BrendanH18/VoxelCraft/issues) and
+measured and fixed when they come in; the benchmark tools and CI's
+headless benchmark stay for that. PERF-01 to PERF-03 stay Verified on
+their recorded runs. This replaces the audit's rule that every release
+records a run ([§6.1](#61-reference-configuration-and-frame-time-gate),
+[§7](#7-feature-completion-and-release-policy)).
+
+**Play (owner, 2026-11-27): v1.0 plays really well.** The owner played
+the v1.0 build on `main` and reported that it plays really well. That is
+the owner's play the v1.0 rows were waiting for; no row has moved to
+Verified yet. Before the `1.0` tag, the requirement inventory and the
+[final acceptance record](#8-final-acceptance-record-for-10) still need
+refreshing, and the owner still has to decide on the rows that remain
+Partial: tag with them, as v0.16 to v0.18 were tagged, or close them
+first.
 
 **Release (owner, 2026-11-23): v0.16 is released.** The owner played
 v0.16 and asked for it to be tagged and released, then for v0.17 to be
@@ -616,6 +640,9 @@ carried (PERF-03's streaming budget, v0.11's menu and title run and v0.12's
 Implemented, unverified until they pass. The owner's report that higher
 render distances ran slower than in v0.17 was not measured; the suspects
 are listed in the [delivery record](delivery-records.md#38-v018-delivery-record--2026-11-25).
+Change (owner, 2026-11-27): the frame-time runs the exceptions above moved
+to v1.0 are dropped, and releases no longer record one
+([current plan](#current-plan--updated-2026-11-13)).
 
 Work on the earliest unreleased version. Start a later one early only where
 its dependencies allow and it doesn't stall the current one. Version 1.0 is
@@ -637,8 +664,8 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 | v0.15 | Villages and raids | Close M4 | Working lecterns, looms, cartography tables and stonecutters; illagers, woodland mansions, raids; remaining villager behaviour; the M4 exit checks. Added by the 2026-11-09 audit ([list](#content-assigned-by-the-2026-11-09-audit)): the remaining Java 26.3 mobs (happy ghasts, nautiluses, camel husks, parched), mobs holding and picking up equipment, chainmail, books, bundles, spyglasses, armor trims, the remaining status effects and potions, and the village template catalogue | Implemented, unverified (2026-11-18): scope approved by the owner, all eight tracks merged and checked together ([v0.15 scope](#v015-scope-villages-and-raids), [integration](verification/2026-11-18-v0.15-integration.md)); the offscreen frame-time suite passes ([run](verification/2026-11-18-v0.15-frame-time.md)); the owner played it in the v0.16 build on 2026-11-23, and it reaches players in the v0.16 release. Tagged `v0.15` at `b16fe0b5` on 2026-11-18, but its release build stopped at the version check because `Cargo.toml` still said 0.14.0, so no draft release exists. Version 0.15.0 and its release notes were added on 2026-11-19; the tag moves to that commit to build the draft. Part of its list was built early by [build-5000 wave 1](verification/2026-11-12-build-5000/wave-1.md) and ships in v0.14 (see the [assigned content](#content-assigned-by-the-2026-11-09-audit)) |
 | v0.16 | The End and the Wither | Close M3; M5 | End cities and ships (the last GEN-05 structures, then the M3 exit checks), shulkers and shulker boxes, elytra and fireworks, dragon respawn; Wither summoning, Nether stars and beacons; the no-cheat progression playthrough. Added by the 2026-11-09 audit ([list](#content-assigned-by-the-2026-11-09-audit)): poplar, cinnabar and sulfur with their terrain and the sulfur cube, abandoned camps, mob heads, infested blocks, nether gold ore, conduits, and the reassessment of dungeons, mineshafts, strongholds, shipwrecks and monuments | Released (owner, 2026-11-23): played by the owner, tagged `v0.16` at `0848508` ([#113](https://github.com/BrendanH18/VoxelCraft/pull/113)) and published as the latest release, without its offscreen frame-time run (owner exception above). Rows stay Implemented, unverified. Implemented (2026-11-21): scope approved by the owner, eight tracks in two waves, all merged and integrated: wave 1 (Outer End, flight and storage, Wither and beacons, generation 5 Overworld) on 2026-11-20, wave 2 (classic and ocean structures, dragon respawn and the M5 audit, wave 1 leftovers, the M3 exit audit) on 2026-11-21. The offscreen frame-time run remains. See the [v0.16 scope](#v016-scope-the-end-and-the-wither) |
 | v0.17 | Redstone and automation | M6 | Java update order, pistons with entity push and slime/honey, the crafter, remaining sensors and workstations; reference farms, clocks and sorters across save/reload. Added by the 2026-11-09 audit: the furnace minecart | Released (owner, 2026-11-23): played by the owner, tagged `v0.17` at `d5c1fee` after [#116](https://github.com/BrendanH18/VoxelCraft/pull/116) and [#117](https://github.com/BrendanH18/VoxelCraft/pull/117) and published as the latest release, without its offscreen frame-time run (owner exception above). Rows stay Implemented, unverified. Implemented (2026-11-23): scope approved by the owner; all ten tracks merged and integrated ([#115](https://github.com/BrendanH18/VoxelCraft/pull/115)), and every reference contraption matches Java. The offscreen frame-time run remains. See the [v0.17 scope](#v017-scope-redstone-and-automation) |
-| v0.18 | Polish and performance | M7: UX, §6 | Typography/contrast, material and mob art, inventory/recipe navigation, HUD/workstations, title/world identity, atmosphere and accessibility ([scope](#v020-scope-presentation-and-performance)); subtitles, asset and sound review in play (including the v0.12 blocks' own sounds), and menu fixes found since v0.11; the 120 FPS gate in every scene, including v0.8's streaming budget (PERF-03), and the performance check for the v0.8 and v0.9 rows, v0.11's menu and title frame-time run and v0.12's `materials` runs, which moved here unverified ([v0.12 profile](verification/2026-10-29-v0.12-finish.md#frame-time)). The per-frame entity model rebuild that profile found was removed on 2026-11-09 ([record](verification/2026-11-09-entity-frame-time.md)); the streaming route's main-thread terrain column rebuilds from mob biome queries were addressed in the [streaming follow-up](verification/2026-11-09-streaming-biomes-and-gen07.md); the remaining tick work and per-frame sign text are still owed, and the gate is measured again here (v0.14 passed it on 2026-11-16, [record](verification/2026-11-16-tag-gate-run.md)) | Played by the owner (2026-11-25); to be tagged and released without its frame-time runs (owner exception above), which move to v1.0 with v0.18's unmet exit. The tag and the published release follow this record's merge. Rows stay Implemented, unverified or Partial. Implemented, unverified (2026-11-24): the owner approved an eleven-track plan ([v0.18 plan](#v018-plan-2026-11-23)); all eleven tracks are merged and integrated, every art round's look approved by the owner and the code reviewed; the owner's play and the frame-time runs remain. Presentation scope expanded by the owner on 2026-11-05. Each release now records its own frame-time run ([§6.1](#61-reference-configuration-and-frame-time-gate)), so what stays here is the final gate, not every release's first measurement |
-| v1.0 | Acceptance | M7 exit, §8 | Every mandatory row Verified; the frame-time runs moved from v0.16, v0.17 and v0.18 (with PERF-03 and the v0.11 and v0.12 runs v0.18 carried); fresh-world and long-session playthroughs; save-compatibility policy; installer and update checks; current stable Java scope reconciled | In progress (2026-11-25): the owner approved a ten-track acceptance build ([v1.0 plan](#v10-plan-2026-11-25)); Java 26.3 is still the current stable release. Implemented, unverified (2026-11-26): all ten tracks and five follow-ups merged and integrated; the owner's play and the frame-time runs on the reference Mac remain |
+| v0.18 | Polish and performance | M7: UX, §6 | Typography/contrast, material and mob art, inventory/recipe navigation, HUD/workstations, title/world identity, atmosphere and accessibility ([scope](#v020-scope-presentation-and-performance)); subtitles, asset and sound review in play (including the v0.12 blocks' own sounds), and menu fixes found since v0.11; the 120 FPS gate in every scene, including v0.8's streaming budget (PERF-03), and the performance check for the v0.8 and v0.9 rows, v0.11's menu and title frame-time run and v0.12's `materials` runs, which moved here unverified ([v0.12 profile](verification/2026-10-29-v0.12-finish.md#frame-time)). The per-frame entity model rebuild that profile found was removed on 2026-11-09 ([record](verification/2026-11-09-entity-frame-time.md)); the streaming route's main-thread terrain column rebuilds from mob biome queries were addressed in the [streaming follow-up](verification/2026-11-09-streaming-biomes-and-gen07.md); the remaining tick work and per-frame sign text are still owed, and the gate was to be measured again here (v0.14 passed it on 2026-11-16, [record](verification/2026-11-16-tag-gate-run.md)). The performance runs in this scope moved to v1.0 and were dropped by the owner on 2026-11-27 | Played by the owner (2026-11-25); to be tagged and released without its frame-time runs (owner exception above), which moved to v1.0 with v0.18's unmet exit and were dropped on 2026-11-27. The tag and the published release follow this record's merge. Rows stay Implemented, unverified or Partial. Implemented, unverified (2026-11-24): the owner approved an eleven-track plan ([v0.18 plan](#v018-plan-2026-11-23)); all eleven tracks are merged and integrated, every art round's look approved by the owner and the code reviewed; the owner's play and the frame-time runs remain. Presentation scope expanded by the owner on 2026-11-05. Each release then recorded its own frame-time run ([§6.1](#61-reference-configuration-and-frame-time-gate)), so what stayed here was the final gate (dropped with all release runs on 2026-11-27) |
+| v1.0 | Acceptance | M7 exit, §8 | Every mandatory row Verified; fresh-world and long-session playthroughs; save-compatibility policy; installer and update checks; current stable Java scope reconciled | In progress (2026-11-25): the owner approved a ten-track acceptance build ([v1.0 plan](#v10-plan-2026-11-25)); Java 26.3 is still the current stable release. Implemented, unverified (2026-11-26): all ten tracks and five follow-ups merged and integrated. Played by the owner (2026-11-27), who reported that it plays really well; the frame-time runs were dropped by the owner the same day. The inventory refresh, the §8 record and the owner's decision on the remaining Partial rows come before the tag |
 
 Notes:
 
@@ -670,7 +697,8 @@ Notes:
 - Performance no longer waits for v0.18. Each release records a frame-time
   run and may not make a scene worse without a recorded reason
   ([§6.1](#61-reference-configuration-and-frame-time-gate)); v0.18 keeps the
-  final gate and the presentation work.
+  final gate and the presentation work. (Superseded 2026-11-27: releases
+  no longer record a run; problems come in as GitHub issues.)
 - After 1.0: multiplayer (dedicated servers, per-player LAN and split-screen
   dimensions) and the side features in [§1.4](#14-what-can-follow-10) get their
   own v1.x roadmap.
@@ -2068,8 +2096,8 @@ bank, no Ender Dragon spawn egg and the growth light flush as built.
 **v0.18 exit:** UX-01/02, UX-03c–g, MOB-06 and BLD-05c meet their recorded
 scope, with the owner's ordinary-play evidence and applicable reference,
 adapter and persistence checks. Close the carried v0.11 menu/title checks for
-UX-03a/b and all carried performance runs, including PERF-03, with the final
-visuals enabled. Rows reach Verified; any unfinished work requires an explicit
+UX-03a/b. (The carried performance runs, including PERF-03, were dropped by
+the owner on 2026-11-27.) Rows reach Verified; any unfinished work requires an explicit
 owner-approved move under the release policy, not a silent deferral past 1.0.
 
 #### v1.0 scope: acceptance
@@ -2126,9 +2154,10 @@ approves its look.
     chests, the dirt path, hay bale, bell, anvil, TNT and plants, and hand
     detail for the remaining pattern-only mobs.
 
-What stays for the owner: play of the build, and the frame-time runs this
-release carries (the offscreen and windowed suites, PERF-03, v0.11's menu
-and title run and v0.12's `materials` runs).
+What stayed for the owner: play of the build (done on 2026-11-27, below). The frame-time runs this
+release carried (the offscreen and windowed suites, PERF-03, v0.11's menu
+and title run and v0.12's `materials` runs) were dropped by the owner on
+2026-11-27 ([current plan](#current-plan--updated-2026-11-13)).
 
 *Integration (2026-11-25 to 2026-11-26):* all ten tracks and five
 follow-ups are merged in `t3/v1.0-acceptance-build` and implemented,
@@ -2172,8 +2201,8 @@ rather than air (Track 1, safer for downgrades), and a saved
 `cloudRange=128` kept for players who had it. The integrator also accepted Track 3b's
 villager, golem and trader llama mob ids inside the existing `villagers`
 key: 1.0 isn't released, so the save policy's new-keys rule doesn't apply
-yet. The release's frame-time
-runs and the owner's play remain.
+yet. The owner played the build on 2026-11-27 and reported that it plays
+really well; the release's frame-time runs were dropped the same day.
 
 The v1.0 maintenance fixes keep Select World icon slots that are already
 referenced by the current frame safe from eviction
@@ -2189,13 +2218,21 @@ The Windows packaging timeout fix is verified in the
 **M7 exit:** all mandatory core rows are Verified; every remaining exception/
 deferral is explicit; current stable Java scope has been reconciled;
 fresh-world and long-session acceptance passes are recorded; save migration/
-stability and distribution are checked; the reference M5 performance gate
-passes across the representative scene suite. No unresolved core
-correctness, acquisition, persistence or release-blocking performance defects.
+stability and distribution are checked. No unresolved core
+correctness, acquisition, persistence or release-blocking performance
+defects. (The reference M5 performance gate across the scene suite was
+dropped from the exit by the owner on 2026-11-27; reported performance
+problems are the measure.)
 
 ## 6. Performance acceptance
 
 ### 6.1 Reference configuration and frame-time gate
+
+Releases no longer record frame-time runs (owner, 2026-11-27;
+[current plan](#current-plan--updated-2026-11-13)): performance problems
+are reported as GitHub issues. The configuration, gate and procedure below
+are how a run is made and judged when one is made, to diagnose a report or
+because the owner asks for one.
 
 - Reference M5 MacBook Pro; record CPU/GPU variant, RAM, macOS and build commit.
 - Release build, 1920 x 1080 **physical render pixels**, 256-block view range.
@@ -2215,8 +2252,8 @@ correctness, acquisition, persistence or release-blocking performance defects.
   takes the longer of the CPU's and the GPU's time and the display plays no
   part. Also record average, p50, p95, p99, worst frame and any distinct
   hitch. These statistics are complementary, not interchangeable.
-- Windowed suite: the same scenes run in a normal window each release and
-  fail only on a stall, **any frame over 50 ms**. A windowed frame can't
+- Windowed suite: the same scenes run in a normal window and fail only on
+  a stall, **any frame over 50 ms**. A windowed frame can't
   beat the 120 Hz display, and the macOS compositor appears to return
   drawables once per refresh, so windowed 1% lows sit around 80–165 FPS
   whatever the game does ([record](verification/2026-11-14-drawable-wait.md)).
@@ -2228,16 +2265,15 @@ correctness, acquisition, persistence or release-blocking performance defects.
   streaming budget in both suites. Older records judge runs by the old gate.
 - Measure cold streaming and interaction stalls separately; don't discard
   them to present steady-state numbers as whole-session performance.
-- Every release records a run (audit, 2026-11-09). Before a version is
-  offered to the owner, the scene suite runs on the reference machine at
-  the commit to be tagged, and its per-scene results go in
-  `benchmarks/results/` and the version's verification record. A scene
-  whose 1% low or p99 is worse than the previous recorded run needs a
-  profile and either a fix or a written reason in that record. The owner
-  may still tag a version that misses the gate, as before, but not
-  one that was never measured. This replaces moving each release's
-  frame-time check to v0.18: between 2026-10-16 and 2026-10-29 the
-  `building` scene's 1% low fell from 261–273 to 229 with nobody looking.
+- A run's per-scene results go in `benchmarks/results/` and its
+  verification record. A scene whose 1% low or p99 is worse than the
+  previous recorded run needs a profile and either a fix or a written
+  reason in that record.
+- From the 2026-11-09 audit until 2026-11-27, every release had to record
+  a run at the commit to be tagged, and no version could be tagged
+  unmeasured (between 2026-10-16 and 2026-10-29 the `building` scene's 1%
+  low had fallen from 261–273 to 229 with nobody looking). The owner
+  dropped that rule on 2026-11-27.
 
 Use a consistent power/thermal setup, a warm-up period, at least three
 60-second measured runs per steady-state scene and a longer streaming route.
@@ -2285,12 +2321,13 @@ For every individual feature, all applicable checks must pass:
    automated adapter tests, and problems found in play go back to the agents.
 5. **Persistence:** save/restart and unload/reload relevant state, including
    interrupted work, carried components, scheduled actions and cleared loot.
-6. **Performance:** measure the feature in representative loaded gameplay;
-   no unbounded caches/queues or unexplained regressions.
+6. **Performance:** no unbounded caches/queues or unexplained regressions.
+   The owner's play is the performance evidence (owner, 2026-11-27); a
+   frame-time measurement is needed only to diagnose a reported problem.
 7. **Delivery evidence:** record the commit, scope, test results, manual
    steps/captures and remaining differences; update the requirement state.
 
-Two release steps were added by the 2026-11-09 audit, after v0.16 (now part of v0.14) was
+The audit added two release steps, after v0.16 (now part of v0.14) was
 merged with its record saying "Not run: the game". A third, an agent
 playing each version (scripted scenes and hands-on through computer use)
 before the owner, was removed by the owner on 2026-11-14: the owner's own
@@ -2298,16 +2335,16 @@ play is enough, and no release waits for an agent play-through or for any
 computer-use run. Agents may still use scripted captures while building a
 feature; they are not a release step.
 
-- **A frame-time run is recorded**, as [§6.1](#61-reference-configuration-and-frame-time-gate)
-  now requires.
+- ~~**A frame-time run is recorded**, as [§6.1](#61-reference-configuration-and-frame-time-gate)
+  required.~~ Dropped by the owner on 2026-11-27: releases no longer record
+  one, and performance problems come in as GitHub issues.
 - **At most one version waits.** While a version is implemented and waiting
   for the owner's play, agents may work ahead on the next one where its
   dependencies allow, as the release plan says. They don't start a third:
   three unplayed versions is how 60,000 lines reached `main` unseen. This
   limit is the audit's; the owner can lift it for a given release. The
   owner's 2026-11-12 request for 5,000 features is read as lifting it for
-  that push ([current plan](#current-plan--updated-2026-11-13)); the
-  frame-time step still applies to everything it merges.
+  that push ([current plan](#current-plan--updated-2026-11-13)).
 
 Source changes go through [the repository's checks](../AGENTS.md#before-handing-work-back):
 targeted checks on Boat while working, then CI's full suite on the pushed
@@ -2336,9 +2373,10 @@ notes.
 - [ ] Building, exploration, farming, animals, villagers, travel and automation scenarios passed.
 - [ ] Player-facing interfaces, controls, feedback and original assets reviewed in play.
 - [ ] Save/restart/unload, migration, interruption and long-session stability passed.
-- [ ] M5 1080p/256-block 120 FPS gate (game's own frames) passed in every required scene, with no windowed stall.
-- [ ] Streaming/hitch budgets passed; native-resolution and scaling results reported.
-- [ ] The frame-time runs moved here by the 2026-11-25 exception passed: the offscreen and windowed suites for v0.16, v0.17 and v0.18, PERF-03's streaming budget, v0.11's menu and title run and v0.12's `materials` runs (including the render-distance slowdown the owner first reported for v0.18).
+- Dropped by the owner on 2026-11-27, with frame-time runs for releases ([current plan](#current-plan--updated-2026-11-13)); performance problems come in as GitHub issues:
+  - ~~M5 1080p/256-block 120 FPS gate (game's own frames) passed in every required scene, with no windowed stall.~~ (PERF-02 and PERF-03 passed on the [2026-11-16 tag gate run](verification/2026-11-16-tag-gate-run.md).)
+  - ~~Streaming/hitch budgets passed; native-resolution and scaling results reported.~~
+  - ~~The frame-time runs moved here by the 2026-11-25 exception passed: the offscreen and windowed suites for v0.16, v0.17 and v0.18, PERF-03's streaming budget, v0.11's menu and title run and v0.12's `materials` runs (including the render-distance slowdown the owner first reported for v0.18).~~
 - [ ] Existing supported-platform checks and installer/update smoke passed.
 - [ ] Existing controller/agent/multiplayer shared-code regressions addressed.
 - [ ] Release documentation accurately states delivered scope and remaining limitations.
