@@ -240,53 +240,60 @@ impl Game {
             if item.pos.distance_squared(self.session.player.pos) > DRAW_DIST * DRAW_DIST {
                 continue;
             }
-            let block = crate::world::copper_golem_statue::item_model(item.stack)
-                .or_else(|| item.stack.item.block())
-                .filter(|b| !b.flat_icon());
-            let icon = match block {
-                Some(_) => None,
-                None => item
-                    .stack
-                    .item
-                    .block()
-                    .map(|b| b.info().tex[0])
-                    .or_else(|| item.stack.item.dial_layer(self.dial_of(&self.session.player).for_stack(&item.stack)))
-                    .or_else(|| item.stack.item.icon_layer()),
-            };
-            let size = if block.is_some() { 0.25 } else { 0.5 };
-            let spin = item.age + item.phase;
+            let pos = item.previous_pos.lerp(item.pos, alpha);
             let bob = 0.1 + 0.07 * (item.age * 2.0 + item.phase).sin() as f64;
-            let sky_light = crate::entity::sky_light(&self.world, item.pos + DVec3::Y * 0.25);
-            let block_light = self.torch_light(item.pos + DVec3::Y * 0.25);
-            let copies = match item.stack.count {
-                1 => 1,
-                2..=16 => 2,
-                17..=32 => 3,
-                _ => 4,
-            };
-            for i in 0..copies {
-                // Copies sit a little apart, the same way every frame.
-                let k = i as f64;
-                let offset = DVec3::new((k * 2.3).sin(), 0.0, (k * 1.7).cos()) * 0.06 * k.min(1.0);
-                let min = item.previous_pos.lerp(item.pos, alpha)
-                    + offset
-                    + DVec3::new(-size / 2.0, bob + k * 0.03, -size / 2.0);
-                out.push(BlockModel {
-                    patterns: None,
-                    lid: None,
-                    min,
-                    size: size as f32,
-                    block: block.unwrap_or(Block::AIR),
-                    sky_light,
-                    block_light,
-                    yaw: spin,
-                    icon,
-                    orient: None,
-                    tint: voxelcraft::entity::wolf_armor::item_tint_bytes(item.stack),
-                });
-            }
+            self.dropped_models(item.stack, pos, item.age + item.phase, bob, &mut out);
+        }
+        // v1.0 gap track 6: `--item-review`'s staged item, at rest.
+        if let Some((stack, pos, spin)) = self.item_review_drop() {
+            self.dropped_models(stack, pos, spin, 0.0, &mut out);
         }
         out
+    }
+
+    /// The models of a dropped `stack` lying at `pos`, turned `spin` and
+    /// raised `bob` (with copies for bigger stacks).
+    fn dropped_models(&self, stack: Stack, pos: DVec3, spin: f32, bob: f64, out: &mut Vec<BlockModel>) {
+        let block = crate::world::copper_golem_statue::item_model(stack)
+            .or_else(|| stack.item.block())
+            .filter(|b| !b.flat_icon());
+        let icon = match block {
+            Some(_) => None,
+            None => stack
+                .item
+                .block()
+                .map(|b| b.info().tex[0])
+                .or_else(|| stack.item.dial_layer(self.dial_of(&self.session.player).for_stack(&stack)))
+                .or_else(|| stack.item.icon_layer()),
+        };
+        let size = if block.is_some() { 0.25 } else { 0.5 };
+        let sky_light = crate::entity::sky_light(&self.world, pos + DVec3::Y * 0.25);
+        let block_light = self.torch_light(pos + DVec3::Y * 0.25);
+        let copies = match stack.count {
+            1 => 1,
+            2..=16 => 2,
+            17..=32 => 3,
+            _ => 4,
+        };
+        for i in 0..copies {
+            // Copies sit a little apart, the same way every frame.
+            let k = i as f64;
+            let offset = DVec3::new((k * 2.3).sin(), 0.0, (k * 1.7).cos()) * 0.06 * k.min(1.0);
+            let min = pos + offset + DVec3::new(-size / 2.0, bob + k * 0.03, -size / 2.0);
+            out.push(BlockModel {
+                patterns: None,
+                lid: None,
+                min,
+                size: size as f32,
+                block: block.unwrap_or(Block::AIR),
+                sky_light,
+                block_light,
+                yaw: spin,
+                icon,
+                orient: None,
+                tint: voxelcraft::entity::wolf_armor::item_tint_bytes(stack),
+            });
+        }
     }
 }
 

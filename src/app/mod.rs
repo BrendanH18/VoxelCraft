@@ -31,6 +31,7 @@ mod gui;
 mod hand;
 mod hands;
 mod hud;
+mod item_review;
 mod items;
 mod keys;
 mod lan;
@@ -271,6 +272,8 @@ struct Game {
     world_icon: Option<world_icon::WorldIcon>,
     /// v0.18 Track 7: `--panorama DIR` and the face being rendered.
     panorama_out: Option<std::path::PathBuf>,
+    /// v1.0 gap track 6: `--item-review`'s contact sheets in progress.
+    item_review: Option<item_review::ItemReview>,
     panorama_face: Option<usize>,
     screenshot_state: u32,
     /// When `--screenshot` first found streaming settled (see [`SCREENSHOT_FLUID_WAIT`]).
@@ -1989,6 +1992,12 @@ impl Game {
                     self.panorama_face = None;
                     self.panorama_out = None;
                 }
+                false
+            }
+            // v1.0 gap track 6: `--item-review`: one item a frame, then the
+            // screenshot.
+            1 if self.item_review.is_some() => {
+                self.step_item_review();
                 false
             }
             // `--world-icon` waits for the icon before the screenshot.
