@@ -4,7 +4,7 @@
 //! With `--screenshot`, once the scene has settled each item in
 //! [`Item::all_items`] (or the `--item-review-range` part of it) is staged
 //! for one frame: held in the first-person hand, lying at rest (the lowest
-//! point of its bob, turned to show two sides) on the floor 1.6 blocks
+//! point of its bob, turned to show two sides) on the floor 1.15 blocks
 //! ahead of the pose and a little left, and drawn in the corner as its
 //! 16-pixel slot icon and the same icon three times as large, under its
 //! list index and name. Each frame is read back and laid into a sheet of
@@ -24,8 +24,8 @@ use crate::render::ui::{Ui, WHITE};
 pub(super) const COLUMNS: u32 = 6;
 pub(super) const ROWS: u32 = 5;
 /// How far ahead of the pose and to its left the dropped item lies.
-const AHEAD: f64 = 1.6;
-const LEFT: f64 = 0.35;
+const AHEAD: f64 = 1.15;
+const LEFT: f64 = 0.3;
 /// The dropped model's turn: two sides and the top show.
 const SPIN: f32 = 0.6;
 
