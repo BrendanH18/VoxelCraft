@@ -67,14 +67,6 @@ pub fn safe_fall_distance(kind: MobKind) -> f64 {
     if kind == MobKind::Fox { 5.0 } else { 3.0 }
 }
 
-/// The `damageModifier` the landing block's `fallOn` passes:
-/// `HayBlock` and `HoneyBlock` 0.2, `SlimeBlock` (for a mob, which never
-/// sneaks) and `PowderSnowBlock` none. `BedBlock` has no `fallOn` in 26.3:
-/// a bed bounces but doesn't soften the landing.
-pub fn landing_modifier(below: Option<Block>) -> f32 {
-    landing(below).map_or(0.0, |l| l.modifier)
-}
-
 /// What the landing block's `fallOn` hands `causeFallDamage`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Landing {
@@ -90,7 +82,8 @@ pub struct Landing {
 /// 1, fall)`, with `HayBlock`'s and `HoneyBlock`'s 0.2, `SlimeBlock`'s 0
 /// (a mob never sneaks), `PointedDripstoneBlock`'s `distance + 2.5`, 2 and
 /// `stalagmite` on an upward tip; `PowderSnowBlock` calls nothing (only a
-/// sound), which is `None`.
+/// sound), which is `None`. `BedBlock` has no `fallOn` in 26.3: a bed
+/// bounces but doesn't soften the landing.
 pub fn landing(below: Option<Block>) -> Option<Landing> {
     let fall = |modifier| Some(Landing { extra: 0.0, modifier, cause: Cause::FALL });
     match below {
@@ -279,9 +272,10 @@ mod tests {
         for kind in [MobKind::IronGolem, MobKind::Cat, MobKind::Chicken, MobKind::Breeze, MobKind::Wither] {
             assert_eq!(fall_damage(kind, 100.0, 1.0, 0), 0.0, "{kind:?}");
         }
-        assert_eq!(landing_modifier(Some(Block::HAY_BALE)), 0.2);
-        assert_eq!(landing_modifier(Some(Block::STONE)), 1.0);
-        assert_eq!(landing_modifier(Some(crate::world::stone_blocks::SLIME_BLOCK)), 0.0);
+        let modifier = |b| landing(Some(b)).unwrap().modifier;
+        assert_eq!(modifier(Block::HAY_BALE), 0.2);
+        assert_eq!(modifier(Block::STONE), 1.0);
+        assert_eq!(modifier(crate::world::stone_blocks::SLIME_BLOCK), 0.0);
     }
 
     use crate::entity::{Rng, equipment::Slot};
