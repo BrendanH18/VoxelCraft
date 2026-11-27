@@ -229,10 +229,17 @@ fn mobs_that_hurt_it_become_its_target_on_selection_ticks() {
     assert_eq!(e.mobs[w].wither.as_ref().unwrap().targets[0], Some(Foe::Mob(pig)), "the nearest first");
     // A friend's hit is refused: no damage, no new target.
     let health = e.mobs[w].health;
-    let mut hits = vec![EntityEvent::MobHit { target: wid, attacker: skeleton, damage: 4.0, knockback: DVec3::ZERO }];
+    let mut hits = vec![EntityEvent::MobHit {
+        target: wid,
+        attacker: skeleton,
+        damage: 4.0,
+        knockback: DVec3::ZERO,
+        melee: false,
+    }];
     e.resolve_mob_hits(&mut hits);
     assert_eq!(e.mobs[w].health, health);
-    let mut hits = vec![EntityEvent::MobHit { target: wid, attacker: golem, damage: 7.0, knockback: DVec3::ZERO }];
+    let mut hits =
+        vec![EntityEvent::MobHit { target: wid, attacker: golem, damage: 7.0, knockback: DVec3::ZERO, melee: true }];
     e.resolve_mob_hits(&mut hits);
     assert!(e.mobs[w].health < health);
     let mut switched = None;

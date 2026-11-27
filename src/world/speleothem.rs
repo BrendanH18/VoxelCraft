@@ -16,8 +16,8 @@
 //!
 //! In 26.3 only `PointedDripstoneBlock` overrides `fallOn` (landing on an
 //! upward tip doubles the fall and adds 2.5 blocks), so sulfur spikes hurt
-//! nothing that lands on them, as in Java; the dripstone's own landing
-//! damage is a different code path and is not part of this module.
+//! nothing that lands on them, as in Java; [`stalagmite_tip`] tells the
+//! player's and the mobs' landings (v1.0 gap Track 1).
 
 use glam::IVec3;
 
@@ -58,6 +58,36 @@ pub fn of(b: Block) -> Option<Speleothem> {
     let (down, thickness) = ob::dripstone_of(b.canonical())?;
     Some(Speleothem { kind: Kind::Dripstone, down, thickness, wet: b.is_waterlogged() })
 }
+
+/// `PointedDripstoneBlock.fallOn`: what lands on an upward dripstone tip
+/// (`tip_direction` up, `thickness` tip) falls 2.5 blocks further and takes
+/// twice the damage, as `stalagmite` damage. Sulfur spikes don't (only
+/// `PointedDripstoneBlock` overrides `fallOn` in 26.3), nor do merged tips.
+pub fn stalagmite_tip(b: Block) -> bool {
+    of(b).is_some_and(|s| s.kind == Kind::Dripstone && !s.down && s.thickness == Thickness::Tip)
+}
+/// `SpeleothemBlock.getShape`, which is its collision shape too: a column
+/// centred in the cell as (width, bottom, top) in sixteenths, by thickness
+/// (`SHAPE_TIP_MERGE` 6 wide and full height, `SHAPE_TIP_UP` 6 by 11,
+/// `SHAPE_TIP_DOWN` 6 from 5 up, `SHAPE_FRUSTUM` 8, `SHAPE_MIDDLE` 10,
+/// `SHAPE_BASE` 12). Java moves it by the block's random XZ offset
+/// (`OffsetType.XZ`, up to 2/16), which the game's drawing doesn't have
+/// either, so here it stays centred.
+pub fn column(s: Speleothem) -> (u8, u8, u8) {
+    match s.thickness {
+        Thickness::TipMerge => (6, 0, 16),
+        Thickness::Tip if s.down => (6, 5, 16),
+        Thickness::Tip => (6, 0, 11),
+        Thickness::Frustum => (8, 0, 16),
+        Thickness::Middle => (10, 0, 16),
+        Thickness::Base => (12, 0, 16),
+    }
+}
+
+/// The distance `PointedDripstoneBlock.fallOn` adds to the fall.
+pub const STALAGMITE_FALL_EXTRA: f64 = 2.5;
+/// The `damageModifier` it passes.
+pub const STALAGMITE_FALL_MULTIPLIER: f32 = 2.0;
 
 /// The block of a speleothem state.
 pub fn block(s: Speleothem) -> Block {

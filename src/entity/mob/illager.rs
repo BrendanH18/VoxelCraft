@@ -247,6 +247,7 @@ impl Mob {
                     attacker: self.uid,
                     damage,
                     knockback: dir * (2.0 + push) + DVec3::Y * 2.0,
+                    melee: true,
                 });
                 if fire > 0.0 {
                     self.illager.as_mut().unwrap().actions.push(Action::Ignite(uid, fire));

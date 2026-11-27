@@ -7,10 +7,15 @@
 //!   `floor((distance + 1e-6 - safe_fall_distance) * modifier)` on landing,
 //!   where the safe distance is 3 (5 for foxes) plus the Jump Boost level
 //!   and the landing block's `fallOn` sets the modifier (hay and honey 0.2,
-//!   slime and powder snow none). Goats take 10 less, frogs 5. Mobs in
-//!   `#fall_damage_immune` take none. It lands as `minecraft:fall` damage,
-//!   which bypasses armor points but not Protection or Feather Falling
-//!   (`getDamageAfterMagicAbsorb`).
+//!   slime none, powder snow no call at all). Goats take 10 less, frogs 5.
+//!   Mobs in `#fall_damage_immune` take none. It lands as `minecraft:fall`
+//!   damage, which bypasses armor points but not Protection or Feather
+//!   Falling (`getDamageAfterMagicAbsorb`).
+//! - v1.0 gap Track 1: an upward pointed dripstone tip adds 2.5 blocks and
+//!   doubles it as `minecraft:stalagmite` damage
+//!   (`PointedDripstoneBlock.fallOn`); a creeper's landing adds to its fuse
+//!   (`Creeper.causeFallDamage`); the fall distance is saved
+//!   (`fall_distance`).
 //! - Fire and lava hurt as `in_fire`, `lava` and `on_fire`, so worn armor
 //!   reduces the first two and Protection and Fire Protection all three.
 //! - Cobwebs (`WebBlock.entityInside`, `Entity.makeStuckInBlock`): a mob
@@ -62,16 +67,46 @@ pub fn safe_fall_distance(kind: MobKind) -> f64 {
     if kind == MobKind::Fox { 5.0 } else { 3.0 }
 }
 
-/// The `damageModifier` the landing block's `fallOn` passes:
-/// `HayBlock` and `HoneyBlock` 0.2, `SlimeBlock` (for a mob, which never
-/// sneaks) and `PowderSnowBlock` none. `BedBlock` has no `fallOn` in 26.3:
-/// a bed bounces but doesn't soften the landing.
-pub fn landing_modifier(below: Option<Block>) -> f32 {
+/// What the landing block's `fallOn` hands `causeFallDamage`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Landing {
+    /// Blocks added to the distance fallen.
+    pub extra: f64,
+    /// The `damageModifier`.
+    pub modifier: f32,
+    /// The damage type: `fall`, or `stalagmite` on a dripstone tip.
+    pub cause: Cause,
+}
+
+/// `Block.fallOn` for a mob landing on `below`: `causeFallDamage(distance,
+/// 1, fall)`, with `HayBlock`'s and `HoneyBlock`'s 0.2, `SlimeBlock`'s 0
+/// (a mob never sneaks), `PointedDripstoneBlock`'s `distance + 2.5`, 2 and
+/// `stalagmite` on an upward tip; `PowderSnowBlock` calls nothing (only a
+/// sound), which is `None`. `BedBlock` has no `fallOn` in 26.3: a bed
+/// bounces but doesn't soften the landing.
+pub fn landing(below: Option<Block>) -> Option<Landing> {
+    let fall = |modifier| Some(Landing { extra: 0.0, modifier, cause: Cause::FALL });
     match below {
-        Some(b) if b == crate::world::stone_blocks::SLIME_BLOCK || b == crate::world::scaffolding::POWDER_SNOW => 0.0,
-        Some(b) if b.base() == Block::HAY_BALE || b == Block::HONEY_BLOCK => 0.2,
-        _ => 1.0,
+        Some(b) if b == crate::world::scaffolding::POWDER_SNOW => None,
+        Some(b) if b == crate::world::stone_blocks::SLIME_BLOCK => fall(0.0),
+        Some(b) if b.base() == Block::HAY_BALE || b == Block::HONEY_BLOCK => fall(0.2),
+        Some(b) if crate::world::speleothem::stalagmite_tip(b) => Some(Landing {
+            extra: crate::world::speleothem::STALAGMITE_FALL_EXTRA,
+            modifier: crate::world::speleothem::STALAGMITE_FALL_MULTIPLIER,
+            cause: Cause::STALAGMITE,
+        }),
+        _ => fall(1.0),
     }
+}
+
+/// `Creeper.causeFallDamage`: a landing creeper's swell grows by
+/// `(int) (fallDistance * 1.5)` ticks (the distance `fallOn` passed, so a
+/// dripstone's extra 2.5 counts), then is held to `maxSwell - 5`, which
+/// also cuts back a swell already past it. Returns the fuse in seconds.
+pub fn creeper_fall_fuse(fuse: f32, distance: f64) -> f32 {
+    const TPS: f32 = 20.0;
+    let swell = fuse + ((distance * 1.5) as i32) as f32 / TPS;
+    swell.min(super::FUSE_TIME - 5.0 / TPS)
 }
 
 /// `LivingEntity.calculateFallDamage` (with `Goat`'s 10 less and `Frog`'s
@@ -142,15 +177,59 @@ impl Mob {
         if landed {
             let distance = std::mem::take(&mut self.fall_distance);
             let below = world.block(super::super::item::below_pos(self.pos));
-            let damage = fall_damage(self.kind, distance, landing_modifier(below), self.effects.jump_boost());
-            self.pending_fall += damage;
+            // `Entity.checkFallDamage` calls `fallOn` only after a fall.
+            if distance > 0.0
+                && let Some(l) = landing(below)
+            {
+                let fallen = distance + l.extra;
+                let damage = fall_damage(self.kind, fallen, l.modifier, self.effects.jump_boost());
+                if damage > 0.0 {
+                    self.pending_fall += damage;
+                    self.pending_fall_cause = l.cause;
+                }
+                if self.kind == MobKind::Creeper {
+                    self.fuse = creeper_fall_fuse(self.fuse, fallen);
+                }
+            }
         }
     }
 
-    /// The fall damage the last moves queued, as `minecraft:fall` damage.
+    /// The fall damage the last moves queued, as `minecraft:fall` (or
+    /// `minecraft:stalagmite`) damage.
     pub(super) fn take_fall(&mut self, rng: &mut super::Rng) -> bool {
         let damage = std::mem::take(&mut self.pending_fall);
-        damage > 0.0 && self.damage_from(damage, Cause::FALL, rng)
+        let cause = std::mem::replace(&mut self.pending_fall_cause, Cause::FALL);
+        damage > 0.0 && self.damage_from(damage, cause, rng)
+    }
+
+    /// The fall distance Java saves as `fall_distance`: the one of whichever
+    /// tracker moves this mob (a mount's, a wolf's, a frog's or the
+    /// ordinary one).
+    pub fn saved_fall_distance(&self) -> f64 {
+        if let Some(s) = &self.mount {
+            s.fall_distance
+        } else if let Some(s) = &self.wolf_armor {
+            s.fall_distance()
+        } else if let Some(s) = &self.frog {
+            s.fall_distance
+        } else {
+            self.fall_distance
+        }
+    }
+
+    /// Restores [`Mob::saved_fall_distance`]: a mob saved mid-fall lands
+    /// with the whole fall after a reload.
+    pub fn restore_fall_distance(&mut self, distance: f64) {
+        let distance = if distance.is_finite() { distance.max(0.0) } else { 0.0 };
+        if let Some(s) = &mut self.mount {
+            s.fall_distance = distance;
+        } else if let Some(s) = &mut self.wolf_armor {
+            s.set_fall_distance(distance);
+        } else if let Some(s) = &mut self.frog {
+            s.fall_distance = distance;
+        } else {
+            self.fall_distance = distance;
+        }
     }
 
     /// `Mob.burnUndead`'s sun blocker: on a sun-burn tick (`isSunBurnTick`'s
@@ -193,9 +272,10 @@ mod tests {
         for kind in [MobKind::IronGolem, MobKind::Cat, MobKind::Chicken, MobKind::Breeze, MobKind::Wither] {
             assert_eq!(fall_damage(kind, 100.0, 1.0, 0), 0.0, "{kind:?}");
         }
-        assert_eq!(landing_modifier(Some(Block::HAY_BALE)), 0.2);
-        assert_eq!(landing_modifier(Some(Block::STONE)), 1.0);
-        assert_eq!(landing_modifier(Some(crate::world::stone_blocks::SLIME_BLOCK)), 0.0);
+        let modifier = |b| landing(Some(b)).unwrap().modifier;
+        assert_eq!(modifier(Block::HAY_BALE), 0.2);
+        assert_eq!(modifier(Block::STONE), 1.0);
+        assert_eq!(modifier(crate::world::stone_blocks::SLIME_BLOCK), 0.0);
     }
 
     use crate::entity::{Rng, equipment::Slot};
@@ -296,6 +376,119 @@ mod tests {
             golem.physics_step(0.05, &world, None, 0.0);
         }
         assert_eq!(golem.pending_fall, 0.0, "fall_damage_immune");
+    }
+
+    /// v1.0 gap Track 1: `PointedDripstoneBlock.fallOn`: landing on an
+    /// upward tip adds 2.5 blocks and doubles the damage, as `stalagmite`
+    /// damage; a downward or merged tip and a sulfur spike don't.
+    #[test]
+    fn upward_dripstone_tips_double_a_fall_as_stalagmite_damage() {
+        use crate::world::overworld_blocks::{Thickness, pointed_dripstone};
+        let tip = pointed_dripstone(false, Thickness::Tip);
+        let l = landing(Some(tip)).unwrap();
+        assert_eq!((l.extra, l.modifier, l.cause), (2.5, 2.0, Cause::STALAGMITE));
+        assert_eq!(landing(Some(tip.with_water(true))).unwrap().cause, Cause::STALAGMITE, "waterlogged");
+        for other in [
+            pointed_dripstone(true, Thickness::Tip),
+            pointed_dripstone(false, Thickness::TipMerge),
+            pointed_dripstone(false, Thickness::Frustum),
+            crate::world::gen5_blocks::SULFUR_SPIKE,
+            Block::STONE,
+        ] {
+            assert_eq!(landing(Some(other)).unwrap(), Landing { extra: 0.0, modifier: 1.0, cause: Cause::FALL });
+        }
+        assert_eq!(landing(Some(crate::world::scaffolding::POWDER_SNOW)), None, "powder snow calls nothing");
+        // A zombie dropped from 25.5 onto a tip whose top is 11/16 up.
+        let mut world = Grid::flat(1);
+        world.set(glam::IVec3::new(0, 1, 0), tip);
+        let mut m = Mob::new(MobKind::Zombie, DVec3::new(0.5, 25.5, 0.5), 0.0);
+        for _ in 0..200 {
+            m.physics_step(0.05, &world, None, 0.0);
+        }
+        assert!(m.on_ground && (m.pos.y - (1.0 + 11.0 / 16.0)).abs() < 1e-3, "{}", m.pos.y);
+        assert_eq!(m.pending_fall, ((25.5 - 1.6875 + 2.5 - 3.0) * 2.0f64).floor() as f32);
+        assert_eq!(m.pending_fall_cause, Cause::STALAGMITE);
+        let mut rng = Rng::new(1);
+        assert!(m.take_fall(&mut rng), "46 damage kills a zombie");
+        assert_eq!(m.pending_fall_cause, Cause::FALL, "the cause is spent with the damage");
+    }
+
+    /// `Creeper.causeFallDamage`: `swell += (int) (fallDistance * 1.5)`,
+    /// held to `maxSwell - 5`; the fuse isn't lit by it and burns down.
+    #[test]
+    fn a_creepers_fall_adds_to_its_fuse() {
+        assert_eq!(creeper_fall_fuse(0.0, 10.0), 15.0 / 20.0);
+        assert_eq!(creeper_fall_fuse(0.0, 3.3), 4.0 / 20.0, "(int) 4.95");
+        assert_eq!(creeper_fall_fuse(0.0, 40.0), 25.0 / 20.0, "maxSwell - 5");
+        assert_eq!(creeper_fall_fuse(1.4, 0.5), 1.25, "a swell past it is cut back");
+        let world = Grid::flat(1);
+        let mut m = Mob::new(MobKind::Creeper, DVec3::new(0.5, 11.5, 0.5), 0.0);
+        for _ in 0..100 {
+            m.physics_step(0.05, &world, None, 0.0);
+        }
+        // 10.5 blocks less collision's 1e-5: (int) 15.74 = 15 ticks.
+        assert_eq!(m.fuse, 15.0 / 20.0);
+        assert!(!m.swelling);
+        assert_eq!(m.pending_fall, 7.0);
+        // Onto a dripstone tip the extra 2.5 counts: 21.3125 * 1.5.
+        let mut world = Grid::flat(1);
+        world.set(
+            glam::IVec3::new(0, 1, 0),
+            crate::world::overworld_blocks::pointed_dripstone(false, crate::world::overworld_blocks::Thickness::Tip),
+        );
+        let mut m = Mob::new(MobKind::Creeper, DVec3::new(0.5, 20.5, 0.5), 0.0);
+        for _ in 0..200 {
+            m.physics_step(0.05, &world, None, 0.0);
+        }
+        assert_eq!(m.fuse, 25.0 / 20.0, "31 ticks, held to 25");
+        // Powder snow doesn't call `causeFallDamage`: no swell.
+        let mut snow = Grid::flat(1);
+        snow.set(glam::IVec3::new(0, 0, 0), crate::world::scaffolding::POWDER_SNOW);
+        let mut m = Mob::new(MobKind::Creeper, DVec3::new(0.5, 1.0, 0.5), 0.0);
+        m.restore_fall_distance(10.0);
+        m.on_ground = false;
+        m.track_fall(&snow, m.pos.y, true);
+        assert_eq!((m.fuse, m.pending_fall), (0.0, 0.0));
+    }
+
+    /// Java saves `fall_distance`: a mob saved mid-fall lands with the whole
+    /// fall after a reload; one at rest writes nothing.
+    #[test]
+    fn a_mobs_fall_distance_is_saved_and_loaded() {
+        use crate::entity::nether::{load_mob, save_mob};
+        let mut m = Mob::new(MobKind::Zombie, DVec3::new(0.5, 30.0, 0.5), 0.0);
+        assert!(save_mob(&m).get("fall_distance").is_none(), "older records stay as they were");
+        m.fall_distance = 12.25;
+        let saved = save_mob(&m);
+        assert_eq!(saved["fall_distance"], 12.25);
+        let mut back = load_mob(&saved).unwrap();
+        assert_eq!(back.saved_fall_distance(), 12.25);
+        // It lands with the whole fall: 12.25 + 29 blocks.
+        let world = Grid::flat(1);
+        for _ in 0..200 {
+            back.physics_step(0.05, &world, None, 0.0);
+        }
+        assert_eq!(back.pending_fall, (12.25f64 + 29.0 - 3.0).floor() as f32);
+        // Wolves, frogs and mounts keep their own trackers.
+        for kind in [MobKind::Wolf, MobKind::Frog, MobKind::Horse] {
+            let mut m = Mob::new(kind, DVec3::new(0.5, 30.0, 0.5), 0.0);
+            m.restore_fall_distance(7.5);
+            assert_eq!(m.fall_distance, 0.0, "{kind:?}");
+            let back = load_mob(&save_mob(&m)).unwrap();
+            assert_eq!(back.saved_fall_distance(), 7.5, "{kind:?}");
+        }
+        // Villagers and golems save through their own records.
+        let mut e = crate::entity::Entities::new(1);
+        e.spawn(MobKind::Villager, DVec3::new(0.5, 30.0, 0.5));
+        e.mobs[0].restore_fall_distance(4.5);
+        let text = e.villagers_to_string();
+        let mut loaded = crate::entity::Entities::new(1);
+        loaded.load_villagers(&text);
+        assert_eq!(loaded.mobs[0].saved_fall_distance(), 4.5);
+        // Nonsense loads as no fall.
+        let mut bad = save_mob(&Mob::new(MobKind::Zombie, DVec3::ZERO, 0.0));
+        bad["fall_distance"] = serde_json::json!(-3.0);
+        assert_eq!(load_mob(&bad).unwrap().saved_fall_distance(), 0.0);
     }
 
     /// `WebBlock.entityInside`: cobwebs hold walking mobs, less under

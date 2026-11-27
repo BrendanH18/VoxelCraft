@@ -308,6 +308,49 @@ fn shared_mob_combat_constants_match_java() {
     assert_eq!(crate::entity::endermite::ATTACK_REACH, reach);
 }
 
+/// v1.0 gap Track 1: `Mob.doHurtTarget`'s `EnchantmentHelper.modifyDamage`
+/// adds the main-hand weapon's Smite (2.5 a level) against `#sensitive_to_smite`
+/// and Bane of Arthropods against `#sensitive_to_bane_of_arthropods`, and
+/// Bane's `post_attack` gives the arthropod Slowness IV for 1.5 to
+/// 1.5 + 0.5 per level above I seconds; a projectile (not a direct hit) gets
+/// neither from the shooter's hand, and other mobs aren't sensitive.
+#[test]
+fn smite_and_bane_on_a_mobs_weapon_hit_the_mobs_sensitive_to_them() {
+    let sword = |enchantment, level| Stack {
+        enchants: Enchants::NONE.with(enchantment, level),
+        ..Stack::new(Item::tool(ToolKind::Sword, Tier::Iron), 1)
+    };
+    let mut e = Entities::new(1);
+    let a = mob(&mut e, MobKind::Vindicator, DVec3::ZERO);
+    let far = |i: f64| DVec3::new(20.0 * i, 0.0, 20.0);
+    let skeleton = mob(&mut e, MobKind::Skeleton, far(1.0));
+    let shot_skeleton = mob(&mut e, MobKind::Skeleton, far(2.0));
+    let pig = mob(&mut e, MobKind::Pig, far(3.0));
+    let spider = mob(&mut e, MobKind::Spider, far(4.0));
+    let smitten_spider = mob(&mut e, MobKind::Spider, far(5.0));
+    let hit = |e: &mut Entities, target: usize, melee: bool| {
+        let (attacker, target) = (e.mobs[a].uid, e.mobs[target].uid);
+        let mut events = vec![EntityEvent::MobHit { target, attacker, damage: 4.0, knockback: DVec3::ZERO, melee }];
+        e.resolve_mob_hits(&mut events);
+    };
+    e.mobs[a].equipment.set(Slot::MainHand, Some(sword(Enchantment::Smite, 2)));
+    hit(&mut e, skeleton, true);
+    assert_eq!(e.mobs[skeleton].health, 20.0 - 4.0 - 5.0, "Smite II adds 5 against the undead");
+    hit(&mut e, shot_skeleton, false);
+    assert_eq!(e.mobs[shot_skeleton].health, 16.0, "not on a projectile's hit");
+    hit(&mut e, pig, true);
+    assert_eq!(e.mobs[pig].health, 6.0, "pigs aren't sensitive to Smite");
+    hit(&mut e, smitten_spider, true);
+    assert_eq!(e.mobs[smitten_spider].health, 12.0);
+    assert!(!e.mobs[smitten_spider].effects.has(Effect::Slowness));
+    e.mobs[a].equipment.set(Slot::MainHand, Some(sword(Enchantment::BaneOfArthropods, 3)));
+    hit(&mut e, spider, true);
+    assert_eq!(e.mobs[spider].health, 16.0 - 4.0 - 7.5, "Bane III adds 7.5 against arthropods");
+    let slow = e.mobs[spider].effects.get(Effect::Slowness).expect("Bane's Slowness");
+    assert_eq!(slow.amplifier, 3);
+    assert!((30..=50).contains(&slow.ticks), "1.5 to 2.5 seconds: {}", slow.ticks);
+}
+
 #[test]
 fn held_weapons_add_their_damage_and_enchantments_to_mob_hits() {
     let sword = |tier, enchants| Stack { enchants, ..Stack::new(Item::tool(ToolKind::Sword, tier), 1) };

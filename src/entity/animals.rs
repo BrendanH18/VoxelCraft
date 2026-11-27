@@ -808,6 +808,7 @@ impl Mob {
                     attacker: self.uid,
                     damage: 4.0,
                     knockback: flat.normalize_or(DVec3::X) * 4.0 + DVec3::Y * 2.0,
+                    melee: true,
                 });
             }
             return Some((self.pursue(w, goal, 3.0, true, true, rng), 3.0));

@@ -1222,6 +1222,7 @@ impl Agent {
             (hurts.drown, Cause::DROWN),
             (hurts.lava, Cause::LAVA),
             (hurts.stalactite, Cause::FALLING_STALACTITE),
+            (hurts.stalagmite, Cause::STALAGMITE),
             (hurts.kinetic, Cause::FLY_INTO_WALL),
             (hurts.fire, Cause::IN_FIRE),
             (hurts.hot_floor, Cause::HOT_FLOOR),

@@ -20,7 +20,7 @@ mod endermite;
 pub(crate) mod equine;
 mod frog;
 pub(crate) mod goals;
-mod hazards;
+pub(super) mod hazards;
 mod illager;
 mod navigate;
 pub(crate) use navigate::is_sand;
@@ -1288,9 +1288,11 @@ pub struct Mob {
     /// arrow or a blast); consumed by `take_damage`. Never saved.
     pub(crate) hit_cause: Option<Cause>,
     /// v1.0 Track 5: blocks fallen since the last landing (`fallDistance`,
-    /// not saved) and the fall damage the last moves queued.
+    /// saved as `fall_distance` since v1.0 gap Track 1) and the fall damage
+    /// the last moves queued, with its type (`fall` or `stalagmite`).
     pub(super) fall_distance: f64,
     pub(super) pending_fall: f32,
+    pub(super) pending_fall_cause: Cause,
     pub phantom: Option<Box<super::phantom::State>>,
     pub freezing: Option<super::hostiles::Freezing>,
     pub mooshroom: Option<Box<super::mooshroom::State>>,
@@ -1380,8 +1382,12 @@ pub struct Mob {
     pub sky_light: f32,
     /// Torch light where it stands, 0..1.
     pub block_light: f32,
-    /// Creeper fuse: seconds lit, 0 when not fusing.
+    /// Creeper fuse: seconds lit (Java's `swell`), 0 when not fusing. A
+    /// fall adds to it (`Creeper.causeFallDamage`) without lighting it.
     pub fuse: f32,
+    /// A creeper's `swellDir > 0`: its `SwellGoal` is running, so the fuse
+    /// burns up rather than down. Not saved, as in Java.
+    pub swelling: bool,
     /// Seconds a hit spider stays angry in daylight.
     pub(super) provoked: f32,
     pub(super) ai: Ai,
@@ -1544,6 +1550,7 @@ impl Mob {
             hit_cause: None,
             fall_distance: 0.0,
             pending_fall: 0.0,
+            pending_fall_cause: Cause::FALL,
             phantom: (kind == MobKind::Phantom).then(|| Box::new(super::phantom::State::new(pos))),
             mooshroom: (kind == MobKind::Mooshroom).then(Box::default),
             bat: (kind == MobKind::Bat).then(Box::default),
@@ -1609,6 +1616,7 @@ impl Mob {
             player_hit_left: 0.0,
             light_timer: 0.0,
             fuse: 0.0,
+            swelling: false,
             bee: (kind == MobKind::Bee).then(super::bee::State::default),
             provoked: 0.0,
             blocked: false,
@@ -2419,7 +2427,8 @@ impl Mob {
         }
         let wolf_fall = self.wolf_armor.as_mut().map_or(0.0, |s| std::mem::take(&mut s.pending_fall));
         if wolf_fall > 0.0 {
-            self.damage_from(wolf_fall, Cause::FALL, rng);
+            let cause = std::mem::replace(&mut self.pending_fall_cause, Cause::FALL);
+            self.damage_from(wolf_fall, cause, rng);
         }
         self.take_fall(rng);
         if let Some(s) = &mut self.mount {
@@ -2864,6 +2873,7 @@ impl Mob {
         }
         if self.ai != Ai::Chase {
             self.fuse = (self.fuse - dt).max(0.0);
+            self.swelling = false;
             self.lift = false;
             self.charged = false;
             self.attack_step = 0;
@@ -3580,7 +3590,10 @@ impl Mob {
     /// Creepers stop and hiss when close; returns the movement to use
     /// while fusing (or `None` to keep approaching).
     fn creeper_fuse(&mut self, dt: f32, hdist: f64, events: &mut Vec<EntityEvent>) -> Option<(Option<DVec3>, f64)> {
-        let fusing = if self.fuse > 0.0 { hdist < FUSE_KEEP } else { hdist < FUSE_START };
+        // `SwellGoal.canUse`: already swelling, or the target within 3 blocks;
+        // it stops past 7. A swell left by a fall burns down meanwhile.
+        let fusing = if self.swelling { hdist < FUSE_KEEP } else { hdist < FUSE_START };
+        self.swelling = fusing;
         if !fusing {
             self.fuse = (self.fuse - dt).max(0.0);
             return None;

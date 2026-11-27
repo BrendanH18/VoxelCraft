@@ -249,7 +249,9 @@ impl Game {
         } else {
             state.water_ticks = (state.water_ticks - scene.ticks * 10.0).max(0.0);
         }
-        let darkness = effects.get(Effect::Darkness).map(|e| (e.ticks as f32 / 22.0).min(1.0));
+        // `DarknessFogEnvironment` applies while the effect is on, scaled by
+        // its blend factor (`getEffectBlendFactor`), which fades in and out.
+        let darkness = effects.has(Effect::Darkness).then(|| effects.darkness_blend(scene.alpha as f32));
         let weather = if dimension == Dimension::Overworld {
             atm::Weather { rain: self.weather.rain_level(), thunder: self.weather.thunder_level() }
         } else {
@@ -549,6 +551,7 @@ impl Game {
                 ),
                 rain: scene.rain,
                 night_vision: a.vitals.effects.vision(scene.time, a.player.head_in_water(&self.world)),
+                darkness: crate::render::Darkness::of(&a.vitals.effects, scene.alpha as f32),
                 ui,
                 // Controller players' screens are in-game panels: no blur.
                 blur: 0,

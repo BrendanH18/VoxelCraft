@@ -187,17 +187,19 @@ impl Mob {
         }
         let below = w.block((self.pos - DVec3::Y * 0.05).floor().as_ivec3());
         let distance = std::mem::take(&mut s.fall_distance);
-        if below == Some(crate::world::stone_blocks::SLIME_BLOCK) {
-            return;
-        }
-        let boost = self
-            .effects
-            .get(crate::simulation::effects::Effect::JumpBoost)
-            .map_or(0.0, |e| f64::from(e.amplifier) + 1.0);
-        let damage = ((distance - 3.0 - boost).ceil() - 5.0).max(0.0) as f32;
+        // v1.0 gap Track 1: the landing block's `fallOn` (hay, slime, a
+        // dripstone tip) and `Frog.calculateFallDamage`'s 5 less, as for
+        // every other mob.
+        let Some(landing) = super::hazards::landing(below) else { return };
+        let damage = super::hazards::fall_damage(
+            MobKind::Frog,
+            distance + landing.extra,
+            landing.modifier,
+            self.effects.jump_boost(),
+        );
         if damage > 0.0 {
             // v1.0 Track 5: as `minecraft:fall` damage.
-            self.damage_from(damage, crate::simulation::damage::Cause::FALL, rng);
+            self.damage_from(damage, landing.cause, rng);
         }
     }
 
@@ -397,6 +399,17 @@ mod tests {
         assert_eq!(m.health, 10.0);
         m.frog_fall(10.0, &w, &mut rng);
         assert_eq!(m.health, 9.0);
+        // v1.0 gap Track 1: onto an upward dripstone tip, 2.5 more and
+        // doubled: floor((5 + 2.5 - 3) * 2) - 5.
+        let mut tipped = Floor(Grid::flat(1));
+        let tip =
+            crate::world::overworld_blocks::pointed_dripstone(false, crate::world::overworld_blocks::Thickness::Tip);
+        tipped.0.set(IVec3::new(0, 1, 0), tip);
+        let mut f = Mob::new(MobKind::Frog, DVec3::new(0.5, 1.6875, 0.5), 0.0);
+        f.on_ground = true;
+        f.frog.as_mut().unwrap().fall_distance = 5.0;
+        f.frog_fall(1.6875, &tipped, &mut rng);
+        assert_eq!(f.health, 6.0);
         m.pos.y = 10.0;
         m.frog.as_mut().unwrap().pose = 4;
         m.vel = DVec3::new(10.0, 8.0, 0.0);

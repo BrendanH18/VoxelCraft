@@ -170,6 +170,26 @@ pub struct FrameParams {
     pub rain: f32,
     /// Night vision strength 0..1 (see `Effects::night_vision`).
     pub night_vision: f32,
+    /// Darkness (`LightmapRenderStateExtractor`): its blend factor, which
+    /// lowers the Brightness option by as much, and its pulsing scale, which
+    /// `lightmap.fsh` takes off every light level before the clamp (see
+    /// `Effects::darkness_blend` and `Effects::darkness_scale`). Both 0
+    /// without the effect.
+    pub darkness: Darkness,
+}
+
+/// The two numbers Darkness gives Java 26.3's lightmap.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Darkness {
+    pub blend: f32,
+    pub scale: f32,
+}
+
+impl Darkness {
+    /// The player's Darkness `partial` ticks after their last tick.
+    pub fn of(effects: &crate::simulation::effects::Effects, partial: f32) -> Self {
+        Self { blend: effects.darkness_blend(partial), scale: effects.darkness_scale(partial) }
+    }
 }
 
 #[derive(Default, Clone, Copy)]
@@ -1647,7 +1667,8 @@ impl Renderer {
             ],
             sun: [p.sun_dir.x, p.sun_dir.y, p.sun_dir.z, p.time % 3600.0],
             params: [p.fog_start, p.fog_end, p.daylight, p.rain],
-            effects: [p.night_vision, self.brightness, 0.0, 0.0],
+            // `brightness = max(0, gamma - darknessEffectBrightnessModifier)`.
+            effects: [p.night_vision, (self.brightness - p.darkness.blend).max(0.0), p.darkness.scale, 0.0],
             ambient: {
                 let [r, g, b] = p.dimension.ambient_light_color();
                 [r, g, b, if p.dimension.has_sky() { 0.0 } else { 1.0 }]

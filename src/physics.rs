@@ -162,6 +162,17 @@ pub(crate) fn cell_boxes_context<W: BlockSource + ?Sized>(
             return;
         }
     }
+    // v1.0 gap Track 1: pointed dripstone and sulfur spikes collide as
+    // Java's `SpeleothemBlock` columns, so things stand and land on them.
+    if let Some(s) = b.and_then(crate::world::speleothem::of) {
+        let (width, bottom, top) = crate::world::speleothem::column(s);
+        let side = f64::from(8 - width / 2) / 16.;
+        f(
+            lo + DVec3::new(side, f64::from(bottom) / 16., side),
+            lo + DVec3::new(1. - side, f64::from(top) / 16., 1. - side),
+        );
+        return;
+    }
     if let Some((age, false)) = b.and_then(crate::world::sniffer_plants::pitcher_state) {
         let (width, height) = if age == 0 { (6., 3.) } else { (10., 5.) };
         f(

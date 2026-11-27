@@ -204,6 +204,7 @@ impl Entities {
             attacker,
             damage: ENDERMAN_DAMAGE,
             knockback: dir * 4.0 + DVec3::Y * 2.0,
+            melee: true,
         });
     }
 }

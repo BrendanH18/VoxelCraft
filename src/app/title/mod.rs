@@ -668,6 +668,7 @@ impl Title {
             ui,
             rain: 0.0,
             night_vision: 0.0,
+            darkness: crate::render::Darkness::default(),
             // v0.18 Track 2: Java blurs what is behind the title screens
             // (`Screen.extractBlurredBackground`) by Menu Background Blur.
             blur: self.blur(),

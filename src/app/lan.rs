@@ -1728,6 +1728,8 @@ impl Game {
             // v0.16 Track F: conduits animate from the replicated blocks.
             self.world.tick_conduit_replicas();
             self.tick_particles();
+            // v1.0 gap Track 1: Darkness's blend and pulse run on the client.
+            self.session.vitals.effects.tick_client_view();
             // The client doesn't track portal time; nausea comes from the host.
             let nausea =
                 self.session.vitals.effects.get(voxelcraft::simulation::effects::Effect::Nausea).map(|e| e.ticks);
@@ -1795,7 +1797,10 @@ impl Game {
         self.session.mode = own.session.mode;
         self.session.inventory = self.lan.inventory.current.clone();
         self.lan.inventory_revision = self.lan.inventory.revision;
+        let previous = std::mem::take(&mut self.session.vitals.effects);
         self.session.vitals = own.session.vitals;
+        // v1.0 gap Track 1: the client's own Darkness blend and tick count.
+        self.session.vitals.effects.keep_client_view(&previous, !self.lan.ready);
         self.session.sleeping = own.session.sleeping;
         if !self.lan.ready {
             self.body.actions.selected = own.selected;

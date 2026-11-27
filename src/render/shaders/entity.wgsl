@@ -14,7 +14,8 @@ struct Globals {
     params: vec4<f32>,
     clouds: vec4<f32>,
     environment: vec4<f32>,
-    // x: night vision strength 0..1.
+    // x: night vision strength 0..1, y: Brightness (less Darkness's blend),
+    // z: Darkness's pulsing lightmap scale.
     effects: vec4<f32>,
     // rgb: visual/ambient_light_color; w: use the skyless dimension lightmap.
     ambient: vec4<f32>,
@@ -91,10 +92,18 @@ fn sample_block(uv: vec2<f32>, layer: u32) -> vec4<f32> {
 @group(2) @binding(0) var skin: texture_2d_array<f32>;
 
 // Night vision (Java's lightmap): brightens every light level toward full,
-// keeping its hue; g.effects.x is its strength. Brightness follows.
-fn night_vision(lit: vec3<f32>) -> vec3<f32> {
+// keeping its hue; g.effects.x is its strength. Then Darkness: lightmap.fsh
+// takes `DarknessScale` (g.effects.z, pulsing) off the light before its
+// clamp, so `raw`, the light before the clamp, puts back what lay above
+// full. Brightness follows, lowered by Darkness's blend on the CPU.
+fn night_vision(lit: vec3<f32>, raw: vec3<f32>) -> vec3<f32> {
     let peak = max(max(lit.r, lit.g), max(lit.b, 1e-3));
-    return brightness(mix(lit, lit / peak, g.effects.x));
+    let over = max(raw - vec3<f32>(1.0), vec3<f32>(0.0));
+    return brightness(mix(lit, lit / peak, g.effects.x) + over - vec3<f32>(g.effects.z));
+}
+// The lightmap of an unclamped light sum.
+fn lightmap(raw: vec3<f32>) -> vec3<f32> {
+    return night_vision(clamp(raw, vec3<f32>(0.0), vec3<f32>(1.0)), raw);
 }
 
 // The Brightness option (Java's gamma, g.effects.y): lightmap.fsh moves each
@@ -253,19 +262,21 @@ fn overworld_light(sky_level: f32, block_level: f32, normal: vec3<f32>, shade: f
     let p = (2.0 * block_level - 1.0) * (2.0 * block_level - 1.0);
     let hue = mix(vec3<f32>(1.0, 0.847, 0.549), vec3<f32>(1.0), 0.9 * p);
     let block = hue * (block_level / (4.0 - 3.0 * block_level)) * 1.4;
-    let java = clamp(g.ambient.rgb + sky + block, vec3<f32>(0.0), vec3<f32>(1.0));
+    let raw = g.ambient.rgb + sky + block;
+    let java = clamp(raw, vec3<f32>(0.0), vec3<f32>(1.0));
     let s = max(max(sky.r, sky.g), sky.b);
     let b = max(max(block.r, block.g), block.b);
     let share = clamp(s / max(s + b, 1e-4), 0.0, 1.0);
     let sun = mix(vec3<f32>(1.0), daylight_tint(normal), share);
-    return from_srgb(night_vision(java)) * shade * sun;
+    return from_srgb(night_vision(java, raw)) * shade * sun;
 }
 
 // Java 26.3 adds the environment ambient colour to sky and block light.
 // The Overworld retains its existing daylight presentation in this scoped fix.
 fn dimension_light(sky: vec3<f32>, torch: vec3<f32>) -> vec3<f32> {
     if g.ambient.w > 0.0 {
-        return clamp(g.ambient.rgb + sky + torch, vec3<f32>(0.0), vec3<f32>(1.0));
+        // Unclamped: `lightmap` clamps it after Darkness, as Java does.
+        return g.ambient.rgb + sky + torch;
     }
     return max(sky, torch) * 0.96 + 0.04;
 }
@@ -329,7 +340,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     // Sky light scaled by daylight, or warm torch light, whichever is brighter.
     let sky = curve(in.light.x) * g.params.z * daylight_tint(normal);
     let torch = curve(in.torch) * vec3<f32>(1.0, 0.86, 0.66);
-    var shaded = night_vision(dimension_light(sky, torch)) * in.light.y;
+    var shaded = lightmap(dimension_light(sky, torch)) * in.light.y;
     if g.ambient.w <= 0.0 {
         shaded = overworld_light(in.light.x, in.torch, normal, in.light.y);
     }

@@ -3,7 +3,8 @@
 //!
 //! - The main-hand item's `ATTACK_DAMAGE` modifier adds to the mob's attack
 //!   damage attribute, its Sharpness to the hit (`EnchantmentHelper.
-//!   modifyDamage`), its Knockback to `getKnockback` and its Fire Aspect sets
+//!   modifyDamage`; Smite and Bane of Arthropods against a mob that is
+//!   sensitive to them, with Bane's Slowness), its Knockback to `getKnockback` and its Fire Aspect sets
 //!   the target alight (`doPostAttackEffects`), all in `Mob.doHurtTarget`.
 //! - Worn humanoid armor counts in `getDamageAfterArmorAbsorb` and its
 //!   protection enchantments in `getDamageAfterMagicAbsorb`. Mobs' armor
@@ -44,8 +45,10 @@ impl Mob {
 
     /// What the main-hand weapon adds to a melee hit: its attack damage
     /// modifier (the player's attack damage with it, less the player's
-    /// base 1) and Sharpness. Smite and Bane of Arthropods are not counted
-    /// (mob targets here are players, villagers and golems).
+    /// base 1) and Sharpness. Smite and Bane of Arthropods depend on the
+    /// target, so a mob target's kind adds them when the hit lands
+    /// (`Entities::resolve_mob_hits`, v1.0 gap Track 1); players are
+    /// sensitive to neither.
     pub fn weapon_attack_bonus(&self) -> f32 {
         let Some(stack) = self.main_hand() else { return 0.0 };
         let modifier = crate::mining::attack_damage(Some(stack.item)) - 1.0;

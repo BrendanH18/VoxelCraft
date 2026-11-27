@@ -109,6 +109,7 @@ fn wolf_armor_uses_full_melee_damage_in_26_3_and_magic_status_bypasses_it() {
         attacker: e.mobs[1].uid,
         damage: 5.0,
         knockback: DVec3::ZERO,
+        melee: true,
     }];
     e.resolve_mob_hits(&mut events);
     assert_eq!(e.mobs[0].wolf_armor.as_ref().unwrap().armor.unwrap().damage, 5);
