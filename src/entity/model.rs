@@ -323,7 +323,7 @@ impl Cuboid {
 /// A box Java draws through the translucent entity layer, like the slime shell.
 /// Distance from a sleeping villager's pillow-block centre back to its feet.
 const SLEEP_FEET_BACK: f32 = 1.52;
-const fn glass(min: [f32; 3], max: [f32; 3], color: Rgb, noise: u8) -> Cuboid {
+pub(super) const fn glass(min: [f32; 3], max: [f32; 3], color: Rgb, noise: u8) -> Cuboid {
     Cuboid { min, max, color, noise, translucent: true, pattern: 0 }
 }
 

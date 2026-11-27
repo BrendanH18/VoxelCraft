@@ -97,11 +97,16 @@ pub enum Generation {
     /// built from Java's full `bastion/*` pool catalogue. The Overworld and
     /// End generate as in generation 5.
     V6 = 6,
+    /// v1.0 gap-closing Track 4 (GEN-04b): generation 6 with Java 26.3's
+    /// End terrain (`EndIslandFunction` and the End noise router, see
+    /// `world::end_islands`), its End biomes read from Java's island
+    /// value. The Overworld and Nether generate as in generation 6.
+    V7 = 7,
 }
 
 impl Generation {
     /// What new worlds use.
-    pub const LATEST: Generation = Generation::V6;
+    pub const LATEST: Generation = Generation::V7;
     /// The `level.txt` key.
     pub const KEY: &'static str = "worldgen";
 
@@ -117,6 +122,7 @@ impl Generation {
             Some(Ok(4)) => Generation::V4,
             Some(Ok(5)) => Generation::V5,
             Some(Ok(6)) => Generation::V6,
+            Some(Ok(7)) => Generation::V7,
             Some(_) => {
                 log::warn!("unknown world generation {value:?}; using {:?}", Generation::LATEST);
                 Generation::LATEST
@@ -2308,6 +2314,7 @@ mod tests {
         assert_eq!(Generation::from_prop(Some("4")), Generation::V4);
         assert_eq!(Generation::from_prop(Some("5")), Generation::V5);
         assert_eq!(Generation::from_prop(Some("6")), Generation::V6);
+        assert_eq!(Generation::from_prop(Some("7")), Generation::V7);
         assert_eq!(Generation::from_prop(Some("99")), Generation::LATEST);
         assert_eq!(Generation::from_prop(Some(&Generation::LATEST.number().to_string())), Generation::LATEST);
         assert_eq!(Generator::new(1).generation, Generation::LATEST);

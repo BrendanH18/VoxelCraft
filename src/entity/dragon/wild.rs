@@ -199,7 +199,12 @@ impl Wild {
                 Phase::Strafe(_) | Phase::Charging => Phase::HoldingPattern,
                 p => p,
             };
-            if d.phase == Phase::Dying || d.health <= 0.0 {
+            // Dying in the flight to its origin's column (`DYING` at one
+            // health), or dead (saves from before the flight was modelled
+            // wrote `DYING` with no health).
+            if d.phase == Phase::Dying && d.health > 0.0 {
+                d.health = 1.0;
+            } else if d.phase == Phase::Dying || d.health <= 0.0 {
                 d.phase = Phase::Dying;
                 d.health = 0.0;
                 d.death_ticks = v["death"].as_u64().unwrap_or(0).min(u64::from(super::DEATH_TICKS - 1)) as u32;

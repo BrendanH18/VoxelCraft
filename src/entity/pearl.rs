@@ -54,6 +54,7 @@ impl Pearl {
         mobs: &mut [Mob],
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
+        mut gateways: Option<&mut super::dragon::gateway::Gateways>,
     ) -> bool {
         self.age += dt as f32;
         let ticks = dt * 20.0;
@@ -65,8 +66,15 @@ impl Pearl {
         for _ in 0..steps {
             let next = self.pos + delta / steps as f64;
             let cell = next.floor().as_ivec3();
-            // Gateways take the thrower through, like Java's.
-            if world.block(cell) == Some(crate::world::block::Block::END_GATEWAY) {
+            // Gateways take the thrower through, like Java's; one cooling
+            // down lets the pearl fly on through it (`entityInside` does
+            // nothing), and one it uses starts cooling (`triggerCooldown`).
+            if world.block(cell) == Some(crate::world::block::Block::END_GATEWAY)
+                && !gateways.as_deref().is_some_and(|g| g.cooling(cell))
+            {
+                if let Some(g) = gateways.as_deref_mut() {
+                    g.trigger(cell);
+                }
                 events.push(EntityEvent::PearlGateway { owner: self.owner, cell, pos: self.pos });
                 return false;
             }
@@ -103,7 +111,7 @@ mod tests {
         let mut rng = Rng::new(1);
         let mut events = Vec::new();
         for _ in 0..400 {
-            if !pearl.update(0.05, world, mobs, &mut rng, &mut events) {
+            if !pearl.update(0.05, world, mobs, &mut rng, &mut events, None) {
                 break;
             }
         }

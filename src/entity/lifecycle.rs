@@ -475,11 +475,12 @@ impl Entities {
                 keep
             });
             // Thrown things are removed when they hit (`Projectile.onHit`).
+            let mut gateways = self.fight.as_mut().map(|f| &mut f.gateway_entities);
             self.pearls.retain_mut(|p| {
                 if !world.entity_ticking(p.pos.floor().as_ivec3()) {
                     return true;
                 }
-                let keep = p.update(dt, world, mobs, rng, &mut events);
+                let keep = p.update(dt, world, mobs, rng, &mut events, gateways.as_deref_mut());
                 if !keep {
                     sculk.land(world, p.pos, p.vel, sculk_events::Sculk::projectile_source(Some(p.owner), None));
                 }
