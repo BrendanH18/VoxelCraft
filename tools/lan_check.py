@@ -115,6 +115,11 @@ class Host:
 class Client:
     def __init__(self, port, profile, timeout=30):
         self.profile, self.buf, self.last, self.chat = profile, bytearray(), None, []
+        self.inventory_parts = bytearray()
+        self.large_inventory_fields = []
+        self.inventory_revision = self.acks_during_inventory = 0
+        self.items = {"cursor": "-", "inventory": ",".join(["-"] * 36)}
+        self.grid = ["-"] * 4
         self.chunks, self.seq, self.selected, self.bytes = 0, 0, 0, 0
         self.welcome_at = self.first_chunk_at = self.ready_at = None
         self.started = time.monotonic()
@@ -129,7 +134,7 @@ class Client:
                 time.sleep(0.1)
         self.sock.settimeout(0.05)
         self.started = time.monotonic()
-        self._send(bytes([0]) + struct.pack("<H", 1) + self._text(VERSION) + self._text(profile))
+        self._send(bytes([0]) + struct.pack("<H", 6) + self._text(VERSION) + self._text(profile))
 
     @staticmethod
     def _text(s):
@@ -146,8 +151,15 @@ class Client:
         self.seq += 1
         self._send(bytes([2]) + struct.pack("<IffffBB", self.seq, yaw, pitch, forward, 0.0, buttons, self.selected))
 
-    def click(self, slot, right=0, shift=0):
-        self._send(bytes([8]) + struct.pack("<HBB", slot, right, shift))
+    def click(self, slot, right=0, shift=0, grid_size=None):
+        if grid_size is None:
+            size = self.last["grid_size"]
+            grid_size = size if len(self.grid) == size * size else 0
+        self._send(bytes([8]) + struct.pack("<HBBIB", slot, right, shift, self.me()["inventory_revision"], grid_size))
+
+    def write_book(self, page):
+        text = page.encode("utf-16le")
+        self._send(bytes([10, 0, 100]) + (struct.pack("<H", len(text) // 2) + text) * 100)
 
     def poll(self):
         try:
@@ -168,9 +180,30 @@ class Client:
             if p[0] == 1 and self.welcome_at is None:
                 self.welcome_at = now
             elif p[0] == 5:
-                self.last = json.loads(p[1:])
+                state = json.loads(p[1:])
+                if self.inventory_parts and self.last and state["sequence"] > self.last["sequence"]:
+                    self.acks_during_inventory += 1
+                self.last = state
+                self.last["self"].update(self.items)
+                self.last["self"]["inventory_revision"] = self.inventory_revision
+                cells = state["grid_size"] ** 2
+                self.last["grid"] = self.grid if len(self.grid) == cells else ["-"] * cells
                 if self.ready_at is None:
                     self.ready_at = now
+            elif p[0] == 11:
+                self.inventory_parts.extend(p[2:])
+                if p[1]:
+                    fields = re.split(r"([,|#\n])", self.inventory_parts.decode())
+                    for index in range(0, len(fields), 2):
+                        field = fields[index]
+                        if field.startswith("@"):
+                            fields[index] = self.large_inventory_fields[int(field[1:])]
+                    self.large_inventory_fields = [field for field in fields[::2] if len(field) > 4096]
+                    cursor, grid, inventory = "".join(fields).split("\n", 2)
+                    self.items = {"cursor": cursor, "inventory": inventory}
+                    self.grid = grid.split(",")[1:]
+                    self.inventory_parts.clear()
+                    self.inventory_revision += 1
             elif p[0] == 6:
                 self.chunks += 1
                 if self.first_chunk_at is None:
@@ -231,6 +264,82 @@ class Client:
 
 # Stable item ids (src/item.rs, block items below 256 share the block id).
 DIAMOND, DIRT, APPLE = 261, 2, 263
+WRITABLE_BOOK = 1557
+
+
+def large_books(data):
+    port = free_port()
+    host = Host(data, port, extra=["--place", "3,151,0,crafting_table"])
+    a = b = None
+    try:
+        a, b = Client(port, "Scribe"), Client(port, "Reader")
+        for client in (a, b):
+            client.until(lambda s: s["self"]["ground"], why="spawn")
+        for slot, page in enumerate(("a" * 1024, "書" * 1024)):
+            a.command("/give writable_book")
+            a.until(lambda s: a.inventory()[slot] == f"{WRITABLE_BOOK}:1", why="receive an empty book")
+            a.selected = slot
+            a.run(0.3)
+            a.write_book(page)
+            a.until(lambda s: len(a.inventory()[slot]) > 100_000, why="receive the edited book")
+        check("LAN books: movement acknowledged during inventory transfer", a.acks_during_inventory > 0)
+        a.control()
+        sent = a.seq
+        a.until(lambda s: s["sequence"] >= sent, why="acknowledge movement with large books")
+        b.control()
+        sent = b.seq
+        b.until(lambda s: s["sequence"] >= sent, why="acknowledge movement while another player holds a large book")
+        check("LAN books: both guests receive tick state with two full books in one inventory", True)
+        ascii_book, cjk_book = a.inventory()[:2]
+        a.command("inventory")
+        a.until(lambda s: s["open"], why="open inventory")
+        a.click(0)
+        a.until(lambda s: a.me()["cursor"] == ascii_book, why="pick up the first book")
+        a.click(1)
+        a.click(65535)  # Outside the panel, still using the revision with the ASCII book.
+        a.until(lambda s: a.me()["cursor"] == cjk_book, why="swap books while a stale toss is rejected")
+        a.run(0.3)
+        check("LAN books: an old cursor click cannot toss the newly swapped book", a.me()["cursor"] == cjk_book)
+        a.click(100)
+        a.until(lambda s: s["grid"][0] == cjk_book, why="place a large book in the personal crafting grid")
+        a.click(100)
+        a.until(lambda s: a.me()["cursor"] == cjk_book, why="retrieve the book from the crafting grid")
+        check("LAN books: a large book can move through the personal crafting grid", True)
+
+        a.click(0)
+        a.until(lambda s: a.me()["cursor"] == "-", why="put the book back")
+        a.command("/give dirt 3")
+        a.until(lambda s: a.inventory()[2] == f"{DIRT}:3", why="receive three dirt blocks")
+        a.click(2)
+        a.until(lambda s: a.me()["cursor"] == f"{DIRT}:3", why="pick up the dirt stack")
+        a.click(3, right=1)
+        a.click(4, right=1)
+        a.until(lambda s: a.inventory()[3:5] == [f"{DIRT}:1"] * 2, why="place one item per rapid click")
+        check("LAN inventory: rapid right-clicks place one item in each slot", a.me()["cursor"] == f"{DIRT}:1")
+
+        a.command("close")
+        a.until(lambda s: not s["open"], why="close the personal inventory")
+        a.use(a.aim_at(3.5, 151.5, 0.5))
+        a.until(lambda s: s["open"] and s["grid_size"] == 3 and len(a.grid) == 9, why="open the crafting table")
+        a.click(3, right=1)
+        a.until(lambda s: a.me()["cursor"] == f"{DIRT}:1", why="pick up dirt in the crafting table")
+        a.click(102, grid_size=2)  # A click delayed from the 2×2 panel.
+        a.click(103)
+        a.until(lambda s: s["grid"][3] == f"{DIRT}:1", why="accept the click for the current grid size")
+        check(
+            "LAN inventory: crafting clicks require the displayed grid size",
+            a.last["grid"][2] == "-" and a.me()["cursor"] == "-",
+        )
+        a.click(103)
+        a.until(lambda s: a.me()["cursor"] == f"{DIRT}:1", why="pick up dirt for a fresh outside click")
+        a.click(65535)
+        a.until(lambda s: a.me()["cursor"] == "-", why="toss the cursor stack with the displayed revision")
+        check("LAN inventory: a fresh outside click tosses the cursor stack", True)
+    finally:
+        for client in (a, b):
+            if client:
+                client.close()
+        host.stop()
 
 
 def races(data):
@@ -530,6 +639,7 @@ def main():
     data = Path(tempfile.mkdtemp(prefix="vx-lan-check-"))
     try:
         races(data / "races")
+        large_books(data / "books")
         busy_join(data / "busy")
         pvp(data)
         host_travel(data / "travel")

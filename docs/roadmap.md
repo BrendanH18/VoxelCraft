@@ -2175,6 +2175,17 @@ key: 1.0 isn't released, so the save policy's new-keys rule doesn't apply
 yet. The release's frame-time
 runs and the owner's play remain.
 
+The v1.0 maintenance fixes keep Select World icon slots that are already
+referenced by the current frame safe from eviction
+([#119](https://github.com/BrendanH18/VoxelCraft/issues/119)).
+The LAN guest's inventory, cursor and crafting grid travel in bounded updates alongside
+the regular tick stream, so carrying full books leaves movement
+acknowledgments flowing
+([#104](https://github.com/BrendanH18/VoxelCraft/issues/104)).
+The Windows packaging timeout fix is verified in the
+[delivery record](delivery-records.md#38-v018-delivery-record--2026-11-25)
+([#101](https://github.com/BrendanH18/VoxelCraft/issues/101)).
+
 **M7 exit:** all mandatory core rows are Verified; every remaining exception/
 deferral is explicit; current stable Java scope has been reconciled;
 fresh-world and long-session acceptance passes are recorded; save migration/

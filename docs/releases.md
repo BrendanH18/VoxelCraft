@@ -25,10 +25,7 @@ do not need a separate Visual C++ redistributable installation.
   `packaging/RELEASE-NOTES.md`. The workflow never publishes automatically.
   Rerunning a tag build refreshes an existing draft's downloads; published
   releases are left unchanged.
-- Each package job may run for 90 minutes. The Windows job's tests grow with
-  the suite: on 2026-11-23 they took 36 minutes and the old 45-minute limit
-  cancelled the `v0.17` build before packaging, so the unpublished tag moved
-  to the commit that raised the limit.
+- Each package job may run for 90 minutes.
 
 Update Cargo.toml, Cargo.lock and the release notes together for each version.
 Before pushing a tag, check out the exact commit it will point at and check

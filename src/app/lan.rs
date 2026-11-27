@@ -2,7 +2,7 @@
 //! controller hands (`hands::Actor`); screens still borrow host container code.
 use super::{Container, Game, GameMode, gamepad::Body, hud::SlotRef};
 use crate::crafting::Grid;
-use crate::inventory::{Stack, stack_from_str, stack_to_string};
+use crate::inventory::{Stack, components::Payload, stack_from_str, stack_to_string};
 use crate::knockback;
 use crate::world::{
     World,
@@ -20,6 +20,8 @@ use std::time::{Duration, Instant};
 use voxelcraft::agent::{Agent, Command};
 use voxelcraft::lan::{Connection, Input, Listener, Packet};
 
+mod inventory;
+
 /// What a LAN client's use button was doing when it sampled an input: the
 /// part of a movement prediction that must replay as it was.
 #[derive(Clone, Copy, Debug, Default)]
@@ -30,6 +32,7 @@ struct LanUse {
 
 /// Largest view distance (in 32-block chunks) a LAN host streams to clients.
 pub(super) const LAN_VIEW_MAX: i32 = 8;
+pub(super) const LAN_OUTSIDE_SLOT: u16 = u16::MAX;
 pub(super) struct Peer {
     connection: Connection,
     profile: Option<String>,
@@ -71,8 +74,14 @@ pub(super) struct Peer {
     book_open: Option<(Value, u32)>,
     /// v0.18 Track 5: the recipe book revision this client last got.
     recipe_book_sent: Option<u32>,
+    inventory: inventory::Sender,
 }
 impl Peer {
+    fn can_edit_book(&self, agent: &Agent, offhand: bool) -> bool {
+        let slot = if offhand { voxelcraft::session::books::OFFHAND_SLOT } else { agent.selected };
+        self.inventory.held_matches(slot, &agent.session.inventory)
+    }
+
     fn new(connection: Connection) -> Self {
         Self {
             connection,
@@ -100,6 +109,7 @@ impl Peer {
             sign_editing: false,
             book_open: None,
             recipe_book_sent: None,
+            inventory: inventory::Sender::default(),
         }
     }
 }
@@ -158,6 +168,8 @@ pub(super) struct Lan {
     sign_serial: u32,
     /// The last lectern or book request this client opened.
     book_serial: u32,
+    inventory: inventory::Receiver,
+    inventory_revision: u32,
 }
 impl Lan {
     /// What the use button was doing when `input` was sampled: eating or
@@ -328,8 +340,8 @@ fn peer_look(look_override: &mut Option<(f32, f32, Instant)>, input: &Input) -> 
 fn state(agent: &Agent, name: &str) -> Value {
     json!({"id":agent.session.id.0,"name":name,"pos":agent.session.player.pos.to_array(),"vel":agent.session.player.vel.to_array(),
         "yaw":agent.session.player.yaw,"pitch":agent.session.player.pitch,"ground":agent.session.player.on_ground,"flying":agent.session.player.flying,
-        "sprint":agent.session.player.sprinting,"motion":agent.session.player.carried_motion(),"stuck":agent.session.player.carried_stuck().to_array(),"mode":agent.session.mode.name(),"selected":agent.selected,"inventory":agent.session.inventory.serialize(),
-        "cursor":stack_to_string(agent.session.inventory.cursor),"time_since_rest":agent.session.vitals.time_since_rest,"ticks_frozen":agent.session.vitals.ticks_frozen,"health":agent.session.vitals.health,"air":agent.session.vitals.air,
+        "sprint":agent.session.player.sprinting,"motion":agent.session.player.carried_motion(),"stuck":agent.session.player.carried_stuck().to_array(),"mode":agent.session.mode.name(),"selected":agent.selected,
+        "time_since_rest":agent.session.vitals.time_since_rest,"ticks_frozen":agent.session.vitals.ticks_frozen,"health":agent.session.vitals.health,"air":agent.session.vitals.air,
         "food":agent.session.vitals.hunger.food,"saturation":agent.session.vitals.hunger.saturation,"exhaustion":agent.session.vitals.hunger.exhaustion,
         "death":agent.session.vitals.death,"xp":agent.session.vitals.xp.serialize(),"effects":agent.session.vitals.effects.serialize(),"sleep":agent.session.sleeping,"vehicle":agent.session.player.vehicle,
         "respawns":agent.session.respawns,"drawing":agent.session.drawing_slot(),"consuming":agent.session.consuming(),
@@ -340,14 +352,28 @@ fn state(agent: &Agent, name: &str) -> Value {
 fn r3(x: f64) -> f64 {
     (x * 1000.0).round() / 1000.0
 }
+fn stack_appearance(stack: Option<Stack>) -> String {
+    // Book and storage contents are invisible in other players' hands.
+    stack_to_string(stack.map(|mut stack| {
+        if stack.payload.is_some_and(|p| {
+            matches!(
+                p.get(),
+                Payload::WritableBook(_) | Payload::WrittenBook(_) | Payload::Container(_) | Payload::Bundle(_)
+            )
+        }) {
+            stack.payload = None;
+        }
+        stack
+    }))
+}
 fn state_lite(agent: &Agent, name: &str, swing: Option<f32>, eating: f32) -> Value {
     let p = agent.session.player.pos;
     json!({"swing":swing.map(|t| r3(t as f64)),"eat":r3(eating as f64),"id":agent.session.id.0,"name":name,"pos":[r3(p.x), r3(p.y), r3(p.z)],"vel":[0.0, 0.0, 0.0],
         "yaw":r3(agent.session.player.yaw as f64),"pitch":r3(agent.session.player.pitch as f64),"ground":agent.session.player.on_ground,
         "flying":agent.session.player.flying,"sneak":agent.session.player.sneaking,"mode":agent.session.mode.name(),"selected":agent.selected,
-        "held":stack_to_string(agent.session.inventory.get(agent.selected)),
-        "armor":agent.session.inventory.armor.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>(),
-        "offhand":stack_to_string(agent.session.inventory.offhand),
+        "held":stack_appearance(agent.session.inventory.get(agent.selected)),
+        "armor":agent.session.inventory.armor.iter().copied().map(stack_appearance).collect::<Vec<_>>(),
+        "offhand":stack_appearance(agent.session.inventory.offhand),
         "time_since_rest":agent.session.vitals.time_since_rest,"ticks_frozen":agent.session.vitals.ticks_frozen,"health":agent.session.vitals.health,"death":agent.session.vitals.death,"sleep":agent.session.sleeping,"vehicle":agent.session.player.vehicle,
         "glide":agent.session.player.fall_flying,"glide_ticks":agent.session.player.fall_fly_ticks})
 }
@@ -379,9 +405,6 @@ fn apply(agent: &mut Agent, v: &Value) {
         agent.session.player.restore_carried_stuck(stuck);
     }
     agent.selected = v["selected"].as_u64().unwrap_or(0).min(8) as usize;
-    if let Some(inv) = v["inventory"].as_str().and_then(crate::inventory::Inventory::deserialize) {
-        agent.session.inventory = inv;
-    }
     if let Some(held) = v["held"].as_str() {
         // Another player's lite state: just what is drawn.
         agent.session.inventory = crate::inventory::Inventory::default();
@@ -392,7 +415,6 @@ fn apply(agent: &mut Agent, v: &Value) {
         agent.session.inventory.offhand = v["offhand"].as_str().and_then(stack_from_str).flatten();
     }
     agent.session.player.sneaking = v["sneak"] == true;
-    agent.session.inventory.cursor = v["cursor"].as_str().and_then(stack_from_str).flatten();
     agent.session.vitals = crate::simulation::survival::Vitals::restore(
         v["health"].as_f64().unwrap_or(20.0) as f32,
         v["air"].as_f64().unwrap_or(15.0) as f32,
@@ -453,6 +475,16 @@ impl Game {
     }
     pub(super) fn lan_command(&mut self, command: &str) {
         self.lan_send(Packet::Command(command.into()));
+    }
+    pub(super) fn lan_click(&mut self, slot: u16, right: bool, shift: bool) {
+        let grid_size = self.lan.inventory.grid.map_or(0, |grid| grid.size as u8);
+        if (100..=109).contains(&slot) && usize::from(grid_size) != self.craft.size {
+            return;
+        }
+        if slot != LAN_OUTSIDE_SLOT {
+            self.audio.ui_click();
+        }
+        self.lan_send(Packet::Click { slot, right, shift, revision: self.lan.inventory_revision, grid_size });
     }
     pub(super) fn chat_line(&mut self, message: &str) {
         self.console.lines.push_back(message.into());
@@ -566,6 +598,12 @@ impl Game {
                     Packet::Chunk { pos, data } => self.world.receive_chunk(pos, data),
                     Packet::Edits { pos, cells } => self.world.receive_edits(pos, &cells),
                     Packet::State(state) => self.receive_lan_state(&state),
+                    Packet::InventoryPart { last, bytes } => {
+                        if self.lan.inventory.push(last, &bytes).is_none() {
+                            self.lan.lost = Some("Invalid server inventory".into());
+                            break;
+                        }
+                    }
                     Packet::Chat(message) => self.chat_line(&message),
                     Packet::Disconnect(reason) => {
                         self.lan.lost = Some(reason);
@@ -669,9 +707,17 @@ impl Game {
                             let _ = peer.connection.send(Packet::Chat(format!("Error: {e}")));
                         }
                     }
-                    Packet::Click { slot, right, shift } => self.remote_click(peer, slot, right, shift),
+                    Packet::Click { slot, right, shift, revision, grid_size } => {
+                        if !(100..=109).contains(&slot) || peer.grid.size == usize::from(grid_size) {
+                            self.remote_click(peer, slot, right, shift, revision);
+                        }
+                    }
                     Packet::Book { pages, title, offhand } => {
                         let bot = self.agents.players.get_mut(peer.profile.as_deref().unwrap()).unwrap();
+                        if !peer.can_edit_book(&bot.agent, offhand) {
+                            let _ = peer.connection.send(Packet::Chat("Error: Book contents are unavailable".into()));
+                            continue;
+                        }
                         let book = Command::Book { pages, title, offhand };
                         if let Err(e) = bot.agent.execute(book, &mut self.world, &mut self.mobs.entities, &[]) {
                             let _ = peer.connection.send(Packet::Chat(format!("Error: {e}")));
@@ -825,22 +871,6 @@ impl Game {
                     }
                 }
             }
-            "toss" | "toss_one" if peer.open => {
-                let name = peer.profile.clone().unwrap_or_default();
-                if let Some(bot) = self.agents.players.get_mut(&name)
-                    && let Some(stack) = bot.agent.session.inventory.cursor
-                {
-                    let s = &mut bot.agent.session;
-                    let count = if command == "toss_one" { 1 } else { stack.count };
-                    s.inventory.cursor = (stack.count > count)
-                        .then_some(crate::inventory::Stack { count: stack.count - count, ..stack });
-                    self.mobs.entities.throw(
-                        crate::inventory::Stack { count, ..stack },
-                        s.player.eye(),
-                        s.player.forward().as_dvec3(),
-                    );
-                }
-            }
             "drop" | "drop_stack" => {
                 let name = peer.profile.clone().unwrap_or_default();
                 self.drop_agent_selected(&name, &mut peer.body, command == "drop_stack");
@@ -883,6 +913,11 @@ impl Game {
                 let parsed = Command::parse(c)?;
                 let name = peer.profile.as_deref().unwrap();
                 let bot = self.agents.players.get_mut(name).unwrap();
+                if let Command::Book { offhand, .. } = &parsed
+                    && !peer.can_edit_book(&bot.agent, *offhand)
+                {
+                    return Err("Book contents are unavailable".into());
+                }
                 bot.agent.execute(parsed, &mut self.world, &mut self.mobs.entities, &[]).map_err(|e| e.to_string())?;
             }
             c if c.starts_with("sign ") => {
@@ -1003,7 +1038,7 @@ impl Game {
         Ok(())
     }
 
-    fn remote_click(&mut self, peer: &mut Peer, encoded: u16, right: bool, shift: bool) {
+    fn remote_click(&mut self, peer: &mut Peer, encoded: u16, right: bool, shift: bool, revision: u32) {
         if !peer.open {
             return;
         }
@@ -1016,6 +1051,23 @@ impl Game {
         let Some(name) = peer.profile.clone() else { return };
         let Some(session) = self.agents.players.get(&name).map(|b| &b.agent.session) else { return };
         if !self.container_still_valid(session, peer.body.container) || session.vitals.is_dead() {
+            return;
+        }
+        // During a multipart update the guest can still see slots from before
+        // a substantial change. Small updates keep ordinary rapid clicks ordered.
+        if peer.inventory.awaiting_large_update(revision) {
+            return;
+        }
+        if encoded == LAN_OUTSIDE_SLOT {
+            if !peer.inventory.cursor_matches(revision, session.inventory.cursor) {
+                return;
+            }
+            let s = &mut self.agents.players.get_mut(&name).unwrap().agent.session;
+            if let Some(stack) = s.inventory.cursor {
+                let count = if right { 1 } else { stack.count };
+                s.inventory.cursor = (stack.count > count).then_some(Stack { count: stack.count - count, ..stack });
+                self.mobs.entities.throw(Stack { count, ..stack }, s.player.eye(), s.player.forward().as_dvec3());
+            }
             return;
         }
         let Some(slot) = decode_slot(encoded, peer.body.container, session.mode, peer.grid.size) else { return };
@@ -1327,6 +1379,14 @@ impl Game {
                     id: bot.id.0,
                 });
             }
+            let inventory = &bot.agent.session.inventory;
+            if peer.connection.queued_bytes() <= 512 * 1024
+                && let Some(part) = peer.inventory.next(inventory, peer.grid)
+                && let Err(e) = peer.connection.send(part)
+            {
+                peer.connection.close(&e.to_string());
+                continue;
+            }
             let view = peer.view.min(host_view);
             let center = chunk_of(bot.agent.session.player.pos.floor().as_ivec3());
             // Two rings beyond the client's view, so every meshed chunk has all eight
@@ -1512,7 +1572,7 @@ impl Game {
                 peer.sign_edit.map(|(p, front, n)| json!({"pos": p.to_array(), "front": front, "serial": n}));
             // Everyone but this client itself (it has its own full state).
             let others: Vec<&Value> = players.iter().filter(|p| p["id"] != bot.id.0).collect();
-            let snapshot = json!({"sequence":peer.applied,"self":state(&bot.agent,name),"players":others,"time":self.day_time,"rain":self.weather.raining,"rain_strength":self.weather.strength,"thunder":self.weather.thundering,"dimension":self.dimension.name(),"seed":self.world.generator.seed,"view":view,"open":peer.open,"container":container,"grid":peer.grid.cells.iter().map(|s|stack_to_string(*s)).collect::<Vec<_>>(),"grid_size":peer.grid.size,"mobs":mobs,"carts":carts,"items":items,"decor":decor,"arrows":arrows,"extras":extras,"falling":falling,"sounds":sounds,"effects":effects,"cracks":cracks,"wood":wood,"sign_edit":sign_edit});
+            let snapshot = json!({"sequence":peer.applied,"self":state(&bot.agent,name),"players":others,"time":self.day_time,"rain":self.weather.raining,"rain_strength":self.weather.strength,"thunder":self.weather.thundering,"dimension":self.dimension.name(),"seed":self.world.generator.seed,"view":view,"open":peer.open,"container":container,"grid_size":peer.grid.size,"mobs":mobs,"carts":carts,"items":items,"decor":decor,"arrows":arrows,"extras":extras,"falling":falling,"sounds":sounds,"effects":effects,"cracks":cracks,"wood":wood,"sign_edit":sign_edit});
             let mut snapshot = snapshot;
             snapshot["copper_golem_statues"] = json!(self.world.copper_golem_statues_near(here));
             // v0.15 Track B: banner patterns and lectern books near the player.
@@ -1521,7 +1581,10 @@ impl Game {
             snapshot["shulker_lids"] = json!(self.world.shulker_lids_near(here, 160.0));
             // v0.18 Track 9: chest lids and barrel tops in use or moving.
             snapshot["lids"] = json!(self.world.lids_near(here, 160.0));
-            if let Some((open, serial)) = &peer.book_open {
+            if let Some((open, serial)) = &peer.book_open
+                && (open["lectern"].is_array()
+                    || open["slot"].as_u64().is_some_and(|slot| peer.inventory.held_matches(slot as usize, inventory)))
+            {
                 let mut open = open.clone();
                 open["serial"] = json!(serial);
                 snapshot["book_open"] = open;
@@ -1730,7 +1793,8 @@ impl Game {
         self.session.player.yaw = yaw;
         self.session.player.pitch = pitch;
         self.session.mode = own.session.mode;
-        self.session.inventory = own.session.inventory;
+        self.session.inventory = self.lan.inventory.current.clone();
+        self.lan.inventory_revision = self.lan.inventory.revision;
         self.session.vitals = own.session.vitals;
         self.session.sleeping = own.session.sleeping;
         if !self.lan.ready {
@@ -1912,12 +1976,9 @@ impl Game {
                 *slot = v.as_str().and_then(stack_from_str).flatten();
             }
         }
-        self.craft = Grid::new(if snapshot["grid_size"] == 3 { 3 } else { 2 });
-        if let Some(cells) = snapshot["grid"].as_array() {
-            for (slot, v) in self.craft.cells.iter_mut().zip(cells) {
-                *slot = v.as_str().and_then(stack_from_str).flatten();
-            }
-        }
+        let grid_size = if snapshot["grid_size"] == 3 { 3 } else { 2 };
+        self.craft =
+            self.lan.inventory.grid.filter(|grid| grid.size == grid_size).unwrap_or_else(|| Grid::new(grid_size));
         if let Some(players) = snapshot["players"].as_array() {
             self.agents.players.retain(|n, _| players.iter().any(|p| p["name"] == *n && p["id"] != self.lan.id));
             for p in players.iter().take(40).filter(|p| p["id"] != self.lan.id) {
@@ -2738,6 +2799,65 @@ mod tests {
         assert_eq!(fit_state(small.clone()), (Some(small), false));
     }
     #[test]
+    fn state_acknowledges_input_while_a_guest_carries_large_books() {
+        use crate::inventory::Inventory;
+        use crate::item::Item;
+        for (page, count) in [("x".repeat(1024), 2), ("書".repeat(1024), 1)] {
+            let mut original = Agent::new(DVec3::ZERO);
+            let book = Stack::new(Item::WRITABLE_BOOK, 1).with_payload(Payload::WritableBook(vec![page; 100]));
+            original.inventory.slots[..count].fill(Some(book));
+            let mut old_snapshot = json!({"sequence": 1, "self": state(&original, "Guest")});
+            old_snapshot["self"]["inventory"] = json!(original.inventory.serialize());
+            assert!(fit_state(old_snapshot).0.is_none(), "inline inventory used to drop the snapshot");
+            let mut sender = inventory::Sender::default();
+            let mut receiver = inventory::Receiver::default();
+            let mut grid = Grid::new(2);
+            let mut sequence = 0;
+            while let Some(part) = sender.next(&original.inventory, grid) {
+                let frame = part.encode().unwrap();
+                let Packet::InventoryPart { last, bytes } = Packet::decode(&frame[4..]).unwrap() else {
+                    panic!("wrong packet");
+                };
+                receiver.push(last, &bytes).unwrap();
+                if !last {
+                    assert_eq!(receiver.current, Inventory::default(), "the update is atomic");
+                }
+                sequence += 1;
+                let snapshot = json!({
+                    "sequence": sequence,
+                    "self": state(&original, "Guest"),
+                    "players": [state_lite(&original, "Scribe", None, 0.0)],
+                });
+                let (snapshot, _) = fit_state(snapshot);
+                let snapshot = snapshot.expect("tick state fits throughout inventory transfer");
+                Packet::State(snapshot.clone()).encode().unwrap();
+                assert_eq!(snapshot["sequence"], sequence);
+                let rendered = snapshot["players"][0]["held"].as_str().and_then(stack_from_str).flatten().unwrap();
+                assert_eq!(rendered.item, book.item);
+                assert!(rendered.payload.is_none());
+            }
+            assert!(sequence > 1, "the inventory crossed multiple ticks");
+            assert_eq!(receiver.current, original.inventory);
+            original.inventory.slots[0] = None;
+            original.inventory.cursor = Some(book);
+            assert!(!sender.current(&original.inventory));
+            let Some(Packet::InventoryPart { last: true, bytes }) = sender.next(&original.inventory, grid) else {
+                panic!("moving a known book only needs one part");
+            };
+            assert!(bytes.len() < 512, "the book pages were not sent again");
+            receiver.push(true, &bytes).unwrap();
+            assert_eq!(receiver.current, original.inventory);
+            assert_eq!(sender.revision, receiver.revision);
+            grid.cells[0] = original.inventory.cursor.take();
+            let Some(Packet::InventoryPart { last: true, bytes }) = sender.next(&original.inventory, grid) else {
+                panic!("moving a known book into the crafting grid only needs one part");
+            };
+            receiver.push(true, &bytes).unwrap();
+            assert_eq!(receiver.grid, Some(grid));
+            assert_eq!(receiver.current, original.inventory);
+        }
+    }
+    #[test]
     fn session_rules_are_remembered_for_the_next_time_the_world_opens_to_lan() {
         let mut lan = Lan::default();
         lan.cheats = true;
@@ -2790,15 +2910,13 @@ mod tests {
         assert_eq!(lite["eat"], 0.5);
     }
     #[test]
-    fn player_snapshot_preserves_progression_inventory_and_cursor() {
+    fn player_snapshot_preserves_progression_and_movement() {
         let mut original = Agent::new(DVec3::new(12.0, 151.0, -8.0));
         original.id = voxelcraft::entity::PlayerId(7);
         original.set_mode(GameMode::Creative);
         original.player.vel = DVec3::new(1.0, -2.0, 3.0);
         original.player.yaw = 1.25;
         original.player.pitch = -0.4;
-        original.inventory.add(crate::item::Item::DIAMOND, 11);
-        original.inventory.cursor = Some(crate::inventory::Stack::new(crate::item::Item::STICK, 5));
         original.vitals.health = 13.0;
         original.vitals.hunger.food = 7.0;
         original.vitals.xp.add_levels(9);
@@ -2820,15 +2938,23 @@ mod tests {
         assert_eq!(restored.player.carried_stuck(), DVec3::new(0.25, 0.05, 0.25));
         assert_eq!(restored.mode, original.mode);
         assert_eq!(restored.selected, 3);
-        assert_eq!(restored.inventory.serialize(), original.inventory.serialize());
-        assert_eq!(restored.inventory.cursor, original.inventory.cursor);
         assert_eq!(restored.vitals.health, 13.0);
         assert_eq!(restored.vitals.hunger.food, 7.0);
         assert_eq!(restored.vitals.xp.level, 9);
         assert_eq!(restored.sleeping, Some(0.75));
     }
-    /// The LAN stack codec carries every stack component: a client's own
-    /// state, and what other players see held and worn.
+    fn sync_inventory(
+        sender: &mut inventory::Sender,
+        receiver: &mut inventory::Receiver,
+        inventory: &crate::inventory::Inventory,
+    ) {
+        while let Some(Packet::InventoryPart { last, bytes }) = sender.next(inventory, Grid::new(2)) {
+            receiver.push(last, &bytes).unwrap();
+        }
+    }
+
+    /// Inventory updates carry the guest's stack contents. Equipment views
+    /// preserve visible components such as armor trim.
     #[test]
     fn snapshots_carry_stack_components() {
         use crate::inventory::{
@@ -2856,17 +2982,18 @@ mod tests {
         original.inventory.slots[2] = Some(dyed);
         original.inventory.armor[0] = Some(helmet);
         original.inventory.cursor = Some(bundle);
-        let frame = Packet::State(state(&original, "Scribe")).encode().unwrap();
-        let Packet::State(snapshot) = Packet::decode(&frame[4..]).unwrap() else { panic!("wrong packet") };
-        let mut restored = Agent::new(DVec3::ZERO);
-        apply(&mut restored, &snapshot);
-        assert_eq!(restored.inventory, original.inventory);
-        assert_eq!(restored.inventory.get(0).unwrap().bundle_contents(), [helmet, book]);
+        let mut receiver = inventory::Receiver::default();
+        sync_inventory(&mut inventory::Sender::default(), &mut receiver, &original.inventory);
+        assert_eq!(receiver.current, original.inventory);
+        assert_eq!(receiver.current.get(0).unwrap().bundle_contents(), [helmet, book]);
         let frame = Packet::State(state_lite(&original, "Scribe", None, 0.0)).encode().unwrap();
         let Packet::State(lite) = Packet::decode(&frame[4..]).unwrap() else { panic!("wrong packet") };
         let mut copy = Agent::new(DVec3::ZERO);
         apply(&mut copy, &lite);
-        assert_eq!((copy.inventory.get(1), copy.inventory.armor[0]), (Some(book), Some(helmet)));
+        assert_eq!(
+            (copy.inventory.get(1), copy.inventory.armor[0]),
+            (Some(Stack { payload: None, ..book }), Some(helmet))
+        );
     }
 
     /// v0.18 Track 4: the spawn eggs come after every v0.17 palette entry,

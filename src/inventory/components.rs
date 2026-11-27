@@ -44,7 +44,7 @@ pub const WRITTEN_MAX_GENERATION: u8 = 3;
 /// `ItemStackTemplate`'s count range, for each stack in a bundle.
 pub const BUNDLE_STACK_MAX: u8 = 99;
 /// The longest saved payload field read back (characters).
-const MAX_FIELD: usize = 8 << 20;
+pub const MAX_FIELD: usize = 8 << 20;
 
 /// Java's trim patterns (`data/minecraft/trim_pattern`). New patterns go at
 /// the end; saves store [`TrimPattern::name`].

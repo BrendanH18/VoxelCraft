@@ -109,6 +109,8 @@ struct Icons {
     /// The folder holding each slot.
     owners: Vec<Option<String>>,
     next: usize,
+    /// Slots already referenced by UI vertices this frame.
+    used: u64,
     /// Loads left this frame.
     budget: u32,
     /// Pixels to copy into the atlas before the frame is drawn.
@@ -116,28 +118,38 @@ struct Icons {
 }
 
 impl Icons {
+    fn begin_frame(&mut self) {
+        self.used = 0;
+        self.budget = ICON_LOADS_PER_FRAME;
+    }
+
     fn rect(slot: usize) -> [f32; 4] {
         let r = crate::render::ui::icon_slot(slot);
         [r.x as f32, r.y as f32, r.w as f32, r.h as f32]
     }
 
     fn get(&mut self, saves_dir: &Path, dir: &str) -> Option<[f32; 4]> {
-        if let Some(slot) = self.slots.get(dir) {
-            return slot.map(Self::rect);
+        if let Some(&slot) = self.slots.get(dir) {
+            return slot.map(|slot| {
+                self.used |= 1 << slot;
+                Self::rect(slot)
+            });
         }
         if self.budget == 0 {
             return None;
         }
+        let slot =
+            (self.next..self.next + ICON_SLOTS).map(|i| i % ICON_SLOTS).find(|&slot| self.used & (1 << slot) == 0)?;
         self.budget -= 1;
-        let slot = match voxelcraft::title::icon::read(&saves_dir.join(dir).join(voxelcraft::title::icon::FILE)) {
+        let loaded = match voxelcraft::title::icon::read(&saves_dir.join(dir).join(voxelcraft::title::icon::FILE)) {
             Ok(pixels) => {
                 self.owners.resize(ICON_SLOTS, None);
-                let slot = self.next;
-                self.next = (self.next + 1) % ICON_SLOTS;
+                self.next = (slot + 1) % ICON_SLOTS;
                 if let Some(old) = self.owners[slot].replace(dir.to_string()) {
                     self.slots.remove(&old);
                 }
                 self.uploads.push((crate::render::ui::icon_slot(slot), pixels));
+                self.used |= 1 << slot;
                 Some(slot)
             }
             Err(voxelcraft::title::icon::Problem::Missing) => None,
@@ -147,8 +159,8 @@ impl Icons {
                 None
             }
         };
-        self.slots.insert(dir.to_string(), slot);
-        slot.map(Self::rect)
+        self.slots.insert(dir.to_string(), loaded);
+        loaded.map(Self::rect)
     }
 }
 
@@ -599,7 +611,7 @@ impl Title {
         let seconds = (now - self.last_frame).as_secs_f32().min(1.0);
         self.last_frame = now;
         self.poll_panorama();
-        self.icons.get_mut().budget = ICON_LOADS_PER_FRAME;
+        self.icons.get_mut().begin_frame();
         let ui = self.build_ui();
         for (rect, pixels) in std::mem::take(&mut self.icons.get_mut().uploads) {
             self.shell.renderer.upload_ui_image(rect, &pixels);

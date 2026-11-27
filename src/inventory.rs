@@ -288,6 +288,11 @@ impl Default for Inventory {
 }
 
 impl Inventory {
+    /// The carried slots and cursor sent to a LAN guest. Pending drops stay on the host.
+    pub fn without_spill(&self) -> Self {
+        Self { slots: self.slots, cursor: self.cursor, armor: self.armor, offhand: self.offhand, spill: Vec::new() }
+    }
+
     pub fn with_hotbar(items: &[Item]) -> Self {
         let mut inv = Self::default();
         for (slot, &i) in inv.slots.iter_mut().zip(items) {
