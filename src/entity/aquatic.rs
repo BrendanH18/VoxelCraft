@@ -230,6 +230,9 @@ pub(super) fn upkeep<W: MobWorld + ?Sized>(
                             attacker: m.uid,
                             damage: physical.max(magic + if elder { 2.0 } else { 0.0 }),
                             knockback: away * 8.0,
+                            // Java ends the beam with `doHurtTarget`; a guardian
+                            // holds no weapon, so no Smite or Bane applies.
+                            melee: true,
                         });
                     }
                 }
