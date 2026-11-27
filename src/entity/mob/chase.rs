@@ -598,6 +598,11 @@ impl Mob {
         let used = charge.used;
         charge.used += 1;
         let kinetic = spear::kinetic(tier);
+        // Nothing is touched, or remembered, before the delay.
+        if used < kinetic.delay_ticks {
+            self.spear_use = Some(charge);
+            return;
+        }
         let clock = self.goals.ticks;
         let eye = self.eye_pos();
         let Some(target) = self.chase_target.and_then(|id| ctx.players.iter().find(|t| t.id == id)) else {
@@ -799,3 +804,6 @@ impl Mob {
         (self.follow_path(world, speed, false), speed)
     }
 }
+
+#[cfg(test)]
+mod tests;

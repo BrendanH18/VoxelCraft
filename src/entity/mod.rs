@@ -3222,7 +3222,14 @@ mod tests {
             e.spawn(MobKind::Husk, DVec3::new(0.5, 10.0, 0.5));
             let mut c = ctx(DVec3::new(100.0, 10.0, 0.5));
             c.players.push(Target::new(PlayerId(2), DVec3::new(1.0, 10.0, 0.5), true));
-            let events = e.update_difficulty(0.05, &Grid::flat(10), &c, difficulty);
+            // The husk finds its target on Java's schedule (`chase`), then hits.
+            let mut events = Vec::new();
+            for _ in 0..200 {
+                events.extend(e.update_difficulty(0.05, &Grid::flat(10), &c, difficulty));
+                if events.iter().any(|ev| matches!(ev, EntityEvent::PlayerHit { .. })) {
+                    break;
+                }
+            }
             let hunger = events.iter().find_map(|ev| match ev {
                 EntityEvent::PlayerEffect { player: PlayerId(2), effect: Effect::Hunger, ticks, .. } => Some(*ticks),
                 _ => None,
@@ -3454,7 +3461,7 @@ mod tests {
         let mut c = ctx(DVec3::new(1.0, 10.0, 0.5));
         c.players[0].targetable = true;
         c.daylight = 0.0;
-        let events = e.update(0.05, &Grid::flat(10), &c);
+        let events: Vec<_> = (0..200).flat_map(|_| e.update(0.05, &Grid::flat(10), &c)).collect();
         assert!(
             events.iter().any(|ev| matches!(ev, EntityEvent::PlayerEffect { effect: Effect::Wither, ticks: 200, .. }))
         );
@@ -3521,7 +3528,7 @@ mod tests {
         let mut e = Entities::new(7);
         e.spawn(MobKind::MagmaCube, DVec3::new(0.5, 10.0, 0.5));
         e.mobs[0].set_size(1);
-        let events = e.update(0.05, &world, &c);
+        let events: Vec<_> = (0..200).flat_map(|_| e.update(0.05, &world, &c)).collect();
         assert!(events.iter().any(|e| matches!(e, EntityEvent::PlayerHit { damage: 3.0, .. })));
         e.attack(0, DVec3::ZERO, 100.0);
         e.drop_loot(MobKind::MagmaCube, e.mobs[0].pos);
@@ -4000,13 +4007,21 @@ mod tests {
                 thorns: [7, 0, 0, 0],
                 ..Target::new(PlayerId::HOST, DVec3::new(1.5, 10.0, 0.5), true)
             }],
+            // Night, so the zombie doesn't burn while it finds its target.
+            daylight: 0.0,
             ..ctx(DVec3::ZERO)
         };
         let mut max_damage = 0.0f32;
         for seed in 0..32 {
             let mut e = Entities::new(seed);
             e.spawn(MobKind::Zombie, DVec3::new(0.5, 10.0, 0.5));
-            e.update(1.0 / 60.0, &world, &c);
+            // Until its first hit draws the Thorns response.
+            for _ in 0..200 {
+                e.update(0.05, &world, &c);
+                if e.mobs[0].health < MobKind::Zombie.max_health() {
+                    break;
+                }
+            }
             let damage = MobKind::Zombie.max_health() - e.mobs[0].health;
             assert!((1.0..5.0).contains(&damage));
             assert_ne!(damage.fract(), 0.0);
@@ -4057,11 +4072,19 @@ mod tests {
             dimension: Dimension::Overworld,
         };
         let mut hits = Vec::new();
-        for _ in 0..90 {
-            hits.extend(e.update(1.0 / 60.0, &world, &c).into_iter().filter(is_hit));
+        let mut at = Vec::new();
+        for tick in 0..200 {
+            let new: Vec<_> = e.update(0.05, &world, &c).into_iter().filter(is_hit).collect();
+            if !new.is_empty() {
+                at.push(tick);
+            }
+            hits.extend(new);
         }
-        // 1.5 s: an immediate hit plus one after the 1 s cooldown.
-        assert_eq!(hits.len(), 2, "{hits:?}");
+        // `MeleeAttackGoal`: 20 ticks between hits; against a player standing
+        // still the goal ends with its path and restarts at its next 20-tick
+        // `canUse` check, hitting at once.
+        assert!(at.len() >= 5, "{at:?}");
+        assert!(at.windows(2).all(|w| (20..=24).contains(&(w[1] - w[0]))), "{at:?}");
         let EntityEvent::PlayerHit { player: id, damage, knockback, cause, .. } = hits[0] else { panic!("{hits:?}") };
         assert_eq!(id, PlayerId::HOST);
         assert!(damage > 0.0 && knockback.x > 0.0 && knockback.y > 0.0);
@@ -4219,7 +4242,10 @@ mod tests {
             }
             let expected = if plains_spawner(kind) { kind.spawn_cap(o) } else { 0 };
             // One zombie in twenty spawns as a zombie villager instead.
+            // Zombie horses (with their riders) are a rare night spawn whose
+            // count depends on the roll sequence.
             if kind == MobKind::ZombieVillager
+                || kind == MobKind::ZombieHorse
                 || kind.biome_chance(crate::world::terrain::Biome::Plains).clamp(0.0, 1.0) % 1.0 > 0.0
             {
                 assert!(e.count(kind) <= kind.spawn_cap(o).max(MobKind::Zombie.spawn_cap(o)), "{kind:?}");
@@ -4323,7 +4349,9 @@ mod tests {
         // Each player fills their own local monster cap of 70.
         for center in [a, b] {
             let near = e.mobs.iter().filter(|m| m.pos.distance(center) < 160.0).count();
-            assert!((60..=73).contains(&near), "{near} monsters near {center}");
+            // A pack (or a zombie horseman, two mobs) started under the cap
+            // may finish a few over it, as in Java.
+            assert!((60..=75).contains(&near), "{near} monsters near {center}");
         }
     }
 
@@ -4556,7 +4584,8 @@ mod tests {
         assert_eq!(e.mobs[0].ai, Ai::Chase, "provoked");
         let mut e = Entities::new(6);
         e.spawn(MobKind::Spider, DVec3::new(0.5, 10.0, 0.5));
-        run(&mut e, &world, &night(DVec3::new(5.5, 10.0, 0.5)), 0.2);
+        // The target search runs one full update in five (`chase`).
+        run(&mut e, &world, &night(DVec3::new(5.5, 10.0, 0.5)), 3.0);
         assert_eq!(e.mobs[0].ai, Ai::Chase, "hunts at night");
 
         // A 4-high wall stops a pig but not a spider, which climbs onto it

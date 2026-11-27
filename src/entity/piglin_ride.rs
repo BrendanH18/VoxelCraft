@@ -164,8 +164,11 @@ impl Entities {
                 dismount = true;
                 ride.target = ride.target.filter(|_| !dismount);
             }
-            // `Piglin.startRiding`: climb to the top of the stack.
-            let mount = mount.map(|uid| self.top_passenger(uid, STACK_LIMIT, &uid_index));
+            // `Piglin.startRiding`: climb to the top of the stack; it fails
+            // when that vehicle already carries someone (`canAddPassenger`).
+            let mount = mount
+                .map(|uid| self.top_passenger(uid, STACK_LIMIT, &uid_index))
+                .filter(|&uid| !self.mobs.iter().any(|r| r.alive() && r.riding == Some(MOB_VEHICLE | uid)));
             let m = &mut self.mobs[i];
             m.nether.as_mut().unwrap().ride = ride;
             m.ride_walk = walk;
@@ -189,5 +192,111 @@ impl Entities {
             Some(p) if uid_index.contains_key(&p) => self.top_passenger(p, counter - 1, uid_index),
             _ => vehicle,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::entity::{PlayerId, Target};
+    use crate::physics::test_util::Grid;
+    use crate::simulation::lighting::SpawnLight;
+    use crate::world::terrain::Dimension;
+
+    fn ctx() -> Ctx {
+        Ctx {
+            players: vec![Target::new(PlayerId(1), DVec3::new(40.5, 0.0, 0.5), false)],
+            daylight: 0.0,
+            spawn_light: SpawnLight::NIGHT,
+            spawning: false,
+            raining: false,
+            dimension: Dimension::Nether,
+        }
+    }
+
+    fn baby(e: &mut Entities, kind: MobKind, pos: DVec3) -> usize {
+        e.spawn(kind, pos);
+        let i = e.mobs.len() - 1;
+        let m = &mut e.mobs[i];
+        m.baby = true;
+        m.age = -24000;
+        m.persistent = true;
+        if let Some(n) = m.nether.as_mut() {
+            n.weapon = crate::entity::nether::Weapon::None;
+            n.immune = true;
+        }
+        i
+    }
+
+    /// `babySometimesRideBabyHoglin`: a baby piglin that sees a baby hoglin
+    /// picks it as its ride target after 200–800 ticks, walks over and
+    /// rides it until the 200–600-tick memory runs out, then gets off.
+    #[test]
+    fn baby_piglins_ride_baby_hoglins_for_a_while() {
+        let world = Grid::flat(0);
+        let mut e = Entities::new(21);
+        let hoglin = baby(&mut e, MobKind::Hoglin, DVec3::new(3.5, 0.0, 0.5));
+        let piglin = baby(&mut e, MobKind::Piglin, DVec3::new(0.5, 0.0, 0.5));
+        e.ensure_mob_ids();
+        let c = ctx();
+        let vehicle = MOB_VEHICLE | e.mobs[hoglin].uid;
+        let mut mounted = None;
+        let mut left = None;
+        for tick in 0..2400 {
+            e.update(0.05, &world, &c);
+            let p = &e.mobs[piglin];
+            if mounted.is_none() && p.riding == Some(vehicle) {
+                mounted = Some(tick);
+                let seat = e.mobs[hoglin].pos.y + BABY_HOGLIN_SEAT - BABY_PIGLIN_VEHICLE_ATTACHMENT;
+                assert!((p.pos.y - seat).abs() < 1e-6, "seated at {} not {seat}", p.pos.y);
+            }
+            if mounted.is_some() && p.riding.is_none() {
+                left = Some(tick);
+                break;
+            }
+        }
+        let on = mounted.expect("mounted");
+        assert!((150..=900).contains(&on), "mounted at {on}");
+        let off = left.expect("got off when the memory ran out");
+        assert!((on + 150..=on + 620).contains(&off), "rode {on}..{off}");
+    }
+
+    /// `Piglin.startRiding`: babies climb to the third passenger at most,
+    /// so a fourth can't get on; hurting the hoglin makes riders get off.
+    #[test]
+    fn piglins_stack_three_high_and_get_off_when_hurt() {
+        let world = Grid::flat(0);
+        let mut e = Entities::new(5);
+        let hoglin = baby(&mut e, MobKind::Hoglin, DVec3::new(0.5, 0.0, 0.5));
+        let riders: Vec<usize> = (0..4).map(|_| baby(&mut e, MobKind::Piglin, DVec3::new(0.9, 0.0, 0.5))).collect();
+        e.ensure_mob_ids();
+        let h = e.mobs[hoglin].uid;
+        for &r in &riders {
+            let n = e.mobs[r].nether.as_mut().unwrap();
+            n.ride.target = Some((h, 400));
+            n.ride.scan_in = 1000;
+            // One at a time, so each finds the last one's seat taken.
+            e.piglin_rides(&world, &ctx());
+            e.position_mob_riders();
+        }
+        let uid = |i: usize| e.mobs[i].uid;
+        assert_eq!(e.mobs[riders[0]].riding, Some(MOB_VEHICLE | h));
+        assert_eq!(e.mobs[riders[1]].riding, Some(MOB_VEHICLE | uid(riders[0])));
+        assert_eq!(e.mobs[riders[2]].riding, Some(MOB_VEHICLE | uid(riders[1])));
+        assert_eq!(e.mobs[riders[3]].riding, None, "three high at most");
+        let top = e.mobs[riders[2]].pos.y;
+        let expect =
+            e.mobs[hoglin].pos.y + BABY_HOGLIN_SEAT + 2.0 * BABY_PIGLIN_SEAT - 3.0 * BABY_PIGLIN_VEHICLE_ATTACHMENT;
+        assert!((top - expect).abs() < 1e-6, "top seat {top} vs {expect}");
+        // `wantsToStopRiding`: the hoglin was hurt recently.
+        e.mobs[hoglin].hurt_age = 0;
+        e.piglin_rides(&world, &ctx());
+        assert_eq!(e.mobs[riders[0]].riding, None);
+        // `isBabyRidingBaby` with no ride target: the stacked ones get off too.
+        for &r in &riders[1..3] {
+            e.mobs[r].nether.as_mut().unwrap().ride.target = None;
+        }
+        e.piglin_rides(&world, &ctx());
+        assert!(riders.iter().all(|&r| e.mobs[r].riding.is_none()));
     }
 }

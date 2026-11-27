@@ -374,8 +374,15 @@ fn reinforcements_hunt_their_target_out_to_follow_range() {
         e.mobs.push(Mob::new(MobKind::Zombie, DVec3::new(0.5, 64.0, 0.5), 0.0));
         let mut c = ctx(vec![player_at(x, 0.5)]);
         c.spawning = false;
-        e.update_difficulty(0.05, &DARK, &c, Difficulty::Hard);
-        assert_eq!(e.mobs[0].ai == Ai::Chase, chases, "{x}");
+        // The search runs on Java's schedule (`chase`): give it time.
+        let mut chased = false;
+        for _ in 0..200 {
+            e.update_difficulty(0.05, &DARK, &c, Difficulty::Hard);
+            chased |= e.mobs[0].ai == Ai::Chase;
+            // Held in place, so a stroll can't bring it into range.
+            e.mobs[0].pos = DVec3::new(0.5, 64.0, 0.5);
+        }
+        assert_eq!(chased, chases, "{x}");
     }
     // Sent after a player, it keeps that target up to follow range even
     // where it would not have noticed them.
