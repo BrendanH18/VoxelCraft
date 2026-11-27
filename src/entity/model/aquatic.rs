@@ -155,7 +155,7 @@ const TURTLE_FLIPPER: &[Cuboid] = &[cube([-1.0, -1.0, -2.0], [1.0, 1.0, 2.0], [1
 const TURTLE_SIDE_FLIPPER: &[Cuboid] = &[cube([0.0, -0.5, -2.0], [6.0, 0.5, 2.0], [102, 168, 96], 14)];
 
 pub(super) fn pose(m: &Mob, time: f32) -> Parts {
-    let tail = Quat::from_rotation_y((time * 5.0 + m.limb_phase).sin() * 0.3);
+    let tail = Quat::from_rotation_y((time * 5.0 + m.limb_phase * motion::WALK_FREQ).sin() * 0.3);
     match m.kind {
         MobKind::Cod | MobKind::Salmon | MobKind::TropicalFish => parts![
             part(
@@ -209,10 +209,12 @@ pub(super) fn pose(m: &Mob, time: f32) -> Parts {
             let mut p = parts![
                 part(CAT, [0.0; 3], Quat::IDENTITY),
                 part(CAT_TAIL, [0.0, 5.0, -6.0], tail),
-                part(CAT_LEG, [-2.0, 3.0, 3.0], Quat::from_rotation_x(m.limb_phase.sin() * 0.5)),
-                part(CAT_LEG, [2.0, 3.0, 3.0], Quat::from_rotation_x(-m.limb_phase.sin() * 0.5)),
-                part(CAT_LEG, [-2.0, 3.0, -4.0], Quat::IDENTITY),
-                part(CAT_LEG, [2.0, 3.0, -4.0], Quat::IDENTITY)
+                // v1.0 gap Track 7: `AdultFelineModel`, every leg on
+                // `cos(pos * 0.6662) * speed`, the left hind leading.
+                part(CAT_LEG, [-2.0, 3.0, 3.0], Quat::from_rotation_x(-walk_cos(m))),
+                part(CAT_LEG, [2.0, 3.0, 3.0], Quat::from_rotation_x(walk_cos(m))),
+                part(CAT_LEG, [-2.0, 3.0, -4.0], Quat::from_rotation_x(walk_cos(m))),
+                part(CAT_LEG, [2.0, 3.0, -4.0], Quat::from_rotation_x(-walk_cos(m)))
             ];
             if m.animal.as_ref().is_some_and(|a| a.owner.is_some()) {
                 p.push(part(CAT_COLLAR, [0.0; 3], Quat::IDENTITY));
@@ -220,14 +222,24 @@ pub(super) fn pose(m: &Mob, time: f32) -> Parts {
             p
         }
         MobKind::Turtle => {
-            let paddle = if m.in_water { (time * 4.0).sin() * 0.6 } else { m.limb_phase.sin() * m.limb_amp };
+            // v1.0 gap Track 7: `TurtleModel`. On land the flippers sweep
+            // round at five times the walk position (front 8, hind 3 times
+            // the speed); off it they row at `0.6662 * 0.6` of it.
+            let (pos, speed) = (m.limb_phase, m.limb_amp);
+            let (ry, rx, rz) = (Quat::from_rotation_y, Quat::from_rotation_x, Quat::from_rotation_z);
+            let (front, hind, row) = if !m.in_water && m.on_ground {
+                let sweep = (pos * 5.0).cos() * speed;
+                (-8.0 * sweep, 3.0 * sweep, 0.0)
+            } else {
+                (0.0, 0.0, (pos * motion::WALK_FREQ * 0.6).cos() * 0.5 * speed)
+            };
             parts![
                 part(TURTLE_SHELL, [0.0; 3], Quat::IDENTITY),
                 part(TURTLE_HEAD, [0.0, 2.0, 8.0], Quat::IDENTITY),
-                part(TURTLE_SIDE_FLIPPER, [6.0, 2.0, 4.0], Quat::from_rotation_y(-0.4 + paddle)),
-                part(TURTLE_SIDE_FLIPPER, [-6.0, 2.0, 4.0], Quat::from_rotation_y(PI + 0.4 - paddle)),
-                part(TURTLE_FLIPPER, [-4.0, 2.0, -8.0], Quat::from_rotation_y(paddle)),
-                part(TURTLE_FLIPPER, [4.0, 2.0, -8.0], Quat::from_rotation_y(-paddle))
+                part(TURTLE_SIDE_FLIPPER, [6.0, 2.0, 4.0], ry(-0.4 + front) * rz(-row)),
+                part(TURTLE_SIDE_FLIPPER, [-6.0, 2.0, 4.0], ry(PI + 0.4 - front) * rz(row)),
+                part(TURTLE_FLIPPER, [-4.0, 2.0, -8.0], ry(hind) * rx(-row)),
+                part(TURTLE_FLIPPER, [4.0, 2.0, -8.0], ry(-hind) * rx(row))
             ]
         }
         _ => Parts::new(),

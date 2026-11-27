@@ -9,7 +9,8 @@ const MUSHROOM: &[Cuboid] = &[
     cube([0.7, 5.5, -1.3], [1.6, 5.6, -0.3], [243, 224, 194], 12),
 ];
 pub(super) fn mooshroom(m: &Mob) -> Parts {
-    let swing = m.limb_phase.sin() * m.limb_amp * 0.9;
+    // `CowModel`, a `QuadrupedModel`.
+    let swing = walk_cos(m) * motion::LEG_SWING;
     let head = Quat::from_rotation_y(-m.head_yaw) * Quat::from_rotation_x(-m.head_pitch);
     let rx = Quat::from_rotation_x;
     let mut p = parts![
@@ -112,9 +113,13 @@ const FROG_BODY: &[Cuboid] = &[
 const FROG_LEG: &[Cuboid] =
     &[cube([-0.7, 0.0, -1.5], [0.7, 2.2, 1.5], FROG_SKIN, 20), cube([-0.8, 0.0, 0.5], [0.8, 0.6, 2.0], FROG_SKIN, 14)];
 const FROG_THROAT: &[Cuboid] = &[cube([-2.5, 1.2, 3.7], [2.5, 4.3, 5.2], [234, 215, 158], 14)];
-pub(super) fn frog(m: &Mob, time: f32) -> Parts {
+pub(super) fn frog(m: &Mob) -> Parts {
     let state = m.frog.as_ref().unwrap();
-    let swing = if state.pose == 4 { 0.7 } else { (time * 5.0).sin() * m.limb_amp * 0.35 };
+    // `FrogModel` plays a keyframe walk on land and a swim in water; these
+    // legs keep its loop and strength.
+    let walk = if m.in_water { motion::FROG_SWIM } else { motion::FROG_WALK };
+    let (phase, scale) = motion::keyframe_phase(m.limb_phase, m.limb_amp, walk);
+    let swing = if state.pose == 4 { 0.7 } else { phase.sin() * 0.35 * scale };
     let mut p = parts![part(FROG_BODY, [0.0; 3], Quat::IDENTITY)];
     for (x, z, sign) in [(-3.2, -2.2, 1.0), (3.2, -2.2, -1.0), (-2.6, 2.2, -1.0), (2.6, 2.2, 1.0)] {
         p.push(part(FROG_LEG, [x, 0.0, z], Quat::from_rotation_x(swing * sign)));
@@ -233,7 +238,8 @@ pub(super) fn polar_bear(m: &Mob) -> Parts {
     let rot = Quat::from_rotation_x(-1.2 * stand);
     let hip = Vec3::new(0.0, 9.0, -8.0);
     let at = |v: [f32; 3]| (hip + rot * (Vec3::from_array(v) - hip)).to_array();
-    let swing = m.limb_phase.sin() * m.limb_amp * (1.0 - stand) * 0.7;
+    // `PolarBearModel` walks as a `QuadrupedModel`, standing or not.
+    let swing = -walk_cos(m) * motion::LEG_SWING;
     parts![
         part(BEAR_BODY, hip.to_array(), rot),
         part(
@@ -311,7 +317,8 @@ pub(super) fn panda(m: &Mob, time: f32) -> Parts {
     };
     let center = Vec3::new(0.0, 10.0, 0.0);
     let at = |p: [f32; 3]| (center + rot * (Vec3::from_array(p) - center)).to_array();
-    let swing = m.limb_phase.sin() * m.limb_amp * 0.65;
+    // `PandaModel` walks as a `QuadrupedModel`.
+    let swing = -walk_cos(m) * motion::LEG_SWING;
     let head = Quat::from_rotation_y(-m.head_yaw)
         * Quat::from_rotation_x(
             -m.head_pitch
@@ -395,7 +402,10 @@ pub(super) fn armadillo(m: &Mob) -> Parts {
     if s.hide() {
         return parts![part(ARMADILLO_BALL, [0.0; 3], Quat::IDENTITY)];
     }
-    let swing = m.limb_phase.sin() * m.limb_amp * 0.7;
+    // `ArmadilloModel` plays a keyframe walk; these legs keep its loop
+    // and strength.
+    let (phase, scale) = motion::keyframe_phase(m.limb_phase, m.limb_amp, motion::ARMADILLO_WALK);
+    let swing = phase.sin() * 0.7 * scale;
     let mut p = parts![
         part(ARMADILLO_SHELL, [0.0; 3], Quat::IDENTITY),
         part(
@@ -471,16 +481,23 @@ const OCELOT_TAIL: &[Cuboid] = &[
 pub(super) fn ocelot(m: &Mob) -> Parts {
     let s = m.ocelot.as_ref().unwrap();
     let low = if s.crouching { -1.3 } else { 0.0 };
-    let swing = (m.limb_phase * if s.sprinting { 1.6 } else { 1.0 }).sin() * m.limb_amp * 0.9;
+    // v1.0 gap Track 7: `AdultFelineModel`'s legs swing `cos(pos * 0.6662)
+    // * speed`, the left hind leading; sprinting, each pair 0.3 apart in a
+    // gallop.
+    let a = m.limb_phase * motion::WALK_FREQ;
+    let leg = |offset: f32| (a + offset).cos() * m.limb_amp;
+    // Left front, right front, left hind, right hind.
+    let [lf, rf, lh, rh] =
+        if s.sprinting { [leg(PI + 0.3), leg(PI), leg(0.0), leg(0.3)] } else { [leg(PI), leg(0.0), leg(0.0), leg(PI)] };
     let rx = Quat::from_rotation_x;
     let head = Quat::from_rotation_y(-m.head_yaw) * rx(-m.head_pitch);
     parts![
         part(OCELOT_BODY, [0.0, low, 0.0], Quat::IDENTITY),
         part(OCELOT_HEAD, [0.0, 9.0 + low, 6.0], head),
-        part(OCELOT_LEG, [-2.0, 5.0, 4.0], rx(swing)),
-        part(OCELOT_LEG, [2.0, 5.0, 4.0], rx(-swing)),
-        part(OCELOT_LEG, [-2.0, 5.0, -5.0], rx(-swing)),
-        part(OCELOT_LEG, [2.0, 5.0, -5.0], rx(swing)),
+        part(OCELOT_LEG, [-2.0, 5.0, 4.0], rx(lf)),
+        part(OCELOT_LEG, [2.0, 5.0, 4.0], rx(rf)),
+        part(OCELOT_LEG, [-2.0, 5.0, -5.0], rx(lh)),
+        part(OCELOT_LEG, [2.0, 5.0, -5.0], rx(rh)),
         part(OCELOT_TAIL, [0.0, 7.0 + low, -7.0], rx(if s.sprinting { -0.4 } else { 0.15 }))
     ]
 }

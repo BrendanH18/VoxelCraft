@@ -29,7 +29,10 @@ const POPPY: &[Cuboid] = &[
 ];
 pub(super) fn pose(m: &Mob, time: f32) -> Parts {
     let Some(s) = &m.copper_golem else { return Parts::new() };
-    let swing = m.limb_phase.sin() * m.limb_amp * 0.65;
+    // v1.0 gap Track 7: `CopperGolemModel` plays a keyframe walk; these limbs keep
+    // its loop and strength (`applyWalk`).
+    let (phase, scale) = super::motion::keyframe_phase(m.limb_phase, m.limb_amp, super::motion::COPPER_GOLEM_WALK);
+    let swing = phase.sin() * 0.65 * scale;
     let lift = if s.cargo.is_some() {
         -0.9
     } else if s.pose > 0 {

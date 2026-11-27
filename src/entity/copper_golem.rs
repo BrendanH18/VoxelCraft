@@ -470,7 +470,8 @@ impl Entities {
                 } else {
                     s.spin = s.spin.saturating_sub(1);
                 }
-                if (m.limb_phase - s.last_step).abs() >= std::f32::consts::PI {
+                // A step each half of Java's leg cycle (`cos(pos * 0.6662)`).
+                if (m.limb_phase - s.last_step).abs() >= std::f32::consts::PI / super::motion::WALK_FREQ {
                     s.last_step = m.limb_phase;
                     self.pending_sounds.push(EntityEvent::Sound {
                         sound: MobSound::CopperGolem(Sound::Step, s.stage as u8),

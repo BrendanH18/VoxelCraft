@@ -27,7 +27,10 @@ const HEAD: &[Cuboid] = &[
 const LEG: &[Cuboid] = &[cube([-2., -7., -2.], [2., 0., 2.], [75, 49, 34], 20)];
 pub(super) fn pose(m: &Mob, time: f32) -> Parts {
     let state = m.sniffer.as_ref().map_or(0, |s| s.pose);
-    let swing = m.limb_phase.sin() * m.limb_amp * 0.6;
+    // v1.0 gap Track 7: `SnifferModel` plays a keyframe walk; these limbs keep
+    // its loop and strength (`applyWalk`).
+    let (phase, scale) = super::motion::keyframe_phase(m.limb_phase, m.limb_amp, super::motion::SNIFFER_WALK);
+    let swing = phase.sin() * 0.6 * scale;
     let digging = state == s::DIGGING;
     let lower = if digging {
         -3.

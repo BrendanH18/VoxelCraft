@@ -50,7 +50,13 @@ pub(super) fn pose(m: &Mob, time: f32) -> Parts {
         w::DIGGING => -46.0 * (elapsed / f32::from(w::DIG_TICKS)).clamp(0.0, 1.0),
         _ => 0.0,
     };
-    let swing = m.limb_phase.sin() * m.limb_amp * 0.7;
+    // v1.0 gap Track 7: `WardenModel.animateWalk`: everything sways on
+    // `pos * 0.8662`, scaled by `min(0.5, 3 * speed)` (body and head nod
+    // by at most 0.35).
+    let sm = (3.0 * m.limb_amp).min(0.5);
+    let smm = sm.min(0.35);
+    let a = m.limb_phase * 0.8662;
+    let (ca, sa) = (a.cos(), a.sin());
     let attack = (m.attack_anim / 0.75).clamp(0.0, 1.0);
     let sonic = s.and_then(|s| s.sonic).map_or(0.0, |t| (t as f32 / 20.0).min(1.0));
     let (head_pitch, head_yaw) = match state {
@@ -65,16 +71,19 @@ pub(super) fn pose(m: &Mob, time: f32) -> Parts {
     };
     let twitch = s.map_or(0.0, |s| f32::from(s.tendril) / 10.0) * (time * 40.0).sin() * 0.5;
     let beat = s.map_or(0.0, |s| f32::from(s.heart) / 10.0);
-    let head = Quat::from_rotation_y(head_yaw) * Quat::from_rotation_x(head_pitch);
+    let head = Quat::from_rotation_z(0.3 * sa * sm)
+        * Quat::from_rotation_y(head_yaw)
+        * Quat::from_rotation_x(head_pitch + 1.2 * (a + std::f32::consts::FRAC_PI_2).cos() * smm);
+    let torso = Quat::from_rotation_z(0.1 * sa * sm) * Quat::from_rotation_x(ca * smm - sonic * 0.25);
     parts![
-        part(LEG, [-5.5, 12. + lower, 0.], Quat::from_rotation_x(swing)),
-        part(LEG, [5.5, 12. + lower, 0.], Quat::from_rotation_x(-swing)),
-        part(TORSO, [0., lower, 0.], Quat::from_rotation_x(-sonic * 0.25)),
+        part(LEG, [-5.5, 12. + lower, 0.], Quat::from_rotation_x(ca * sm)),
+        part(LEG, [5.5, 12. + lower, 0.], Quat::from_rotation_x(-ca * sm)),
+        part(TORSO, [0., lower, 0.], torso),
         part(HEART, [0., 24. + lower, 6.0 + beat * 1.2], Quat::IDENTITY),
         part(HEAD, [0., 32. + lower, 0.], head),
         part(TENDRIL_L, [-9., 39.5 + lower, 0.], Quat::from_rotation_z(0.5 + twitch)),
         part(TENDRIL_L, [9., 39.5 + lower, 0.], Quat::from_rotation_z(-0.5 - twitch)),
-        part(ARM, [-12.3, 30.5 + lower, 0.], Quat::from_rotation_x(-swing - arm_raise)),
-        part(ARM, [12.3, 30.5 + lower, 0.], Quat::from_rotation_x(swing - arm_raise))
+        part(ARM, [-12.3, 30.5 + lower, 0.], Quat::from_rotation_x(-0.8 * ca * sm - arm_raise)),
+        part(ARM, [12.3, 30.5 + lower, 0.], Quat::from_rotation_x(-0.8 * sa * sm - arm_raise))
     ]
 }

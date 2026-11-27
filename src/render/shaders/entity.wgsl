@@ -335,8 +335,15 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     }
     let lit = mix(shaded, vec3<f32>(1.0), in.light.w);
     var c = base * lit;
-    // Hurt: Minecraft-style red overlay.
-    c = mix(c, vec3<f32>(0.8, 0.0, 0.0) * max(lit, vec3<f32>(0.25)), in.light.z * 0.6);
+    // Hurt (v1.0 gap Track 7): Java's `OverlayTexture` red row is
+    // (255, 0, 0) at alpha 0xB2, and entity.fsh mixes it in sRGB over the
+    // face-shaded texel before the light map: `mix(red, texel * shade,
+    // 178 / 255) * light`. `lit` is the light times the face shade.
+    if in.light.z > 0.0 {
+        let shade = max(in.light.y, 1e-3);
+        let red = from_srgb(mix(vec3<f32>(1.0, 0.0, 0.0), to_srgb(base * shade), 178.0 / 255.0));
+        c = mix(c, red * (lit / shade), in.light.z);
+    }
     // Enchantment glint: a scrolling band, cheap enough to stay in this pass.
     if in.material == 3u && in.color.a > 0.5 {
         let stripe = abs(fract(in.uv.x * 0.11 - in.uv.y * 0.11 + g.sun.w * 0.35) - 0.5);
