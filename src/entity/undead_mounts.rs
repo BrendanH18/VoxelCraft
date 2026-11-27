@@ -91,12 +91,14 @@ impl Entities {
         }
         for m in self.mobs.iter_mut().filter(|m| m.simulation_active && super::camel_husk::mob_mount(m.kind)) {
             if m.kind == MobKind::CamelHusk
-                && ridden.contains_key(&(super::mounts::MOB_VEHICLE | m.uid))
                 && let Some(s) = m.mount.as_mut()
             {
-                // `RandomSitting` waits while a mob steers (`isMobControlled`).
-                s.sit_ticks = 0;
-                s.stand_ticks = 0;
+                // `RandomSitting` waits while a mob steers (`isMobControlled`),
+                // and a seated husk camel stands to move (`CamelMoveControl`).
+                s.mob_controlled = ridden.contains_key(&(super::mounts::MOB_VEHICLE | m.uid));
+                if s.mob_controlled {
+                    s.stand_up();
+                }
             }
             if let Some(&rider) = ridden.get(&(super::mounts::MOB_VEHICLE | m.uid)) {
                 m.hunt = ctx

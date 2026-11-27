@@ -1775,6 +1775,10 @@ impl Mob {
             Shape::new(base * 0.5, base)
         } else if self.kind.is_cube() {
             Shape::new(0.255 * self.size as f64, 0.51 * self.size as f64)
+        } else if let Some(s) = self.mount.as_ref().filter(|_| super::mounts::camel_like(self.kind)) {
+            // v1.0 gap Track 3: `Camel.getDefaultDimensions` by pose and age.
+            let (width, height) = super::mounts::camel::dimensions(self.baby || self.age < 0, s.camel_sitting);
+            Shape::new(width / 2.0, height)
         } else if self.baby || self.age < 0 {
             let s = self.kind.shape();
             let scale = if super::undead_mounts::undead(self.kind) {
@@ -1783,6 +1787,8 @@ impl Mob {
                 0.6
             } else if self.kind == MobKind::HappyGhast {
                 super::happy_ghast::BABY_SCALE
+            } else if self.kind == MobKind::Dolphin {
+                dolphin::BABY_SCALE
             } else {
                 0.5
             };
@@ -2008,6 +2014,12 @@ impl Mob {
         // entity's hit lands.
         if attacked && let Some(s) = &mut self.silverfish {
             s.notify_hurt();
+        }
+        // `Camel.actuallyHurt` stands it up at once (v1.0 gap Track 3).
+        if super::mounts::camel_like(self.kind)
+            && let Some(s) = self.mount.as_mut()
+        {
+            s.stand_up_instantly();
         }
         if let Some(a) = &mut self.animal {
             a.love = 0.0;
@@ -2337,6 +2349,7 @@ impl Mob {
         } else {
             super::mounts::control(self, dt, rng).unwrap_or_else(|| self.think(dtf, world, ctx, rng, events))
         };
+        let (wish, speed) = self.camel_hold(world, wish, speed);
 
         // Don't walk off tall drops; wanderers pick another direction.
         let controlled = self.mount.as_ref().is_some_and(|s| s.controlled());
@@ -2392,12 +2405,9 @@ impl Mob {
             super::illager::vex_travel(self, dt);
         } else if self.sulfur_has_block() {
             self.sulfur_travel(dt, world);
-        } else if controlled
-            && equine::java_ridden(self.kind)
-            && !self.touching_water(world)
-            && !self.touching_lava(world)
-        {
-            // v1.0 Track 7: a steered horse rides Java's `travelRidden`.
+        } else if controlled && equine::java_ridden(self.kind) {
+            // v1.0 Track 7: a steered horse rides Java's `travelRidden`, in
+            // water and lava as well since v1.0 gap Track 3, as do camels.
             self.move_ctl.time += dt;
             while self.move_ctl.time >= equine::TICK - 1e-9 {
                 self.move_ctl.time -= equine::TICK;
@@ -3042,7 +3052,9 @@ impl Mob {
                     self.head_target =
                         if rng.chance(0.6) { (rng.range(-1.1, 1.1), rng.range(-0.35, 0.3)) } else { (0.0, 0.0) };
                 }
-                if self.kind.walks_paths() {
+                if super::mounts::camel_like(self.kind) {
+                    self.camel_idle(world, ctx, rng);
+                } else if self.kind.walks_paths() {
                     // `RandomStrollGoal`: a 1-in-`interval` chance a tick (1 in
                     // half the interval per goal update, every other tick).
                     if rng.chance(dt * 20.0 / self.kind.stroll_interval()) && self.try_stroll(world, ctx, rng) {
@@ -3681,6 +3693,12 @@ impl Mob {
             self.vel += (target - self.vel) * k;
         } else if self.in_water {
             let k = (dt * 4.0).min(1.0);
+            // v1.0 gap Track 3: flowing water carries the mob. Java adds
+            // `CurrentAccumulator`'s push each tick against `travelInWater`'s
+            // 0.8 drag, a steady drift of four times the push; this
+            // continuous model eases toward that drift.
+            let drift = self.water_current(world, self.vel * swim::TICK, false) * (0.8 / 0.2) / swim::TICK;
+            let target = target + drift / 0.6;
             self.vel.x += (target.x * 0.6 - self.vel.x) * k;
             self.vel.z += (target.z * 0.6 - self.vel.z) * k;
             if self.kind.floats() {

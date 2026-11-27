@@ -30,15 +30,11 @@ pub fn mob_mount(kind: MobKind) -> bool {
 pub fn rider_seat(vehicle: &Mob, n: usize, riders: usize, rider_offset: f64) -> DVec3 {
     match vehicle.kind {
         MobKind::CamelHusk => {
-            // As the camel's player seats: half a block fore and aft with two aboard.
-            let sitting = vehicle.mount.as_ref().is_some_and(|s| s.sit_ticks > 0);
-            let seat =
-                vehicle.pos + DVec3::Y * (vehicle.shape().height * 0.75 - 0.35 - if sitting { 0.9 } else { 0.0 });
-            let forward = DVec3::new(vehicle.yaw.cos() as f64, 0.0, vehicle.yaw.sin() as f64) * 0.5;
-            match (riders, n) {
-                (1, _) => seat,
-                (_, 0) => seat + forward,
-                _ => seat - forward,
+            // v1.0 gap Track 3: `Camel.getPassengerAttachmentPoint`, less
+            // the rider's own vehicle attachment.
+            match vehicle.mount.as_ref() {
+                Some(s) => super::mounts::camel::attachment(vehicle, s, n, riders, false) - DVec3::Y * rider_offset,
+                None => vehicle.pos + DVec3::Y * (vehicle.shape().height - rider_offset),
             }
         }
         MobKind::ZombieNautilus => vehicle.pos + DVec3::Y * (super::nautilus::PASSENGER_HEIGHT - ZOMBIE_RIDING_OFFSET),

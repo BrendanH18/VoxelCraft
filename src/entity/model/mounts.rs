@@ -239,12 +239,15 @@ const CAMEL_SADDLE: &[Cuboid] = &[
 ];
 pub(super) fn camel(m: &Mob) -> Parts {
     let s = m.mount.as_ref();
-    let sitting = s.is_some_and(|s| s.sit_ticks > 0);
+    // v1.0 gap Track 3: the body sinks and rises with Java's seat anchor
+    // through the 40-tick sit and the 52-tick stand.
+    let sink = s.map_or(0.0, |s| crate::entity::mounts::camel::sit_fraction(s, m.baby));
+    let sitting = sink > 0.5;
     let swing = m.limb_phase.sin() * m.limb_amp * 0.7;
     let rx = Quat::from_rotation_x;
     let head = Quat::from_rotation_y(-m.head_yaw) * rx(-m.head_pitch);
     // Sitting: the body rests on folded legs.
-    let drop = if sitting { -15. } else { 0. };
+    let drop = -15. * sink;
     let mut p = Parts::new();
     p.push(part(CAMEL_BODY, [0., drop, 0.], Quat::IDENTITY));
     p.push(part(CAMEL_HEAD, [0., 23. + drop, 12.], head));

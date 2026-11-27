@@ -654,6 +654,16 @@ impl Entities {
         {
             m.set_sulfur_size(super::sulfur_cube::BABY_SIZE);
         }
+        // v1.0 gap Track 3: `Dolphin.finalizeSpawn` starts a pack's
+        // `AgeableMobGroupData(0.1F)`: after the first, one in ten is a baby.
+        if kind == MobKind::Dolphin
+            && group.size > 0
+            && self.rng.next_f32() <= super::mob::dolphin::BABY_SPAWN_CHANCE
+            && let Some(m) = self.mobs.last_mut()
+        {
+            m.baby = true;
+            m.age = super::animals::BABY_AGE;
+        }
         group.size += 1;
         let Some(m) = self.mobs.last_mut() else { return };
         // The first member picks the horse coat, llama colour, rabbit or fox
@@ -703,6 +713,20 @@ mod tests {
             [(MobKind::Axolotl, false), (MobKind::Hoglin, false), (MobKind::Cow, false), (MobKind::Zombie, false)],
             "natural undead now save conversion state without becoming persistence-required"
         );
+    }
+
+    #[test]
+    fn dolphin_packs_start_with_an_adult_then_one_in_ten_babies() {
+        // `Dolphin.finalizeSpawn`'s `AgeableMobGroupData(0.1F)` (v1.0 gap Track 3).
+        let mut e = Entities::new(9);
+        let mut group = PackGroup::default();
+        for _ in 0..2000 {
+            e.spawn_natural(MobKind::Dolphin, DVec3::new(0.5, 50.0, 0.5), Biome::Ocean, &mut group);
+        }
+        assert!(!e.mobs[0].baby, "the first of a pack is an adult");
+        let babies = e.mobs.iter().filter(|m| m.baby).count();
+        assert!((150..=250).contains(&babies), "{babies} babies in 1999");
+        assert!(e.mobs.iter().filter(|m| m.baby).all(|m| m.age == super::super::animals::BABY_AGE));
     }
 
     fn fixture() -> Value {

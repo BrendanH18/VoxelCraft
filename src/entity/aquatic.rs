@@ -23,6 +23,8 @@ pub struct State {
     pub beam: Option<DVec3>,
     pub charge: f32,
     target: Option<super::PlayerId>,
+    /// v1.0 gap Track 3: a guardian's squid or axolotl target (its uid).
+    mob_target: Option<u32>,
     prey: Option<(u32, DVec3)>,
     sense_timer: f32,
     pub(super) play_dead: f32,
@@ -54,6 +56,7 @@ impl State {
     pub fn new() -> Self {
         Self {
             target: None,
+            mob_target: None,
             prey: None,
             sense_timer: 0.0,
             play_dead: 0.0,
@@ -116,6 +119,13 @@ pub(super) fn environment<W: MobWorld + ?Sized>(m: &mut Mob, dt: f32, w: &W) {
     }
 }
 
+/// What a guardian aims its beam at.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Aim {
+    Player(super::PlayerId),
+    Mob(u32),
+}
+
 /// Effects and attacks that run whatever the mob is doing: the elder
 /// guardian's Mining Fatigue, the guardian beam, the pufferfish's puffing
 /// and stings. Returns `true` while the mob must
@@ -155,43 +165,81 @@ pub(super) fn upkeep<W: MobWorld + ?Sized>(
         }
     }
     if guardian {
-        let target = ctx
-            .players
-            .iter()
-            .filter(|t| t.targetable && t.alive)
-            .filter(|t| {
-                let d = t.pos.distance_squared(m.pos);
-                // `TargetGoal.canAttack`: the target stands inside the home.
-                d < 256.0
-                    && (a.target == Some(t.id) || d <= t.detection_range(16.).powi(2))
-                    && (m.kind == MobKind::ElderGuardian || d > 9.0)
-                    && within_home(t.pos)
-                    && super::mob::line_of_sight(w, eye, t.pos + DVec3::Y)
-            })
-            .min_by(|l, r| l.pos.distance_squared(m.pos).total_cmp(&r.pos.distance_squared(m.pos)));
-        if let Some(t) = target {
-            let to = t.pos + DVec3::Y;
-            if a.target != Some(t.id) {
+        // `NearestAttackableTargetGoal(LivingEntity, GuardianAttackSelector)`:
+        // players, squid (glow squid too) and axolotls more than 3 blocks
+        // away, within the 16-block follow range and the home, in sight.
+        // `GuardianAttackGoal` keeps its target (an elder even within 3
+        // blocks) while it stays in sight; v1.0 gap Track 3 added the mobs.
+        let elder = m.kind == MobKind::ElderGuardian;
+        let valid = |pos: DVec3, current: bool, range: f64| {
+            let d = pos.distance_squared(m.pos);
+            d < 256.0
+                && d <= range * range
+                && (if current { elder || d > 9.0 } else { d > 9.0 })
+                && within_home(pos)
+                && super::mob::line_of_sight(w, eye, pos + DVec3::Y)
+        };
+        let dist =
+            |l: &(Aim, DVec3), r: &(Aim, DVec3)| l.1.distance_squared(m.pos).total_cmp(&r.1.distance_squared(m.pos));
+        let kept = if let Some(id) = a.target {
+            ctx.players
+                .iter()
+                .find(|t| t.id == id && t.targetable && t.alive && valid(t.pos, true, 16.0))
+                .map(|t| (Aim::Player(t.id), t.pos))
+        } else if let Some(uid) = a.mob_target {
+            a.prey.filter(|&(u, pos)| u == uid && valid(pos, true, 16.0)).map(|(u, pos)| (Aim::Mob(u), pos))
+        } else {
+            None
+        };
+        let target = kept.or_else(|| {
+            let players = ctx
+                .players
+                .iter()
+                .filter(|t| t.targetable && t.alive && valid(t.pos, false, t.detection_range(16.)))
+                .map(|t| (Aim::Player(t.id), t.pos));
+            let prey = a.prey.filter(|&(_, pos)| valid(pos, false, 16.0)).map(|(u, pos)| (Aim::Mob(u), pos));
+            players.chain(prey).min_by(dist)
+        });
+        if let Some((aim, pos)) = target {
+            let to = pos + DVec3::Y;
+            let (player_id, mob_id) = match aim {
+                Aim::Player(id) => (Some(id), None),
+                Aim::Mob(uid) => (None, Some(uid)),
+            };
+            if a.target != player_id || a.mob_target != mob_id {
                 a.charge = -0.5;
             }
-            a.target = Some(t.id);
+            a.target = player_id;
+            a.mob_target = mob_id;
             a.beam = Some(to);
             a.charge += dt;
             m.yaw = ((to.z - eye.z) as f32).atan2((to.x - eye.x) as f32);
-            let duration = if m.kind == MobKind::ElderGuardian { 3.0 } else { 4.0 };
+            let duration = if elder { 3.0 } else { 4.0 };
             if a.charge >= duration {
                 let magic = if m.difficulty == Difficulty::Hard { 3.0 } else { 1.0 };
-                events.push(EntityEvent::PlayerBeam {
-                    player: t.id,
-                    physical: if m.kind == MobKind::ElderGuardian { 8.0 } else { 6.0 },
-                    magic,
-                });
+                let physical = if elder { 8.0 } else { 6.0 };
+                match aim {
+                    Aim::Player(player) => events.push(EntityEvent::PlayerBeam { player, physical, magic }),
+                    Aim::Mob(target) => {
+                        // The magic hit, then `doHurtTarget` inside the same
+                        // invulnerability window: only the larger counts.
+                        // `hurtServer`'s 0.4 push away from the guardian.
+                        let away = (pos - m.pos).with_y(0.0).normalize_or_zero();
+                        events.push(EntityEvent::MobHit {
+                            target,
+                            attacker: m.uid,
+                            damage: physical.max(magic + if elder { 2.0 } else { 0.0 }),
+                            knockback: away * 8.0,
+                        });
+                    }
+                }
                 a.charge = -1.0;
             }
             m.stop_navigation();
             return true;
         }
         a.target = None;
+        a.mob_target = None;
         a.beam = None;
         a.charge = 0.0;
     }
@@ -688,11 +736,32 @@ impl Entities {
                 continue;
             }
             let Some(a) = &mut m.aquatic else { continue };
+            // A guardian follows the squid or axolotl it aims at every tick.
+            if let Some(uid) = a.mob_target {
+                a.prey = self.nether_view.iter().find(|v| v.uid == uid).map(|v| (v.uid, v.pos));
+            }
             a.sense_timer -= dt;
             if a.sense_timer > 0.0 {
                 continue;
             }
             a.sense_timer = 0.5;
+            if matches!(m.kind, MobKind::Guardian | MobKind::ElderGuardian) {
+                // v1.0 gap Track 3: `GuardianAttackSelector`'s squid, glow
+                // squid and axolotls; the nearest within the follow range
+                // (`upkeep` checks distance, home and sight).
+                if a.mob_target.is_none() {
+                    a.prey = self
+                        .nether_view
+                        .iter()
+                        .filter(|v| {
+                            matches!(v.kind, MobKind::Squid | MobKind::GlowSquid | MobKind::Axolotl)
+                                && v.pos.distance_squared(m.pos) < 256.0
+                        })
+                        .min_by(|l, r| l.pos.distance_squared(m.pos).total_cmp(&r.pos.distance_squared(m.pos)))
+                        .map(|v| (v.uid, v.pos));
+                }
+                continue;
+            }
             a.prey = None;
             if m.kind == MobKind::Axolotl {
                 a.prey = self

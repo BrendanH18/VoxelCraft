@@ -127,7 +127,8 @@ impl Mob {
                 "chest": s.chest,
                 "saddle": s.saddled(),
                 "armor": s.slots[1].map_or(0, |a| a.item.0),
-                "sitting": s.sit_ticks > 0,
+                "sitting": s.camel_sitting,
+                "pose_time": s.pose_time,
                 "max_health": s.max_health,
                 "jump": s.jump_charge,
             });
@@ -288,7 +289,10 @@ impl Mob {
             s.variant = small(&w["variant"]).unwrap_or(0).min(6);
             s.marking = small(&w["marking"]).unwrap_or(0).min(4);
             s.chest = w["chest"] == true;
-            s.sit_ticks = u32::from(w["sitting"] == true);
+            s.camel_sitting = w["sitting"] == true;
+            s.pose_time = w["pose_time"].as_u64().map_or(super::mounts::camel::FULL_STAND, |t| {
+                t.min(u64::from(super::mounts::camel::POSE_TIME_CAP)) as u32
+            });
             s.jump_charge = w["jump"].as_f64().map_or(0.0, |j| j.clamp(0.0, 1.0) as f32);
             if let Some(h) = w["max_health"].as_f64().filter(|h| h.is_finite() && (1.0..=100.0).contains(h)) {
                 s.max_health = h as f32;
