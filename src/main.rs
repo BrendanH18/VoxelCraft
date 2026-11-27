@@ -132,7 +132,7 @@ pub struct Args {
     /// sheets of every item's icon, dropped and held models, and the range
     /// of `Item::all_items` (`--item-review-range FROM-TO`) to show.
     pub item_review: Option<std::path::PathBuf>,
-    pub item_review_range: Option<(usize, usize)>,
+    pub item_review_range: Vec<(usize, usize)>,
     /// v0.18 Track 7: `--world-icon`: take the world's icon in a scripted
     /// run too (by the usual rule), waiting for it before `--screenshot` exits.
     pub world_icon: bool,
@@ -271,8 +271,8 @@ voxelcraft [options]
   --item-review <dir>  with --screenshot: contact sheets (items-NN.png) of
                     every item's icon, dropped model and held model, one
                     tile each, staged ahead of the --pose position
-  --item-review-range <from-to>  only these items (indices into the full
-                    item list, as the sheets number them)
+  --item-review-range <n|from-to,...>  only these items (indices into the
+                    full item list, as the sheets number them)
   --world-icon      take the world's icon.png even in a scripted run
   --time <0..1>     starting time of day (0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight)
   --weather <w>     start with clear skies, rain or a thunderstorm (clear,
@@ -376,7 +376,7 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
         still_mobs: false,
         panorama: None,
         item_review: None,
-        item_review_range: None,
+        item_review_range: Vec::new(),
         world_icon: false,
         pose: None,
         health: None,
@@ -758,13 +758,15 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
             "--item-review" => args.item_review = Some(value("--item-review")?.into()),
             "--item-review-range" => {
                 let v = value("--item-review-range")?;
-                let bad = || format!("--item-review-range needs FROM-TO (got {v})");
-                let (a, b) = v.split_once('-').ok_or_else(bad)?;
-                let (a, b) = (a.trim().parse().map_err(|_| bad())?, b.trim().parse().map_err(|_| bad())?);
-                if a > b {
-                    return Err(bad());
+                let bad = || format!("--item-review-range needs N or FROM-TO, comma-separated (got {v})");
+                for part in v.split(',') {
+                    let (a, b) = part.split_once('-').unwrap_or((part, part));
+                    let (a, b) = (a.trim().parse().map_err(|_| bad())?, b.trim().parse().map_err(|_| bad())?);
+                    if a > b {
+                        return Err(bad());
+                    }
+                    args.item_review_range.push((a, b));
                 }
-                args.item_review_range = Some((a, b));
             }
             "--world-icon" => args.world_icon = true,
             "--pose" => {

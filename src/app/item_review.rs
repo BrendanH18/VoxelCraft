@@ -48,12 +48,11 @@ pub(super) struct ItemReview {
 }
 
 impl ItemReview {
-    pub(super) fn new(dir: PathBuf, range: Option<(usize, usize)>) -> Self {
-        let (from, to) = range.unwrap_or((0, usize::MAX));
+    pub(super) fn new(dir: PathBuf, ranges: &[(usize, usize)]) -> Self {
         let items = registered()
             .into_iter()
             .enumerate()
-            .filter(|(i, _)| (from..=to).contains(i))
+            .filter(|(i, _)| ranges.is_empty() || ranges.iter().any(|&(from, to)| (from..=to).contains(i)))
             .map(|(i, (label, item))| (i, label, item))
             .collect();
         Self { dir, items, next: 0, staged: None, sheet: Vec::new(), tile: (0, 0), sheets: 0 }
@@ -85,7 +84,11 @@ impl ItemReview {
         if self.sheet.is_empty() {
             return;
         }
-        let (w, h) = (self.tile.0 * COLUMNS, self.tile.1 * ROWS);
+        // A last sheet keeps only the rows it filled.
+        let filled = self.next as u32 % (COLUMNS * ROWS);
+        let rows = if filled == 0 { ROWS } else { filled.div_ceil(COLUMNS) };
+        let (w, h) = (self.tile.0 * COLUMNS, self.tile.1 * rows);
+        self.sheet.truncate((w * h * 4) as usize);
         let path = self.dir.join(format!("items-{:02}.png", self.sheets));
         let result = std::fs::create_dir_all(&self.dir).map_err(|e| e.to_string()).and_then(|()| {
             let file = std::fs::File::create(&path).map_err(|e| e.to_string())?;
@@ -164,6 +167,7 @@ fn registered() -> Vec<(String, Item)> {
     let mut out = Vec::new();
     for (id, english) in reference["items"].as_object().into_iter().flatten() {
         if let Some(item) = voxelcraft::java_registry::item(id, english.as_str().unwrap_or(""))
+            && id != "air"
             && seen.insert(item)
         {
             out.push((id.clone(), item));

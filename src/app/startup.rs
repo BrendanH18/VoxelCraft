@@ -359,7 +359,7 @@ impl Game {
             world_icon: (args.join.is_none() && (settings_path.is_some() || args.world_icon))
                 .then(|| world_icon::WorldIcon::new(saves_dir.join(world_dir))),
             panorama_out: args.panorama.clone(),
-            item_review: args.item_review.clone().map(|dir| item_review::ItemReview::new(dir, args.item_review_range)),
+            item_review: args.item_review.clone().map(|dir| item_review::ItemReview::new(dir, &args.item_review_range)),
             panorama_face: None,
             screenshot_state: 0,
             screenshot_settled: None,

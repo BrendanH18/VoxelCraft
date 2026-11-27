@@ -2388,6 +2388,14 @@ impl Item {
     }
 }
 
+/// v1.0 gap track 6: the block whose model a stack is drawn with as an
+/// icon, a dropped item, a held item or a framed one (a copper golem statue
+/// in its pose), or `None` when it is drawn as a flat sprite: its item
+/// icon, or the block's own sprite for a flat block item.
+pub fn model_block(stack: &crate::inventory::Stack) -> Option<crate::world::block::Block> {
+    crate::world::copper_golem_statue::item_model(*stack).or_else(|| stack.item.block()).filter(|b| !b.flat_icon())
+}
+
 /// Layer of a status effect's icon: in the item icon array, after every
 /// item and the compass and clock frames.
 pub fn effect_icon_layer(effect: crate::simulation::effects::Effect) -> u16 {
