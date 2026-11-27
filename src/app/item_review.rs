@@ -4,13 +4,13 @@
 //! With `--screenshot`, once the scene has settled each item in
 //! [`Item::all_items`] (or the `--item-review-range` part of it) is staged
 //! for one frame: held in the first-person hand, lying at rest (the lowest
-//! point of its bob, turned to show two sides) on the floor 1.15 blocks
-//! ahead of the pose and a little left, and drawn in the corner as its
+//! point of its bob, turned to show two sides) on a block 1.15 ahead of
+//! the pose, a little left and one up, and drawn in the corner as its
 //! 16-pixel slot icon and the same icon three times as large, under its
 //! list index and name. Each frame is read back and laid into a sheet of
 //! [`COLUMNS`] x [`ROWS`] tiles, written as `items-NN.png` in DIR; the
 //! screenshot is taken after the last sheet. Run it at the smallest
-//! `--size`, 320x320 (1920x1600 sheets), with a floor under the stage.
+//! `--size`, 320x320 (1920x1600 sheets), with that block placed.
 use std::path::PathBuf;
 
 use glam::DVec3;
@@ -28,6 +28,9 @@ const AHEAD: f64 = 1.15;
 const LEFT: f64 = 0.3;
 /// The dropped model's turn: two sides and the top show.
 const SPIN: f32 = 0.6;
+/// The stage is the top of a block one up from the pose's feet (the scene
+/// places it), so the dropped item is seen from just above.
+const RISE: f64 = 1.0;
 
 pub(super) struct ItemReview {
     dir: PathBuf,
@@ -122,7 +125,7 @@ impl Game {
         let p = &self.session.player;
         let forward = p.forward().as_dvec3().with_y(0.0).normalize_or_zero();
         let left = DVec3::new(forward.z, 0.0, -forward.x);
-        Some((Stack::new(item, 1), p.pos + forward * AHEAD + left * LEFT, SPIN))
+        Some((Stack::new(item, 1), p.pos + forward * AHEAD + left * LEFT + DVec3::Y * RISE, SPIN))
     }
 
     /// The tile's label and icons; returns whether the review is drawing
