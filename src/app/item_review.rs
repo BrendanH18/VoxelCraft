@@ -9,8 +9,8 @@
 //! 16-pixel slot icon and the same icon three times as large, under its
 //! list index and name. Each frame is read back and laid into a sheet of
 //! [`COLUMNS`] x [`ROWS`] tiles, written as `items-NN.png` in DIR; the
-//! screenshot is taken after the last sheet. Run it at a small `--size`
-//! (320x180 makes 1920x1080 sheets), with a floor under the stage.
+//! screenshot is taken after the last sheet. Run it at the smallest
+//! `--size`, 320x320 (1920x1600 sheets), with a floor under the stage.
 use std::path::PathBuf;
 
 use glam::DVec3;
@@ -22,7 +22,7 @@ use crate::render::ui::{Ui, WHITE};
 
 /// Tiles across and down a sheet.
 pub(super) const COLUMNS: u32 = 6;
-pub(super) const ROWS: u32 = 6;
+pub(super) const ROWS: u32 = 5;
 /// How far ahead of the pose and to its left the dropped item lies.
 const AHEAD: f64 = 1.6;
 const LEFT: f64 = 0.35;
