@@ -17,10 +17,13 @@ mod creaking;
 pub(crate) mod dolphin;
 mod drowned;
 mod endermite;
+pub(crate) mod equine;
 mod frog;
 pub(crate) mod goals;
+mod hazards;
 mod illager;
 mod navigate;
+pub(crate) use navigate::is_sand;
 mod nether_ai;
 mod ocelot;
 mod polar_bear;
@@ -1122,7 +1125,8 @@ impl MobKind {
             MobKind::Turtle => &[(SEAGRASS, 0, 2)],
             MobKind::Wolf | MobKind::Fox | MobKind::Goat => &[],
             MobKind::Parrot => &[(Item::FEATHER, 1, 2)],
-            MobKind::Rabbit => &[(Item::RAW_RABBIT, 0, 1), (Item::RABBIT_HIDE, 0, 1)],
+            // 26.3 `entities/rabbit`: always one raw rabbit (v1.0 Track 6).
+            MobKind::Rabbit => &[(Item::RAW_RABBIT, 1, 1), (Item::RABBIT_HIDE, 0, 1)],
             // The skull is rolled in `drops`.
             MobKind::WitherSkeleton => &[(Item::COAL, 0, 1), (Item::BONE, 0, 2)],
             // `entities/wither` has no pools; the Nether star is
@@ -1244,6 +1248,14 @@ pub struct Mob {
     pub name: crate::inventory::StackName,
     pub leash: Option<super::leash::Leash>,
     pub leash_pos: Option<DVec3>,
+    /// Ticks its lead's holder has been missing (`restoreLeashFromSave`'s
+    /// grace); never saved.
+    pub(crate) leash_wait: u16,
+    /// `LeashData.angularMomentum`, degrees a tick; never saved.
+    pub(crate) leash_spin: f64,
+    /// The lead is within its elastic reach this tick
+    /// (`closeRangeLeashBehaviour`); never saved.
+    pub(crate) leash_close: bool,
     pub animal: Option<Box<super::animals::State>>,
     pub bee: Option<super::bee::State>,
     pub villager: Option<Box<super::villager::Villager>>,
@@ -1275,6 +1287,10 @@ pub struct Mob {
     /// The damage type of the hit being applied, when a caller knows it (an
     /// arrow or a blast); consumed by `take_damage`. Never saved.
     pub(crate) hit_cause: Option<Cause>,
+    /// v1.0 Track 5: blocks fallen since the last landing (`fallDistance`,
+    /// not saved) and the fall damage the last moves queued.
+    pub(super) fall_distance: f64,
+    pub(super) pending_fall: f32,
     pub phantom: Option<Box<super::phantom::State>>,
     pub freezing: Option<super::hostiles::Freezing>,
     pub mooshroom: Option<Box<super::mooshroom::State>>,
@@ -1449,6 +1465,9 @@ pub struct Mob {
     pub(crate) goals: goals::Goals,
     /// Java's `MoveControl` for swimmers, ghasts and airborne blazes.
     pub(crate) move_ctl: swim::MoveCtl,
+    /// v1.0 Track 7: seconds the chased player has been out of sight
+    /// (`TargetGoal.unseenTicks`, never saved).
+    pub(crate) target_unseen: f32,
     /// `Mob.homePosition` and `homeRadius` (`restrictTo`): random targets
     /// and attack targets stay within the radius. Elder guardians set one
     /// around where they first act; saved as Java saves it.
@@ -1462,6 +1481,10 @@ pub struct Mob {
     pub(super) reinforce_call: Option<Option<super::PlayerId>>,
     /// The player a reinforcement was sent after (`setTarget`). Never saved.
     pub(super) reinforce_target: Option<super::PlayerId>,
+    /// v1.0 Track 9: how many times a slime block or bed has bounced it
+    /// (`restituteMovementAfterCollisions`), for the `bounce` game event.
+    /// Never saved.
+    pub(crate) bounces: u32,
 }
 
 /// Per-kind state of the mobs on the flagged goal selector. Mobs hold it
@@ -1491,6 +1514,9 @@ impl Mob {
             name: Default::default(),
             leash: None,
             leash_pos: None,
+            leash_wait: 0,
+            leash_spin: 0.0,
+            leash_close: false,
             animal: kind.has_animal_state().then(|| Box::new(super::animals::State::new(pos))),
             villager: matches!(kind, MobKind::Villager | MobKind::ZombieVillager | MobKind::WanderingTrader)
                 .then(|| Box::new(super::villager::Villager::new(0, 0))),
@@ -1516,6 +1542,8 @@ impl Mob {
             },
             armor_effectiveness: 0.0,
             hit_cause: None,
+            fall_distance: 0.0,
+            pending_fall: 0.0,
             phantom: (kind == MobKind::Phantom).then(|| Box::new(super::phantom::State::new(pos))),
             mooshroom: (kind == MobKind::Mooshroom).then(Box::default),
             bat: (kind == MobKind::Bat).then(Box::default),
@@ -1622,6 +1650,7 @@ impl Mob {
             idle: 0.0,
             goals: Default::default(),
             move_ctl: Default::default(),
+            target_unseen: 0.0,
             restrict: None,
             java_goals: match kind {
                 MobKind::Dolphin => Some(Box::new(JavaGoals::Dolphin(Default::default()))),
@@ -1631,6 +1660,7 @@ impl Mob {
             attrs: Default::default(),
             reinforce_call: None,
             reinforce_target: None,
+            bounces: 0,
         }
     }
 
@@ -1982,7 +2012,9 @@ impl Mob {
         if let Some(a) = &mut self.animal {
             a.love = 0.0;
             a.courtship = 0.0;
-            if self.kind == MobKind::Wolf {
+            // `Wolf` and `Parrot.hurtServer` cancel the order to sit; a cat's
+            // doesn't.
+            if matches!(self.kind, MobKind::Wolf | MobKind::Parrot) {
                 a.sitting = false;
             }
         }
@@ -2360,6 +2392,17 @@ impl Mob {
             super::illager::vex_travel(self, dt);
         } else if self.sulfur_has_block() {
             self.sulfur_travel(dt, world);
+        } else if controlled
+            && equine::java_ridden(self.kind)
+            && !self.touching_water(world)
+            && !self.touching_lava(world)
+        {
+            // v1.0 Track 7: a steered horse rides Java's `travelRidden`.
+            self.move_ctl.time += dt;
+            while self.move_ctl.time >= equine::TICK - 1e-9 {
+                self.move_ctl.time -= equine::TICK;
+                self.equine_ridden_tick(world);
+            }
         } else if java {
             // Whole Java ticks of simulated time; the fixed 20 Hz step runs one.
             // The move controls apply Speed and Slowness to the raw speed.
@@ -2376,8 +2419,9 @@ impl Mob {
         }
         let wolf_fall = self.wolf_armor.as_mut().map_or(0.0, |s| std::mem::take(&mut s.pending_fall));
         if wolf_fall > 0.0 {
-            self.damage(wolf_fall, None, rng);
+            self.damage_from(wolf_fall, Cause::FALL, rng);
         }
+        self.take_fall(rng);
         if let Some(s) = &mut self.mount {
             let damage = std::mem::take(&mut s.rider_fall);
             if damage > 0.
@@ -2491,6 +2535,21 @@ impl Mob {
             && let Some(wish) = self.endermite_think(dt, world, ctx, rng, events)
         {
             return wish;
+        }
+        // v1.0 Track 6: a raid witch with a raider to heal walks until it
+        // sees it within 10 blocks (`RangedAttackGoal`); the raid tick throws.
+        if self.kind == MobKind::Witch
+            && let Some((_, at)) = self.illager.as_ref().and_then(|s| s.raider.heal_target)
+        {
+            let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
+            let sees = line_of_sight(world, eye, at + DVec3::Y);
+            self.look_at(at, 1.2);
+            if (at - self.pos).with_y(0.0).length() <= WITCH_RANGE && sees {
+                self.stop_navigation();
+                return (None, 0.0);
+            }
+            let speed = self.kind.chase_speed();
+            return (self.pursue(world, at, speed, sees, true, rng), speed);
         }
         // Raid witches carry the raider state but keep the witch's own goals.
         if self.illager.is_some()
@@ -2760,6 +2819,9 @@ impl Mob {
             let aggressive = match self.kind {
                 MobKind::Spider | MobKind::CaveSpider => ctx.daylight < SPIDER_CALM_DAYLIGHT || self.provoked > 0.0,
                 MobKind::ZombifiedPiglin => self.provoked > 0.0,
+                // `NearestAttackableWitchTargetGoal.canAttack` is off while
+                // the heal goal cools down (v1.0 Track 6).
+                MobKind::Witch => self.illager.as_ref().is_none_or(|s| s.raider.heal_cooldown <= 0),
                 MobKind::Enderman => self.enderman_anger(dt, world, ctx, rng, events),
                 _ => true,
             };
@@ -2770,7 +2832,26 @@ impl Mob {
                 _ => (CHASE_RANGE, 12.0),
             };
             let sent = self.reinforce_target;
+            // v1.0 Track 7: `NearestAttackableTargetGoal` with `mustSee`
+            // (zombies, skeletons, creepers, spiders, slimes, silverfish,
+            // witches): a player is taken only in sight (eye to eye through
+            // collision shapes), and `TargetGoal.canContinueToUse` lets go
+            // after 60 ticks out of sight. Reinforcements and mobs hurt into
+            // a fight keep their target, as `setTarget` and
+            // `HurtByTargetGoal` set it outside this goal.
+            let seen = target.is_some_and(|t| {
+                let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
+                line_of_sight(world, eye, t.pos + DVec3::Y * (t.shape.height * 0.9))
+            });
+            if seen || self.ai != Ai::Chase {
+                self.target_unseen = 0.0;
+            } else {
+                self.target_unseen += dt;
+            }
+            let held = sent.is_some() && target.is_some_and(|t| sent == Some(t.id)) || self.provoked > 0.0;
+            let in_sight = seen || held || (self.ai == Ai::Chase && self.target_unseen < UNSEEN_MEMORY);
             let chasing = aggressive
+                && in_sight
                 && target.is_some_and(|t| hdist < t.detection_range_for(range, self.kind) || sent == Some(t.id))
                 && to_player.y.abs() < height;
             if chasing {
@@ -2901,6 +2982,7 @@ impl Mob {
                 (self.pursue(world, target.pos, speed, sees, true, rng), speed)
             }
             Ai::Panic => {
+                self.panic_teleport_to_owner(world, ctx, rng);
                 let pathing = self.path_move && self.kind.walks_paths();
                 if self.ai_timer <= 0.0 && (!pathing || self.nav.is_done()) {
                     self.ai = Ai::Idle;
@@ -3682,7 +3764,16 @@ impl Mob {
                 self.vel.y += (dy * 20.0 - self.vel.y) * (dt * 20.0).min(1.0);
             }
         }
-        let delta = self.vel * dt;
+        // v1.0 Track 5: `makeStuckInBlock` in a cobweb (see `hazards`).
+        let delta = match self.web_hold(world) {
+            Some(hold) => {
+                let delta = self.vel * dt * hold;
+                self.vel = DVec3::ZERO;
+                self.fall_distance = 0.0;
+                delta
+            }
+            None => self.vel * dt,
+        };
         let from_y = self.pos.y;
         let falling = self.vel.y;
         let step_height = if super::mounts::camel_like(self.kind) {
@@ -3706,9 +3797,15 @@ impl Mob {
         // gravity (0.08 a tick).
         let below = world.block(super::item::below_pos(self.pos));
         self.wolf_fall(from_y, hit.on_ground, below);
+        // v1.0 Track 5: every other mob's fall (mounts and wolves keep
+        // their own).
+        if self.mount.is_none() && self.wolf_armor.is_none() {
+            self.track_fall(world, from_y, hit.on_ground);
+        }
         let bounce = crate::player::bounciness(below);
         if hit.on_ground && bounce > 0.0 && -falling > 0.08 * 20.0 {
             self.vel.y = -falling * bounce * BOUNCE_DRAG;
+            self.bounces = self.bounces.wrapping_add(1);
         }
         if let Some(s) = &mut self.mount {
             if self.in_water {
@@ -3721,16 +3818,20 @@ impl Mob {
                 s.fall_distance = 0.;
             }
             if hit.on_ground {
+                // v1.0 Track 7: `LivingEntity.calculateFallDamage` floors;
+                // a horse's safe fall is 6 and its multiplier 0.5.
                 let damage = if super::mounts::equine(self.kind) {
-                    ((s.fall_distance - 6.) * 0.5).ceil().max(0.) as f32
+                    equine::fall_damage(s.fall_distance, equine::SAFE_FALL, equine::FALL_MULTIPLIER)
                 } else if self.kind == MobKind::Strider {
                     0.
                 } else {
                     (s.fall_distance - 3.).ceil().max(0.) as f32
                 };
                 self.health -= self.effects.absorb(damage * self.effects.resistance_factor());
-                if super::mounts::equine(self.kind) && s.rider.is_some() {
-                    s.rider_fall += damage;
+                // `AbstractHorse.causeFallDamage`: only a fall that hurts the
+                // horse passes on, as each rider's own fall damage.
+                if super::mounts::equine(self.kind) && s.rider.is_some() && damage > 0. {
+                    s.rider_fall += equine::fall_damage(s.fall_distance, equine::PLAYER_SAFE_FALL, 1.0);
                 }
                 s.fall_distance = 0.;
             }
@@ -3760,6 +3861,9 @@ impl Mob {
             && !ctx.raining
             && !self.in_water
             && world.exposed(head);
+        // v1.0 Track 5: `Mob.burnUndead`: anything on the head keeps the
+        // sun off, and a helmet wears instead.
+        let sunburn = sunburn && !(self.alive() && self.sun_blocked(ctx.daylight, rng));
         if self.kind.fire_immune() {
             self.fire_left = 0.0;
         } else if in_lava {
@@ -3769,7 +3873,7 @@ impl Mob {
         } else if sunburn || in_fire {
             self.fire_left = 8.0;
             if in_fire && !self.burning {
-                self.damage(1.0, None, rng);
+                self.damage_from(1.0, Cause::IN_FIRE, rng);
             }
         } else {
             self.fire_left = (self.fire_left - dt).max(0.0);
@@ -3789,17 +3893,19 @@ impl Mob {
             self.burn_timer = 0.0;
             return;
         }
-        let (interval, amount) = if in_lava {
-            (0.5, 4.0)
+        // v1.0 Track 5: `lava`, `in_fire` and `on_fire` damage, so armor
+        // and Fire Protection reduce it as Java's do.
+        let (interval, amount, cause) = if in_lava {
+            (0.5, 4.0, Cause::LAVA)
         } else if in_fire {
-            (0.5, 1.0)
+            (0.5, 1.0, Cause::IN_FIRE)
         } else {
-            (1.0, if sunburn { 2.0 } else { 1.0 })
+            (1.0, if sunburn { 2.0 } else { 1.0 }, Cause::ON_FIRE)
         };
         self.burn_timer += dt;
         if self.burn_timer >= interval {
             self.burn_timer -= interval;
-            self.damage(amount, None, rng);
+            self.damage_from(amount, cause, rng);
         }
     }
 
@@ -3879,6 +3985,9 @@ fn estimate_sky_light<W: MobWorld + ?Sized>(world: &W, p: DVec3) -> f32 {
 /// Java 26.3 LivingEntity.hasLineOfSight clips collision shapes with
 /// Fluid.NONE, capped at 128 blocks. DDA visits each crossed cell once;
 /// the old quarter-block samples missed thin/corner hits and filled slab gaps.
+/// `TargetGoal.unseenMemoryTicks` (60 ticks), in seconds.
+pub const UNSEEN_MEMORY: f32 = 3.0;
+
 pub(super) fn line_of_sight<W: BlockSource + ?Sized>(world: &W, from: DVec3, to: DVec3) -> bool {
     if !from.is_finite() || !to.is_finite() || from.distance_squared(to) > 128.0 * 128.0 {
         return false;
@@ -3957,6 +4066,13 @@ pub(super) fn wrap(a: f32) -> f32 {
 pub(super) fn turn_toward(from: f32, to: f32, max: f32) -> f32 {
     let d = wrap(to - from);
     wrap(from + d.clamp(-max, max))
+}
+
+/// v1.0 Track 3: the long-session soak (`crate::soak`) sums path lengths.
+impl Mob {
+    pub(super) fn soak_path_len(&self) -> usize {
+        self.nav.path.as_ref().map_or(0, |p| p.nodes.len())
+    }
 }
 
 #[cfg(test)]

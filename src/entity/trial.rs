@@ -443,6 +443,11 @@ impl Entities {
         }
         self.ensure_mob_ids();
         let uid = self.mobs[i].uid;
+        // v1.0 Track 9: `TrialSpawner.spawnMob` posts `entity_place` at the
+        // spawn cell, from the new mob.
+        let source = super::warden::mob_source(&self.mobs[i]);
+        let cell = pos.floor() + DVec3::splat(0.5);
+        self.sculk.post(cell, crate::world::vibration::GameEvent::EntityPlace, source, None);
         self.cue(Cue::SpawnerSpawn, center);
         let kind = if ominous { crate::particles::Kind::SoulFlame } else { crate::particles::Kind::Flame };
         for at in [center, pos + DVec3::Y * 0.5] {

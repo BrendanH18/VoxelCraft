@@ -300,18 +300,64 @@ fn a_click_selects_and_a_double_click_plays() {
 }
 
 #[test]
-fn unreadable_worlds_can_be_deleted_but_not_played_or_edited() {
+fn unreadable_worlds_offer_recovery_and_deletion_but_not_editing() {
     let mut host = Host::new("unreadable");
     let path = host.world("broken", "", 10);
     std::fs::write(path.join("level.txt"), "seed=junk\n").unwrap();
     let mut stack = stack_at(&host);
     assert!(click(&mut stack, &mut host, 1).is_none(), "one click selects");
     let enabled: Vec<bool> = buttons(&stack, &host).into_iter().map(|(_, on)| on).collect();
-    // Play, Create, Edit, Delete, Re-Create, Back: Java's `isDisabled` rules.
-    assert_eq!(enabled, [false, true, false, true, false, true]);
-    // A double click can't get around the disabled buttons.
+    // Attempt to Recover, Create, Edit, Delete, Re-Create, Back: Java's
+    // `CorruptedLevelSummary` (not disabled, can't be edited or re-created).
+    assert_eq!(enabled, [true, true, false, true, false, true]);
+    // A double click opens "Failed to load world", which can't restore
+    // without a kept copy of the level file.
     assert!(played(click(&mut stack, &mut host, 1)).is_none());
-    assert_eq!(stack.depth(), 3, "a notice says why, over Select World");
+    assert_eq!(stack.depth(), 3, "the recovery screen, over Select World");
+    let restore: Vec<bool> = buttons(&stack, &host).into_iter().map(|(_, on)| on).collect();
+    assert_eq!(restore, [false, true], "Attempt to Restore needs a readable level.txt_old");
+    stack.nav(&mut host, Nav::Back, SIZE);
+    assert_eq!(stack.depth(), 2);
+}
+
+/// v1.0 Track 1: Java's `RecoverWorldDataScreen`. A level file cut off by a
+/// crash is restored from the copy the last save kept, after a backup, and
+/// the world then opens; the damaged file is kept beside it.
+#[test]
+fn a_damaged_level_file_is_restored_from_its_kept_copy_after_a_backup() {
+    let mut host = Host::new("recover");
+    let path = host.world("base", "name=Survival Base\n", 10);
+    let storage = Storage::new(&path);
+    let mut level = storage.load_level().unwrap();
+    level.props.insert("mode".into(), "creative".into());
+    storage.save_level(&level).unwrap();
+    let text = std::fs::read_to_string(path.join("level.txt")).unwrap();
+    std::fs::write(path.join("level.txt"), &text[..text.len() - 5]).unwrap();
+    let world = worlds::summary(&host.saves, "base").unwrap();
+    assert!(world.unreadable.as_deref().is_some_and(|e| e.contains("cut off")), "{world:?}");
+
+    let mut stack = stack_at(&host);
+    key(&mut stack, &mut host, KeyCode::ArrowDown);
+    assert!(key(&mut stack, &mut host, KeyCode::Enter).is_none(), "it doesn't open as it is");
+    assert_eq!(stack.depth(), 3);
+    let [(restore, true), (_, true)] = buttons(&stack, &host)[..] else { panic!("{:?}", buttons(&stack, &host)) };
+    assert!(click(&mut stack, &mut host, restore).is_none());
+    // The backup runs first, then "Recovery done" asks to continue.
+    tick_until(&mut stack, &mut host, |s, h| s.depth() == 3 && buttons(s, h).len() == 2 && host_backups(h) == 1);
+    assert_eq!(host.level("base").props["name"], "Survival Base", "the kept copy is in place");
+    let kept: Vec<_> = std::fs::read_dir(&path)
+        .unwrap()
+        .filter_map(|e| e.unwrap().file_name().into_string().ok())
+        .filter(|n| n.starts_with("level.txt_corrupted_"))
+        .collect();
+    assert_eq!(kept.len(), 1, "the damaged file is kept");
+    let continue_ = buttons(&stack, &host)[0].0;
+    let (dir, _) = played(click(&mut stack, &mut host, continue_)).expect("Continue opens the world");
+    assert_eq!(dir, "base");
+}
+
+fn host_backups(host: &Host) -> usize {
+    std::fs::read_dir(host.root.join("backups")).map_or(0, |d| d.count())
 }
 
 #[test]
@@ -558,7 +604,10 @@ fn newer_worlds_warn_before_opening() {
     // Worlds from this version or older, or from before versions were saved, open directly.
     for dir in ["base", "one_life"] {
         let world = worlds::summary(&host.saves, dir).unwrap();
-        assert!(played(Stack::<Host>::default().run(select::open(&host, &world))).is_some(), "{dir}");
+        assert!(
+            played(Stack::<Host>::default().run(select::open(&host, &world, Default::default()))).is_some(),
+            "{dir}"
+        );
     }
     assert!(saved_by_newer(&host.saves, "future") && !saved_by_newer(&host.saves, "base"));
 }
@@ -634,13 +683,16 @@ fn screens_fit_every_window() {
     host.offer = Some("Update to 0.12".into());
     let world = worlds::summary(&host.saves, "future").unwrap();
     type Make<'a> = &'a dyn Fn(&Host) -> Box<dyn gui::Dyn<Host>>;
-    let make: [(&str, Make); 6] = [
+    let make: [(&str, Make); 8] = [
         ("title", &|_| Box::new(Home)),
         ("select", &|h| Box::new(SelectWorld::new(h))),
         ("edit", &|_| Box::new(EditWorld::new(&world, Default::default()))),
         ("create", &|_| Box::new(CreateWorld::new())),
         ("recreate", &|_| Box::new(CreateWorld::recreate(&world))),
         ("backup", &|_| Box::new(BackupConfirm::downgrade(world.clone(), crate::update::Version(99, 0, 0)))),
+        // v1.0 Track 1: with and without something to restore from.
+        ("recover", &|h| Box::new(super::recover::RecoverWorld::new(h, "future", Default::default()))),
+        ("recover-missing", &|h| Box::new(super::recover::RecoverWorld::new(h, "absent", Default::default()))),
     ];
     for (name, make) in make {
         for size in SIZES {

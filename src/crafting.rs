@@ -1150,7 +1150,8 @@ mod tests {
         stew.cells[2] = Some(Stack::new(Item::BOWL, 1));
         assert_eq!(stew.result(), Some(Stack::new(Item::MUSHROOM_STEW, 1)));
         assert_eq!(Item::from_name("milk_bucket"), Some(Item::MILK_BUCKET));
-        assert_eq!(Item::MUSHROOM_STEW.food(), Some((6, 7.2)));
+        // `Foods.MUSHROOM_STEW`: `stew(6)`, modifier 0.6 (`foods.json`).
+        assert_eq!(Item::MUSHROOM_STEW.food(), Some((6, crate::item::saturation_by_modifier(6, 0.6))));
         assert_eq!(Item::MUSHROOM_STEW.remainder(), Some(Item::BOWL));
         assert!(Item::creative_palette().any(|item| item == Item::BOWL));
         assert!(Block::creative_palette().any(|block| block == Block::RED_MUSHROOM));

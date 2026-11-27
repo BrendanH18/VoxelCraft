@@ -186,6 +186,9 @@ pub(super) struct Probe<'a> {
     /// Every generation 3 fossil box whose beard reaches the window: features
     /// see the adapted terrain, as Java's run after the noise and beardifier.
     boxes: Vec<Bounds>,
+    /// Generation 6: the chunk being painted, undecorated, so reads inside
+    /// it skip the terrain function (it is the same terrain).
+    chunk: Option<(IVec3, Box<[Block; CHUNK_VOLUME]>)>,
 }
 
 impl<'a> Probe<'a> {
@@ -194,7 +197,7 @@ impl<'a> Probe<'a> {
         let hi = (IVec2::new(base.x, base.z) + CHUNK_SIZE_I + WINDOW).div_euclid(IVec2::splat(STEP)) + 1;
         let width = hi.x - lo.x + 1;
         let boxes = nether.beard_boxes(lo * STEP, (lo + width) * STEP);
-        Self { nether, g0: lo, width, grid: (0..width * width).map(|_| OnceCell::new()).collect(), boxes }
+        Self { nether, g0: lo, width, grid: (0..width * width).map(|_| OnceCell::new()).collect(), boxes, chunk: None }
     }
 
     fn column(&self, g: IVec2) -> Option<&GridColumn> {
@@ -237,7 +240,19 @@ impl<'a> Probe<'a> {
         if p.y > ROOF {
             return Block::AIR;
         }
+        if let Some((base, blocks)) = &self.chunk {
+            let l = p - *base;
+            if l.cmpge(IVec3::ZERO).all() && l.cmplt(IVec3::splat(CHUNK_SIZE_I)).all() {
+                return blocks[index(l.x as usize, l.y as usize, l.z as usize)];
+            }
+        }
         self.with_corners(p.x, p.z, |bits, c| self.nether.classify(p.x, p.y, p.z, bits, c))
+    }
+
+    /// Java's `MOTION_BLOCKING` heightmap: one above the column's top
+    /// non-air block (above the bedrock roof in the Nether).
+    fn motion_blocking(&self, x: i32, z: i32) -> i32 {
+        (0..=ROOF).rev().find(|&y| self.terrain(IVec3::new(x, y, z)) != Block::AIR).map_or(0, |y| y + 1)
     }
 
     /// The `layer`-th floor from the top of column `(x, z)`: the open (air or
@@ -291,6 +306,10 @@ pub(super) fn decorate(nether: &NetherGen, blocks: &mut [Block; CHUNK_VOLUME], b
 /// [`decorate`], where `cull` lets features skip work that only decides
 /// blocks outside the chunk (off, every feature runs in full: the same chunk).
 fn decorate_within(nether: &NetherGen, blocks: &mut [Block; CHUNK_VOLUME], base: IVec3, cull: bool) {
+    if nether.generation >= super::terrain::Generation::V6 {
+        v6::decorate(nether, blocks, base, cull, None);
+        return;
+    }
     let probe = Probe::new(nether, base);
     let lo = (IVec2::new(base.x, base.z) - REACH).div_euclid(IVec2::splat(CELL));
     let hi = (IVec2::new(base.x, base.z) + CHUNK_SIZE_I - 1 + REACH).div_euclid(IVec2::splat(CELL));
@@ -416,6 +435,260 @@ impl Painter<'_, '_, '_> {
                 self.touched[i / 64] |= 1 << (i % 64);
                 self.blocks[i] = block;
             }
+        }
+    }
+}
+
+/// Generation 6: Java 26.3's placed features ([`super::nether_placed`]).
+pub(super) mod v6 {
+    use super::*;
+    use crate::world::nether_placed::{self as placed, Feature, Mod, PLACED, Placed};
+
+    /// The springs a generated chunk holds, to schedule their first fluid
+    /// tick (Java's `SpringFeature` schedules one as it places the lava):
+    /// the springs replayed over the undecorated chunk, where the generated
+    /// chunk still holds their lava.
+    pub fn spring_ticks(nether: &NetherGen, cpos: IVec3, data: &crate::world::chunk::ChunkData) -> Vec<IVec3> {
+        let base = cpos * CHUNK_SIZE_I;
+        if base.y > ROOF || base.y + CHUNK_SIZE_I <= 0 {
+            return Vec::new();
+        }
+        let mut terrain = nether.undecorated(cpos);
+        let mut springs = Vec::new();
+        decorate(nether, &mut terrain, base, true, Some(&mut springs));
+        springs
+            .into_iter()
+            .filter(|p| {
+                let l = *p - base;
+                data.get(l.x as usize, l.y as usize, l.z as usize) == Block::LAVA
+            })
+            .collect()
+    }
+
+    /// Paints every generation 6 feature that reaches the chunk. With
+    /// `springs`, places only the springs and records where they went.
+    pub fn decorate(
+        nether: &NetherGen,
+        blocks: &mut [Block; CHUNK_VOLUME],
+        base: IVec3,
+        cull: bool,
+        mut springs: Option<&mut Vec<IVec3>>,
+    ) {
+        let mut probe = Probe::new(nether, base);
+        if base.y <= ROOF {
+            probe.chunk = Some((base, Box::new(*blocks)));
+        }
+        let lo = (IVec2::new(base.x, base.z) - REACH).div_euclid(IVec2::splat(CELL));
+        let hi = (IVec2::new(base.x, base.z) + CHUNK_SIZE_I - 1 + REACH).div_euclid(IVec2::splat(CELL));
+        let mut painter = Painter {
+            base,
+            blocks,
+            touched: vec![0u64; CHUNK_VOLUME / 64],
+            canvas: Canvas {
+                probe: &probe,
+                own: FxHashMap::default(),
+                chunk: cull.then_some((base, base + IVec3::splat(CHUNK_SIZE_I - 1))),
+            },
+        };
+        let order = placed::paint_order();
+        let slack: Vec<Vec<Slack>> = PLACED.iter().map(slack_of).collect();
+        for cz in lo.y..=hi.y {
+            for cx in lo.x..=hi.x {
+                let cell = IVec2::new(cx, cz);
+                let mut present = [false; 5];
+                for qz in 0..CELL / STEP {
+                    for qx in 0..CELL / STEP {
+                        present[probe.biome(cx * CELL + qx * STEP, cz * CELL + qz * STEP) as usize] = true;
+                    }
+                }
+                for &i in &order {
+                    let entry = &PLACED[i];
+                    let is_spring = matches!(entry.feature, Feature::Spring { .. });
+                    if !entry.feature.runs() || (springs.is_some() && !is_spring) {
+                        continue;
+                    }
+                    if !entry.biomes.iter().any(|&b| present[b as usize]) {
+                        continue;
+                    }
+                    let seed = hash3(cell.x, i as i32, cell.y, nether.seed() ^ SALT_PLACE_V6);
+                    let origin = IVec3::new(cell.x * CELL, 0, cell.y * CELL);
+                    let mut run =
+                        Run { painter: &mut painter, entry, slack: &slack[i], springs: springs.as_deref_mut() };
+                    run.walk(0, origin, seed);
+                }
+            }
+        }
+    }
+
+    const SALT_PLACE_V6: u64 = 0xDEC0_0006;
+    const SALT_FEATURE_V6: u64 = 0xDEC0_0007;
+
+    /// How far the rest of a modifier list and the feature can move and
+    /// write from the current position: x/z and y ranges (`None`: a height
+    /// modifier still decides y).
+    #[derive(Clone, Copy, Debug)]
+    struct Slack {
+        xz: (i32, i32),
+        y: Option<(i32, i32)>,
+    }
+
+    fn slack_of(p: &Placed) -> Vec<Slack> {
+        let (r, ylo, yhi) = placed::reach(p.feature);
+        let mut out = vec![Slack { xz: (-r, r), y: Some((ylo, yhi)) }];
+        for m in p.mods.iter().rev() {
+            let next = *out.last().unwrap();
+            let s = match *m {
+                Mod::InSquare | Mod::CountOnEveryLayer(_) => Slack {
+                    xz: (next.xz.0, next.xz.1 + CELL - 1),
+                    y: if matches!(m, Mod::CountOnEveryLayer(_)) { None } else { next.y },
+                },
+                Mod::Height(_) | Mod::MotionBlocking => Slack { xz: next.xz, y: None },
+                Mod::Offset(x, y, z) => {
+                    let (xl, xh) = x.bounds();
+                    let (zl, zh) = z.bounds();
+                    let (yl, yh) = y.bounds();
+                    Slack {
+                        xz: (next.xz.0 + xl.min(zl), next.xz.1 + xh.max(zh)),
+                        y: next.y.map(|(a, b)| (a + yl, b + yh)),
+                    }
+                }
+                Mod::ScanDown(steps, _) => Slack { xz: next.xz, y: next.y.map(|(a, b)| (a - steps, b)) },
+                _ => next,
+            };
+            out.push(s);
+        }
+        out.reverse();
+        out
+    }
+
+    fn child(seed: u64, i: u64) -> u64 {
+        let mut s = seed ^ (i + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        crate::world::noise::splitmix64(&mut s)
+    }
+
+    struct Run<'r, 'b, 'p, 'a> {
+        painter: &'r mut Painter<'b, 'p, 'a>,
+        entry: &'r Placed,
+        slack: &'r [Slack],
+        springs: Option<&'r mut Vec<IVec3>>,
+    }
+
+    impl Run<'_, '_, '_, '_> {
+        fn reaches(&self, k: usize, p: IVec3) -> bool {
+            let s = self.slack[k];
+            let b = self.painter.base;
+            let top = b + IVec3::splat(CHUNK_SIZE_I - 1);
+            let xz = p.x + s.xz.1 >= b.x && p.x + s.xz.0 <= top.x && p.z + s.xz.1 >= b.z && p.z + s.xz.0 <= top.z;
+            xz && s.y.is_none_or(|(lo, hi)| p.y + hi >= b.y && p.y + lo <= top.y)
+        }
+
+        fn walk(&mut self, k: usize, p: IVec3, seed: u64) {
+            if !self.reaches(k, p) {
+                return;
+            }
+            let Some(&m) = self.entry.mods.get(k) else {
+                self.place(p, seed);
+                return;
+            };
+            let probe = self.painter.canvas.probe;
+            let mut rng = Rng(seed);
+            match m {
+                Mod::Count(n) => {
+                    for i in 0..n.sample(&mut rng).max(0) {
+                        self.walk(k + 1, p, child(seed, i as u64));
+                    }
+                }
+                Mod::CountOnEveryLayer(count) => {
+                    for layer in 0.. {
+                        let mut found = false;
+                        for j in 0..count {
+                            let (x, z) = (p.x + rng.below(16) as i32, p.z + rng.below(16) as i32);
+                            if let Some(y) = probe.floor(x, z, layer) {
+                                found = true;
+                                self.walk(k + 1, IVec3::new(x, y, z), child(seed, u64::from(layer * count + j)));
+                            }
+                        }
+                        if !found {
+                            break;
+                        }
+                    }
+                }
+                Mod::InSquare => {
+                    let q = p + IVec3::new(rng.below(16) as i32, 0, rng.below(16) as i32);
+                    self.walk(k + 1, q, child(seed, 0));
+                }
+                Mod::Height(h) => self.walk(k + 1, IVec3::new(p.x, h.sample(&mut rng), p.z), child(seed, 0)),
+                Mod::MotionBlocking => self.walk(k + 1, IVec3::new(p.x, probe.motion_blocking(p.x, p.z), p.z), seed),
+                Mod::Biome => {
+                    if placed::in_biome(self.entry, probe.biome(p.x, p.z)) {
+                        self.walk(k + 1, p, seed);
+                    }
+                }
+                Mod::Rarity(n) => {
+                    if (rng.unit() as f32) < 1.0 / n as f32 {
+                        self.walk(k + 1, p, child(seed, 0));
+                    }
+                }
+                Mod::Offset(x, y, z) => {
+                    let q = p + IVec3::new(x.sample(&mut rng), y.sample(&mut rng), z.sample(&mut rng));
+                    self.walk(k + 1, q, child(seed, 0));
+                }
+                Mod::Filter(pred) => {
+                    if pred.test(&|q| probe.terrain(q), p) {
+                        self.walk(k + 1, p, seed);
+                    }
+                }
+                Mod::ScanDown(steps, target) => {
+                    let block = |q: IVec3| probe.terrain(q);
+                    let mut q = p;
+                    for _ in 0..steps {
+                        if target.test(&block, q) {
+                            self.walk(k + 1, q, seed);
+                            return;
+                        }
+                        q.y -= 1;
+                        if q.y < 0 {
+                            return;
+                        }
+                    }
+                    if target.test(&block, q) {
+                        self.walk(k + 1, q, seed);
+                    }
+                }
+            }
+        }
+
+        fn place(&mut self, p: IVec3, seed: u64) {
+            let mut rng = Rng(seed ^ SALT_FEATURE_V6);
+            let level = &mut self.painter.canvas;
+            level.own.clear();
+            let placed = match self.entry.feature {
+                Feature::Spring { valid, requires_below, rock, hole } => {
+                    let valid: Vec<Block> = valid.iter().map(|id| placed::java_block(id)).collect();
+                    features::spring(level, p, &valid, requires_below, rock, hole)
+                }
+                Feature::SimpleBlock(what) => features::simple(level, &mut rng, p, what),
+                Feature::Glowstone => features::glowstone(level, &mut rng, p),
+                Feature::Ore { size, state } => features::ore(level, &mut rng, p, size, placed::java_block(state)),
+                Feature::Blobs { state, radius } => {
+                    features::blobs(level, &mut rng, p, placed::java_block(state), radius)
+                }
+                Feature::HugeFungus(wood) => features::huge_fungus(level, &mut rng, p, wood, false),
+                Feature::WeepingVines => features::weeping_vines_26(level, &mut rng, p),
+                Feature::TwistingVines => features::twisting_vines_26(level, &mut rng, p),
+                Feature::Delta => features::delta(level, &mut rng, p - IVec3::Y),
+                Feature::Columns { large } => features::basalt_columns(level, &mut rng, p, large),
+                Feature::BasaltPillar => features::basalt_pillar(level, &mut rng, p),
+                Feature::Debris { .. } | Feature::Inert => false,
+            };
+            if let Some(springs) = self.springs.as_deref_mut() {
+                let local = p - self.painter.base;
+                if placed && local.cmpge(IVec3::ZERO).all() && local.cmplt(IVec3::splat(CHUNK_SIZE_I)).all() {
+                    springs.push(p);
+                }
+                return;
+            }
+            self.painter.paint_feature();
         }
     }
 }
@@ -581,31 +854,158 @@ mod tests {
     /// whose pools and columns straddle chunk borders) and in the others.
     #[test]
     fn culling_features_to_the_chunk_changes_nothing() {
-        let g = NetherGen::new(12345);
-        let mut compared = 0;
-        for (cx, cz) in [(-32, -140), (-33, -141), (-128, -140), (-140, -140), (0, 0), (-80, -140), (36, -111)] {
-            for dx in 0..2 {
-                for cy in 0..4 {
-                    let base = IVec3::new(cx + dx, cy, cz) * CHUNK_SIZE_I;
-                    let paint = |cull| {
-                        let mut blocks = ChunkData::new_dense(Block::AIR);
-                        decorate_within(&g, &mut blocks, base, cull);
-                        blocks
-                    };
-                    let (culled, full) = (paint(true), paint(false));
-                    for i in 0..CHUNK_VOLUME {
-                        assert_eq!(culled[i], full[i], "{base} cell {i}: {} vs {}", culled[i].name(), full[i].name());
+        use crate::world::terrain::Generation;
+        for generation in [Generation::V5, Generation::V6] {
+            let g = NetherGen::with_generation(12345, generation);
+            let mut compared = 0;
+            for (cx, cz) in [(-32, -140), (-33, -141), (-128, -140), (-140, -140), (0, 0), (-80, -140), (36, -111)] {
+                for dx in 0..2 {
+                    for cy in 0..4 {
+                        let cpos = IVec3::new(cx + dx, cy, cz);
+                        let base = cpos * CHUNK_SIZE_I;
+                        // Decoration paints over the chunk's own terrain.
+                        let terrain = g.undecorated(cpos);
+                        let paint = |cull| {
+                            let mut blocks = terrain.clone();
+                            decorate_within(&g, &mut blocks, base, cull);
+                            blocks
+                        };
+                        let (culled, full) = (paint(true), paint(false));
+                        for i in 0..CHUNK_VOLUME {
+                            assert_eq!(
+                                culled[i],
+                                full[i],
+                                "{generation:?} {base} cell {i}: {} vs {}",
+                                culled[i].name(),
+                                full[i].name()
+                            );
+                        }
+                        compared += (0..CHUNK_VOLUME).filter(|&i| full[i] != terrain[i]).count();
                     }
-                    compared += full.iter().filter(|&&b| b != Block::AIR).count();
+                }
+            }
+            assert!(compared > 2000, "{generation:?}: only {compared} feature blocks compared");
+        }
+    }
+
+    /// Generation 6 places Java 26.3's Nether features: ores, glowstone,
+    /// fire, springs, mushrooms, blobs, and the 26.3 vegetation and vines.
+    #[test]
+    fn generation_6_places_javas_nether_features_in_their_biomes() {
+        use crate::world::gen5_blocks::NETHER_GOLD_ORE;
+        let g = NetherGen::new(2024);
+        assert_eq!(g.generation, crate::world::terrain::Generation::V6);
+        let sea = super::super::nether::LAVA_SEA;
+        let springs =
+            |blocks: &HashMap<IVec3, Block>| blocks.iter().filter(|(p, b)| **b == Block::LAVA && p.y > sea + 1).count();
+        let (_, wastes) = area(&g, NetherBiome::NetherWastes);
+        for b in [Block::GLOWSTONE, Block::QUARTZ_ORE, NETHER_GOLD_ORE, Block::MAGMA, Block::GRAVEL, Block::BLACKSTONE]
+        {
+            assert!(count(&wastes, |c| c == b) > 0, "nether wastes have {}", b.name());
+        }
+        assert!(count(&wastes, |b| b.fire_age().is_some()) > 0, "fire on netherrack");
+        assert!(springs(&wastes) > 0, "lava springs above the sea");
+        let (_, deltas) = area(&g, NetherBiome::BasaltDeltas);
+        // Blobs replace netherrack deep inside the rock as well as at floors.
+        let deep_basalt = deltas
+            .iter()
+            .filter(|(p, b)| **b == Block::BASALT && deltas.get(&(**p + IVec3::Y)) == Some(&Block::NETHERRACK))
+            .count();
+        assert!(deep_basalt > 50, "basalt blobs under netherrack: {deep_basalt}");
+        for b in [Block::QUARTZ_ORE, NETHER_GOLD_ORE, Block::BLACKSTONE] {
+            assert!(count(&deltas, |c| c == b) > 0, "basalt deltas have {}", b.name());
+        }
+        let (_, soul) = area(&g, NetherBiome::SoulSandValley);
+        assert!(count(&soul, |c| c == nb::SOUL_FIRE) > 0, "soul fire on soul soil");
+        assert!(count(&soul, |c| c == Block::SOUL_SAND) > 0);
+        let (_, crimson) = area(&g, NetherBiome::CrimsonForest);
+        for b in [nb::CRIMSON_STEM, nb::CRIMSON_ROOTS, nb::NETHER_WART_BLOCK, Block::GLOWSTONE] {
+            assert!(count(&crimson, |c| c == b) > 0, "crimson forest has {}", b.name());
+        }
+        // 26.3's vines: every head is aged 17..=25 and hangs below plants or the roof.
+        let heads: Vec<_> = crimson.values().filter_map(|&b| Vine::of(b).and_then(|(_, age)| age)).collect();
+        assert!(!heads.is_empty() && heads.iter().all(|a| (17..=25).contains(a)), "{heads:?}");
+        let (_, warped) = area(&g, NetherBiome::WarpedForest);
+        for b in [nb::WARPED_STEM, nb::WARPED_ROOTS, nb::NETHER_SPROUTS] {
+            assert!(count(&warped, |c| c == b) > 0, "warped forest has {}", b.name());
+        }
+        assert!(count(&warped, |b| matches!(Vine::of(b), Some((Vine::Twisting, _)))) > 0, "twisting vines");
+        // No noise glowstone remains: glowstone grows from ceilings, each
+        // block touching another or the rock (an earlier feature may take
+        // a block of the chain, rarely).
+        let glow: Vec<_> = wastes.iter().filter(|(_, b)| **b == Block::GLOWSTONE).map(|(p, _)| *p).collect();
+        let held = glow
+            .iter()
+            .filter(|&&p| {
+                [IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y, IVec3::Z, IVec3::NEG_Z]
+                    .iter()
+                    .any(|&d| wastes.get(&(p + d)).is_some_and(|b| *b == Block::GLOWSTONE || b.is_opaque()))
+            })
+            .count();
+        assert!(held * 100 >= glow.len() * 99, "{held} of {} glowstone held", glow.len());
+    }
+
+    /// Java's overworld mushrooms (heightmap placement) land on the bedrock
+    /// roof, in the chunk above it.
+    #[test]
+    fn generation_6_grows_mushrooms_on_the_nether_roof() {
+        let g = NetherGen::new(31);
+        let mut found = 0;
+        for cz in -8..8 {
+            for cx in -8..8 {
+                let cpos = IVec3::new(cx, 4, cz);
+                let chunk = g.generate(cpos);
+                for z in 0..CHUNK_SIZE {
+                    for x in 0..CHUNK_SIZE {
+                        let b = chunk.get(x, 0, z);
+                        if b == Block::BROWN_MUSHROOM || b == Block::RED_MUSHROOM {
+                            found += 1;
+                            let p = cpos * CHUNK_SIZE_I + IVec3::new(x as i32, -1, z as i32);
+                            assert!(g.bedrock(p.x, p.y, p.z), "a roof mushroom stands on bedrock at {p}");
+                        }
+                        // Nothing else lands up here.
+                        assert!(matches!(b, Block::AIR | Block::BROWN_MUSHROOM | Block::RED_MUSHROOM), "{}", b.name());
+                    }
                 }
             }
         }
-        assert!(compared > 2000, "only {compared} feature blocks compared");
+        assert!(found > 0, "no roof mushrooms in 1024 cells");
+        // Generation 5 keeps the roof bare.
+        let old = NetherGen::with_generation(31, crate::world::terrain::Generation::V5);
+        assert!(matches!(old.generate(IVec3::new(0, 4, 0)), ChunkData::Uniform(Block::AIR)));
+    }
+
+    #[test]
+    fn generation_6_springs_are_scheduled_to_flow() {
+        let g = NetherGen::new(8);
+        let mut open = 0;
+        let mut total = 0;
+        for cz in -2..2 {
+            for cx in -2..2 {
+                for cy in 0..4 {
+                    let cpos = IVec3::new(cx, cy, cz);
+                    let data = g.generate(cpos);
+                    for p in v6::spring_ticks(&g, cpos, &data) {
+                        total += 1;
+                        let l = p - cpos * CHUNK_SIZE_I;
+                        assert_eq!(data.get(l.x as usize, l.y as usize, l.z as usize), Block::LAVA);
+                        let air = [IVec3::X, IVec3::NEG_X, IVec3::Z, IVec3::NEG_Z, IVec3::NEG_Y].iter().any(|&d| {
+                            let q = l + d;
+                            q.cmpge(IVec3::ZERO).all()
+                                && q.cmplt(IVec3::splat(CHUNK_SIZE_I)).all()
+                                && data.get(q.x as usize, q.y as usize, q.z as usize) == Block::AIR
+                        });
+                        open += usize::from(air);
+                    }
+                }
+            }
+        }
+        assert!(total > 20 && open > 0, "{total} springs, {open} open");
     }
 
     #[test]
     fn probe_terrain_matches_generated_chunks_where_nothing_was_painted() {
-        let g = NetherGen::new(5);
+        let g = NetherGen::with_generation(5, crate::world::terrain::Generation::V5);
         let cpos = IVec3::new(-1, 1, 2);
         let base = cpos * CHUNK_SIZE_I;
         let chunk = g.generate(cpos);

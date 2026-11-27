@@ -26,6 +26,7 @@ pub mod category;
 mod chunk_storage;
 pub mod decor;
 pub mod dispensed;
+pub mod draw_distance;
 pub mod path;
 pub use bobber::{CatchContext, roll_catch, set_damage};
 pub mod armadillo;
@@ -34,6 +35,7 @@ pub mod conduit_hunt;
 pub mod copper_golem;
 pub mod creaking;
 pub mod crystal;
+mod diagnostics;
 pub mod dragon;
 mod dragon_model;
 mod effect_triggers;
@@ -445,6 +447,12 @@ pub enum EntityEvent {
     VillagerHarvest {
         cell: IVec3,
     },
+    /// v1.0 Track 6: a villager rings its meeting bell before a raid
+    /// (`RingBell`, `BellBlock.attemptToRing` with the villager as source).
+    RingBell {
+        pos: IVec3,
+        mob: u32,
+    },
     /// No villager is near a door they opened any more: close it again.
     VillagerDoorClose {
         cell: IVec3,
@@ -661,6 +669,12 @@ pub trait MobWorld: BlockSource {
     fn light_settled(&self) -> bool {
         true
     }
+    /// Whether the light natural spawning reads, around the players, is
+    /// settled; light still spreading farther out can't change a spawn
+    /// (v1.0 Track 2, [`World::light_settled_for_ticks`]).
+    fn spawn_light_settled(&self) -> bool {
+        self.light_settled()
+    }
     /// Java's `WORLD_SURFACE` heightmap: the highest non-air block of a
     /// loaded column. Defaults to the light-blocking surface.
     fn world_surface(&self, x: i32, z: i32) -> Option<i32> {
@@ -831,6 +845,9 @@ impl MobWorld for World {
     fn light_settled(&self) -> bool {
         World::light_settled(self)
     }
+    fn spawn_light_settled(&self) -> bool {
+        World::light_settled_for_ticks(self)
+    }
     fn surface(&self, x: i32, z: i32) -> Option<i32> {
         self.surface_height(x, z)
     }
@@ -939,6 +956,8 @@ pub struct Target {
     pub darkness_ticks: u32,
     /// v0.16 Track B: gliding on elytra (`isFallFlying`): a held rocket pushes.
     pub fall_flying: bool,
+    /// Velocity in blocks a second (a lead's spring reads its movement).
+    pub vel: DVec3,
     /// v0.16 Track C: the mob head worn in the helmet slot, which halves
     /// how far its own kind sees this player (`MobVisibility`).
     pub head: Option<crate::world::skulls::Kind>,
@@ -1006,6 +1025,7 @@ impl Target {
             head: None,
             blocking: false,
             fall_flying: false,
+            vel: DVec3::ZERO,
         }
     }
 
@@ -1137,6 +1157,9 @@ pub struct Entities {
     pub(crate) charged_blasts: Vec<DVec3>,
     /// v0.16 Track A: shulker bullets (not saved; see `shulker`).
     pub shulker_bullets: Vec<shulker::Bullet>,
+    /// v1.0 Track 9: the vehicle stores each player has open, one entry per
+    /// viewer ([`Entities::set_vehicle_viewers`]). Not saved.
+    vehicle_viewers: Vec<u32>,
     /// Seconds until End city sentries are checked again.
     end_city_timer: f32,
     /// Ominous item spawners over trial chamber fights (see [`trial`]).
@@ -1160,6 +1183,8 @@ pub struct Entities {
     storage: chunk_storage::EntityStorage,
     /// The dragon fight, in the End.
     pub fight: Option<dragon::Fight>,
+    /// v1.0 Track 7: Ender Dragons no fight owns (spawn eggs), in any dimension.
+    pub wild_dragons: dragon::Wild,
     /// v0.16 Track G: End crystals, in any dimension (the End's tick with
     /// the fight).
     pub crystals: crystal::Crystals,
@@ -1298,6 +1323,7 @@ impl Entities {
             wither_skulls: Vec::new(),
             charged_blasts: Vec::new(),
             shulker_bullets: Vec::new(),
+            vehicle_viewers: Vec::new(),
             end_city_timer: 0.0,
             item_spawners: Vec::new(),
             puffs: Vec::new(),
@@ -1312,6 +1338,7 @@ impl Entities {
             decor_clock: 0,
             storage: Default::default(),
             fight: None,
+            wild_dragons: dragon::Wild::default(),
             crystals: crystal::Crystals::default(),
             crystal_time: 0.0,
             mob_loot: true,
@@ -1578,6 +1605,7 @@ impl Entities {
         if let Some(fight) = &mut self.fight {
             fight.explode(center, power);
         }
+        self.wild_dragons.explode(center, power);
         self.crystals.explode(center, power);
         // v0.16 Track C: a charged creeper's blast knocks one head off.
         let charged = self
@@ -1652,6 +1680,7 @@ impl Entities {
             Some((damage, push * crate::knockback::TICK_RATE))
         };
         if items {
+            let sculk = &mut self.sculk;
             self.items.retain_mut(|item| match hit(item.pos, item.aabb(), item::ItemEntity::EYE) {
                 // v0.16 Track C: the Nether star's `damage_resistant`
                 // spares it the damage, not the push.
@@ -1661,6 +1690,9 @@ impl Entities {
                 }
                 Some((damage, push)) => {
                     item.vel += push;
+                    // v1.0 Track 9: `ItemEntity.hurtServer` posts `entity_damage`.
+                    let none = crate::world::vibration::EventSource::NONE;
+                    sculk.post(item.pos, crate::world::vibration::GameEvent::EntityDamage, none, None);
                     item.hurt(damage)
                 }
                 None => true,
@@ -2101,6 +2133,10 @@ impl Entities {
         // v0.16 Track G: End crystals, saved even when there are none, so
         // a load knows the pillars' crystals are among them.
         props.insert("end_crystals".to_string(), self.crystals.serialize());
+        // v1.0 Track 7: dragons no fight owns.
+        if !self.wild_dragons.dragons.is_empty() {
+            props.insert("ender_dragons".to_string(), self.wild_dragons.serialize());
+        }
     }
 
     /// Restores [`Entities::save_props`]. Every entity starts in the level;
@@ -2143,6 +2179,7 @@ impl Entities {
         if let Some(c) = props.get("end_crystals") {
             self.crystals.load(c);
         }
+        self.wild_dragons = props.get("ender_dragons").map(|d| dragon::Wild::load(d)).unwrap_or_default();
     }
 
     pub fn load_items(&mut self, text: &str) {
@@ -2208,15 +2245,20 @@ impl Entities {
         }
     }
 
-    /// Camera-relative geometry for every visible mob and other entity, rebuilt for this view.
+    /// Camera-relative geometry for every visible mob and other entity,
+    /// rebuilt for this view. `view` is Java's draw distances for the view
+    /// ([`draw_distance::DrawDistance`]); a plain `f32` draws everything
+    /// within that many blocks.
     pub fn mesh(
         &mut self,
+        maps: &crate::world::maps::MapStorage,
         camera: DVec3,
         forward: Vec3,
-        max_dist: f32,
+        view: impl Into<draw_distance::DrawDistance>,
         time: f32,
         alpha: f64,
     ) -> &mut model::EntityMesh {
+        let view = view.into();
         self.mesh.clear();
         // v0.18 Track 6: draw each mob turned and mid-stride as of `alpha`,
         // then put the simulation's values back.
@@ -2225,7 +2267,7 @@ impl Entities {
             self.poses.push(m.pose_values());
             m.set_pose_values(m.render_pose(alpha as f32));
         }
-        self.rendered = model::build(&self.mobs, camera, forward, max_dist, time, alpha, &mut self.mesh);
+        self.rendered = model::build(&self.mobs, camera, forward, view, time, alpha, &mut self.mesh);
         for (m, &pose) in self.mobs.iter_mut().zip(&self.poses) {
             m.set_pose_values(pose);
         }
@@ -2244,13 +2286,14 @@ impl Entities {
         model::build_shulker_bullets(&self.shulker_bullets, camera, time, alpha, &mut self.mesh);
         model::build_lightning(&self.lightning, camera, &mut self.mesh);
         model::build_puffs(&self.puffs, camera, alpha, &mut self.mesh);
-        model::build_orbs(&self.orbs, camera, max_dist, time, alpha, &mut self.mesh);
-        model::build_minecarts(&self.minecarts, camera, alpha, &mut self.mesh);
-        decor::build(&self.decor, camera, max_dist, alpha, &mut self.mesh);
+        model::build_orbs(&self.orbs, camera, &view, time, alpha, &mut self.mesh);
+        model::build_minecarts(&self.minecarts, camera, &view, alpha, &mut self.mesh);
+        decor::build(&self.decor, maps, camera, &view, alpha, &mut self.mesh);
         dragon_model::build_crystals(&self.crystals, camera, time, alpha, &mut self.mesh);
         if let Some(fight) = &self.fight {
             dragon_model::build_fight(fight, &self.crystals, camera, time, alpha, &mut self.mesh);
         }
+        dragon_model::build_wild(&self.wild_dragons, &self.crystals, camera, time, alpha, &mut self.mesh);
         &mut self.mesh
     }
 
@@ -2293,7 +2336,12 @@ impl Entities {
         let tnt = self.tnt.iter().map(|t| t.previous_pos.lerp(t.pos, alpha)).map(at(shadow::BLOCK_RADIUS, 1.0));
         let crystals = self.crystals.list.iter().map(|c| c.pos).map(at(shadow::CRYSTAL_RADIUS, 1.0));
         let dragon = self.fight.as_ref().and_then(|f| f.dragon.as_ref());
-        let dragon = dragon.map(|d| d.previous_pos.lerp(d.pos, alpha)).map(at(shadow::DRAGON_RADIUS, 1.0));
+        let wild = self.wild_dragons.dragons.iter().map(|w| &w.dragon);
+        let dragon = dragon
+            .into_iter()
+            .chain(wild)
+            .map(|d| d.previous_pos.lerp(d.pos, alpha))
+            .map(at(shadow::DRAGON_RADIUS, 1.0));
         let all = items.chain(orbs).chain(carts).chain(tnt).chain(crystals).chain(dragon);
         casters.extend(all.chain(others.iter().copied()).filter(|c| c.radius > 0.0 && near(c)));
         shadow::build(ground, &casters, camera, &mut self.mesh);
@@ -2358,7 +2406,7 @@ impl Entities {
 
     /// The End crystal or dragon part a ray hits within `max_dist`.
     fn fight_raycast_all(&self, origin: DVec3, dir: DVec3, max_dist: f64) -> Option<(dragon::Hit, f64)> {
-        dragon::raycast(self.fight.as_ref(), &self.crystals, origin, dir, max_dist)
+        dragon::raycast(self.fight.as_ref(), &self.wild_dragons, &self.crystals, origin, dir, max_dist)
     }
 
     /// The End crystal (in any dimension) or dragon part a ray hits within
@@ -2395,6 +2443,7 @@ impl Entities {
         match hit {
             dragon::Hit::Crystal(id) => self.crystals.hit(id, crystal::Blow::Player { id: by, creative }),
             dragon::Hit::Dragon(_) => self.fight.as_mut().is_some_and(|f| f.strike(hit, damage, false)),
+            dragon::Hit::Wild(id, part) => self.wild_dragons.strike(id, part, damage, false),
         }
     }
 
@@ -3329,7 +3378,8 @@ mod tests {
         e.snapshot_positions();
         // One tick turns it across the -pi/pi seam and starts it walking.
         e.mobs[0].set_pose_values([-3.0, 0.4, -0.2, 2.0, 1.0]);
-        let half = e.mesh(DVec3::new(0.0, 11.0, 0.0), glam::Vec3::X, 64.0, 0.0, 0.5).boxes().to_vec();
+        let half =
+            e.mesh(&Default::default(), DVec3::new(0.0, 11.0, 0.0), glam::Vec3::X, 64.0, 0.0, 0.5).boxes().to_vec();
         assert_eq!(e.mobs[0].pose_values(), [-3.0, 0.4, -0.2, 2.0, 1.0], "the simulation keeps its pose");
         let mid = e.mobs[0].render_pose(0.5);
         assert!((mid[0] - std::f32::consts::PI).abs() < 1e-4, "the short way round: {}", mid[0]);
@@ -3341,7 +3391,8 @@ mod tests {
         f.spawn(MobKind::Pig, DVec3::new(6.5, 10.0, 0.5));
         f.mobs[0].set_pose_values(mid);
         f.snapshot_positions();
-        let posed = f.mesh(DVec3::new(0.0, 11.0, 0.0), glam::Vec3::X, 64.0, 0.0, 1.0).boxes().to_vec();
+        let posed =
+            f.mesh(&Default::default(), DVec3::new(0.0, 11.0, 0.0), glam::Vec3::X, 64.0, 0.0, 1.0).boxes().to_vec();
         assert_eq!(half.len(), posed.len());
         for (a, b) in half.iter().zip(&posed) {
             for (ra, rb) in a.rows.iter().zip(&b.rows) {
@@ -4354,7 +4405,11 @@ mod tests {
                 &ctx(DVec3::new(0.0, 10.0, 0.0)),
                 &mut mobs,
                 &[],
-                Some(&mut dragon::Targets { fight: Some(&mut fight), crystals: &mut crystals }),
+                Some(&mut dragon::Targets {
+                    fight: Some(&mut fight),
+                    wild: &mut Default::default(),
+                    crystals: &mut crystals,
+                }),
                 &mut Rng::new(1),
                 &mut events,
             );

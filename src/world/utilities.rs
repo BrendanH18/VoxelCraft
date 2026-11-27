@@ -19,6 +19,8 @@ mod ticks;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod track9_tests;
 
 use glam::IVec3;
 use rustc_hash::FxHashMap;
@@ -34,17 +36,17 @@ use crate::item::{Item, ToolKind};
 #[derive(Default)]
 pub struct State {
     /// Campfire cooking slots.
-    campfires: FxHashMap<IVec3, campfire::Slots>,
+    pub(in crate::world) campfires: FxHashMap<IVec3, campfire::Slots>,
     /// The stack a decorated pot holds.
-    decorated: FxHashMap<IVec3, Stack>,
+    pub(in crate::world) decorated: FxHashMap<IVec3, Stack>,
     /// Cauldrons a dripstone drip will reach, with ticks left
     /// (`PointedDripstoneBlock.maybeTransferFluid`'s scheduled tick).
-    drips: Vec<(IVec3, u16)>,
+    pub(in crate::world) drips: Vec<(IVec3, u16)>,
     /// Players looking into each trapped chest.
     viewers: FxHashMap<IVec3, u8>,
     golem_viewers: FxHashMap<IVec3, u8>,
     /// Tilting big dripleaves, with ticks to their next tilt.
-    tilts: Vec<(IVec3, u16)>,
+    pub(in crate::world) tilts: Vec<(IVec3, u16)>,
     /// Cells where a falling stalactite landed this tick, with its damage.
     stalactite_hits: Vec<(IVec3, f32)>,
     /// Respawn anchors used outside the Nether this tick, for the host to

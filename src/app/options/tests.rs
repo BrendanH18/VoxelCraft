@@ -785,7 +785,8 @@ fn cloud_and_sky_flash_options_use_javas_labels_and_order() {
         assert_eq!(host.settings.clouds, want);
         assert_eq!(label(&video, &host, video::Id::Clouds), format!("Clouds: {caption}"));
     }
-    assert_eq!(label(&video, &host, video::Id::CloudDistance), "Cloud Distance: 128 Chunks");
+    // Java's Fancy preset sets 64 (v1.0 Track 2).
+    assert_eq!(label(&video, &host, video::Id::CloudDistance), "Cloud Distance: 64 Chunks");
     video.slide(&mut host, video::Id::CloudDistance, 0.0);
     assert_eq!(label(&video, &host, video::Id::CloudDistance), "Cloud Distance: 2 Chunks");
     video.slide(&mut host, video::Id::CloudDistance, 0.5);
@@ -808,4 +809,33 @@ fn cloud_and_sky_flash_options_use_javas_labels_and_order() {
     let ids: Vec<_> = screen.widgets(&host, (640.0, 360.0)).into_iter().map(|w| w.id).collect();
     let at = |id| ids.iter().position(|&i| i == id).unwrap();
     assert!(at(accessibility::Id::DamageTilt) < at(accessibility::Id::HideSkyFlashes));
+}
+
+/// v1.0 Track 9: Java 26.3's Controls order (Sneak, Sprint, Attack/Destroy,
+/// Use Item/Place Block, Auto-Jump) with its labels, and the Attack
+/// Indicator cycle in Video Settings' Preferences.
+#[test]
+fn controls_list_javas_toggles_and_auto_jump_in_order() {
+    let mut host = Host::default();
+    let mut controls = Controls;
+    let ids: Vec<_> = controls.widgets(&host, (640.0, 360.0)).into_iter().map(|w| w.id).collect();
+    let at = |id| ids.iter().position(|&i| i == id).unwrap();
+    use controls::ControlsId as C;
+    assert!(at(C::Sneak) < at(C::Sprint) && at(C::Sprint) < at(C::Attack));
+    assert!(at(C::Attack) < at(C::Use) && at(C::Use) < at(C::AutoJump));
+    assert_eq!(label(&controls, &host, C::Attack), "Attack/Destroy: Hold");
+    assert_eq!(label(&controls, &host, C::Use), "Use Item/Place Block: Hold");
+    assert_eq!(label(&controls, &host, C::AutoJump), "Auto-Jump: OFF");
+    for id in [C::Attack, C::Use, C::AutoJump] {
+        controls.activate(&mut host, id);
+    }
+    assert!(host.settings.toggle_attack && host.settings.toggle_use && host.settings.auto_jump);
+    assert_eq!(label(&controls, &host, C::Attack), "Attack/Destroy: Toggle");
+    assert_eq!(label(&controls, &host, C::AutoJump), "Auto-Jump: ON");
+    let mut video = VideoSettings;
+    assert_eq!(label(&video, &host, video::Id::AttackIndicator), "Attack Indicator: Crosshair");
+    video.activate(&mut host, video::Id::AttackIndicator);
+    assert_eq!(label(&video, &host, video::Id::AttackIndicator), "Attack Indicator: Hotbar");
+    video.activate(&mut host, video::Id::AttackIndicator);
+    assert_eq!(label(&video, &host, video::Id::AttackIndicator), "Attack Indicator: OFF");
 }

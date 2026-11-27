@@ -187,13 +187,12 @@ impl Cloud {
 }
 impl Entities {
     pub fn collect_dragon_breath(&mut self, pos: DVec3, shape: crate::physics::Shape) -> bool {
-        let Some(f) = &mut self.fight else {
-            return false;
-        };
         let (min, max) = shape.aabb(pos);
         let min = min - DVec3::splat(2.);
         let max = max + DVec3::splat(2.);
-        let Some(c) = f.clouds.iter_mut().find(|c| {
+        // The fight's breath, then that of dragons no fight owns (v1.0 Track 7).
+        let fight = self.fight.iter_mut().flat_map(|f| f.clouds.iter_mut());
+        let Some(c) = fight.chain(self.wild_dragons.clouds.iter_mut()).find(|c| {
             c.pos.y < max.y
                 && c.pos.y + 0.5 > min.y
                 && c.pos.x - f64::from(c.radius) < max.x

@@ -74,3 +74,45 @@ impl PlayerSession {
         }
     }
 }
+
+/// v1.0 Track 6: a player's custom statistics (`Stats.CUSTOM`), by Java's
+/// identifier without the `minecraft:` namespace. Saved as `name=count`
+/// pairs joined by commas; unknown names are kept as they are.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Stats(std::collections::BTreeMap<String, u32>);
+
+impl Stats {
+    /// `Stats.RAID_TRIGGER`: a raid started from this player's Raid Omen.
+    pub const RAID_TRIGGER: &'static str = "raid_trigger";
+    /// `Stats.RAID_WIN`: this player was a hero of a won raid.
+    pub const RAID_WIN: &'static str = "raid_win";
+
+    /// `Player.awardStat(stat)`: one more.
+    pub fn award(&mut self, name: &str) {
+        let n = self.0.entry(name.to_string()).or_default();
+        *n = n.saturating_add(1);
+    }
+
+    pub fn get(&self, name: &str) -> u32 {
+        self.0.get(name).copied().unwrap_or(0)
+    }
+
+    pub fn serialize(&self) -> String {
+        self.0.iter().map(|(k, v)| format!("{k}={v}")).collect::<Vec<_>>().join(",")
+    }
+
+    /// Reads [`Stats::serialize`]'s text; malformed pairs are skipped.
+    pub fn parse(text: &str) -> Self {
+        let mut out = Self::default();
+        for pair in text.split(',') {
+            if let Some((k, v)) = pair.split_once('=')
+                && !k.is_empty()
+                && k.bytes().all(|b| b.is_ascii_lowercase() || b == b'_' || b.is_ascii_digit())
+                && let Ok(v) = v.parse()
+            {
+                out.0.insert(k.to_string(), v);
+            }
+        }
+        out
+    }
+}

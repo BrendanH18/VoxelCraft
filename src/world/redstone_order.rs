@@ -527,3 +527,18 @@ impl World {
         }
     }
 }
+
+/// v1.0 Track 3: entry counts for the long-session soak (`crate::soak`).
+impl UpdateOrder {
+    pub(super) fn soak_counts(&self, out: &mut crate::world::diagnostics::Counts) {
+        out.extend([
+            ("redstone.order.stack", self.stack.len()),
+            ("redstone.order.added", self.added.len()),
+            ("redstone.order.collected", self.collected.len()),
+            ("redstone.order.this_tick", self.this_tick.len()),
+            ("redstone.order.events", self.events.len()),
+            ("redstone.order.queued_events", self.queued_events.len()),
+            ("redstone.order.trace", self.trace.as_ref().map_or(0, Vec::len)),
+        ]);
+    }
+}

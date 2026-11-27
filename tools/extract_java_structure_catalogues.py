@@ -18,6 +18,11 @@ Track G):
   trial spawner and vault configurations, decorated pots, cobwebs);
 - the rule processor lists those pools use.
 
+`--set bastion` (v1.0 Track 8) writes the `bastion_remnant` structure and
+the `bastion/*` pools instead, and also keeps each connector's position in
+its template and the counts of gold blocks, gilded blackstone, lava and
+spawners by mob.
+
 A pool may name a template the jar lacks (`ancient_city/walls/no_corners`
 names `intact_horizontal_wall_stairs_5`); it is recorded as missing.
 
@@ -47,6 +52,17 @@ STRUCTURES = [
     "ancient_city",
 ]
 POOL_ROOTS = ["village/", "trial_chambers/", "ancient_city/"]
+# `--set bastion` (v1.0 Track 8, GEN-05g) writes the bastion remnant's
+# catalogue to its own fixture instead.
+SETS = {
+    "default": (
+        STRUCTURES,
+        POOL_ROOTS,
+        "{village_*,trial_chambers,ancient_city}",
+        "{village,trial_chambers,ancient_city}",
+    ),
+    "bastion": (["bastion_remnant"], ["bastion/"], "bastion_remnant", "bastion"),
+}
 JOB_SITES = [
     "barrel",
     "blast_furnace",
@@ -64,6 +80,8 @@ JOB_SITES = [
     "stonecutter",
 ]
 COUNTED = ["bell", "cobweb", "decorated_pot", "chest", "trapped_chest", "spawner", "trial_spawner", "vault"]
+# Bastion templates also count their gold, gilded blackstone and lava.
+BASTION_COUNTED = ["gold_block", "gilded_blackstone", "lava"]
 PREFIX = "data/minecraft/"
 
 
@@ -176,7 +194,7 @@ def entity_facts(nbt):
     return out
 
 
-def template_facts(raw):
+def template_facts(raw, extra=()):
     nbt = Nbt(gzip.decompress(raw)).root()
     palette = nbt["palette"] if "palette" in nbt else nbt["palettes"][0]
     connectors = []
@@ -202,15 +220,23 @@ def template_facts(raw):
             for key in ("placement_priority", "selection_priority"):
                 if data.get(key, 0):
                     connector[key] = data[key]
+            if extra:
+                # Bastion pieces tile tightly: the catalogue keeps where each
+                # connector sits (a position, not the template's geometry).
+                connector["pos"] = block["pos"]
             connectors.append(connector)
             continue
         if name.endswith("_bed") and props.get("part") == "head":
             counts["bed"] = counts.get("bed", 0) + 1
-        if name in JOB_SITES or name in COUNTED:
+        if name in JOB_SITES or name in COUNTED or name in extra:
             counts[name] = counts.get(name, 0) + 1
         if "LootTable" in data:
             key = f"{name} {strip(data['LootTable'])}"
             loot[key] = loot.get(key, 0) + 1
+        if name == "spawner" and extra:
+            entity = data.get("SpawnData", {}).get("entity", {}).get("id")
+            key = f"spawner {strip(entity) if entity else 'none'}"
+            counts[key] = counts.get(key, 0) + 1
         if name == "trial_spawner":
             spawners.append(
                 {
@@ -278,7 +304,8 @@ def processor_facts(data):
     return out
 
 
-def extract(server):
+def extract(server, which="default"):
+    structure_names, pool_roots, structure_glob, pool_glob = SETS[which]
     data = server.read_bytes()
     if hashlib.sha1(data).hexdigest() != SERVER_SHA1:
         raise ValueError("not the pinned official Java 26.3 server artifact")
@@ -290,7 +317,7 @@ def extract(server):
             return json.loads(jar.read(PREFIX + path))
 
         structures = {}
-        for name in STRUCTURES:
+        for name in structure_names:
             s = read(f"worldgen/structure/{name}.json")
             facts = {
                 "start_pool": strip(s["start_pool"]),
@@ -314,7 +341,7 @@ def extract(server):
             if not path.startswith(pool_dir) or not path.endswith(".json"):
                 continue
             name = path[len(pool_dir) : -len(".json")]
-            if not any(name.startswith(r) for r in POOL_ROOTS):
+            if not any(name.startswith(r) for r in pool_roots):
                 continue
             pool = json.loads(jar.read(path))
             pools[name] = {
@@ -332,7 +359,8 @@ def extract(server):
                         continue
                     path = f"{PREFIX}structure/{location}.nbt"
                     if path in names:
-                        templates[location] = template_facts(jar.read(path))
+                        extra = BASTION_COUNTED if which == "bastion" else ()
+                        templates[location] = template_facts(jar.read(path), extra)
                     else:
                         # Java's template manager hands back an empty template:
                         # size 0, no connectors, so it never fits.
@@ -350,8 +378,8 @@ def extract(server):
             "version": "26.3",
             "server_sha1": SERVER_SHA1,
             "sources": [
-                "data/minecraft/worldgen/structure/{village_*,trial_chambers,ancient_city}.json",
-                "data/minecraft/worldgen/template_pool/{village,trial_chambers,ancient_city}/**",
+                f"data/minecraft/worldgen/structure/{structure_glob}.json",
+                f"data/minecraft/worldgen/template_pool/{pool_glob}/**",
                 "data/minecraft/structure/** (sizes, jigsaw blocks, entities, counted blocks only)",
                 "data/minecraft/worldgen/processor_list/*.json (lists the pools name)",
             ],
@@ -367,8 +395,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("server", type=Path)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--set", choices=sorted(SETS), default="default")
     args = parser.parse_args()
-    args.output.write_text(json.dumps(extract(args.server), indent=1, sort_keys=True) + "\n")
+    args.output.write_text(json.dumps(extract(args.server, args.set), indent=1, sort_keys=True) + "\n")
 
 
 if __name__ == "__main__":

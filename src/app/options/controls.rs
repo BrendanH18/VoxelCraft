@@ -1,7 +1,8 @@
 //! Controls and Mouse Settings: Java 26.3's screens with the options
-//! VoxelCraft has. Controls leaves out Attack and Use (Hold/Toggle),
-//! Auto-Jump, Sprint Window, quit shortcuts and the operator items tab;
-//! Mouse Settings leaves out Allow Cursor Changes.
+//! VoxelCraft has. Controls leaves out Sprint Window, quit shortcuts and the
+//! operator items tab (v1.0 Track 9 added Attack/Destroy and Use Item/Place
+//! Block, Hold or Toggle, and Auto-Jump); Mouse Settings leaves out Allow
+//! Cursor Changes.
 
 use super::{KeyBinds, OptionsHost, change, close, frac, lerp};
 use crate::app::gui::{OptionList, Rect, Screen, Size, Step, Widget, on_off};
@@ -13,6 +14,9 @@ pub(in crate::app) enum ControlsId {
     KeyBinds,
     Sneak,
     Sprint,
+    Attack,
+    Use,
+    AutoJump,
     Done,
 }
 
@@ -42,6 +46,10 @@ impl<H: OptionsHost> Screen<H> for Controls {
             Widget::button(ControlsId::KeyBinds, z, "Key Binds..."),
             Widget::button(ControlsId::Sneak, z, hold_toggle("Sneak", s.toggle_sneak)),
             Widget::button(ControlsId::Sprint, z, hold_toggle("Sprint", s.toggle_sprint)),
+            // `ControlsScreen.options`: Sneak, Sprint, Attack, Use, Auto-Jump.
+            Widget::button(ControlsId::Attack, z, hold_toggle("Attack/Destroy", s.toggle_attack)),
+            Widget::button(ControlsId::Use, z, hold_toggle("Use Item/Place Block", s.toggle_use)),
+            Widget::button(ControlsId::AutoJump, z, format!("Auto-Jump: {}", on_off(s.auto_jump))),
         ]);
         list.done(Widget::button(ControlsId::Done, z, "Done"), size)
     }
@@ -52,6 +60,9 @@ impl<H: OptionsHost> Screen<H> for Controls {
             ControlsId::KeyBinds => return Step::push(KeyBinds::default()),
             ControlsId::Sneak => change(host, |s| s.toggle_sneak = !s.toggle_sneak),
             ControlsId::Sprint => change(host, |s| s.toggle_sprint = !s.toggle_sprint),
+            ControlsId::Attack => change(host, |s| s.toggle_attack = !s.toggle_attack),
+            ControlsId::Use => change(host, |s| s.toggle_use = !s.toggle_use),
+            ControlsId::AutoJump => change(host, |s| s.auto_jump = !s.auto_jump),
             ControlsId::Done => return close(host),
         }
         Step::Stay

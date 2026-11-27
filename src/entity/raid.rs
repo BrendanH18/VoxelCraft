@@ -991,7 +991,7 @@ impl Entities {
         // The occupied village POIs within 64 blocks (a cube, as
         // `getInRange` filters by distance): their average is the centre.
         let mut claimed: FxHashSet<IVec3> = FxHashSet::default();
-        for m in self.mobs.iter().chain(self.storage.mobs()) {
+        for m in &self.mobs {
             if m.kind == MobKind::Villager
                 && m.alive()
                 && let Some(v) = &m.villager
@@ -1000,6 +1000,8 @@ impl Entities {
                 claimed.extend(v.job);
             }
         }
+        // Stored villagers' claims, in memory or in region records.
+        claimed.extend(self.storage.claimed_beds().chain(self.storage.claimed_jobs()));
         let mut sum = DVec3::ZERO;
         let mut count = 0;
         let r2 = f64::from(POI_RADIUS * POI_RADIUS);
@@ -1084,10 +1086,11 @@ impl Entities {
         raids.append(&mut self.raids.raids);
         self.raids.raids = raids;
         self.raider_upkeep(world);
+        self.witch_heal_tick(world, events);
         self.patrol_tick(world, ctx);
         self.bell_tick(events);
         self.gift_tick(world, ctx);
-        self.villagers_in_raids(events);
+        self.villagers_in_raids(world, events);
     }
 
     /// Copies the heroes into each villager for its prices.
@@ -1948,27 +1951,59 @@ impl Entities {
     /// between waves) the `RAID` activity sends them to shelter at a home
     /// (`LocateHidingPlace`) while the raid is undecided; after a victory
     /// they celebrate (`CelebrateVillagersSurvivedRaid`'s 1 in 100 cheer).
-    pub(super) fn villagers_in_raids(&mut self, events: &mut Vec<EntityEvent>) {
+    /// Villagers near a raid (`VillagerGoalPackages`): `SetRaidStatus`
+    /// (one in 20 a tick) puts a villager in the pre-raid activity before
+    /// the first wave and between waves, where `RingBell` rings its meeting
+    /// bell one tick in 20 from within 3 blocks while it walks there, and
+    /// in the raid activity otherwise, where it shelters while the raid is
+    /// undecided and, once the village has won, `CelebrateVillagersSurvivedRaid`
+    /// runs for 600 ticks under open sky: the celebration sound one tick in
+    /// 100 and a one-burst firework one tick in 200.
+    pub(super) fn villagers_in_raids<W: MobWorld + ?Sized>(&mut self, world: &W, events: &mut Vec<EntityEvent>) {
         if self.raids.raids.is_empty() {
+            for m in &mut self.mobs {
+                if let Some(v) = &mut m.villager {
+                    v.raid_activity = super::villager::RaidActivity::None;
+                    v.celebrate = 0;
+                }
+            }
             return;
         }
+        use super::villager::RaidActivity;
         let alive: Vec<(u32, i32)> = self.raids.raids.iter().map(|r| (r.id, self.raiders_alive(r.id))).collect();
         for i in 0..self.mobs.len() {
             let m = &self.mobs[i];
             if m.kind != MobKind::Villager || !m.alive() || !m.simulation_active {
                 continue;
             }
-            let Some(raid) = self.raids.raid_at(m.pos.floor().as_ivec3()) else { continue };
+            let cell = m.pos.floor().as_ivec3();
+            let Some(raid) = self.raids.raid_at(cell) else {
+                // `ResetRaidStatus`.
+                if let Some(v) = &mut self.mobs[i].villager {
+                    v.raid_activity = RaidActivity::None;
+                    v.celebrate = 0;
+                }
+                continue;
+            };
             let left = alive.iter().find(|a| a.0 == raid.id).map_or(0, |a| a.1);
-            if !raid.first_wave_spawned() || raid.between_waves(left) {
+            let pre_raid = !raid.first_wave_spawned() || raid.between_waves(left);
+            let (victory, over, stopped) = (raid.is_victory(), raid.is_over(), raid.is_stopped());
+            // `SetRaidStatus` runs one tick in 20.
+            if self.rng.next_int(20) == 0
+                && let Some(v) = &mut self.mobs[i].villager
+            {
+                v.raid_activity = if pre_raid { RaidActivity::PreRaid } else { RaidActivity::Raid };
+            }
+            let activity = self.mobs[i].villager.as_ref().map_or(RaidActivity::None, |v| v.raid_activity);
+            if activity == RaidActivity::PreRaid {
+                self.pre_raid_villager(i, world, events);
                 continue;
             }
-            let (victory, over) = (raid.is_victory(), raid.is_over());
+            if activity != RaidActivity::Raid {
+                continue;
+            }
             if victory {
-                if self.rng.next_int(100) == 0 {
-                    let pos = self.mobs[i].pos;
-                    events.push(EntityEvent::Sound { sound: MobSound::Raid(Cue::VillagerCelebrate), pos });
-                }
+                self.celebrate_victory(i, world, stopped, events);
                 continue;
             }
             if over {
@@ -1987,6 +2022,191 @@ impl Entities {
         }
     }
 }
+
+impl Entities {
+    /// `getPreRaidPackage`: `RingBell` (a 5% chance a tick, from within 3
+    /// blocks of its meeting point, if that holds a bell) and the walk to
+    /// the meeting point.
+    fn pre_raid_villager<W: MobWorld + ?Sized>(&mut self, i: usize, world: &W, events: &mut Vec<EntityEvent>) {
+        let (uid, cell) = (self.mobs[i].uid, self.mobs[i].pos.floor().as_ivec3());
+        let Some(meeting) = self.mobs[i].villager.as_ref().and_then(|v| v.meeting) else { return };
+        // `level.getRandom().nextFloat() <= 0.95F` passes.
+        let ring = self.rng.next_f32() > BELL_RING_PASS;
+        if ring
+            && (meeting - cell).as_dvec3().length_squared() < 9.0
+            && world.block(meeting).is_some_and(|b| b.base() == crate::world::block::Block::BELL)
+        {
+            events.push(EntityEvent::RingBell { pos: meeting, mob: uid });
+        }
+        if let Some(v) = &mut self.mobs[i].villager
+            && !v.sleeping
+            && v.bell_hide <= 0.0
+            && (meeting - cell).as_dvec3().length_squared() > 4.0
+        {
+            v.trading = false;
+            v.goal = Some(meeting.as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
+        }
+    }
+
+    /// `CelebrateVillagersSurvivedRaid`: starts under open sky
+    /// (`MoveToSkySeeingSpot.hasNoBlocksAbove`) and runs 600 ticks unless
+    /// the raid stops.
+    fn celebrate_victory<W: MobWorld + ?Sized>(
+        &mut self,
+        i: usize,
+        world: &W,
+        stopped: bool,
+        events: &mut Vec<EntityEvent>,
+    ) {
+        let m = &self.mobs[i];
+        let open_sky = |p: DVec3| {
+            let cell = p.floor().as_ivec3();
+            world.exposed(cell) && world.surface(cell.x, cell.z).is_none_or(|top| top < cell.y)
+        };
+        let Some(v) = &m.villager else { return };
+        if stopped {
+            if let Some(v) = &mut self.mobs[i].villager {
+                v.celebrate = 0;
+            }
+            return;
+        }
+        if v.celebrate == 0 {
+            if !open_sky(m.pos) {
+                return;
+            }
+            self.mobs[i].villager.as_mut().unwrap().celebrate = CELEBRATION_TICKS;
+        }
+        let pos = self.mobs[i].pos;
+        if self.rng.next_int(100) == 0 {
+            events.push(EntityEvent::Sound { sound: MobSound::Raid(Cue::VillagerCelebrate), pos });
+        }
+        if self.rng.next_int(200) == 0 && open_sky(pos) {
+            let color = crate::color::DyeColor::ALL[self.rng.next_int(16) as usize];
+            let flight = self.rng.next_int(3) as u8;
+            let stack = crate::content::fireworks::rocket(
+                crate::content::fireworks::Fireworks {
+                    flight,
+                    explosions: vec![crate::content::fireworks::Explosion {
+                        shape: crate::content::fireworks::Shape::Burst,
+                        colors: vec![crate::content::fireworks::firework_color(color)],
+                        fade_colors: Vec::new(),
+                        trail: false,
+                        twinkle: false,
+                    }],
+                },
+                1,
+            );
+            // `new FireworkRocketEntity(level, villager, x, eyeY, z, firework)`.
+            let uid = self.mobs[i].uid;
+            self.launch_mob_firework(&stack, pos + DVec3::Y * VILLAGER_EYE, uid);
+        }
+        // The behaviour ends after 600 ticks and starts again at once while
+        // the won raid lasts (it stops 600 ticks after victory), so a
+        // villager celebrates until the raid stops.
+        let v = self.mobs[i].villager.as_mut().unwrap();
+        v.celebrate = v.celebrate.saturating_sub(1).max(1);
+    }
+
+    /// v1.0 Track 6: a raid witch's `NearestHealableRaiderTargetGoal`
+    /// (target priority 2) and its `RangedAttackGoal` throw. On a target
+    /// selector update (every other tick), with the cooldown over and a
+    /// coin flip, a witch in an active raid picks the nearest raider other
+    /// than a witch within its 16-block follow range that it can see, and
+    /// waits 200 ticks (`reducedTickDelay`, 100 updates) before picking
+    /// again; it can't target players meanwhile (`setCanAttack(false)`).
+    /// Within 10 blocks of a raider it sees, it throws Healing at one with
+    /// 4 health or less and Regeneration otherwise, then drops the target.
+    fn witch_heal_tick<W: MobWorld + ?Sized>(&mut self, world: &W, events: &mut Vec<EntityEvent>) {
+        for i in 0..self.mobs.len() {
+            let m = &self.mobs[i];
+            if m.kind != MobKind::Witch || !m.alive() {
+                continue;
+            }
+            let Some(s) = &m.illager else { continue };
+            let (uid, active, target) = (m.uid, s.raider.raid_active, s.raider.heal_target);
+            let cooldown = s.raider.heal_cooldown - 1;
+            let eye = m.pos + DVec3::Y * WITCH_EYE;
+            let reach = WITCH_FOLLOW_RANGE * WITCH_FOLLOW_RANGE;
+            let raider = |b: &super::Mob| {
+                b.alive() && b.uid != uid && b.kind != MobKind::Witch && super::illager::is_raider(b.kind)
+            };
+            let mut target = target.and_then(|(t, _)| {
+                self.mobs.iter().find(|b| b.uid == t && raider(b) && b.pos.distance_squared(m.pos) <= reach)
+            });
+            let mut cooldown_next = cooldown;
+            if target.is_none()
+                && active
+                && cooldown <= 0
+                && (self.raids.tick + i64::from(uid)) % 2 == 0
+                && self.rng.next_int(2) == 0
+            {
+                target = self
+                    .mobs
+                    .iter()
+                    .filter(|b| {
+                        raider(b)
+                            && b.pos.distance_squared(m.pos) <= reach
+                            && super::mob::line_of_sight(world, eye, b.pos + DVec3::Y * (b.shape().height * 0.85))
+                    })
+                    .min_by(|a, b| a.pos.distance_squared(m.pos).total_cmp(&b.pos.distance_squared(m.pos)));
+                if target.is_some() {
+                    cooldown_next = WITCH_HEAL_COOLDOWN;
+                }
+            }
+            let target = target.map(|b| (b.uid, b.pos, b.vel, b.health, b.shape().height));
+            let mut keep = target.map(|(t, p, ..)| (t, p));
+            if let Some((_, at, vel, health, height)) = target
+                && m.attack_cooldown <= 0.0
+                && !m.drinking_potion()
+            {
+                let flat = (at - m.pos).with_y(0.0);
+                let sees = super::mob::line_of_sight(world, eye, at + DVec3::Y * (height * 0.85));
+                if flat.length() <= WITCH_HEAL_RANGE && sees {
+                    // `performRangedAttack`: the target's next position, its
+                    // eye less 1.1, lobbed by a fifth of the distance.
+                    let lead = at + vel / 20.0;
+                    let (xd, zd) = (lead.x - m.pos.x, lead.z - m.pos.z);
+                    let dist = (xd * xd + zd * zd).sqrt();
+                    let yd = at.y + height * 0.85 - 1.1 - m.pos.y;
+                    let aim = DVec3::new(xd, yd + dist * 0.2, zd).normalize_or(DVec3::X);
+                    let speed = if dist <= 2.0 { WITCH_SPEED_CLOSE } else { super::potion::WITCH_SPEED };
+                    let id = if health <= 4.0 { "healing" } else { "regeneration" };
+                    if let Some(potion) = crate::potion::Potion::from_id(id) {
+                        // Out of its own box, as the witch's attack throws (an
+                        // ownerless potion would break on the witch).
+                        events.push(EntityEvent::ThrowPotion { from: eye + aim * 0.4, vel: aim * speed, potion });
+                    }
+                    keep = None;
+                    let m = &mut self.mobs[i];
+                    m.attack_cooldown = 3.0;
+                    m.attack_anim = 0.35;
+                }
+            }
+            if let Some(s) = &mut self.mobs[i].illager {
+                s.raider.heal_cooldown = cooldown_next.max(-1);
+                s.raider.heal_target = keep;
+            }
+        }
+    }
+}
+
+/// `RingBell.BELL_RING_CHANCE`: a ring needs `nextFloat()` above it.
+pub const BELL_RING_PASS: f32 = 0.95;
+/// `CelebrateVillagersSurvivedRaid(600, 600)`.
+pub const CELEBRATION_TICKS: u16 = 600;
+/// A villager's eye height, where its fireworks start.
+const VILLAGER_EYE: f64 = 1.62;
+/// A witch's eye height.
+const WITCH_EYE: f64 = 1.62;
+/// The witch's `FOLLOW_RANGE` (16), the heal goal's search range.
+pub const WITCH_FOLLOW_RANGE: f64 = 16.0;
+/// `NearestHealableRaiderTargetGoal.start`: `reducedTickDelay(200)`
+/// selector updates, counted down a tick at a time by `Witch.aiStep`.
+pub const WITCH_HEAL_COOLDOWN: i32 = 100;
+/// `RangedAttackGoal(witch, 1.0, 60, 10)`'s attack radius.
+pub const WITCH_HEAL_RANGE: f64 = 10.0;
+/// `performRangedAttack`'s power within 2 blocks (0.45 a tick).
+const WITCH_SPEED_CLOSE: f64 = 9.0;
 
 /// Java's `noActionTime` for a raider: `idle` counts seconds, and
 /// `Raider.updateNoActionTime` adds 2 a tick.

@@ -138,6 +138,17 @@ pub fn radius_cells(range_chunks: u32) -> i32 {
     (range_chunks as f32 * 16.0 / CELL).ceil() as i32
 }
 
+/// `CloudRenderer.getSizeForCloudDistance`'s bound on the faces one build
+/// can make within `radius` cells: four per cell (a top or bottom, or both
+/// inside the layer, and at most two sides facing the camera) over
+/// `2 (radius + 1)^2` cells, which covers the disc, plus the 54 inside
+/// faces of the 3 x 3 cells around the camera.
+pub fn max_faces(radius: i32) -> usize {
+    let r = radius.max(0) as usize + 1;
+    let cells = r * 2 * r * 2 / 2;
+    cells * 4 + 54
+}
+
 /// One face: cell offset from the camera's cell, direction and flags.
 pub fn pack(x: i32, z: i32, dir: u32, flags: u32) -> u32 {
     ((x + BIAS) as u32 & 1023) | (((z + BIAS) as u32 & 1023) << 10) | (dir << 20) | flags
@@ -215,6 +226,99 @@ mod tests {
         let c = p.coverage();
         assert!((0.2..0.45).contains(&c), "coverage {c}");
         assert_eq!(p.filled(-1, 3), p.filled(SIZE - 1, 3 + SIZE));
+    }
+
+    /// Every other cell filled: the most side faces a pattern can make.
+    fn checkerboard() -> Pattern {
+        Pattern { filled: (0..SIZE * SIZE).map(|i| (i % SIZE + i / SIZE) % 2 == 0).collect() }
+    }
+
+    #[test]
+    fn build_never_exceeds_javas_bound() {
+        let mut faces = Vec::new();
+        for pattern in [Pattern::generate(), checkerboard(), Pattern { filled: vec![true; (SIZE * SIZE) as usize] }] {
+            for range in [2u32, 12, 64, 128] {
+                let radius = radius_cells(range);
+                for y in [100.0, 194.0, 300.0] {
+                    for mode in [Clouds::Fancy, Clouds::Fast] {
+                        let view = View::new(5.0, y, 7.0, 0.0, 192.33);
+                        build(&pattern, &view, mode, radius, &mut faces);
+                        assert!(faces.len() <= max_faces(radius), "{range} {y} {mode:?}: {}", faces.len());
+                    }
+                }
+            }
+        }
+    }
+
+    /// v1.0 Track 2 draws clouds in one pass, as Java does: the nearest
+    /// surface must be drawn before anything it hides. Along any ray from
+    /// the camera the cells it crosses come in strictly increasing build
+    /// order, and within a cell the outside faces come before the inside
+    /// ones.
+    #[test]
+    fn faces_come_nearest_first_along_every_ray() {
+        let pattern = Pattern { filled: vec![true; (SIZE * SIZE) as usize] };
+        let mut faces = Vec::new();
+        let mut rng = 0x2545_f491_4f6c_dd1du64;
+        let mut next = || {
+            rng ^= rng << 13;
+            rng ^= rng >> 7;
+            rng ^= rng << 17;
+            (rng >> 11) as f64 / (1u64 << 53) as f64
+        };
+        let radius = radius_cells(16);
+        for _ in 0..200 {
+            let view = View::new(next() * 3000.0, 100.0, next() * 3000.0, 0.0, 192.33);
+            build(&pattern, &view, Clouds::Fancy, radius, &mut faces);
+            let mut first = std::collections::HashMap::new();
+            for (i, &f) in faces.iter().enumerate() {
+                let (x, z, _, flags) = unpack(f);
+                let at = first.entry((x, z)).or_insert(i);
+                // Within a cell, inside faces follow every outside face.
+                if flags & INSIDE == 0 {
+                    assert!(
+                        faces[*at..i].iter().all(|&g| unpack(g).3 & INSIDE == 0),
+                        "outside face after an inside one"
+                    );
+                }
+            }
+            // March rays across the cell grid from the camera's spot in its cell.
+            for _ in 0..50 {
+                let angle = next() * std::f64::consts::TAU;
+                let (dx, dz) = (angle.cos(), angle.sin());
+                let (mut px, mut pz) = (f64::from(view.in_cell.0) / 12.0, f64::from(view.in_cell.1) / 12.0);
+                let (mut cx, mut cz) = (0i32, 0i32);
+                let mut last = first[&(0, 0)];
+                loop {
+                    let tx = if dx > 0.0 {
+                        (1.0 - px) / dx
+                    } else if dx < 0.0 {
+                        -px / dx
+                    } else {
+                        f64::INFINITY
+                    };
+                    let tz = if dz > 0.0 {
+                        (1.0 - pz) / dz
+                    } else if dz < 0.0 {
+                        -pz / dz
+                    } else {
+                        f64::INFINITY
+                    };
+                    if tx < tz {
+                        cx += dx.signum() as i32;
+                        px = if dx > 0.0 { 0.0 } else { 1.0 };
+                        pz += dz * tx;
+                    } else {
+                        cz += dz.signum() as i32;
+                        pz = if dz > 0.0 { 0.0 } else { 1.0 };
+                        px += dx * tz;
+                    }
+                    let Some(&i) = first.get(&(cx, cz)) else { break };
+                    assert!(i > last, "cell ({cx}, {cz}) is built before a nearer cell on the same ray");
+                    last = i;
+                }
+            }
+        }
     }
 
     #[test]

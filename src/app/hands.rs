@@ -6,6 +6,7 @@
 //! LAN peers run the same code without swapping state. What only the owning
 //! adapter can do (screens, beds, popups, damage) comes back as [`Request`]s.
 use glam::DVec3;
+use voxelcraft::world::vibration::GameEvent as ItemUse;
 
 use crate::audio::{
     Audio, SoundSource,
@@ -182,14 +183,24 @@ impl Actor<'_> {
             if !did && self.session.start_scoping(self.body.actions.selected) {
                 let eye = self.session.player.eye();
                 self.audio.play_in(SoundSource::Players, Sound::Click, Some(eye), 0.4, (1.6, 1.7));
-            } else if !did && self.session.consumable_in_hands(self.body.actions.selected).is_none() {
-                self.session.start_blocking(self.body.actions.selected);
+                self.session.use_vibration(self.entities, ItemUse::ItemInteractStart);
+            } else if !did
+                && self.session.consumable_in_hands(self.body.actions.selected).is_none()
+                && self.session.start_blocking(self.body.actions.selected)
+            {
+                // v1.0 Track 9: raising a shield is `startUsingItem`.
+                self.session.use_vibration(self.entities, ItemUse::ItemInteractStart);
             }
             self.body.action_cooldown = ACTION_REPEAT;
         } else if !pressed {
             if self.session.stop_scoping() {
                 let eye = self.session.player.eye();
                 self.audio.play_in(SoundSource::Players, Sound::Click, Some(eye), 0.4, (1.2, 1.3));
+                self.session.use_vibration(self.entities, ItemUse::ItemInteractFinish);
+            }
+            // v1.0 Track 9: lowering a shield is `stopUsingItem`.
+            if self.session.shield_raised() {
+                self.session.use_vibration(self.entities, ItemUse::ItemInteractFinish);
             }
             self.session.stop_blocking();
             self.session.cancel_consumption();

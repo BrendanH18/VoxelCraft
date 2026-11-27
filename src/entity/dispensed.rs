@@ -156,13 +156,10 @@ impl Entities {
             if !m.alive() {
                 continue;
             }
-            if m.leash.is_some() {
-                let pos = m.pos;
-                m.leash = None;
-                m.leash_pos = None;
-                self.scatter(Stack::new(Item::LEAD, 1), pos);
+            if self.shear_leashes(i) {
                 return true;
             }
+            let m = &mut self.mobs[i];
             let sheared = match m.kind {
                 MobKind::Sheep => self.use_on_sheep(i, Item::SHEARS) == Some(true),
                 MobKind::Mooshroom => {

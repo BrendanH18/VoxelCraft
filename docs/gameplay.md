@@ -129,11 +129,15 @@ compact counter.
 - Farming and growth, driven by Minecraft-style random block ticks in the
   chunks within 128 blocks (each block is picked about once a minute).
   Breaking tall grass sometimes drops wheat seeds; till grass or dirt with
-  a hoe and sow them on the farmland. Farmland with water within 4 blocks
-  turns dark and wet; wheat grows through 8 stages under open sky, about
-  twice as fast on wet farmland, and ripe wheat drops wheat and 1-4 seeds
-  (unripe wheat just its seed). Bare dry farmland turns back to dirt, and
-  jumping or falling onto farmland can trample it. Leaves drop their tree's
+  a hoe and sow them on the farmland. Farmland keeps Java's moisture 0–7:
+  water within 4 blocks (at its level or one above) or rain on it soaks it
+  to 7 and turns it dark, and without either it dries one level per random
+  tick. Wheat grows through 8 stages in light 9 or more, about twice as
+  fast on moist farmland (any moisture above 0), and ripe wheat drops
+  wheat and 1-4 seeds (unripe wheat just its seed). Crops need light 8 to
+  be planted and break when a neighbouring block changes while they're
+  darker than that. Bare dry farmland, and farmland under a solid block,
+  turns back to dirt, and jumping or falling onto farmland can trample it. Leaves drop their tree's
   sapling (1 in 20, jungle 1 in 40; oak leaves also apples, 1 in 200);
   planted on grass or dirt, saplings grow into trees.
   Nether wart planted on soul sand ages through 4 stages (1 in 10 random
@@ -624,7 +628,11 @@ The Ender Dragon (200 health) guards the central island. An End crystal burns
 on every pillar, two of them inside iron bar cages, and the nearest one heals
 the dragon a point every half second along a visible beam. Crystals blow up
 (power 6) when hit, shot or caught in a blast; breaking the one healing the
-dragon hurts it for 10. Like Java's dragon it circles the pillars, sometimes
+dragon hurts it for 10. Like Java's dragon it circles the pillars, flying
+Java's route between its 24 fixed points around the island (at least 73
+high, above whatever stands under each, pillars included; only the inner 12
+once no crystal is left;
+[v1.0 Track 7b](verification/2026-11-25-v1.0-track-07b-end-fight-seats.md)), sometimes
 swoops at a player to spit a fireball that leaves a spreading cloud of
 harmful breath, and sometimes perches on the exit portal's pillar to breathe
 fire, roar at anyone close, then take off or charge at them. Its wings shove

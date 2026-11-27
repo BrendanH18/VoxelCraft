@@ -260,3 +260,59 @@ fn jockeys_save_reload_and_replicate() {
     pr.apply_look(&e.mobs[pi].look());
     assert_eq!(pr.equipment.main_hand().map(|s| s.item), Some(Item::BOW));
 }
+
+/// v1.0 Track 7: `Strider.finalizeSpawn` for an adult: a saddled strider
+/// under a zombified piglin with a warped fungus on a stick one time in 30
+/// (only while monsters spawn), else a baby strider rider one in ten. The
+/// riders and the saddle survive a save.
+#[test]
+fn natural_striders_carry_piglin_and_baby_strider_jockeys() {
+    let world = Grid::flat(0);
+    let (mut piglins, mut babies) = (0, 0);
+    for seed in 0..1500 {
+        let mut e = Entities::new(seed);
+        e.monster_spawning = true;
+        e.difficulty = crate::simulation::difficulty::Difficulty::Normal;
+        e.spawn(MobKind::Strider, DVec3::new(0.5, 1.0, 0.5));
+        e.mobs[0].baby = false;
+        e.natural_jockeys(&world, crate::world::terrain::Biome::Plains);
+        if e.mobs.len() == 1 {
+            continue;
+        }
+        let vehicle = MOB_VEHICLE | e.mobs[0].uid;
+        let rider = &e.mobs[1];
+        assert_eq!(rider.riding, Some(vehicle));
+        match rider.kind {
+            MobKind::ZombifiedPiglin => {
+                piglins += 1;
+                assert_eq!(rider.equipment.main_hand().map(|s| s.item), Some(Item::WARPED_FUNGUS_ON_A_STICK));
+                assert!(e.mobs[0].mount.as_ref().unwrap().saddled(), "the strider is saddled");
+                // `ridingOffset(-0.7)` on the strider's 1.7-block attachment.
+                assert!((rider.pos.y - (e.mobs[0].pos.y + MobKind::Strider.shape().height - 0.7)).abs() < 1e-6);
+                let mut back = Entities::new(seed);
+                back.load_nether_mobs(&e.nether_mobs_to_string());
+                let strider = back.mobs.iter().find(|m| m.kind == MobKind::Strider).unwrap();
+                assert!(strider.mount.as_ref().unwrap().saddled());
+                let piglin = back.mobs.iter().find(|m| m.kind == MobKind::ZombifiedPiglin).unwrap();
+                assert_eq!(piglin.riding, Some(MOB_VEHICLE | strider.uid));
+            }
+            MobKind::Strider => {
+                babies += 1;
+                assert!(rider.baby && rider.age == -24000);
+            }
+            k => panic!("unexpected rider {k:?}"),
+        }
+    }
+    // 1/30 of 1500 is 50; then a tenth of the rest is about 145.
+    assert!((25..=80).contains(&piglins), "{piglins}");
+    assert!((100..=195).contains(&babies), "{babies}");
+    // No monster spawning: never a piglin.
+    for seed in 0..300 {
+        let mut e = Entities::new(seed);
+        e.monster_spawning = false;
+        e.spawn(MobKind::Strider, DVec3::new(0.5, 1.0, 0.5));
+        e.mobs[0].baby = false;
+        e.natural_jockeys(&world, crate::world::terrain::Biome::Plains);
+        assert!(e.mobs.iter().all(|m| m.kind != MobKind::ZombifiedPiglin));
+    }
+}

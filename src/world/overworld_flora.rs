@@ -181,7 +181,15 @@ impl World {
             // Sweet berry bushes age 20% of ticks in light 9 or more in the cell above.
             2058..=2060 => {
                 if self.roll().is_multiple_of(5) && self.lit_enough(p + IVec3::Y) {
-                    self.edit(p, ob::berry_bush(ob::berry_age(b).unwrap() + 1), true);
+                    let grown = ob::berry_bush(ob::berry_age(b).unwrap() + 1);
+                    self.edit(p, grown, true);
+                    // v1.0 Track 9: `SweetBerryBushBlock.randomTick`.
+                    self.emit_block_event(
+                        p,
+                        crate::world::vibration::GameEvent::BlockChange,
+                        crate::world::vibration::EventSource::NONE,
+                        Some(grown),
+                    );
                 }
             }
             // Cocoa ripens one tick in five.
@@ -247,11 +255,25 @@ impl World {
                 if sand && (self.turtle_hatching_time() || self.one_in(500)) {
                     let count = ob::egg_count(b).unwrap();
                     let stage = ob::egg_stage(b).unwrap();
+                    // v1.0 Track 9: `TurtleEggBlock.randomTick` posts
+                    // `block_destroy` on hatching, else `block_change`.
                     if stage == 2 {
                         self.edit(p, Block::AIR, true);
                         self.hatched_turtles.push((p, count));
+                        self.emit_block_event(
+                            p,
+                            crate::world::vibration::GameEvent::BlockDestroy,
+                            crate::world::vibration::EventSource::NONE,
+                            Some(b),
+                        );
                     } else {
                         self.edit(p, ob::turtle_eggs_stage(count, stage + 1), true);
+                        self.emit_block_event(
+                            p,
+                            crate::world::vibration::GameEvent::BlockChange,
+                            crate::world::vibration::EventSource::NONE,
+                            Some(b),
+                        );
                     }
                 }
             }

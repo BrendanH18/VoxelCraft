@@ -148,6 +148,9 @@ impl World {
         self.update_nether_vines(p);
         self.update_overworld_plants(p);
         self.update_sniffer_plants(p);
+        // v1.0 Track 4: `FarmlandBlock.updateShape` and `CropBlock.canSurvive`'s light.
+        self.update_farmland_below(p);
+        self.update_crop_light(p);
         self.update_utilities(p);
         self.update_multiface(p);
         self.update_chorus(p);
@@ -299,6 +302,11 @@ impl World {
             }
             // BrushableBlock disables placement and drops after falling.
             if super::archaeology::owns(block.0) {
+                // v1.0 Track 9: `BrushableBlock.onBrokenAfterFall` posts
+                // `block_destroy` at the falling block's centre.
+                let centre = fell.pos + glam::DVec3::Y * 0.49;
+                let none = super::vibration::EventSource::NONE;
+                self.emit_game_event(centre, super::vibration::GameEvent::BlockDestroy, none, None);
                 continue;
             }
             // Pointed dripstone breaks where it lands (`onBrokenAfterFall`).

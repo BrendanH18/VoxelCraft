@@ -1170,6 +1170,12 @@ impl Agent {
             self.session.inventory.armor.map(|s| s.map(|s| s.item)),
             self.session.event_source(),
         );
+        world.player_totems(
+            self.session.id,
+            self.session.player.pos,
+            self.session.vitals.totems_used,
+            self.session.event_source(),
+        );
         let moved = (self.session.player.pos - before).with_y(0.0).length();
         let env = simulation::survival::Env {
             respiration: crate::enchant::armor_level(
@@ -1196,6 +1202,9 @@ impl Agent {
         if self.session.sleeping.is_some() {
             self.session.vitals.time_since_rest = 0;
         }
+        // v1.0 Track 4: `FarmlandBlock.fallOn`, as the host's `Game::trample`.
+        let source = self.session.event_source();
+        world.player_landed(self.session.player.pos, self.session.player.collision_shape(), hurts.landed, source);
         // Wither damage lands inside the rule tick, not through `damage`.
         if was_alive && self.session.vitals.is_dead() {
             self.session.totem_saves(self.selected);
@@ -1228,6 +1237,7 @@ impl Agent {
         // Frost Walker's ice.
         self.session.settle_effect_hooks(entities);
         self.session.frost_walk(world, entities);
+        self.session.tick_soul_speed(world);
         self.session.tick_elytra();
         if self.session.vitals.is_dead() {
             self.drop_everything(entities);

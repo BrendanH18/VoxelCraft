@@ -12,10 +12,14 @@ use glam::{IVec2, IVec3};
 use crate::mesh::{self, MeshData, MeshInput, Region};
 use crate::world::GeneratedChunk;
 use crate::world::chunk::CHUNK_SIZE;
+use crate::world::region::{ChunkRecord, RegionReader};
 use crate::world::terrain::Generator;
 
 pub enum Job {
     Generate(IVec3),
+    /// v1.0 Track 3b: read a chunk's region record, then generate what it
+    /// doesn't hold (Java's `ChunkMap.scheduleChunkLoad`).
+    Load(IVec3, RegionReader),
     /// Biome colours of a chunk column (see `Generator::foliage`).
     Foliage(IVec2),
     Mesh {
@@ -26,7 +30,10 @@ pub enum Job {
 }
 
 pub enum JobResult {
-    Generated(IVec3, Box<GeneratedChunk>),
+    /// A generated chunk, with its region record's state when it has one.
+    Generated(IVec3, Box<GeneratedChunk>, Option<Box<ChunkRecord>>),
+    /// A chunk whose record holds its blocks.
+    Loaded(IVec3, Box<ChunkRecord>),
     /// Colours, snow lines and original terrain heights for biome queries.
     Foliage {
         pos: IVec2,
@@ -68,7 +75,16 @@ impl Workers {
                             Job::Generate(pos) => JobResult::Generated(
                                 pos,
                                 Box::new(GeneratedChunk::new(&generator, pos, generator.generate(pos))),
+                                None,
                             ),
+                            Job::Load(pos, reader) => match reader.read(pos) {
+                                Some(record) if record.blocks.is_some() => JobResult::Loaded(pos, Box::new(record)),
+                                record => JobResult::Generated(
+                                    pos,
+                                    Box::new(GeneratedChunk::new(&generator, pos, generator.generate(pos))),
+                                    record.map(Box::new),
+                                ),
+                            },
                             Job::Foliage(col) => JobResult::Foliage {
                                 pos: col,
                                 colours: generator.foliage(col.x, col.y),

@@ -400,3 +400,70 @@ fn arrows_pass_the_vehicle_their_shooter_rides() {
     assert!(shot_at_own_boat(true), "the rider's own arrow passes its boat");
     assert!(!shot_at_own_boat(false), "anyone else's breaks it");
 }
+
+/// v1.0 Track 8 (BLD-05b): a frame holding a filled map draws Java's map
+/// frame and the map's image over the whole face, 1/128 block a pixel,
+/// map north at the top and west at the left as seen from the front, a
+/// little off the wall, turned by quarter turns with the frame's rotation.
+#[test]
+fn framed_maps_draw_their_image_at_javas_scale_and_turn() {
+    use crate::world::maps::{MapData, MapStorage, rgba};
+    use crate::world::terrain::Dimension;
+    let mut maps = MapStorage::default();
+    let mut data = MapData::fresh(0, 0, 0, Dimension::Overworld, true, false);
+    let red = 28 * 4 + 2;
+    data.colors[0] = red;
+    let stack = maps.create(data, Item::FILLED_MAP);
+    let mut d = Decor::new(Kind::Frame { glow: false }, IVec3::new(0, 64, 0), IVec3::Z);
+    d.item = Some(stack);
+    let red_rgb = &rgba(red)[..3];
+    let tile = |d: &Decor, maps: &MapStorage| {
+        let mut mesh = EntityMesh::flat();
+        build(std::slice::from_ref(d), maps, DVec3::ZERO, &256.0.into(), 1.0, &mut mesh);
+        let verts: Vec<_> = mesh.expanded().into_iter().filter(|v| v.color[..3] == *red_rgb).collect();
+        let lo = verts.iter().fold(Vec3::splat(f32::MAX), |a, v| a.min(Vec3::from_array(v.pos)));
+        let hi = verts.iter().fold(Vec3::splat(f32::MIN), |a, v| a.max(Vec3::from_array(v.pos)));
+        (verts.len(), lo, hi)
+    };
+    let (n, lo, hi) = tile(&d, &maps);
+    assert_eq!(n, 6, "one quad for the one red pixel");
+    let close = |a: f32, b: f32| (a - b).abs() < 1e-4;
+    // Pixel (0, 0): the top-left sixteenth-of-an-eighth of the frame's face.
+    assert!(close(lo.x, 0.0) && close(hi.x, 0.0078125), "{lo} {hi}");
+    assert!(close(hi.y, 65.0) && close(lo.y, 65.0 - 0.0078125), "{lo} {hi}");
+    // 0.4375 + 1/128 from the cell centre toward the wall.
+    assert!(close(lo.z, 0.5 - 0.4375 + 0.0078125) && close(hi.z, lo.z), "{lo} {hi}");
+    // One quarter turn clockwise: the pixel moves to the top-right corner.
+    d.rotation = 1;
+    let (_, lo, hi) = tile(&d, &maps);
+    assert!(close(hi.x, 1.0) && close(hi.y, 65.0), "{lo} {hi}");
+    // Five eighths of a turn: a map turns by quarters only (rotation % 4).
+    d.rotation = 5;
+    assert_eq!(tile(&d, &maps).1, lo);
+    // Without the map's data the frame keeps the item path (no image).
+    assert_eq!(tile(&d, &MapStorage::default()).0, 0);
+    assert_eq!(framed_maps(std::slice::from_ref(&d)), vec![(stack.map_id.unwrap(), IVec3::new(0, 64, 0), IVec3::Z)]);
+}
+
+/// Review fix S5: a framed item is drawn exactly where its frame is: past
+/// the frame's 10-chunk tracking range (160 blocks) neither shows.
+#[test]
+fn a_framed_item_is_culled_with_its_frame() {
+    use crate::entity::draw_distance::DrawDistance;
+    let w = walled();
+    let mut e = Entities::new(1);
+    let wall = IVec3::new(7, GROUND + 2, 2);
+    e.place_decor(&w, Item::ITEM_FRAME, wall, IVec3::X, 0.0, &[]).unwrap().unwrap();
+    e.decor[0].item = Some(Stack::new(Item::DIAMOND, 1));
+    let maps = crate::world::maps::MapStorage::default();
+    for (far, shown) in [(100.0, true), (170.0, false)] {
+        let player = DVec3::new(8.5 + far, f64::from(GROUND) + 2.0, 2.5);
+        // Render distance 8 (16 Java chunks): only the tracking range cuts.
+        let view = DrawDistance::new(player, 8, 1.0e6, 1.0e6);
+        let mut mesh = crate::entity::model::EntityMesh::default();
+        build(&e.decor, &maps, player, &view, 1.0, &mut mesh);
+        let frame = !mesh.expanded().is_empty();
+        let items = framed_items(&e.decor, player, &view).count();
+        assert_eq!((frame, items), (shown, usize::from(shown)), "{far} blocks away");
+    }
+}

@@ -104,8 +104,8 @@ Total weight 459. Counts are uniform and inclusive.
 
 | Output | Weight | Chance | Count | Here |
 |---|---|---|---|---|
-| Enchanted book (Soul Speed) | 5 | 1.09% | 1 | empty roll (no Soul Speed) |
-| Iron boots (Soul Speed) | 8 | 1.74% | 1 | iron boots, unenchanted |
+| Enchanted book (Soul Speed) | 5 | 1.09% | 1 | ✓ Soul Speed I–III (v1.0 Track 5) |
+| Iron boots (Soul Speed) | 8 | 1.74% | 1 | ✓ Soul Speed I–III (v1.0 Track 5) |
 | Potion of fire resistance | 8 | 1.74% | 1 | ✓ |
 | Splash potion of fire resistance | 8 | 1.74% | 1 | ✓ |
 | Water bottle | 10 | 2.18% | 1 | ✓ |
@@ -287,9 +287,10 @@ different pitches.
 
 ## Known gaps
 
-- **Riding**: saddled strider riding and warped-fungus-on-a-stick steering are implemented. Strider jockeys, baby riders and piglins riding hoglins remain unassessed.
+- **Riding**: saddled strider riding and warped-fungus-on-a-stick steering are implemented. Strider jockeys (a zombified piglin with a fungus stick on a saddled strider, 1 in 30 while monsters spawn; else a baby strider rider, 1 in 10) follow `Strider.finalizeSpawn` since v1.0 Track 7, though the piglin doesn't steer. Piglins riding hoglins (`babySometimesRideBabyHoglin`) remain.
 - **Breeding**: hoglins and striders use the retained shared breeding/temptation pipeline. Complete selected-reference acceptance remains under MOB-03.
-- **Bartering**: spectral arrows and Soul Speed don't exist (see the table).
+- **Bartering**: every output exists since v1.0 Track 5 added Soul Speed
+  ([record](verification/2026-11-25-v1.0-track-05-enchant-loot.md)).
 - **Piglin details**:
   - Celebration (Java `StartCelebratingIfTargetDead`, `CELEBRATION_TIME` 300 ticks): when
     a piglin's attack target dies it walks to where the target fell (2 blocks of slack, 4 while

@@ -123,8 +123,8 @@ arms piglins and the player.
 The Nether spawn table is keyed by biome for the biome work. Persistent mobs and
 populated bastions are saved under `nether_mobs`. Crying obsidian (block 1800)
 exists for bartering and bastion loot. Strider riding and hoglin/strider breeding
-use the shared mount and animal paths; spectral arrows and Soul Speed do not
-exist. Details, the bartering table and sources are in [Nether mobs](nether-mobs.md).
+use the shared mount and animal paths; every bartering output exists (Soul
+Speed since v1.0 Track 5). Details, the bartering table and sources are in [Nether mobs](nether-mobs.md).
 
 ## Java 26.3 undead rare-pool correction — 2026-10-13
 

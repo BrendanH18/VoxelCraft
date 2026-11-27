@@ -263,7 +263,7 @@ fn endermites_vanish_after_two_minutes_unless_persistent() {
     mite(&mut e, DVec3::new(0.5, 1.0, 0.5));
     let named = mite(&mut e, DVec3::new(-2.5, 1.0, 0.5));
     let tag = Stack::new(Item::NAME_TAG, 1).with_name("Mitey").unwrap();
-    assert_eq!(e.use_lead_or_name(named, Some(tag), PlayerId::HOST), Some(true));
+    assert_eq!(e.use_lead_or_name(named, Some(tag), PlayerId::HOST, false), Some(true));
     for tick in 1..MAX_LIFE {
         e.update(0.05, &world, &c);
         assert_eq!(

@@ -17,8 +17,6 @@ mod colour;
 mod copper;
 #[path = "copper_golem_statue_textures.rs"]
 mod copper_golem_statue;
-#[path = "crop_textures.rs"]
-mod crops;
 #[path = "gen5_textures.rs"]
 mod gen5;
 #[path = "material_textures.rs"]
@@ -29,10 +27,6 @@ mod mob;
 mod nether;
 #[path = "overworld_textures.rs"]
 mod overworld;
-#[path = "plant_textures.rs"]
-mod plants;
-#[path = "sniffer_plant_textures.rs"]
-mod sniffer_plants;
 #[path = "stone_textures.rs"]
 mod stone;
 #[path = "utility_textures.rs"]
@@ -113,8 +107,6 @@ fn points(layer: u16, n: usize) -> Vec<(f32, f32)> {
 }
 
 const STONE: [u8; 3] = [125, 125, 125];
-/// Tall grass: the grass top's mid shade (v0.18 Track 3 toned both down).
-const GRASS: [u8; 3] = [106, 145, 66];
 
 pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     // v0.18 Track 3: the materials, workstations and fixtures it redrew.
@@ -131,11 +123,9 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     if (crate::world::skulls::TEX..crate::world::skulls::TEX_END).contains(&layer) {
         return crate::world::skulls::pixel(layer, x, y);
     }
-    if (crate::world::wither_rose::TEX..crate::world::wither_rose::TEX_END).contains(&layer) {
-        return match crate::world::wither_rose::pot_layer_plant(layer) {
-            Some(plant) => utility::potted_side(layer, plant, x, y),
-            None => crate::world::wither_rose::pixel(x, y),
-        };
+    // The wither rose itself is drawn by `material` (v1.0 Track 10).
+    if let Some(plant) = crate::world::wither_rose::pot_layer_plant(layer) {
+        return utility::potted_side(layer, plant, x, y);
     }
     if (crate::world::conduit::SHELL_TEX..crate::world::conduit::TEX_END).contains(&layer) {
         return crate::world::conduit::pixel(layer, x, y);
@@ -157,11 +147,9 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     if gen5::owns(layer) {
         return gen5::pixel(layer, x, y);
     }
-    if (crate::world::eyeblossom::TEX..crate::world::eyeblossom::TEX_END).contains(&layer) {
-        return match crate::world::eyeblossom::pot_layer_plant(layer) {
-            Some(plant) => utility::potted_side(layer, plant, x, y),
-            None => crate::world::eyeblossom::pixel(layer, x, y),
-        };
+    // The eyeblossoms themselves are drawn by `material` (v1.0 Track 10).
+    if let Some(plant) = crate::world::eyeblossom::pot_layer_plant(layer) {
+        return utility::potted_side(layer, plant, x, y);
     }
     if (crate::world::creaking::TEX..crate::world::creaking::TEX_END).contains(&layer) {
         return crate::world::creaking::pixel(layer, x, y);
@@ -227,7 +215,9 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
         return if bubble { [205, 228, 255, 200] } else { [c[0], c[1], c[2], 170] };
     }
     if (tex::VILLAGE..tex::VILLAGE + 45).contains(&layer) {
-        return village_pixel(layer, x, y);
+        // `material` draws every village block's faces (v0.18 Track 3 and
+        // v1.0 Track 10); the unused face slots show the missing texture.
+        return [255, 0, 255, 255];
     }
     if (1139..1155).contains(&layer) {
         return special_rail_pixel(layer, x, y);
@@ -247,29 +237,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
                 [236, 232, 212]
             },
             0.92 + rnd(layer, x, y, 0) * 0.08,
-        );
-    }
-    if (tex::BUILDING_DOORS..tex::BUILDING_DOORS + 4).contains(&layer) {
-        let index = (layer - tex::BUILDING_DOORS) / 2;
-        let bottom = tex::BUILDING_DOORS + index * 2;
-        return wooden_door(
-            layer,
-            x,
-            y,
-            rnd(layer, x, y, 0),
-            if index == 0 { [211, 207, 194] } else { [193, 180, 77] },
-            bottom + 1,
-            bottom,
-        );
-    }
-    if (tex::BUILDING_TRAPDOORS..tex::BUILDING_TRAPDOORS + 2).contains(&layer) {
-        let frame = x < 2 || y < 2 || x > 13 || y > 13 || x == 7 || y == 7;
-        if !frame {
-            return [0, 0, 0, 0];
-        }
-        return shade(
-            if layer == tex::BUILDING_TRAPDOORS { [211, 207, 194] } else { [193, 180, 77] },
-            0.9 + rnd(layer, x, y, 0) * 0.15,
         );
     }
     if (crate::world::overworld_blocks::TEX..crate::world::overworld_blocks::TEX_END).contains(&layer) {
@@ -325,15 +292,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     }
     if layer == voxelcraft::content::elytra::WING_TEX {
         return voxelcraft::content::elytra::wing_pixel(x, y);
-    }
-    if (crate::world::sniffer_plants::t::BASE..crate::world::sniffer_plants::t::END).contains(&layer) {
-        return sniffer_plants::pixel(layer, x, y);
-    }
-    if (crate::world::crops::t::BASE..crate::world::crops::t::END).contains(&layer) {
-        return crops::pixel(layer, x, y);
-    }
-    if (crate::world::biome_plants::TEX..crate::world::biome_plants::TEX_END).contains(&layer) {
-        return plants::pixel(layer, x, y);
     }
     if (crate::world::cave_blocks::TEX..crate::world::cave_blocks::TEX_END).contains(&layer) {
         return cave::pixel(layer, x, y);
@@ -418,11 +376,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             };
             noisy(layer, x, y, rgb, 0.08)
         }
-        // The oak trapdoor (`material` draws the iron door and trapdoor, 1123).
-        1124 => {
-            let panel = (3..=6).contains(&x) || (9..=12).contains(&x);
-            if panel && (3..=6).contains(&y) { [0, 0, 0, 0] } else { noisy(layer, x, y, [130, 95, 50], 0.12) }
-        }
         1125..=1126 => noisy(
             layer,
             x,
@@ -491,20 +444,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             let d = x.abs_diff(7).max(y.abs_diff(7));
             noisy(layer, x, y, if matches!(d,0..=1|4..=5) { [180, 32, 26] } else { [235, 224, 194] }, 0.06)
         }
-        tex::BROWN_MUSHROOM | tex::RED_MUSHROOM => {
-            // Java's small mushroom occupies six pixels of the crossed 16x16 plane.
-            if (7..=8).contains(&x) && (12..=15).contains(&y) {
-                shade([212, 190, 153], 0.9 + r * 0.15)
-            } else if (5..=10).contains(&x) && (10..=12).contains(&y) {
-                if layer == tex::RED_MUSHROOM {
-                    shade(if r < 0.25 { [238, 220, 192] } else { [183, 43, 32] }, 0.9 + r * 0.15)
-                } else {
-                    shade([150, 108, 72], 0.8 + r * 0.3)
-                }
-            } else {
-                [0; 4]
-            }
-        }
         tex::STONE => {
             let streak = rnd(layer, x / 3, y, 5) < 0.12;
             shade(STONE, if streak { 0.82 } else { 0.9 + r * 0.18 })
@@ -538,30 +477,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             } else {
                 [0, 0, 0, 0]
             }
-        }
-        tex::DOOR_TOP | tex::DOOR_BOTTOM => {
-            wooden_door(layer, x, y, r, [150, 116, 68], tex::DOOR_TOP, tex::DOOR_BOTTOM)
-        }
-        tex::DARK_OAK_DOOR_TOP | tex::DARK_OAK_DOOR_BOTTOM => {
-            wooden_door(layer, x, y, r, [66, 43, 20], tex::DARK_OAK_DOOR_TOP, tex::DARK_OAK_DOOR_BOTTOM)
-        }
-        tex::SPRUCE_DOOR_TOP | tex::SPRUCE_DOOR_BOTTOM => {
-            wooden_door(layer, x, y, r, [114, 84, 50], tex::SPRUCE_DOOR_TOP, tex::SPRUCE_DOOR_BOTTOM)
-        }
-        tex::BIRCH_DOOR_TOP | tex::BIRCH_DOOR_BOTTOM => {
-            wooden_door(layer, x, y, r, [196, 180, 124], tex::BIRCH_DOOR_TOP, tex::BIRCH_DOOR_BOTTOM)
-        }
-        tex::JUNGLE_DOOR_TOP | tex::JUNGLE_DOOR_BOTTOM => {
-            wooden_door(layer, x, y, r, [160, 114, 80], tex::JUNGLE_DOOR_TOP, tex::JUNGLE_DOOR_BOTTOM)
-        }
-        tex::ACACIA_DOOR_TOP | tex::ACACIA_DOOR_BOTTOM => {
-            wooden_door(layer, x, y, r, [170, 92, 50], tex::ACACIA_DOOR_TOP, tex::ACACIA_DOOR_BOTTOM)
-        }
-        tex::MANGROVE_DOOR_TOP | tex::MANGROVE_DOOR_BOTTOM => {
-            wooden_door(layer, x, y, r, [117, 54, 48], tex::MANGROVE_DOOR_TOP, tex::MANGROVE_DOOR_BOTTOM)
-        }
-        tex::CHERRY_DOOR_TOP | tex::CHERRY_DOOR_BOTTOM => {
-            wooden_door(layer, x, y, r, [226, 178, 172], tex::CHERRY_DOOR_TOP, tex::CHERRY_DOOR_BOTTOM)
         }
         tex::CARVED_PUMPKIN | tex::JACK_O_LANTERN => {
             // The ribbed skin with triangular eyes and a jagged grin cut out of it.
@@ -602,46 +517,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
                 shade(base, 0.9 - (d / 12.0).min(0.2) + r * 0.1)
             }
         }
-        tex::SUGAR_CANE => {
-            // Three stalks with pale joints, and a leaf or two.
-            let stalk = [3, 8, 12].iter().any(|&sx| x == sx || x == sx + 1);
-            let joint = (y + x / 4 * 3).is_multiple_of(6);
-            let leaf = (y == 4 && (4..8).contains(&x)) || (y == 11 && (9..12).contains(&x));
-            if stalk {
-                shade(if joint { [196, 222, 140] } else { [140, 192, 84] }, 0.85 + r * 0.2)
-            } else if leaf {
-                shade([110, 170, 60], 0.85 + r * 0.2)
-            } else {
-                [0, 0, 0, 0]
-            }
-        }
-        tex::FERN => {
-            // Arching fronds: a stem per frond with leaflets on both sides.
-            let fronds = [(7.5f32, 0.0f32), (4.0, -0.35), (11.0, 0.35)];
-            let (fx, fy) = (x as f32 + 0.5, y as f32 + 0.5);
-            let on = fronds.iter().any(|&(base, lean)| {
-                let top = 2.0 + (lean.abs() * 8.0);
-                if fy < top {
-                    return false;
-                }
-                let cx = base + lean * (16.0 - fy) * 0.6;
-                let half = 0.6 + ((fy - top) / 3.0).min(2.6) * if y.is_multiple_of(2) { 1.0 } else { 0.5 };
-                (fx - cx).abs() < half
-            });
-            if on { shade([82, 140, 52], 0.75 + r * 0.35) } else { [0, 0, 0, 0] }
-        }
-        tex::BLUE_ORCHID => {
-            let heads = [(5.5f32, 4.0f32), (10.5, 6.0), (7.5, 8.5)];
-            let (fx, fy) = (x as f32 + 0.5, y as f32 + 0.5);
-            if heads.iter().any(|&(hx, hy)| (fx - hx).powi(2) + (fy - hy).powi(2) < 3.2) {
-                let centre = heads.iter().any(|&(hx, hy)| (fx - hx).powi(2) + (fy - hy).powi(2) < 0.6);
-                if centre { [200, 220, 255, 255] } else { shade([50, 150, 230], 0.85 + r * 0.25) }
-            } else if (x == 7 || x == 8) && y >= 9 || (y == 12 && (4..7).contains(&x)) {
-                shade([60, 125, 40], 0.85 + r * 0.2)
-            } else {
-                [0, 0, 0, 0]
-            }
-        }
         tex::MOSSY_COBBLESTONE => {
             let stone = pixel(tex::COBBLESTONE, x, y);
             let moss = rnd(layer, x / 2, y / 2, 1) * 0.7 + rnd(layer, x, y, 2) * 0.3;
@@ -666,45 +541,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
         tex::CACTUS_TOP => {
             let border = x == 0 || y == 0 || x == SIZE - 1 || y == SIZE - 1;
             shade([88, 150, 58], if border { 0.75 } else { 0.95 + r * 0.1 })
-        }
-        tex::TALL_GRASS => {
-            // Blades rising from the bottom edge to varying heights, leaning a little.
-            let blade = |bx: usize| {
-                let top = 2 + (rnd(layer, bx, 0, 12) * 9.0) as usize;
-                let lean = (rnd(layer, bx, 1, 12) - 0.5) * 0.5;
-                let at = (bx as f32 + lean * (SIZE - y) as f32).round() as usize;
-                y >= top && at == x
-            };
-            if (0..SIZE).any(|bx| rnd(layer, bx, 2, 12) < 0.7 && blade(bx)) {
-                shade(GRASS, 0.75 + r * 0.25 + (y as f32 / SIZE as f32) * -0.15)
-            } else {
-                [0, 0, 0, 0]
-            }
-        }
-        tex::DANDELION | tex::POPPY => flower(layer, x, y, r),
-        tex::DEAD_BUSH => {
-            // A trunk forking into thin bare twigs.
-            let (fx, fy) = (x as f32 + 0.5, y as f32 + 0.5);
-            let twig = |x0: f32, y0: f32, x1: f32, y1: f32| {
-                let (dx, dy) = (x1 - x0, y1 - y0);
-                let t = (((fx - x0) * dx + (fy - y0) * dy) / (dx * dx + dy * dy)).clamp(0.0, 1.0);
-                let (px, py) = (x0 + dx * t - fx, y0 + dy * t - fy);
-                px * px + py * py < 0.36
-            };
-            let branches = [
-                (8.0, 16.0, 8.0, 10.0),
-                (8.0, 10.0, 3.0, 4.0),
-                (8.0, 10.0, 13.0, 3.0),
-                (8.0, 12.0, 12.0, 8.0),
-                (6.0, 8.0, 7.0, 2.0),
-                (5.0, 6.0, 1.0, 5.0),
-                (11.0, 6.0, 15.0, 7.0),
-            ];
-            if branches.iter().any(|&(a, b, c, d)| twig(a, b, c, d)) {
-                shade([148, 102, 52], 0.75 + r * 0.3)
-            } else {
-                [0, 0, 0, 0]
-            }
         }
         tex::TORCH => match (x, y) {
             (7..=8, 5) => [255, 250, 210, 255],
@@ -757,22 +593,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
                 _ => [0, 0, 0, 0],
             }
         }
-        tex::CHEST_TOP | tex::CHEST_SIDE | tex::CHEST_FRONT => {
-            // Planks in a dark frame; sides have the lid seam, the front a latch.
-            let edge = x == 0 || y == 0 || x == SIZE - 1 || y == SIZE - 1;
-            let seam = layer != tex::CHEST_TOP && (y == 5 || y == 6);
-            let latch = layer == tex::CHEST_FRONT && (7..9).contains(&x) && (4..9).contains(&y);
-            let board = y / 4;
-            if latch {
-                let rim = x == 7 && y == 4 || y == 8;
-                shade([196, 196, 204], if rim { 0.7 } else { 1.0 + r * 0.1 })
-            } else if edge || seam {
-                shade([76, 52, 30], 0.85 + r * 0.15)
-            } else {
-                let grain = if (x + board * 5).is_multiple_of(7) { 0.8 } else { 0.95 + rnd(layer, x, board, 2) * 0.1 };
-                shade([170, 120, 60], grain)
-            }
-        }
         tex::FARMLAND | tex::WET_FARMLAND => {
             // Tilled dirt: furrows across, darker and richer when wet.
             let wet = if layer == tex::WET_FARMLAND { 0.62 } else { 1.0 };
@@ -782,13 +602,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
                 _ => 0.95 + r * 0.12,
             };
             shade([134, 96, 64], furrow * wet)
-        }
-        l if (tex::WHEAT_0..tex::WHEAT_0 + 8).contains(&l) => wheat((l - tex::WHEAT_0) as u8, x, y),
-        l if (tex::CARROT_0..tex::CARROT_0 + 8).contains(&l) => {
-            crop_cross((l - tex::CARROT_0) as u8, x, y, [72, 150, 40], [214, 112, 28])
-        }
-        l if (tex::POTATO_0..tex::POTATO_0 + 8).contains(&l) => {
-            crop_cross((l - tex::POTATO_0) as u8, x, y, [64, 140, 36], [168, 124, 64])
         }
         tex::CAKE_TOP => {
             if !(1..15).contains(&x) || !(1..15).contains(&y) {
@@ -807,42 +620,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             }
         }
         tex::CAKE_BOTTOM => shade([140, 84, 44], 0.9 + r * 0.1),
-        l if (tex::NETHER_WART_0..tex::NETHER_WART_0 + 3).contains(&l) => {
-            nether_wart((l - tex::NETHER_WART_0) as u8, x, y)
-        }
-        tex::OAK_SAPLING | tex::SPRUCE_SAPLING | tex::BIRCH_SAPLING | tex::JUNGLE_SAPLING | tex::ACACIA_SAPLING => {
-            let (px, py) = (x as f32 - 7.5, y as f32);
-            let stem = (x == 7 || x == 8) && y >= 10;
-            let round = px * px + (py - 6.5) * (py - 6.5) <= 22.0 && rnd(layer, x, y, 5) > 0.15;
-            let (crown, leaf, bark) = match layer {
-                // Stacked triangles.
-                tex::SPRUCE_SAPLING => (
-                    y < 12 && px.abs() <= ((y % 4) as f32 + 1.0 + (y / 4) as f32 * 0.8).min(6.0),
-                    [46, 92, 50],
-                    [110, 80, 46],
-                ),
-                tex::BIRCH_SAPLING => (round, [104, 156, 64], [220, 218, 208]),
-                // Broad, dark leaves fanning out.
-                tex::JUNGLE_SAPLING => (
-                    y < 11 && (px.abs() < 1.5 + py * 0.5 || (py - 7.0).abs() < 1.5) && rnd(layer, x, y, 5) > 0.1,
-                    [40, 128, 26],
-                    [110, 84, 40],
-                ),
-                // A flat-topped umbrella.
-                tex::ACACIA_SAPLING => {
-                    ((3..7).contains(&y) && px.abs() < 6.5 - (y as f32 - 3.0), [90, 126, 40], [120, 110, 100])
-                }
-                _ => (round, [72, 146, 44], [110, 80, 46]),
-            };
-            let stem = stem || (layer == tex::ACACIA_SAPLING && y >= 6 && x == 7 + (y < 10) as usize);
-            if crown {
-                shade(leaf, 0.75 + r * 0.45)
-            } else if stem {
-                shade(bark, if x == 7 { 1.0 } else { 0.8 })
-            } else {
-                [0, 0, 0, 0]
-            }
-        }
         tex::SPAWNER => {
             // An iron cage: dark bars on a 4-pixel grid with a rim, open
             // in between so the inside shows.
@@ -912,23 +689,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
                 shade([8, 12, 18], 0.8 + r * 0.4)
             }
         }
-        tex::ANVIL => {
-            // Dark hammered iron.
-            let dent = rnd(layer, x / 2, y / 2, 23) < 0.2;
-            shade([68, 68, 70], if dent { 0.8 + r * 0.1 } else { 0.95 + r * 0.15 })
-        }
-        t if (tex::ANVIL_TOP..tex::ANVIL_TOP + 3).contains(&t) => {
-            // The striking face: a lighter worn middle, more cracks the
-            // more damaged it is.
-            let wear = (t - tex::ANVIL_TOP) as f32;
-            let middle = (4..=11).contains(&x) && (4..=11).contains(&y);
-            let crack = wear > 0.0 && rnd(layer, x, y, 29) < 0.07 * wear;
-            if crack {
-                shade([30, 30, 32], 1.0)
-            } else {
-                shade(if middle { [92, 92, 96] } else { [70, 70, 72] }, 0.92 + r * 0.14)
-            }
-        }
         tex::ENCHANT_TOP => {
             // Red cloth on an obsidian rim, with a diamond at each corner.
             let edge = x.min(y).min(SIZE - 1 - x).min(SIZE - 1 - y);
@@ -972,26 +732,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             let c = [(90.0 + 110.0 * k) as u8, (20.0 + 50.0 * k) as u8, (160.0 + 90.0 * k) as u8];
             [c[0], c[1], c[2], (150.0 + 90.0 * k) as u8]
         }
-        tex::TNT_SIDE => {
-            // Red paper with a white band across the middle and a fuse-dark
-            // "TNT" stencilled on it.
-            const LETTERS: [&str; 6] =
-                ["### #  # ###", " #  ## #  # ", " #  ## #  # ", " #  # ##  # ", " #  # ##  # ", " #  #  #  # "];
-            if (4..=11).contains(&y) {
-                let ink = LETTERS.get(y.wrapping_sub(5)).and_then(|row| row.as_bytes().get(x.wrapping_sub(2)));
-                if ink == Some(&b'#') { shade([40, 30, 30], 1.0) } else { shade([228, 226, 220], 0.92 + r * 0.08) }
-            } else {
-                let stripe = x.is_multiple_of(4);
-                shade([200, 50, 38], if stripe { 0.78 } else { 0.9 + r * 0.15 })
-            }
-        }
-        tex::TNT_TOP | tex::TNT_BOTTOM => {
-            // Ends of the sticks, with a fuse in the middle on top.
-            let (cx, cy) = (x % 4, y % 4);
-            let edge = cx == 0 || cy == 0;
-            let fuse = layer == tex::TNT_TOP && (7..=8).contains(&x) && (7..=8).contains(&y);
-            if fuse { shade([60, 60, 60], 1.0) } else { shade([200, 50, 38], if edge { 0.7 } else { 0.95 + r * 0.1 }) }
-        }
         tex::HEART_FULL
         | tex::HEART_HALF
         | tex::HEART_EMPTY
@@ -1020,26 +760,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
             // Missing texture: magenta checkerboard.
             if (x / 4 + y / 4).is_multiple_of(2) { [255, 0, 255, 255] } else { [0, 0, 0, 255] }
         }
-    }
-}
-
-fn wooden_door(layer: u16, x: usize, y: usize, r: f32, colour: [u8; 3], top: u16, bottom: u16) -> Rgba {
-    let frame = x <= 1 || x >= 14 || (layer == top && y <= 1) || (layer == bottom && y >= 14);
-    let window = layer == top && (3..=6).contains(&y) && matches!(x, 3..=6 | 9..=12);
-    let rail = y == 8 || y == 9;
-    let inset = matches!(x, 3 | 12) || (layer == bottom && matches!(y, 2 | 12));
-    if window {
-        [0, 0, 0, 0]
-    } else {
-        let board = 0.92 + rnd(layer, x / 3, 0, 5) * 0.12 + r * 0.05;
-        let f = if frame || rail {
-            0.8
-        } else if inset {
-            0.7
-        } else {
-            board
-        };
-        shade(colour, f)
     }
 }
 
@@ -1153,88 +873,11 @@ fn tint_foliage(p: Rgba, group: u8) -> Rgba {
     [c(r, f[0]), c(g, f[1]), c(b, f[2]), p[3]]
 }
 
-/// A flower: stem with two leaves, and a yellow (dandelion) or red (poppy) head.
-/// Wheat at growth `stage` 0..8: stalks rise and turn from green to gold;
-/// ripe wheat carries grain heads.
-fn wheat(stage: u8, x: usize, y: usize) -> Rgba {
-    const STALKS: [usize; 5] = [2, 5, 8, 11, 14];
-    let Some(i) = STALKS.iter().position(|&sx| sx == x || sx + 1 == x && x.is_multiple_of(3)) else {
-        return [0, 0, 0, 0];
-    };
-    let height = 3 + stage as usize * 12 / 7 - (i % 2) * (1 + stage as usize / 3);
-    if y + height < 16 {
-        return [0, 0, 0, 0];
-    }
-    let ripe = stage as f32 / 7.0;
-    let green = [72.0, 150.0, 40.0];
-    let gold = [206.0, 176.0, 70.0];
-    let c: [u8; 3] = std::array::from_fn(|k| (green[k] + (gold[k] - green[k]) * ripe * ripe) as u8);
-    let top = 16 - height;
-    if stage == 7 && y < top + 4 {
-        // Grain head: wider, golden, notched.
-        let notch = (x + y).is_multiple_of(2);
-        return shade([224, 190, 84], if notch { 0.82 } else { 1.05 });
-    }
-    shade(c, 0.85 + rnd(tex::WHEAT_0 + stage as u16, x, y, 9) * 0.25)
-}
-
-/// A wheat-shaped crop with a coloured top once it is nearly ripe.
-fn crop_cross(stage: u8, x: usize, y: usize, leaf: [u8; 3], fruit: [u8; 3]) -> Rgba {
-    let grown = wheat(stage, x, y);
-    if grown[3] == 0 {
-        return grown;
-    }
-    if stage >= 4 && y + (stage as usize) < 12 { shade(fruit, 1.0) } else { shade(leaf, 0.95) }
-}
-
 /// The eye of ender set in a frame: green with a dark slit pupil, `y`
 /// from 4 at its top.
 fn end_eye(x: usize, y: usize, r: f32) -> Rgba {
     let pupil = (7..=8).contains(&x) && (5..=10).contains(&y);
     if pupil { shade([18, 40, 30], 1.0) } else { shade([60, 150, 110], 0.85 + r * 0.3) }
-}
-
-/// Nether wart at look `stage` 0..3: dark red shoots that thicken and,
-/// once ripe, carry knobbly bulbs.
-fn nether_wart(stage: u8, x: usize, y: usize) -> Rgba {
-    const STALKS: [usize; 4] = [2, 6, 10, 13];
-    let r = rnd(tex::NETHER_WART_0 + stage as u16, x, y, 11);
-    let width = if stage == 0 { 1 } else { 2 };
-    // Ripe bulbs swell a pixel past the stalk on either side.
-    let reach = if stage == 2 { 1 } else { 0 };
-    let Some(i) = STALKS.iter().position(|&sx| x + reach >= sx && x < sx + width + reach) else {
-        return [0, 0, 0, 0];
-    };
-    let height = [5, 8, 11][stage as usize] - (i % 2) * 2;
-    let top = SIZE - height;
-    let on_stalk = x >= STALKS[i] && x < STALKS[i] + width;
-    if stage == 2 && y + 1 >= top && y < top + 4 {
-        let knob = rnd(tex::NETHER_WART_0, x, y, 12) > 0.2;
-        return if knob { shade([182, 38, 46], 0.75 + r * 0.45) } else { [0, 0, 0, 0] };
-    }
-    if !on_stalk || y < top {
-        return [0, 0, 0, 0];
-    }
-    let tip = y < top + 2 + stage as usize;
-    if tip { shade([164, 30, 38], 0.85 + r * 0.35) } else { shade([108, 18, 28], 0.8 + r * 0.3) }
-}
-
-fn flower(layer: u16, x: usize, y: usize, r: f32) -> Rgba {
-    let (dx, dy) = (x as f32 - 7.5, y as f32 - 5.0);
-    let d = (dx * dx + dy * dy * 1.3).sqrt();
-    let (petal, centre) =
-        if layer == tex::DANDELION { ([245, 210, 40], [220, 170, 20]) } else { ([210, 30, 30], [40, 30, 20]) };
-    if layer == tex::POPPY && d < 1.0 {
-        shade(centre, 1.0)
-    } else if d < if layer == tex::DANDELION { 2.6 } else { 3.3 } {
-        shade(petal, 0.85 + r * 0.25)
-    } else if (7..=8).contains(&x) && y >= 7 && x == 7 + (y / 5) % 2 {
-        shade([60, 125, 40], 0.85 + r * 0.2)
-    } else if (y == 10 && (4..7).contains(&x)) || (y == 12 && (9..12).contains(&x)) {
-        shade([70, 140, 45], 0.85 + r * 0.2)
-    } else {
-        [0, 0, 0, 0]
-    }
 }
 
 /// Hunger icon: a drumstick (meat upper left, bone lower right); full,
@@ -1446,42 +1089,144 @@ fn mips_of(layers: usize, pixel: impl Fn(usize, usize, usize) -> Rgba) -> Vec<Ve
 }
 
 // Original procedural artwork matching each workstation's material and face.
-fn village_pixel(layer: u16, x: usize, y: usize) -> Rgba {
-    // `material` draws the other workstations (v0.18 Track 3): left here are
-    // the dirt path (0), the hay bale (1) and the bell (14).
-    let i = (layer - tex::VILLAGE) / 3;
-    let face = (layer - tex::VILLAGE) % 3;
-    let grain = rnd(layer, x, y, 0);
-    match i {
-        0 => {
-            if face == 1 {
-                noisy(layer, x, y, [153, 126, 76], 0.12)
-            } else {
-                pixel(tex::DIRT, x, y)
-            }
-        }
-        1 => {
-            let band = if face == 1 { y == 3 || y == 12 } else { y == 3 || y == 4 || y == 11 || y == 12 };
-            if band {
-                noisy(layer, x, y, [145, 66, 39], 0.12)
-            } else {
-                shade([198, 165, 49], 0.8 + grain * 0.25 + (x.is_multiple_of(3)) as u8 as f32 * 0.12)
-            }
-        }
-        14 => {
-            if face == 2 && (y == 4 || y == 12) {
-                shade([98, 75, 14], 1.0)
-            } else {
-                noisy(layer, x, y, [216, 172, 42], 0.12)
-            }
-        }
-        _ => [255, 0, 255, 255],
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// v1.0 Track 10's layers, in review-sheet order: wooden doors and
+    /// trapdoors, chests, the village and farm blocks, then the plants.
+    fn final_art_layers() -> Vec<u16> {
+        let mut out = vec![tex::DOOR_TOP, tex::DOOR_BOTTOM];
+        out.extend(tex::DARK_OAK_DOOR_BOTTOM..=tex::CHERRY_DOOR_TOP);
+        out.extend(tex::BUILDING_DOORS..tex::BUILDING_DOORS + 4);
+        out.extend(tex::NETHER_DOORS..tex::NETHER_DOORS + 4);
+        out.extend([760, 761, 1124]);
+        out.extend(1816..=1822);
+        out.extend([tex::BUILDING_TRAPDOORS, tex::BUILDING_TRAPDOORS + 1, tex::NETHER_TRAPDOORS]);
+        out.extend([tex::NETHER_TRAPDOORS + 1, 762]);
+        out.extend([tex::CHEST_TOP, tex::CHEST_SIDE, tex::CHEST_FRONT, crate::world::utilities::t::TRAPPED_FRONT]);
+        out.extend([tex::VILLAGE, tex::VILLAGE + 1, tex::VILLAGE + 2, tex::VILLAGE + 3, tex::VILLAGE + 4]);
+        out.extend([tex::VILLAGE + 42, tex::VILLAGE + 43, tex::VILLAGE + 44]);
+        out.extend(tex::ANVIL..tex::ANVIL_TOP + 3);
+        out.extend([tex::TNT_SIDE, tex::TNT_TOP, tex::TNT_BOTTOM]);
+        // Flowers, tall flowers, saplings, grasses.
+        out.extend([tex::DANDELION, tex::POPPY, tex::BLUE_ORCHID]);
+        out.extend(1578..=1586);
+        out.extend([706, 3442, 792, 3373, 3374, 2845]);
+        out.extend(1587..=1594);
+        out.extend([3454, 3455]);
+        out.extend([tex::OAK_SAPLING, tex::SPRUCE_SAPLING, tex::BIRCH_SAPLING, tex::JUNGLE_SAPLING]);
+        out.extend([tex::ACACIA_SAPLING, 1556, 1557, 1558, 1559, 1570, 759]);
+        out.extend([tex::TALL_GRASS, tex::FERN]);
+        out.extend(1595..=1598);
+        out.extend([tex::DEAD_BUSH]);
+        out.extend(2840..=2844);
+        // Crops.
+        out.extend(tex::WHEAT_0..tex::WHEAT_0 + 8);
+        out.extend(tex::CARROT_0..tex::CARROT_0 + 8);
+        out.extend(tex::POTATO_0..tex::POTATO_0 + 8);
+        out.extend(3004..=3007);
+        out.extend(2992..=3003);
+        out.extend([3440, 3441]);
+        out.extend(3444..=3453);
+        out.extend(tex::NETHER_WART_0..tex::NETHER_WART_0 + 3);
+        out.extend(1601..=1604);
+        // Mushrooms, fungi and the other cross-model plants.
+        out.extend([tex::BROWN_MUSHROOM, tex::RED_MUSHROOM, 1324, 1325]);
+        out.extend([tex::SUGAR_CANE, 1326, 1327, 1328, 1329, 1330, 1331, 1332]);
+        out.extend(1501..=1505);
+        out.extend(1490..=1495);
+        out.extend([1498, 1499, 1500, 1576, 1577, 791]);
+        out
+    }
+
+    /// Writes v1.0 Track 10's layers as a review sheet (each tile 8x, and a
+    /// 2 x 2 repeat at 4x, over a blue-grey that shows the see-through
+    /// texels) to `$VC_FINAL_ART_SHEET`; run with `--ignored --nocapture`.
+    /// The layer of each cell is printed in sheet order.
+    #[test]
+    #[ignore]
+    fn final_art_sheet() {
+        let Ok(path) = std::env::var("VC_FINAL_ART_SHEET") else { return };
+        write_sheet(&path, &final_art_layers());
+    }
+
+    /// v1.0 Track 10b's layers, in review-sheet order: the flat ground
+    /// plants, vines and glow lichen, the corals (blocks, plants and fans
+    /// alive then dead, then the wall fans) and sea pickles, bamboo, the
+    /// potted torchflower and the ender chest.
+    fn final_art_b_layers() -> Vec<u16> {
+        use crate::world::overworld_blocks::t as ob;
+        use crate::world::utilities::t as ut;
+        let mut out = vec![ob::LILY_PAD, ob::PINK_PETALS];
+        out.extend(crate::world::biome_plants::TEX..crate::world::biome_plants::TEX + 8);
+        out.extend([ob::VINE, crate::world::cave_blocks::t::GLOW_LICHEN]);
+        out.extend(ob::CORAL..ob::CORAL + 30);
+        out.extend(ut::WALL_FAN..ut::WALL_FAN + 40);
+        out.extend(ob::SEA_PICKLES..ob::SEA_PICKLES + 4);
+        out.extend([ob::BAMBOO, ob::BAMBOO_SMALL_LEAVES, ob::BAMBOO_LARGE_LEAVES]);
+        out.push(crate::world::sniffer_plants::t::POTTED);
+        out.extend([ut::ENDER_FRONT, ut::ENDER_SIDE, ut::ENDER_TOP]);
+        out
+    }
+
+    /// Writes v1.0 Track 10b's layers as a review sheet, as
+    /// [`final_art_sheet`] does, to `$VC_FINAL_ART_B_SHEET`.
+    #[test]
+    #[ignore]
+    fn final_art_b_sheet() {
+        let Ok(path) = std::env::var("VC_FINAL_ART_B_SHEET") else { return };
+        write_sheet(&path, &final_art_b_layers());
+    }
+
+    /// Writes one FNV-1a checksum per block layer (every layer below
+    /// `tex::COUNT`, as `pixel` draws it) to `$VC_LAYER_DIGESTS`, one
+    /// `layer checksum` line each: comparing two commits' files shows which
+    /// layers a change touched; run with `--ignored`.
+    #[test]
+    #[ignore]
+    fn layer_digests() {
+        let Ok(path) = std::env::var("VC_LAYER_DIGESTS") else { return };
+        let mut out = String::new();
+        for layer in 0..tex::COUNT as u16 {
+            let h = (0..SIZE * SIZE)
+                .flat_map(|i| pixel(layer, i % SIZE, i / SIZE))
+                .fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ b as u64).wrapping_mul(0x100_0000_01b3));
+            out.push_str(&format!("{layer} {h:016x}\n"));
+        }
+        std::fs::write(path, out).unwrap();
+    }
+
+    /// Writes `layers` as a review sheet to `path` (see [`final_art_sheet`]).
+    fn write_sheet(path: &str, layers: &[u16]) {
+        let (cols, cell_w, cell_h) = (12, 16 * 8 + 4 + 32 * 4 + 12, 16 * 8 + 12);
+        let rows = layers.len().div_ceil(cols);
+        let (w, h) = (cols * cell_w, rows * cell_h);
+        let mut img = vec![24u8; w * h * 4];
+        for (i, &layer) in layers.iter().enumerate() {
+            let (ox, oy) = ((i % cols) * cell_w + 6, (i / cols) * cell_h + 6);
+            let mut put = |x: usize, y: usize, p: Rgba| {
+                let k = ((oy + y) * w + ox + x) * 4;
+                img[k..k + 4].copy_from_slice(&if p[3] == 0 { [92, 108, 132, 255] } else { [p[0], p[1], p[2], 255] });
+            };
+            for y in 0..16 * 8 {
+                for x in 0..16 * 8 {
+                    put(x, y, pixel(layer, x / 8, y / 8));
+                }
+            }
+            for y in 0..32 * 4 {
+                for x in 0..32 * 4 {
+                    put(16 * 8 + 4 + x, y, pixel(layer, (x / 4) % 16, (y / 4) % 16));
+                }
+            }
+            println!("sheet {i}: layer {layer}");
+        }
+        let file = std::fs::File::create(path).unwrap();
+        let mut enc = png::Encoder::new(std::io::BufWriter::new(file), w as u32, h as u32);
+        enc.set_color(png::ColorType::Rgba);
+        enc.set_depth(png::BitDepth::Eight);
+        enc.write_header().unwrap().write_image_data(&img).unwrap();
+    }
 
     /// Golden absorption hearts are a full tile and a left-half tile, distinct
     /// from the red hearts they sit beside, with the same outline shape.

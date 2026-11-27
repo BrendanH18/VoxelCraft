@@ -377,15 +377,11 @@ impl App {
                 eprintln!("cannot open world '{world_dir}': {e}");
                 std::process::exit(1);
             }
+            // Nothing is changed: Java's "Failed to load world" screen offers
+            // the restore from `level.txt_old` (v1.0 Track 1).
+            drop(lock);
             let mut title = title::Title::new(shell, &self.saves_dir);
-            title.show_select();
-            title.world_error(
-                "Couldn't open the world",
-                format!(
-                    "Can't open \"{world_dir}\": {e}. Nothing was changed. Fix its level.txt, or restore the world \
-                     from the backups folder."
-                ),
-            );
+            title.show_recover(world_dir);
             self.title = Some(title);
             return;
         }
@@ -440,10 +436,16 @@ impl App {
     }
 }
 
-/// Why an existing world can't be opened, if its level file is unreadable.
-/// Opening it anyway would start a fresh world over the old one.
+/// Why an existing world can't be opened, if its level file is unreadable
+/// or missing. Opening it anyway would start a fresh world over the old one.
 fn unreadable_level(storage: &Storage, replacing: bool) -> Option<String> {
-    if replacing || !storage.exists() {
+    if replacing {
+        return None;
+    }
+    if storage.has_chunks_without_level() {
+        return Some("its level file is missing".into());
+    }
+    if !storage.exists() {
         return None;
     }
     storage.load_level().err().map(|e| format!("its level file is unreadable ({e})"))
@@ -938,8 +940,9 @@ impl Game {
         let bindings = self.settings.keys;
         for action in bindings.actions(input) {
             match action {
-                keys::Action::Attack => self.attack_button(false),
-                keys::Action::Use => self.use_button(false),
+                // A toggled button ignores the release (`ToggleKeyMapping.setDown`).
+                keys::Action::Attack if !self.settings.toggle_attack => self.attack_button(false),
+                keys::Action::Use if !self.settings.toggle_use => self.use_button(false),
                 _ => {}
             }
         }
@@ -977,6 +980,8 @@ impl Game {
             return;
         }
         match action {
+            A::Attack if self.settings.toggle_attack => self.toggled_press(true),
+            A::Use if self.settings.toggle_use => self.toggled_press(false),
             A::Attack => self.attack_button(true),
             A::Use => self.use_button(true),
             A::PickBlock => self.pick_block(),
@@ -1579,13 +1584,24 @@ impl Game {
             let back = self.mobs.entities.push_carts(player.pos, player.collision_shape());
             player.vel += back * 20.0;
         }
+        let rider =
+            |player: &crate::player::Player, input: crate::player::MoveInput| crate::entity::minecart::RiderInput {
+                push: player.ride_push(input),
+                keys: crate::entity::minecart::boat::Keys::from_move(input.forward, input.right),
+            };
         if self.session.player.vehicle.is_some() {
-            wish.push((crate::entity::PlayerId::HOST, self.session.player.ride_push(input)));
+            wish.push((crate::entity::PlayerId::HOST, rider(&self.session.player, input)));
         }
         for bot in self.agents.players.values().filter(|b| b.active && b.agent.session.player.vehicle.is_some()) {
-            wish.push((bot.agent.session.id, bot.agent.session.player.ride_push(bot.agent.movement_input())));
+            wish.push((bot.agent.session.id, rider(&bot.agent.session.player, bot.agent.movement_input())));
         }
         self.mobs.entities.tick_minecarts(&mut self.world, &wish);
+        // v1.0 Track 7: a boat's turn carries its riders' heading with it.
+        self.mobs.entities.turn_boat_rider(&mut self.session.player, crate::entity::PlayerId::HOST);
+        for bot in self.agents.players.values_mut().filter(|b| b.active) {
+            let id = bot.agent.session.id;
+            self.mobs.entities.turn_boat_rider(&mut bot.agent.session.player, id);
+        }
         self.world.refresh_frame_signals(self.mobs.entities.frame_signals());
         seat_rider(&self.mobs.entities, &mut self.session.player, crate::entity::PlayerId::HOST);
         let ids: Vec<_> = self
@@ -1681,6 +1697,10 @@ impl Game {
                 1.0,
                 (0.8, 1.0),
             );
+        }
+        // v1.0 Track 5: Soul Speed's escaping souls, at volume 0.6.
+        for (pos, pitch) in std::mem::take(&mut self.world.soul_sounds) {
+            self.audio.play(crate::audio::sounds::Sound::SoulEscape, Some(pos), 0.6, (pitch, pitch));
         }
         for (pos, sound) in std::mem::take(&mut self.world.trip_sounds) {
             // The existing click, at Java's volume 0.4 and the hook's pitch.
@@ -2063,6 +2083,22 @@ impl Game {
         self.with_hands(|hands| hands.swap_hands());
     }
 
+    /// v1.0 Track 9: Attack or Use in Toggle mode (`toggleAttack`,
+    /// `toggleUse`). Java's `ToggleKeyMapping` flips the held state on each
+    /// press, and every press is still a click (`KeyMapping.click`), which
+    /// `Minecraft.handleKeybinds` acts on before reading the held state.
+    fn toggled_press(&mut self, attack: bool) {
+        let action = if attack { ToggleAction::Attack } else { ToggleAction::Use };
+        let down = if attack { self.body.left_held } else { self.body.right_held };
+        for (pressed, button_attack) in toggled_presses(action, down, self.session.using_item()) {
+            if button_attack {
+                self.attack_button(pressed);
+            } else {
+                self.use_button(pressed);
+            }
+        }
+    }
+
     /// Use button (right click, or a controller's LT) pressed or released.
     fn use_button(&mut self, pressed: bool) {
         if self.lan.client.is_some() {
@@ -2177,8 +2213,15 @@ impl Game {
         benchmark::mark(&mut self.benchmark, 0);
         if ticks > 0 {
             // Ticks read light exactly as when streaming resolved all of it
-            // each frame.
-            self.world.update_block_light();
+            // each frame. v1.0 Track 2: light settling only beyond the
+            // simulated area is left to the streaming budget, as nothing the
+            // tick reads can see it; a LAN host still resolves all of it
+            // for the chunks it sends.
+            if self.lan.host.is_some() {
+                self.world.update_block_light();
+            } else {
+                self.world.settle_light_for_ticks();
+            }
         }
         for _ in 0..ticks {
             if self.lan.client.is_some() {
@@ -2225,7 +2268,11 @@ impl Game {
         let alpha = if paused { 1.0 } else { self.clock.alpha() };
         let eye = crate::simulation::interpolated_eye(self.previous_eye, self.session.player.eye(), alpha);
         self.rendered_eye = eye;
-        let (camera, forward) = self.camera.view(&self.world, eye, self.session.player.forward());
+        // v1.0 Track 9: `Camera.alignWithEntity`: the eased eye height and
+        // the rider's camera distance.
+        let eye = eye + glam::DVec3::Y * self.session.player.camera_eye_offset(alpha as f32);
+        let distance = self.mobs.entities.camera_distance(self.session.player.vehicle);
+        let (camera, forward) = self.camera.view_at(&self.world, eye, self.session.player.forward(), distance);
         self.hand.update(
             dt as f32,
             self.held_item(),
@@ -2243,8 +2290,9 @@ impl Game {
         if self.settings_path.is_some() && now - self.last_save > AUTOSAVE_EVERY {
             // A death the save's settling caused respawns at the next
             // frame's start, before its camera is sampled.
-            self.save();
+            self.autosave();
         }
+        self.poll_region_storage();
 
         // --- Render ---------------------------------------------------------
         // v0.18 Track 8: the sky, fog and clouds are Java 26.3's environment
@@ -2295,7 +2343,8 @@ impl Game {
             })
             .collect();
         benchmark::mark(&mut self.benchmark, 2);
-        self.mobs.entities.mesh(camera, forward, fog_end, scene.time, alpha);
+        let draw = atmosphere.draw_distance(self.session.player.pos, self.world.render_distance());
+        self.mobs.entities.mesh(&self.world.maps, camera, forward, draw, scene.time, alpha);
         // v0.18 Track 6: ground shadows, for the players drawn in this view too.
         let mut casters = shadow_casters(&self.world, others.iter().map(|o| o.1), alpha);
         if !self.camera.first_person() && casts_shadow(&self.session.vitals, self.session.mode) {
@@ -2311,8 +2360,8 @@ impl Game {
             camera,
             verts,
         );
-        crate::entity::model::build_beacon_beams(&self.world, camera, scene.time, fog_end, verts);
-        crate::entity::model::build_conduits(&self.world, camera, fog_end, verts);
+        crate::entity::model::build_beacon_beams(&self.world, camera, scene.time, draw, verts);
+        crate::entity::model::build_conduits(&self.world, camera, draw, verts);
         if !self.camera.first_person() {
             let glow = verts.glow_start();
             let look = Self::stamp_look(
@@ -2405,7 +2454,7 @@ impl Game {
             }),
             cracks: self.cracks_seen_from(eye),
             block_models: {
-                let mut models = self.block_models(alpha, camera);
+                let mut models = self.block_models(alpha, camera, &draw);
                 crate::render::signs::shelf_items(&self.world, camera, &mut models);
                 crate::render::brushable::emerging_items(&self.world, camera, crate::render::signs::RANGE, &mut models);
                 models
@@ -2539,7 +2588,12 @@ pub(super) fn fov_effects(modifier: f32, scale: f32) -> f32 {
 impl Game {
     /// Falling blocks, primed TNT, dropped items and banners near `camera`,
     /// at interpolated positions.
-    fn block_models(&self, alpha: f64, camera: glam::DVec3) -> Vec<crate::render::BlockModel> {
+    fn block_models(
+        &self,
+        alpha: f64,
+        camera: glam::DVec3,
+        view: &voxelcraft::entity::draw_distance::DrawDistance,
+    ) -> Vec<crate::render::BlockModel> {
         self.world
             .falling_blocks()
             .iter()
@@ -2593,7 +2647,7 @@ impl Game {
             .chain(self.banner_models(camera))
             .chain(self.shulker_models(camera, alpha))
             .chain(self.lid_models(alpha))
-            .chain(self.decor_models())
+            .chain(self.decor_models(camera, view))
             .collect()
     }
 }
@@ -2702,6 +2756,63 @@ mod pause_tests {
         std::fs::write(dir.join("level.txt"), "seed=not-a-number\n").unwrap();
         assert!(unreadable_level(&storage, false).unwrap().contains("bad seed"));
         assert_eq!(unreadable_level(&storage, true), None, "--new and new worlds replace it on purpose");
+        // v1.0 Track 1: a level file cut off partway, or lost with only its
+        // saved chunks left, is refused too.
+        std::fs::write(dir.join("level.txt"), "seed=12\nname=o").unwrap();
+        assert!(unreadable_level(&storage, false).unwrap().contains("cut off"));
+        std::fs::remove_file(dir.join("level.txt")).unwrap();
+        std::fs::write(dir.join("chunks.bin"), b"VXC2").unwrap();
+        assert!(unreadable_level(&storage, false).unwrap().contains("missing"));
+        std::fs::write(dir.join("level.txt_old"), "seed=12\nname=ok\n").unwrap();
+        assert!(
+            unreadable_level(&storage, false).unwrap().contains("level.txt is missing"),
+            "the kept copy isn't used unasked"
+        );
         std::fs::remove_dir_all(dir).unwrap();
+    }
+}
+
+/// Which button a Toggle-mode press is for.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum ToggleAction {
+    Attack,
+    Use,
+}
+
+/// The button edges one Toggle-mode press makes, as (pressed, is attack),
+/// given whether the button was toggled on and whether an item is in use.
+/// `Minecraft.handleKeybinds` with a `ToggleKeyMapping`: a press that turns
+/// Attack on clicks it (`startAttack`) and holds it; one that turns it off
+/// still clicks, then `continueAttack(false)` stops mining. Use turning on
+/// clicks (`startUseItem`) and holds; turning off while an item is in use
+/// swallows the click and releases the item (`releaseUsingItem`), and
+/// otherwise uses once more and stops repeating.
+pub(crate) fn toggled_presses(action: ToggleAction, down: bool, using_item: bool) -> Vec<(bool, bool)> {
+    let attack = action == ToggleAction::Attack;
+    match (attack, down) {
+        (_, false) => vec![(true, attack)],
+        (true, true) => vec![(true, true), (false, true)],
+        (false, true) if using_item => vec![(false, false)],
+        (false, true) => vec![(true, false), (false, false)],
+    }
+}
+
+#[cfg(test)]
+mod toggle_tests {
+    use super::{ToggleAction, toggled_presses};
+
+    /// v1.0 Track 9: Toggle mode turns a press into Java's click plus the
+    /// flipped held state; the controller's triggers use the same table.
+    #[test]
+    fn toggled_presses_follow_javas_click_then_held_state() {
+        // Turning on: one press edge, held afterwards.
+        assert_eq!(toggled_presses(ToggleAction::Attack, false, false), [(true, true)]);
+        assert_eq!(toggled_presses(ToggleAction::Use, false, true), [(true, false)]);
+        // Turning Attack off still clicks once, then stops mining.
+        assert_eq!(toggled_presses(ToggleAction::Attack, true, false), [(true, true), (false, true)]);
+        // Turning Use off releases a drawn bow or food without a new use ...
+        assert_eq!(toggled_presses(ToggleAction::Use, true, true), [(false, false)]);
+        // ... and otherwise places or uses once more before stopping.
+        assert_eq!(toggled_presses(ToggleAction::Use, true, false), [(true, false), (false, false)]);
     }
 }

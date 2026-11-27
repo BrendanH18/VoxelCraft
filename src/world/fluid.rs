@@ -52,6 +52,22 @@ pub(super) struct FluidState {
     ticks: u32,
     /// Duration of the most recent tick, for the debug screen.
     pub last_tick_ms: f64,
+    /// v1.0 Track 3: the pending cells of player-modified chunks that
+    /// unloaded, by chunk, back in the queues when the chunk loads (Java
+    /// keeps a chunk's fluid ticks with it). Generated chunks keep none:
+    /// generating them again wakes the same cells.
+    suspended: FxHashMap<IVec3, Suspended>,
+}
+
+/// A chunk's water, lava and bubble-column cells, for its record.
+pub(super) type FluidCells = (Vec<IVec3>, Vec<IVec3>, Vec<IVec3>);
+
+/// One unloaded chunk's pending water, lava and bubble-column cells.
+#[derive(Default)]
+struct Suspended {
+    water: Vec<IVec3>,
+    lava: Vec<IVec3>,
+    bubbles: Vec<IVec3>,
 }
 
 /// Relative strength when two proposals target the same cell; blocks
@@ -91,13 +107,142 @@ impl World {
     /// scheduled when some is there, so its slow tick doesn't hold up
     /// `World::is_idle` after unrelated edits.
     pub fn wake_fluids(&mut self, p: IVec3) {
-        let cells = std::iter::once(p).chain(ALL_DIRS.map(|o| p + o));
+        // v1.0 Track 3: as Java's `LevelTicks.schedule`, nothing is
+        // scheduled in a chunk that isn't loaded (it used to wait there
+        // for good once the player had moved on).
+        let chunks = &self.chunks;
+        let cells = std::iter::once(p)
+            .chain(ALL_DIRS.map(|o| p + o))
+            .filter(|q| chunks.contains_key(&super::chunk::chunk_of(*q)));
         let lava = cells.clone().any(|q| self.get_block(q).is_some_and(|b| b.is_lava()));
-        for q in cells {
+        for q in cells.collect::<Vec<_>>() {
             self.fluids.pending.insert(q);
             if lava {
                 self.fluids.lava_pending.insert(q);
             }
+        }
+    }
+
+    /// v1.0 Track 3: takes an unloading chunk's cells out of the fluid
+    /// queues, keeping them for its return if it was modified. They used to
+    /// stay queued: every chunk streamed past left its generated springs'
+    /// cells behind, and each fluid tick scanned them all (26,000 after 20
+    /// minutes of travel in the soak).
+    pub(super) fn unload_fluids(&mut self, pos: IVec3, modified: bool) {
+        let state = &mut self.fluids;
+        if state.pending.is_empty() && state.lava_pending.is_empty() && state.bubbles.is_empty() {
+            return;
+        }
+        let here = |p: &IVec3| super::chunk::chunk_of(*p) == pos;
+        let cells = Suspended {
+            water: state.pending.extract_if(here).collect(),
+            lava: state.lava_pending.extract_if(here).collect(),
+            bubbles: state.bubbles.extract_if(here).collect(),
+        };
+        if modified && !(cells.water.is_empty() && cells.lava.is_empty() && cells.bubbles.is_empty()) {
+            state.suspended.insert(pos, cells);
+        }
+    }
+
+    /// v1.0 Track 3b: takes the pending and suspended fluid cells of the
+    /// chunks `at` accepts out of the queues, by chunk (water, lava,
+    /// bubbles), for their records.
+    pub(super) fn take_fluid_cells(&mut self, at: &dyn Fn(IVec3) -> bool) -> FxHashMap<IVec3, FluidCells> {
+        let mut out: FxHashMap<IVec3, FluidCells> = FxHashMap::default();
+        let state = &mut self.fluids;
+        let here = |p: &IVec3| at(super::chunk::chunk_of(*p));
+        for p in state.pending.extract_if(here) {
+            out.entry(super::chunk::chunk_of(p)).or_default().0.push(p);
+        }
+        for p in state.lava_pending.extract_if(here) {
+            out.entry(super::chunk::chunk_of(p)).or_default().1.push(p);
+        }
+        for p in state.bubbles.extract_if(here) {
+            out.entry(super::chunk::chunk_of(p)).or_default().2.push(p);
+        }
+        for (c, cells) in state.suspended.extract_if(|c, _| at(*c)) {
+            let e = out.entry(c).or_default();
+            e.0.extend(cells.water);
+            e.1.extend(cells.lava);
+            e.2.extend(cells.bubbles);
+        }
+        for cells in out.values_mut() {
+            for list in [&mut cells.0, &mut cells.1, &mut cells.2] {
+                list.sort_unstable_by_key(|p| (p.x, p.y, p.z));
+            }
+        }
+        out
+    }
+
+    /// Holds a chunk's saved fluid cells until it loads ([`World::load_fluids`]).
+    pub(super) fn suspend_fluid_cells(&mut self, pos: IVec3, water: Vec<IVec3>, lava: Vec<IVec3>, bubbles: Vec<IVec3>) {
+        if water.is_empty() && lava.is_empty() && bubbles.is_empty() {
+            return;
+        }
+        let s = self.fluids.suspended.entry(pos).or_default();
+        s.water.extend(water);
+        s.lava.extend(lava);
+        s.bubbles.extend(bubbles);
+    }
+
+    /// v1.0 Track 3b: the `fluid_ticks` level file text, the scheduled fluid
+    /// ticks of the player-modified chunks, loaded or not (Java saves a
+    /// chunk's fluid ticks with it). Generated chunks wake their own again.
+    /// `w`, `l` or `b`, then the cell, `|`-separated.
+    pub fn fluid_ticks_to_string(&self) -> String {
+        let modified = |p: &IVec3| {
+            let c = super::chunk::chunk_of(*p);
+            self.chunks.get(&c).is_some_and(|s| s.modified) || self.fluids.suspended.contains_key(&c)
+        };
+        let mut entries: Vec<(char, IVec3)> = Vec::new();
+        let state = &self.fluids;
+        entries.extend(state.pending.iter().filter(|p| modified(p)).map(|&p| ('w', p)));
+        entries.extend(state.lava_pending.iter().filter(|p| modified(p)).map(|&p| ('l', p)));
+        entries.extend(state.bubbles.iter().filter(|p| modified(p)).map(|&p| ('b', p)));
+        for cells in state.suspended.values() {
+            entries.extend(cells.water.iter().map(|&p| ('w', p)));
+            entries.extend(cells.lava.iter().map(|&p| ('l', p)));
+            entries.extend(cells.bubbles.iter().map(|&p| ('b', p)));
+        }
+        entries.sort_unstable_by_key(|(k, p)| (*k, p.x, p.y, p.z));
+        entries.iter().map(|(k, p)| format!("{k}{},{},{}", p.x, p.y, p.z)).collect::<Vec<_>>().join("|")
+    }
+
+    /// Restores [`World::fluid_ticks_to_string`]: cells of loaded chunks go
+    /// back in the queues, the rest wait for their chunk.
+    pub fn load_fluid_ticks(&mut self, text: &str) {
+        for entry in text.split('|').filter(|e| !e.is_empty()) {
+            let (kind, rest) = entry.split_at_checked(1).unwrap_or(("", ""));
+            let c: Vec<i32> = rest.split(',').filter_map(|v| v.parse().ok()).collect();
+            let &[x, y, z] = &c[..] else { continue };
+            let p = IVec3::new(x, y, z);
+            let chunk = super::chunk::chunk_of(p);
+            let loaded = self.chunks.contains_key(&chunk);
+            let state = &mut self.fluids;
+            match (kind, loaded) {
+                ("w", true) => {
+                    state.pending.insert(p);
+                }
+                ("l", true) => {
+                    state.lava_pending.insert(p);
+                }
+                ("b", true) => {
+                    state.bubbles.insert(p);
+                }
+                ("w", false) => state.suspended.entry(chunk).or_default().water.push(p),
+                ("l", false) => state.suspended.entry(chunk).or_default().lava.push(p),
+                ("b", false) => state.suspended.entry(chunk).or_default().bubbles.push(p),
+                _ => {}
+            }
+        }
+    }
+
+    /// Puts a loading chunk's suspended cells back in the fluid queues.
+    pub(super) fn load_fluids(&mut self, pos: IVec3) {
+        if let Some(cells) = self.fluids.suspended.remove(&pos) {
+            self.fluids.pending.extend(cells.water);
+            self.fluids.lava_pending.extend(cells.lava);
+            self.fluids.bubbles.extend(cells.bubbles);
         }
     }
 
@@ -372,5 +517,17 @@ impl World {
             frontier = next;
         }
         0
+    }
+}
+
+/// v1.0 Track 3: entry counts for the long-session soak (`crate::soak`).
+impl FluidState {
+    pub(super) fn soak_counts(&self, out: &mut super::diagnostics::Counts) {
+        out.extend([
+            ("fluid.pending", self.pending.len()),
+            ("fluid.lava_pending", self.lava_pending.len()),
+            ("fluid.bubbles", self.bubbles.len()),
+            ("fluid.suspended", self.suspended.values().map(|c| c.water.len() + c.lava.len() + c.bubbles.len()).sum()),
+        ]);
     }
 }

@@ -1,10 +1,22 @@
 //! Generation 3 buried jigsaw settlements. Placement and processor settings
 //! from Java 26.3; original, reduced template catalogue (GEN-05f / DEF-02).
+//!
+//! v1.0 Track 5: the archaeology processor lists' capped rules
+//! (`worldgen/processor_list/trail_ruins_*_archaeology`): after the gravel
+//! and mud brick rules, houses (the tower, its additions, buildings and
+//! decor) turn up to 6 gravel blocks into suspicious gravel with
+//! `archaeology/trail_ruins_common`, then 3 more with `_rare`; roads turn 2
+//! (common) and the tower top 2 (common). Each `CappedProcessor` shuffles
+//! the whole processed piece with the world seed forked at the piece
+//! (both caps of a piece draw the same order, so the rare ones are the
+//! next gravel in it), and `AppendLoot` seeds each block's loot from its
+//! position's processor random, as the ocean ruins do.
 use std::sync::{Arc, Mutex};
 
 use glam::{IVec2, IVec3};
 use rustc_hash::FxHashMap;
 
+use super::archaeology::{self, Table};
 use super::block::Block;
 use super::chunk::{CHUNK_SIZE_I, CHUNK_VOLUME};
 use super::jigsaw::{self, Palette, Placed};
@@ -42,30 +54,46 @@ pub fn allowed(b: Biome) -> bool {
     )
 }
 
-struct RuinPalette;
+/// The ruins' processors; `archaeology` holds the capped rules' suspicious
+/// gravel (none while they are being chosen).
+struct RuinPalette<'a> {
+    archaeology: Option<&'a FxHashMap<IVec3, (Table, u64)>>,
+}
 
-impl Palette for RuinPalette {
+const RULES_ONLY: RuinPalette<'static> = RuinPalette { archaeology: None };
+
+/// The processor lists' rule processors: gravel to dirt (0.2) or coarse
+/// dirt (0.1) and mud bricks to packed mud (0.1). Tower tops have only the
+/// capped archaeology rule.
+fn rules(b: Block, at: IVec3, p: &Placed) -> Block {
+    let name = &jigsaw::trail_ruins().templates[p.template as usize].name;
+    if name == "trail_ruins/tower/crown" {
+        return b;
+    }
+    let mut rng = Rng(hash3(at.x, at.y, at.z, p.seed));
+    if b == Block::GRAVEL && rng.unit() < 0.2 {
+        Block::DIRT
+    } else if b == Block::GRAVEL && rng.unit() < 0.1 {
+        ob::COARSE_DIRT
+    } else if b == ob::MUD_BRICKS && rng.unit() < 0.1 {
+        ob::PACKED_MUD
+    } else {
+        b
+    }
+}
+
+impl Palette for RuinPalette<'_> {
     fn role(&self, _r: &str) -> Option<Block> {
         None
     }
 
     fn process(&self, b: Block, at: IVec3, p: &Placed) -> Option<Block> {
-        // Tower tops have only the capped archaeology processor; with
-        // DEF-02's gravel fallback it has no observable block change.
-        let name = &jigsaw::trail_ruins().templates[p.template as usize].name;
-        if name == "trail_ruins/tower/crown" {
-            return Some(b);
+        let ruled = rules(b, at, p);
+        // The capped rules' gravel, chosen from these same results.
+        if ruled == Block::GRAVEL && self.archaeology.is_some_and(|a| a.contains_key(&at)) {
+            return Some(archaeology::state(true, 0));
         }
-        let mut rng = Rng(hash3(at.x, at.y, at.z, p.seed));
-        Some(if b == Block::GRAVEL && rng.unit() < 0.2 {
-            Block::DIRT
-        } else if b == Block::GRAVEL && rng.unit() < 0.1 {
-            ob::COARSE_DIRT
-        } else if b == ob::MUD_BRICKS && rng.unit() < 0.1 {
-            ob::PACKED_MUD
-        } else {
-            b
-        })
+        Some(ruled)
     }
 
     fn clear_above(&self) -> i32 {
@@ -77,6 +105,56 @@ impl Palette for RuinPalette {
 pub struct Ruin {
     pub at: IVec3,
     pub pieces: Vec<Placed>,
+    /// v1.0 Track 5: the suspicious gravel the capped processors placed,
+    /// with its table and loot seed.
+    pub archaeology: FxHashMap<IVec3, (Table, u64)>,
+}
+
+/// The capped archaeology rules of a piece's processor list, in order:
+/// (table, limit).
+fn caps(template: &str) -> &'static [(Table, usize)] {
+    // `trail_ruins_tower_top_archaeology` and `trail_ruins_roads_archaeology`.
+    if template.starts_with("trail_ruins/tower/crown") || template.starts_with("trail_ruins/roads/") {
+        &[(Table::TrailCommon, 2)]
+    } else {
+        // `trail_ruins_houses_archaeology`.
+        &[(Table::TrailCommon, 6), (Table::TrailRare, 3)]
+    }
+}
+
+/// Java's `CappedProcessor.finalizeProcessing` for every piece, each cap
+/// over the piece's processed blocks after the earlier rules and caps.
+fn place_archaeology(seed: u64, pieces: &[Placed]) -> FxHashMap<IVec3, (Table, u64)> {
+    use super::temples::ocean_ruins::{long, position_seed};
+    let lib = jigsaw::trail_ruins();
+    let mut out = FxHashMap::default();
+    for p in pieces {
+        let mut cells = super::relics::bake(lib, std::slice::from_ref(p), &RULES_ONLY);
+        // The processed list follows the template's own block order.
+        cells.sort_by_key(|(at, _)| {
+            let local = jigsaw::rotate(*at - p.origin, (4 - p.rotation) % 4);
+            (local.y, local.x, local.z)
+        });
+        let fork = long(&mut JavaRandom::new(seed as i64)) ^ position_seed(p.origin);
+        for &(table, limit) in caps(&lib.templates[p.template as usize].name) {
+            let mut order: Vec<usize> = (0..cells.len()).collect();
+            super::loot::shuffle(&mut order, &mut super::loot::LootRandom::new(fork));
+            let mut placed = 0;
+            for i in order {
+                if placed == limit {
+                    break;
+                }
+                // `#trail_ruins_replaceable`: gravel.
+                if cells[i].1 == Block::GRAVEL {
+                    cells[i].1 = archaeology::state(true, 0);
+                    let at = cells[i].0;
+                    out.insert(at, (table, long(&mut jigsaw::processor_random(at))));
+                    placed += 1;
+                }
+            }
+        }
+    }
+    out
 }
 
 pub struct TrailRuins {
@@ -116,7 +194,17 @@ impl TrailRuins {
         let found = pieces.first().copied().and_then(|p| {
             let mut at = (p.bounds.min + p.bounds.max) / 2;
             at.y = p.origin.y + 1;
-            allowed(g.surface_biome(at.x, at.z)).then(|| Arc::new(Ruin { at, pieces }))
+            allowed(g.surface_biome(at.x, at.z)).then(|| {
+                // Generations 3 to 5 keep their plain gravel, so their
+                // chunks stay identical (the golden hashes); suspicious
+                // gravel comes with generation 6 (v1.0 integration).
+                let archaeology = if g.generation >= Generation::V6 {
+                    place_archaeology(self.seed, &pieces)
+                } else {
+                    FxHashMap::default()
+                };
+                Arc::new(Ruin { at, pieces, archaeology })
+            })
         });
         let mut cache = self.cache.lock().unwrap();
         if cache.len() >= CACHE_LIMIT {
@@ -139,7 +227,7 @@ impl TrailRuins {
                     jigsaw::paint(
                         jigsaw::trail_ruins(),
                         &r.pieces,
-                        &RuinPalette,
+                        &RuinPalette { archaeology: Some(&r.archaeology) },
                         &jigsaw::Ground { surface: &ground, solid: &ground },
                         blocks,
                         base,
@@ -147,6 +235,35 @@ impl TrailRuins {
                 }
             }
         }
+    }
+
+    /// v1.0 Track 5: the suspicious gravel in the chunk at `cpos` (32-block
+    /// chunks), for its block entities' loot tables and seeds.
+    pub fn features(&self, g: &Generator, cpos: IVec3) -> Vec<(IVec3, super::fortress::Feature)> {
+        if g.generation < Generation::V3 || g.dimension != Dimension::Overworld {
+            return Vec::new();
+        }
+        let base = cpos * CHUNK_SIZE_I;
+        let min = (IVec2::new(base.x, base.z) - IVec2::splat(REACH)).div_euclid(IVec2::splat(16 * SPACING));
+        let max =
+            (IVec2::new(base.x, base.z) + IVec2::splat(CHUNK_SIZE_I + REACH)).div_euclid(IVec2::splat(16 * SPACING));
+        let inside =
+            |p: &IVec3| (*p - base).cmpge(IVec3::ZERO).all() && (*p - base).cmplt(IVec3::splat(CHUNK_SIZE_I)).all();
+        let mut out = Vec::new();
+        for z in min.y..=max.y {
+            for x in min.x..=max.x {
+                if let Some(r) = self.get(g, IVec2::new(x, z)) {
+                    out.extend(
+                        r.archaeology
+                            .iter()
+                            .filter(|(p, _)| inside(p))
+                            .map(|(&p, &(table, seed))| (p, super::fortress::Feature::Archaeology(seed, table))),
+                    );
+                }
+            }
+        }
+        out.sort_by_key(|(p, _)| (p.x, p.y, p.z));
+        out
     }
 
     pub fn nearest(&self, g: &Generator, origin: IVec2, max_blocks: i32) -> Option<IVec3> {
@@ -189,7 +306,8 @@ mod tests {
     }
 
     fn painted(g: &Generator, r: &Ruin, shift: IVec3) -> FxHashMap<IVec3, Block> {
-        let cells = super::super::relics::bake(jigsaw::trail_ruins(), &r.pieces, &RuinPalette);
+        let palette = RuinPalette { archaeology: Some(&r.archaeology) };
+        let cells = super::super::relics::bake(jigsaw::trail_ruins(), &r.pieces, &palette);
         let bounds = r.pieces.iter().map(|p| p.bounds).reduce(|a, b| a.union(&b)).unwrap();
         let min = (bounds.min - shift).div_euclid(IVec3::splat(CHUNK_SIZE_I));
         let max = (bounds.max - shift).div_euclid(IVec3::splat(CHUNK_SIZE_I));
@@ -254,6 +372,52 @@ mod tests {
         assert!(g.trail_ruins.nearest(&g, IVec2::ZERO, 1).is_none());
     }
 
+    /// v1.0 Track 5: the capped rules place suspicious gravel within
+    /// Java's limits, the same way every time; it's painted, and each
+    /// chunk's features carry its table and seed.
+    #[test]
+    fn capped_processors_place_trail_archaeology() {
+        let g = Generator::new(12345);
+        let at = g.trail_ruins.nearest(&g, IVec2::ZERO, 6400).unwrap();
+        let c = IVec2::new(at.x, at.z).div_euclid(IVec2::splat(16 * SPACING));
+        let r = g.trail_ruins.get(&g, c).unwrap();
+        let lib = jigsaw::trail_ruins();
+        let (mut common_cap, mut rare_cap) = (0, 0);
+        for p in &r.pieces {
+            for &(table, limit) in caps(&lib.templates[p.template as usize].name) {
+                *if table == Table::TrailRare { &mut rare_cap } else { &mut common_cap } += limit;
+            }
+        }
+        let common = r.archaeology.values().filter(|(t, _)| *t == Table::TrailCommon).count();
+        let rare = r.archaeology.values().filter(|(t, _)| *t == Table::TrailRare).count();
+        eprintln!("trail archaeology: {common} common of {common_cap}, {rare} rare of {rare_cap}");
+        assert!(common > 0 && common <= common_cap);
+        assert!(rare <= rare_cap);
+        assert_eq!(place_archaeology(12345, &r.pieces), r.archaeology, "deterministic");
+        // Each seed is the block's processor random's first long.
+        for (p, &(_, seed)) in &r.archaeology {
+            assert_eq!(seed, super::super::temples::ocean_ruins::long(&mut jigsaw::processor_random(*p)));
+        }
+        let painted = painted(&g, &r, IVec3::ZERO);
+        for p in r.archaeology.keys() {
+            assert_eq!(painted.get(p), Some(&archaeology::state(true, 0)), "suspicious gravel at {p}");
+        }
+        let bounds = r.pieces.iter().map(|p| p.bounds).reduce(|a, b| a.union(&b)).unwrap();
+        let (lo, hi) = (bounds.min.div_euclid(IVec3::splat(32)), bounds.max.div_euclid(IVec3::splat(32)));
+        let mut features = FxHashMap::default();
+        for x in lo.x..=hi.x {
+            for y in lo.y..=hi.y {
+                for z in lo.z..=hi.z {
+                    for (p, f) in g.trail_ruins.features(&g, IVec3::new(x, y, z)) {
+                        let super::super::fortress::Feature::Archaeology(seed, table) = f else { panic!() };
+                        assert!(features.insert(p, (table, seed)).is_none(), "{p} in two chunks");
+                    }
+                }
+            }
+        }
+        assert_eq!(features, r.archaeology);
+    }
+
     #[test]
     fn processor_frequencies_and_biome_tag_match_reference() {
         let mut dirt = 0;
@@ -262,10 +426,10 @@ mod tests {
         let piece = jigsaw::single(jigsaw::trail_ruins(), "trail_ruins/roads/section_1", IVec3::ZERO, 0, 123);
         for x in 0..100_000 {
             let p = IVec3::new(x, 0, 0);
-            let b = RuinPalette.process(Block::GRAVEL, p, &piece).unwrap();
+            let b = RULES_ONLY.process(Block::GRAVEL, p, &piece).unwrap();
             dirt += (b == Block::DIRT) as i32;
             coarse += (b == ob::COARSE_DIRT) as i32;
-            packed += (RuinPalette.process(ob::MUD_BRICKS, p, &piece) == Some(ob::PACKED_MUD)) as i32;
+            packed += (RULES_ONLY.process(ob::MUD_BRICKS, p, &piece) == Some(ob::PACKED_MUD)) as i32;
         }
         assert!((dirt - 20000).abs() < 700);
         assert!((coarse - 8000).abs() < 500);

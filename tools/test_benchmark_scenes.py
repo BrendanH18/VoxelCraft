@@ -107,6 +107,10 @@ class RunnerGate(unittest.TestCase):
         # Offscreen runs are the gate's own protocol (owner, 2026-11-14); a shortened sample period never passes.
         self.assertTrue(runner.reference_gate(runs, DEFINITIONS, False, None, 3, offscreen=True)[0])
         self.assertFalse(runner.reference_gate(runs, DEFINITIONS, False, None, 3, seconds=30.0)[0])
+        # Render-distance comparisons (v1.0 Track 2) never pass either.
+        passed, problems = runner.reference_gate(runs, DEFINITIONS, False, None, 3, offscreen=True, render_distance=16)
+        self.assertFalse(passed)
+        self.assertIn("render distance 16 is not the reference 8", problems)
 
     def test_presentation_experiments_are_recorded_and_never_pass(self):
         # The defaults add no flags, so a plain run's command is unchanged.

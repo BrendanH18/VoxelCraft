@@ -1,7 +1,13 @@
 //! Per-view Java camera modes and eight-probe third-person clipping.
 use glam::{DVec3, IVec3, Mat4, Vec3};
 
+/// `Attributes.CAMERA_DISTANCE`'s default (`Camera.DEFAULT_CAMERA_DISTANCE`).
+pub const CAMERA_DISTANCE: f64 = 4.0;
+/// `HappyGhast.createAttributes`: `CAMERA_DISTANCE` 8.
+pub const HAPPY_GHAST_CAMERA_DISTANCE: f64 = 8.0;
+
 use crate::physics::{BlockSource, ray_aabb, ray_shape};
+use crate::world::block::Block;
 
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CameraMode {
@@ -27,12 +33,18 @@ impl CameraMode {
     /// Front view reverses both yaw and pitch, exactly opposite the player's
     /// look direction. Picking/movement still use the player's original look.
     pub fn view(self, world: &impl BlockSource, eye: DVec3, look: Vec3) -> (DVec3, Vec3) {
+        self.view_at(world, eye, look, CAMERA_DISTANCE)
+    }
+
+    /// [`Self::view`] with a third-person distance (`camera_distance`; see
+    /// `Entities::camera_distance` for a rider).
+    pub fn view_at(self, world: &impl BlockSource, eye: DVec3, look: Vec3, distance: f64) -> (DVec3, Vec3) {
         let forward = if self == Self::Front { -look } else { look };
         if self.first_person() {
             return (eye, forward);
         }
         let backward = -forward.as_dvec3();
-        (eye + backward * max_zoom(world, eye, backward, 4.0), forward)
+        (eye + backward * max_zoom(world, eye, backward, distance), forward)
     }
 }
 
@@ -56,6 +68,22 @@ pub fn max_zoom(world: &impl BlockSource, eye: DVec3, backward: DVec3, desired: 
     distance
 }
 
+/// v1.0 Track 9: blocks whose `getVisualShape` is empty, which the
+/// camera's `ClipContext.Block.VISUAL` ray passes through: `TransparentBlock`
+/// (glass, stained and tinted glass, copper grates), `IronBarsBlock` (iron
+/// and copper bars, glass panes) and powder snow.
+pub fn see_through(b: Block) -> bool {
+    use crate::world::block::Shaped;
+    [b, b.canonical()].into_iter().any(|b| {
+        b == Block::GLASS
+            || b.stained_glass_color().is_some()
+            || b == crate::world::stone_blocks::TINTED_GLASS
+            || crate::world::copper::self_culls(b.0)
+            || b == crate::world::scaffolding::POWDER_SNOW
+            || matches!(b.shaped(), Some(Shaped::Pane))
+    })
+}
+
 /// DDA traversal: at most a handful of block lookups for the four-block ray,
 /// with the cell below also checked for shapes extending above their cell.
 fn clip(world: &impl BlockSource, origin: DVec3, dir: DVec3, max: f64) -> Option<f64> {
@@ -76,7 +104,7 @@ fn clip(world: &impl BlockSource, origin: DVec3, dir: DVec3, max: f64) -> Option
         let mut hit: Option<f64> = None;
         for at in [cell, cell - IVec3::Y] {
             let t = match world.block(at) {
-                Some(b) if !b.is_solid() => None,
+                Some(b) if !b.is_solid() || see_through(b) => None,
                 Some(b) if b.kind() == crate::world::block::RenderKind::Shaped => {
                     ray_shape(world, at, origin, dir).map(|(t, _)| t)
                 }
@@ -139,8 +167,10 @@ pub fn view_effect(
     let elapsed = vitals.since_damage() + alpha * 0.05;
     let death = vitals.death_time().map(|t| t + alpha * 0.05);
     let hurt = bob_hurt(elapsed, death, player.animation.hurt_direction, damage_tilt);
-    let bob = bobbing && !vitals.is_dead() && !player.swimming && !player.pose.visually_swimming();
-    if bob { hurt * bob_view(&player.animation, alpha) } else { hurt }
+    // v1.0 Track 9: `GameRenderer.bobView` runs whenever the option is on;
+    // swimming and riding ease or drop the bob itself (`updateBob`,
+    // `resetBob`). A dead player isn't ticked here, so its bob stops.
+    if bobbing && !vitals.is_dead() { hurt * bob_view(&player.animation, alpha) } else { hurt }
 }
 
 /// GameRenderer.renderLevel's nausea and portal warp: the view squeezed
@@ -162,7 +192,6 @@ pub fn spin_warp(intensity: f32, angle_degrees: f32) -> Mat4 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::world::block::Block;
     struct Grid(Vec<(IVec3, Block)>);
     impl BlockSource for Grid {
         fn block(&self, p: IVec3) -> Option<Block> {
@@ -206,6 +235,22 @@ mod tests {
         assert!((front + back).length() < 1e-6);
         mode.cycle();
         assert_eq!(mode, CameraMode::First);
+    }
+    /// v1.0 Track 9: Java's camera looks through glass, panes, bars and
+    /// powder snow (empty visual shapes) and backs off further on a happy
+    /// ghast (`camera_distance` 8).
+    #[test]
+    fn camera_passes_glass_and_bars_and_rides_further_on_a_happy_ghast() {
+        let eye = DVec3::new(0.5, 0.5, 0.5);
+        for b in [Block::GLASS, Block::IRON_BARS, crate::world::stone_blocks::TINTED_GLASS] {
+            assert!(see_through(b), "{b:?}");
+            let world = Grid(vec![(IVec3::new(2, 0, 0), b)]);
+            assert_eq!(max_zoom(&world, eye, DVec3::X, 4.), 4., "{b:?}");
+        }
+        assert!(!see_through(Block::STONE));
+        let wall = Grid(vec![(IVec3::new(10, 0, 0), Block::STONE)]);
+        assert_eq!(CameraMode::Third.view_at(&wall, eye, -Vec3::X, HAPPY_GHAST_CAMERA_DISTANCE).0.x, 8.5);
+        assert_eq!(CameraMode::Third.view(&wall, eye, -Vec3::X).0.x, 4.5);
     }
     #[test]
     fn eight_probes_catch_a_corner_missed_by_the_centre_ray() {

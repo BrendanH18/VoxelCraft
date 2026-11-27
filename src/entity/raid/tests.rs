@@ -973,3 +973,156 @@ fn the_wave_horn_reaches_each_player_in_range_once() {
         }
     }
 }
+
+// ------------------------------------------------------------ v1.0 Track 6
+
+/// Marks mob `i` a member of raid `id`.
+fn join(e: &mut Entities, i: usize, id: u32) {
+    let s = e.mobs[i].illager.as_mut().expect("a raider");
+    s.raider.raid = Some(id);
+    s.raider.wave = 1;
+}
+
+/// `NearestHealableRaiderTargetGoal`: a raid witch picks a raider it sees,
+/// throws Healing at one with 4 health or less, then waits 100 updates
+/// before picking again; a witch outside a raid never does.
+#[test]
+fn raid_witches_heal_raiders_they_can_see() {
+    let mut e = Entities::new(111);
+    let w = village(&mut e);
+    let id = e.create_or_extend_raid(&w, PlayerId::HOST, IVec3::new(0, FLOOR, 0), 1, true).unwrap();
+    e.raids_event_spawn = true;
+    e.spawn(MobKind::Witch, DVec3::new(0.5, f64::from(FLOOR), 30.5));
+    let witch = e.mobs.len() - 1;
+    e.spawn(MobKind::Vindicator, DVec3::new(4.5, f64::from(FLOOR), 30.5));
+    let hurt = e.mobs.len() - 1;
+    e.raids_event_spawn = false;
+    // A natural witch carries no raider state and never heals.
+    e.spawn(MobKind::Witch, DVec3::new(0.5, f64::from(FLOOR), -40.5));
+    let loner = e.mobs.len() - 1;
+    join(&mut e, witch, id);
+    join(&mut e, hurt, id);
+    e.mobs[hurt].health = 3.0;
+    let c = ctx(vec![player_at(DVec3::new(0.5, f64::from(FLOOR), 20.5))]);
+    let healing = crate::potion::Potion::from_id("healing").unwrap();
+    let mut thrown = None;
+    for t in 0..400 {
+        tick(&mut e, &w, &c, Difficulty::Normal);
+        if let Some(p) = e.potions.first() {
+            assert!(p.pos.z > 0.0, "the raid's witch threw it");
+            thrown = Some((t, p.potion));
+            break;
+        }
+        e.mobs[hurt].health = e.mobs[hurt].health.min(3.0);
+    }
+    let (_, potion) = thrown.expect("the witch threw a potion at the hurt vindicator");
+    assert_eq!(potion, healing, "Healing at 4 health or less");
+    let r = &e.mobs[witch].illager.as_ref().unwrap().raider;
+    assert!(r.heal_target.is_none(), "it drops its target after the throw");
+    assert!(r.heal_cooldown > 0 && r.heal_cooldown <= WITCH_HEAL_COOLDOWN);
+    assert!(e.mobs[loner].illager.is_none());
+}
+
+/// `RingBell` in the pre-raid activity: a villager whose meeting point is a
+/// bell within 3 blocks rings it before the first wave.
+#[test]
+fn villagers_ring_their_meeting_bell_before_a_raid() {
+    let mut e = Entities::new(121);
+    let mut w = village(&mut e);
+    let bell = IVec3::new(1, FLOOR, 1);
+    w.grid.set(bell, Block::BELL);
+    for m in e.mobs.iter_mut() {
+        m.villager.as_mut().unwrap().meeting = Some(bell);
+    }
+    e.mobs[0].pos = DVec3::new(2.5, f64::from(FLOOR), 2.5);
+    let id = e.create_or_extend_raid(&w, PlayerId::HOST, IVec3::new(0, FLOOR, 0), 1, true).unwrap();
+    let c = ctx(vec![player_at(DVec3::new(0.5, f64::from(FLOOR), 0.5))]);
+    let mut rung = None;
+    for t in 0..200 {
+        assert_eq!(e.raids.get(id).unwrap().groups_spawned, 0, "still before the first wave");
+        let events = tick(&mut e, &w, &c, Difficulty::Normal);
+        if let Some(pos) = events.iter().find_map(|ev| match ev {
+            EntityEvent::RingBell { pos, .. } => Some(*pos),
+            _ => None,
+        }) {
+            rung = Some((t, pos));
+            break;
+        }
+    }
+    let (_, pos) = rung.expect("a villager rang the bell before the raid");
+    assert_eq!(pos, bell);
+    assert!(
+        e.mobs
+            .iter()
+            .any(|m| m.villager.as_ref().unwrap().raid_activity == super::super::villager::RaidActivity::PreRaid)
+    );
+    // Without a bell at the meeting point nothing rings.
+    w.grid.set(bell, Block::AIR);
+    for _ in 0..200 {
+        let events = tick(&mut e, &w, &c, Difficulty::Normal);
+        assert!(!events.iter().any(|ev| matches!(ev, EntityEvent::RingBell { .. })));
+    }
+}
+
+/// `CelebrateVillagersSurvivedRaid`: after a won raid villagers under open
+/// sky launch one-burst rockets of a dye colour with flight 0–2.
+#[test]
+fn villagers_launch_fireworks_after_a_won_raid() {
+    let mut e = Entities::new(131);
+    let w = village(&mut e);
+    let id = e.create_or_extend_raid(&w, PlayerId::HOST, IVec3::new(0, FLOOR, 0), 1, true).unwrap();
+    let c = ctx(vec![player_at(DVec3::new(0.5, f64::from(FLOOR), 0.5))]);
+    // A tick makes the raid active (its centre is loaded).
+    tick(&mut e, &w, &c, Difficulty::Normal);
+    {
+        let raid = e.raids.raids.iter_mut().find(|r| r.id == id).unwrap();
+        assert!(raid.active);
+        raid.groups_spawned = raid.num_groups;
+        raid.started = true;
+        raid.status = Status::Victory;
+        // Victory follows the last wave's countdown, so it isn't between waves.
+        raid.cooldown = 0;
+    }
+    let mut rockets = 0;
+    let mut sounds = 0;
+    for _ in 0..MAX_CELEBRATION_TICKS {
+        let before = e.fireworks.len();
+        let events = tick(&mut e, &w, &c, Difficulty::Normal);
+        sounds += events
+            .iter()
+            .filter(|ev| matches!(ev, EntityEvent::Sound { sound: MobSound::Raid(Cue::VillagerCelebrate), .. }))
+            .count();
+        if e.fireworks.len() > before {
+            rockets += 1;
+            let r = e.fireworks.last().unwrap();
+            let Some(crate::inventory::components::Payload::Fireworks(f)) = r.fireworks.map(|p| p.get().clone()) else {
+                panic!("a celebration rocket carries its fireworks")
+            };
+            assert!(f.flight <= 2);
+            assert_eq!(f.explosions.len(), 1);
+            assert_eq!(f.explosions[0].shape, crate::content::fireworks::Shape::Burst);
+            assert!(crate::content::fireworks::dye_of_firework_color(f.explosions[0].colors[0]).is_some());
+        }
+    }
+    // Four villagers for 600 ticks at 1 in 200: about 12 rockets and 24 calls.
+    assert!(rockets >= 3, "{rockets} rockets");
+    assert!(sounds >= 6, "{sounds} celebration sounds");
+    tick(&mut e, &w, &c, Difficulty::Normal);
+    assert!(e.raids.raids.is_empty(), "the won raid has stopped");
+    assert!(e.mobs.iter().all(|m| m.villager.as_ref().unwrap().celebrate == 0), "and the celebration with it");
+}
+
+/// `Stats.RAID_TRIGGER` and `RAID_WIN` count per player and survive a save.
+#[test]
+fn raid_statistics_count_and_round_trip() {
+    use crate::session::raid::Stats;
+    let mut s = Stats::default();
+    s.award(Stats::RAID_TRIGGER);
+    s.award(Stats::RAID_TRIGGER);
+    s.award(Stats::RAID_WIN);
+    let text = s.serialize();
+    assert_eq!(text, "raid_trigger=2,raid_win=1");
+    assert_eq!(Stats::parse(&text), s);
+    assert_eq!(Stats::parse("raid_win=x,=3,Bad=1,raid_trigger=4").get(Stats::RAID_TRIGGER), 4);
+    assert_eq!(Stats::parse("").get(Stats::RAID_WIN), 0);
+}

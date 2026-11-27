@@ -87,6 +87,22 @@ impl Atmosphere {
         self.fog.end()
     }
 
+    /// v1.0 Track 2: Java's entity, beam and conduit draw distances for a
+    /// view of `player`'s world drawn `render_distance` storage chunks
+    /// around it, within this fog.
+    pub fn draw_distance(
+        &self,
+        player: DVec3,
+        render_distance: i32,
+    ) -> voxelcraft::entity::draw_distance::DrawDistance {
+        voxelcraft::entity::draw_distance::DrawDistance::new(
+            player,
+            render_distance,
+            self.fog.environmental_end,
+            self.fog.render_distance_end,
+        )
+    }
+
     /// Fills the fog, sky and cloud fields of a frame.
     pub fn apply(&self, p: &mut FrameParams) {
         use voxelcraft::atmosphere::linear;
@@ -347,8 +363,11 @@ impl Game {
             let bot = &self.agents.players[name];
             let a = &bot.agent;
             let feet = a.previous_pos.lerp(a.player.pos, scene.alpha);
-            let eye = feet + (a.player.eye() - a.player.pos);
-            let (camera, forward) = bot.camera.view(&self.world, eye, a.player.forward());
+            let eye = feet
+                + (a.player.eye() - a.player.pos)
+                + glam::DVec3::Y * a.player.camera_eye_offset(scene.alpha as f32);
+            let distance = self.mobs.entities.camera_distance(a.player.vehicle);
+            let (camera, forward) = bot.camera.view_at(&self.world, eye, a.player.forward(), distance);
             let atmosphere = self.atmosphere(
                 scene,
                 view + 1,
@@ -358,7 +377,8 @@ impl Game {
                 a.session.mode == super::GameMode::Spectator,
             );
             let fog_end = atmosphere.end();
-            let models = self.block_models(scene.alpha, camera);
+            let draw = atmosphere.draw_distance(a.player.pos, self.world.render_distance());
+            let models = self.block_models(scene.alpha, camera, &draw);
             let highlight = a.target(&self.world).map(|(p, _)| {
                 let (min, max) = self.world.outline(p);
                 (p, min, max)
@@ -413,7 +433,7 @@ impl Game {
                     ));
                 }
             }
-            self.mobs.entities.mesh(camera, forward, fog_end, scene.time, scene.alpha);
+            self.mobs.entities.mesh(&self.world.maps, camera, forward, draw, scene.time, scene.alpha);
             // v0.18 Track 6: ground shadows, for the players drawn in this view too.
             let mut casters = super::shadow_casters(&self.world, others.iter().map(|o| o.1), scene.alpha);
             if !bot.camera.first_person() && super::casts_shadow(&a.vitals, a.mode) {
@@ -429,8 +449,8 @@ impl Game {
                 camera,
                 verts,
             );
-            crate::entity::model::build_beacon_beams(&self.world, camera, scene.time, fog_end, verts);
-            crate::entity::model::build_conduits(&self.world, camera, fog_end, verts);
+            crate::entity::model::build_beacon_beams(&self.world, camera, scene.time, draw, verts);
+            crate::entity::model::build_conduits(&self.world, camera, draw, verts);
             if !bot.camera.first_person() {
                 crate::entity::model::build_player(
                     &a.player,

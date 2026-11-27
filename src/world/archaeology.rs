@@ -1,4 +1,6 @@
-//! Java 26.3 ocean-ruin archaeology. Original art; no decorated pots.
+//! Java 26.3 archaeology: ocean ruins (v0.14) and, since v1.0 Track 5,
+//! trail ruins' `archaeology/trail_ruins_common` and `_rare` tables and
+//! their seven pottery sherds. Original art; no decorated pots.
 use glam::IVec3;
 use rustc_hash::FxHashMap;
 
@@ -18,6 +20,10 @@ pub const SAND: Block = Block(FIRST);
 pub const GRAVEL: Block = Block(FIRST + 4);
 pub const ITEM_FIRST: u16 = 1395;
 pub const ITEM_END: u16 = ITEM_FIRST + 7;
+/// v1.0 Track 5: the trail ruins' sherds, item ids 1950–1956 (the track's
+/// reserved 1950–1959).
+pub const TRAIL_ITEM_FIRST: u16 = 1950;
+pub const TRAIL_ITEM_END: u16 = TRAIL_ITEM_FIRST + 7;
 pub mod t {
     pub const BASE: u16 = 3504;
     pub const END: u16 = BASE + 8;
@@ -30,6 +36,16 @@ pub const SHERDS: [&str; 7] = [
     "explorer pottery sherd",
     "mourner pottery sherd",
     "plenty pottery sherd",
+];
+/// v1.0 Track 5: `archaeology/trail_ruins_rare`'s sherds, in its order.
+pub const TRAIL_SHERDS: [&str; 7] = [
+    "burn pottery sherd",
+    "danger pottery sherd",
+    "friend pottery sherd",
+    "heart pottery sherd",
+    "heartbreak pottery sherd",
+    "howl pottery sherd",
+    "sheaf pottery sherd",
 ];
 /// The warm table's sniffer egg (the sniffer track's registration).
 pub fn sniffer_egg() -> Option<Item> {
@@ -52,29 +68,52 @@ pub const fn registry(id: u16) -> (&'static str, RenderKind, [u16; 6]) {
     )
 }
 pub fn item_info(item: Item) -> Option<ItemInfo> {
-    let i = item.0.checked_sub(ITEM_FIRST)? as usize;
-    SHERDS.get(i).map(|&name| ItemInfo {
-        name,
-        kind: ItemKind::Material,
-        max_stack: 64,
-        sprite: Sprite::PotterySherd(i as u8),
-    })
+    let (name, sprite) = if (TRAIL_ITEM_FIRST..TRAIL_ITEM_END).contains(&item.0) {
+        let i = (item.0 - TRAIL_ITEM_FIRST) as usize;
+        (TRAIL_SHERDS[i], SHERDS.len() + i)
+    } else {
+        let i = item.0.checked_sub(ITEM_FIRST)? as usize;
+        (*SHERDS.get(i)?, i)
+    };
+    Some(ItemInfo { name, kind: ItemKind::Material, max_stack: 64, sprite: Sprite::PotterySherd(sprite as u8) })
 }
+/// A suspicious block's loot table. The discriminant is its save code
+/// (append only).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Table {
-    Warm,
-    Cold,
+    Warm = 0,
+    Cold = 1,
+    /// v1.0 Track 5: `archaeology/trail_ruins_common`.
+    TrailCommon = 2,
+    /// v1.0 Track 5: `archaeology/trail_ruins_rare`.
+    TrailRare = 3,
 }
 impl Table {
+    pub const ALL: [Table; 4] = [Self::Warm, Self::Cold, Self::TrailCommon, Self::TrailRare];
     fn key(self) -> &'static str {
         match self {
             Self::Warm => "minecraft:archaeology/ocean_ruin_warm",
             Self::Cold => "minecraft:archaeology/ocean_ruin_cold",
+            Self::TrailCommon => "minecraft:archaeology/trail_ruins_common",
+            Self::TrailRare => "minecraft:archaeology/trail_ruins_rare",
         }
     }
-    /// The table has 15 total weight; absent eggs keep their weight and yield
-    /// nothing until track C is integrated. All entries have count one.
+    /// The trail ruins' tables.
+    pub fn trail(self) -> bool {
+        matches!(self, Self::TrailCommon | Self::TrailRare)
+    }
+    /// The table saved as `code`.
+    pub fn from_code(code: u8) -> Option<Table> {
+        Self::ALL.get(code as usize).copied()
+    }
+    /// The ocean tables have 15 total weight; all entries have count one.
+    /// The trail tables roll Java's JSON (`loot_tables.json`), whose single
+    /// pool yields one stack (`BrushableBlockEntity.unpackLootTable` keeps
+    /// the first).
     fn roll(self, rng: &mut impl Random) -> Option<Stack> {
+        if let Some(name) = self.key().strip_prefix("minecraft:").filter(|_| self.trail()) {
+            return loot::roll_items(name, rng, |_| None).into_iter().next();
+        }
         let n = rng.bounded(15);
         let item = match n {
             0..=2 if self == Self::Warm => Some(Item(ITEM_FIRST + n as u16)),
@@ -292,21 +331,13 @@ impl World {
                 .into_iter()
                 .filter(|e| {
                     e.4 < 10
-                        && e.1.is_none_or(|t| t <= 1)
+                        && e.1.is_none_or(|t| Table::from_code(t).is_some())
                         && e.7.is_none_or(|f| f.iter().map(|n| (*n as i64).abs()).sum::<i64>() == 1)
                 })
                 .map(|(p, t, seed, item, count, reset_at, cooldown, face)| {
                     (
                         IVec3::from_array(p),
-                        Brushable {
-                            table: t.map(|v| if v == 0 { Table::Warm } else { Table::Cold }),
-                            seed,
-                            item,
-                            count,
-                            reset_at,
-                            cooldown,
-                            face,
-                        },
+                        Brushable { table: t.and_then(Table::from_code), seed, item, count, reset_at, cooldown, face },
                     )
                 })
                 .collect();
@@ -448,6 +479,77 @@ mod tests {
         }
         assert_eq!(decode(w.get_block(bare).unwrap()), Some((true, 3)));
         assert_eq!(w.emerging_items().filter(|(p, ..)| *p == bare).count(), 1, "cold-table reward");
+    }
+    /// v1.0 Track 5: the trail tables roll Java's entries, and every one
+    /// resolves (the seven sherds are registered at 1950–1956).
+    #[test]
+    fn trail_tables_roll_javas_entries_and_every_item_resolves() {
+        use std::collections::BTreeMap;
+        for (table, entries, total) in [(Table::TrailCommon, 31, 45), (Table::TrailRare, 12, 12)] {
+            let mut seen: BTreeMap<String, u32> = BTreeMap::new();
+            let mut rng = loot::LootRandom::new(77);
+            let rolls = 20_000;
+            for _ in 0..rolls {
+                let stack = table.roll(&mut rng).expect("one stack");
+                assert_eq!(stack.count, 1);
+                *seen.entry(stack.item.name().to_string()).or_default() += 1;
+            }
+            assert_eq!(seen.len(), entries, "{table:?}: {seen:?}");
+            let per = rolls as f64 / total as f64;
+            for (name, n) in &seen {
+                assert!((*n as f64) > per * 0.6, "{table:?} {name}: {n}");
+            }
+        }
+        let rare: Vec<Option<Item>> = [
+            "wayfinder armor trim smithing template",
+            "raiser armor trim smithing template",
+            "shaper armor trim smithing template",
+            "host armor trim smithing template",
+            "music disc relic",
+        ]
+        .into_iter()
+        .chain(TRAIL_SHERDS)
+        .map(Item::from_name)
+        .collect();
+        assert!(rare.iter().all(Option::is_some), "{rare:?}");
+        for (i, name) in TRAIL_SHERDS.iter().enumerate() {
+            let item = Item(TRAIL_ITEM_FIRST + i as u16);
+            assert_eq!(item.name(), *name);
+            assert_eq!(item.max_stack(), 64);
+            assert_eq!(item.info().sprite, Sprite::PotterySherd(7 + i as u8));
+            assert_eq!(loot::java_item(&name.replace(' ', "_")), Some(item));
+        }
+    }
+
+    /// v1.0 Track 5: suspicious gravel with a trail table saves its table
+    /// code (2 and 3, appended) and reloads it, before and after a stroke.
+    #[test]
+    fn trail_tables_survive_save_and_reload() {
+        for table in [Table::TrailCommon, Table::TrailRare] {
+            let mut w = world();
+            w.set_block(AT, GRAVEL);
+            assert!(w.set_archaeology_loot(AT, table, 0x5EED));
+            let saved = w.archaeology_to_string();
+            assert!(saved.contains(&format!(",{},", table as u8)), "{saved}");
+            let data = w.chunks[&chunk_of(AT)].data.clone();
+            let mut loaded = world();
+            loaded.insert_chunk(chunk_of(AT), data, true);
+            loaded.load_archaeology(&saved);
+            assert_eq!(loaded.archaeology_to_string(), saved);
+            assert_eq!(loaded.archaeology[&AT].table, Some(table));
+            for i in 0..10 {
+                for world in [&mut w, &mut loaded] {
+                    world.maps.game_ticks = i * 10;
+                    world.brush_block(AT, IVec3::Y);
+                }
+            }
+            assert_eq!(w.drops.len(), 1);
+            assert_eq!(w.drops, loaded.drops, "the same seeded reward");
+        }
+        // An unknown code (a newer save) is dropped, not misread.
+        let mut w = world();
+        w.load_archaeology("[[[8,145,8],9,1,\"\",0,0,0,null]]");
+        assert_eq!(w.archaeology_to_string(), "[]");
     }
     struct Choice(u32);
     impl Random for Choice {

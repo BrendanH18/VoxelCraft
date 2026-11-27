@@ -75,7 +75,29 @@ Palettes are expanded by row into meshing scratch storage, outside the lighting
 and greedy-meshing loops. Repeated edits reuse palette entries; a full palette
 is rebuilt to discard removed states before promoting to direct storage.
 
-Chunk files hold RLE records of `(u16 run length, u16 state ID)`, both
+Unloaded chunks live in region files (v1.0 Track 3b, after Java's
+`RegionFile`, `ChunkMap`, `IOWorker` and `EntityStorage`; the format and
+its rules are in [saves](saves.md#region-files)). `world::region` is the
+file format and its store: one file per 16 x 16 columns, a 4096-slot table
+and 4096-byte sectors, records queued as patches and written by a
+`region-io` thread, read by the generation workers (`Job::Load`, which
+generates whatever a record doesn't hold). `world::chunk_records` ties it to
+the world: when chunks unload, `World::evict_chunks` takes their changed
+blocks, block entity tables (each system's own level-file text for that
+chunk, by swapping the chunk's entries in for the whole table), fluid and
+fire ticks out of memory into their records; `World::restore_record` puts
+them back when a chunk installs, before its block entities register.
+`Entities::sync_chunk_entities` then stores the unloaded chunks' entities
+as batches of the level file's entity keys, appended to the record, and
+brings a loading chunk's batches back. Saves (`World::save_records`) queue
+only the loaded chunks whose blocks changed and the state the level file
+held for chunks that aren't loaded; the level file, written by the I/O
+thread after those records, holds the loaded chunks' state and names them
+(`region_chunks`). Worlds without a region store (tests, benchmarks, LAN
+replicas) keep unloaded chunks in memory, as before.
+
+Chunk files (`chunks.bin`, before 1.0, and the blocks inside region
+records) hold RLE records of `(u16 run length, u16 state ID)`, both
 little-endian, under a `VXC2` header, `VXC3` once any saved state is 4096
 or above, or `VXC4` once any is 16,384 or above. Builds from before each
 capacity raise refuse the newer header, and worlds that use no states newer
@@ -242,7 +264,7 @@ src/
     mob/turtle.rs    the turtle's travel, go-home, go-to-water and egg goals
     model/nether.rs  their box models
     item.rs          dropped items: physics, merging, despawning, saving
-    chunk_storage.rs entities of unloaded chunks, out of the level until the chunk loads
+    chunk_storage.rs entities of unloaded chunks: in their region records (in memory without one)
     model.rs         animated box models -> camera-relative box instances and triangles
   mesh.rs            lighting + greedy meshing (runs on workers)
   workers.rs         thread pool
@@ -261,6 +283,7 @@ src/
     furnace.rs       furnace contents, smelting and fuel
     chest.rs         chest contents
     growth.rs        random block ticks: crops, saplings, grass, farmland, leaf decay
+    farmland.rs      farmland moisture 0-7, drying, trampling and turning to dirt
     fire.rs          scheduled fire ticks, spread, burnout and random-tick lava ignition
     chunk.rs         chunk storage
     block.rs         block registry
@@ -285,7 +308,9 @@ src/
     brewing.rs       brewing stand contents and Java's brewing mixes
     spawner.rs       spawner table, structure spawners and chests on chunk load
     noise.rs         Perlin noise and hashing
-    storage.rs       save files
+    storage.rs       level files, chunks.bin (before 1.0), kept and damaged copies
+    region.rs        region files, chunk records and their I/O thread
+    chunk_records.rs what an unloading chunk takes to its record and gets back
   render/
     mod.rs           wgpu pipelines, culling, draw submission, screenshots
     arena.rs         pooled GPU storage for chunk quads
@@ -302,7 +327,10 @@ src/
 ## Procedural sound
 
 Every sound is synthesized from noise, damped sinusoids, envelopes and
-filters on a background thread at startup, with 2–4 seeded variants each.
+filters on a background thread, with 2–4 seeded variants each: at startup,
+except the blocks' own sounds, which that thread renders on their first use
+or when the player first steps on or hears the block, then hands the play
+to the mixer (v1.0 Track 3, 44 MB less at startup, the same bits).
 Crunchy materials use filtered random-impulse "crackle" with a resonant
 body band and a low thump; wood is a few inharmonic damped modes (a hollow
 knock); glass breaks with a bright burst and falling tinkles; water is
@@ -1434,6 +1462,32 @@ Appended orderings: the options `renderClouds`, `cloudRange` and
 saved). The benchmark scene list (`performance::SCENES` and
 `benchmarks/scenes.json`) gains `weather`, `underwater` and `nether` after
 `streaming`.
+
+### v1.0 acceptance track reservations
+
+Reserved on 2026-11-25 when the owner approved the v1.0 acceptance build
+plan ([roadmap](roadmap.md#v10-plan-2026-11-25)), for ten parallel tracks,
+after `examples/id_map.rs` at `cfa8195` showed states 13968–14335, items
+1937–2199 and texture layers 4066–4095 unregistered. Item 1937 stays the
+Ender Dragon's spawn egg, as Track 4 of v0.18 kept it. Each track
+allocates only inside its own row, records what it used in its
+verification record (the integrator copies it here), and leaves unused IDs
+unregistered. Texture layers are never saved and may be repacked at
+integration; new block textures should replace layers rather than add
+them, since only the 30 layers from the current count are certainly free.
+The integrator makes appended orderings (enchantments, sounds, particle
+kinds, item icons, options, game events) contiguous in landing order.
+
+| Block states | Item IDs | Texture layers | Track |
+| --- | --- | --- | --- |
+| 13968–14015 | — | — | 4. Farming and weather (farmland moisture 0–7) |
+| — | 1950–1959 | — | 5. Enchanting, loot and damage |
+| — | 1960–1969 | — | 6. Companions and villages |
+| — | 1937, 1970–1979 | — | 7. Hostiles and mounts (1937: the Ender Dragon spawn egg) |
+| 14016–14079 | 1980–1989 | — | 8. Generation (amethyst bud wall states and anything else it needs) |
+| — | — | 4066–4079 | 10. Final art round (only if a redrawn tile can't replace its layer) |
+| — | — | — | 1. Save compatibility; 2. Render-distance performance; 3. Long-session soak; 9. Controls and sculk |
+| 14080–14335 | 1938–1949, 1990–2199 | 4080–4095 | Integrator |
 
 ## Assessment branch ID reservations
 

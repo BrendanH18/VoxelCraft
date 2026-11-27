@@ -53,6 +53,8 @@ pub struct Args {
     /// `--bench-seconds S` and `--bench-warmup S` for `--bench-tick`.
     pub bench_seconds: f64,
     pub bench_warmup: f64,
+    /// `--bench-entity-cull java|fog` for `--bench-tick` (v1.0 Track 2).
+    pub bench_entity_cull: voxelcraft::tick_bench::EntityCull,
     pub screenshot: Option<String>,
     /// Session-only perspective for screenshot inspection.
     pub camera: voxelcraft::camera::CameraMode,
@@ -321,6 +323,7 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
         bench_tick: None,
         bench_seconds: 60.0,
         bench_warmup: 10.0,
+        bench_entity_cull: Default::default(),
         screenshot: None,
         camera: Default::default(),
         ride: None,
@@ -440,6 +443,10 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
             }
             "--bench-warmup" => {
                 args.bench_warmup = finite_seconds(&value("--bench-warmup")?).ok_or("bad --bench-warmup")?
+            }
+            "--bench-entity-cull" => {
+                args.bench_entity_cull = voxelcraft::tick_bench::EntityCull::parse(&value("--bench-entity-cull")?)
+                    .ok_or("bad --bench-entity-cull (java or fog)")?
             }
             "--bench-render" => args.bench_render = true,
             "--benchmark-scene" => {
@@ -919,6 +926,7 @@ fn main() {
             render_distance: args.render_distance.unwrap_or(8),
             warmup: args.bench_warmup,
             seconds: args.bench_seconds,
+            entity_cull: args.bench_entity_cull,
             ..Default::default()
         };
         match voxelcraft::tick_bench::run(&options) {

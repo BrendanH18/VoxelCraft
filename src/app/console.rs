@@ -367,7 +367,9 @@ impl Game {
                         }
                         crate::world::terrain::Dimension::Overworld => super::dimension::Arrival::Respawn,
                     };
-                    self.switch_dimension(to, arrival);
+                    if !self.switch_dimension(to, arrival) {
+                        return Err("the world couldn't be saved, so it stayed".into());
+                    }
                 }
             }
             Command::Players => {

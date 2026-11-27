@@ -407,6 +407,15 @@ impl Requests {
     pub fn drain(&mut self) -> impl Iterator<Item = Request> + '_ {
         self.0.drain(..)
     }
+
+    /// Requests waiting (at most the mailbox's capacity).
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
 }
 
 /// A FIFO pool matching Java's oldest-particle eviction. All backing storage

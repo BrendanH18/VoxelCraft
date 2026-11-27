@@ -97,6 +97,16 @@ pub fn is_poi(b: Block) -> bool {
             && Profession::of(b).is_some()
 }
 
+/// v1.0 Track 6: `Activity.PRE_RAID` and `Activity.RAID`, which
+/// `SetRaidStatus` sets and `ResetRaidStatus` clears.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum RaidActivity {
+    #[default]
+    None,
+    PreRaid,
+    Raid,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Offer {
     pub cost: Stack,
@@ -185,6 +195,11 @@ pub struct Villager {
     pub(super) food_level: u8,
     pub(super) courtship: u16,
     pub(crate) bell_hide: f32,
+    /// v1.0 Track 6: the raid activity `SetRaidStatus` chose (never saved;
+    /// Java's brain activities aren't).
+    pub raid_activity: RaidActivity,
+    /// Ticks left of `CelebrateVillagersSurvivedRaid`; 0 when not running.
+    pub celebrate: u16,
     pub wandering: bool,
     /// Biome variant used by Java 26.3 cartographer predicates.
     pub map_variant: Option<String>,
@@ -261,6 +276,8 @@ impl Villager {
             food_level: 0,
             courtship: 0,
             bell_hide: 0.0,
+            raid_activity: RaidActivity::None,
+            celebrate: 0,
             wandering: false,
             map_variant: None,
             gossip: Default::default(),
@@ -979,6 +996,11 @@ impl Entities {
                     if let Some(vehicle) = m.riding {
                         saved["riding"] = json!(vehicle);
                     }
+                    // v1.0 Track 3b: its uid, which leads, seats and creaking
+                    // hearts name; written only once it has one.
+                    if m.uid != 0 {
+                        saved["uid"] = json!(m.uid);
+                    }
                     Some(saved)
                 }
                 MobKind::Villager | MobKind::ZombieVillager | MobKind::WanderingTrader => {
@@ -1000,6 +1022,11 @@ impl Entities {
                     // v0.17 Track D1: the vehicle it sits in; written only when set.
                     if let Some(vehicle) = m.riding {
                         saved["riding"] = json!(vehicle);
+                    }
+                    // v1.0 Track 3b: its uid, which leads, seats and creaking
+                    // hearts name; written only once it has one.
+                    if m.uid != 0 {
+                        saved["uid"] = json!(m.uid);
                     }
                     Some(saved)
                 }
@@ -1150,6 +1177,13 @@ impl Entities {
                 m.effects = crate::simulation::effects::Effects::deserialize(a["effects"].as_str().unwrap_or(""));
                 super::leash::load(&mut m, &a["identity"]);
                 m.riding = a["riding"].as_u64().and_then(|u| u32::try_from(u).ok());
+                // v1.0 Track 3b: the uid it had, unless another mob has it.
+                if let Some(uid) = a["uid"].as_u64().and_then(|u| u32::try_from(u).ok()).filter(|&u| u != 0)
+                    && !self.mobs.iter().any(|o| o.uid == uid)
+                {
+                    m.uid = uid;
+                    self.next_uid = self.next_uid.max(uid.saturating_add(1));
+                }
                 if let Some(v) = m.villager.as_ref() {
                     self.next_villager_id = self.next_villager_id.max(v.id.saturating_add(1));
                 }

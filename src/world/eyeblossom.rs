@@ -107,6 +107,13 @@ impl World {
             return false;
         }
         self.edit(p, flipped(b), true);
+        // v1.0 Track 9: `tryChangingState` posts `block_change`.
+        self.emit_block_event(
+            p,
+            crate::world::vibration::GameEvent::BlockChange,
+            crate::world::vibration::EventSource::NONE,
+            Some(b),
+        );
         for dy in -2..=2 {
             for dz in -3..=3 {
                 for dx in -3..=3 {
@@ -123,33 +130,6 @@ impl World {
         }
         true
     }
-}
-
-/// Original sprites: a pale stem with a shut grey bud, or an open bloom whose
-/// orange iris stares out of pale petals. Pots reuse the shared pot artwork.
-pub fn pixel(layer: u16, x: usize, y: usize) -> [u8; 4] {
-    let open = (layer - TEX).is_multiple_of(2);
-    let n = ((x * 7 + y * 13 + x * y) % 9) as u8;
-    let (cx, cy) = (x as i32 - 8, y as i32 - 5);
-    let r2 = cx * cx + cy * cy;
-    let stem = (x == 7 || x == 8) && y >= 7;
-    let leaf = y >= 10
-        && ((x as i32 - 7 + (y as i32 - 13)).abs() <= 1 && x < 7
-            || (x as i32 - 8 - (13 - y as i32)).abs() <= 1 && x > 8);
-    if open {
-        if r2 <= 2 {
-            return [24, 16, 12, 255];
-        }
-        if r2 <= 6 {
-            return [236, 120 + n * 3, 28, 255];
-        }
-        if r2 <= 16 && !(x + y).is_multiple_of(5) {
-            return [196 + n, 190 + n, 176 + n, 255];
-        }
-    } else if (2..=8).contains(&y) && (cx.abs() <= 2 - i32::from(y < 4) - i32::from(y > 7)) {
-        return [118 + n, 116 + n, 110 + n, 255];
-    }
-    if stem || leaf { [96 + n, 104 + n, 86, 255] } else { [0; 4] }
 }
 
 #[cfg(test)]

@@ -38,8 +38,12 @@ impl Entities {
             let Some(a) = m.animal.as_mut() else { continue };
             if m.kind == MobKind::Sheep {
                 if a.grazing > 0.0 {
+                    // `EatBlockGoal.tick`: the meal lands when 4 of its 40
+                    // ticks are left (`eatAnimationTick == adjustedTickDelay(4)`),
+                    // and the sheep stands until the animation ends.
+                    let before = a.grazing;
                     a.grazing = (a.grazing - dt).max(0.0);
-                    if a.grazing == 0.0 {
+                    if before > EAT_AT && a.grazing <= EAT_AT {
                         let target = if w.block(cell) == Some(Block::TALL_GRASS) {
                             Some((cell, Block::TALL_GRASS, Block::AIR))
                         } else if w.block(cell - IVec3::Y) == Some(Block::GRASS) {
@@ -146,6 +150,9 @@ impl Entities {
         }
     }
 }
+/// Seconds of `EatBlockGoal`'s 2-second animation left when the grass goes.
+const EAT_AT: f32 = 0.2;
+
 fn horn_breaks_on(b: Block) -> bool {
     matches!(
         b.base(),

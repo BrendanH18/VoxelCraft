@@ -8,7 +8,7 @@ use std::f32::consts::PI;
 use glam::{DVec3, Quat, Vec3};
 
 use super::crystal::Crystals;
-use super::dragon::{Dragon, Fight, Phase};
+use super::dragon::{Dragon, DragonFireball, Fight, Phase, Wild};
 use super::model::{Cuboid, EntityMesh, Rgb, cube, push_cuboid};
 
 const SCALE: Rgb = [30, 26, 36];
@@ -77,16 +77,33 @@ fn plate(out: &mut EntityMesh, rel: Vec3) {
 /// Healing beams, the dragon, its fireballs and breath.
 pub fn build_fight(fight: &Fight, crystals: &Crystals, camera: DVec3, time: f32, alpha: f64, out: &mut EntityMesh) {
     if let Some(d) = &fight.dragon {
-        let pos = d.previous_pos.lerp(d.pos, alpha);
-        if let Some(c) = d.healer.and_then(|id| crystals.get(id)) {
-            let from = (crystal_center(c, alpha) - camera).as_vec3();
-            let to = (pos + DVec3::Y * 1.5 - camera).as_vec3();
-            beam(out, from, to, time);
-        }
-        dragon(out, d, (pos - camera).as_vec3(), alpha as f32);
+        build_dragon(d, crystals, camera, time, alpha, out);
     }
+    build_fireballs(&fight.fireballs, camera, time, alpha, out);
+}
+
+/// v1.0 Track 7: the dragons no fight owns, drawn like the fight's.
+pub fn build_wild(wild: &Wild, crystals: &Crystals, camera: DVec3, time: f32, alpha: f64, out: &mut EntityMesh) {
+    for w in &wild.dragons {
+        build_dragon(&w.dragon, crystals, camera, time, alpha, out);
+    }
+    build_fireballs(&wild.fireballs, camera, time, alpha, out);
+}
+
+/// One dragon and the beam of the crystal healing it.
+fn build_dragon(d: &Dragon, crystals: &Crystals, camera: DVec3, time: f32, alpha: f64, out: &mut EntityMesh) {
+    let pos = d.previous_pos.lerp(d.pos, alpha);
+    if let Some(c) = d.healer.and_then(|id| crystals.get(id)) {
+        let from = (crystal_center(c, alpha) - camera).as_vec3();
+        let to = (pos + DVec3::Y * 1.5 - camera).as_vec3();
+        beam(out, from, to, time);
+    }
+    dragon(out, d, (pos - camera).as_vec3(), alpha as f32);
+}
+
+fn build_fireballs(fireballs: &[DragonFireball], camera: DVec3, time: f32, alpha: f64, out: &mut EntityMesh) {
     let glow = ([230, 0, 0, 255], 0);
-    for f in &fight.fireballs {
+    for f in fireballs {
         let rel = (f.previous_pos.lerp(f.pos, alpha) - camera).as_vec3();
         let rot =
             Quat::from_rotation_arc(Vec3::Z, f.heading().normalize_or(Vec3::Z)) * Quat::from_rotation_z(time * 6.0);

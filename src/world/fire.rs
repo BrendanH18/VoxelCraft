@@ -74,12 +74,66 @@ impl World {
         self.fire.containers.entry(java_chunk(p)).or_default().push(Reverse((due, sequence, p.to_array())));
     }
 
+    /// v1.0 Track 3b: schedules the fire at `p` `delay` game ticks from
+    /// now, as its chunk's record saved it (Java's saved `LevelChunkTicks`).
+    pub(super) fn schedule_fire_in(&mut self, p: IVec3, delay: u32) {
+        if self.fire.pending.contains_key(&p) {
+            return;
+        }
+        let due = self.fire.tick + u64::from(delay);
+        let sequence = self.fire.sequence;
+        self.fire.sequence += 1;
+        self.fire.pending.insert(p, Scheduled { due, sequence });
+        self.fire.containers.entry(java_chunk(p)).or_default().push(Reverse((due, sequence, p.to_array())));
+    }
+
+    /// The scheduled fires of the chunks `at` accepts, by chunk, with the
+    /// game ticks until each is due, for their records. The schedules stay
+    /// until the chunk unloads ([`World::unload_fires`]).
+    pub(super) fn fire_ticks(&self, at: &dyn Fn(IVec3) -> bool) -> FxHashMap<IVec3, Vec<(IVec3, u32)>> {
+        let mut out: FxHashMap<IVec3, Vec<(IVec3, u32)>> = FxHashMap::default();
+        for (&p, s) in &self.fire.pending {
+            let c = super::chunk::chunk_of(p);
+            if at(c) {
+                let delay = u32::try_from(s.due.saturating_sub(self.fire.tick)).unwrap_or(u32::MAX);
+                out.entry(c).or_default().push((p, delay));
+            }
+        }
+        for list in out.values_mut() {
+            list.sort_unstable_by_key(|(p, _)| (p.x, p.y, p.z));
+        }
+        out
+    }
+
     pub(super) fn track_fire(&mut self, p: IVec3, old: Block, new: Block) {
         // Only aging fire is scheduled; soul fire never changes on its own.
         if new.fire_age().is_some() {
             self.schedule_fire(p);
         } else if old.fire_age().is_some() {
             self.fire.pending.remove(&p);
+        }
+    }
+
+    /// v1.0 Track 3: drops an unloading chunk's scheduled fires, as Java's
+    /// `LevelTicks` drops a chunk's container with it. Its fires reschedule
+    /// when it loads ([`World::load_fires`]); before, the entries stayed
+    /// and every tick peeked at the containers of every chunk with fire the
+    /// player had ever passed.
+    pub(super) fn unload_fires(&mut self, pos: IVec3) {
+        if self.fire.pending.is_empty() {
+            return;
+        }
+        let here = |p: IVec3| super::chunk::chunk_of(p) == pos;
+        self.fire.pending.retain(|&p, _| !here(p));
+        let columns =
+            [(0, 0), (1, 0), (0, 1), (1, 1)].map(|(x, z)| java_chunk(pos * CHUNK_SIZE_I + IVec3::new(x, 0, z) * 16));
+        for column in columns {
+            if let Some(container) = self.fire.containers.get_mut(&column) {
+                container.retain(|Reverse((_, _, xyz))| !here(IVec3::from_array(*xyz)));
+                if container.is_empty() {
+                    self.fire.containers.remove(&column);
+                }
+            }
         }
     }
 
@@ -408,6 +462,15 @@ pub fn infiniburn(below: Block, dimension: super::terrain::Dimension) -> bool {
 /// `(fuel + 40 + 7 x difficulty id) / (age + 30)`, halved in humid biomes.
 fn spread_odds(fuel: u64, age: u64, difficulty: u8, humid: bool) -> u64 {
     (fuel + 40 + 7 * u64::from(difficulty)) / (age + 30) / if humid { 2 } else { 1 }
+}
+
+/// v1.0 Track 3: entry counts for the long-session soak (`crate::soak`).
+impl FireState {
+    pub(super) fn soak_counts(&self, out: &mut super::diagnostics::Counts) {
+        out.push(("fire.pending", self.pending.len()));
+        out.push(("fire.scheduled", self.containers.values().map(BinaryHeap::len).sum()));
+        out.push(("fire.columns", self.containers.len()));
+    }
 }
 
 #[cfg(test)]

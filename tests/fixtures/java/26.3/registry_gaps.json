@@ -71,10 +71,6 @@
       "release": "deferred",
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
     },
-    "burn_pottery_sherd": {
-      "release": "deferred",
-      "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
-    },
     "chain_command_block": {
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
@@ -87,39 +83,15 @@
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
     },
-    "danger_pottery_sherd": {
-      "release": "deferred",
-      "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
-    },
     "debug_stick": {
       "release": "none",
       "reason": "Technical or creative-only; no survival acquisition role."
-    },
-    "ender_dragon_spawn_egg": {
-      "release": "v0.18",
-      "reason": "Track 4 left it unregistered: VoxelCraft's Ender Dragon exists only as the End fight's boss (entity::dragon), so an egg-spawned dragon has nothing to run; item id 1937 is kept for it. The integrator decides whether it moves."
     },
     "flow_pottery_sherd": {
       "release": "deferred",
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
     },
-    "friend_pottery_sherd": {
-      "release": "deferred",
-      "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
-    },
     "guster_pottery_sherd": {
-      "release": "deferred",
-      "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
-    },
-    "heart_pottery_sherd": {
-      "release": "deferred",
-      "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
-    },
-    "heartbreak_pottery_sherd": {
-      "release": "deferred",
-      "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
-    },
-    "howl_pottery_sherd": {
       "release": "deferred",
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
     },
@@ -152,10 +124,6 @@
       "reason": "Technical or creative-only; no survival acquisition role."
     },
     "scrape_pottery_sherd": {
-      "release": "deferred",
-      "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
-    },
-    "sheaf_pottery_sherd": {
       "release": "deferred",
       "reason": "DEF-02: pattern outside the retained ocean-ruin archaeology scope."
     },

@@ -20,7 +20,12 @@ pub struct State {
     pub home: IVec3,
     pub pregnant: bool,
     pub owner: Option<PlayerId>,
+    /// `TamableAnimal.orderedToSit` (saved as `sitting`, Java's `Sitting`).
     pub sitting: bool,
+    /// `isInSittingPose`: set by `SitWhenOrderedToGoal` once an ordered pet
+    /// is on the ground and out of water (never saved; a load sits it, as
+    /// `readAdditionalSaveData` does).
+    pub sit_pose: bool,
     pub collar: DyeColor,
     growth: f32,
     hearts: f32,
@@ -61,6 +66,7 @@ impl State {
             pregnant: false,
             owner: None,
             sitting: false,
+            sit_pose: false,
             collar: DyeColor::Red,
             growth: 0.0,
             hearts: 0.0,
@@ -175,7 +181,6 @@ impl Mob {
                     && !a.sitting
                     && !a.pregnant
                     && (!matches!(self.kind, MobKind::Cat | MobKind::Wolf) || a.owner.is_some())
-                    && (self.kind != MobKind::Wolf || self.health >= self.max_health())
                     && (!super::mounts::equine(self.kind) || self.mount.as_ref().is_some_and(|s| s.tame))
             })
     }
@@ -244,7 +249,7 @@ impl Entities {
         player: PlayerId,
         infinite: bool,
     ) -> Option<bool> {
-        if let Some(result) = self.use_lead_or_name(index, held, player) {
+        if let Some(result) = self.use_lead_or_name(index, held, player, infinite) {
             return Some(result);
         }
         if let Some(result) = self.use_golden_dandelion(index, held) {
@@ -275,52 +280,137 @@ impl Entities {
         if super::mounts::equine(m.kind) && (m.baby || !m.mount.as_ref().is_some_and(|s| s.tame)) {
             return None;
         }
-        let a = m.animal.as_mut()?;
-        let taming = match m.kind {
-            MobKind::Wolf => food == Some(Item::BONE),
-            MobKind::Cat => food.is_some_and(|i| matches!(i, Item::COD | Item::SALMON)),
-            MobKind::Parrot => food.is_some_and(seeds),
-            _ => false,
+        let (tame, owned) = {
+            let a = m.animal.as_ref()?;
+            (a.owner.is_some(), a.owner == Some(player))
         };
-        if a.owner.is_none() && taming && m.angry_player.is_none() {
-            let success = self.rng.chance(if m.kind == MobKind::Parrot { 0.1 } else { 1.0 / 3.0 });
-            if success {
-                a.owner = Some(player);
-                a.sitting = true;
-                m.health = if m.kind == MobKind::Wolf { 40.0 } else { m.kind.max_health() };
-                m.persistent = true;
-                self.animal_hearts(index);
-            } else {
-                self.particles.push(particles::Request::Burst(particles::Burst::new(
-                    particles::Kind::Smoke,
-                    m.pos + DVec3::Y * 0.7,
-                    7,
-                )));
+        let dye = food.and_then(Item::dye_color);
+        // Java 26.3 `Wolf`, `Cat` and `Parrot.mobInteract` (v1.0 Track 6).
+        match m.kind {
+            // Untamed: a bone tames a wolf that isn't angry, cat food a cat,
+            // parrot food a parrot; anything else is `Animal.mobInteract`.
+            MobKind::Wolf if !tame && food == Some(Item::BONE) && m.angry_player.is_none() => {
+                return Some(self.try_to_tame(index, player));
             }
-            return Some(true);
+            MobKind::Cat if !tame && food.is_some_and(cat_food) => {
+                self.mobs[index].persistent = true;
+                return Some(self.try_to_tame(index, player));
+            }
+            MobKind::Parrot if !tame && food.is_some_and(seeds) => {
+                return Some(self.try_to_tame(index, player));
+            }
+            MobKind::Parrot if tame => {
+                // `!isFlying() && isOwnedBy(player)` toggles the order to sit.
+                if owned && m.on_ground {
+                    self.toggle_sit(index);
+                    return Some(false);
+                }
+                return None;
+            }
+            MobKind::Wolf if tame => {
+                // `feed(player, hand, stack, 2, 2)`: any player heals a hurt wolf.
+                if food.is_some_and(wolf_food) && m.health < m.max_health() {
+                    let heal = food.and_then(Item::food).map_or(2.0, |f| 2.0 * f.0 as f32);
+                    m.health = (m.health + heal).min(m.max_health());
+                    return Some(true);
+                }
+                // Only the owner dyes the collar; the same colour does nothing.
+                if let Some(c) = dye
+                    && owned
+                {
+                    let a = m.animal.as_mut()?;
+                    if c == a.collar {
+                        return None;
+                    }
+                    a.collar = c;
+                    return Some(true);
+                }
+                if let Some(result) = self.feed_for_love(index, food, player) {
+                    return Some(result);
+                }
+                if owned {
+                    self.toggle_sit(index);
+                    return Some(false);
+                }
+                return None;
+            }
+            MobKind::Cat if tame => {
+                if !owned {
+                    return self.feed_for_love(index, food, player);
+                }
+                if let Some(c) = dye {
+                    let a = m.animal.as_mut()?;
+                    if c != a.collar {
+                        a.collar = c;
+                        m.persistent = true;
+                        return Some(true);
+                    }
+                } else if food.is_some_and(cat_food) && m.health < m.max_health() {
+                    // `feed(player, hand, stack, 1, 1)`.
+                    let heal = food.and_then(Item::food).map_or(1.0, |f| f.0 as f32);
+                    m.health = (m.health + heal).min(m.max_health());
+                    return Some(true);
+                }
+                if let Some(result) = self.feed_for_love(index, food, player) {
+                    return Some(result);
+                }
+                self.toggle_sit(index);
+                return Some(false);
+            }
+            // An untamed cat takes nothing but its food.
+            MobKind::Cat => return None,
+            _ => {}
         }
-        if a.owner.is_some() && matches!(m.kind, MobKind::Cat | MobKind::Wolf) {
-            if let Some(c) = food.and_then(Item::dye_color)
-                && c != a.collar
-            {
-                a.collar = c;
-                return Some(true);
-            }
-            let max = if m.kind == MobKind::Wolf { 40.0 } else { m.kind.max_health() };
-            if food.is_some_and(|i| m.kind.breeding_food(i)) && m.health < max {
-                m.health = (m.health + food.and_then(Item::food).map_or(2.0, |f| f.0 as f32)).min(max);
-                return Some(true);
-            }
-        }
-        if a.owner == Some(player) && !food.is_some_and(|i| m.kind.breeding_food(i)) {
-            a.sitting = !a.sitting;
-            a.perched = None;
+        self.feed_for_love(index, food, player)
+    }
+
+    /// `TamableAnimal.setOrderedToSit(!isOrderedToSit())` from the owner,
+    /// which also stops the pet (`navigation.stop`, `setTarget(null)`).
+    fn toggle_sit(&mut self, index: usize) {
+        let m = &mut self.mobs[index];
+        m.nav.stop();
+        let a = m.animal.as_mut().unwrap();
+        a.sitting = !a.sitting;
+        a.perched = None;
+        a.foe = None;
+    }
+
+    /// `tryToTame`: one in three for wolves and cats, one in ten for
+    /// parrots. A tamed wolf or cat is ordered to sit (a parrot isn't), and
+    /// a wolf's `applyTamingSideEffects` raises its health to 40. Always
+    /// uses the item.
+    fn try_to_tame(&mut self, index: usize, player: PlayerId) -> bool {
+        let kind = self.mobs[index].kind;
+        let bound = if kind == MobKind::Parrot { 10 } else { 3 };
+        if self.rng.next_int(bound) == 0 {
+            let m = &mut self.mobs[index];
+            m.nav.stop();
+            let a = m.animal.as_mut().unwrap();
+            a.owner = Some(player);
             a.foe = None;
-            return Some(false);
+            if kind != MobKind::Parrot {
+                a.sitting = true;
+            }
+            if kind == MobKind::Wolf {
+                m.health = 40.0;
+            }
+            m.persistent = true;
+            self.animal_hearts(index);
+        } else {
+            let pos = self.mobs[index].pos;
+            self.particles.push(particles::Request::Burst(particles::Burst::new(
+                particles::Kind::Smoke,
+                pos + DVec3::Y * 0.7,
+                7,
+            )));
         }
-        if matches!(m.kind, MobKind::Cat | MobKind::Wolf) && a.owner.is_none() {
-            return None;
-        }
+        true
+    }
+
+    /// `Animal.mobInteract` with food: a baby grows, a grown animal free to
+    /// fall in love does. `None` passes the interaction on.
+    fn feed_for_love(&mut self, index: usize, food: Option<Item>, player: PlayerId) -> Option<bool> {
+        let m = self.mobs.get_mut(index)?;
         let food = food?;
         if !m.kind.breeding_food(food) {
             return None;
@@ -339,6 +429,10 @@ impl Entities {
             }
         }
         m.persistent = true;
+        // v1.0 Track 9: `Camel.handleEating` posts `eat`.
+        if super::mounts::camel_like(m.kind) {
+            self.post_mob_event(index, crate::world::vibration::GameEvent::Eat);
+        }
         self.animal_hearts(index);
         Some(true)
     }
@@ -542,6 +636,7 @@ pub(super) fn load(a: &mut State, v: &Value) {
     a.love_by = v["love_by"].as_u64().and_then(|n| u32::try_from(n).ok()).map(PlayerId);
     a.owner = v["owner"].as_u64().and_then(|n| u32::try_from(n).ok()).map(PlayerId);
     a.sitting = v["sitting"].as_bool().unwrap_or(false);
+    a.sit_pose = a.sitting;
     a.pregnant = v["pregnant"].as_bool().unwrap_or(false);
     a.collar = DyeColor::ALL.get(v["collar"].as_u64().unwrap_or(14) as usize).copied().unwrap_or(DyeColor::Red);
     a.growth = timer("growth", 1.0);
@@ -564,6 +659,10 @@ pub fn seeds(food: Item) -> bool {
             | Item::TORCHFLOWER_SEEDS
             | Item::PITCHER_POD
     )
+}
+/// `#cat_food`: what tames, heals and breeds cats.
+pub fn cat_food(food: Item) -> bool {
+    matches!(food, Item::COD | Item::SALMON)
 }
 pub fn wolf_food(food: Item) -> bool {
     matches!(
@@ -651,10 +750,19 @@ impl Mob {
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
     ) -> Option<(Option<DVec3>, f64)> {
-        let a = self.animal.as_ref()?;
         // `SitWhenOrderedToGoal` (2) and the wolf's `MeleeAttackGoal` (5)
-        // outrank following the owner, breeding and strolling.
-        if a.sitting || a.sleeping {
+        // outrank following the owner, breeding and strolling. The goal
+        // starts only on the ground and out of water (`canUse`) and runs
+        // while the order stands (`canContinueToUse`).
+        let (on_ground, in_water) = (self.on_ground, self.in_water);
+        let a = self.animal.as_mut()?;
+        if !a.sitting {
+            a.sit_pose = false;
+        } else if !a.sit_pose && on_ground && !in_water {
+            a.sit_pose = true;
+        }
+        let a = self.animal.as_ref()?;
+        if a.sit_pose || a.sleeping {
             self.stop_goal(w);
             return Some((None, 0.0));
         }
@@ -1144,10 +1252,14 @@ mod tests {
                 }
             }
             assert_eq!(e.mobs[0].animal.as_ref().unwrap().owner, Some(PlayerId(42)));
-            assert!(e.mobs[0].animal.as_ref().unwrap().sitting);
+            // Parrots aren't ordered to sit when tamed (v1.0 Track 6).
+            let sits = kind != MobKind::Parrot;
+            assert_eq!(e.mobs[0].animal.as_ref().unwrap().sitting, sits);
             assert_eq!(e.use_animal(0, None, PlayerId(7)), None);
+            // A parrot takes the order only while it isn't flying.
+            e.mobs[0].on_ground = true;
             assert_eq!(e.use_animal(0, None, PlayerId(42)), Some(false));
-            assert!(!e.mobs[0].animal.as_ref().unwrap().sitting);
+            assert_eq!(e.mobs[0].animal.as_ref().unwrap().sitting, !sits);
             let mut restored = Entities::new(1);
             restored.load_nether_mobs(&e.nether_mobs_to_string());
             assert_eq!(restored.mobs[0].animal.as_ref().unwrap().owner, Some(PlayerId(42)));
@@ -1214,7 +1326,7 @@ mod tests {
         let mut e = Entities::new(2);
         e.spawn(MobKind::Sheep, DVec3::Y);
         e.mobs[0].sheared = true;
-        e.mobs[0].animal.as_mut().unwrap().grazing = 0.05;
+        e.mobs[0].animal.as_mut().unwrap().grazing = 0.25;
         let mut grid = Grid::flat(0);
         grid.set(IVec3::ZERO, Block::GRASS);
         let w = Flat(grid);
@@ -1226,7 +1338,7 @@ mod tests {
         );
         e.villager_griefing = false;
         e.mobs[0].sheared = true;
-        e.mobs[0].animal.as_mut().unwrap().grazing = 0.05;
+        e.mobs[0].animal.as_mut().unwrap().grazing = 0.25;
         events.clear();
         e.tick_animal_lifecycle(0.05, &w, &ctx(), &mut events);
         assert!(!e.mobs[0].sheared);
@@ -1266,5 +1378,266 @@ mod tests {
         let mut restored = Entities::new(8);
         restored.load_nether_mobs(&e.nether_mobs_to_string());
         assert_eq!(restored.mobs[0].animal.as_ref().unwrap().horns, 1);
+    }
+    // ------------------------------------------------------- v1.0 Track 6
+
+    fn tame(e: &mut Entities, kind: MobKind, at: DVec3, owner: u32) -> usize {
+        e.spawn(kind, at);
+        e.ensure_mob_ids();
+        let i = e.mobs.len() - 1;
+        e.mobs[i].animal.as_mut().unwrap().owner = Some(PlayerId(owner));
+        if kind == MobKind::Wolf {
+            e.mobs[i].health = 40.0;
+        }
+        i
+    }
+
+    /// `tryToTame`: wolves and cats are ordered to sit, parrots aren't;
+    /// only a wolf's health changes (`applyTamingSideEffects`).
+    #[test]
+    fn taming_orders_wolves_and_cats_to_sit_but_not_parrots() {
+        for (kind, food, sits) in [
+            (MobKind::Wolf, Item::BONE, true),
+            (MobKind::Cat, Item::SALMON, true),
+            (MobKind::Parrot, Item::PUMPKIN_SEEDS, false),
+        ] {
+            let mut e = Entities::new(5);
+            e.spawn(kind, DVec3::Y);
+            e.mobs[0].health = 3.0;
+            let mut tries = 0;
+            while e.mobs[0].animal.as_ref().unwrap().owner.is_none() {
+                assert_eq!(e.use_animal(0, Some(Stack::new(food, 1)), PlayerId(4)), Some(true), "{kind:?}");
+                tries += 1;
+                assert!(tries < 200);
+            }
+            assert_eq!(e.mobs[0].animal.as_ref().unwrap().sitting, sits, "{kind:?}");
+            let health = if kind == MobKind::Wolf { 40.0 } else { 3.0 };
+            assert_eq!(e.mobs[0].health, health, "{kind:?}");
+        }
+        // An angry wolf takes no bone.
+        let mut e = Entities::new(5);
+        e.spawn(MobKind::Wolf, DVec3::Y);
+        e.mobs[0].angry_player = Some(PlayerId(4));
+        assert_ne!(e.use_animal(0, Some(Stack::new(Item::BONE, 1)), PlayerId(4)), Some(true));
+    }
+
+    /// The tame rolls are `nextInt(3)` and `nextInt(10)`.
+    #[test]
+    fn taming_takes_about_three_tries_for_wolves_and_ten_for_parrots() {
+        for (kind, food, expected) in [(MobKind::Wolf, Item::BONE, 3.0), (MobKind::Parrot, Item::WHEAT_SEEDS, 10.0)] {
+            let mut total = 0;
+            for seed in 0..400 {
+                let mut e = Entities::new(seed);
+                e.spawn(kind, DVec3::Y);
+                while e.mobs[0].animal.as_ref().unwrap().owner.is_none() {
+                    e.use_animal(0, Some(Stack::new(food, 1)), PlayerId(4));
+                    total += 1;
+                }
+            }
+            let mean = total as f64 / 400.0;
+            assert!((mean - expected).abs() < expected * 0.2, "{kind:?}: {mean}");
+        }
+    }
+
+    /// `Wolf.mobInteract`: food heals twice its nutrition, for anyone; only
+    /// the owner dyes the collar, and the same colour doesn't toggle sitting.
+    /// `Cat.mobInteract`: the owner heals it by the food's nutrition.
+    #[test]
+    fn pets_heal_by_their_java_factor_and_only_owners_dye_them() {
+        let mut e = Entities::new(8);
+        let wolf = tame(&mut e, MobKind::Wolf, DVec3::Y, 1);
+        e.mobs[wolf].health = 20.0;
+        assert_eq!(e.use_animal(wolf, Some(Stack::new(Item::STEAK, 1)), PlayerId(2)), Some(true));
+        assert_eq!(e.mobs[wolf].health, 36.0, "steak's 8 nutrition heals 16");
+        let blue = Stack::new(crate::color::DyeColor::Blue.dye(), 1);
+        assert_eq!(e.use_animal(wolf, Some(blue), PlayerId(2)), None, "a stranger can't dye it");
+        assert_eq!(e.mobs[wolf].animal.as_ref().unwrap().collar, DyeColor::Red);
+        let red = Stack::new(DyeColor::Red.dye(), 1);
+        let sitting = e.mobs[wolf].animal.as_ref().unwrap().sitting;
+        assert_eq!(e.use_animal(wolf, Some(red), PlayerId(1)), None, "the same colour does nothing");
+        assert_eq!(e.mobs[wolf].animal.as_ref().unwrap().sitting, sitting);
+        assert_eq!(e.use_animal(wolf, Some(blue), PlayerId(1)), Some(true));
+        assert_eq!(e.mobs[wolf].animal.as_ref().unwrap().collar, DyeColor::Blue);
+        // Full health: food is breeding food, and a wolf in love passes it
+        // on to the owner's order to sit.
+        e.mobs[wolf].health = 40.0;
+        assert_eq!(e.use_animal(wolf, Some(Stack::new(Item::STEAK, 1)), PlayerId(1)), Some(true));
+        assert!(e.mobs[wolf].animal.as_ref().unwrap().love > 0.0);
+        assert_eq!(e.use_animal(wolf, Some(Stack::new(Item::STEAK, 1)), PlayerId(1)), Some(false));
+        assert_eq!(e.mobs[wolf].animal.as_ref().unwrap().sitting, !sitting);
+
+        let cat = tame(&mut e, MobKind::Cat, DVec3::new(4.0, 1.0, 0.0), 1);
+        e.mobs[cat].health = 5.0;
+        assert_eq!(e.use_animal(cat, Some(Stack::new(Item::COD, 1)), PlayerId(1)), Some(true));
+        assert_eq!(e.mobs[cat].health, 7.0, "cod's 2 nutrition heals 2");
+        // A stranger's cod breeds it instead of healing it.
+        assert_eq!(e.use_animal(cat, Some(Stack::new(Item::COD, 1)), PlayerId(2)), Some(true));
+        assert_eq!(e.mobs[cat].health, 7.0);
+        assert!(e.mobs[cat].animal.as_ref().unwrap().love > 0.0);
+        // A wild wolf eats meat and falls in love, but can't breed untamed.
+        let mut e = Entities::new(9);
+        e.spawn(MobKind::Wolf, DVec3::Y);
+        assert_eq!(e.use_animal(0, Some(Stack::new(Item::RAW_BEEF, 1)), PlayerId(2)), Some(true));
+        assert!(e.mobs[0].animal.as_ref().unwrap().love > 0.0);
+        assert!(!e.mobs[0].ready_to_breed());
+    }
+
+    /// `SitWhenOrderedToGoal`: an ordered pet sits only on the ground and
+    /// out of water; the order survives a save and the pose comes back with
+    /// it. Wolves and parrots stand when hurt, cats don't.
+    #[test]
+    fn ordered_pets_sit_on_dry_ground_and_wolves_stand_when_hurt() {
+        let w = Flat(Grid::flat(0));
+        let c = ctx();
+        let mut e = Entities::new(3);
+        let wolf = tame(&mut e, MobKind::Wolf, DVec3::new(0.5, 1.0, 0.5), 0);
+        e.mobs[wolf].animal.as_mut().unwrap().owner = Some(PlayerId::HOST);
+        e.mobs[wolf].animal.as_mut().unwrap().sitting = true;
+        e.mobs[wolf].in_water = true;
+        e.mobs[wolf].on_ground = true;
+        let mut rng = Rng(1);
+        let mut events = Vec::new();
+        e.mobs[wolf].companion_think(0.05, &w, &c, &mut rng, &mut events);
+        assert!(!e.mobs[wolf].animal.as_ref().unwrap().sit_pose, "no sitting in water");
+        e.mobs[wolf].in_water = false;
+        e.mobs[wolf].companion_think(0.05, &w, &c, &mut rng, &mut events);
+        assert!(e.mobs[wolf].animal.as_ref().unwrap().sit_pose);
+        let mut back = Entities::new(4);
+        back.load_nether_mobs(&e.nether_mobs_to_string());
+        let a = back.mobs[0].animal.as_ref().unwrap();
+        assert!(a.sitting && a.sit_pose, "`readAdditionalSaveData` sits a loaded pet");
+        for (kind, stands) in [(MobKind::Wolf, true), (MobKind::Parrot, true), (MobKind::Cat, false)] {
+            let mut e = Entities::new(5);
+            let i = tame(&mut e, kind, DVec3::Y, 1);
+            e.mobs[i].animal.as_mut().unwrap().sitting = true;
+            e.mobs[i].damage(1.0, None, &mut rng);
+            assert_eq!(!e.mobs[i].animal.as_ref().unwrap().sitting, stands, "{kind:?}");
+        }
+    }
+
+    /// `FollowOwnerGoal` with `tryToTeleportToOwner`: an owner 12 or more
+    /// blocks away pulls the pet to a free spot 2–3 blocks from them; a
+    /// sitting or leashed pet stays (`unableToMoveToOwner`).
+    #[test]
+    fn pets_teleport_to_a_far_owner_unless_sitting_or_leashed() {
+        let mut grid = Grid::flat(0);
+        grid.set(IVec3::new(3, 1, 3), Block::OAK_FENCE);
+        let w = Flat(grid);
+        for (kind, sitting, leashed, follows) in [
+            (MobKind::Wolf, false, false, true),
+            (MobKind::Cat, false, false, true),
+            (MobKind::Wolf, true, false, false),
+            (MobKind::Wolf, false, true, false),
+        ] {
+            let mut e = Entities::new(17);
+            let i = tame(&mut e, kind, DVec3::new(0.5, 1.0, 0.5), 0);
+            e.mobs[i].animal.as_mut().unwrap().owner = Some(PlayerId::HOST);
+            e.mobs[i].animal.as_mut().unwrap().sitting = sitting;
+            if leashed {
+                e.mobs[i].leash = Some(super::super::leash::Leash::Fence(IVec3::new(3, 1, 3)));
+            }
+            let owner = DVec3::new(30.5, 1.0, 0.5);
+            let mut c = ctx();
+            c.players[0].pos = owner;
+            for _ in 0..40 {
+                e.update(0.05, &w, &c);
+            }
+            let d = (e.mobs[i].pos - owner).with_y(0.0).length();
+            if follows {
+                assert!(d <= 4.5, "{kind:?} is {d} from its owner");
+                assert!(d >= 1.5, "{kind:?} landed {d} from its owner");
+            } else {
+                assert!(d > 25.0, "{kind:?} (sitting {sitting}, leashed {leashed}) moved to {d}");
+            }
+        }
+    }
+
+    /// `TamableAnimalPanicGoal.tick`: a panicking cat far from its owner
+    /// teleports to it.
+    #[test]
+    fn a_panicking_cat_teleports_to_a_far_owner() {
+        let w = Flat(Grid::flat(0));
+        let mut e = Entities::new(23);
+        let i = tame(&mut e, MobKind::Cat, DVec3::new(0.5, 1.0, 0.5), 0);
+        e.mobs[i].animal.as_mut().unwrap().owner = Some(PlayerId::HOST);
+        let mut rng = Rng(3);
+        e.mobs[i].damage(1.0, Some(DVec3::X), &mut rng);
+        assert_eq!(e.mobs[i].ai, crate::entity::mob::Ai::Panic);
+        let owner = DVec3::new(20.5, 1.0, 0.5);
+        let mut c = ctx();
+        c.players[0].pos = owner;
+        e.update(0.05, &w, &c);
+        assert!((e.mobs[i].pos - owner).with_y(0.0).length() <= 4.5);
+    }
+
+    /// v1.0 Track 6: the 26.3 jar's food tags and farm-animal loot tables
+    /// (`tests/fixtures/java/26.3/companions_villages.json`, from
+    /// `tools/extract_java_companion_fixtures.py`), both ways.
+    #[test]
+    fn foods_temptations_and_drops_match_the_jar() {
+        let v: Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/companions_villages.json")).unwrap();
+        let names: Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/registry_names.json")).unwrap();
+        let item = |id: &str| {
+            let english = names["items"][id].as_str().or_else(|| names["blocks"][id].as_str()).unwrap_or_default();
+            crate::java_registry::item(id, english).unwrap_or_else(|| panic!("{id}"))
+        };
+        let tag = |name: &str| -> Vec<Item> {
+            v["tags"][name].as_array().unwrap().iter().map(|n| item(n.as_str().unwrap())).collect()
+        };
+        let every: Vec<Item> = v["tags"].as_object().unwrap().keys().flat_map(|k| tag(k)).collect();
+        let check = |what: &str, wanted: &[Item], has: &dyn Fn(Item) -> bool| {
+            for &food in &every {
+                assert_eq!(has(food), wanted.contains(&food), "{what}: {}", food.name());
+            }
+        };
+        use MobKind as K;
+        for (kind, name) in [
+            (K::Cow, "cow_food"),
+            (K::Mooshroom, "cow_food"),
+            (K::Pig, "pig_food"),
+            (K::Sheep, "sheep_food"),
+            (K::Chicken, "chicken_food"),
+            (K::Rabbit, "rabbit_food"),
+            (K::Goat, "goat_food"),
+            (K::Wolf, "wolf_food"),
+            (K::Cat, "cat_food"),
+            (K::Camel, "camel_food"),
+        ] {
+            check(&format!("{kind:?} breeds with {name}"), &tag(name), &|f| kind.breeding_food(f));
+        }
+        // `TemptGoal`s follow the same tags (the pig also its carrot on a
+        // stick); horses and llamas follow their own tempt tags.
+        for (kind, name) in [
+            (K::Cow, "cow_food"),
+            (K::Sheep, "sheep_food"),
+            (K::Chicken, "chicken_food"),
+            (K::Rabbit, "rabbit_food"),
+            (K::Goat, "goat_food"),
+            (K::Horse, "horse_tempt_items"),
+            (K::Llama, "llama_tempt_items"),
+        ] {
+            check(&format!("{kind:?} follows {name}"), &tag(name), &|f| super::super::mob::goals::tempted_by(kind, f));
+        }
+        check("parrots tame with parrot_food", &tag("parrot_food"), &|f| seeds(f));
+        check("cats tame with cat_food", &tag("cat_food"), &|f| cat_food(f));
+        assert_eq!(tag("parrot_poisonous_food"), vec![Item::COOKIE]);
+        assert_eq!(tag("llama_food"), vec![Item::WHEAT, Item::from_block(crate::world::block::Block::HAY_BALE)]);
+        for (kind, name) in
+            [(K::Cow, "cow"), (K::Pig, "pig"), (K::Sheep, "sheep"), (K::Chicken, "chicken"), (K::Rabbit, "rabbit")]
+        {
+            for entry in v["loot"][name].as_array().unwrap() {
+                let id = entry["item"].as_str().unwrap();
+                // The rabbit's foot is the killed-by-player pool, rolled in `drops`.
+                if id == "rabbit_foot" {
+                    continue;
+                }
+                let drop = item(id);
+                let count = (entry["count"][0].as_i64().unwrap(), entry["count"][1].as_i64().unwrap());
+                let ours = kind.loot().iter().find(|(i, ..)| *i == drop).unwrap_or_else(|| panic!("{kind:?} {id}"));
+                assert_eq!((i64::from(ours.1), i64::from(ours.2)), count, "{kind:?} {id}");
+            }
+        }
     }
 }

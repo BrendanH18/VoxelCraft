@@ -107,7 +107,7 @@ fn main() {
         let forward = (spawn - camera).as_vec3().normalize_or(Vec3::X);
         let alpha = (frame % 7) as f64 / 7.0;
         let t = Instant::now();
-        let mesh = entities.mesh(camera, forward, 128.0, 3.0, alpha);
+        let mesh = entities.mesh(&Default::default(), camera, forward, 128.0, 3.0, alpha);
         mesh_us.push(t.elapsed().as_secs_f64() * 1e6);
         let t = Instant::now();
         std::hint::black_box(old_partition(mesh, &mut scratch));

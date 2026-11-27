@@ -125,6 +125,15 @@ impl World {
                 let roll = (self.roll() % 1_000_000) as f32 / 1_000_000.0;
                 if let Some(next) = precipitation_fill(contents, snow, roll) {
                     self.set_block(p, cauldron(next));
+                    // v1.0 Track 9: `handlePrecipitation` posts `block_change`
+                    // (from an empty cauldron with no context).
+                    let affected = (contents != Contents::Empty).then(|| cauldron(next));
+                    self.emit_block_event(
+                        p,
+                        crate::world::vibration::GameEvent::BlockChange,
+                        crate::world::vibration::EventSource::NONE,
+                        affected,
+                    );
                 }
             }
         }
@@ -174,6 +183,13 @@ impl World {
         }
         if source == ob::MUD {
             self.set_block(above, Block::CLAY);
+            // v1.0 Track 9: `maybeTransferFluid` posts `block_change` at the clay.
+            self.emit_block_event(
+                above,
+                crate::world::vibration::GameEvent::BlockChange,
+                crate::world::vibration::EventSource::NONE,
+                Some(Block::CLAY),
+            );
             return;
         }
         // `findFillableCauldronBelowStalactiteTip`: through air and
@@ -254,6 +270,13 @@ impl World {
             let Some(lava) = self.drip_fluid_above(p) else { continue };
             if let Some(next) = drip_fill(contents, lava) {
                 self.set_block(p, cauldron(next));
+                // v1.0 Track 9: `receiveStalactiteDrip` posts `block_change`.
+                self.emit_block_event(
+                    p,
+                    crate::world::vibration::GameEvent::BlockChange,
+                    crate::world::vibration::EventSource::NONE,
+                    Some(cauldron(next)),
+                );
             }
         }
     }

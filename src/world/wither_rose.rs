@@ -79,34 +79,6 @@ pub fn smoke_positions(cell: IVec3, mut rand: impl FnMut() -> f64) -> Vec<DVec3>
     out
 }
 
-/// Original art: a black rose with a bruised crimson heart on a dark,
-/// thorny stem.
-pub fn pixel(x: usize, y: usize) -> [u8; 4] {
-    let n = ((x * 11 + y * 7 + x * y) % 7) as i32;
-    let (cx, cy) = (x as i32 - 8, y as i32 - 5);
-    let r2 = cx * cx + cy * cy;
-    let c = |rgb: [i32; 3]| [(rgb[0] + n) as u8, (rgb[1] + n) as u8, (rgb[2] + n) as u8, 255];
-    if r2 <= 1 {
-        return c([70, 14, 20]);
-    }
-    if r2 <= 12 && !(x + y).is_multiple_of(4) {
-        return c([22, 20, 24]);
-    }
-    if r2 <= 14 {
-        return c([36, 32, 36]);
-    }
-    let stem = (x == 7 || x == 8) && y >= 8;
-    let leaf = (y == 11 && (5..=6).contains(&x)) || (y == 13 && (9..=10).contains(&x));
-    let thorn = y >= 9 && y.is_multiple_of(3) && (x == 6 || x == 9);
-    if stem || leaf {
-        c([34, 44, 30])
-    } else if thorn {
-        c([26, 22, 22])
-    } else {
-        [0; 4]
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

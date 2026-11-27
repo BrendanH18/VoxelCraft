@@ -4,6 +4,8 @@
 //!
 //! A stack's enchantments are levels packed three bits apiece into one
 //! `u128` ([`Enchants`]), so stacks stay `Copy` and saves stay one line.
+//! Soul Speed, the 43rd, has the last two bits (levels 0–3; Java's maximum
+//! is 3).
 
 use crate::inventory::Stack;
 use crate::item::{ArmorPiece, Item, ItemKind, ToolKind};
@@ -59,6 +61,8 @@ pub enum Enchantment {
     SwiftSneak,
     /// v0.16 track D, save bit 41.
     WindBurst,
+    /// v1.0 Track 5, save bits 126–127: two bits, levels 0–3.
+    SoulSpeed,
 }
 
 /// The items an enchantment goes on: Java 26.3's `#minecraft:enchantable/*`
@@ -387,6 +391,7 @@ static DEFS: [Def; Enchantment::COUNT] = {
         def("lunge", 3, 5, (5, 8), (25, 8), 2, S::Lunge),
         treasure(def("swift sneak", 3, 1, (25, 25), (75, 25), 8, S::LegArmor)),
         treasure(def("wind burst", 3, 2, (15, 9), (65, 9), 4, S::Mace)),
+        treasure(def("soul speed", 3, 1, (10, 10), (25, 10), 8, S::FootArmor)),
     ]
 };
 
@@ -438,7 +443,8 @@ pub const NON_TREASURE: [Enchantment; 36] = {
 
 /// `#minecraft:on_random_loot` (and `#tradeable`, which has the same
 /// entries), in order: `#non_treasure`, then both curses, Frost Walker and
-/// Mending. Soul Speed, Swift Sneak and Wind Burst are outside it.
+/// Mending. Soul Speed, Swift Sneak and Wind Burst are outside it: Soul
+/// Speed comes only from piglin bartering and `bastion_other` chests.
 pub const ON_RANDOM_LOOT: [Enchantment; 40] = {
     let mut out = [Enchantment::Protection; 40];
     let mut i = 0;
@@ -454,8 +460,7 @@ pub const ON_RANDOM_LOOT: [Enchantment; 40] = {
 };
 
 /// `#minecraft:tooltip_order`: how a stack lists its enchantments (Java's
-/// `ItemEnchantments.addToTooltip`). Java's list also names Soul Speed,
-/// between Aqua Affinity and Swift Sneak.
+/// `ItemEnchantments.addToTooltip`).
 pub const TOOLTIP_ORDER: [Enchantment; Enchantment::COUNT] = {
     use Enchantment as E;
     [
@@ -494,6 +499,7 @@ pub const TOOLTIP_ORDER: [Enchantment; Enchantment::COUNT] = {
         E::Lure,
         E::Respiration,
         E::AquaAffinity,
+        E::SoulSpeed,
         E::SwiftSneak,
         E::DepthStrider,
         E::Thorns,
@@ -505,9 +511,9 @@ pub const TOOLTIP_ORDER: [Enchantment; Enchantment::COUNT] = {
 };
 
 impl Enchantment {
-    pub const COUNT: usize = 42;
-    /// Save bits in use.
-    pub const SAVE_SLOTS: u32 = 42;
+    pub const COUNT: usize = 43;
+    /// Enchantments with save bits (three each, the last two).
+    pub const SAVE_SLOTS: u32 = 43;
     pub const ALL: [Enchantment; Enchantment::COUNT] = {
         let mut all = [Enchantment::Protection; Enchantment::COUNT];
         let mut i = 0;
@@ -529,8 +535,8 @@ impl Enchantment {
     }
 
     /// Java's `#tradeable`, in its order: the same entries as
-    /// [`ON_RANDOM_LOOT`] (Swift Sneak and Wind Burst are outside it, as is
-    /// Soul Speed, which isn't registered).
+    /// [`ON_RANDOM_LOOT`] (Swift Sneak, Wind Burst and Soul Speed are
+    /// outside it).
     pub fn tradeable() -> &'static [Enchantment] {
         &ON_RANDOM_LOOT
     }
@@ -625,18 +631,30 @@ const LEVEL_MASK: u128 = (1 << BITS) - 1;
 impl Enchants {
     pub const NONE: Enchants = Enchants(0);
 
+    /// The mask of `e`'s level bits once shifted down: three bits, or two
+    /// for Soul Speed, which has the last two of the 128.
+    const fn mask(e: Enchantment) -> u128 {
+        if e as u32 * BITS + BITS > 128 { (1 << (128 - e as u32 * BITS)) - 1 } else { LEVEL_MASK }
+    }
+
+    /// The highest level a stack can hold of `e`: 7, or 3 for Soul Speed.
+    pub const fn max_stored(e: Enchantment) -> u8 {
+        Self::mask(e) as u8
+    }
+
     pub fn level(self, e: Enchantment) -> u8 {
-        ((self.0 >> (e as u32 * BITS)) & LEVEL_MASK) as u8
+        ((self.0 >> (e as u32 * BITS)) & Self::mask(e)) as u8
     }
 
     pub fn has(self, e: Enchantment) -> bool {
         self.level(e) > 0
     }
 
-    /// Sets a level (0 removes it; levels saturate at 7).
+    /// Sets a level (0 removes it; levels saturate at 7, Soul Speed's at 3).
     pub fn set(&mut self, e: Enchantment, level: u8) {
         let shift = e as u32 * BITS;
-        self.0 = (self.0 & !(LEVEL_MASK << shift)) | ((level.min(7) as u128) << shift);
+        let mask = Self::mask(e);
+        self.0 = (self.0 & !(mask << shift)) | ((level.min(mask as u8) as u128) << shift);
     }
 
     pub fn with(mut self, e: Enchantment, level: u8) -> Self {
@@ -662,8 +680,10 @@ impl Enchants {
         if text.is_empty() {
             return Some(Self::NONE);
         }
-        // Bits past the last known enchantment (a newer save) are dropped.
-        let known = (1u128 << (Enchantment::SAVE_SLOTS * BITS)) - 1;
+        // Bits past the last known enchantment (a newer save) are dropped;
+        // Soul Speed fills the last two, so every bit is known now.
+        let used = (Enchantment::SAVE_SLOTS * BITS).min(128);
+        let known = if used == 128 { u128::MAX } else { (1u128 << used) - 1 };
         u128::from_str_radix(text, 16).ok().map(|v| Enchants(v & known))
     }
 
@@ -1348,6 +1368,38 @@ mod tests {
         assert_eq!(Enchants::from_hex(""), Some(Enchants::NONE));
         assert_eq!(Enchants::from_hex("zz"), None);
         assert_eq!(Enchantment::ALL[26], Enchantment::VanishingCurse);
+    }
+
+    /// v1.0 Track 5: Soul Speed's two bits are the top of the `u128`, so
+    /// every other level keeps its bits and older saves (with those bits
+    /// clear) read as they did.
+    #[test]
+    fn soul_speed_has_the_last_two_save_bits() {
+        assert_eq!(Enchantment::ALL[42], Enchantment::SoulSpeed);
+        assert_eq!(Enchants::max_stored(Enchantment::SoulSpeed), 3);
+        assert_eq!(Enchants::max_stored(Enchantment::WindBurst), 7);
+        let all = Enchantment::ALL.into_iter().fold(Enchants::NONE, |a, e| a.with(e, 7));
+        assert_eq!(all.0, u128::MAX, "every bit is used");
+        for e in Enchantment::ALL {
+            assert_eq!(all.level(e), Enchants::max_stored(e), "{e:?}");
+        }
+        let soul = Enchants::NONE.with(Enchantment::SoulSpeed, 3);
+        assert_eq!(soul.0, 3 << 126);
+        assert_eq!(soul.iter().collect::<Vec<_>>(), [(Enchantment::SoulSpeed, 3)]);
+        assert_eq!(Enchants::from_hex(&soul.to_hex()), Some(soul));
+        let mixed = soul.with(Enchantment::WindBurst, 3).with(Enchantment::SoulSpeed, 2);
+        assert_eq!(mixed.level(Enchantment::WindBurst), 3);
+        assert_eq!(mixed.level(Enchantment::SoulSpeed), 2);
+        assert_eq!(mixed.with(Enchantment::SoulSpeed, 0), Enchants::NONE.with(Enchantment::WindBurst, 3));
+        // A v0.18 save's hex (Wind Burst III, Sharpness V) reads unchanged.
+        let old = Enchants::NONE.with(Enchantment::WindBurst, 3).with(Enchantment::Sharpness, 5);
+        assert_eq!(Enchants::from_hex(&format!("{:x}", old.0)), Some(old));
+        assert_eq!(Enchantment::from_name("soul_speed"), Some(Enchantment::SoulSpeed));
+        assert_eq!(Enchantment::SoulSpeed.describe(3), "Soul Speed III");
+        let d = Enchantment::SoulSpeed.def();
+        assert!(d.treasure && !d.curse && !Enchantment::SoulSpeed.on_random_loot());
+        assert!(Enchantment::SoulSpeed.compatible(Enchantment::FrostWalker));
+        assert!(Enchantment::SoulSpeed.compatible(Enchantment::DepthStrider));
     }
 
     #[test]

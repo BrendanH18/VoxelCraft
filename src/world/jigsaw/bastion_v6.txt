@@ -1,0 +1,478 @@
+# Bastion remnant template catalogue for generation 6 (v1.0 Track 8, GEN-05g, FE-02).
+#
+# Every `piece` line holds Java 26.3's facts about one template location that
+# Java's `bastion/*` pools name: size, chests and their loot tables, spawners,
+# gold blocks, gilded blackstone, lava, residents and jigsaw connectors with
+# the position each holds in Java's template (see src/world/jigsaw/catalogue.rs
+# for the syntax). The templates themselves are original:
+# src/world/bastion/catalogue.rs draws each one at its size around its
+# connectors. The pools below are Java's, element by element. Both are checked
+# against tests/fixtures/java/26.3/bastion_catalogue.json by the catalogue
+# tests.
+
+# Pieces: Java's facts per template location (see jigsaw/catalogue.rs).
+piece bastion/blocks/air block 1 1 1 dw!:block_connector/empty>empty@0,0,0
+piece bastion/blocks/gold block 1 1 1 dw!:block_connector/empty>empty@0,0,0
+piece bastion/bridge/bridge_pieces/bridge bridge 31 19 16 dw!:empty/leg_connector>bastion/bridge/legs@24,0,8 dw!:empty/leg_connector>bastion/bridge/legs@6,0,8 e:bridge_connector/empty>empty@30,13,4 gold_block=16 un:empty/mob_connector>bastion/mobs/piglin@26,3,6
+piece bastion/bridge/connectors/back_bridge_bottom bridge 8 8 19 w:back_bridge_connector_bottom/empty>empty@0,2,8
+piece bastion/bridge/connectors/back_bridge_top bridge 8 11 19 w:back_bridge_connector_top/empty>empty@0,0,3
+piece bastion/bridge/legs/leg_0 bridge 3 22 3 uw!:leg_connector/empty>empty@0,21,1
+piece bastion/bridge/legs/leg_1 bridge 3 22 3 uw!:leg_connector/empty>empty@0,21,1
+piece bastion/bridge/rampart_plates/plate_0 bridge 2 19 16 e:rampart_plate_connector/empty>empty@1,18,8
+piece bastion/bridge/ramparts/rampart_0 bridge 16 22 16 chest=1 dw!:ramparts/empty>empty@0,0,0 gilded_blackstone=1 loot=chest:chests/bastion_other ue:empty/mob_connector>bastion/mobs/piglin@13,4,6 ue:empty/mob_connector>bastion/mobs/piglin@14,2,9
+piece bastion/bridge/ramparts/rampart_1 bridge 16 32 16 chest=3 dw!:ramparts/empty>empty@0,0,0 gilded_blackstone=11 loot=chest:chests/bastion_other*3 ue:empty/mob_connector>bastion/mobs/piglin@13,3,6 ue:empty/mob_connector>bastion/mobs/piglin@3,18,5 ue:empty/mob_connector>bastion/mobs/piglin_melee@7,16,6 ue:empty/mob_connector>bastion/mobs/piglin_melee@8,16,11 ue:empty/mob_connector>bastion/mobs/piglin_melee@8,16,7 un:empty/mob_connector>bastion/mobs/piglin@9,16,9 w:empty/rampart_plate_connector>bastion/bridge/rampart_plates@0,31,8
+piece bastion/bridge/starting_pieces/entrance bridge 17 32 32 chest=1 dw!:entrance_base_connector/empty>empty@0,0,0 e:empty/back_bridge_connector_top>bastion/bridge/connectors@16,0,11 gilded_blackstone=5 gold_block=7 lava=519 loot=chest:chests/bastion_bridge ue:empty/mob_connector>bastion/mobs/piglin@10,7,27 ue:empty/mob_connector>bastion/mobs/piglin@12,8,28 ue:empty/mob_connector>bastion/mobs/piglin@2,7,28 ue:empty/mob_connector>bastion/mobs/piglin@4,7,28 ue:empty/mob_connector>bastion/mobs/piglin@7,19,16 ue:empty/mob_connector>bastion/mobs/piglin@9,18,6 un:empty/mob_connector>bastion/mobs/hoglin@14,2,17 un:empty/mob_connector>bastion/mobs/piglin@13,19,27 un:empty/mob_connector>bastion/mobs/piglin@7,1,19 us:empty/mob_connector>bastion/mobs/piglin@11,14,4 us:empty/mob_connector>bastion/mobs/piglin@15,2,14 us:empty/mob_connector>bastion/mobs/piglin@7,14,4 us:empty/mob_connector>bastion/mobs/piglin_melee@12,15,4 uw:empty/mob_connector>bastion/mobs/hoglin@5,1,14 uw:empty/mob_connector>bastion/mobs/piglin@10,1,15 uw:empty/mob_connector>bastion/mobs/piglin@12,1,15 uw:empty/mob_connector>bastion/mobs/piglin@8,1,16 w:empty/bridge_connector>bastion/bridge/bridge_pieces@0,2,11 w:empty/entrance_face>bastion/bridge/starting_pieces@0,8,0
+piece bastion/bridge/starting_pieces/entrance_base bridge 16 32 32 e:empty/back_bridge_connector_bottom>bastion/bridge/connectors@15,26,16 gold_block=2 lava=285 n:empty/wall_base_connector_right>bastion/bridge/walls@2,0,0 s:empty/wall_base_connector_left>bastion/bridge/walls@2,0,31 ue:empty/mob_connector>bastion/mobs/piglin@11,25,15 ue:empty/mob_connector>bastion/mobs/piglin@2,25,15 un:empty/mob_connector>bastion/mobs/piglin@4,24,16 us:empty/mob_connector>bastion/mobs/piglin@8,24,16 uw!:empty/entrance_base_connector>bastion/bridge/starting_pieces@0,31,0 uw:empty/mob_connector>bastion/mobs/piglin@2,24,19 uw:empty/mob_connector>bastion/mobs/piglin@5,24,18 uw:empty/mob_connector>bastion/mobs/piglin@6,25,16
+piece bastion/bridge/starting_pieces/entrance_face bridge 5 24 32 e:entrance_face/empty>empty@4,0,0
+piece bastion/bridge/walls/wall_base_0 bridge 16 24 16 gold_block=3 s:wall_base_connector_right/empty>empty@0,0,15 ue:empty/mob_connector>bastion/mobs/piglin@5,3,8 uw!:empty/ramparts>bastion/bridge/ramparts@0,23,0 uw:empty/mob_connector>bastion/mobs/piglin@5,1,12
+piece bastion/bridge/walls/wall_base_1 bridge 16 24 16 n:wall_base_connector_left/empty>empty@0,0,0 uw!:empty/ramparts>bastion/bridge/ramparts@0,23,0
+piece bastion/hoglin_stable/air_base start 30 24 48 n:empty/starting_stairs_connector>bastion/hoglin_stable/starting_pieces@0,0,24 w:empty/wall_base>bastion/hoglin_stable/wall_bases@0,0,25
+piece bastion/hoglin_stable/connectors/end_post_connector stable 2 2 22 n:post_connector/empty>empty@0,1,0 s:empty/end_post_connector>bastion/hoglin_stable/posts@0,1,21
+piece bastion/hoglin_stable/large_stables/inner_0 stable 14 6 8 n:inner_connector_left/outer_connector_right>bastion/hoglin_stable/small_stables/outer@0,0,0 s:inner_connector_right/outer_connector_left>bastion/hoglin_stable/small_stables/outer@0,0,7
+piece bastion/hoglin_stable/large_stables/inner_1 stable 14 6 8 n:inner_connector_left/outer_connector_right>bastion/hoglin_stable/small_stables/outer@0,0,0 s:inner_connector_right/outer_connector_left>bastion/hoglin_stable/small_stables/outer@0,0,7 us!:empty/mob_connector>bastion/mobs/hoglin@6,0,3
+piece bastion/hoglin_stable/large_stables/inner_2 stable 14 6 8 n:inner_connector_left/outer_connector_right>bastion/hoglin_stable/small_stables/outer@0,0,0 s:inner_connector_right/outer_connector_left>bastion/hoglin_stable/small_stables/outer@0,0,7 us!:empty/mob_connector>bastion/mobs/hoglin@6,0,4
+piece bastion/hoglin_stable/large_stables/inner_3 stable 14 6 8 chest=1 gilded_blackstone=7 lava=2 loot=chest:chests/bastion_hoglin_stable n:inner_connector_left/outer_connector_right>bastion/hoglin_stable/small_stables/outer@0,0,0 s:inner_connector_right/outer_connector_left>bastion/hoglin_stable/small_stables/outer@0,0,7 un!:empty/mob_connector>bastion/mobs/piglin@3,0,6 us!:empty/mob_connector>bastion/mobs/piglin@3,0,3
+piece bastion/hoglin_stable/large_stables/inner_4 stable 14 6 8 n:inner_connector_left/outer_connector_right>bastion/hoglin_stable/small_stables/outer@0,0,0 s:inner_connector_right/outer_connector_left>bastion/hoglin_stable/small_stables/outer@0,0,7 ue!:empty/mob_connector>bastion/mobs/hoglin@7,0,4
+piece bastion/hoglin_stable/large_stables/outer_0 stable 14 6 8 n:outer_connector_left/empty>empty@0,0,0 s:outer_connector_right/empty>empty@0,0,7 ue!:empty/mob_connector>bastion/mobs/piglin@7,0,2 un!:empty/mob_connector>bastion/mobs/piglin@4,0,4
+piece bastion/hoglin_stable/large_stables/outer_1 stable 14 6 8 n:outer_connector_left/empty>empty@0,0,0 s:outer_connector_right/empty>empty@0,0,7 ue!:empty/mob_connector>bastion/mobs/hoglin@7,0,4 uw!:empty/block_connector>bastion/blocks/gold@8,0,1
+piece bastion/hoglin_stable/large_stables/outer_2 stable 14 6 8 n:outer_connector_left/empty>empty@0,0,0 s:outer_connector_right/empty>empty@0,0,7 ue!:empty/mob_connector>bastion/mobs/piglin@6,0,3 us!:empty/mob_connector>bastion/mobs/piglin@5,0,2
+piece bastion/hoglin_stable/large_stables/outer_3 stable 14 6 8 lava=16 n:outer_connector_left/empty>empty@0,0,0 s:outer_connector_right/empty>empty@0,0,7
+piece bastion/hoglin_stable/large_stables/outer_4 stable 14 6 8 n:outer_connector_left/empty>empty@0,0,0 s:outer_connector_right/empty>empty@0,0,7
+piece bastion/hoglin_stable/posts/end_post stable 2 24 2 n:end_post_connector/empty>empty@0,23,0
+piece bastion/hoglin_stable/posts/stair_post stable 2 24 10 s:empty/post_connector>bastion/hoglin_stable/connectors@0,23,9 s:empty/stairs_mirrored>bastion/hoglin_stable/mirrored_starting_pieces@1,0,9 s:stair_post/empty>empty@0,0,9
+piece bastion/hoglin_stable/rampart_plates/rampart_plate_1 stable 2 19 16 e:rampart_plate/empty>empty@1,18,8
+piece bastion/hoglin_stable/ramparts/ramparts_1 stable 16 32 16 chest=3 dw!:rampart/empty>empty@0,0,15 gilded_blackstone=9 gold_block=4 loot=chest:chests/bastion_other*3 ue:empty/mob_connector>bastion/mobs/piglin@10,16,7 ue:empty/mob_connector>bastion/mobs/piglin@7,16,9 ue:empty/mob_connector>bastion/mobs/piglin_melee@9,16,11 un:empty/mob_connector>bastion/mobs/piglin@3,10,11 un:empty/mob_connector>bastion/mobs/piglin@3,10,12 un:empty/mob_connector>bastion/mobs/piglin_melee@4,18,11 uw:empty/mob_connector>bastion/mobs/piglin@10,3,6 uw:empty/mob_connector>bastion/mobs/piglin@7,5,3 w:empty/rampart_plate>bastion/hoglin_stable/rampart_plates@0,31,8
+piece bastion/hoglin_stable/ramparts/ramparts_2 stable 16 21 16 chest=2 dw!:rampart/empty>empty@0,0,15 gilded_blackstone=7 loot=chest:chests/bastion_other*2 ue:empty/mob_connector>bastion/mobs/piglin@7,2,13 ue:empty/mob_connector>bastion/mobs/piglin_melee@9,2,11 un:empty/mob_connector>bastion/mobs/piglin@11,2,12
+piece bastion/hoglin_stable/ramparts/ramparts_3 stable 16 12 16 chest=1 dw!:rampart/empty>empty@0,0,15 gilded_blackstone=4 loot=chest:chests/bastion_other uw:empty/mob_connector>bastion/mobs/piglin@10,2,7 uw:empty/mob_connector>bastion/mobs/piglin_melee@7,2,7
+piece bastion/hoglin_stable/small_stables/inner_0 stable 12 6 8 n:inner_connector_left/outer_connector_right>bastion/hoglin_stable/large_stables/outer@0,0,0 s:inner_connector_right/outer_connector_left>bastion/hoglin_stable/large_stables/outer@0,0,7 us!:empty/mob_connector>bastion/mobs/hoglin@5,0,3
+piece bastion/hoglin_stable/small_stables/inner_1 stable 12 6 8 n:inner_connector_left/outer_connector_right>bastion/hoglin_stable/large_stables/outer@0,0,0 s:inner_connector_right/outer_connector_left>bastion/hoglin_stable/large_stables/outer@0,0,7 un!:empty/block_connector>bastion/blocks/gold@8,0,6 us:empty/mob_connector>bastion/mobs/hoglin@5,0,3
+piece bastion/hoglin_stable/small_stables/inner_2 stable 12 6 8 chest=1 gilded_blackstone=1 loot=chest:chests/bastion_hoglin_stable n:inner_connector_left/outer_connector_right>bastion/hoglin_stable/large_stables/outer@0,0,0 s:inner_connector_right/outer_connector_left>bastion/hoglin_stable/large_stables/outer@0,0,7 ue!:empty/mob_connector>bastion/mobs/piglin@4,0,2 uw!:empty/mob_connector>bastion/mobs/piglin_melee@6,0,4 uw:empty/mob_connector>bastion/mobs/hoglin@7,0,2
+piece bastion/hoglin_stable/small_stables/inner_3 stable 12 6 8 n:inner_connector_left/outer_connector_right>bastion/hoglin_stable/large_stables/outer@0,0,0 s:inner_connector_right/outer_connector_left>bastion/hoglin_stable/large_stables/outer@0,0,7 ue!:empty/mob_connector>bastion/mobs/piglin@5,0,5
+piece bastion/hoglin_stable/small_stables/outer_0 stable 12 6 8 n:outer_connector_left/empty>empty@0,0,0 s:outer_connector_right/empty>empty@0,0,7 un!:empty/mob_connector>bastion/mobs/piglin@6,0,3 us!:empty/mob_connector>bastion/mobs/piglin@7,0,1
+piece bastion/hoglin_stable/small_stables/outer_1 stable 12 6 8 n:outer_connector_left/empty>empty@0,0,0 s:outer_connector_right/empty>empty@0,0,7 us!:empty/block_connector>bastion/blocks/gold@2,0,1 us!:empty/mob_connector>bastion/mobs/hoglin@7,0,4
+piece bastion/hoglin_stable/small_stables/outer_2 stable 12 6 8 n:outer_connector_left/empty>empty@0,0,0 s:outer_connector_right/empty>empty@0,0,7 us!:empty/mob_connector>bastion/mobs/hoglin@6,0,2
+piece bastion/hoglin_stable/small_stables/outer_3 stable 12 6 8 n:outer_connector_left/empty>empty@0,0,0 s:outer_connector_right/empty>empty@0,0,7 us!:empty/mob_connector>bastion/mobs/hoglin@4,0,6
+piece bastion/hoglin_stable/stairs/stairs_1_0 stable 14 6 16 dw!:stair_1_bottom/starting_stairs>bastion/hoglin_stable/stairs@0,0,9 n:stable_stairs/inner_connector_right>bastion/hoglin_stable/large_stables/inner@0,0,0 s:stable_stairs/inner_connector_left>bastion/hoglin_stable/small_stables/inner@0,0,15 uw!:stair_1_top/stair_2_bottom>bastion/hoglin_stable/stairs@0,5,9
+piece bastion/hoglin_stable/stairs/stairs_1_1 stable 14 6 16 dw!:stair_1_bottom/starting_stairs>bastion/hoglin_stable/stairs@0,0,9 n:stable_stairs/inner_connector_right>bastion/hoglin_stable/large_stables/inner@0,0,0 s:stable_stairs/inner_connector_left>bastion/hoglin_stable/small_stables/inner@0,0,15 uw!:stair_1_top/stair_2_bottom>bastion/hoglin_stable/stairs@0,5,9
+piece bastion/hoglin_stable/stairs/stairs_1_2 stable 14 6 16 dw!:stair_1_bottom/starting_stairs>bastion/hoglin_stable/stairs@0,0,9 n:stable_stairs/inner_connector_right>bastion/hoglin_stable/large_stables/inner@0,0,0 s:stable_stairs/inner_connector_left>bastion/hoglin_stable/small_stables/inner@0,0,15 uw!:stair_1_top/stair_2_bottom>bastion/hoglin_stable/stairs@0,5,9
+piece bastion/hoglin_stable/stairs/stairs_1_3 stable 14 6 16 dw!:stair_1_bottom/starting_stairs>bastion/hoglin_stable/stairs@0,0,9 n:stable_stairs/inner_connector_right>bastion/hoglin_stable/large_stables/inner@0,0,0 s:stable_stairs/inner_connector_left>bastion/hoglin_stable/small_stables/inner@0,0,15 uw!:stair_1_top/stair_2_bottom>bastion/hoglin_stable/stairs@0,5,9
+piece bastion/hoglin_stable/stairs/stairs_1_4 stable 14 6 16 dw!:stair_1_bottom/starting_stairs>bastion/hoglin_stable/stairs@0,0,9 n:stable_stairs/inner_connector_right>bastion/hoglin_stable/large_stables/inner@0,0,0 s:stable_stairs/inner_connector_left>bastion/hoglin_stable/small_stables/inner@0,0,15 uw!:stair_1_top/stair_2_bottom>bastion/hoglin_stable/stairs@0,5,9
+piece bastion/hoglin_stable/stairs/stairs_2_0 stable 14 6 16 dw!:stair_2_bottom/stair_1_top>bastion/hoglin_stable/stairs@0,0,9 n:stable_stairs/inner_connector_right>bastion/hoglin_stable/small_stables/inner@0,0,0 s:stable_stairs/inner_connector_left>bastion/hoglin_stable/large_stables/inner@0,0,15 uw!:stair_2_top/stair_3_bottom>bastion/hoglin_stable/stairs@0,5,9
+piece bastion/hoglin_stable/stairs/stairs_2_1 stable 14 6 16 dw!:stair_2_bottom/stair_1_top>bastion/hoglin_stable/stairs@0,0,9 n:stable_stairs/inner_connector_right>bastion/hoglin_stable/small_stables/inner@0,0,0 s:stable_stairs/inner_connector_left>bastion/hoglin_stable/large_stables/inner@0,0,15 uw!:stair_2_top/stair_3_bottom>bastion/hoglin_stable/stairs@0,5,9
+piece bastion/hoglin_stable/stairs/stairs_2_2 stable 14 6 16 dw!:stair_2_bottom/stair_1_top>bastion/hoglin_stable/stairs@0,0,9 n:stable_stairs/inner_connector_right>bastion/hoglin_stable/small_stables/inner@0,0,0 s:stable_stairs/inner_connector_left>bastion/hoglin_stable/large_stables/inner@0,0,15 uw!:stair_2_top/stair_3_bottom>bastion/hoglin_stable/stairs@0,5,9
+piece bastion/hoglin_stable/stairs/stairs_2_3 stable 14 6 16 dw!:stair_2_bottom/stair_1_top>bastion/hoglin_stable/stairs@0,0,9 n:stable_stairs/inner_connector_right>bastion/hoglin_stable/small_stables/inner@0,0,0 s:stable_stairs/inner_connector_left>bastion/hoglin_stable/large_stables/inner@0,0,15 uw!:stair_2_top/stair_3_bottom>bastion/hoglin_stable/stairs@0,5,9
+piece bastion/hoglin_stable/stairs/stairs_2_4 stable 14 6 16 dw!:stair_2_bottom/stair_1_top>bastion/hoglin_stable/stairs@0,0,9 n:stable_stairs/inner_connector_right>bastion/hoglin_stable/small_stables/inner@0,0,0 s:stable_stairs/inner_connector_left>bastion/hoglin_stable/large_stables/inner@0,0,15 uw!:stair_2_top/stair_3_bottom>bastion/hoglin_stable/stairs@0,5,9
+piece bastion/hoglin_stable/stairs/stairs_3_0 stable 14 6 16 dw!:stair_3_bottom/stair_2_top>bastion/hoglin_stable/stairs@0,0,9 n:empty/inner_connector_right>bastion/hoglin_stable/large_stables/inner@0,0,0 s:empty/inner_connector_left>bastion/hoglin_stable/small_stables/inner@0,0,15
+piece bastion/hoglin_stable/stairs/stairs_3_1 stable 14 6 16 dw!:stair_3_bottom/stair_2_top>bastion/hoglin_stable/stairs@0,0,9 n:empty/inner_connector_right>bastion/hoglin_stable/large_stables/inner@0,0,0 s:empty/inner_connector_left>bastion/hoglin_stable/small_stables/inner@0,0,15
+piece bastion/hoglin_stable/stairs/stairs_3_2 stable 14 6 16 dw!:stair_3_bottom/stair_2_top>bastion/hoglin_stable/stairs@0,0,9 n:empty/inner_connector_right>bastion/hoglin_stable/large_stables/inner@0,0,0 s:empty/inner_connector_left>bastion/hoglin_stable/small_stables/inner@0,0,15
+piece bastion/hoglin_stable/stairs/stairs_3_3 stable 14 6 16 dw!:stair_3_bottom/stair_2_top>bastion/hoglin_stable/stairs@0,0,9 n:empty/inner_connector_right>bastion/hoglin_stable/large_stables/inner@0,0,0 s:empty/inner_connector_left>bastion/hoglin_stable/small_stables/inner@0,0,15
+piece bastion/hoglin_stable/stairs/stairs_3_4 stable 14 6 16 dw!:stair_3_bottom/stair_2_top>bastion/hoglin_stable/stairs@0,0,9 n:empty/inner_connector_right>bastion/hoglin_stable/large_stables/inner@0,0,0 s:empty/inner_connector_left>bastion/hoglin_stable/small_stables/inner@0,0,15
+piece bastion/hoglin_stable/starting_pieces/stairs_0_mirrored stable 15 6 16 n:stable_stairs/inner_connector_left>bastion/hoglin_stable/large_stables/inner@14,0,0 n:stairs_mirrored/empty>empty@0,0,0 s:stable_stairs/inner_connector_right>bastion/hoglin_stable/small_stables/inner@14,0,15 ue!:starting_stairs/stair_1_bottom>bastion/hoglin_stable/stairs@14,5,6
+piece bastion/hoglin_stable/starting_pieces/stairs_1_mirrored stable 15 6 16 n:stable_stairs/inner_connector_right>bastion/hoglin_stable/small_stables/inner@0,0,0 s:stable_stairs/inner_connector_left>bastion/hoglin_stable/large_stables/inner@0,0,15 s:stairs_mirrored/empty>empty@14,0,15 uw!:starting_stairs/stair_1_bottom>bastion/hoglin_stable/stairs@0,5,9
+piece bastion/hoglin_stable/starting_pieces/stairs_2_mirrored stable 15 6 16 n:stable_stairs/inner_connector_left>bastion/hoglin_stable/large_stables/inner@14,0,0 n:stairs_mirrored/empty>empty@0,0,0 s:stable_stairs/inner_connector_right>bastion/hoglin_stable/small_stables/inner@14,0,15 ue!:starting_stairs/stair_1_bottom>bastion/hoglin_stable/stairs@14,5,6
+piece bastion/hoglin_stable/starting_pieces/stairs_3_mirrored stable 15 6 16 n:stable_stairs/inner_connector_left>bastion/hoglin_stable/large_stables/inner@14,0,0 n:stairs_mirrored/empty>empty@0,0,0 s:stable_stairs/inner_connector_right>bastion/hoglin_stable/small_stables/inner@14,0,15 ue!:starting_stairs/stair_1_bottom>bastion/hoglin_stable/stairs@14,5,6
+piece bastion/hoglin_stable/starting_pieces/stairs_4_mirrored stable 15 6 16 n:stable_stairs/inner_connector_left>bastion/hoglin_stable/large_stables/inner@14,0,0 n:stairs_mirrored/empty>empty@0,0,0 s:stable_stairs/inner_connector_right>bastion/hoglin_stable/small_stables/inner@14,0,15 ue!:starting_stairs/stair_1_bottom>bastion/hoglin_stable/stairs@14,5,6
+piece bastion/hoglin_stable/starting_pieces/starting_stairs_0 stable 15 6 16 n:stable_stairs/inner_connector_right>bastion/hoglin_stable/small_stables/inner@0,0,0 n:starting_stairs/stair_post>bastion/hoglin_stable/posts@14,0,0 s:stable_stairs/inner_connector_left>bastion/hoglin_stable/large_stables/inner@0,0,15 s:starting_stairs_connector/empty>empty@0,0,7 uw!:starting_stairs/stair_1_bottom>bastion/hoglin_stable/stairs@0,5,9
+piece bastion/hoglin_stable/starting_pieces/starting_stairs_1 stable 15 6 16 n:stable_stairs/inner_connector_right>bastion/hoglin_stable/small_stables/inner@0,0,0 n:starting_stairs/stair_post>bastion/hoglin_stable/posts@14,0,0 s:stable_stairs/inner_connector_left>bastion/hoglin_stable/large_stables/inner@0,0,15 s:starting_stairs_connector/empty>empty@0,0,7 uw!:starting_stairs/stair_1_bottom>bastion/hoglin_stable/stairs@0,5,9
+piece bastion/hoglin_stable/starting_pieces/starting_stairs_2 stable 15 6 16 n:empty/stair_post>bastion/hoglin_stable/posts@14,0,0 n:stable_stairs/inner_connector_right>bastion/hoglin_stable/small_stables/inner@0,0,0 s:stable_stairs/inner_connector_left>bastion/hoglin_stable/large_stables/inner@0,0,15 s:starting_stairs_connector/empty>empty@0,0,7 uw!:starting_stairs/stair_1_bottom>bastion/hoglin_stable/stairs@0,5,9
+piece bastion/hoglin_stable/starting_pieces/starting_stairs_3 stable 15 6 16 n:stable_stairs/inner_connector_right>bastion/hoglin_stable/small_stables/inner@0,0,0 n:starting_stairs/stair_post>bastion/hoglin_stable/posts@14,0,0 s:stable_stairs/inner_connector_left>bastion/hoglin_stable/large_stables/inner@0,0,15 s:starting_stairs_connector/empty>empty@0,0,7 uw!:starting_stairs/stair_1_bottom>bastion/hoglin_stable/stairs@0,5,9
+piece bastion/hoglin_stable/starting_pieces/starting_stairs_4 stable 15 6 16 n:stable_stairs/inner_connector_right>bastion/hoglin_stable/small_stables/inner@0,0,0 n:starting_stairs/stair_post>bastion/hoglin_stable/posts@14,0,0 s:stable_stairs/inner_connector_left>bastion/hoglin_stable/large_stables/inner@0,0,15 s:starting_stairs_connector/empty>empty@0,0,7 uw!:starting_stairs/stair_1_bottom>bastion/hoglin_stable/stairs@0,5,9
+piece bastion/hoglin_stable/walls/side_wall_0 stable 16 24 16 chest=1 e:side_wall/empty>empty@15,0,15 gilded_blackstone=3 loot=chest:chests/bastion_other ue:empty/mob_connector>bastion/mobs/piglin@11,1,8 un!:empty/rampart>bastion/hoglin_stable/ramparts@0,23,0 us:empty/mob_connector>bastion/mobs/piglin@7,5,11 uw:empty/mob_connector>bastion/mobs/piglin@8,5,7 w:side_wall/empty>empty@0,0,15
+piece bastion/hoglin_stable/walls/side_wall_1 stable 16 24 16 e:side_wall/empty>empty@15,0,15 gold_block=12 un!:empty/rampart>bastion/hoglin_stable/ramparts@0,23,0 un:empty/mob_connector>bastion/mobs/piglin@7,4,8 us:empty/mob_connector>bastion/mobs/piglin@12,1,7 us:empty/mob_connector>bastion/mobs/piglin@7,11,4 uw:empty/mob_connector>bastion/mobs/piglin@8,11,5 uw:empty/mob_connector>bastion/mobs/piglin@8,11,6 w:side_wall/empty>empty@0,0,15
+piece bastion/hoglin_stable/walls/wall_base stable 16 24 16 chest=1 e:wall_base/empty>empty@15,1,9 gilded_blackstone=3 loot=chest:chests/bastion_other n:empty/side_wall>bastion/hoglin_stable/walls@13,0,0 s:empty/side_wall>bastion/hoglin_stable/walls@13,0,15 ue!:empty/mob_connector>bastion/mobs/piglin_melee@14,3,13 uw!:empty/rampart>bastion/hoglin_stable/ramparts@0,23,15
+piece bastion/mobs/crossbow_piglin mob 1 3 1 de:mob_connector/empty>empty@0,0,0 mob=piglin:persistent
+piece bastion/mobs/empty mob 1 1 1 dn:mob_connector/empty>empty@0,0,0
+piece bastion/mobs/hoglin mob 2 3 2 dn:mob_connector/empty>empty@0,0,1 mob=hoglin:persistent
+piece bastion/mobs/melee_piglin mob 1 3 1 dw:mob_connector/empty>empty@0,0,0 mob=piglin_brute:persistent
+piece bastion/mobs/melee_piglin_always mob 1 3 1 dw:melee_connector/empty>empty@0,0,0 mob=piglin_brute:persistent
+piece bastion/mobs/sword_piglin mob 1 3 1 dw:mob_connector/empty>empty@0,0,0 mob=piglin:persistent
+piece bastion/treasure/bases/centers/center_0 treasure 7 6 8 chest=1 e:treasure/empty>empty@6,2,2 gilded_blackstone=1 gold_block=19 loot=chest:chests/bastion_treasure un:empty/melee_connector>bastion/mobs/piglin_melee@1,2,5
+piece bastion/treasure/bases/centers/center_1 treasure 7 6 8 chest=2 e:treasure/empty>empty@6,2,2 gilded_blackstone=2 gold_block=12 loot=chest:chests/bastion_treasure*2 ue:empty/melee_connector>bastion/mobs/piglin_melee@5,2,3 un:empty/melee_connector>bastion/mobs/piglin_melee@5,2,4
+piece bastion/treasure/bases/centers/center_2 treasure 7 6 8 chest=1 e:treasure/empty>empty@6,2,2 gilded_blackstone=1 gold_block=16 loot=chest:chests/bastion_treasure ue:empty/melee_connector>bastion/mobs/piglin_melee@1,1,1 uw:empty/mob_connector>bastion/mobs/piglin@4,1,6
+piece bastion/treasure/bases/centers/center_3 treasure 7 6 8 chest=1 e:treasure/empty>empty@6,2,2 gilded_blackstone=1 gold_block=13 loot=chest:chests/bastion_treasure un:empty/melee_connector>bastion/mobs/piglin_melee@1,1,6
+piece bastion/treasure/bases/lava_basin treasure 24 11 24 e:empty/center_connector>bastion/treasure/walls/bottom@23,3,10 lava=956 n:empty/center_connector>bastion/treasure/walls/bottom@10,3,0 s:center_piece/empty>empty@23,0,0 s:empty/center_connector>bastion/treasure/walls/bottom@13,3,23 spawner=1 spawner_mob=magma_cube un!:empty/center_brain>bastion/treasure/brains@11,10,11 un:empty/melee_connector>bastion/mobs/piglin_melee@12,10,8 un:empty/mob_connector>bastion/mobs/piglin_melee@12,10,20 uw!:empty/lower_stairs>bastion/treasure/stairs@11,10,4 w:empty/center_connector>bastion/treasure/walls/bottom@0,3,13 w:empty/treasure>bastion/treasure/bases/centers@15,3,10
+piece bastion/treasure/big_air_full start 38 48 38 n:empty/center_piece>bastion/treasure/bases@30,0,8 n:empty/entrance_bridge_connector>bastion/treasure/entrances@20,35,0
+piece bastion/treasure/brains/center_brain treasure 2 35 2 dn!:center_brain/empty>empty@0,0,0 e:empty/mid_connector>bastion/treasure/connectors@1,5,1 e:empty/top_connector>bastion/treasure/connectors@1,20,1 n:empty/mid_connector>bastion/treasure/connectors@1,5,0 n:empty/top_connector_entrance>bastion/treasure/connectors@1,20,0 s:empty/mid_connector>bastion/treasure/connectors@0,5,1 s:empty/top_connector>bastion/treasure/connectors@0,20,1 un!:empty/center_roof_connector>bastion/treasure/roofs@1,34,0 w:empty/mid_connector>bastion/treasure/connectors@0,5,0 w:empty/top_connector>bastion/treasure/connectors@0,20,0
+piece bastion/treasure/connectors/center_to_wall_middle treasure 11 1 1 e:mid_connector/empty>empty@10,0,0 w:empty/center_connector>bastion/treasure/walls/mid@0,0,0
+piece bastion/treasure/connectors/center_to_wall_top treasure 11 1 1 e:top_connector/empty>empty@10,0,0 w:empty/center_connector>bastion/treasure/walls/top@0,0,0
+piece bastion/treasure/connectors/center_to_wall_top_entrance treasure 11 1 1 e:top_connector_entrance/empty>empty@10,0,0 w:empty/entrance_connector>bastion/treasure/walls/top@0,0,0
+piece bastion/treasure/corners/bottom/corner_0 treasure 5 16 5 e:empty/bottom_corner_wall_connector>bastion/treasure/walls/outer@4,0,2 n:empty/bottom_corner_wall_connector>bastion/treasure/walls/outer@2,0,0 s:corner_connector/empty>empty@1,4,4 w:corner_connector/empty>empty@0,4,3
+piece bastion/treasure/corners/bottom/corner_1 treasure 5 16 5 e:corner_connector/empty>empty@4,4,3 n:empty/bottom_corner_wall_connector>bastion/treasure/walls/outer@2,0,0 s:corner_connector/empty>empty@3,4,4 w:empty/bottom_corner_wall_connector>bastion/treasure/walls/outer@0,0,2
+piece bastion/treasure/corners/edges/bottom treasure 2 16 2 n:bottom_edge_connector/empty>empty@0,0,0
+piece bastion/treasure/corners/edges/middle treasure 2 15 2 n:middle_edge_connector/empty>empty@0,0,0
+piece bastion/treasure/corners/edges/top treasure 2 17 2 n:top_edge_connector/empty>empty@0,0,0
+piece bastion/treasure/corners/middle/corner_0 treasure 5 15 5 e:corner_connector/empty>empty@4,0,1 n:corner_connector/empty>empty@3,0,0 s:empty/middle_corner_wall_connector>bastion/treasure/walls/outer@2,0,4 w:empty/middle_corner_wall_connector>bastion/treasure/walls/outer@0,0,2
+piece bastion/treasure/corners/middle/corner_1 treasure 5 15 5 e:corner_connector/empty>empty@4,0,1 n:corner_connector/empty>empty@3,0,0 s:empty/middle_corner_wall_connector>bastion/treasure/walls/outer@2,0,4 w:empty/middle_corner_wall_connector>bastion/treasure/walls/outer@0,0,2
+piece bastion/treasure/corners/top/corner_0 treasure 5 15 5 e:corner_connector/empty>empty@4,0,3 n:empty/top_corner_wall_connector>bastion/treasure/walls/outer@2,0,0 s:corner_connector/empty>empty@3,0,4 un:empty/corner_roof_connector>bastion/treasure/roofs@2,14,2 w:empty/top_corner_wall_connector>bastion/treasure/walls/outer@0,0,2
+piece bastion/treasure/corners/top/corner_1 treasure 5 15 5 e:corner_connector/empty>empty@4,0,3 n:empty/top_corner_wall_connector>bastion/treasure/walls/outer@2,0,0 s:corner_connector/empty>empty@3,0,4 un:empty/corner_roof_connector>bastion/treasure/roofs@2,14,2 w:empty/top_corner_wall_connector>bastion/treasure/walls/outer@0,0,2
+piece bastion/treasure/entrances/entrance_0 treasure 19 18 20 e:entrance_bridge_connector/empty>empty@18,2,5 gold_block=2 uw:empty/mob_connector>bastion/mobs/piglin@3,2,7 w:empty/bridge_wall_connector>bastion/treasure/ramparts@0,2,5
+piece bastion/treasure/extensions/empty treasure 1 1 1 n:extension_connector/empty>empty@0,0,0
+piece bastion/treasure/extensions/fire_room treasure 10 10 10 w:extension_connector/empty>empty@0,1,5
+piece bastion/treasure/extensions/house_0 treasure 5 12 10 w:house_connector/empty>empty@0,0,1
+piece bastion/treasure/extensions/house_1 treasure 5 12 10 w:house_connector/empty>empty@0,0,1
+piece bastion/treasure/extensions/large_bridge_0 treasure 4 2 7 n:extension_connector/empty>empty@3,1,0
+piece bastion/treasure/extensions/large_bridge_1 treasure 4 2 5 n:extension_connector/empty>empty@3,1,0
+piece bastion/treasure/extensions/large_bridge_2 treasure 4 2 11 lava=1 n:extension_connector/empty>empty@3,1,0
+piece bastion/treasure/extensions/large_bridge_3 treasure 4 2 16 n:extension_connector/empty>empty@3,1,0
+piece bastion/treasure/extensions/roofed_bridge treasure 10 6 4 w:extension_connector/empty>empty@0,5,0
+piece bastion/treasure/extensions/small_bridge_0 treasure 3 2 4 n:extension_connector/empty>empty@2,1,0
+piece bastion/treasure/extensions/small_bridge_1 treasure 3 2 7 n:extension_connector/empty>empty@2,1,0
+piece bastion/treasure/extensions/small_bridge_2 treasure 3 2 5 n:extension_connector/empty>empty@2,1,0
+piece bastion/treasure/extensions/small_bridge_3 treasure 3 2 16 n:extension_connector/empty>empty@2,1,0
+piece bastion/treasure/ramparts/bottom_wall_0 treasure 16 24 14 lava=24 un!:ramparts_bottom_connector/empty>empty@6,23,0
+piece bastion/treasure/ramparts/lava_basin_main treasure 19 36 14 e:empty/lava_wall>bastion/treasure/walls@18,29,13 lava=360 w:lava_basin_connector_side/empty>empty@0,29,0
+piece bastion/treasure/ramparts/lava_basin_side treasure 19 36 14 e:empty/lava_wall>bastion/treasure/walls@18,29,13 lava=357 w:lava_basin_connector_main/empty>empty@0,29,0
+piece bastion/treasure/ramparts/mid_wall_main treasure 17 32 14 chest=2 dn!:empty/ramparts_bottom_connector>bastion/treasure/ramparts@7,0,0 e:bridge_wall_connector/empty>empty@16,14,5 e:empty/lava_basin_connector_main>bastion/treasure/ramparts@16,5,0 gilded_blackstone=6 gold_block=1 loot=chest:chests/bastion_other*2 s:empty/rampart_mid_side_wall_connector>bastion/treasure/ramparts@14,0,13 ue:empty/melee_connector>bastion/mobs/piglin_melee@12,28,6 un!:empty/ramparts_top_connector>bastion/treasure/ramparts@7,31,0 un:empty/mob_connector>bastion/mobs/piglin@13,0,5 un:empty/mob_connector>bastion/mobs/piglin_melee@12,28,8 us:empty/mob_connector>bastion/mobs/piglin_melee@11,28,4
+piece bastion/treasure/ramparts/mid_wall_side treasure 17 31 14 chest=2 dn!:empty/ramparts_bottom_connector>bastion/treasure/ramparts@7,0,0 e:empty/lava_basin_connector_side>bastion/treasure/ramparts@16,5,0 gilded_blackstone=5 gold_block=1 loot=chest:chests/bastion_other*2 n:rampart_mid_side_wall_connector/empty>empty@16,0,0 un!:empty/ramparts_top_connector>bastion/treasure/ramparts@7,30,0 un:empty/mob_connector>bastion/mobs/piglin_melee@11,27,5 un:empty/mob_connector>bastion/mobs/piglin_melee@11,27,9 us:empty/mob_connector>bastion/mobs/piglin@12,0,3 us:empty/mob_connector>bastion/mobs/piglin@15,8,7 uw:empty/mob_connector>bastion/mobs/piglin_melee@13,27,7
+piece bastion/treasure/ramparts/top_wall treasure 17 18 14 dn!:ramparts_top_connector/empty>empty@7,0,0 gold_block=6
+piece bastion/treasure/roofs/center_roof treasure 24 2 24 dw!:center_roof_connector/empty>empty@11,0,11
+piece bastion/treasure/roofs/corner_roof treasure 5 2 5 ds:corner_roof_connector/empty>empty@2,0,2
+piece bastion/treasure/roofs/wall_roof treasure 5 2 24 dn!:wall_roof_connector/empty>empty@0,0,0
+piece bastion/treasure/stairs/lower_stairs treasure 2 5 5 dw!:lower_stairs/empty>empty@0,0,4
+piece bastion/treasure/walls/bottom/wall_0 treasure 5 16 24 chest=1 e:center_connector/empty>empty@4,3,13 e:empty/extension_connector>bastion/treasure/extensions/large_pool@4,15,19 e:empty/extension_connector>bastion/treasure/extensions/large_pool@4,15,2 gilded_blackstone=4 lava=1 loot=chest:chests/bastion_other n:empty/corner_connector>bastion/treasure/corners/bottom@3,4,0 s:empty/corner_connector>bastion/treasure/corners/bottom@3,4,23 un:empty/mob_connector>bastion/mobs/piglin@2,5,22 us:empty/melee_connector>bastion/mobs/piglin_melee@2,5,3 w:empty/medium_outer_wall_connector>bastion/treasure/walls/outer@0,0,23
+piece bastion/treasure/walls/bottom/wall_1 treasure 5 16 24 e:center_connector/empty>empty@4,3,13 e:empty/extension_connector>bastion/treasure/extensions/large_pool@4,11,16 e:empty/extension_connector>bastion/treasure/extensions/large_pool@4,11,5 e:empty/extension_connector>bastion/treasure/extensions/large_pool@4,15,19 e:empty/extension_connector>bastion/treasure/extensions/large_pool@4,15,6 n:empty/corner_connector>bastion/treasure/corners/bottom@3,4,0 s:empty/corner_connector>bastion/treasure/corners/bottom@3,4,23 uw:empty/mob_connector>bastion/mobs/piglin@1,5,3 uw:empty/mob_connector>bastion/mobs/piglin@1,5,5 w:empty/medium_outer_wall_connector>bastion/treasure/walls/outer@0,0,23
+piece bastion/treasure/walls/bottom/wall_2 treasure 5 16 24 e:center_connector/empty>empty@4,3,13 n:empty/corner_connector>bastion/treasure/corners/bottom@3,4,0 s:empty/corner_connector>bastion/treasure/corners/bottom@3,4,23 un:empty/mob_connector>bastion/mobs/piglin@1,5,6 uw:empty/mob_connector>bastion/mobs/piglin@1,5,20 uw:empty/mob_connector>bastion/mobs/piglin@2,5,15 w:empty/medium_outer_wall_connector>bastion/treasure/walls/outer@0,0,23
+piece bastion/treasure/walls/bottom/wall_3 treasure 5 16 24 e:center_connector/empty>empty@4,3,13 lava=1 n:empty/corner_connector>bastion/treasure/corners/bottom@3,4,0 s:empty/corner_connector>bastion/treasure/corners/bottom@3,4,23 un:empty/mob_connector>bastion/mobs/piglin@2,5,20 un:empty/mob_connector>bastion/mobs/piglin@2,5,4 w:empty/medium_outer_wall_connector>bastion/treasure/walls/outer@0,0,23
+piece bastion/treasure/walls/entrance_wall treasure 2 17 24 e:entrance_wall_connector/empty>empty@1,0,23 w:empty/entrance_bridge_connector>bastion/treasure/entrances@0,4,10
+piece bastion/treasure/walls/lava_wall treasure 2 36 14 w:lava_wall/empty>empty@0,29,13
+piece bastion/treasure/walls/mid/wall_0 treasure 5 15 24 chest=1 e:center_connector/empty>empty@4,0,11 e:empty/extension_connector>bastion/treasure/extensions/large_pool@4,14,17 e:empty/extension_connector>bastion/treasure/extensions/large_pool@4,14,3 e:empty/extension_connector>bastion/treasure/extensions/large_pool@4,6,10 e:empty/extension_connector>bastion/treasure/extensions/small_pool@4,10,15 e:empty/extension_connector>bastion/treasure/extensions/small_pool@4,10,19 e:empty/extension_connector>bastion/treasure/extensions/small_pool@4,10,2 gilded_blackstone=3 lava=3 loot=chest:chests/bastion_other n:empty/corner_connector>bastion/treasure/corners/middle@3,0,0 s:empty/corner_connector>bastion/treasure/corners/middle@3,0,23 uw!:empty/melee_connector>bastion/mobs/piglin_melee@2,10,21 uw!:empty/mob_connector>bastion/mobs/piglin@1,1,10 uw!:empty/mob_connector>bastion/mobs/piglin@1,1,13 w:empty/outer_wall_connector>bastion/treasure/walls/outer@0,0,23
+piece bastion/treasure/walls/mid/wall_1 treasure 5 15 24 e:center_connector/empty>empty@4,0,11 e:empty/extension_connector>bastion/treasure/extensions/large_pool@4,0,17 e:empty/extension_connector>bastion/treasure/extensions/large_pool@4,6,10 e:empty/extension_connector>bastion/treasure/extensions/small_pool@4,14,15 e:empty/extension_connector>bastion/treasure/extensions/small_pool@4,14,19 e:empty/extension_connector>bastion/treasure/extensions/small_pool@4,14,2 e:empty/extension_connector>bastion/treasure/extensions/small_pool@4,14,6 lava=2 n:empty/corner_connector>bastion/treasure/corners/middle@3,0,0 s:empty/corner_connector>bastion/treasure/corners/middle@3,0,23 us:empty/mob_connector>bastion/mobs/piglin@2,10,20 uw:empty/mob_connector>bastion/mobs/piglin@1,6,1 uw:empty/mob_connector>bastion/mobs/piglin@1,6,4 w:empty/outer_wall_connector>bastion/treasure/walls/outer@0,0,23
+piece bastion/treasure/walls/mid/wall_2 treasure 5 15 24 e:center_connector/empty>empty@4,0,11 e:empty/extension_connector>bastion/treasure/extensions/small_pool@4,10,19 e:empty/extension_connector>bastion/treasure/extensions/small_pool@4,10,2 lava=19 n:empty/corner_connector>bastion/treasure/corners/middle@3,0,0 s:empty/corner_connector>bastion/treasure/corners/middle@3,0,23 us:empty/mob_connector>bastion/mobs/piglin@1,10,16 uw:empty/mob_connector>bastion/mobs/piglin@1,10,22 w:empty/outer_wall_connector>bastion/treasure/walls/outer@0,0,23
+piece bastion/treasure/walls/outer/bottom_corner treasure 2 16 5 n:empty/bottom_edge_connector>bastion/treasure/corners/edges@1,0,0 s:empty/bottom_edge_connector>bastion/treasure/corners/edges@0,0,4 w:bottom_corner_wall_connector/empty>empty@0,0,2
+piece bastion/treasure/walls/outer/medium_outer_wall treasure 2 16 24 e:medium_outer_wall_connector/empty>empty@1,0,23
+piece bastion/treasure/walls/outer/mid_corner treasure 5 15 2 e:empty/middle_edge_connector>bastion/treasure/corners/edges@4,0,1 s:middle_corner_wall_connector/empty>empty@2,0,1 w:empty/middle_edge_connector>bastion/treasure/corners/edges@0,0,0
+piece bastion/treasure/walls/outer/outer_wall treasure 2 15 24 e:outer_wall_connector/empty>empty@1,0,23
+piece bastion/treasure/walls/outer/tall_outer_wall treasure 2 17 24 e:tall_outer_wall_connector/empty>empty@1,0,23
+piece bastion/treasure/walls/outer/top_corner treasure 2 17 5 n:empty/top_edge_connector>bastion/treasure/corners/edges@1,0,0 s:empty/top_edge_connector>bastion/treasure/corners/edges@0,0,4 w:top_corner_wall_connector/empty>empty@0,0,2
+piece bastion/treasure/walls/top/main_entrance treasure 5 15 24 e:empty/extension_connector>bastion/treasure/extensions/small_pool@4,4,10 e:empty/extension_connector>bastion/treasure/extensions/small_pool@4,4,15 e:empty/extension_connector>bastion/treasure/extensions/small_pool@4,4,19 e:empty/extension_connector>bastion/treasure/extensions/small_pool@4,9,2 e:empty/extension_connector>bastion/treasure/extensions/small_pool@4,9,6 e:entrance_connector/empty>empty@4,0,11 n:empty/corner_connector>bastion/treasure/corners/top@3,0,0 s:empty/corner_connector>bastion/treasure/corners/top@3,0,23 ue:empty/melee_connector>bastion/mobs/piglin_melee@3,4,11 ue:empty/mob_connector>bastion/mobs/piglin_melee@2,4,10 ue:empty/mob_connector>bastion/mobs/piglin_melee@2,4,12 un!:empty/wall_roof_connector>bastion/treasure/roofs@0,14,0 w:empty/entrance_wall_connector>bastion/treasure/walls@0,0,23
+piece bastion/treasure/walls/top/wall_0 treasure 5 15 24 e:center_connector/empty>empty@4,0,11 e:empty/extension_connector>bastion/treasure/extensions/small_pool@4,14,15 e:empty/extension_connector>bastion/treasure/extensions/small_pool@4,14,19 e:empty/extension_connector>bastion/treasure/extensions/small_pool@4,14,2 e:empty/extension_connector>bastion/treasure/extensions/small_pool@4,14,6 e:empty/house_connector>bastion/treasure/extensions/houses@4,3,8 lava=2 n:empty/corner_connector>bastion/treasure/corners/top@3,0,0 s:empty/corner_connector>bastion/treasure/corners/top@3,0,23 un!:empty/wall_roof_connector>bastion/treasure/roofs@0,14,0 w:empty/tall_outer_wall_connector>bastion/treasure/walls/outer@0,0,23
+piece bastion/treasure/walls/top/wall_1 treasure 5 15 24 e:center_connector/empty>empty@4,0,11 e:empty/extension_connector>bastion/treasure/extensions/small_pool@4,4,15 e:empty/extension_connector>bastion/treasure/extensions/small_pool@4,4,19 lava=12 n:empty/corner_connector>bastion/treasure/corners/top@3,0,0 s:empty/corner_connector>bastion/treasure/corners/top@3,0,23 un!:empty/wall_roof_connector>bastion/treasure/roofs@0,14,0 un:empty/mob_connector>bastion/mobs/piglin@2,4,3 un:empty/mob_connector>bastion/mobs/piglin@2,4,5 w:empty/tall_outer_wall_connector>bastion/treasure/walls/outer@0,0,23
+piece bastion/units/air_base start 46 24 46 dw!:empty/edge_wall_unit_connector>bastion/units/edge_wall_units@0,1,24 w:edge_wall_exit/wall_base>bastion/units/walls/wall_bases@0,1,23 w:empty/center_piece_connector>bastion/units/center_pieces@25,0,23
+piece bastion/units/center_pieces/center_0 housing 11 7 11 chest=1 e:center_piece/ground_pathway_entrance>bastion/units/pathways@10,1,4 e:center_piece/ground_pathway_entrance>bastion/units/pathways@10,1,5 e:center_piece/ground_pathway_entrance>bastion/units/pathways@10,1,6 e:center_piece_connector/empty>empty@5,0,4 gilded_blackstone=2 loot=chest:chests/bastion_other n:center_piece/ground_pathway_entrance>bastion/units/pathways@4,1,0 n:center_piece/ground_pathway_entrance>bastion/units/pathways@6,1,0 s:center_piece/ground_pathway_entrance>bastion/units/pathways@4,1,10 s:center_piece/ground_pathway_entrance>bastion/units/pathways@6,1,10 w:center_piece_wall/ground_pathway_entrance_wall>bastion/units/pathways@0,1,4 w:center_piece_wall/ground_pathway_entrance_wall>bastion/units/pathways@0,1,6
+piece bastion/units/center_pieces/center_1 housing 11 8 11 chest=1 e:center_piece/ground_pathway_entrance>bastion/units/pathways@10,1,6 e:center_piece_connector/empty>empty@5,0,4 gilded_blackstone=1 loot=chest:chests/bastion_other n:center_piece/ground_pathway_entrance>bastion/units/pathways@4,1,0 n:center_piece/ground_pathway_entrance>bastion/units/pathways@6,1,0 s:center_piece/ground_pathway_entrance>bastion/units/pathways@5,1,10 w:center_piece_wall/ground_pathway_entrance_wall>bastion/units/pathways@0,1,4 w:center_piece_wall/ground_pathway_entrance_wall>bastion/units/pathways@0,1,6
+piece bastion/units/center_pieces/center_2 housing 11 8 11 chest=1 e:center_piece/ground_pathway_entrance>bastion/units/pathways@10,1,6 e:center_piece_connector/empty>empty@5,0,4 gilded_blackstone=2 loot=chest:chests/bastion_other n:center_piece/ground_pathway_entrance>bastion/units/pathways@4,1,0 n:center_piece/ground_pathway_entrance>bastion/units/pathways@6,1,0 s:center_piece/ground_pathway_entrance>bastion/units/pathways@5,1,10 w:center_piece_wall/ground_pathway_entrance_wall>bastion/units/pathways@0,1,4 w:center_piece_wall/ground_pathway_entrance_wall>bastion/units/pathways@0,1,6
+piece bastion/units/edges/edge_0 housing 12 7 8 e:empty/filler_0_entry>bastion/units/fillers/stage_0@11,1,3 n:edge_entry/empty>empty@3,1,0 n:edge_entry/empty>empty@8,1,0 ue:empty>empty@4,6,3 ue:stage_0_top/stage_1_bottom>bastion/units/stages/stage_1@6,6,4 w:empty/filler_0_entry>bastion/units/fillers/stage_0@0,1,5
+piece bastion/units/fillers/stage_0 housing 12 7 8 e:filler_0_entry/empty>empty@11,1,3 e:filler_0_entry/empty>empty@11,1,4 n:filler_0_entry/empty>empty@5,1,0 n:filler_0_entry/empty>empty@9,1,0 ue:stage_0_top/stage_1_bottom>bastion/units/stages/stage_1@6,6,3 w:filler_0_entry/empty>empty@0,1,3 w:filler_0_entry/empty>empty@0,1,5
+piece bastion/units/pathways/pathway_0 housing 3 2 2 n:ground_pathway_entrance/empty>empty@1,1,0 s:ground_pathway_exit/stage_0_entry>bastion/units/stages/stage_0@1,1,1
+piece bastion/units/pathways/pathway_wall_0 housing 3 2 2 n:ground_pathway_entrance_wall/empty>empty@1,1,0 s:ground_pathway_exit/wall_entry>bastion/units/wall_units@1,1,1
+piece bastion/units/rampart_plates/plate_0 housing 5 19 16 e:rampart_plate/empty>empty@4,18,8
+piece bastion/units/ramparts/ramparts_0 housing 16 32 16 chest=3 dw!:rampart/empty>empty@0,0,15 gilded_blackstone=8 loot=chest:chests/bastion_other*3 ue:empty/mob_connector>bastion/mobs/piglin@8,16,5 ue:empty/mob_connector>bastion/mobs/piglin@9,16,12 ue:empty/mob_connector>bastion/mobs/piglin_melee@10,16,9 ue:empty/mob_connector>bastion/mobs/piglin_melee@7,16,9 w:empty/rampart_plate>bastion/units/rampart_plates@0,31,8
+piece bastion/units/ramparts/ramparts_1 housing 16 22 16 chest=1 dw!:rampart/empty>empty@0,0,15 gilded_blackstone=2 loot=chest:chests/bastion_other ue:empty/mob_connector>bastion/mobs/piglin_melee@3,12,8
+piece bastion/units/ramparts/ramparts_2 housing 16 12 16 dw!:rampart/empty>empty@0,0,15
+piece bastion/units/stages/rot/stage_1_0 housing 12 7 8 dn!:stage_1_bottom/empty>empty@6,0,3 ue:stage_1_top/stage_2_bottom>bastion/units/stages/stage_2@6,6,4
+piece bastion/units/stages/stage_0_0 housing 12 7 8 e:empty/filler_0_entry>bastion/units/fillers/stage_0@11,1,4 n:stage_0_entry/empty>empty@5,1,0 n:stage_0_entry/empty>empty@6,1,0 n:stage_0_entry/empty>empty@7,1,0 s:empty/edge_entry>bastion/units/edges@8,1,7 ue!:empty/block_connector>bastion/blocks/gold@7,0,6 ue:stage_0_top/stage_1_bottom>bastion/units/stages/stage_1@6,6,4 un!:empty/mob_connector>bastion/mobs/piglin@7,1,1 w:empty/filler_0_entry>bastion/units/fillers/stage_0@0,1,4
+piece bastion/units/stages/stage_0_1 housing 12 7 8 e:empty/filler_0_entry>bastion/units/fillers/stage_0@11,1,4 lava=1 n:stage_0_entry/empty>empty@5,1,0 n:stage_0_entry/empty>empty@6,1,0 n:stage_0_entry/empty>empty@7,1,0 s:empty/edge_entry>bastion/units/edges@8,1,7 ue:stage_0_top/stage_1_bottom>bastion/units/stages/stage_1@6,6,4 un!:empty/mob_connector>bastion/mobs/piglin@4,3,1 w:empty/filler_0_entry>bastion/units/fillers/stage_0@0,1,3
+piece bastion/units/stages/stage_0_2 housing 12 7 8 chest=1 e:empty/filler_0_entry>bastion/units/fillers/stage_0@11,1,4 gilded_blackstone=1 loot=chest:chests/bastion_other n:stage_0_entry/empty>empty@5,1,0 n:stage_0_entry/empty>empty@6,1,0 n:stage_0_entry/empty>empty@7,1,0 s:empty/edge_entry>bastion/units/edges@8,1,7 ue:stage_0_top/stage_1_bottom>bastion/units/stages/stage_1@6,6,4 un!:empty/block_connector>bastion/blocks/gold@7,3,6 un!:empty/mob_connector>bastion/mobs/piglin@4,3,1 uw:empty/mob_connector>bastion/mobs/piglin_melee@2,3,4 w:empty/filler_0_entry>bastion/units/fillers/stage_0@0,1,4
+piece bastion/units/stages/stage_0_3 housing 12 7 8 e:empty/filler_0_entry>bastion/units/fillers/stage_0@11,1,4 n:stage_0_entry/empty>empty@5,1,0 n:stage_0_entry/empty>empty@6,1,0 n:stage_0_entry/empty>empty@7,1,0 s:empty/edge_entry>bastion/units/edges@8,1,7 ue:stage_0_top/stage_1_bottom>bastion/units/stages/stage_1@6,6,4 un!:empty/block_connector>bastion/blocks/gold@0,3,6 un!:empty/mob_connector>bastion/mobs/piglin@6,1,1 w:empty/filler_0_entry>bastion/units/fillers/stage_0@0,1,4
+piece bastion/units/stages/stage_1_0 housing 12 7 8 dn:stage_1_bottom/stage_0_top>empty@6,0,3 ue!:empty/mob_connector>bastion/mobs/piglin@3,1,1 ue:stage_1_top/stage_2_bottom>bastion/units/stages/stage_2@6,6,4 un!:empty/block_connector>bastion/blocks/gold@7,0,5
+piece bastion/units/stages/stage_1_1 housing 12 7 8 de:stage_1_bottom/stage_0_top>empty@6,0,4 lava=1 ue!:empty/block_connector>bastion/blocks/gold@8,3,5 ue:stage_1_top/stage_2_bottom>bastion/units/stages/stage_2@6,6,4
+piece bastion/units/stages/stage_1_2 housing 12 7 8 chest=1 de:stage_1_bottom/stage_0_top>empty@6,0,3 gilded_blackstone=1 loot=chest:chests/bastion_other ue:stage_1_top/stage_2_bottom>bastion/units/stages/stage_2@5,6,4 un!:empty/mob_connector>bastion/mobs/piglin_melee@9,1,3
+piece bastion/units/stages/stage_1_3 housing 12 7 8 de:stage_1_bottom/stage_0_top>empty@6,0,3 ue!:empty/block_connector>bastion/blocks/gold@7,3,6 ue:stage_1_top/stage_2_bottom>bastion/units/stages/stage_2@6,6,4 un!:empty/mob_connector>bastion/mobs/piglin@4,3,1 uw!:empty/mob_connector>bastion/mobs/piglin@5,1,4
+piece bastion/units/stages/stage_2_0 housing 12 7 8 dn:stage_2_bottom/stage_1_top>empty@6,0,3 un!:empty/mob_connector>bastion/mobs/piglin@2,1,1 us:stage_2_top/stage_3_bottom>bastion/units/stages/stage_3@5,6,4
+piece bastion/units/stages/stage_2_1 housing 12 7 8 dn:stage_2_bottom/stage_1_top>empty@6,0,3 un!:empty/mob_connector>bastion/mobs/piglin@2,1,1 us:stage_2_top/stage_3_bottom>bastion/units/stages/stage_3@5,6,4
+piece bastion/units/stages/stage_3_0 housing 12 3 8 dn:stage_3_bottom/stage_2_top>empty@5,0,4
+piece bastion/units/stages/stage_3_1 housing 12 3 8 de:stage_3_bottom/stage_2_top>empty@5,0,3 un!:empty/block_connector>bastion/blocks/gold@1,0,2
+piece bastion/units/stages/stage_3_2 housing 12 3 8 de:stage_3_bottom/stage_2_top>empty@5,0,3 lava=1
+piece bastion/units/stages/stage_3_3 housing 12 3 8 de:stage_3_bottom/stage_2_top>empty@5,0,4 lava=1
+piece bastion/units/wall_units/edge_0_large housing 12 7 9 e:empty/filler_0_entry>bastion/units/fillers/stage_0@11,1,1 n:empty/edge_wall_entry>bastion/units/wall_units@6,1,0 un!:stage_0_top/stage_1_bottom>bastion/units/stages/rot/stage_1@5,6,2 us!:edge_wall_unit_connector/empty>empty@9,0,8 w:empty/filler_0_entry>bastion/units/fillers/stage_0@0,1,1
+piece bastion/units/wall_units/unit_0 housing 12 7 8 s:edge_wall_entry/empty>empty@10,1,7 ue:empty/block_connector>bastion/blocks/gold@10,0,5 ue:stage_0_top/stage_1_bottom>bastion/units/stages/stage_1@4,6,2 w:empty/filler_0_entry>bastion/units/fillers/stage_0@0,1,3
+piece bastion/units/walls/connected_wall housing 16 24 16 gold_block=5 un:empty/mob_connector>bastion/mobs/piglin@12,8,10 us!:wall/rampart>bastion/units/ramparts@15,23,15 uw:empty/mob_connector>bastion/mobs/piglin@8,4,6 uw:empty/mob_connector>bastion/mobs/piglin_melee@2,13,7 w:wall_connected_wall/empty>empty@0,1,0
+piece bastion/units/walls/wall_base housing 16 24 16 chest=2 e:path_connected_wall/wall_connected_wall>bastion/units/walls/wall_bases@15,1,0 gilded_blackstone=9 gold_block=12 loot=chest:chests/bastion_other*2 n:wall_base/edge_wall_exit>bastion/units/edge_wall_units@5,1,0 ue!:empty/mob_connector>bastion/mobs/piglin@4,5,10 ue:empty/mob_connector>bastion/mobs/piglin@11,18,14 ue:empty/mob_connector>bastion/mobs/piglin@13,11,3 ue:empty/mob_connector>bastion/mobs/piglin@2,2,3 ue:empty/mob_connector>bastion/mobs/piglin@4,7,7 us!:wall/rampart>bastion/units/large_ramparts@15,23,15 us:empty/mob_connector>bastion/mobs/piglin@12,18,12 us:empty/mob_connector>bastion/mobs/piglin@5,6,8
+
+# Pools: Java's template_pool files, element by element.
+pool bastion/blocks/gold
+3 bastion/blocks/air
+1 bastion/blocks/gold
+end
+pool bastion/bridge/bridge_pieces
+1 bastion/bridge/bridge_pieces/bridge@bridge
+end
+pool bastion/bridge/connectors
+1 bastion/bridge/connectors/back_bridge_top@bastion_generic_degradation
+1 bastion/bridge/connectors/back_bridge_bottom@bastion_generic_degradation
+end
+pool bastion/bridge/legs
+1 bastion/bridge/legs/leg_0@bastion_generic_degradation
+1 bastion/bridge/legs/leg_1@bastion_generic_degradation
+end
+pool bastion/bridge/rampart_plates
+1 bastion/bridge/rampart_plates/plate_0@rampart_degradation
+end
+pool bastion/bridge/ramparts
+1 bastion/bridge/ramparts/rampart_0@rampart_degradation
+1 bastion/bridge/ramparts/rampart_1@rampart_degradation
+end
+pool bastion/bridge/starting_pieces
+1 bastion/bridge/starting_pieces/entrance@entrance_replacement
+1 bastion/bridge/starting_pieces/entrance_face@bastion_generic_degradation
+end
+pool bastion/bridge/walls
+1 bastion/bridge/walls/wall_base_0@rampart_degradation
+1 bastion/bridge/walls/wall_base_1@rampart_degradation
+end
+pool bastion/hoglin_stable/connectors
+1 bastion/hoglin_stable/connectors/end_post_connector@stable_degradation
+end
+pool bastion/hoglin_stable/large_stables/inner
+1 bastion/hoglin_stable/large_stables/inner_0@stable_degradation
+1 bastion/hoglin_stable/large_stables/inner_1@stable_degradation
+1 bastion/hoglin_stable/large_stables/inner_2@stable_degradation
+1 bastion/hoglin_stable/large_stables/inner_3@stable_degradation
+1 bastion/hoglin_stable/large_stables/inner_4@stable_degradation
+end
+pool bastion/hoglin_stable/large_stables/outer
+1 bastion/hoglin_stable/large_stables/outer_0@stable_degradation
+1 bastion/hoglin_stable/large_stables/outer_1@stable_degradation
+1 bastion/hoglin_stable/large_stables/outer_2@stable_degradation
+1 bastion/hoglin_stable/large_stables/outer_3@stable_degradation
+1 bastion/hoglin_stable/large_stables/outer_4@stable_degradation
+end
+pool bastion/hoglin_stable/mirrored_starting_pieces
+1 bastion/hoglin_stable/starting_pieces/stairs_0_mirrored@stable_degradation
+1 bastion/hoglin_stable/starting_pieces/stairs_1_mirrored@stable_degradation
+1 bastion/hoglin_stable/starting_pieces/stairs_2_mirrored@stable_degradation
+1 bastion/hoglin_stable/starting_pieces/stairs_3_mirrored@stable_degradation
+1 bastion/hoglin_stable/starting_pieces/stairs_4_mirrored@stable_degradation
+end
+pool bastion/hoglin_stable/posts
+1 bastion/hoglin_stable/posts/stair_post@stable_degradation
+1 bastion/hoglin_stable/posts/end_post@stable_degradation
+end
+pool bastion/hoglin_stable/rampart_plates
+1 bastion/hoglin_stable/rampart_plates/rampart_plate_1@stable_degradation
+end
+pool bastion/hoglin_stable/ramparts
+1 bastion/hoglin_stable/ramparts/ramparts_1@stable_degradation
+1 bastion/hoglin_stable/ramparts/ramparts_2@stable_degradation
+1 bastion/hoglin_stable/ramparts/ramparts_3@stable_degradation
+end
+pool bastion/hoglin_stable/small_stables/inner
+1 bastion/hoglin_stable/small_stables/inner_0@stable_degradation
+1 bastion/hoglin_stable/small_stables/inner_1@stable_degradation
+1 bastion/hoglin_stable/small_stables/inner_2@stable_degradation
+1 bastion/hoglin_stable/small_stables/inner_3@stable_degradation
+end
+pool bastion/hoglin_stable/small_stables/outer
+1 bastion/hoglin_stable/small_stables/outer_0@stable_degradation
+1 bastion/hoglin_stable/small_stables/outer_1@stable_degradation
+1 bastion/hoglin_stable/small_stables/outer_2@stable_degradation
+1 bastion/hoglin_stable/small_stables/outer_3@stable_degradation
+end
+pool bastion/hoglin_stable/stairs
+1 bastion/hoglin_stable/stairs/stairs_1_0@stable_degradation
+1 bastion/hoglin_stable/stairs/stairs_1_1@stable_degradation
+1 bastion/hoglin_stable/stairs/stairs_1_2@stable_degradation
+1 bastion/hoglin_stable/stairs/stairs_1_3@stable_degradation
+1 bastion/hoglin_stable/stairs/stairs_1_4@stable_degradation
+1 bastion/hoglin_stable/stairs/stairs_2_0@stable_degradation
+1 bastion/hoglin_stable/stairs/stairs_2_1@stable_degradation
+1 bastion/hoglin_stable/stairs/stairs_2_2@stable_degradation
+1 bastion/hoglin_stable/stairs/stairs_2_3@stable_degradation
+1 bastion/hoglin_stable/stairs/stairs_2_4@stable_degradation
+1 bastion/hoglin_stable/stairs/stairs_3_0@stable_degradation
+1 bastion/hoglin_stable/stairs/stairs_3_1@stable_degradation
+1 bastion/hoglin_stable/stairs/stairs_3_2@stable_degradation
+1 bastion/hoglin_stable/stairs/stairs_3_3@stable_degradation
+1 bastion/hoglin_stable/stairs/stairs_3_4@stable_degradation
+end
+pool bastion/hoglin_stable/starting_pieces
+1 bastion/hoglin_stable/starting_pieces/starting_stairs_0@stable_degradation
+1 bastion/hoglin_stable/starting_pieces/starting_stairs_1@stable_degradation
+1 bastion/hoglin_stable/starting_pieces/starting_stairs_2@stable_degradation
+1 bastion/hoglin_stable/starting_pieces/starting_stairs_3@stable_degradation
+1 bastion/hoglin_stable/starting_pieces/starting_stairs_4@stable_degradation
+end
+pool bastion/hoglin_stable/wall_bases
+1 bastion/hoglin_stable/walls/wall_base@stable_degradation
+end
+pool bastion/hoglin_stable/walls
+1 bastion/hoglin_stable/walls/side_wall_0@side_wall_degradation
+1 bastion/hoglin_stable/walls/side_wall_1@side_wall_degradation
+end
+pool bastion/mobs/hoglin
+2 bastion/mobs/hoglin
+1 bastion/mobs/empty
+end
+pool bastion/mobs/piglin
+1 bastion/mobs/melee_piglin
+4 bastion/mobs/sword_piglin
+4 bastion/mobs/crossbow_piglin
+1 bastion/mobs/empty
+end
+pool bastion/mobs/piglin_melee
+1 bastion/mobs/melee_piglin_always
+5 bastion/mobs/melee_piglin
+1 bastion/mobs/sword_piglin
+end
+pool bastion/starts
+1 bastion/units/air_base@bastion_generic_degradation
+1 bastion/hoglin_stable/air_base@bastion_generic_degradation
+1 bastion/treasure/big_air_full@bastion_generic_degradation
+1 bastion/bridge/starting_pieces/entrance_base@bastion_generic_degradation
+end
+pool bastion/treasure/bases
+1 bastion/treasure/bases/lava_basin@treasure_rooms
+end
+pool bastion/treasure/bases/centers
+1 bastion/treasure/bases/centers/center_0@treasure_rooms
+1 bastion/treasure/bases/centers/center_1@treasure_rooms
+1 bastion/treasure/bases/centers/center_2@treasure_rooms
+1 bastion/treasure/bases/centers/center_3@treasure_rooms
+end
+pool bastion/treasure/brains
+1 bastion/treasure/brains/center_brain@treasure_rooms
+end
+pool bastion/treasure/connectors
+1 bastion/treasure/connectors/center_to_wall_middle@treasure_rooms
+1 bastion/treasure/connectors/center_to_wall_top@treasure_rooms
+1 bastion/treasure/connectors/center_to_wall_top_entrance@treasure_rooms
+end
+pool bastion/treasure/corners/bottom
+1 bastion/treasure/corners/bottom/corner_0@treasure_rooms
+1 bastion/treasure/corners/bottom/corner_1@treasure_rooms
+end
+pool bastion/treasure/corners/edges
+1 bastion/treasure/corners/edges/bottom@high_wall
+1 bastion/treasure/corners/edges/middle@high_wall
+1 bastion/treasure/corners/edges/top@high_wall
+end
+pool bastion/treasure/corners/middle
+1 bastion/treasure/corners/middle/corner_0@treasure_rooms
+1 bastion/treasure/corners/middle/corner_1@treasure_rooms
+end
+pool bastion/treasure/corners/top
+1 bastion/treasure/corners/top/corner_0@treasure_rooms
+1 bastion/treasure/corners/top/corner_1@treasure_rooms
+end
+pool bastion/treasure/entrances
+1 bastion/treasure/entrances/entrance_0@treasure_rooms
+end
+pool bastion/treasure/extensions/houses
+1 bastion/treasure/extensions/house_0@treasure_rooms
+1 bastion/treasure/extensions/house_1@treasure_rooms
+end
+pool bastion/treasure/extensions/large_pool
+1 bastion/treasure/extensions/empty@treasure_rooms
+1 bastion/treasure/extensions/empty@treasure_rooms
+1 bastion/treasure/extensions/fire_room@treasure_rooms
+1 bastion/treasure/extensions/large_bridge_0@treasure_rooms
+1 bastion/treasure/extensions/large_bridge_1@treasure_rooms
+1 bastion/treasure/extensions/large_bridge_2@treasure_rooms
+1 bastion/treasure/extensions/large_bridge_3@treasure_rooms
+1 bastion/treasure/extensions/roofed_bridge@treasure_rooms
+1 bastion/treasure/extensions/empty@treasure_rooms
+end
+pool bastion/treasure/extensions/small_pool
+1 bastion/treasure/extensions/empty@treasure_rooms
+1 bastion/treasure/extensions/fire_room@treasure_rooms
+1 bastion/treasure/extensions/empty@treasure_rooms
+1 bastion/treasure/extensions/small_bridge_0@treasure_rooms
+1 bastion/treasure/extensions/small_bridge_1@treasure_rooms
+1 bastion/treasure/extensions/small_bridge_2@treasure_rooms
+1 bastion/treasure/extensions/small_bridge_3@treasure_rooms
+end
+pool bastion/treasure/ramparts
+1 bastion/treasure/ramparts/mid_wall_main@treasure_rooms
+1 bastion/treasure/ramparts/mid_wall_side@treasure_rooms
+1 bastion/treasure/ramparts/bottom_wall_0@bottom_rampart
+1 bastion/treasure/ramparts/top_wall@high_rampart
+1 bastion/treasure/ramparts/lava_basin_side@treasure_rooms
+1 bastion/treasure/ramparts/lava_basin_main@treasure_rooms
+end
+pool bastion/treasure/roofs
+1 bastion/treasure/roofs/wall_roof@roof
+1 bastion/treasure/roofs/corner_roof@roof
+1 bastion/treasure/roofs/center_roof@roof
+end
+pool bastion/treasure/stairs
+1 bastion/treasure/stairs/lower_stairs@treasure_rooms
+end
+pool bastion/treasure/walls
+1 bastion/treasure/walls/lava_wall@treasure_rooms
+1 bastion/treasure/walls/entrance_wall@high_wall
+end
+pool bastion/treasure/walls/bottom
+1 bastion/treasure/walls/bottom/wall_0@treasure_rooms
+1 bastion/treasure/walls/bottom/wall_1@treasure_rooms
+1 bastion/treasure/walls/bottom/wall_2@treasure_rooms
+1 bastion/treasure/walls/bottom/wall_3@treasure_rooms
+end
+pool bastion/treasure/walls/mid
+1 bastion/treasure/walls/mid/wall_0@treasure_rooms
+1 bastion/treasure/walls/mid/wall_1@treasure_rooms
+1 bastion/treasure/walls/mid/wall_2@treasure_rooms
+end
+pool bastion/treasure/walls/outer
+1 bastion/treasure/walls/outer/top_corner@high_wall
+1 bastion/treasure/walls/outer/mid_corner@high_wall
+1 bastion/treasure/walls/outer/bottom_corner@high_wall
+1 bastion/treasure/walls/outer/outer_wall@high_wall
+1 bastion/treasure/walls/outer/medium_outer_wall@high_wall
+1 bastion/treasure/walls/outer/tall_outer_wall@high_wall
+end
+pool bastion/treasure/walls/top
+1 bastion/treasure/walls/top/main_entrance@treasure_rooms
+1 bastion/treasure/walls/top/wall_0@treasure_rooms
+1 bastion/treasure/walls/top/wall_1@treasure_rooms
+end
+pool bastion/units/center_pieces
+1 bastion/units/center_pieces/center_0@housing
+1 bastion/units/center_pieces/center_1@housing
+1 bastion/units/center_pieces/center_2@housing
+end
+pool bastion/units/edge_wall_units
+1 bastion/units/wall_units/edge_0_large@housing
+end
+pool bastion/units/edges
+1 bastion/units/edges/edge_0@housing
+end
+pool bastion/units/fillers/stage_0
+1 bastion/units/fillers/stage_0@housing
+end
+pool bastion/units/large_ramparts
+1 bastion/units/ramparts/ramparts_0@housing
+end
+pool bastion/units/pathways
+1 bastion/units/pathways/pathway_0@housing
+1 bastion/units/pathways/pathway_wall_0@housing
+end
+pool bastion/units/rampart_plates
+1 bastion/units/rampart_plates/plate_0@housing
+end
+pool bastion/units/ramparts
+1 bastion/units/ramparts/ramparts_0@housing
+1 bastion/units/ramparts/ramparts_1@housing
+1 bastion/units/ramparts/ramparts_2@housing
+end
+pool bastion/units/stages/rot/stage_1
+1 bastion/units/stages/rot/stage_1_0@housing
+end
+pool bastion/units/stages/stage_0
+1 bastion/units/stages/stage_0_0@housing
+1 bastion/units/stages/stage_0_1@housing
+1 bastion/units/stages/stage_0_2@housing
+1 bastion/units/stages/stage_0_3@housing
+end
+pool bastion/units/stages/stage_1
+1 bastion/units/stages/stage_1_0@housing
+1 bastion/units/stages/stage_1_1@housing
+1 bastion/units/stages/stage_1_2@housing
+1 bastion/units/stages/stage_1_3@housing
+end
+pool bastion/units/stages/stage_2
+1 bastion/units/stages/stage_2_0@housing
+1 bastion/units/stages/stage_2_1@housing
+end
+pool bastion/units/stages/stage_3
+1 bastion/units/stages/stage_3_0@housing
+1 bastion/units/stages/stage_3_1@housing
+1 bastion/units/stages/stage_3_2@housing
+1 bastion/units/stages/stage_3_3@housing
+end
+pool bastion/units/wall_units
+1 bastion/units/wall_units/unit_0@housing
+end
+pool bastion/units/walls/wall_bases
+1 bastion/units/walls/wall_base@housing
+1 bastion/units/walls/connected_wall@housing
+end

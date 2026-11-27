@@ -200,6 +200,8 @@ pub(crate) struct SculkState {
     /// Each player's health and armor last tick, for damage, death and
     /// equipment events; not saved.
     bodies: FxHashMap<PlayerId, (f32, [Option<crate::item::Item>; 4])>,
+    /// v1.0 Track 9: each player's totems used so far ([`World::player_totems`]).
+    totems: FxHashMap<PlayerId, u32>,
 }
 
 /// A player's movement as game events see it: Java's `moveDist`,
@@ -864,6 +866,18 @@ impl World {
         }
     }
 
+    /// v1.0 Track 9: a totem of undying saved the player
+    /// (`checkTotemDeathProtection`'s `item_interact_finish`) since the last
+    /// call, by `Vitals::totems_used`. Nothing the first time a player is seen.
+    pub fn player_totems(&mut self, id: PlayerId, pos: DVec3, used: u32, source: EventSource) {
+        if self.remote {
+            return;
+        }
+        if self.sculk.totems.insert(id, used).is_some_and(|last| used != last) {
+            self.emit_game_event(pos, GameEvent::ItemInteractFinish, source, None);
+        }
+    }
+
     /// An entity died at `pos` (Java `CatalystListener.handleGameEvent` for
     /// `entity_die`, delivered nearest first): the nearest catalyst within 8
     /// blocks takes the `xp` it would drop as charge, blooms, and the
@@ -941,6 +955,24 @@ impl World {
                 self.sculk.busy.insert(p);
             }
         }
+    }
+}
+
+/// v1.0 Track 3: entry counts for the long-session soak (`crate::soak`).
+impl SculkState {
+    pub(crate) fn soak_counts(&self, out: &mut super::diagnostics::Counts) {
+        out.extend([
+            ("sculk.entities", self.entities.len()),
+            ("sculk.index", self.index.values().map(Vec::len).sum()),
+            ("sculk.busy", self.busy.len()),
+            ("sculk.catalysts", self.catalysts.len()),
+            ("sculk.entity_events", self.entity_events.len()),
+            ("sculk.sounds", self.sounds.len()),
+            ("sculk.shriek_triggers", self.shriek_triggers.len()),
+            ("sculk.responses", self.responses.len()),
+            ("sculk.players", self.players.len()),
+            ("sculk.bodies", self.bodies.len()),
+        ]);
     }
 }
 

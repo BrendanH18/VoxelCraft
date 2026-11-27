@@ -17,6 +17,23 @@ fn block(name: &str) -> Block {
     Block::from_name(name).unwrap_or_else(|| panic!("unknown block {name:?}"))
 }
 
+/// A `--place` or fill block: a name, or a raw state id for oriented states
+/// (as the game's own `--place` parsing accepts), which must be a registered
+/// state.
+fn placed(name: &str) -> Block {
+    match name.parse::<u16>() {
+        Ok(id) => {
+            let b = Block(id);
+            assert!(
+                (id as usize) < voxelcraft::world::block::STATE_CAPACITY && !b.name().is_empty(),
+                "unregistered block state {id}"
+            );
+            b
+        }
+        Err(_) => block(name),
+    }
+}
+
 /// The value after each `flag` in a scene's extra arguments.
 fn flag_values<'a>(args: &'a [Value], flag: &str) -> Vec<&'a str> {
     args.windows(2).filter(|w| w[0] == flag).map(|w| w[1].as_str().unwrap()).collect()
@@ -37,12 +54,12 @@ fn every_scene_names_things_the_game_knows() {
         for fill in scene["fill"].as_array().into_iter().flatten() {
             let fill = fill.as_array().unwrap();
             assert_eq!(fill.len(), 7, "{name}: fills are x1,y1,z1,x2,y2,z2,block");
-            block(fill[6].as_str().unwrap());
+            placed(fill[6].as_str().unwrap());
         }
         for cell in scene["place"].as_array().into_iter().flatten() {
             let parts: Vec<&str> = cell.as_str().unwrap().split(',').collect();
             assert_eq!(parts.len(), 4, "{name}: {cell}");
-            block(parts[3]);
+            placed(parts[3]);
         }
         for mob in scene["spawn"].as_array().into_iter().flatten() {
             let kind = mob.as_str().unwrap().split(',').next().unwrap();

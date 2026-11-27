@@ -17,6 +17,10 @@ use crate::physics::{self, BlockSource};
 use crate::world::block::Block;
 use crate::world::end::{EndGen, Pillar};
 
+mod path;
+mod wild;
+pub use wild::{SHAPE as WILD_SHAPE, Wild, WildDragon};
+
 pub const MAX_HEALTH: f32 = 200.0;
 /// Experience for the first kill, and for any later one.
 pub const FIRST_XP: u32 = 12_000;
@@ -27,7 +31,6 @@ pub const CRYSTAL_POWER: f32 = super::crystal::POWER;
 /// (Java's fight area).
 pub const ARENA: f64 = 192.0;
 const TICK: f64 = 0.05;
-const FRAC_PI_12: f64 = std::f64::consts::PI / 12.0;
 /// Ticks the death takes, rising and glowing.
 pub const DEATH_TICKS: u32 = 200;
 /// Where a new dragon appears (`EnderDragonFight.createNewDragon`:
@@ -97,10 +100,20 @@ pub enum Phase {
     /// Diving at where a player stood.
     Charging,
     Dying,
+    /// Java's `HOVERING`, the phase a dragon no fight owns starts in: it
+    /// holds where it appeared until hurt enough to take off. Java counts it
+    /// as sitting, but arrows still hurt it (`DragonHoverPhase` keeps the
+    /// default `onHurt`).
+    Hovering,
 }
 
 impl Phase {
     pub fn sitting(self) -> bool {
+        matches!(self, Phase::SittingFlaming | Phase::SittingScanning | Phase::SittingAttacking | Phase::Hovering)
+    }
+
+    /// `AbstractDragonSittingPhase.onHurt`: perched dragons shrug off arrows.
+    pub fn deflects_arrows(self) -> bool {
         matches!(self, Phase::SittingFlaming | Phase::SittingScanning | Phase::SittingAttacking)
     }
 }
@@ -120,9 +133,18 @@ pub struct Dragon {
     /// Ticks in this phase.
     phase_ticks: u32,
     target: Option<DVec3>,
-    /// Waypoints still to fly through, nearest first.
-    path: Vec<DVec3>,
+    /// The phase's `currentPath`: `None` while it has none (Java's
+    /// `null`), else the waypoints still ahead, next last; empty once done.
+    path: Option<Vec<DVec3>>,
+    /// `DragonHoldingPatternPhase.clockwise`.
     clockwise: bool,
+    /// `DragonStrafePlayerPhase.holdingPatternClockwise`.
+    strafe_clockwise: bool,
+    /// Its 24 path nodes ([`path::nodes`]), kept once every column was
+    /// loaded (`nodes_ready`); Java computes them on the first
+    /// `findClosestNode`.
+    nodes: [DVec3; 24],
+    nodes_ready: bool,
     /// Ticks spent aiming at the strafed player.
     fireball_charge: u32,
     /// Flame bursts since landing (it takes off after four).
@@ -219,7 +241,6 @@ pub struct Fight {
     pub previously_killed: bool,
     /// The exit portal's centre.
     pub podium: IVec3,
-    nodes: [DVec3; 24],
     /// The ten obsidian pillars (Java's spikes).
     pillars: [Pillar; 10],
     /// `aliveCrystals`: crystals on the pillars at the last scan.
@@ -256,25 +277,9 @@ impl Fight {
     pub fn replica_json(&self) -> serde_json::Value {
         use serde_json::json;
         let v3 = |p: DVec3| [p.x, p.y, p.z];
-        let phase = |p: Phase| match p {
-            Phase::HoldingPattern => 0,
-            Phase::Strafe(_) => 1,
-            Phase::LandingApproach => 2,
-            Phase::Landing => 3,
-            Phase::SittingFlaming => 4,
-            Phase::SittingScanning => 5,
-            Phase::SittingAttacking => 6,
-            Phase::Takeoff => 7,
-            Phase::Charging => 8,
-            Phase::Dying => 9,
-        };
         json!({
             "podium": [self.podium.x, self.podium.y, self.podium.z],
-            "dragon": self.dragon.as_ref().map(|d| json!({
-                "pos": v3(d.pos), "prev": v3(d.previous_pos), "yaw": d.yaw, "prev_yaw": d.previous_yaw,
-                "health": d.health, "phase": phase(d.phase), "flap": d.flap, "prev_flap": d.previous_flap,
-                "hurt": d.hurt, "death": d.death_ticks, "healer": d.healer,
-            })),
+            "dragon": self.dragon.as_ref().map(dragon_replica_json),
             "fireballs": self.fireballs.iter().map(|f| json!([v3(f.pos), v3(f.previous_pos), v3(f.dir)])).collect::<Vec<_>>(),
         })
     }
@@ -293,7 +298,6 @@ impl Fight {
             clouds: Vec::new(),
             previously_killed: false,
             podium,
-            nodes: [DVec3::ZERO; 24],
             pillars: [Pillar { x: 0, z: 0, radius: 0, top: 0, guarded: false, java: false }; 10],
             alive_crystals: 0,
             crystal_scan: 0,
@@ -314,61 +318,13 @@ impl Fight {
 
     /// Updates a client fight from the host's latest [`Fight::replica_json`].
     pub fn apply_replica(&mut self, v: &serde_json::Value) {
-        let v3 = |a: &serde_json::Value| -> Option<DVec3> {
-            let p = DVec3::new(a.get(0)?.as_f64()?, a.get(1)?.as_f64()?, a.get(2)?.as_f64()?);
-            p.is_finite().then_some(p)
-        };
         let d = &v["dragon"];
-        match v3(&d["pos"]) {
-            Some(pos) => {
-                let dragon = self.dragon.get_or_insert_with(|| Dragon::new(pos));
-                dragon.pos = pos;
-                dragon.previous_pos = v3(&d["prev"]).unwrap_or(pos);
-                dragon.yaw = d["yaw"].as_f64().unwrap_or(0.0) as f32;
-                dragon.previous_yaw = d["prev_yaw"].as_f64().unwrap_or(dragon.yaw as f64) as f32;
-                dragon.health = d["health"].as_f64().unwrap_or(0.0).clamp(0.0, MAX_HEALTH as f64) as f32;
-                dragon.flap = d["flap"].as_f64().unwrap_or(0.0) as f32;
-                dragon.previous_flap = d["prev_flap"].as_f64().unwrap_or(dragon.flap as f64) as f32;
-                dragon.hurt = d["hurt"].as_f64().unwrap_or(0.0) as f32;
-                dragon.death_ticks = d["death"].as_u64().unwrap_or(0).min(1000) as u32;
-                dragon.healer = d["healer"].as_u64().map(|i| i as u32);
-                dragon.phase = match d["phase"].as_u64().unwrap_or(0) {
-                    1 => Phase::Strafe(PlayerId::HOST),
-                    2 => Phase::LandingApproach,
-                    3 => Phase::Landing,
-                    4 => Phase::SittingFlaming,
-                    5 => Phase::SittingScanning,
-                    6 => Phase::SittingAttacking,
-                    7 => Phase::Takeoff,
-                    8 => Phase::Charging,
-                    9 => Phase::Dying,
-                    _ => Phase::HoldingPattern,
-                };
-                // The neck and tail follow the yaw and height history, as on the host.
-                dragon.history_at = (dragon.history_at + 1) % 64;
-                dragon.history[dragon.history_at] = (dragon.yaw, dragon.pos.y);
-                dragon.place_parts();
-            }
-            None => self.dragon = None,
+        let pos = d["pos"].as_array().is_some();
+        let dragon = self.dragon.get_or_insert_with(|| Dragon::new(replica_v3(&d["pos"]).unwrap_or_default()));
+        if !pos || !apply_dragon_replica(dragon, d) {
+            self.dragon = None;
         }
-        self.fireballs = v["fireballs"]
-            .as_array()
-            .map(|fs| {
-                fs.iter()
-                    .take(32)
-                    .filter_map(|f| {
-                        let pos = v3(&f[0])?;
-                        Some(DragonFireball {
-                            pos,
-                            previous_pos: v3(&f[1]).unwrap_or(pos),
-                            vel: DVec3::ZERO,
-                            dir: v3(&f[2]).unwrap_or(DVec3::X),
-                            age: 0,
-                        })
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+        self.fireballs = fireballs_from_replica(&v["fireballs"]);
     }
 
     /// A fresh fight: a dragon, and (as [`Fight::legacy_crystals`]) a
@@ -410,26 +366,12 @@ impl Fight {
     }
 
     fn empty(end: &EndGen) -> Self {
-        // Java's path nodes: twelve around the pillars, eight inside them,
-        // four close in, each a little above the ground.
-        let nodes = std::array::from_fn(|i| {
-            let (radius, angle, lift) = match i {
-                0..12 => (60.0, FRAC_PI_12 * i as f64, 5),
-                12..20 => (40.0, std::f64::consts::FRAC_PI_8 * (i - 12) as f64, 15),
-                _ => (20.0, std::f64::consts::FRAC_PI_4 * (i - 20) as f64, 5),
-            };
-            let a = 2.0 * (-std::f64::consts::PI + angle);
-            let (x, z) = ((radius * a.cos()).floor() as i32, (radius * a.sin()).floor() as i32);
-            let ground = end.column(x, z).map_or(60, |(top, _)| top + 1);
-            DVec3::new(x as f64 + 0.5, (ground + lift).max(10) as f64, z as f64 + 0.5)
-        });
         Self {
             dragon: None,
             fireballs: Vec::new(),
             clouds: Vec::new(),
             previously_killed: false,
             podium: end.podium(),
-            nodes,
             pillars: *end.pillars(),
             alive_crystals: 0,
             crystal_scan: 0,
@@ -642,7 +584,18 @@ impl Fight {
             !ready
         });
         if let Some(mut dragon) = self.dragon.take() {
-            let keep = dragon.tick(self, world, ctx, rng, crystals, events);
+            let mut arena = Arena {
+                fight: true,
+                alive_crystals: self.alive_crystals,
+                previously_killed: self.previously_killed,
+                podium: self.podium,
+                fireballs: &mut self.fireballs,
+                clouds: &mut self.clouds,
+                ceiling: crate::world::terrain::Dimension::End.max_y() as f64 + 16.0,
+                top: crate::world::terrain::Dimension::End.max_y(),
+                floor: crate::world::terrain::Dimension::End.min_y(),
+            };
+            let keep = dragon.tick(&mut arena, world, ctx, rng, crystals, events);
             if keep {
                 self.dragon = Some(dragon);
             } else {
@@ -904,9 +857,9 @@ impl Fight {
     /// bounce off a perched dragon.
     pub fn strike(&mut self, hit: Hit, damage: f32, arrow: bool) -> bool {
         match hit {
-            Hit::Crystal(_) => false,
+            Hit::Crystal(_) | Hit::Wild(..) => false,
             Hit::Dragon(part) => self.dragon.as_mut().is_some_and(|d| {
-                if arrow && d.phase.sitting() {
+                if arrow && d.phase.deflects_arrows() {
                     return false;
                 }
                 d.hurt_by(part, damage, true)
@@ -917,27 +870,47 @@ impl Fight {
     /// A blast at `center`: the dragon takes the damage of its nearest part.
     pub fn explode(&mut self, center: DVec3, power: f32) {
         if let Some(d) = &mut self.dragon {
-            let worst = d
-                .parts
-                .iter()
-                .filter_map(|&(part, min, max)| {
-                    let (damage, _) = super::explosion_damage(power, ((min + max) / 2.0).distance(center), 1.0)?;
-                    Some((part, damage))
-                })
-                .max_by(|a, b| part_damage(a.0, a.1).total_cmp(&part_damage(b.0, b.1)));
-            if let Some((part, damage)) = worst {
-                d.hurt_by(part, damage, true);
-            }
+            d.blast(center, power);
         }
     }
+}
 
-    /// Nearest of `nodes[range]` to `p`.
-    fn closest_node(&self, p: DVec3, range: std::ops::Range<usize>) -> usize {
-        range.min_by(|&a, &b| self.nodes[a].distance_squared(p).total_cmp(&self.nodes[b].distance_squared(p))).unwrap()
+/// What a dragon's phases need from where it flies: the End fight's island
+/// or, for a dragon no fight owns (Java's `dragonFight == null`, as a spawn
+/// egg or a summon makes one), the world around its fight origin.
+pub(super) struct Arena<'a> {
+    /// Whether an `EnderDragonFight` owns the dragon.
+    pub(super) fight: bool,
+    /// The fight's `aliveCrystals`; 0 with no fight.
+    pub(super) alive_crystals: u32,
+    pub(super) previously_killed: bool,
+    /// The exit portal's centre, or the fight origin (`BlockPos.ZERO` for
+    /// a dragon with no fight).
+    pub(super) podium: IVec3,
+    pub(super) fireballs: &'a mut Vec<DragonFireball>,
+    pub(super) clouds: &'a mut Vec<BreathCloud>,
+    /// The highest the dragon flies, and the dimension's top and floor
+    /// (for its node heights).
+    pub(super) ceiling: f64,
+    pub(super) top: i32,
+    pub(super) floor: i32,
+}
+
+impl Arena<'_> {
+    /// The egg's cell: Java's `getHeightmapPos(MOTION_BLOCKING_NO_LEAVES,
+    /// getPodiumLocation(fightOrigin))`, the cell the dragon perches in.
+    fn egg(&self, world: &(impl BlockSource + ?Sized)) -> IVec3 {
+        self.perch(world).floor().as_ivec3()
     }
 
-    /// The perch: on top of the exit portal's pillar (and egg).
+    /// The perch: on top of the exit portal's pillar (and egg), or with no
+    /// fight Java's `getHeightmapPos(MOTION_BLOCKING_NO_LEAVES,
+    /// getPodiumLocation(fightOrigin))`, the top of the origin's column.
     fn perch(&self, world: &(impl BlockSource + ?Sized)) -> DVec3 {
+        if !self.fight {
+            let y = path::surface(world, self.podium.x, self.podium.z, self.top, self.floor).unwrap_or(self.podium.y);
+            return DVec3::new(self.podium.x as f64 + 0.5, y as f64, self.podium.z as f64 + 0.5);
+        }
         let mut top = self.podium + IVec3::Y * 4;
         while world.block(top).is_some_and(|b| b != Block::AIR) && top.y < self.podium.y + 8 {
             top.y += 1;
@@ -958,18 +931,119 @@ fn loaded<W: BlockSource + ?Sized>(world: &W, center: IVec3, reach: IVec3, dy: s
     })
 }
 
-/// What a player's attack or projectile hit: an End crystal (by id) or a
-/// part of the dragon.
+/// What a player's attack or projectile hit: an End crystal (by id), a
+/// part of the fight's dragon, or a part of a dragon no fight owns (by id).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Hit {
     Crystal(u32),
     Dragon(Part),
+    Wild(u32, Part),
+}
+
+impl Hit {
+    /// A dragon (a living entity), not a crystal.
+    pub fn is_dragon(self) -> bool {
+        !matches!(self, Hit::Crystal(_))
+    }
+}
+
+/// The replica and save code of a phase (Java's phase ids differ; these
+/// are VoxelCraft's own, append-only).
+fn phase_code(p: Phase) -> u64 {
+    match p {
+        Phase::HoldingPattern => 0,
+        Phase::Strafe(_) => 1,
+        Phase::LandingApproach => 2,
+        Phase::Landing => 3,
+        Phase::SittingFlaming => 4,
+        Phase::SittingScanning => 5,
+        Phase::SittingAttacking => 6,
+        Phase::Takeoff => 7,
+        Phase::Charging => 8,
+        Phase::Dying => 9,
+        Phase::Hovering => 10,
+    }
+}
+
+fn phase_from_code(code: u64) -> Phase {
+    match code {
+        1 => Phase::Strafe(PlayerId::HOST),
+        2 => Phase::LandingApproach,
+        3 => Phase::Landing,
+        4 => Phase::SittingFlaming,
+        5 => Phase::SittingScanning,
+        6 => Phase::SittingAttacking,
+        7 => Phase::Takeoff,
+        8 => Phase::Charging,
+        9 => Phase::Dying,
+        10 => Phase::Hovering,
+        _ => Phase::HoldingPattern,
+    }
+}
+
+/// What a LAN client needs to draw one dragon.
+fn dragon_replica_json(d: &Dragon) -> serde_json::Value {
+    let v3 = |p: DVec3| [p.x, p.y, p.z];
+    serde_json::json!({
+        "pos": v3(d.pos), "prev": v3(d.previous_pos), "yaw": d.yaw, "prev_yaw": d.previous_yaw,
+        "health": d.health, "phase": phase_code(d.phase), "flap": d.flap, "prev_flap": d.previous_flap,
+        "hurt": d.hurt, "death": d.death_ticks, "healer": d.healer,
+    })
+}
+
+fn replica_v3(a: &serde_json::Value) -> Option<DVec3> {
+    let p = DVec3::new(a.get(0)?.as_f64()?, a.get(1)?.as_f64()?, a.get(2)?.as_f64()?);
+    p.is_finite().then_some(p)
+}
+
+/// Updates a client's dragon from [`dragon_replica_json`]; false when it
+/// has no position.
+fn apply_dragon_replica(dragon: &mut Dragon, d: &serde_json::Value) -> bool {
+    let Some(pos) = replica_v3(&d["pos"]) else { return false };
+    dragon.pos = pos;
+    dragon.previous_pos = replica_v3(&d["prev"]).unwrap_or(pos);
+    dragon.yaw = d["yaw"].as_f64().unwrap_or(0.0) as f32;
+    dragon.previous_yaw = d["prev_yaw"].as_f64().unwrap_or(dragon.yaw as f64) as f32;
+    dragon.health = d["health"].as_f64().unwrap_or(0.0).clamp(0.0, MAX_HEALTH as f64) as f32;
+    dragon.flap = d["flap"].as_f64().unwrap_or(0.0) as f32;
+    dragon.previous_flap = d["prev_flap"].as_f64().unwrap_or(dragon.flap as f64) as f32;
+    dragon.hurt = d["hurt"].as_f64().unwrap_or(0.0) as f32;
+    dragon.death_ticks = d["death"].as_u64().unwrap_or(0).min(1000) as u32;
+    dragon.healer = d["healer"].as_u64().map(|i| i as u32);
+    dragon.phase = phase_from_code(d["phase"].as_u64().unwrap_or(0));
+    // The neck and tail follow the yaw and height history, as on the host.
+    dragon.history_at = (dragon.history_at + 1) % 64;
+    dragon.history[dragon.history_at] = (dragon.yaw, dragon.pos.y);
+    dragon.place_parts();
+    true
+}
+
+/// A client's dragon fireballs from the host's list.
+fn fireballs_from_replica(v: &serde_json::Value) -> Vec<DragonFireball> {
+    v.as_array()
+        .map(|fs| {
+            fs.iter()
+                .take(32)
+                .filter_map(|f| {
+                    let pos = replica_v3(&f[0])?;
+                    Some(DragonFireball {
+                        pos,
+                        previous_pos: replica_v3(&f[1]).unwrap_or(pos),
+                        vel: DVec3::ZERO,
+                        dir: replica_v3(&f[2]).unwrap_or(DVec3::X),
+                        age: 0,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// The End crystals (in any dimension) and, in the End, the fight, as a
 /// ray meets them: the nearest within `max_dist`.
 pub fn raycast(
     fight: Option<&Fight>,
+    wild: &Wild,
     crystals: &Crystals,
     origin: DVec3,
     dir: DVec3,
@@ -977,18 +1051,21 @@ pub fn raycast(
 ) -> Option<(Hit, f64)> {
     let crystal = crystals.raycast(origin, dir, max_dist).map(|(id, t)| (Hit::Crystal(id), t));
     let dragon = fight.and_then(|f| f.raycast(origin, dir, max_dist));
-    crystal.into_iter().chain(dragon).min_by(|a, b| a.1.total_cmp(&b.1))
+    let others = wild.raycast(origin, dir, max_dist);
+    crystal.into_iter().chain(dragon).chain(others).min_by(|a, b| a.1.total_cmp(&b.1))
 }
 
-/// What projectiles strike in flight: the crystals and, in the End, the fight.
+/// What projectiles strike in flight: the crystals, the dragons no fight
+/// owns and, in the End, the fight.
 pub struct Targets<'a> {
     pub fight: Option<&'a mut Fight>,
+    pub wild: &'a mut Wild,
     pub crystals: &'a mut Crystals,
 }
 
 impl Targets<'_> {
     pub fn raycast(&self, origin: DVec3, dir: DVec3, max_dist: f64) -> Option<(Hit, f64)> {
-        raycast(self.fight.as_deref(), self.crystals, origin, dir, max_dist)
+        raycast(self.fight.as_deref(), self.wild, self.crystals, origin, dir, max_dist)
     }
 
     /// A projectile's hit for `damage`, shot by `by`; returns whether it
@@ -1000,6 +1077,7 @@ impl Targets<'_> {
                 self.crystals.hit(id, blow)
             }
             Hit::Dragon(_) => self.fight.as_deref_mut().is_some_and(|f| f.strike(hit, damage, arrow)),
+            Hit::Wild(id, part) => self.wild.strike(id, part, damage, arrow),
         }
     }
 }
@@ -1024,6 +1102,31 @@ fn heading(yaw: f32) -> DVec3 {
     DVec3::new(r.sin() as f64, 0.0, -r.cos() as f64)
 }
 
+/// `Entity.calculateViewVector(xRot, yRot)`, with Java's float tables.
+fn view_vector(x_rot: f32, y_rot: f32) -> DVec3 {
+    use crate::knockback::{mth_cos, mth_sin};
+    let rx = x_rot * (std::f64::consts::PI / 180.0) as f32;
+    let ry = -y_rot * (std::f64::consts::PI / 180.0) as f32;
+    let (y_cos, y_sin) = (mth_cos(f64::from(ry)), mth_sin(f64::from(ry)));
+    let (x_cos, x_sin) = (mth_cos(f64::from(rx)), mth_sin(f64::from(rx)));
+    DVec3::new(f64::from(y_sin * x_cos), f64::from(-x_sin), f64::from(y_cos * x_cos))
+}
+
+/// The centre of the egg's cell (`BlockPos.distToCenterSqr`).
+fn egg_center(egg: IVec3) -> DVec3 {
+    egg.as_dvec3() + DVec3::splat(0.5)
+}
+
+/// `level.getNearestPlayer` with conditions that have no range: the
+/// targetable player nearest `at`.
+fn nearest_player(ctx: &Ctx, at: DVec3) -> Option<Target> {
+    ctx.players
+        .iter()
+        .filter(|t| t.targetable)
+        .min_by(|a, b| a.pos.distance_squared(at).total_cmp(&b.pos.distance_squared(at)))
+        .copied()
+}
+
 impl Dragon {
     fn new(pos: DVec3) -> Self {
         let mut d = Self {
@@ -1037,8 +1140,11 @@ impl Dragon {
             phase: Phase::HoldingPattern,
             phase_ticks: 0,
             target: None,
-            path: Vec::new(),
+            path: None,
             clockwise: false,
+            strafe_clockwise: false,
+            nodes: [DVec3::ZERO; 24],
+            nodes_ready: false,
             fireball_charge: 0,
             flame_count: 0,
             sitting_damage: 0.0,
@@ -1066,6 +1172,21 @@ impl Dragon {
         &self.parts
     }
 
+    /// A blast at `center`: the dragon takes the damage of its worst-hit part.
+    fn blast(&mut self, center: DVec3, power: f32) {
+        let worst = self
+            .parts
+            .iter()
+            .filter_map(|&(part, min, max)| {
+                let (damage, _) = super::explosion_damage(power, ((min + max) / 2.0).distance(center), 1.0)?;
+                Some((part, damage))
+            })
+            .max_by(|a, b| part_damage(a.0, a.1).total_cmp(&part_damage(b.0, b.1)));
+        if let Some((part, damage)) = worst {
+            self.hurt_by(part, damage, true);
+        }
+    }
+
     fn set_phase(&mut self, phase: Phase) {
         if self.phase == Phase::Dying || self.phase == phase {
             return;
@@ -1073,7 +1194,7 @@ impl Dragon {
         self.phase = phase;
         self.phase_ticks = 0;
         self.target = None;
-        self.path.clear();
+        self.path = None;
         self.fireball_charge = 0;
         if phase == Phase::SittingFlaming {
             self.flame_count += 1;
@@ -1126,7 +1247,7 @@ impl Dragon {
     #[allow(clippy::too_many_arguments)]
     fn tick<W: BlockSource + ?Sized>(
         &mut self,
-        fight: &mut Fight,
+        arena: &mut Arena<'_>,
         world: &W,
         ctx: &Ctx,
         rng: &mut Rng,
@@ -1143,7 +1264,7 @@ impl Dragon {
         self.history_at = (self.history_at + 1) % 64;
         self.history[self.history_at] = (self.yaw, self.pos.y);
         if self.phase == Phase::Dying {
-            return self.tick_death(fight, events);
+            return self.tick_death(arena, events);
         }
         self.phase_ticks += 1;
 
@@ -1165,21 +1286,41 @@ impl Dragon {
             events.push(EntityEvent::Sound { sound: MobSound::DragonGrowl, pos: self.head() });
         }
 
-        self.think(fight, world, ctx, rng, events);
-        self.fly(world);
+        self.think(arena, world, ctx, rng, events);
+        self.fly(world, arena.ceiling);
         self.place_parts();
         self.heal(crystals, rng);
-        if !self.phase.sitting() {
+        // Java's `checkWalls` runs in every phase; perched on the exit
+        // portal the fight's dragon only meets blocks it can't break.
+        if !self.phase.deflects_arrows() {
             self.smash(world, events);
         }
         self.hit_players(ctx, events);
         true
     }
 
-    /// Java's phase logic (`DragonPhaseInstance.doServerTick`).
+    /// Java's phase logic (`DragonPhaseInstance.doServerTick`). As in
+    /// `EnderDragon.aiStep`, when a phase hands over to another, the new
+    /// phase runs its first tick at once.
     fn think<W: BlockSource + ?Sized>(
         &mut self,
-        fight: &mut Fight,
+        arena: &mut Arena<'_>,
+        world: &W,
+        ctx: &Ctx,
+        rng: &mut Rng,
+        events: &mut Vec<EntityEvent>,
+    ) {
+        let before = self.phase;
+        self.think_phase(arena, world, ctx, rng, events);
+        if self.phase != before && self.phase != Phase::Dying {
+            self.phase_ticks += 1;
+            self.think_phase(arena, world, ctx, rng, events);
+        }
+    }
+
+    fn think_phase<W: BlockSource + ?Sized>(
+        &mut self,
+        arena: &mut Arena<'_>,
         world: &W,
         ctx: &Ctx,
         rng: &mut Rng,
@@ -1193,9 +1334,15 @@ impl Dragon {
                 .copied()
         };
         match self.phase {
+            // `DragonHoverPhase`: hold where it was.
+            Phase::Hovering => {
+                if self.target.is_none() {
+                    self.target = Some(self.pos);
+                }
+            }
             Phase::HoldingPattern => {
                 if self.target_reached() {
-                    self.holding_target(fight, ctx, rng);
+                    self.holding_target(arena, world, ctx, rng);
                 }
             }
             Phase::Strafe(id) => {
@@ -1203,9 +1350,19 @@ impl Dragon {
                     self.set_phase(Phase::HoldingPattern);
                     return;
                 };
-                let dist = (t.pos - self.pos).with_y(0.0).length();
-                let lift = (0.4 + dist / 80.0 - 1.0).min(10.0);
-                self.target = Some(t.pos + DVec3::Y * lift);
+                if self.phase_ticks == 1 {
+                    self.strafe_route(arena, world, &t, rng);
+                }
+                // `DragonStrafePlayerPhase.doServerTick`: once its path is
+                // done it heads for the player, a little above them.
+                if self.path.as_ref().is_some_and(Vec::is_empty) {
+                    let dist = (t.pos - self.pos).with_y(0.0).length();
+                    let lift = (f64::from(0.4f32) + dist / 80.0 - 1.0).min(10.0);
+                    self.target = Some(t.pos + DVec3::Y * lift);
+                }
+                if self.target_reached() {
+                    self.circle(arena, world, rng, true);
+                }
                 let aim = (t.pos - self.pos).with_y(0.0).normalize_or_zero();
                 let facing = heading(self.yaw);
                 let close = t.pos.distance_squared(self.pos) < 64.0 * 64.0;
@@ -1215,36 +1372,40 @@ impl Dragon {
                     if self.fireball_charge >= 5 && angle < 10.0 {
                         let from = self.head() - facing;
                         let dir = (t.pos + DVec3::Y * 0.9 - from).normalize_or(facing);
-                        fight.fireballs.push(DragonFireball::new(from, dir));
+                        arena.fireballs.push(DragonFireball::new(from, dir));
                         events.push(EntityEvent::Sound { sound: MobSound::DragonShoot, pos: from });
                         self.set_phase(Phase::HoldingPattern);
                     }
                 } else {
                     self.fireball_charge = self.fireball_charge.saturating_sub(1);
                 }
-                if self.phase_ticks > 400 {
-                    self.set_phase(Phase::HoldingPattern);
-                }
             }
+            // `DragonLandingApproachPhase.findNewTarget`: from the nearest
+            // node to the one away from the player nearest the egg, then
+            // down to the egg.
             Phase::LandingApproach => {
-                if self.path.is_empty() && self.target.is_none() {
-                    // In from the side away from the nearest player.
-                    let podium = fight.perch(world);
-                    let away = near(150.0, podium).map_or(DVec3::X, |t| -t.pos.with_y(0.0).normalize_or(DVec3::NEG_X));
-                    let entry = fight.closest_node(DVec3::new(away.x * 40.0, 105.0, away.z * 40.0), 12..24);
-                    self.path = vec![podium, fight.nodes[entry]];
-                    self.next_waypoint(rng, true);
-                } else if self.target_reached() {
-                    if self.path.is_empty() {
+                if self.target_reached() {
+                    if self.path.as_ref().is_none_or(Vec::is_empty) {
+                        let current = self.closest_node(arena, world);
+                        let egg = arena.egg(world);
+                        // `NEAR_EGG_TARGETING` has no range.
+                        let goal = match nearest_player(ctx, egg.as_dvec3()) {
+                            Some(t) => {
+                                let aim = t.pos.with_y(0.0).normalize_or_zero();
+                                self.closest_node_to(arena, DVec3::new(-aim.x * 40.0, 105.0, -aim.z * 40.0))
+                            }
+                            None => self.closest_node_to(arena, DVec3::new(40.0, egg.y as f64, 0.0)),
+                        };
+                        self.path = self.find_path(arena, current, goal, Some(egg.as_dvec3()));
+                    }
+                    self.navigate(rng);
+                    if self.path.as_ref().is_some_and(Vec::is_empty) {
                         self.set_phase(Phase::Landing);
-                    } else {
-                        let last = self.path.len() == 1;
-                        self.next_waypoint(rng, !last);
                     }
                 }
             }
             Phase::Landing => {
-                let perch = fight.perch(world);
+                let perch = arena.perch(world);
                 self.target = Some(perch);
                 if perch.distance_squared(self.pos) < 1.0 || self.phase_ticks > 400 {
                     self.pos = perch;
@@ -1269,7 +1430,7 @@ impl Dragon {
                         }
                     }
                     at.y = at.y.floor() + 1.0;
-                    fight.clouds.push(BreathCloud::new(at, 5.0, 0.0, 200, 3.0));
+                    arena.clouds.push(BreathCloud::new(at, 5.0, 0.0, 200, 3.0));
                     events.push(EntityEvent::Sound { sound: MobSound::DragonShoot, pos: at });
                 }
             }
@@ -1306,20 +1467,26 @@ impl Dragon {
                     self.set_phase(Phase::SittingFlaming);
                 }
             }
+            // `DragonTakeoffPhase`: on its first tick, a path out along the
+            // head's look to the ring; then once 10 blocks from the egg, the
+            // holding pattern.
             Phase::Takeoff => {
-                if self.path.is_empty() && self.target.is_none() {
-                    // Out the way it faces, to a node beyond the pillars.
-                    let out = heading(self.yaw);
-                    let node = fight.closest_node(DVec3::new(out.x * 40.0, 105.0, out.z * 40.0), 0..24);
-                    let node = node % 12;
-                    self.path = vec![fight.nodes[node]];
-                    self.target = Some(self.pos + DVec3::Y * 12.0 + out * 6.0);
-                } else if self.target_reached() {
-                    self.next_waypoint(rng, true);
-                }
-                let perch = fight.perch(world);
-                if self.pos.distance_squared(perch) > 10.0 * 10.0 && self.phase_ticks > 20 {
-                    self.set_phase(Phase::HoldingPattern);
+                let egg = arena.egg(world);
+                if self.phase_ticks > 1 && self.path.is_some() {
+                    if egg_center(egg).distance_squared(self.pos) >= 10.0 * 10.0 {
+                        self.set_phase(Phase::HoldingPattern);
+                    }
+                } else {
+                    let current = self.closest_node(arena, world);
+                    // `getHeadLookVector` while taking off: pitched down by
+                    // the distance from the egg.
+                    let dist = (egg_center(egg).distance_squared(self.pos).sqrt() as f32 / 4.0).max(1.0);
+                    let look = view_vector(-(6.0 / dist) * 1.5 * 5.0, self.yaw);
+                    let goal = self.closest_node_to(arena, DVec3::new(-look.x * 40.0, 105.0, -look.z * 40.0)) as i32;
+                    let goal =
+                        if arena.alive_crystals > 0 { goal.rem_euclid(12) as usize } else { path::inner_ring(goal) };
+                    self.path = self.find_path(arena, current, goal, None);
+                    self.navigate(rng);
                 }
             }
             Phase::Charging => {
@@ -1343,56 +1510,99 @@ impl Dragon {
         self.target.is_none_or(|t| !(100.0..=22500.0).contains(&t.distance_squared(self.pos)))
     }
 
-    /// Flies on to the next waypoint, up to 20 blocks above it when `lift`.
-    fn next_waypoint(&mut self, rng: &mut Rng, lift: bool) {
-        let Some(node) = self.path.pop() else {
-            self.target = None;
-            return;
-        };
-        let up = if lift { rng.next_f32() as f64 * 20.0 } else { 0.0 };
-        self.target = Some(node + DVec3::Y * up);
+    /// `EnderDragon.findClosestNode()`: works out the nodes the first time
+    /// (and again while a column is unloaded), then the node nearest the
+    /// dragon.
+    fn closest_node<W: BlockSource + ?Sized>(&mut self, arena: &Arena<'_>, world: &W) -> usize {
+        if !self.nodes_ready {
+            let (nodes, complete) = path::nodes(world, arena.top, arena.floor);
+            self.nodes = nodes;
+            self.nodes_ready = complete;
+        }
+        self.closest_node_to(arena, self.pos)
     }
 
-    /// Java's `HoldingPatternPhase.findNewTarget`: maybe land or strafe,
-    /// otherwise on round the pillars.
-    fn holding_target(&mut self, fight: &Fight, ctx: &Ctx, rng: &mut Rng) {
-        if self.path.is_empty() && self.target.is_some() {
-            let alive = fight.alive_crystals;
-            if (rng.next_f32() * (alive + 3) as f32) < 1.0 {
+    /// `EnderDragon.findClosestNode(x, y, z)`.
+    fn closest_node_to(&self, arena: &Arena<'_>, p: DVec3) -> usize {
+        path::closest_node(&self.nodes, p, path::min_node(arena.alive_crystals))
+    }
+
+    /// `EnderDragon.findPath`.
+    fn find_path(&self, arena: &Arena<'_>, from: usize, to: usize, last: Option<DVec3>) -> Option<Vec<DVec3>> {
+        path::find_path(&self.nodes, from, to, path::min_node(arena.alive_crystals), last)
+    }
+
+    /// `navigateToNextPathNode`: on to the path's next node, up to 20
+    /// blocks above it (Java adds the float to the whole-block height in
+    /// floats).
+    fn navigate(&mut self, rng: &mut Rng) {
+        if let Some(node) = self.path.as_mut().and_then(Vec::pop) {
+            let y = node.y as f32 + rng.next_f32() * 20.0;
+            self.target = Some(DVec3::new(node.x, f64::from(y), node.z));
+        }
+    }
+
+    /// `DragonHoldingPatternPhase.findNewTarget`: at the end of a path,
+    /// maybe land, or strafe the player nearest the egg; otherwise on
+    /// round the ring.
+    fn holding_target<W: BlockSource + ?Sized>(&mut self, arena: &Arena<'_>, world: &W, ctx: &Ctx, rng: &mut Rng) {
+        if self.path.as_ref().is_some_and(Vec::is_empty) {
+            let crystals = arena.alive_crystals;
+            if rng.next_int(crystals + 3) == 0 {
                 self.set_phase(Phase::LandingApproach);
                 return;
             }
-            let center = fight.podium.as_dvec3();
-            let player = ctx
-                .players
-                .iter()
-                .filter(|t| t.targetable && t.pos.distance_squared(center) < 150.0 * 150.0)
-                .min_by(|a, b| a.pos.distance_squared(center).total_cmp(&b.pos.distance_squared(center)));
-            if let Some(t) = player {
-                let odds = (t.pos.distance_squared(center) / 512.0).abs() as u32 + 2;
-                if (rng.next_f32() * odds as f32) < 1.0 || (rng.next_f32() * (alive + 2) as f32) < 1.0 {
+            let egg = arena.egg(world);
+            // `NEW_TARGET_TARGETING` has no range.
+            if let Some(t) = nearest_player(ctx, egg.as_dvec3()) {
+                let odds = (egg_center(egg).distance_squared(t.pos) / 512.0 + 2.0).min(f64::from(i32::MAX)) as u32;
+                if rng.next_int(odds) == 0 || rng.next_int(crystals + 2) == 0 {
                     self.set_phase(Phase::Strafe(t.id));
                     return;
                 }
             }
         }
-        if self.path.is_empty() {
-            let from = fight.closest_node(self.pos, 0..12);
-            let mut to = from as i32;
-            if rng.next_f32() < 0.125 {
-                self.clockwise = !self.clockwise;
+        self.circle(arena, world, rng, false);
+    }
+
+    /// The path part of `findNewTarget` in the holding pattern and the
+    /// strafe (each keeps its own direction): with no path, or at its end,
+    /// a path from the nearest node to the next one round (or, one time in
+    /// eight, turning back from six further on); then on to its next node.
+    fn circle<W: BlockSource + ?Sized>(&mut self, arena: &Arena<'_>, world: &W, rng: &mut Rng, strafing: bool) {
+        if self.path.as_ref().is_none_or(Vec::is_empty) {
+            let current = self.closest_node(arena, world);
+            let clockwise = if strafing { &mut self.strafe_clockwise } else { &mut self.clockwise };
+            let mut to = current as i32;
+            if rng.next_int(8) == 0 {
+                *clockwise = !*clockwise;
                 to += 6;
             }
-            to = (to + if self.clockwise { 1 } else { -1 }).rem_euclid(12);
-            let to = to as usize;
-            self.path.push(fight.nodes[to]);
-            // Across the ring, pass over the inner nodes.
-            if (to as i32 - from as i32).rem_euclid(12) > 1 && (from as i32 - to as i32).rem_euclid(12) > 1 {
-                let mid = (fight.nodes[from] + fight.nodes[to]) / 2.0;
-                self.path.push(fight.nodes[fight.closest_node(mid, 12..20)]);
-            }
+            to += if *clockwise { 1 } else { -1 };
+            // The holding pattern keeps a fight's dragon on the outer
+            // ring's numbers (its `aliveCrystals() >= 0` always holds);
+            // the strafe only while crystals are alive.
+            let outer = if strafing { arena.alive_crystals > 0 } else { arena.fight };
+            let to = if outer { to.rem_euclid(12) as usize } else { path::inner_ring(to) };
+            self.path = self.find_path(arena, current, to, None);
         }
-        self.next_waypoint(rng, true);
+        self.navigate(rng);
+    }
+
+    /// `DragonStrafePlayerPhase.setTarget`: a path from the nearest node to
+    /// the one nearest the player, ending at the player's block a little
+    /// above them.
+    fn strafe_route<W: BlockSource + ?Sized>(&mut self, arena: &Arena<'_>, world: &W, t: &Target, rng: &mut Rng) {
+        let current = self.closest_node(arena, world);
+        let goal = self.closest_node_to(arena, t.pos);
+        let (x, z) = (t.pos.x.floor(), t.pos.z.floor());
+        let (dx, dz) = (x - self.pos.x, z - self.pos.z);
+        let lift = (f64::from(0.4f32) + (dx * dx + dz * dz).sqrt() / 80.0 - 1.0).min(10.0);
+        let last = DVec3::new(x, (t.pos.y + lift).floor(), z);
+        self.path = self.find_path(arena, current, goal, Some(last));
+        if self.path.is_some() {
+            self.navigate(rng);
+        }
     }
 
     /// Fly speed and turn rate of the phase (Java's `getFlySpeed` and
@@ -1402,14 +1612,17 @@ impl Dragon {
         let default_turn = 0.7 / speed.min(40.0) / speed;
         match self.phase {
             Phase::Landing => (1.5, speed.min(40.0) / speed),
+            // `DragonHoverPhase.getFlySpeed`.
+            Phase::Hovering => (1.0, default_turn),
             Phase::Charging => (3.0, default_turn),
             _ => (0.6, default_turn),
         }
     }
 
     /// Java's `EnderDragon.aiStep` movement toward the target.
-    fn fly<W: BlockSource + ?Sized>(&mut self, world: &W) {
-        if self.phase.sitting() {
+    fn fly<W: BlockSource + ?Sized>(&mut self, world: &W, ceiling: f64) {
+        // A hovering dragon still flies toward where it appeared.
+        if self.phase.sitting() && self.phase != Phase::Hovering {
             self.vel = DVec3::ZERO;
             return;
         }
@@ -1444,7 +1657,7 @@ impl Dragon {
             })
         });
         self.pos += if in_wall { self.vel * 0.8 } else { self.vel };
-        self.pos.y = self.pos.y.min(crate::world::terrain::Dimension::End.max_y() as f64 + 16.0);
+        self.pos.y = self.pos.y.min(ceiling);
         let along = (self.vel.normalize_or_zero().dot(facing) as f32 + 1.0) / 2.0;
         let keep = 0.8 + 0.15 * along as f64;
         self.vel *= DVec3::new(keep, 0.91, keep);
@@ -1581,10 +1794,10 @@ impl Dragon {
     }
 
     /// Rises and spins for ten seconds, spilling experience toward the end.
-    fn tick_death(&mut self, fight: &mut Fight, events: &mut Vec<EntityEvent>) -> bool {
+    fn tick_death(&mut self, arena: &mut Arena<'_>, events: &mut Vec<EntityEvent>) -> bool {
         self.death_ticks += 1;
         self.healer = None;
-        let xp = if fight.previously_killed { LATER_XP } else { FIRST_XP };
+        let xp = if arena.previously_killed { LATER_XP } else { FIRST_XP };
         if self.death_ticks == 1 {
             events.push(EntityEvent::Sound { sound: MobSound::DragonDeath, pos: self.pos });
         }
@@ -1597,6 +1810,12 @@ impl Dragon {
         self.place_parts();
         if self.death_ticks >= DEATH_TICKS {
             events.push(EntityEvent::DragonXp { pos: self.pos, points: (xp as f32 * 0.2) as u32 });
+            // v1.0 Track 9: `EnderDragon.tickDeath` ends with `entity_die`.
+            events.push(EntityEvent::Vibration {
+                pos: self.pos,
+                event: crate::world::vibration::GameEvent::EntityDie,
+                source: crate::world::vibration::EventSource::NONE,
+            });
             return false;
         }
         true
@@ -1783,23 +2002,126 @@ mod tests {
         assert_eq!(reloaded.serialize(&crystals), "0,1,0,-,1,0");
     }
 
+    /// The island for path tests: end stone up to y 59 and the pillars'
+    /// obsidian and caps.
+    struct Island([Pillar; 10]);
+    impl BlockSource for Island {
+        fn block(&self, p: IVec3) -> Option<Block> {
+            if let Some(b) = self.0.iter().find_map(|s| s.block_at(p)).filter(|&b| b != Block::AIR) {
+                return Some(b);
+            }
+            Some(if p.y < 60 { Block::END_STONE } else { Block::AIR })
+        }
+    }
+
+    /// v1.0 Track 7b: the fight's dragon builds Java's nodes from the
+    /// heightmap (so nodes over a pillar sit above its cap) with a floor of
+    /// 73, where it used to read the island's terrain alone with a floor
+    /// of 10, and half-block centres. This replaces the old
+    /// "it spends most of a minute beyond 30 blocks" check, which Java's
+    /// one-in-13 landing roll at each path's end doesn't promise.
     #[test]
-    fn the_dragon_circles_the_pillars() {
+    fn the_fight_dragon_flies_javas_nodes_round_the_outer_ring() {
         let end = EndGen::new(5);
+        let island = Island(*end.pillars());
         let (mut fight, mut crystals) = fresh(&end);
+        assert_eq!(fight.alive_crystals(), 10);
         let mut rng = Rng::new(1);
         let mut events = Vec::new();
-        let mut far = 0;
-        for _ in 0..20 * 60 {
-            fight.update(TICK, &Air, &ctx(Vec::new()), &mut rng, &mut crystals, &mut events);
+        fight.update(TICK, &island, &ctx(Vec::new()), &mut rng, &mut crystals, &mut events);
+        let d = fight.dragon.as_ref().unwrap();
+        assert!(d.nodes_ready);
+        let mut over_pillar = 0;
+        for (i, node) in d.nodes.iter().enumerate() {
+            let (x, z) = path::node_column(i);
+            assert_eq!((node.x, node.z), (x as f64, z as f64), "whole-block nodes");
+            let lift = if (12..20).contains(&i) { 15 } else { 5 };
+            // The heightmap: over the highest motion-blocking block, which
+            // over a pillar is its obsidian, bedrock cap or cage.
+            let ground = (0..=256).rev().find(|&y| island.block(IVec3::new(x, y, z)).unwrap().is_solid()).unwrap() + 1;
+            if end.pillars().iter().any(|s| s.holds(x, z)) {
+                over_pillar += 1;
+                assert!(ground > 70, "node {i} stands over a pillar");
+            } else {
+                assert_eq!(ground, 60);
+            }
+            assert_eq!(node.y, f64::from((ground + lift).max(path::MIN_NODE_Y)), "node {i}");
+        }
+        assert!(over_pillar > 0, "some inner nodes stand over a pillar");
+        // With crystals alive, the holding pattern flies node to node, each
+        // target up to 20 over its node, round the outer ring (nodes 0-11;
+        // a turn back may cross the inner ones).
+        let nodes = d.nodes;
+        let mut seen = Vec::new();
+        for _ in 0..20 * 120 {
+            fight.update(TICK, &island, &ctx(Vec::new()), &mut rng, &mut crystals, &mut events);
             let d = fight.dragon.as_ref().unwrap();
             assert!(d.pos.is_finite());
-            if d.pos.with_y(0.0).length() > 30.0 {
-                far += 1;
+            if d.phase == Phase::HoldingPattern
+                && let Some(t) = d.target
+            {
+                let i = nodes.iter().position(|n| n.x == t.x && n.z == t.z);
+                let i = i.unwrap_or_else(|| panic!("{t} is not a node"));
+                assert!((nodes[i].y..nodes[i].y + 20.0).contains(&t.y), "{t} over {}", nodes[i]);
+                if i < 12 && !seen.contains(&i) {
+                    seen.push(i);
+                }
             }
         }
-        // It spends most of its time out around the pillar ring.
-        assert!(far > 20 * 30, "{far}");
+        assert!(seen.len() >= 4, "it went round the outer ring: {seen:?}");
+    }
+
+    /// With no crystal left, Java's holding pattern still picks an outer
+    /// node for a fight's dragon (`aliveCrystals() >= 0`), but `findPath`
+    /// may no longer use nodes 0-11, so it flies the inner nodes towards it.
+    #[test]
+    fn with_no_crystals_the_fight_dragon_keeps_to_the_inner_nodes() {
+        let end = EndGen::new(5);
+        let island = Island(*end.pillars());
+        let mut fight = Fight::new(&end);
+        let mut crystals = Crystals::default();
+        fight.legacy_crystals = None;
+        let mut rng = Rng::new(3);
+        let mut events = Vec::new();
+        let mut targets = 0;
+        for _ in 0..20 * 120 {
+            fight.update(TICK, &island, &ctx(Vec::new()), &mut rng, &mut crystals, &mut events);
+            assert_eq!(fight.alive_crystals(), 0);
+            let d = fight.dragon.as_ref().unwrap();
+            if matches!(d.phase, Phase::HoldingPattern | Phase::Takeoff)
+                && let Some(t) = d.target
+            {
+                assert!(d.nodes[12..].iter().any(|n| n.x == t.x && n.z == t.z), "{t} is not an inner node");
+                targets += 1;
+            }
+        }
+        assert!(targets > 0);
+    }
+
+    /// Java's strafe: a path from the nearest node to the one nearest the
+    /// player, ending at the player's block a little above them; once it's
+    /// flown, the dragon heads straight for the player.
+    #[test]
+    fn a_strafe_follows_javas_path_to_the_player() {
+        let end = EndGen::new(5);
+        let island = Island(*end.pillars());
+        let (mut fight, mut crystals) = fresh(&end);
+        let player = Target::new(PlayerId::HOST, DVec3::new(10.3, 61.0, -5.6), true);
+        let mut rng = Rng::new(4);
+        let mut events = Vec::new();
+        fight.update(TICK, &island, &ctx(Vec::new()), &mut rng, &mut crystals, &mut events);
+        let d = fight.dragon.as_mut().unwrap();
+        d.pos = DVec3::new(60.0, 90.0, 0.0);
+        d.set_phase(Phase::Strafe(PlayerId::HOST));
+        fight.update(TICK, &island, &ctx(vec![player]), &mut rng, &mut crystals, &mut events);
+        let d = fight.dragon.as_ref().unwrap();
+        let path = d.path.clone().expect("a path to the player");
+        // The final node: the player's block, `floor(y + min(0.4F + dist / 80 - 1, 10))` up.
+        let (dx, dz) = (10.0 - d.previous_pos.x, -6.0 - d.previous_pos.z);
+        let lift = (f64::from(0.4f32) + (dx * dx + dz * dz).sqrt() / 80.0 - 1.0).min(10.0);
+        assert_eq!(path.first(), Some(&DVec3::new(10.0, (61.0 + lift).floor(), -6.0)));
+        let t = d.target.unwrap();
+        assert!(d.nodes.iter().any(|n| n.x == t.x && n.z == t.z), "first it flies to a node: {t}");
     }
 
     #[test]
@@ -1822,7 +2144,8 @@ mod tests {
         let healer = crystals.list[4].id;
         fight.dragon.as_mut().unwrap().healer = Some(healer);
         let player = Target::new(PlayerId::HOST, DVec3::new(0.0, 70.0, 0.0), true);
-        let mut targets = Targets { fight: Some(&mut fight), crystals: &mut crystals };
+        let mut wild = Wild::default();
+        let mut targets = Targets { fight: Some(&mut fight), wild: &mut wild, crystals: &mut crystals };
         assert!(targets.strike(Hit::Crystal(healer), 1.0, Some(PlayerId::HOST), false));
         let mut events = Vec::new();
         fight.update(TICK, &Air, &ctx(vec![player]), &mut Rng::new(1), &mut crystals, &mut events);

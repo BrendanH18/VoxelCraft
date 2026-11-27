@@ -153,6 +153,7 @@ impl Sound {
                 ContainerCue::CopperChestOxidizedOpen => "block.copper_chest_oxidized.open",
                 ContainerCue::CopperChestOxidizedClose => "block.copper_chest_oxidized.close",
             }),
+            Sound::SoulEscape => s("particle.soul_escape"),
         }
     }
 }

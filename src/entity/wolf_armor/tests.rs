@@ -66,6 +66,7 @@ fn wolf_armor_only_the_owner_equips_adults_and_repairs_sitting_wolves() {
     let scute = Some(Stack::new(Item::ARMADILLO_SCUTE, 1));
     assert_eq!(e.use_wolf_armor(0, scute, PlayerId::HOST, false), None);
     e.mobs[0].animal.as_mut().unwrap().sitting = true;
+    e.mobs[0].animal.as_mut().unwrap().sit_pose = true;
     assert_eq!(e.use_wolf_armor(0, scute, PlayerId(1), false), None);
     assert_eq!(e.use_wolf_armor(0, scute, PlayerId::HOST, false), Some(Use::Repair));
     assert_eq!(e.mobs[0].wolf_armor.as_ref().unwrap().armor.unwrap().damage, 2);
@@ -254,6 +255,7 @@ fn wolf_armor_creative_repairs_consume_scutes_on_the_authoritative_adapter() {
     armor.damage = 12;
     equip(&mut e, armor);
     e.mobs[0].animal.as_mut().unwrap().sitting = true;
+    e.mobs[0].animal.as_mut().unwrap().sit_pose = true;
     let mut player = crate::player::Player::new(DVec3::new(0.5, 150.0, 0.5));
     player.yaw = 0.0;
     player.pitch = ((150.4 - player.eye().y) / 2.0).atan() as f32;

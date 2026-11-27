@@ -421,7 +421,7 @@ impl Entities {
             {
                 *open_counts.entry(world.chest_halves(p).0).or_default() += 1;
             }
-            if m.kind == MobKind::Cat && m.animal.as_ref().is_some_and(|a| a.sitting) {
+            if m.kind == MobKind::Cat && m.animal.as_ref().is_some_and(|a| a.sit_pose) {
                 // Java queries cats whose AABB intersects the unit cube above
                 // either half, including cats standing on the 14/16-height lid.
                 let (lo, hi) = m.shape().aabb(m.pos);

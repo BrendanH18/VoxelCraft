@@ -524,6 +524,14 @@ impl Entities {
         s.peek = amount;
         let cue = if amount == 0 { Cue::Close } else { Cue::Open };
         events.push(EntityEvent::Sound { sound: MobSound::Shulker(cue), pos: m.pos + DVec3::Y * 0.5 });
+        // v1.0 Track 9: `Shulker.setRawPeekAmount` posts `container_close`
+        // when it shuts, otherwise `container_open`.
+        let event = if amount == 0 {
+            crate::world::vibration::GameEvent::ContainerClose
+        } else {
+            crate::world::vibration::GameEvent::ContainerOpen
+        };
+        self.post_mob_event(i, event);
     }
 
     /// The centre of shulker `i`'s box (where bullets start).
@@ -625,6 +633,9 @@ impl Entities {
                 let b = self.shulker_bullets.swap_remove(i);
                 let source = super::sculk_events::Sculk::projectile_source(None, Some(b.owner));
                 self.sculk.land(world, b.pos, b.pos - b.previous_pos, source);
+                // v1.0 Track 9: `ShulkerBullet.destroy` posts `entity_damage`
+                // where it is, from the bullet (named here by its owner).
+                self.sculk.post(b.pos, crate::world::vibration::GameEvent::EntityDamage, source, None);
             }
         }
     }

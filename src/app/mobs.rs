@@ -174,6 +174,7 @@ impl Game {
             blocking: self.session.blocking(),
             fall_flying: self.session.player.fall_flying,
             passenger: self.session.player.vehicle.is_some(),
+            vel: self.session.player.vel,
             ..Target::new(
                 PlayerId::HOST,
                 self.session.player.pos,
@@ -733,6 +734,9 @@ impl Game {
                         let place = crate::world::vibration::GameEvent::BlockPlace;
                         self.world.emit_block_event(cell, place, none, replanted);
                     }
+                }
+                EntityEvent::RingBell { pos, mob } => {
+                    self.world.ring_bell_by(pos, crate::world::vibration::EventSource::mob(mob));
                 }
                 EntityEvent::VillagerDoorClose { cell } => {
                     if self.world.get_block(cell).is_some_and(|b| {

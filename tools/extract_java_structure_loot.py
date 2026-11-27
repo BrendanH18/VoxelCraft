@@ -64,10 +64,13 @@ TABLES = [
             "weaponsmith",
         ]
     ],
+    # v1.0 Track 5: trail ruins' suspicious gravel.
+    "archaeology/trail_ruins_common",
+    "archaeology/trail_ruins_rare",
 ]
 
 # Tables outside `loot_table/chests/`, by their own directory.
-OUTSIDE_CHESTS = ("dispensers/", "spawners/", "equipment/", "pots/")
+OUTSIDE_CHESTS = ("dispensers/", "spawners/", "equipment/", "pots/", "archaeology/")
 
 
 def path(name):

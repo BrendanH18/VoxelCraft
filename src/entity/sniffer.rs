@@ -248,6 +248,14 @@ impl Entities {
                 s.cooldown = s.cooldown.saturating_sub(1);
                 s.elapsed = s.elapsed.saturating_add(1);
                 effects(w, &s, m.pos, &mut self.pending_sounds);
+                // v1.0 Track 9: `Sniffer.emitDiggingParticles` posts
+                // `entity_action` at its head block every tenth tick of a dig.
+                if s.pose == DIGGING && s.elapsed.is_multiple_of(10) {
+                    let ahead = m.pos + DVec3::new(m.yaw.cos() as f64, 0.0, m.yaw.sin() as f64) * 2.25;
+                    let head = DVec3::new(ahead.x, m.pos.y + 0.2_f32 as f64, ahead.z).floor().as_ivec3();
+                    let source = super::warden::mob_source(m);
+                    w.emit_block_event(head, crate::world::vibration::GameEvent::EntityAction, source, None);
+                }
                 if m.baby
                     || m.in_water
                     || m.hurt > 0.0

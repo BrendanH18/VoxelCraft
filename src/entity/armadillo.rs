@@ -137,6 +137,8 @@ impl Entities {
         let pos = m.pos;
         self.scatter(Stack::new(Item::ARMADILLO_SCUTE, 1), pos + DVec3::Y * 0.2);
         self.pending_sounds.push(EntityEvent::Sound { sound: MobSound::Ambient(MobKind::Armadillo), pos });
+        // `Armadillo.brushOffScute`: `entity_interact` from the armadillo.
+        self.post_mob_event(index, crate::world::vibration::GameEvent::EntityInteract);
         true
     }
     pub(super) fn armadillo_upkeep<W: MobWorld + ?Sized>(
@@ -172,6 +174,8 @@ impl Entities {
                     self.scatter(Stack::new(Item::ARMADILLO_SCUTE, 1), pos + DVec3::Y * 0.2);
                     s.scute_time = 6000 + self.rng.next_int(6000) as i32;
                     events.push(EntityEvent::Sound { sound: MobSound::Ambient(MobKind::Armadillo), pos });
+                    // `Armadillo.customServerAiStep`: the shed scute's `entity_place`.
+                    self.post_mob_event(i, crate::world::vibration::GameEvent::EntityPlace);
                 }
                 if !stay {
                     s.danger = 0;

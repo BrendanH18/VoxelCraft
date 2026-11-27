@@ -62,38 +62,52 @@ pub(super) fn decor_feedback(audio: &mut Audio, at: DVec3, effect: decor::Effect
 
 impl Game {
     /// Items in item frames, as free-standing block models: a small block,
-    /// or the item's icon flat in the frame.
-    pub(super) fn decor_models(&self) -> impl Iterator<Item = crate::render::BlockModel> + '_ {
-        decor::framed_items(&self.mobs.entities.decor).map(|(centre, orient, stack, sky, torch)| {
-            let block = crate::world::copper_golem_statue::item_model(stack)
-                .or_else(|| stack.item.block())
-                .filter(|b| !b.flat_icon());
-            let size = if block.is_some() { 0.375 } else { 0.5 };
-            let icon = match block {
-                Some(_) => None,
-                None => stack
-                    .item
-                    .block()
-                    .map(|b| b.info().tex[0])
-                    .or_else(|| stack.item.dial_layer(self.dial_of(&self.session.player).for_stack(&stack)))
-                    .or_else(|| stack.item.icon_layer()),
-            };
-            // A block sits on the frame's backing rather than in the wall.
-            let out = if block.is_some() { (orient * glam::Vec3::Z).as_dvec3() * (size / 2.0) } else { DVec3::ZERO };
-            crate::render::BlockModel {
-                patterns: None,
-                lid: None,
-                min: centre + out - DVec3::splat(size / 2.0),
-                size: size as f32,
-                block: block.unwrap_or(voxelcraft::world::block::Block::AIR),
-                sky_light: sky,
-                block_light: torch,
-                yaw: 0.0,
-                icon,
-                orient: Some(orient),
-                tint: voxelcraft::entity::wolf_armor::item_tint_bytes(stack),
-            }
-        })
+    /// or the item's icon flat in the frame. Only frames `view` draws from
+    /// `camera` show their item (Java draws it with the frame).
+    pub(super) fn decor_models<'a>(
+        &'a self,
+        camera: DVec3,
+        view: &'a voxelcraft::entity::draw_distance::DrawDistance,
+    ) -> impl Iterator<Item = crate::render::BlockModel> + 'a {
+        // A filled map whose data exists is drawn as its image instead
+        // (`entity::decor`), as Java's renderer does.
+        let maps = &self.world.maps;
+        let shows_map = move |s: &voxelcraft::inventory::Stack| {
+            voxelcraft::world::maps::has_map_id(s) && s.map_id.is_some_and(|id| maps.maps.contains_key(&id))
+        };
+        decor::framed_items(&self.mobs.entities.decor, camera, view).filter(move |f| !shows_map(&f.2)).map(
+            |(centre, orient, stack, sky, torch)| {
+                let block = crate::world::copper_golem_statue::item_model(stack)
+                    .or_else(|| stack.item.block())
+                    .filter(|b| !b.flat_icon());
+                let size = if block.is_some() { 0.375 } else { 0.5 };
+                let icon = match block {
+                    Some(_) => None,
+                    None => stack
+                        .item
+                        .block()
+                        .map(|b| b.info().tex[0])
+                        .or_else(|| stack.item.dial_layer(self.dial_of(&self.session.player).for_stack(&stack)))
+                        .or_else(|| stack.item.icon_layer()),
+                };
+                // A block sits on the frame's backing rather than in the wall.
+                let out =
+                    if block.is_some() { (orient * glam::Vec3::Z).as_dvec3() * (size / 2.0) } else { DVec3::ZERO };
+                crate::render::BlockModel {
+                    patterns: None,
+                    lid: None,
+                    min: centre + out - DVec3::splat(size / 2.0),
+                    size: size as f32,
+                    block: block.unwrap_or(voxelcraft::world::block::Block::AIR),
+                    sky_light: sky,
+                    block_light: torch,
+                    yaw: 0.0,
+                    icon,
+                    orient: Some(orient),
+                    tint: voxelcraft::entity::wolf_armor::item_tint_bytes(stack),
+                }
+            },
+        )
     }
 
     /// `--decor`: places a decoration as its item would, then fills a

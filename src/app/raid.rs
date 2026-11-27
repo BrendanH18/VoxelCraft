@@ -1,6 +1,7 @@
 //! v0.15 Track E glue: every player's raid omens tick before the entities,
 //! and the raid outcomes (Hero of the Village, the horn) land on them after.
 use voxelcraft::entity::raid::{Cue, Outcome};
+use voxelcraft::session::raid::Stats;
 use voxelcraft::simulation::difficulty::Difficulty;
 use voxelcraft::simulation::effects::Effect;
 
@@ -30,11 +31,15 @@ impl Game {
     pub(super) fn apply_raid_outcomes(&mut self) {
         for outcome in std::mem::take(&mut self.mobs.entities.raids.outcomes) {
             match outcome {
+                // `Raid.tick` on victory: Hero of the Village, then
+                // `awardStat(Stats.RAID_WIN)`.
                 Outcome::Hero { player, amplifier } => {
                     if player == self.session.id {
                         self.session.crown_hero(amplifier);
+                        self.session.stats.award(Stats::RAID_WIN);
                     } else if let Some(bot) = self.agents.by_id_mut(player) {
                         bot.agent.session.crown_hero(amplifier);
+                        bot.agent.session.stats.award(Stats::RAID_WIN);
                     }
                 }
                 Outcome::Horn { player, at } if player == self.session.id => {
@@ -44,9 +49,15 @@ impl Game {
                 // Any other player's horn goes to that LAN guest with its
                 // next state (issue #98).
                 Outcome::Horn { player, at } => self.lan.horns.push((player, at)),
-                // VoxelCraft has no statistics or advancements yet
-                // (`Stats.RAID_TRIGGER`, `RAID_WIN`).
-                Outcome::Triggered { .. } => {}
+                // `Raid.absorbRaidOmen`: `awardStat(Stats.RAID_TRIGGER)`.
+                // (Advancements are not modelled.)
+                Outcome::Triggered { player } => {
+                    if player == self.session.id {
+                        self.session.stats.award(Stats::RAID_TRIGGER);
+                    } else if let Some(bot) = self.agents.by_id_mut(player) {
+                        bot.agent.session.stats.award(Stats::RAID_TRIGGER);
+                    }
+                }
             }
         }
     }

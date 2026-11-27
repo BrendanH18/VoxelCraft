@@ -372,9 +372,26 @@ impl PlayerSession {
         tool_broken: &mut Option<Item>,
     ) -> Result<Option<Used>, &'static str> {
         // The mob a use reaches, for `entity_interact` and `shear` at its position.
-        let target = self.mob_target(world, entities).map(|i| entities.mobs[i].pos);
+        let target_mob = self.mob_target(world, entities);
+        let target = target_mob.map(|i| entities.mobs[i].pos);
+        // v1.0 Track 9: shears a mob's `mobInteract` took (`MushroomCow`,
+        // `SnowGolem`, `CopperGolem`, `SulfurCube`, and `Mob.shearItem` for
+        // a nautilus's saddle or a happy ghast's harness) post `shear` first.
+        use crate::entity::MobKind as K;
+        let shearing = self.inventory.get(slot).is_some_and(|s| s.item == Item::SHEARS)
+            && target_mob.is_some_and(|i| {
+                let kind = entities.mobs[i].kind;
+                matches!(kind, K::Mooshroom | K::SnowGolem | K::CopperGolem | K::SulfurCube | K::HappyGhast)
+                    || crate::entity::nautilus::is_nautilus(kind)
+            });
         let mut used = self.use_entity(slot, world, entities, ctx, tool_broken)?;
         if let Some(u) = used {
+            if shearing
+                && matches!(u, Used::Animal | Used::Mob)
+                && let Some(at) = target
+            {
+                world.emit_game_event(at, crate::world::vibration::GameEvent::Shear, self.event_source(), None);
+            }
             self.entity_use_event(world, entities, u, target);
         }
         if used.is_none()
@@ -499,6 +516,11 @@ impl PlayerSession {
             _ => return,
         };
         world.emit_game_event(pos, event, source, None);
+        // v1.0 Track 9: `MobBucketItem.checkExtraContent` posts `entity_place`
+        // from the player for the released creature.
+        if let Used::Bucket(B::Released { .. }) = used {
+            world.emit_game_event(pos, E::EntityPlace, source, None);
+        }
     }
 
     /// Items whose right-click starts drawing (bows and crossbows).
@@ -582,6 +604,14 @@ impl PlayerSession {
         }
         if let Some(used) = self.use_copper_golem(slot, world, entities, tool_broken) {
             return Ok(Some(used));
+        }
+        // v1.0 Track 6: a boat's lead (`Entity.interact`) before boarding it.
+        let held = self.inventory.get(slot).map(|s| s.item);
+        if let Some(used) = entities.use_boat_leash(eye, dir, reach, self.id, held, creative) {
+            if used && !creative {
+                self.inventory.take_one(slot);
+            }
+            return Ok(Some(Used::Animal));
         }
         // `Cushion.interact` passes while sneaking.
         let sneaking_at_cushion = ctx.sneaking
@@ -684,7 +714,7 @@ impl PlayerSession {
             return Ok(Some(Used::MapCreated));
         }
         // v0.18 Track 4: `SpawnEggItem.useOn` and `use`.
-        if let Some(kind) = self.inventory.get(slot).and_then(|s| crate::content::spawn_egg::mob(s.item)) {
+        if let Some(kind) = self.inventory.get(slot).and_then(|s| crate::content::spawn_egg::spawns(s.item)) {
             return self.use_spawn_egg(slot, kind, world, entities);
         }
         let creative = self.mode.is_creative();
@@ -806,7 +836,7 @@ impl PlayerSession {
     fn use_spawn_egg(
         &mut self,
         slot: usize,
-        kind: crate::entity::MobKind,
+        kind: crate::content::spawn_egg::Spawns,
         world: &mut World,
         entities: &mut Entities,
     ) -> Result<Option<Used>, &'static str> {
@@ -824,10 +854,10 @@ impl PlayerSession {
         if !matches!(world.get_block(pos), Some(Block::WATER | Block::LAVA)) {
             return Ok(None);
         }
-        let index = entities.spawn_from_egg(world, kind, pos, false, false).ok_or(EGG_PEACEFUL)?;
+        let at = entities.spawn_egg_spawns(world, kind, pos, false, false).ok_or(EGG_PEACEFUL)?;
         self.consume_egg(slot);
         world.emit_block_event(pos, crate::world::vibration::GameEvent::EntityPlace, self.event_source(), None);
-        Ok(Some(Used::SpawnedMob { at: entities.mobs[index].pos }))
+        Ok(Some(Used::SpawnedMob { at }))
     }
 
     /// `ItemStack.consume` / `shrink`: creative keeps its eggs.
@@ -844,19 +874,24 @@ impl PlayerSession {
     fn spawn_egg_on_block(
         &mut self,
         slot: usize,
-        kind: crate::entity::MobKind,
+        spawns: crate::content::spawn_egg::Spawns,
         world: &mut World,
         entities: &mut Entities,
         (pos, normal): (IVec3, IVec3),
     ) -> Result<Option<Used>, &'static str> {
+        use crate::content::spawn_egg::Spawns;
         use crate::world::vibration::GameEvent as E;
-        if !entities.egg_can_spawn(kind) {
+        if !entities.egg_spawns_allowed(spawns) {
             return Err(EGG_PEACEFUL);
         }
         let source = self.event_source();
         let block = world.get_block(pos).ok_or("that block isn't loaded")?;
-        if block == Block::SPAWNER || crate::world::trial::spawner(block).is_some() {
+        if let Spawns::Mob(kind) = spawns
+            && (block == Block::SPAWNER || crate::world::trial::spawner(block).is_some())
+        {
             // `Spawner.setEntityId`, unless `spawner_blocks_work` is off.
+            // (Spawners hold mobs only here; the dragon's egg on one spawns
+            // a dragon in front, a recorded difference.)
             if !entities.spawner_blocks {
                 return Err("Spawner blocks are not enabled");
             }
@@ -876,10 +911,10 @@ impl PlayerSession {
         crate::physics::block_collision_boxes(block, |_, _| empty = false);
         let at = if empty { pos } else { pos + normal };
         let moved_up = at != pos && normal == IVec3::Y;
-        let index = entities.spawn_from_egg(world, kind, at, true, moved_up).ok_or(EGG_PEACEFUL)?;
+        let spawned = entities.spawn_egg_spawns(world, spawns, at, true, moved_up).ok_or(EGG_PEACEFUL)?;
         self.consume_egg(slot);
         world.emit_block_event(at, E::EntityPlace, source, None);
-        Ok(Some(Used::SpawnedMob { at: entities.mobs[index].pos }))
+        Ok(Some(Used::SpawnedMob { at: spawned }))
     }
 
     /// [`Self::use_block_inner`], then the game event Java's block posts
@@ -933,6 +968,8 @@ impl PlayerSession {
             // `ComposterBlock.addLayer` / `empty`, `CaveVines.use` and
             // `SweetBerryBushBlock.useWithoutItem`, `LecternBlock.placeBook`:
             // the new state is the context.
+            // A harvested beehive posted its own event at the use.
+            Used::Harvested { cell } if state(world, cell).and_then(crate::world::bees::hive).is_some() => return,
             Used::Composter { cell } | Used::Harvested { cell } | Used::LecternBook { cell } => {
                 (cell, E::BlockChange, source, state(world, cell))
             }
@@ -1020,6 +1057,11 @@ impl PlayerSession {
                 }
                 U::Washed => (cell, E::BlockChange, none, state(world, cell)),
                 U::EnderChest => (cell, E::ContainerOpen, source, None),
+                // v1.0 Track 9: `DecoratedPotBlock.useWithoutItem`: the
+                // wobble posts `block_change` from the player.
+                U::Consumed if state(world, cell).and_then(crate::world::utilities::decorated_pot_of).is_some() => {
+                    (cell, E::BlockChange, source, None)
+                }
                 _ => return,
             },
             _ => return,
@@ -1067,6 +1109,14 @@ impl PlayerSession {
             && world.get_block(pos).and_then(crate::world::bees::hive).is_some_and(|(_, _, h)| h == 5)
             && world.harvest_beehive(entities, pos, self.id)
         {
+            // v1.0 Track 9: `BeehiveBlock.useItemOn` posts `shear` or
+            // `fluid_pickup` from the player (and no `block_change`).
+            let event = if held == Some(Item::SHEARS) {
+                crate::world::vibration::GameEvent::Shear
+            } else {
+                crate::world::vibration::GameEvent::FluidPickup
+            };
+            world.emit_block_event(pos, event, self.event_source(), None);
             if held == Some(Item::SHEARS) {
                 world.drop_honeycomb(pos);
                 if survival && self.inventory.wear(slot, 1) {
@@ -1233,7 +1283,7 @@ impl PlayerSession {
         // v0.18 Track 4: `SpawnEggItem.useOn`, after the block's own use
         // passed (containers, doors, berry bushes and the rest come first).
         // A mob under the crosshair that wouldn't breed leaves it unused.
-        if let Some(kind) = held.and_then(crate::content::spawn_egg::mob) {
+        if let Some(kind) = held.and_then(crate::content::spawn_egg::spawns) {
             if self.mob_target(world, entities).is_some() {
                 return Ok(None);
             }

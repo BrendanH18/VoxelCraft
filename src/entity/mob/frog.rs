@@ -196,7 +196,8 @@ impl Mob {
             .map_or(0.0, |e| f64::from(e.amplifier) + 1.0);
         let damage = ((distance - 3.0 - boost).ceil() - 5.0).max(0.0) as f32;
         if damage > 0.0 {
-            self.damage(damage, None, rng);
+            // v1.0 Track 5: as `minecraft:fall` damage.
+            self.damage_from(damage, crate::simulation::damage::Cause::FALL, rng);
         }
     }
 

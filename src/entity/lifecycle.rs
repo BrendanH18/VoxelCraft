@@ -92,6 +92,7 @@ impl Entities {
         self.tick_allays(dt, world, ctx, &mut events);
         self.tick_animals(dt as f32, world, ctx, &mut events);
         self.tick_leashes(dt as f32, world, ctx);
+        self.tick_boat_leashes(dt as f32, world, ctx);
         self.tick_llamas(ctx);
         self.tick_undead_mounts(dt, world, ctx);
         self.sense_goals(world);
@@ -330,6 +331,8 @@ impl Entities {
                 self.items.push(ItemEntity::new(stack, m.pos, DVec3::ZERO, 0.5, &mut self.rng));
             }
         }
+        // v1.0 Track 7: dragons no fight owns (spawn eggs).
+        self.wild_dragons.update(dt, world, ctx, &mut self.rng, &self.crystals, &mut events);
         if let Some(fight) = &mut self.fight {
             // The End's crystals tick with the fight.
             fight.update(dt, world, ctx, &mut self.rng, &mut self.crystals, &mut events);
@@ -450,7 +453,11 @@ impl Entities {
         let targets = if self.arrows.is_empty() { Vec::new() } else { self.arrow_targets() };
         {
             let (mobs, rng, sculk) = (&mut self.mobs, &mut self.rng, &mut self.sculk);
-            let mut boss = super::dragon::Targets { fight: self.fight.as_mut(), crystals: &mut self.crystals };
+            let mut boss = super::dragon::Targets {
+                fight: self.fight.as_mut(),
+                wild: &mut self.wild_dragons,
+                crystals: &mut self.crystals,
+            };
             self.arrows.retain_mut(|a| {
                 if !world.entity_ticking(a.pos.floor().as_ivec3()) {
                     return true;

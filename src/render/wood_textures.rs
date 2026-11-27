@@ -1,6 +1,7 @@
 //! Original procedural textures of the v0.12 wood track (`world::wood::tex`):
-//! quarter-turned log and stripped log sides, trapdoors, sign item sprites,
-//! shelves and the chiseled bookshelf.
+//! quarter-turned log and stripped log sides, sign item sprites, shelves
+//! and the chiseled bookshelf. The trapdoors are drawn by the material
+//! generator (v1.0 Track 10).
 
 use super::{Rgba, noisy, pixel as base_pixel, rnd, shade};
 use crate::world::block::tex as block_tex;
@@ -62,7 +63,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
         // A quarter turn: the grain runs across instead of up.
         l if l < tex::STRIPPED_SIDE_TURNED => base_pixel(LOG_SIDES[(l - tex::LOG_SIDE_TURNED) as usize], y, x),
         l if l < tex::TRAPDOORS => base_pixel(tex::STRIPPED_SIDE + l - tex::STRIPPED_SIDE_TURNED, y, x),
-        l if l < tex::SIGN_ICONS => trapdoor((l - tex::TRAPDOORS) as usize, x, y, r),
         l if l < tex::HANGING_SIGN_ICONS => sign_icon((l - tex::SIGN_ICONS) as usize, x, y, r),
         l if l < tex::SHELF => hanging_sign_icon((l - tex::HANGING_SIGN_ICONS) as usize, x, y, r),
         l if l < tex::SHELF_FRONTS => shelf_body(l, (l - tex::SHELF) as usize, x, y),
@@ -72,46 +72,6 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
         }
         _ => [255, 0, 255, 255],
     }
-}
-
-/// Seven original trapdoor designs, one per wood family.
-fn trapdoor(family: usize, x: usize, y: usize, r: f32) -> Rgba {
-    let kind = family + 1; // `wood::Kind` index: spruce is 1
-    let c = PLANKS[kind];
-    let frame = x < 2 || y < 2 || x > 13 || y > 13;
-    let open = match family {
-        // Spruce: two horizontal slits.
-        0 => matches!(y, 5 | 10) && (4..=11).contains(&x),
-        // Birch: a ring of small holes.
-        1 => (x.is_multiple_of(4) && y % 4 == 2 || y.is_multiple_of(4) && x % 4 == 2) && !frame,
-        // Jungle: a grid of square holes.
-        2 => (3..=12).contains(&x) && (3..=12).contains(&y) && x % 5 != 2 && y % 5 != 2,
-        // Acacia: a diamond window between vertical bars.
-        3 => (x as i32 - 8).abs() + (y as i32 - 8).abs() < 5 && !x.is_multiple_of(3),
-        // Dark oak: solid boards with four corner holes.
-        4 => matches!((x, y), (3..=4, 3..=4) | (11..=12, 3..=4) | (3..=4, 11..=12) | (11..=12, 11..=12)),
-        // Mangrove: horizontal slats.
-        5 => y.is_multiple_of(3) && !frame,
-        // Cherry: a four-petal cut-out.
-        _ => {
-            let (dx, dy) = ((x as i32 - 8).abs(), (y as i32 - 8).abs());
-            (dx <= 1 && dy <= 4) || (dy <= 1 && dx <= 4)
-        }
-    };
-    if open && !frame {
-        return CLEAR;
-    }
-    let seam = !frame && x % 4 == 3;
-    shade(
-        c,
-        if frame {
-            0.8 + r * 0.06
-        } else if seam {
-            0.74
-        } else {
-            0.93 + r * 0.1
-        },
-    )
 }
 
 /// The sign item: a board on a post.

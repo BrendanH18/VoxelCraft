@@ -144,6 +144,9 @@ it, and opening a world saved by a newer version first shows Java's
 **Make Backup**, copy the one world to
 `<data-root>/backups/<date>_<time>_<folder>/` (UTC), which is never pruned.
 
+The [save-compatibility policy](saves.md) says which saves 1.0 opens, how
+they are migrated and backed up, and how a damaged save is recovered.
+
 ## Unsigned first launch
 
 Windows SmartScreen may offer **More info → Run anyway**. Windows 11 Smart App

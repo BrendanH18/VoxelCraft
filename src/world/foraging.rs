@@ -36,7 +36,7 @@ impl World {
     /// Java `MushroomBlock.canSurvive`: raw brightness with zero sky darkening,
     /// or an override substrate, independently of the clock and weather.
     pub fn mushroom_survives(&mut self, p: IVec3) -> bool {
-        self.update_block_light();
+        self.settle_light_at(p);
         let Some(below) = self.get_block(p - IVec3::Y) else { return false };
         matches!(
             below,

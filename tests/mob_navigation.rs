@@ -59,9 +59,12 @@ fn hits(events: &[voxelcraft::entity::EntityEvent]) -> usize {
 #[test]
 fn a_zombie_walks_round_a_wall_to_reach_the_player() {
     let mut scene = Scene::default();
-    // A three-high wall from z = -6 to 6 between the zombie and the player.
+    // A wall from z = -6 to 6 between the zombie and the player, with a
+    // one-high window at eye level: the zombie sees the player through it
+    // (Java's zombies only take a target they can see, v1.0 Track 7) but
+    // can't climb through it.
     for z in -6..=6 {
-        for y in 1..=3 {
+        for y in [1, 3] {
             scene.set(IVec3::new(4, y, z), Block::STONE);
         }
     }

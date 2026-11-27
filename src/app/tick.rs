@@ -61,6 +61,7 @@ impl Game {
                 self.session
                     .player
                     .wear_boots(crate::enchant::armor_level(armor, crate::enchant::Enchantment::DepthStrider));
+                self.session.player.auto_jump = self.settings.auto_jump;
                 self.session.player.tick(input, &self.world);
                 self.world.powder_snow_fire(&self.session.player, self.session.vitals.burning());
                 // `BigDripleafBlock.entityInside`: a leaf stood on starts to tilt.
@@ -90,6 +91,12 @@ impl Game {
             self.session.inventory.armor.map(|s| s.map(|s| s.item)),
             self.session.event_source(),
         );
+        self.world.player_totems(
+            self.session.id,
+            self.session.player.pos,
+            self.session.vitals.totems_used,
+            self.session.event_source(),
+        );
         let moved = (self.session.player.pos - before).with_y(0.0).length();
         self.session.tick_lodestones(&self.world);
         // A LAN guest's recipe book is the host's to unlock.
@@ -101,6 +108,12 @@ impl Game {
             .flatten()
         {
             self.world.tick_map(stack, self.session.player.pos, self.session.id.0 as u64);
+        }
+        // Framed maps mark their frames every 10 ticks, as Java's server
+        // entity ticks a framed map (BLD-05b).
+        if self.world.maps.game_ticks.is_multiple_of(10) {
+            let frames = voxelcraft::entity::decor::framed_maps(&self.mobs.entities.decor);
+            self.world.sync_frame_markers(&frames);
         }
         self.weather.update_rules(dt, self.gamerules.bool("advance_weather"));
         self.update_sleep(dt);
@@ -171,6 +184,15 @@ impl Game {
         // Frost Walker's ice.
         self.session.settle_effect_hooks(&mut self.mobs.entities);
         self.session.frost_walk(&mut self.world, &self.mobs.entities);
+        let boots = self.session.inventory.armor[3].map(|s| s.item);
+        if self.session.tick_soul_speed(&mut self.world)
+            && let Some(boots) = boots
+        {
+            // As a hit's armor wear does when a piece breaks.
+            self.show_popup(&format!("{} broke", super::capitalize(boots.name())));
+            let sound = crate::audio::sounds::Sound::Break(crate::audio::sounds::Material::Wood);
+            self.audio.play_in(crate::audio::SoundSource::Players, sound, None, 0.8, (1.3, 1.5));
+        }
         self.session.tick_elytra();
         self.elytra_wind();
         let acting = !self.menu.is_open() && !self.console.open && self.mouse_grabbed && !self.inventory_open;
@@ -234,6 +256,14 @@ impl Game {
         // v0.18 Track 9: chest lids and barrel tops, with their sounds.
         self.world.set_container_viewers(&open);
         self.world.set_chest_viewers(open);
+        // v1.0 Track 9: vehicle stores closing post `container_close`.
+        let host_vehicle = match self.body.container {
+            super::Container::Minecart(id) if self.inventory_open => Some(id),
+            _ => None,
+        };
+        let vehicles: Vec<u32> =
+            host_vehicle.into_iter().chain(self.pads.open_vehicles()).chain(self.open_vehicles()).collect();
+        self.mobs.entities.set_vehicle_viewers(vehicles);
         crate::simulation::tick_world_rules(
             &mut self.world,
             self.session.player.pos,
@@ -265,19 +295,18 @@ impl Game {
             let entities = &self.mobs.entities;
             self.world.resolve_shrieks(&mut players, |at| entities.warden_near(at));
         }
-        let snow_pushes = self.world.take_snow_pushes();
-        for &(cell, height) in &snow_pushes {
+        // `Block.pushEntitiesUp` for snow layers and farmland turned to dirt.
+        let block_pushes = self.world.take_block_pushes();
+        for &(cell, bottom, top) in &block_pushes {
+            use crate::world::precipitation::push_entity_up;
             let shape = self.session.player.collision_shape();
-            crate::world::precipitation::push_entity(&mut self.session.player.pos, shape, cell, height);
+            push_entity_up(&mut self.session.player.pos, shape, cell, bottom, top);
             for bot in self.agents.players.values_mut().filter(|b| b.active) {
                 let shape = bot.agent.session.player.collision_shape();
-                crate::world::precipitation::push_entity(&mut bot.agent.session.player.pos, shape, cell, height);
-            }
-            for m in &mut self.mobs.entities.mobs {
-                let shape = m.shape();
-                crate::world::precipitation::push_entity(&mut m.pos, shape, cell, height);
+                push_entity_up(&mut bot.agent.session.player.pos, shape, cell, bottom, top);
             }
         }
+        self.mobs.entities.apply_block_pushes(&block_pushes);
         // v0.17 Track B: blocks pistons moved this tick push and launch
         // players and entities (`PistonMovingBlockEntity.moveCollidedEntities`).
         if !self.world.piston_pushes().is_empty() {

@@ -560,6 +560,11 @@ pub(super) fn control(mob: &mut Mob, dt: f64, rng: &mut Rng) -> Option<(Option<D
         return None;
     }
     mob.yaw = s.yaw;
+    // v1.0 Track 7: steered horses take their whole Java tick (and the
+    // released jump) in `Mob::equine_ridden_tick`.
+    if super::mob::equine::java_ridden(mob.kind) {
+        return Some((None, 0.));
+    }
     let forward = DVec3::new(mob.yaw.cos() as f64, 0., mob.yaw.sin() as f64);
     if camel_like(mob.kind) {
         // Java dash: forward 22.2 x charge x speed and up 1.43 x charge x 0.42 blocks/tick.
@@ -735,6 +740,16 @@ impl Entities {
             player.vel = DVec3::ZERO;
         }
     }
+    /// v1.0 Track 7: `AbstractBoat.positionRider` for a player riding a
+    /// boat: the boat's turn this tick carries the rider's yaw, kept within
+    /// 105° of the boat's heading.
+    pub fn turn_boat_rider(&self, player: &mut Player, id: PlayerId) {
+        let Some(cart) = player.vehicle.and_then(|v| self.cart(v)) else { return };
+        if cart.kind.boat().is_some() && (cart.rider == Some(id) || cart.second_rider == Some(id)) {
+            player.yaw = cart.turn_boat_rider(player.yaw);
+        }
+    }
+
     pub fn mount(&self, vehicle: u32) -> Option<&Mob> {
         (vehicle & MOB_VEHICLE != 0)
             .then(|| self.mobs.iter().find(|m| m.uid == vehicle & !MOB_VEHICLE && m.alive()))
@@ -766,6 +781,19 @@ impl Entities {
         } else {
             (s.passenger == Some(player)).then_some(seat - forward)
         }
+    }
+    /// v1.0 Track 9: `Camera.alignWithEntity`'s third-person distance for a
+    /// rider: the larger of the player's `camera_distance` (4) and a living
+    /// mount's (the happy ghast's 8); carts, boats and cushions aren't living.
+    pub fn camera_distance(&self, vehicle: Option<u32>) -> f64 {
+        let mount = vehicle.and_then(|v| self.mount(v)).map_or(crate::camera::CAMERA_DISTANCE, |m| {
+            if m.kind == MobKind::HappyGhast {
+                crate::camera::HAPPY_GHAST_CAMERA_DISTANCE
+            } else {
+                crate::camera::CAMERA_DISTANCE
+            }
+        });
+        mount.max(crate::camera::CAMERA_DISTANCE)
     }
     /// Where a vehicle is: a mount's or a cart, boat or cushion's position.
     pub fn vehicle_pos(&self, id: u32) -> Option<DVec3> {
@@ -879,6 +907,10 @@ impl Entities {
             } else if !consume {
                 return false;
             }
+            // v1.0 Track 9: `AbstractHorse.handleEating` posts `eat` once the
+            // food did something.
+            let source = super::warden::mob_source(m);
+            self.sculk.post(m.pos, crate::world::vibration::GameEvent::Eat, source, None);
         } else if !m.baby
             && s.rider.is_none()
             && (equine(kind) && (s.tame || held.is_none())
@@ -1239,8 +1271,9 @@ mod tests {
             );
         }
         m.mount.as_mut().unwrap().input(MobKind::Horse, &p, MoveInput::default(), None, None);
+        // v1.0 Track 7: the released jump waits for the Java ridden tick.
         control(&mut m, 0.05, &mut Rng::new(1));
-        assert!((m.vel.y - launch_speed(0.7)).abs() < 1e-6);
+        assert_eq!(m.mount.as_mut().unwrap().take_pending_jump(), Some(1.0));
         let before = m.health;
         m.damage(5., None, &mut Rng::new(1));
         assert!(m.health > before - 5.);
@@ -1311,18 +1344,22 @@ mod tests {
         }
         // Climbs onto the one-block wall at x = 7 without jumping, then walks off it.
         assert!(m.pos.x > 8. && top >= 141., "{:?} peak {top}", m.pos);
-        m.pos = DVec3::new(4., 147., 5.);
-        m.vel = DVec3::ZERO;
-        m.on_ground = false;
-        let before = m.health;
-        for _ in 0..120 {
-            m.physics_step(1. / 120., &w, None, 0.);
-            if m.on_ground {
-                break;
+        // `calculateFallDamage`: floor((fall - 6) * 0.5), so seven blocks
+        // don't hurt (Java 26.3 floors; this used to round up) and ten do 2.
+        for (from, hurt) in [(147., 0.), (151., 2.)] {
+            m.pos = DVec3::new(4., from, 5.);
+            m.vel = DVec3::ZERO;
+            m.on_ground = false;
+            let before = m.health;
+            for _ in 0..240 {
+                m.physics_step(1. / 120., &w, None, 0.);
+                if m.on_ground {
+                    break;
+                }
             }
+            assert!(m.on_ground);
+            assert_eq!(before - m.health, hurt, "from {from}");
         }
-        assert!(m.on_ground);
-        assert_eq!(before - m.health, 1.);
     }
     #[test]
     fn horse_jump_height_matches_java_attribute_range() {

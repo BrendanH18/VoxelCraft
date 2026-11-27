@@ -111,7 +111,7 @@ impl World {
             // The End reads block light alone; elsewhere
             // `getMaxLocalRawBrightness`.
             let brightness = if self.generator.dimension == super::terrain::Dimension::End {
-                self.update_block_light();
+                self.settle_light_at(p);
                 self.block_light(p)
             } else {
                 self.growth_light(p, true)
@@ -155,6 +155,18 @@ impl World {
     /// feet's layer, within the radius horizontally of the feet and not
     /// overlapping an entity (`blocked`), becomes frosted ice of age 0.
     pub fn frost_walk(&mut self, feet: glam::DVec3, level: u8, blocked: impl Fn(IVec3) -> bool) -> usize {
+        self.frost_walk_by(feet, level, blocked, crate::world::vibration::EventSource::NONE)
+    }
+
+    /// [`World::frost_walk`] for a walker named as `source`: v1.0 Track 9,
+    /// `ReplaceDisk.apply` posts `block_place` from it for each new block.
+    pub fn frost_walk_by(
+        &mut self,
+        feet: glam::DVec3,
+        level: u8,
+        blocked: impl Fn(IVec3) -> bool,
+        source: crate::world::vibration::EventSource,
+    ) -> usize {
         let dist = frost_walker_radius(level);
         let center = feet.floor().as_ivec3() - IVec3::Y;
         let mut placed = 0;
@@ -172,6 +184,8 @@ impl World {
                     && self.set_block(p, frosted_ice(0))
                 {
                     placed += 1;
+                    let ice = Some(frosted_ice(0));
+                    self.emit_block_event(p, crate::world::vibration::GameEvent::BlockPlace, source, ice);
                 }
             }
         }

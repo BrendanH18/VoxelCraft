@@ -1,12 +1,15 @@
 //! Nether generation cost per biome patch:
-//! `cargo run --release --example nether_patch_bench`.
+//! `cargo run --release --example nether_patch_bench [generation]`.
 //!
 //! Seven fresh generators each generate 5×5 columns (all four vertical
-//! chunks) around the block centre of a patch of each biome for seed 12345.
+//! chunks) around the block centre of a patch of each biome for seed 12345,
+//! of the given world generation (default the latest; v1.0 Track 8 compares
+//! generation 5's features with generation 6's).
 
 use glam::IVec3;
 use std::{hint::black_box, time::Instant};
 use voxelcraft::world::nether::NetherGen;
+use voxelcraft::world::terrain::Generation;
 
 const PATCHES: [(&str, i32, i32); 5] = [
     ("wastes", 0, 0),
@@ -17,10 +20,14 @@ const PATCHES: [(&str, i32, i32); 5] = [
 ];
 
 fn main() {
+    let generation = Generation::from_prop(Some(
+        &std::env::args().nth(1).unwrap_or_else(|| Generation::LATEST.number().to_string()),
+    ));
+    println!("generation {}", generation.number());
     for (name, x, z) in PATCHES {
         let mut runs = Vec::new();
         for _ in 0..7 {
-            let generator = NetherGen::new(12345);
+            let generator = NetherGen::with_generation(12345, generation);
             let (cx, cz) = (x.div_euclid(32), z.div_euclid(32));
             let start = Instant::now();
             for dx in -2..=2 {

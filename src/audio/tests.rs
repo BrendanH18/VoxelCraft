@@ -303,15 +303,25 @@ fn synthesis_is_fast() {
         .filter(|s| matches!(s, Sound::Block(..)) && super::block_sounds::shares(*s).is_none())
         .map(|s| {
             let (first, count) = bank.variants(s);
-            bank.buffers[first..first + count].iter().map(Vec::len).sum::<usize>()
+            bank.buffers[first..first + count].iter().map(|b| b.len()).sum::<usize>()
         })
         .sum();
     println!("of which the blocks' own sounds: {:.1} s", block_samples as f32 / RATE);
-    // The bank is built on the audio thread at startup, so this bounds how
-    // long the game starts silent. v0.18's blocks' own sounds took it to
-    // 0.55 s on a Boat sandbox and 1.6 s on CI's Windows runner, which runs
-    // it beside the other tests; 2 s keeps that within budget.
-    assert!(ms < 2000.0, "synthesis took {ms} ms");
+    // v0.18 built this whole bank on the audio thread at startup (0.55 s on
+    // a Boat sandbox, 1.6 s on CI's Windows runner beside the other tests).
+    // Since v1.0 Track 3 startup builds only `Bank::startup`, bounded below,
+    // and the blocks' own sounds on first use, so the whole bank is reported,
+    // not bounded: on Windows CI it ran 3.1 s beside
+    // `lazy_block_sounds_are_the_eager_banks_bits`, which builds it too.
+    let start = std::time::Instant::now();
+    let startup = Bank::startup();
+    let startup_ms = start.elapsed().as_secs_f64() * 1000.0;
+    println!(
+        "the startup bank: {:.1} s of audio ({:.1} MB) in {startup_ms:.1} ms",
+        startup.total_samples() as f32 / RATE,
+        startup.total_samples() as f32 * 4.0 / 1e6
+    );
+    assert!(startup_ms < 2000.0, "startup synthesis took {startup_ms} ms");
 }
 
 #[test]
@@ -660,4 +670,145 @@ fn blocks_play_their_own_java_sound_types() {
     assert!(resolved > 2000, "only {resolved} states resolved");
     assert!(borrowing.is_empty(), "families without their own sounds:\n{borrowing:#?}");
     assert!(Family::all().all(has_recipe), "every Java family has a recipe");
+}
+
+// --- v1.0 Track 3: the blocks' own sounds on first use ------------------------
+
+/// Every buffer's bits, in `Sound::all` order (FNV-1a over the samples'
+/// bit patterns, with each buffer's length).
+fn digest(bank: &Bank) -> u64 {
+    let mut h = 0xcbf2_9ce4_8422_2325u64;
+    let mut eat = |x: u64| {
+        for byte in x.to_le_bytes() {
+            h = (h ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3);
+        }
+    };
+    for sound in Sound::all() {
+        let (first, count) = bank.variants(sound);
+        for b in &bank.buffers[first..first + count] {
+            let buf: &[f32] = b;
+            eat(buf.len() as u64);
+            for x in buf {
+                eat(u64::from(x.to_bits()));
+            }
+        }
+    }
+    h
+}
+
+#[test]
+fn lazy_block_sounds_are_the_eager_banks_bits() {
+    let eager = bank();
+    let lazy = Bank::startup();
+    assert_eq!(lazy.buffers.len(), eager.buffers.len());
+    for sound in Sound::all() {
+        assert_eq!(lazy.variants(sound), eager.variants(sound), "{}", sound.name());
+        // Only the blocks' own sounds wait for their first use.
+        assert_eq!(lazy.is_ready(sound), !Bank::lazy(sound), "{}", sound.name());
+    }
+    let lazy_bytes = eager.total_samples().saturating_sub(lazy.total_samples()) * 4;
+    assert!(lazy_bytes > 40_000_000, "only {lazy_bytes} bytes deferred");
+    for sound in Sound::all().filter(|&s| Bank::lazy(s)) {
+        lazy.ensure(sound);
+        assert!(lazy.is_ready(sound), "{}", sound.name());
+    }
+    for (i, (a, b)) in lazy.buffers.iter().zip(&eager.buffers).enumerate() {
+        let (a, b): (&[f32], &[f32]) = (a, b);
+        assert!(a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x.to_bits() == y.to_bits()), "buffer {i} differs");
+    }
+    assert_eq!(digest(&lazy), digest(&eager));
+}
+
+#[test]
+fn the_audio_thread_renders_a_first_use_then_plays_it() {
+    let bank = Arc::new(Bank::startup());
+    let (synth_tx, synth_rx) = crossbeam_channel::bounded(16);
+    let (mixer_tx, mixer_rx) = crossbeam_channel::bounded(16);
+    let (stop_tx, stop_rx) = crossbeam_channel::bounded::<()>(0);
+    let served = Arc::clone(&bank);
+    let thread = std::thread::spawn(move || serve(&served, &synth_rx, &mixer_tx, &stop_rx));
+    let (step, ..) = block_sounds::play(Block::STONE, BlockCue::Step).unwrap();
+    let (brk, ..) = block_sounds::play(Block::STONE, BlockCue::Break).unwrap();
+    assert!(Bank::lazy(step) && !bank.is_ready(step) && !bank.is_ready(brk));
+    // A prefetch renders without playing.
+    synth_tx.send(Synth { sound: brk, play: None }).unwrap();
+    let play =
+        Command::Play { sound: step, variant: 0, gain: 1.0, pitch: 1.0, source: SoundSource::Players, pos: None };
+    synth_tx.send(Synth { sound: step, play: Some(play) }).unwrap();
+    let forwarded = mixer_rx.recv_timeout(std::time::Duration::from_secs(10)).expect("the play was passed on");
+    assert!(matches!(forwarded, Command::Play { sound, .. } if sound == step));
+    assert!(bank.is_ready(step) && bank.is_ready(brk));
+    assert!(mixer_rx.try_recv().is_err(), "the prefetch played");
+    // Ready now, so the mixer can play it.
+    let (tx, rx) = crossbeam_channel::bounded(4);
+    let mut mixer = Mixer::new(Arc::clone(&bank), rx, RATE, 1.0);
+    tx.send(play).unwrap();
+    mixer.render(&mut [0.0; 512], 2);
+    assert_eq!(mixer.active_voices(), 1);
+    drop(stop_tx);
+    thread.join().unwrap();
+}
+
+#[test]
+fn the_mixer_skips_a_lazy_sound_that_isnt_ready() {
+    let bank = Arc::new(Bank::startup());
+    let (step, ..) = block_sounds::play(Block::STONE, BlockCue::Step).unwrap();
+    let (tx, rx) = crossbeam_channel::bounded(4);
+    let mut mixer = Mixer::new(bank, rx, RATE, 1.0);
+    tx.send(Command::Play { sound: step, variant: 0, gain: 1.0, pitch: 1.0, source: SoundSource::Players, pos: None })
+        .unwrap();
+    mixer.render(&mut [0.0; 512], 2);
+    assert_eq!(mixer.active_voices(), 0);
+}
+
+/// The startup bank's cost against v0.18's eager one: run on Boat with
+/// `--ignored --nocapture --test-threads=1` for the verification record.
+#[test]
+#[ignore]
+fn startup_bank_memory_and_time() {
+    let rss = || {
+        std::fs::read_to_string("/proc/self/status").ok().and_then(|s| {
+            s.lines().find_map(|l| l.strip_prefix("VmRSS:")?.split_whitespace().next()?.parse::<u64>().ok())
+        })
+    };
+    for _ in 0..2 {
+        let before = rss();
+        let start = std::time::Instant::now();
+        let eager = Bank::synthesize();
+        let eager_ms = start.elapsed().as_secs_f64() * 1000.0;
+        let eager_rss = rss();
+        println!(
+            "eager: {:.1} MB of samples in {eager_ms:.0} ms, RSS {before:?} -> {eager_rss:?} kB, digest {:016x}",
+            eager.total_samples() as f64 * 4.0 / 1e6,
+            digest(&eager)
+        );
+        drop(eager);
+        let before = rss();
+        let start = std::time::Instant::now();
+        let lazy = Bank::startup();
+        let lazy_ms = start.elapsed().as_secs_f64() * 1000.0;
+        let lazy_rss = rss();
+        println!(
+            "startup: {:.1} MB of samples in {lazy_ms:.0} ms, RSS {before:?} -> {lazy_rss:?} kB",
+            lazy.total_samples() as f64 * 4.0 / 1e6
+        );
+        let mut slowest = (0.0f64, String::new());
+        let mut total = 0.0;
+        for sound in Sound::all().filter(|&s| Bank::lazy(s) && block_sounds::shares(s).is_none()) {
+            let start = std::time::Instant::now();
+            lazy.ensure(sound);
+            let ms = start.elapsed().as_secs_f64() * 1000.0;
+            total += ms;
+            if ms > slowest.0 {
+                slowest = (ms, sound.name());
+            }
+        }
+        println!(
+            "first uses: {total:.0} ms for all, slowest {} at {:.2} ms; RSS after all {:?} kB, digest {:016x}",
+            slowest.1,
+            slowest.0,
+            rss(),
+            digest(&lazy)
+        );
+    }
 }

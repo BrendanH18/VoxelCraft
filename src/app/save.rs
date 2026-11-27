@@ -1,7 +1,38 @@
 //! World save assembly and persistence, separate from event dispatch.
 use super::*;
+use crate::world::region::REGION_DIR;
 impl Game {
+    /// Saves the world and waits until it is on disk: quitting, changing
+    /// dimension, `/save` and the LAN host's save all finish here before
+    /// the world closes.
     pub(super) fn save(&mut self) {
+        self.save_world(true);
+    }
+
+    /// v1.0 Track 3b: the periodic save. With region storage, the chunk
+    /// records and level files are written by the I/O thread; write errors
+    /// reach the player from [`Game::poll_region_storage`].
+    pub(super) fn autosave(&mut self) {
+        self.save_world(false);
+    }
+
+    /// Reports what the region I/O thread found since the last frame: write
+    /// errors as a failed save, unreadable chunks as load damage.
+    pub(super) fn poll_region_storage(&mut self) {
+        let errors = self.world.take_region_errors();
+        if !errors.is_empty() {
+            let e = errors.join("; ");
+            log::error!("save failed: {e}");
+            self.show_popup(&format!("Could not save the world: {e}"));
+            self.save_error = Some(e);
+        }
+        let notices = self.world.take_region_notices();
+        if !notices.is_empty() {
+            self.report_load_damage(&notices.join(" "));
+        }
+    }
+
+    fn save_world(&mut self, wait: bool) {
         // LAN clients do not own the world; benchmark scenes never write saves.
         if self.lan.client.is_some() || self.benchmark.is_some() {
             self.last_save = Instant::now();
@@ -61,12 +92,31 @@ impl Game {
         if let Some(text) = self.session.raid_omen_to_string() {
             props.insert("raid_omen_position".to_string(), text);
         }
+        props.insert("stats".to_string(), self.session.stats.serialize());
         props.insert("recipe_book".to_string(), self.session.recipe_book.serialize());
         if let Some(p) = self.session.spawn_point {
             props.insert("spawn_point".to_string(), format!("{},{},{}", p.x, p.y, p.z));
         }
         let seed = self.world.generator.seed;
         record_generation(&mut props, self.world.generator.generation);
+        if self.world.writes_records() {
+            self.save_regions(seed, props, wait);
+            self.last_save = Instant::now();
+            return;
+        }
+        // A dimension with region files keeps its chunks there. If they
+        // couldn't be opened, saving without them would write a `chunks.bin`
+        // and a level file without `region_chunks`, and the next launch
+        // would move the region files aside as unsaved: refuse instead.
+        let regions = dimension::storage_for(&self.storage, self.dimension).dir().join(REGION_DIR);
+        if may_hold_regions(&regions) {
+            let e = "this dimension's region files couldn't be opened, so nothing was written over them";
+            log::error!("save failed: {e} ({})", regions.display());
+            self.show_popup(&format!("Could not save the world: {e}"));
+            self.save_error = Some(e.to_string());
+            self.last_save = Instant::now();
+            return;
+        }
         let chunks = self.world.modified_chunks();
         // The overworld saves with the player; the Nether in its own folder.
         let result = match self.dimension {
@@ -104,8 +154,91 @@ impl Game {
     }
 }
 
+impl Game {
+    /// v1.0 Track 3b: a save with region storage. Entities stored in
+    /// unloaded chunks and the level file's state for chunks that aren't
+    /// loaded go to their records, loaded chunks whose blocks changed write
+    /// them, and the level files (the dimension's, then the player's) are
+    /// written by the I/O thread once those records are on disk, followed by
+    /// moving a migrated `chunks.bin` aside. `wait` blocks until all of it
+    /// is written.
+    fn save_regions(&mut self, seed: u64, mut props: std::collections::BTreeMap<String, String>, wait: bool) {
+        let started = Instant::now();
+        let stored = self.mobs.entities.take_stored_batches(&mut self.world);
+        let records = self.world.save_records(stored);
+        let player = Some((self.session.player.pos, self.session.player.yaw, self.session.player.pitch));
+        let dimension = dimension::storage_for(&self.storage, self.dimension);
+        let root = Storage::new(self.storage.dir());
+        let (own, player_level) = match self.dimension {
+            Dimension::Overworld => {
+                props.extend(self.dimension_props());
+                (LevelInfo { seed, player, props }, None)
+            }
+            Dimension::Nether | Dimension::End => {
+                let own = LevelInfo { seed, player: None, props: self.dimension_props() };
+                props.extend(self.overworld_props.clone());
+                (own, Some(LevelInfo { seed, player, props }))
+            }
+        };
+        let Some(store) = self.world.regions() else { return };
+        store.after_writes(move || {
+            dimension.save_level(&own)?;
+            if let Some(level) = player_level {
+                root.save_level(&level)?;
+            }
+            dimension.retire_chunks_file()
+        });
+        let result = if wait { self.world.flush_regions() } else { Ok(()) };
+        match result {
+            Ok(()) => {
+                if wait {
+                    self.save_error = None;
+                }
+                log::info!(
+                    "saved {records} {} chunk records to {} ({:.1} ms on the main thread{})",
+                    self.dimension.name(),
+                    self.storage.dir().display(),
+                    started.elapsed().as_secs_f64() * 1000.0,
+                    if wait { ", written" } else { "; writing" }
+                );
+            }
+            Err(e) => {
+                log::error!("save failed: {e}");
+                self.show_popup(&format!("Could not save the world: {e}"));
+                self.save_error = Some(e.to_string());
+            }
+        }
+    }
+}
+
 /// Records the world's generator in its `level.txt` properties, for
 /// `startup::world_generation` to read back.
 pub(super) fn record_generation(props: &mut std::collections::BTreeMap<String, String>, generation: Generation) {
     props.insert(Generation::KEY.to_string(), generation.number().to_string());
+}
+
+/// Whether `regions` (a dimension's region folder) is there, or can't be
+/// checked: either way the legacy `chunks.bin` save must not run.
+fn may_hold_regions(regions: &std::path::Path) -> bool {
+    !matches!(regions.try_exists(), Ok(false))
+}
+
+#[cfg(test)]
+mod tests {
+    /// Review fix S4, round 2: a region folder that can't be checked (here a
+    /// symlink loop, which `Path::exists` reports as missing) counts as one
+    /// that is there.
+    #[cfg(unix)]
+    #[test]
+    fn a_region_folder_that_cant_be_checked_refuses_the_legacy_save() {
+        let dir = std::env::temp_dir().join(format!("voxelcraft-save-regions-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let regions = dir.join("region");
+        assert!(!super::may_hold_regions(&regions), "no folder: the legacy save may run");
+        std::os::unix::fs::symlink(&regions, &regions).unwrap();
+        assert!(!regions.exists());
+        assert!(super::may_hold_regions(&regions));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }
