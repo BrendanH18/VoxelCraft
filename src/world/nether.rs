@@ -68,6 +68,8 @@ pub(super) struct GridColumn {
     /// columns a beard reaches (see [`NetherGen::terrain_bits`]); allocated
     /// only for the grid columns that have one.
     adapted: OnceLock<Box<[OnceLock<u128>; STEP * STEP]>>,
+    /// Generation 7: each block column's surface depth and noises.
+    surface: [OnceLock<super::nether_surface::SurfaceColumn>; STEP * STEP],
 }
 
 /// The four grid columns around a block column and its position between them.
@@ -167,6 +169,10 @@ pub struct NetherGen {
     /// Java's multi-noise Nether biomes (see `world::nether_biome`).
     pub biomes: NetherBiomeSource,
     columns: Mutex<FxHashMap<IVec2, Arc<GridColumn>>>,
+    /// Generation 7: the surface rules' noises.
+    surface: Option<super::nether_surface::SurfaceNoises>,
+    /// Generation 7: decorated 16 × 16 chunks (see `world::nether_order`).
+    pub(super) cells: super::nether_order::CellCache,
 }
 
 #[inline]
@@ -242,6 +248,9 @@ impl NetherGen {
             fossils: super::nether_fossil::NetherFossils::new(seed, generation),
             biomes: NetherBiomeSource::new(seed),
             columns: Mutex::new(FxHashMap::default()),
+            surface: (generation >= super::terrain::Generation::V7)
+                .then(|| super::nether_surface::SurfaceNoises::new(seed ^ 0x4E45_5448)),
+            cells: Default::default(),
         }
     }
 
@@ -464,6 +473,7 @@ impl NetherGen {
             biome: self.biomes.quart(g.x, g.y),
             bits: Default::default(),
             adapted: Default::default(),
+            surface: Default::default(),
         });
         let mut cache = self.columns.lock().unwrap();
         // Another worker may have filled this column while we sampled it.
@@ -481,6 +491,9 @@ impl NetherGen {
     /// What the terrain and its biome's surface rules put at height `wy`
     /// of block column `(wx, wz)`, before structures and features.
     pub(super) fn classify(&self, wx: i32, wy: i32, wz: i32, bits: u128, corners: &Corners) -> Block {
+        if let Some(surface) = &self.surface {
+            return self.classify_v7(surface, wx, wy, wz, bits, corners);
+        }
         if self.bedrock(wx, wy, wz) {
             return Block::BEDROCK;
         }
@@ -578,6 +591,35 @@ impl NetherGen {
         } else {
             Block::NETHERRACK
         }
+    }
+
+    /// Generation 7: Java 26.3's surface rules (`world::nether_surface`).
+    /// Open cells are lava up to the sea and air above it; rock gets the
+    /// bedrock floor and roof, the netherrack under the roof, then the
+    /// biome's rules.
+    fn classify_v7(
+        &self,
+        surface: &super::nether_surface::SurfaceNoises,
+        wx: i32,
+        wy: i32,
+        wz: i32,
+        bits: u128,
+        corners: &Corners,
+    ) -> Block {
+        use super::nether_surface as ns;
+        if !(0..128).contains(&wy) || bits >> wy & 1 == 0 {
+            return if (0..=LAVA_SEA).contains(&wy) { Block::LAVA } else { Block::AIR };
+        }
+        if self.bedrock(wx, wy, wz) {
+            return Block::BEDROCK;
+        }
+        if wy >= ROOF - 5 {
+            return Block::NETHERRACK;
+        }
+        let biome = corners.c[0].biome;
+        let [lx, lz] = corners.t.map(|t| (t * STEP as f32) as usize);
+        let column = *corners.c[0].surface[lz * STEP + lx].get_or_init(|| surface.column(biome, wx, wz));
+        ns::rule(biome, wy, ns::stone_depth_above(bits, wy), ns::stone_depth_below(bits, wy), column)
     }
 
     /// Solidity of block column `(x, z)` from the noise alone, without any

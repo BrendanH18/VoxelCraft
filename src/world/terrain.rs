@@ -97,11 +97,19 @@ pub enum Generation {
     /// built from Java's full `bastion/*` pool catalogue. The Overworld and
     /// End generate as in generation 5.
     V6 = 6,
+    /// v1.0 gap Track 5 (GEN-04a): generation 6 with the Nether's surfaces
+    /// from Java 26.3's surface rules (the gravel and lava edges by the
+    /// lava sea included) and its features placed in Java's decoration
+    /// order on decorated terrain, one 16 × 16 chunk at a time
+    /// (`world::nether_order`). The Overworld and End generate as in
+    /// generation 6; generation 6's output is pinned by
+    /// `generation_6_chunk_hashes_stay_identical`.
+    V7 = 7,
 }
 
 impl Generation {
     /// What new worlds use.
-    pub const LATEST: Generation = Generation::V6;
+    pub const LATEST: Generation = Generation::V7;
     /// The `level.txt` key.
     pub const KEY: &'static str = "worldgen";
 
@@ -117,6 +125,7 @@ impl Generation {
             Some(Ok(4)) => Generation::V4,
             Some(Ok(5)) => Generation::V5,
             Some(Ok(6)) => Generation::V6,
+            Some(Ok(7)) => Generation::V7,
             Some(_) => {
                 log::warn!("unknown world generation {value:?}; using {:?}", Generation::LATEST);
                 Generation::LATEST
@@ -2308,6 +2317,7 @@ mod tests {
         assert_eq!(Generation::from_prop(Some("4")), Generation::V4);
         assert_eq!(Generation::from_prop(Some("5")), Generation::V5);
         assert_eq!(Generation::from_prop(Some("6")), Generation::V6);
+        assert_eq!(Generation::from_prop(Some("7")), Generation::V7);
         assert_eq!(Generation::from_prop(Some("99")), Generation::LATEST);
         assert_eq!(Generation::from_prop(Some(&Generation::LATEST.number().to_string())), Generation::LATEST);
         assert_eq!(Generator::new(1).generation, Generation::LATEST);

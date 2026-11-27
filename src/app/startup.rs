@@ -587,22 +587,24 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let storage = Storage::new(&dir);
 
-        // A new world: the latest generation (6 since v1.0 Track 8), written as `worldgen=6`.
+        // A new world: the latest generation (7 since v1.0 gap Track 5), written as `worldgen=7`.
         let generation = world_generation(None);
-        assert_eq!(generation, Generation::V6);
+        assert_eq!(generation, Generation::V7);
         let generator = Generator::with_generation(7, Dimension::Overworld, generation);
         let mut props = std::collections::BTreeMap::new();
         super::super::save::record_generation(&mut props, generator.generation);
         storage.save(&LevelInfo { seed: 7, player: None, props }, &[]).unwrap();
         let text = std::fs::read_to_string(dir.join("level.txt")).unwrap();
-        assert!(text.lines().any(|line| line == "worldgen=6"), "{text}");
+        assert!(text.lines().any(|line| line == "worldgen=7"), "{text}");
 
-        // Reloaded, it stays generation 6.
+        // Reloaded, it stays generation 7.
         let saved = storage.load_level().unwrap();
-        assert_eq!(world_generation(Some(&saved)), Generation::V6);
-        assert_eq!(Generator::with_generation(saved.seed, Dimension::Overworld, Generation::V6).generation.number(), 6);
+        assert_eq!(world_generation(Some(&saved)), Generation::V7);
+        assert_eq!(Generator::with_generation(saved.seed, Dimension::Overworld, Generation::V7).generation.number(), 7);
 
         // Older worlds keep theirs.
+        storage.set_props(&[(Generation::KEY, "6")]).unwrap();
+        assert_eq!(world_generation(Some(&storage.load_level().unwrap())), Generation::V6);
         storage.set_props(&[(Generation::KEY, "5")]).unwrap();
         assert_eq!(world_generation(Some(&storage.load_level().unwrap())), Generation::V5);
         storage.set_props(&[(Generation::KEY, "2")]).unwrap();

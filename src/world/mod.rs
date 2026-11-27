@@ -98,7 +98,9 @@ mod nether_decoration;
 pub mod nether_features;
 mod nether_flora;
 pub mod nether_fossil;
+mod nether_order;
 pub mod nether_placed;
+mod nether_surface;
 pub mod noise;
 pub mod ore;
 pub mod overworld_blocks;
@@ -225,11 +227,15 @@ impl GeneratedChunk {
         if generator.dimension == terrain::Dimension::Overworld && generator.generation >= terrain::Generation::V2 {
             fluid_ticks.extend(underground::spring_ticks(generator, pos, &data));
         }
-        // GEN-04a: generation 6's Nether lava springs start flowing.
+        // GEN-04a: generation 6's and 7's Nether lava springs start flowing.
         if let Some(nether) = generator.nether_gen()
             && generator.generation >= terrain::Generation::V6
         {
-            fluid_ticks.extend(nether_decoration::v6::spring_ticks(nether, pos, &data));
+            fluid_ticks.extend(if generator.generation >= terrain::Generation::V7 {
+                nether_order::spring_ticks(nether, pos, &data)
+            } else {
+                nether_decoration::v6::spring_ticks(nether, pos, &data)
+            });
         }
         let bubble_seeds = if generator.dimension == terrain::Dimension::End {
             Vec::new()

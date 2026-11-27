@@ -526,6 +526,25 @@ fn generation_6_nether_ignores_order_threads_and_caches() {
     assert!(all.iter().any(|f| matches!(f, Feature::BastionChest(..))), "no bastion chest");
 }
 
+/// v1.0 gap Track 5: generation 7's Nether, whose chunks take the changes
+/// of every Java chunk decorated over its 3 x 3 region (a shared cache that
+/// threads fill in any order and evict): a feature-heavy patch across the
+/// biomes, with every row up to the roof's mushrooms, generated in reverse,
+/// on six threads and with cold caches.
+#[test]
+fn generation_7_nether_ignores_order_threads_and_caches() {
+    let rows = Dimension::Nether.chunk_rows();
+    let patch = |x0: i32, z0: i32| {
+        (z0..z0 + 3).flat_map(move |z| (x0..x0 + 3).flat_map(move |x| (0..5).map(move |y| IVec3::new(x, y, z))))
+    };
+    // Around the origin, and in basalt deltas and a crimson forest of seed 12345.
+    let mut chunks: Vec<_> =
+        patch(-2, -2).chain(patch(-33, -141)).chain(patch(-141, -141)).filter(|p| rows.contains(&p.y)).collect();
+    chunks.sort_by_key(|p| (p.z, p.x, p.y));
+    chunks.dedup();
+    other_dimension_ignores_order_in(Generation::V7, Dimension::Nether, &chunks, "generation 7 Nether");
+}
+
 /// v0.16's M3 exit: a generation 5 End city with its ship (wave 1's Track A),
 /// every chunk its box touches.
 #[test]
