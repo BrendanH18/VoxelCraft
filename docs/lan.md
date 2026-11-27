@@ -85,7 +85,7 @@ uses the engine's collision physics; acknowledged input is removed, remaining
 inputs replay from the authoritative position/velocity. Remote player/mob
 positions and arrows interpolate between snapshots.
 
-Protocol **1** requires an exact game-version match. Each frame starts with a
+Protocol **6** requires an exact protocol and game-version match. Each frame starts with a
 little-endian `u32` payload length, followed by a packet byte. Maximum payload:
 256 KiB. Hello includes a `u16` protocol version, game version and profile;
 Welcome supplies seed, dimension and player ID. Input contains a sequence,
@@ -112,11 +112,12 @@ tick the world; fluids, fire, redstone and edits all arrive this way.
 State packets carry bounded JSON within the binary frame, versioned with the
 binary framing:
 
-- the player's own state (inventory, vitals, XP, effects, seat) and its open
+- the player's own state (vitals, XP, effects, seat) and its open
   screen (container contents, work slots, brewing stand, merchant offers or
   vehicle storage);
 - other players as a lite pose: position, look, held item, armor, health,
-  sneaking, seat, arm swing and eating;
+  sneaking, seat, arm swing and eating. Large book and storage contents
+  are omitted from other players' equipment;
 - time and weather; nearby mobs as compact rounded arrays, with each mob's look
   (coat, markings, saddle, armor, carpet, collar, wool, name, lead, fish
   variant, profession, held weapon, mount health) on first sight and once a
@@ -143,6 +144,17 @@ are capped (256 mobs, items and arrows, 128 of each other entity) within 160
 blocks; a crowded frame sheds extras, sign and shelf contents (sent again
 next tick), decorations, items, mob looks and then mobs rather than exceeding
 256 KiB.
+
+The host sends a guest's inventory, cursor and crafting grid on change, independently of
+tick state ([#104](https://github.com/BrendanH18/VoxelCraft/issues/104)).
+Each Inventory Part packet carries a final-part flag followed by up to
+128 KiB of the serialized update. Large stacks already in the previous
+inventory, such as a book moving to the cursor, travel as references.
+The guest keeps the previous inventory until all parts arrive and continues
+receiving movement acknowledgments during the transfer. Clicks outside the
+inventory panel include the displayed revision so a delayed click cannot toss
+a different stack after the cursor changes. Crafting clicks include the grid
+size so a delayed click from the 2×2 panel cannot affect the 3×3 table.
 
 Sockets are nonblocking during gameplay. Each peer has at most 2 MiB queued;
 chunk sending yields at 512 KiB backlog and sends at most 32 new chunks per
@@ -200,7 +212,8 @@ cargo build --release && python3 tools/lan_check.py
 ```
 
 It checks join timing; two players racing for one chest stack, one block and
-its drop (items are conserved, the drop is picked up once); death and respawn;
+its drop (items are conserved, the drop is picked up once); movement
+acknowledgments while a guest carries two full books; death and respawn;
 reconnecting to the same profile; a host restart from `/save-all`; portal entry
 by a LAN player; a 2.8 km teleport streaming new terrain; joining while water,
 lava, fire and primed TNT are active; PvP on and off; and the host traveling

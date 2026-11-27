@@ -19,6 +19,35 @@ use crate::app::gui::tests::Memory;
 use crate::app::gui::{Key, Nav, Screen, Size, Stack, inside};
 use crate::world::storage::{Storage, VERSION_KEY};
 
+#[test]
+fn visible_world_icon_survives_an_atlas_wrap_in_the_same_frame() {
+    let host = Host::new("icon-atlas-wrap");
+    let mut icons = Icons::default();
+    let dirs: Vec<_> = (0..=ICON_SLOTS).map(|i| format!("world-{i}")).collect();
+    for (i, dir) in dirs.iter().enumerate() {
+        let folder = host.saves.join(dir);
+        std::fs::create_dir(&folder).unwrap();
+        let pixels = [i as u8, 0, 0, 255].repeat(64 * 64);
+        voxelcraft::title::icon::write(&folder.join(voxelcraft::title::icon::FILE), &pixels).unwrap();
+    }
+    for batch in dirs[..ICON_SLOTS].chunks(ICON_LOADS_PER_FRAME as usize) {
+        icons.begin_frame();
+        for dir in batch {
+            assert!(icons.get(&host.saves, dir).is_some());
+        }
+        icons.uploads.clear();
+    }
+    icons.begin_frame();
+    let first = icons.get(&host.saves, &dirs[0]).unwrap();
+    let new = icons.get(&host.saves, &dirs[ICON_SLOTS]).unwrap();
+    assert_ne!(first, new, "the late upload would replace the first row's pixels");
+    assert_eq!(icons.get(&host.saves, &dirs[0]), Some(first));
+    assert_eq!(icons.budget, ICON_LOADS_PER_FRAME - 1);
+    let [(rect, pixels)] = icons.uploads.as_slice() else { panic!("expected one new upload") };
+    assert_eq!([rect.x as f32, rect.y as f32], new[..2]);
+    assert_eq!(pixels[0], ICON_SLOTS as u8);
+}
+
 /// A title host without a window: real saves on disk, everything else recorded.
 struct Host {
     root: PathBuf,

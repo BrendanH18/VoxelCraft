@@ -20,9 +20,12 @@ use glam::IVec3;
 /// 5: v0.16's mobs, voices and sounds shift the dense `MobKind` and sound
 /// numbers, so a build still versioned 0.15.0 refuses v0.15 peers.
 /// It also adds the Book packet (issue #97), before any release used 5.
-pub const PROTOCOL: u16 = 5;
+/// 6: desktop hosts send inventory changes separately from tick state.
+pub const PROTOCOL: u16 = 6;
 pub const GAME_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const MAX_FRAME: usize = 256 * 1024;
+/// One inventory part per host tick leaves half the I/O budget for state and terrain.
+pub const INVENTORY_PART_BYTES: usize = MAX_FRAME / 2;
 const MAX_QUEUE: usize = 2 * 1024 * 1024;
 pub const DISCOVERY_PORT: u16 = 4445;
 
@@ -67,11 +70,14 @@ pub enum Packet {
     Input(Input),
     /// Immediate action on the same validated authority as CLI players.
     Command(String),
-    /// Slot click: encoded slot, right button, shift click.
+    /// Slot click with the inventory revision shown to the client.
     Click {
         slot: u16,
         right: bool,
         shift: bool,
+        revision: u32,
+        /// The displayed crafting grid, or zero while its contents are pending.
+        grid_size: u8,
     },
     Chat(String),
     State(serde_json::Value),
@@ -92,6 +98,11 @@ pub enum Packet {
         pages: Vec<String>,
         title: Option<String>,
         offhand: bool,
+    },
+    /// An ordered part of the host's inventory update for this client.
+    InventoryPart {
+        last: bool,
+        bytes: Vec<u8>,
     },
 }
 
@@ -195,10 +206,12 @@ impl Packet {
                     out.extend_from_slice(&b.0.to_le_bytes());
                 }
             }
-            Self::Click { slot, right, shift } => {
+            Self::Click { slot, right, shift, revision, grid_size } => {
                 out.push(8);
                 out.extend_from_slice(&slot.to_le_bytes());
                 out.extend_from_slice(&[u8::from(*right), u8::from(*shift)]);
+                out.extend_from_slice(&revision.to_le_bytes());
+                out.push(*grid_size);
             }
             Self::Book { pages, title, offhand } => {
                 if pages.len() > WRITABLE_MAX_PAGES {
@@ -213,6 +226,13 @@ impl Packet {
                 for page in pages {
                     utf16(&mut out, page, WRITABLE_PAGE_LENGTH)?;
                 }
+            }
+            Self::InventoryPart { last, bytes } => {
+                if bytes.is_empty() || bytes.len() > INVENTORY_PART_BYTES {
+                    return Err(bad("invalid inventory part size"));
+                }
+                out.extend_from_slice(&[11, u8::from(*last)]);
+                out.extend_from_slice(bytes);
             }
         }
         if out.len() > MAX_FRAME {
@@ -310,7 +330,12 @@ impl Packet {
                 if right > 1 || shift > 1 {
                     return Err(bad("invalid click"));
                 }
-                Self::Click { slot, right: right != 0, shift: shift != 0 }
+                let revision = r.u32()?;
+                let grid_size = r.u8()?;
+                if !matches!(grid_size, 0 | 2 | 3) {
+                    return Err(bad("invalid crafting grid size"));
+                }
+                Self::Click { slot, right: right != 0, shift: shift != 0, revision, grid_size }
             }
             10 => {
                 let flags = r.u8()?;
@@ -324,6 +349,14 @@ impl Packet {
                 }
                 let pages = (0..count).map(|_| r.utf16(WRITABLE_PAGE_LENGTH)).collect::<io::Result<_>>()?;
                 Self::Book { pages, title, offhand: flags & 1 != 0 }
+            }
+            11 => {
+                let last = r.u8()?;
+                if last > 1 || r.0.is_empty() || r.0.len() > INVENTORY_PART_BYTES {
+                    return Err(bad("invalid inventory part"));
+                }
+                let bytes = std::mem::take(&mut r.0).to_vec();
+                Self::InventoryPart { last: last == 1, bytes }
             }
             _ => return Err(bad("unknown packet")),
         };

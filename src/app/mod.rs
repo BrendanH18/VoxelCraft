@@ -1438,15 +1438,14 @@ impl Game {
                 return;
             }
             if self.session.inventory.cursor.is_some() && self.cursor_off_panel() {
-                self.lan_command(if right { "toss_one" } else { "toss" });
+                self.lan_click(lan::LAN_OUTSIDE_SLOT, right, false);
                 return;
             }
             if let Some(slot) = self.slot_under_cursor() {
                 self.recipe_slot_clicked(slot);
             }
             if let Some(slot) = self.slot_under_cursor().and_then(lan::encode_slot) {
-                self.audio.ui_click();
-                self.lan_send(voxelcraft::lan::Packet::Click { slot, right, shift: self.modifiers.shift_key() });
+                self.lan_click(slot, right, self.modifiers.shift_key());
             }
             return;
         }
