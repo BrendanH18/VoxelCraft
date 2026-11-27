@@ -307,12 +307,12 @@ fn synthesis_is_fast() {
         })
         .sum();
     println!("of which the blocks' own sounds: {:.1} s", block_samples as f32 / RATE);
-    // v0.18 built this whole bank on the audio thread at startup: its
-    // blocks' own sounds took it to 0.55 s on a Boat sandbox and 1.6 s on
-    // CI's Windows runner, which runs it beside the other tests; 2 s keeps
-    // that within budget. Since v1.0 Track 3 startup builds the smaller
-    // `Bank::startup` (timed here too) and the rest on first use.
-    assert!(ms < 2000.0, "synthesis took {ms} ms");
+    // v0.18 built this whole bank on the audio thread at startup (0.55 s on
+    // a Boat sandbox, 1.6 s on CI's Windows runner beside the other tests).
+    // Since v1.0 Track 3 startup builds only `Bank::startup`, bounded below,
+    // and the blocks' own sounds on first use, so the whole bank is reported,
+    // not bounded: on Windows CI it ran 3.1 s beside
+    // `lazy_block_sounds_are_the_eager_banks_bits`, which builds it too.
     let start = std::time::Instant::now();
     let startup = Bank::startup();
     let startup_ms = start.elapsed().as_secs_f64() * 1000.0;
