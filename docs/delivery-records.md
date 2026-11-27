@@ -390,6 +390,13 @@ the dependency upgrade of 2026-11-25
 ([#112](https://github.com/BrendanH18/VoxelCraft/pull/112)). Players on
 v0.17 update straight to it.
 
+The old 45-minute Windows limit cancelled the initial v0.17 build after
+36 minutes of tests. The [rebuilt v0.17 release](https://github.com/BrendanH18/VoxelCraft/actions/runs/45290525329)
+packaged Windows successfully in 48m 42s under the 90-minute limit. The
+[v0.18 release](https://github.com/BrendanH18/VoxelCraft/actions/runs/45716105092)
+passed Windows install, reinstall and uninstall checks and the macOS smoke
+test, and uploaded both artifacts ([#101](https://github.com/BrendanH18/VoxelCraft/issues/101)).
+
 - **Evidence:** the owner's play of the v0.18 build; the owner's approval of
   every art round's look (materials, mobs, title, atmosphere); CI's full
   suite on the commits #118 and #112 merged from; the eleven

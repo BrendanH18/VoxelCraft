@@ -2182,8 +2182,8 @@ The LAN guest's inventory, cursor and crafting grid travel in bounded updates al
 the regular tick stream, so carrying full books leaves movement
 acknowledgments flowing
 ([#104](https://github.com/BrendanH18/VoxelCraft/issues/104)).
-The [release build record](releases.md#automated-builds) links the
-successful packages after the Windows timeout fix
+The Windows packaging timeout fix is verified in the
+[delivery record](delivery-records.md#38-v018-delivery-record--2026-11-25)
 ([#101](https://github.com/BrendanH18/VoxelCraft/issues/101)).
 
 **M7 exit:** all mandatory core rows are Verified; every remaining exception/

@@ -348,14 +348,13 @@ fn r3(x: f64) -> f64 {
     (x * 1000.0).round() / 1000.0
 }
 fn stack_appearance(stack: Option<Stack>) -> String {
-    // Large book and storage contents are invisible in other players' hands.
+    // Book and storage contents are invisible in other players' hands.
     stack_to_string(stack.map(|mut stack| {
         if stack.payload.is_some_and(|p| {
-            p.field().len() > 1024
-                && matches!(
-                    p.get(),
-                    Payload::WritableBook(_) | Payload::WrittenBook(_) | Payload::Container(_) | Payload::Bundle(_)
-                )
+            matches!(
+                p.get(),
+                Payload::WritableBook(_) | Payload::WrittenBook(_) | Payload::Container(_) | Payload::Bundle(_)
+            )
         }) {
             stack.payload = None;
         }
@@ -2940,8 +2939,8 @@ mod tests {
         }
     }
 
-    /// Inventory updates carry every stack component. Other players see
-    /// components of the stacks they draw as long as the payload is small.
+    /// Inventory updates carry the guest's stack contents. Equipment views
+    /// preserve visible components such as armor trim.
     #[test]
     fn snapshots_carry_stack_components() {
         use crate::inventory::{
@@ -2977,7 +2976,10 @@ mod tests {
         let Packet::State(lite) = Packet::decode(&frame[4..]).unwrap() else { panic!("wrong packet") };
         let mut copy = Agent::new(DVec3::ZERO);
         apply(&mut copy, &lite);
-        assert_eq!((copy.inventory.get(1), copy.inventory.armor[0]), (Some(book), Some(helmet)));
+        assert_eq!(
+            (copy.inventory.get(1), copy.inventory.armor[0]),
+            (Some(Stack { payload: None, ..book }), Some(helmet))
+        );
     }
 
     /// v0.18 Track 4: the spawn eggs come after every v0.17 palette entry,

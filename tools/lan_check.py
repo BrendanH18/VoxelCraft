@@ -330,6 +330,11 @@ def large_books(data):
             "LAN inventory: crafting clicks require the displayed grid size",
             a.last["grid"][2] == "-" and a.me()["cursor"] == "-",
         )
+        a.click(103)
+        a.until(lambda s: a.me()["cursor"] == f"{DIRT}:1", why="pick up dirt for a fresh outside click")
+        a.click(65535)
+        a.until(lambda s: a.me()["cursor"] == "-", why="toss the cursor stack with the displayed revision")
+        check("LAN inventory: a fresh outside click tosses the cursor stack", True)
     finally:
         for client in (a, b):
             if client:

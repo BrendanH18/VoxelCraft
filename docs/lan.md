@@ -116,7 +116,7 @@ binary framing:
   screen (container contents, work slots, brewing stand, merchant offers or
   vehicle storage);
 - other players as a lite pose: position, look, held item, armor, health,
-  sneaking, seat, arm swing and eating. Large book and storage contents
+  sneaking, seat, arm swing and eating. Book and storage contents
   are omitted from other players' equipment;
 - time and weather; nearby mobs as compact rounded arrays, with each mob's look
   (coat, markings, saddle, armor, carpet, collar, wool, name, lead, fish

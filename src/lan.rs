@@ -207,6 +207,9 @@ impl Packet {
                 }
             }
             Self::Click { slot, right, shift, revision, grid_size } => {
+                if !matches!(grid_size, 0 | 2 | 3) {
+                    return Err(bad("invalid crafting grid size"));
+                }
                 out.push(8);
                 out.extend_from_slice(&slot.to_le_bytes());
                 out.extend_from_slice(&[u8::from(*right), u8::from(*shift)]);
@@ -718,6 +721,7 @@ mod tests {
             assert!(Packet::decode(&Packet::Input(input).encode().unwrap()[4..]).is_err());
         }
         assert!(Packet::Chat("x".repeat(1025)).encode().is_err());
+        assert!(Packet::Click { slot: 100, right: false, shift: false, revision: 0, grid_size: 1 }.encode().is_err());
         assert!(Packet::decode(&[8, 0, 0, 2, 0]).is_err());
         assert!(Packet::decode(&[9]).is_err());
         let mut chunk = vec![6];

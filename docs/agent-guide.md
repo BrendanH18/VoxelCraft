@@ -71,6 +71,8 @@ defines the planned reproducible suite.
 - First-person hand rendering lives in `src/render/hand.rs`; its animation
   lives in `src/app/hand.rs`.
 - The Nether has no sky heightmap (`Dimension::has_sky`).
+- Desktop LAN inventory and crafting updates are streamed separately from tick
+  state through [the inventory adapter](../src/app/lan/inventory.rs).
 - Consult `src/world/block.rs`, `src/item.rs`, the architecture's
   [ID/storage notes](architecture.md#block-and-texture-ids), and pending branches
   before allocating IDs. Preserve old save meanings and use the conversion APIs.

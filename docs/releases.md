@@ -25,16 +25,7 @@ do not need a separate Visual C++ redistributable installation.
   `packaging/RELEASE-NOTES.md`. The workflow never publishes automatically.
   Rerunning a tag build refreshes an existing draft's downloads; published
   releases are left unchanged.
-- Each package job may run for 90 minutes. The Windows job's tests grow with
-  the suite: on 2026-11-23 they took 36 minutes and the old 45-minute limit
-  cancelled the `v0.17` build before packaging, so the unpublished tag moved
-  to the commit that raised the limit. The rebuilt
-  [v0.17 release](https://github.com/BrendanH18/VoxelCraft/actions/runs/45290525329)
-  packaged Windows successfully in 48m 42s. The
-  [v0.18 release](https://github.com/BrendanH18/VoxelCraft/actions/runs/45716105092)
-  also passed the Windows install, reinstall and uninstall smoke checks and
-  the macOS smoke test, and uploaded both artifacts
-  ([#101](https://github.com/BrendanH18/VoxelCraft/issues/101)).
+- Each package job may run for 90 minutes.
 
 Update Cargo.toml, Cargo.lock and the release notes together for each version.
 Before pushing a tag, check out the exact commit it will point at and check
