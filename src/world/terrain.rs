@@ -44,6 +44,8 @@ mod golden_v5;
 mod m3_corpus;
 #[cfg(test)]
 mod order_tests;
+#[cfg(test)]
+mod portal_corpus;
 mod sulfur_caves;
 
 const TREE_CELL: i32 = 5;
