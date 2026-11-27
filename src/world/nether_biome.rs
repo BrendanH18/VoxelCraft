@@ -300,7 +300,7 @@ impl Octaves {
 
 /// Java's `NormalNoise`: two octave sets, the second sampled at a slightly
 /// different scale, normalised by the expected deviation of their span.
-struct NormalNoise {
+pub(super) struct NormalNoise {
     first: Octaves,
     second: Octaves,
     value_factor: f64,
@@ -309,7 +309,7 @@ struct NormalNoise {
 impl NormalNoise {
     const INPUT_FACTOR: f64 = 1.018_126_888_217_522_7;
 
-    fn new(seed: u64, first_octave: i32, amplitudes: &[f64]) -> Self {
+    pub(super) fn new(seed: u64, first_octave: i32, amplitudes: &[f64]) -> Self {
         let lo = amplitudes.iter().position(|&a| a != 0.0).unwrap_or(0);
         let hi = amplitudes.iter().rposition(|&a| a != 0.0).unwrap_or(0);
         let expected_deviation = 0.1 * (1.0 + 1.0 / (hi - lo + 1) as f64);
@@ -320,7 +320,7 @@ impl NormalNoise {
         }
     }
 
-    fn sample(&self, x: f64, y: f64, z: f64) -> f64 {
+    pub(super) fn sample(&self, x: f64, y: f64, z: f64) -> f64 {
         let f = Self::INPUT_FACTOR;
         (self.first.sample(x, y, z) + self.second.sample(x * f, y * f, z * f)) * self.value_factor
     }

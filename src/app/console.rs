@@ -362,9 +362,9 @@ impl Game {
                 if to != self.dimension {
                     let arrival = match to {
                         crate::world::terrain::Dimension::End => super::dimension::Arrival::EndSpawn,
-                        crate::world::terrain::Dimension::Nether => {
-                            super::dimension::Arrival::Portal(glam::IVec3::new(0, 64, 0), true)
-                        }
+                        crate::world::terrain::Dimension::Nether => super::dimension::Arrival::Portal(
+                            crate::world::portal::PortalTrip::without_portal(glam::IVec3::new(0, 64, 0)),
+                        ),
                         crate::world::terrain::Dimension::Overworld => super::dimension::Arrival::Respawn,
                     };
                     if !self.switch_dimension(to, arrival) {

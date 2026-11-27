@@ -786,6 +786,33 @@ pub fn glowstone(level: &mut impl Level, rng: &mut Rng, origin: IVec3) -> bool {
     true
 }
 
+/// Generation 7: `RandomNeighborSpreadFeature` of glowstone as Java runs
+/// it on the decorated level: a try places glowstone in air touching
+/// exactly one glowstone block, whichever feature placed it.
+pub fn glowstone_spread(level: &mut impl Level, rng: &mut Rng, origin: IVec3) -> bool {
+    level.place(origin, Block::GLOWSTONE);
+    let (attempts, xz, y) = GLOWSTONE_SPREAD;
+    for _ in 0..attempts {
+        let p = origin + IVec3::new(xz.sample(rng), y.sample(rng), xz.sample(rng));
+        if !level.empty(p) {
+            continue;
+        }
+        let mut touching = 0;
+        for d in DIRECTIONS {
+            if level.block(p + d) == Block::GLOWSTONE {
+                touching += 1;
+                if touching > 1 {
+                    break;
+                }
+            }
+        }
+        if touching == 1 {
+            level.place(p, Block::GLOWSTONE);
+        }
+    }
+    true
+}
+
 /// `OreFeature.place` replacing netherrack with `state` (the Nether's ores
 /// never discard on air). The ocean-floor heightmap check always passes
 /// under the Nether's bedrock roof. Spheres outside the write bounds are

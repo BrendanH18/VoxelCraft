@@ -176,7 +176,9 @@ impl Game {
             }
             let scale = if dimension == Dimension::Nether { 1.0 / 8.0 } else { 8.0 };
             let p = (player.pos * DVec3::new(scale, 0.0, scale)).floor().as_ivec3();
-            dimension::Arrival::Portal(p.with_y(if dimension == Dimension::Nether { 64 } else { 100 }), true)
+            dimension::Arrival::Portal(crate::world::portal::PortalTrip::without_portal(
+                p.with_y(if dimension == Dimension::Nether { 64 } else { 100 }),
+            ))
         });
         if let Some([x, y, z, yaw, pitch]) = args.pose {
             player.pos = DVec3::new(x, y, z);
@@ -588,7 +590,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let storage = Storage::new(&dir);
 
-        // A new world: the latest generation (7 since v1.0 gap Track 4), written as `worldgen=7`.
+        // A new world: the latest generation (7 since the v1.0 gap Tracks 4 and 5), written as `worldgen=7`.
         let generation = world_generation(None);
         assert_eq!(generation, Generation::V7);
         let generator = Generator::with_generation(7, Dimension::Overworld, generation);

@@ -522,9 +522,14 @@ with flint and steel (iron ingot and flint, shapeless; 64 uses) to fill it
 with a swirling portal. Stand in it for 4 seconds (half a second in
 creative) to travel to the Nether, and the same way back. Each block in
 the Nether is eight in the overworld: the game looks for a portal within
-16 blocks of the matching spot on the other side, and builds one (on an
-obsidian ledge if there's nowhere to stand) if there isn't. Breaking any
-part of a frame puts its portal out.
+16 blocks of the matching spot on the other side (128 coming back), and
+builds one (on an obsidian ledge if there's nowhere to stand) if there
+isn't. You come out where you stood in the portal you entered (across it,
+up it and in front of it, scaled to the exit portal's size), nudged clear
+of any block in the way, still looking and moving the way you were, and
+turned a quarter if the two portals face different ways. Nothing is placed
+or found beyond the world border, 29,999,984 blocks out. Breaking any part
+of a frame puts its portal out.
 
 The Nether is a cavern world between a bedrock floor and roof: netherrack
 cliffs and islands over a lava sea at y = 31, soul sand shores that drag

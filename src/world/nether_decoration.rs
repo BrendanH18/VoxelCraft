@@ -195,7 +195,18 @@ impl<'a> Probe<'a> {
     pub(super) fn new(nether: &'a NetherGen, base: IVec3) -> Self {
         let lo = (IVec2::new(base.x, base.z) - WINDOW).div_euclid(IVec2::splat(STEP));
         let hi = (IVec2::new(base.x, base.z) + CHUNK_SIZE_I + WINDOW).div_euclid(IVec2::splat(STEP)) + 1;
-        let width = hi.x - lo.x + 1;
+        Self::grid(nether, lo, hi)
+    }
+
+    /// The terrain of block columns `min..=max` (and a margin of two).
+    pub(super) fn around(nether: &'a NetherGen, min: IVec2, max: IVec2) -> Self {
+        let lo = (min - 2).div_euclid(IVec2::splat(STEP));
+        let hi = (max + 2).div_euclid(IVec2::splat(STEP)) + 1;
+        Self::grid(nether, lo, hi)
+    }
+
+    fn grid(nether: &'a NetherGen, lo: IVec2, hi: IVec2) -> Self {
+        let width = (hi.x - lo.x).max(hi.y - lo.y) + 1;
         let boxes = nether.beard_boxes(lo * STEP, (lo + width) * STEP);
         Self { nether, g0: lo, width, grid: (0..width * width).map(|_| OnceCell::new()).collect(), boxes, chunk: None }
     }
@@ -306,6 +317,10 @@ pub(super) fn decorate(nether: &NetherGen, blocks: &mut [Block; CHUNK_VOLUME], b
 /// [`decorate`], where `cull` lets features skip work that only decides
 /// blocks outside the chunk (off, every feature runs in full: the same chunk).
 fn decorate_within(nether: &NetherGen, blocks: &mut [Block; CHUNK_VOLUME], base: IVec3, cull: bool) {
+    if nether.generation >= super::terrain::Generation::V7 {
+        super::nether_order::decorate(nether, blocks, base);
+        return;
+    }
     if nether.generation >= super::terrain::Generation::V6 {
         v6::decorate(nether, blocks, base, cull, None);
         return;
@@ -818,7 +833,10 @@ mod tests {
 
     #[test]
     fn features_cross_chunk_borders_without_seams_and_regardless_of_order() {
-        let g = NetherGen::new(77);
+        // Generation 6's first-write order; generation 7's chunks are
+        // checked by `nether_order_tests` and `order_tests`.
+        let v6 = || NetherGen::with_generation(77, crate::world::terrain::Generation::V6);
+        let g = v6();
         for biome in [NetherBiome::CrimsonForest, NetherBiome::WarpedForest] {
             let (_, blocks) = area(&g, biome);
             let mut vines = 0;
@@ -842,7 +860,7 @@ mod tests {
         // A fresh generator (cold caches) paints the same chunk.
         let cpos = IVec3::new(3, 1, -2);
         let a = g.generate(cpos);
-        let b = NetherGen::new(77).generate(cpos);
+        let b = v6().generate(cpos);
         let same = |a: &ChunkData, b: &ChunkData| {
             (0..CHUNK_SIZE).all(|z| (0..CHUNK_SIZE).all(|y| (0..CHUNK_SIZE).all(|x| a.get(x, y, z) == b.get(x, y, z))))
         };
@@ -948,7 +966,16 @@ mod tests {
     /// roof, in the chunk above it.
     #[test]
     fn generation_6_grows_mushrooms_on_the_nether_roof() {
-        let g = NetherGen::new(31);
+        use crate::world::terrain::Generation;
+        for generation in [Generation::V6, Generation::V7] {
+            roof_mushrooms(NetherGen::with_generation(31, generation));
+        }
+        // Generation 5 keeps the roof bare.
+        let old = NetherGen::with_generation(31, Generation::V5);
+        assert!(matches!(old.generate(IVec3::new(0, 4, 0)), ChunkData::Uniform(Block::AIR)));
+    }
+
+    fn roof_mushrooms(g: NetherGen) {
         let mut found = 0;
         for cz in -8..8 {
             for cx in -8..8 {
@@ -968,15 +995,12 @@ mod tests {
                 }
             }
         }
-        assert!(found > 0, "no roof mushrooms in 1024 cells");
-        // Generation 5 keeps the roof bare.
-        let old = NetherGen::with_generation(31, crate::world::terrain::Generation::V5);
-        assert!(matches!(old.generate(IVec3::new(0, 4, 0)), ChunkData::Uniform(Block::AIR)));
+        assert!(found > 0, "{:?}: no roof mushrooms in 1024 cells", g.generation);
     }
 
     #[test]
     fn generation_6_springs_are_scheduled_to_flow() {
-        let g = NetherGen::new(8);
+        let g = NetherGen::with_generation(8, crate::world::terrain::Generation::V6);
         let mut open = 0;
         let mut total = 0;
         for cz in -2..2 {

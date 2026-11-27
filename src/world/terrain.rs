@@ -44,6 +44,8 @@ mod golden_v5;
 mod m3_corpus;
 #[cfg(test)]
 mod order_tests;
+#[cfg(test)]
+mod portal_corpus;
 mod sulfur_caves;
 
 const TREE_CELL: i32 = 5;
@@ -97,10 +99,15 @@ pub enum Generation {
     /// built from Java's full `bastion/*` pool catalogue. The Overworld and
     /// End generate as in generation 5.
     V6 = 6,
-    /// v1.0 gap-closing Track 4 (GEN-04b): generation 6 with Java 26.3's
-    /// End terrain (`EndIslandFunction` and the End noise router, see
-    /// `world::end_islands`), its End biomes read from Java's island
-    /// value. The Overworld and Nether generate as in generation 6.
+    /// v1.0 gap-closing build (2026-11-27): generation 6 with Java 26.3's
+    /// End terrain (Track 4, GEN-04b: `EndIslandFunction` and the End noise
+    /// router, see `world::end_islands`, its End biomes read from Java's
+    /// island value) and the Nether's surfaces from Java 26.3's surface
+    /// rules with its features placed in Java's decoration order on
+    /// decorated terrain, one 16 × 16 chunk at a time (Track 5, GEN-04a,
+    /// `world::nether_order`). The Overworld generates as in generation 6;
+    /// generation 6's output is pinned by
+    /// `generation_6_chunk_hashes_stay_identical`.
     V7 = 7,
 }
 
