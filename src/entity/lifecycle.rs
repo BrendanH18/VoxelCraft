@@ -101,6 +101,8 @@ impl Entities {
         self.sense_dolphins(world, &moved);
         // v0.16 Track C: the Wither's server AI before the mobs move.
         self.wither_tick(dt, world, ctx, &mut events);
+        // v1.0 gap Track 2b: lowered mob spears stab before the mobs move.
+        self.mob_spear_stabs(world, ctx, &mut events);
         if self.still.is_some() {
             self.still_ticks = self.still_ticks.saturating_add(1);
         }

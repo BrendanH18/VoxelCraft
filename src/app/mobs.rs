@@ -327,6 +327,32 @@ impl Game {
                             .record_hit(player, if bot.agent.session.vitals.is_dead() { 0. } else { accepted });
                     }
                 }
+                // v1.0 gap Track 2b: a mob's spear contact that knocks back
+                // or dismounts without (or besides) damage.
+                EntityEvent::PlayerShove { player, pushes } => {
+                    let entities = &mut self.mobs.entities;
+                    if player == PlayerId::HOST {
+                        self.session.shoved(pushes, &mut || f64::from(entities.roll_range(0.0, 1.0)));
+                    } else if let Some(bot) = self.agents.by_id_mut(player) {
+                        bot.agent.session.shoved(pushes, &mut || f64::from(entities.roll_range(0.0, 1.0)));
+                    }
+                }
+                EntityEvent::PlayerDismount { player } => {
+                    if player == PlayerId::HOST {
+                        if self.session.player.vehicle.take().is_some()
+                            && let Some(pos) = self.mobs.entities.dismount(&self.world, PlayerId::HOST)
+                        {
+                            self.session.player.pos = pos;
+                            self.session.player.vel = DVec3::ZERO;
+                        }
+                    } else if let Some(bot) = self.agents.by_id_mut(player)
+                        && bot.agent.session.player.vehicle.take().is_some()
+                        && let Some(pos) = self.mobs.entities.dismount(&self.world, player)
+                    {
+                        bot.agent.session.player.pos = pos;
+                        bot.agent.session.player.vel = DVec3::ZERO;
+                    }
+                }
                 EntityEvent::PlayerSonicBoom { player: PlayerId::HOST, damage, push, from } => {
                     // `SonicBoom.tick`: unarmoured, unenchanted damage that a
                     // raised shield facing the warden still stops, then the push.
@@ -733,6 +759,7 @@ impl Game {
                 EntityEvent::Shoot { .. }
                 | EntityEvent::LingeringCloud { .. }
                 | EntityEvent::MobHit { .. }
+                | EntityEvent::MobStab(_)
                 | EntityEvent::OwnerHurt { .. }
                 | EntityEvent::DragonXp { .. }
                 | EntityEvent::MobKilled { .. }

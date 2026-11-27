@@ -59,6 +59,11 @@ impl Mob {
             // Its lava goal runs in the goal selector (`goals`).
             return None;
         }
+        // v1.0 gap Track 2b: out of the fight activity the attack target is
+        // erased, so running spear behaviours stop (`ableToAttack`).
+        if self.nether.as_ref().is_some_and(|n| n.offhand.is_some() || !matches!(n.goal, Goal::Attack { .. })) {
+            self.stop_piglin_spear();
+        }
         let n = self.nether.as_mut()?;
         n.admire_disabled = (n.admire_disabled - dt).max(0.0);
         n.hunt_cooldown = (n.hunt_cooldown - dt).max(0.0);
@@ -252,6 +257,9 @@ impl Mob {
                 (None, 0.0)
             };
         }
+        if weapon == Weapon::GoldenSpear && self.kind == MobKind::Piglin {
+            return self.piglin_spear_fight(foe, at, speed, world, ctx, rng);
+        }
         let tusks = matches!(self.kind, MobKind::Hoglin | MobKind::Zoglin);
         let reach = ATTACK_RANGE + if tusks { self.shape().half_width } else { 0.0 };
         if hdist <= reach && to.y.abs() < 1.6 && self.attack_cooldown <= 0.0 {
@@ -313,6 +321,44 @@ impl Mob {
             return (None, 0.0);
         }
         let sees = line_of_sight(world, eye, aim);
+        (self.pursue(world, at, speed, sees, true, rng), speed)
+    }
+
+    /// v1.0 gap Track 2b: a piglin's fight with a golden spear. `MeleeAttack`
+    /// never swings it (`Piglin.canUseNonMeleeWeapon` counts a kinetic
+    /// weapon); `SpearApproach`, `SpearAttack` and `SpearRetreat` move the
+    /// piglin, and when none of them moves it this tick the walk-target
+    /// sink does (`SetWalkTargetFromAttackTargetIfTargetOutOfReach` and
+    /// `MoveToTargetSink`): it keeps the current path, or heads for the
+    /// target while it is out of melee reach.
+    #[allow(clippy::too_many_arguments)]
+    fn piglin_spear_fight<W: MobWorld + ?Sized>(
+        &mut self,
+        foe: Foe,
+        at: DVec3,
+        speed: f64,
+        world: &W,
+        ctx: &Ctx,
+        rng: &mut Rng,
+    ) -> (Option<DVec3>, f64) {
+        // `EntityTracker(target, true)`: the target's eyes.
+        let eye = match foe {
+            Foe::Player(id) => {
+                ctx.players.iter().find(|t| t.id == id).map(|t| t.pos + DVec3::Y * (t.shape.height * 0.9))
+            }
+            Foe::Mob(_) => None,
+        }
+        .unwrap_or(at + DVec3::Y * 1.2);
+        if let Some(wish) = self.piglin_spear(world, ctx, at, eye, rng) {
+            return wish;
+        }
+        if !self.nav.is_done() {
+            return (self.follow_path(world, speed, true), speed);
+        }
+        if (at - self.pos).with_y(0.0).length() <= ATTACK_RANGE {
+            return (None, 0.0);
+        }
+        let sees = line_of_sight(world, self.pos + DVec3::Y * (self.shape().height * 0.9), eye);
         (self.pursue(world, at, speed, sees, true, rng), speed)
     }
 

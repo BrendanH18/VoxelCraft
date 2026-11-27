@@ -32,14 +32,14 @@
 //!   2 to those distances and steer their mount, at its
 //!   `chargeSpeedModifier` (1.4 for zombie horses, 4 for camel husks).
 //!   While the spear is lowered, `KineticWeapon.damageEntities` stabs
-//!   players along the mob's look: the base attack damage plus
-//!   `floor(relative speed × multiplier)`, with the 0.2 mob factor on
-//!   every speed threshold.
+//!   players and mobs along the mob's look ([`super::spear`]): the base
+//!   attack damage plus `floor(relative speed × multiplier)`, with the 0.2
+//!   mob factor on every speed threshold.
 use glam::{DVec3, IVec3};
 
 use super::selector::{self, Host, LOOK, MOVE, Selector, Spec};
 use super::{Ai, Mob, MobWorld, Rng, line_of_sight};
-use crate::entity::{Ctx, EntityEvent, MobKind, PlayerId, Target};
+use crate::entity::{Ctx, EntityEvent, MobKind, Target};
 use crate::weapons::spear;
 
 /// `reducedTickDelay(10)`: `NearestAttackableTargetGoal`'s default
@@ -118,11 +118,13 @@ impl SpearUse {
 }
 
 /// A lowered spear (`startUsingItem` with a `KineticWeapon`): ticks used
-/// and `recentKineticEnemies` (never saved).
+/// and `recentKineticEnemies`, each with the use tick it was stabbed on
+/// (the memory starts afresh with each use, so the use clock serves as
+/// Java's game time; never saved).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct SpearCharge {
     pub used: u32,
-    pub stabbed: Vec<(PlayerId, u32)>,
+    pub stabbed: Vec<(super::spear::Stabbed, u32)>,
 }
 
 /// The zombie goals the selector runs (the door goal runs on its own).
@@ -166,11 +168,6 @@ pub(crate) fn java_melee(kind: MobKind) -> bool {
 /// targets they can't see; zombies and silverfish don't.
 fn follows_unseen(kind: MobKind) -> bool {
     matches!(kind, MobKind::Spider | MobKind::CaveSpider)
-}
-
-/// `LivingEntity.getLookAngle` toward `at` from `eye`.
-fn look_toward(eye: DVec3, at: DVec3) -> DVec3 {
-    (at - eye).normalize_or(DVec3::X)
 }
 
 impl Mob {
@@ -420,11 +417,6 @@ impl Mob {
         (None, 0.0)
     }
 
-    /// Whether the main hand holds a `KineticWeapon` (a spear).
-    pub(crate) fn holds_spear(&self) -> Option<crate::item::Tier> {
-        self.equipment.main_hand().and_then(|s| crate::weapons::spear_tier(s.item))
-    }
-
     /// `SpearUseGoal.tick` (on full updates).
     fn spear_tick<W: MobWorld + ?Sized>(
         &mut self,
@@ -449,13 +441,13 @@ impl Mob {
             if dist2 > SPEAR_APPROACH * SPEAR_APPROACH {
                 to_target(&mut s, charge);
                 self.spear = Some(s);
-                return self.spear_move(world, t.pos, charge, true);
+                return self.spear_move(world, t.pos, charge);
             }
             let kinetic = spear::kinetic(tier);
             let duration = (kinetic.delay_ticks + kinetic.damage.max_ticks) as i32;
             s.engage = selector::reduced(duration);
             // `startUsingItem(MAIN_HAND)`.
-            self.spear_use = Some(SpearCharge::default());
+            self.lower_spear();
         }
         if s.engagement_over() {
             self.spear_use = None;
@@ -476,7 +468,7 @@ impl Mob {
             if let Some(away) = s.away {
                 s.dest = Some(away);
                 s.speed = charge;
-                wish = self.spear_move(world, away, charge, false);
+                wish = self.spear_move(world, away, charge);
                 if self.nav.is_done() {
                     if s.fleeing > 0 {
                         s.done = true;
@@ -487,7 +479,7 @@ impl Mob {
                 }
             } else {
                 to_target(&mut s, charge);
-                wish = self.spear_move(world, t.pos, charge, true);
+                wish = self.spear_move(world, t.pos, charge);
                 if dist2 < SPEAR_IN_RANGE * SPEAR_IN_RANGE || self.nav.is_done() {
                     let d = dist2.sqrt();
                     s.away = self.land_pos_away(
@@ -508,33 +500,30 @@ impl Mob {
 
     /// `navigation.moveTo(…)` for the spear goal; a rider leaves the walking
     /// to its mount (which steers to the goal's `dest`).
-    fn spear_move<W: MobWorld + ?Sized>(
+    pub(super) fn spear_move<W: MobWorld + ?Sized>(
         &mut self,
         world: &W,
         to: DVec3,
         modifier: f64,
-        entity: bool,
     ) -> (Option<DVec3>, f64) {
         if self.riding.is_some() {
             return (None, 0.0);
         }
         let speed = self.kind.chase_speed() * modifier * if self.baby { 1.5 } else { 1.0 };
-        // `moveTo(Entity)` plans afresh each update; `moveTo(x, y, z)` keeps
-        // a path that already ends there.
-        let cell = to.floor().as_ivec3();
-        if entity || self.nav.target() != Some(crate::entity::path::surface_target(world, cell)) {
-            self.walk_to(world, cell, if entity { 0 } else { 1 }, speed, true);
-        }
+        // `moveTo(Entity)` and `moveTo(x, y, z)` both ask `createPath` with
+        // reach 1 (v1.0 gap Track 2b: an entity target used reach 0), which
+        // keeps an unfinished path that already ends at the same block.
+        self.walk_to(world, to.floor().as_ivec3(), 1, speed, true);
         (self.follow_path(world, speed, true), speed)
     }
 
-    /// Turn the head toward the target (`lookAt(target, 30, 30)`).
+    /// `mob.lookAt(target, 30, 30)` turns the body by at most 30°, and
+    /// `getLookControl().setLookAt(target, 30, 30)` the head and pitch
+    /// (see [`super::spear`]).
     fn face_target(&mut self, t: &Target) {
-        let to = t.pos - self.pos;
-        let flat = to.with_y(0.0).length();
-        let eye = to.y + t.shape.height * 0.9 - self.shape().height * 0.85;
-        let yaw = (to.z as f32).atan2(to.x as f32);
-        self.head_target = (super::wrap(yaw - self.yaw).clamp(-1.2, 1.2), (eye as f32).atan2(flat as f32));
+        use super::spear::SPEAR_GOAL_TURN;
+        self.turn_body_to(t.pos, SPEAR_GOAL_TURN);
+        self.set_look_at(t.pos + DVec3::Y * (t.shape.height * 0.9), SPEAR_GOAL_TURN, SPEAR_GOAL_TURN);
     }
 
     /// `LandRandomPos.getPosAway(mob, min, max, vertical, avoid)`.
@@ -584,79 +573,6 @@ impl Mob {
             }
         }
         best.map(|(_, p)| p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5))
-    }
-
-    /// One tick of a lowered spear (`LivingEntity.updatingUsingItem` →
-    /// `KineticWeapon.damageEntities`): stab the players along the look
-    /// whose contact the conditions allow, each at most every 10 ticks.
-    pub(super) fn spear_charge_tick(&mut self, ctx: &Ctx, events: &mut Vec<EntityEvent>) {
-        let Some(tier) = self.holds_spear() else {
-            self.spear_use = None;
-            return;
-        };
-        let Some(mut charge) = self.spear_use.take() else { return };
-        let used = charge.used;
-        charge.used += 1;
-        let kinetic = spear::kinetic(tier);
-        // Nothing is touched, or remembered, before the delay.
-        if used < kinetic.delay_ticks {
-            self.spear_use = Some(charge);
-            return;
-        }
-        let clock = self.goals.ticks;
-        let eye = self.eye_pos();
-        let Some(target) = self.chase_target.and_then(|id| ctx.players.iter().find(|t| t.id == id)) else {
-            self.spear_use = Some(charge);
-            return;
-        };
-        let look = look_toward(eye, target.pos + DVec3::Y * (target.shape.height * 0.9));
-        // `getMotion`: a passenger's root vehicle, in blocks a second.
-        let along = look.dot(self.vel);
-        let range = spear::mob_range();
-        let reach = range.max + along.max(0.0) / crate::knockback::TICK_RATE;
-        let from = eye + look * range.min;
-        let span = look * (reach - range.min).max(0.0);
-        let (base, cause) = (self.kind.melee().0, self.melee_attack().1);
-        for t in ctx.players.iter().filter(|t| t.alive && t.targetable && !t.spectator) {
-            let grow = DVec3::splat(range.margin);
-            let min = t.pos - DVec3::new(t.shape.half_width, 0.0, t.shape.half_width) - grow;
-            let max = t.pos + DVec3::new(t.shape.half_width, t.shape.height, t.shape.half_width) + grow;
-            let inside = from.cmpge(min).all() && from.cmple(max).all();
-            let hit = inside || crate::physics::ray_aabb(from, span, min, max).is_some_and(|f| f <= 1.0);
-            if !hit
-                || charge.stabbed.iter().any(|&(p, at)| p == t.id && clock.wrapping_sub(at) < kinetic.contact_cooldown)
-            {
-                continue;
-            }
-            charge.stabbed.retain(|&(p, _)| p != t.id);
-            charge.stabbed.push((t.id, clock));
-            let Some(contact) = kinetic.contact(used, along, look.dot(t.vel), base, false) else { continue };
-            // Knockback lands only with damage on a player here (see the
-            // record); a contact that only knocks back or dismounts does
-            // nothing.
-            if !contact.damage {
-                continue;
-            }
-            let yaw = (-look.x).atan2(look.z).to_degrees() as f32;
-            let hit = crate::knockback::Hit {
-                pushes: [
-                    Some(crate::knockback::Push::hurt(self.pos, t.pos)),
-                    contact.knockback.then(|| crate::knockback::Push::facing(0.4, yaw)),
-                ],
-                punch: None,
-                throw: None,
-            };
-            self.attack_anim = 0.35;
-            events.push(EntityEvent::PlayerHit {
-                java: Some(hit),
-                player: t.id,
-                damage: contact.amount,
-                knockback: (look.with_y(0.0) * 6.0 + DVec3::Y * 5.0).as_vec3(),
-                cause,
-            });
-            events.push(EntityEvent::OwnerHurt { player: t.id, attacker: self.uid });
-        }
-        self.spear_use = Some(charge);
     }
 
     /// `Mob.doHurtTarget` on a player from the shared melee: the attack

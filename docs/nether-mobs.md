@@ -42,12 +42,21 @@ is quadratic in the mob count; staggering keeps most scans off the same tick.
 **Spawning.** Piglins spawn in groups of 4 at nether-wastes weight 15 (3–4 at weight 5 in crimson forests), against
 zombified piglins' 100 (cap 4 per player). Java's `finalizeSpawn` rolls apply:
 - 20% are babies, which carry nothing.
-- Adults hold a golden sword or a crossbow, 50/50.
+- Adults hold a crossbow half the time; otherwise a golden spear one time in ten
+  (`createSpawnWeapon`, since v1.0 gap Track 2b) and a golden sword the rest.
 - Each golden armor piece has a 10% chance.
 
 **Hostility.** An adult attacks the nearest visible, targetable player within 16
 blocks who wears no golden armor. One golden piece is enough, as in `isWearingGold`.
 - Swords swing once a second (Java's 20-tick cooldown).
+- Golden spears are never swung (`canUseNonMeleeWeapon`): since v1.0 gap Track 2b
+  ([record](verification/2026-11-27-v1.0-gap-track-02b-spears.md), implemented,
+  unverified) the fight runs `SpearApproach` (walk at the target until within 10
+  blocks), `SpearAttack` (lower the spear for 14 + 275 ticks, charge, and within 2
+  blocks or at the path's end run on to a spot 6–7 blocks past the target) and
+  `SpearRetreat` (raise it and retreat 9–11 blocks for up to 100 ticks), every tick as
+  brain behaviours. The lowered spear stabs whatever its ray crosses (see
+  [mob parity](mob-parity.md#mob-spears-stabs-look-and-piglins-v10-gap-track-2b-implemented-unverified)).
 - Crossbow piglins load for 25 ticks, then wait a pause of 1–2 s drawn once per shot.
   They shoot when they can see
   the target within 8 blocks and back away inside 5 (`BackUpIfTooClose(5, 0.75)`).
@@ -88,7 +97,9 @@ It picks one ingot off a stack and holds it for 119 ticks (`ADMIRE_DURATION`):
 piglin. It keeps its age, armor, main-hand weapon (a crossbow or a brute's golden axe
 too, as `convertTo` copies equipment), persistence and uid. A zombified piglin's
 melee is Java's base 5 plus the held item's attack modifier (sword +3, axe +6); a
-natural one holds the spawn golden sword (the 1-in-20 golden spear is a sword here). Immune piglins
+natural one holds the spawn golden sword, or one time in twenty a golden spear, which it
+charges with through `SpearUseGoal` (v1.0 gap Track 2b); a spear adds no attack. Its
+main hand drops at Java's default 8.5% on a player kill, randomly worn. Immune piglins
 (`IsImmuneToZombification`) stay. The existing zombified piglin carries on: it is
 neutral, angers its whole pack within 32 blocks for 30 s when one is hit, and spawns
 in Nether packs. Conversion drops the pocket contents and the item being admired.

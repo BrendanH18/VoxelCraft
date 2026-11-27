@@ -533,6 +533,21 @@ pub enum EntityEvent {
         /// and the warden's sonic boom aren't.
         melee: bool,
     },
+    /// v1.0 gap Track 2b: a mob's lowered spear struck another mob
+    /// (`LivingEntity.stabAttack`; handled internally with the mob hits).
+    MobStab(weapon_hits::MobStab),
+    /// v1.0 gap Track 2b: a push on `player` without damage, as
+    /// `causeExtraKnockback` gives (a spear contact that knocks back);
+    /// applied whether or not a hit landed just before it.
+    PlayerShove {
+        player: PlayerId,
+        pushes: [Option<crate::knockback::Push>; 2],
+    },
+    /// v1.0 gap Track 2b: a spear contact takes `player` off its vehicle
+    /// (`Entity.stopRiding`).
+    PlayerDismount {
+        player: PlayerId,
+    },
     /// A mob's equipment drops at `pos` outside a death (`Mob.spawnAtLocation`,
     /// e.g. preserved gear on a zombie villager's cure; handled internally).
     DropEquipment {

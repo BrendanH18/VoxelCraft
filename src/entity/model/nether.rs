@@ -81,6 +81,45 @@ pub(super) const AXE_ARM: &[Cuboid] = &[
     cube([-0.6, -9.0, 6.5], [0.6, -5.0, 10.0], GOLD, 10),
 ];
 
+/// v1.0 gap Track 2b: a golden spear gripped in the fist, its shaft
+/// through the hand and the gold head forward (an original stand-in for
+/// the item model).
+pub(super) const SPEAR_ARM: &[Cuboid] = &[
+    cube([-2.0, -10.0, -2.0], [2.0, 2.0, 2.0], SKIN, 36),
+    cube([-0.5, -10.0, -7.0], [0.5, -9.0, 13.0], [137, 103, 39], 10),
+    cube([-1.0, -10.5, 13.0], [1.0, -8.5, 15.0], GOLD, 10),
+    cube([-0.5, -10.0, 15.0], [0.5, -9.0, 18.0], GOLD, 10),
+];
+
+/// The weapon arm and its turn for a piglin or zombified piglin holding
+/// `weapon` (`fighting`: angry; `lowered`: a spear in use, held level).
+pub(super) fn weapon_arm(
+    weapon: Weapon,
+    fighting: bool,
+    lowered: bool,
+    chop: f32,
+    swing: f32,
+    pitch: f32,
+    arms: [&'static [Cuboid]; 5],
+) -> (&'static [Cuboid], Quat) {
+    let rx = Quat::from_rotation_x;
+    let [bare, sword, axe, crossbow, spear] = arms;
+    match weapon {
+        Weapon::GoldenSword if fighting => (sword, rx(-1.1 + chop)),
+        Weapon::GoldenSword => (sword, rx(-0.4 - swing * 0.5)),
+        Weapon::GoldenAxe if fighting => (axe, rx(-1.1 + chop)),
+        Weapon::GoldenAxe => (axe, rx(-0.4 - swing * 0.5)),
+        // Crossbow held level at the target.
+        Weapon::Crossbow if fighting => (crossbow, rx(-PI / 2.0 - pitch)),
+        Weapon::Crossbow => (crossbow, rx(-0.3 - swing * 0.5)),
+        // A lowered spear is couched under the arm, pointing ahead.
+        Weapon::GoldenSpear if lowered => (spear, rx(-0.35 - pitch * 0.5)),
+        Weapon::GoldenSpear if fighting => (spear, rx(-0.6 + chop)),
+        Weapon::GoldenSpear => (spear, rx(-0.3 - swing * 0.5)),
+        Weapon::None => (bare, rx(-swing * 0.6)),
+    }
+}
+
 /// Hoglin and zoglin boxes in one palette each: body, mane, legs, head.
 macro_rules! tusker {
     ($body:ident, $front:ident, $back:ident, $head:ident, $fur:expr, $mane:expr, $snout:expr, $eye:expr) => {
@@ -170,16 +209,9 @@ pub(super) fn pose(m: &Mob, time: f32) -> Parts {
             let dancing = n.is_some_and(|n| n.dancing);
             let fighting = m.ai == Ai::Chase;
             let chop = if m.attack_anim > 0.0 { (m.attack_anim / 0.35 * PI).sin() * 0.9 } else { 0.0 };
-            let (right, right_rot) = match weapon {
-                Weapon::GoldenSword if fighting => (SWORD_ARM, rx(-1.1 + chop)),
-                Weapon::GoldenSword => (SWORD_ARM, rx(-0.4 - swing * 0.5)),
-                Weapon::GoldenAxe if fighting => (AXE_ARM, rx(-1.1 + chop)),
-                Weapon::GoldenAxe => (AXE_ARM, rx(-0.4 - swing * 0.5)),
-                // Crossbow held level at the target.
-                Weapon::Crossbow if fighting => (CROSSBOW_ARM, rx(-PI / 2.0 - m.head_pitch)),
-                Weapon::Crossbow => (CROSSBOW_ARM, rx(-0.3 - swing * 0.5)),
-                Weapon::None => (ARM, rx(-swing * 0.6)),
-            };
+            let arms = [ARM, SWORD_ARM, AXE_ARM, CROSSBOW_ARM, SPEAR_ARM];
+            let lowered = m.spear_use.is_some();
+            let (right, right_rot) = weapon_arm(weapon, fighting, lowered, chop, swing, m.head_pitch, arms);
             let (left, left_rot) = if admiring {
                 (GOLD_ARM, rx(-1.0))
             } else if weapon == Weapon::Crossbow && fighting {

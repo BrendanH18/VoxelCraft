@@ -619,6 +619,14 @@ const PIGLIN_SWORD_ARM: &[Cuboid] = &[
     cube([-1.5, -10.0, 3.0], [1.5, -9.0, 3.5], GOLD, 10),
     cube([-0.5, -10.0, 3.5], [0.5, -9.0, 11.0], GOLD, 10),
 ];
+/// v1.0 gap Track 2b: the zombified piglin's golden spear (see
+/// `nether::SPEAR_ARM`).
+const PIGLIN_SPEAR_ARM: &[Cuboid] = &[
+    cube([-2.0, -10.0, -2.0], [2.0, 2.0, 2.0], PIGLIN_SKIN, 36),
+    cube([-0.5, -10.0, -7.0], [0.5, -9.0, 13.0], [137, 103, 39], 10),
+    cube([-1.0, -10.5, 13.0], [1.0, -8.5, 15.0], GOLD, 10),
+    cube([-0.5, -10.0, 15.0], [0.5, -9.0, 18.0], GOLD, 10),
+];
 const PIGLIN_HEAD: &[Cuboid] = &[
     cube([-5.0, 0.0, -4.0], [5.0, 8.0, 4.0], PIGLIN_SKIN, 36),
     cube([-2.0, 0.0, 4.0], [2.0, 3.0, 5.0], [236, 168, 160], 14),
@@ -1235,15 +1243,10 @@ fn pose(m: &Mob, time: f32) -> Parts {
             // sides otherwise. A converted piglin keeps its own main hand.
             let chop = if m.attack_anim > 0.0 { (m.attack_anim / 0.35 * PI).sin() * 0.9 } else { 0.0 };
             let fighting = m.ai == Ai::Chase;
-            let (right, right_rot) = match m.held.unwrap_or(Weapon::GoldenSword) {
-                Weapon::GoldenSword if fighting => (PIGLIN_SWORD_ARM, rx(-1.1 + chop)),
-                Weapon::GoldenSword => (PIGLIN_SWORD_ARM, rx(-0.4 - swing * 0.5)),
-                Weapon::GoldenAxe if fighting => (nether::AXE_ARM, rx(-1.1 + chop)),
-                Weapon::GoldenAxe => (nether::AXE_ARM, rx(-0.4 - swing * 0.5)),
-                Weapon::Crossbow if fighting => (nether::CROSSBOW_ARM, rx(-PI / 2.0 - m.head_pitch)),
-                Weapon::Crossbow => (nether::CROSSBOW_ARM, rx(-0.3 - swing * 0.5)),
-                Weapon::None => (PIGLIN_ARM, rx(-swing * 0.6)),
-            };
+            let arms = [PIGLIN_ARM, PIGLIN_SWORD_ARM, nether::AXE_ARM, nether::CROSSBOW_ARM, PIGLIN_SPEAR_ARM];
+            let weapon = m.held.unwrap_or(Weapon::GoldenSword);
+            let lowered = m.spear_use.is_some();
+            let (right, right_rot) = nether::weapon_arm(weapon, fighting, lowered, chop, swing, m.head_pitch, arms);
             parts![
                 part(PIGLIN_BODY, [0.0; 3], Quat::IDENTITY),
                 part(PIGLIN_LEG, [-2.0, 12.0, 0.0], rx(swing)),

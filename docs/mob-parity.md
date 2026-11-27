@@ -215,3 +215,36 @@ has the Java sources and checks. Code: `src/entity/mob/chase.rs` and
   mob factor on every speed threshold, one contact per player per 10
   ticks. Zombie horsemen and husks on camel husks steer their mounts there
   at the mount's `chargeSpeedModifier` (1.4 and 4).
+
+## Mob spears: stabs, look and piglins (v1.0 gap Track 2b, implemented, unverified)
+
+The [Track 2b record](verification/2026-11-27-v1.0-gap-track-02b-spears.md)
+has the Java sources and checks. Code: `src/entity/mob/spear.rs`.
+
+- **Stabs** (`KineticWeapon.damageEntities`, `LivingEntity.stabAttack`) run
+  for every lowered mob spear each tick, before the mobs move: the ray from
+  the eye along the head's look stabs every player and mob whose box
+  (grown by 0.125) it crosses between 1 and 2.25 blocks plus the mob's own
+  forward motion, short of the first block, never the spear's own mount or
+  its fellow passengers. Each target is remembered for 10 ticks. Speeds are
+  taken along the body's look, the mob's from its root vehicle. A contact
+  deals the base attack damage plus `floor(relative speed × multiplier)`
+  and Sharpness (Smite and Bane against mobs sensitive to them); one that
+  knocks back pushes 0.4 along the mob's facing, plus its attack knockback,
+  with or without damage, and slows the mob; one that dismounts takes the
+  target off its vehicle (players too). Mob stabs never wear the spear, as
+  in Java, where only the player's attacks call `postHurtEnemy`.
+- **Look** (`LookControl`): while aiming, a mob keeps Java's head yaw and
+  pitch: `SpearUseGoal` turns the body 30° per update (`Mob.lookAt`) and the
+  head 30° a tick, a piglin's head turns 10° a tick with 40° of pitch, the
+  pitch is held to its limit from level each tick, and the head stays
+  within 75° of the body while walking.
+- **Piglins** spawn with a golden spear in one melee roll in ten
+  (`createSpawnWeapon`) and zombified piglins in one in twenty; the spear is
+  drawn in the hand (an original stand-in), saved as the `golden_spear`
+  weapon and dropped at the default 8.5% on a player kill (a zombified
+  piglin's sword now drops the same way). Piglins fight with it through
+  `SpearApproach`, `SpearAttack` and `SpearRetreat` (approach to 10 blocks,
+  lower it for 289 ticks while charging and running on past the target,
+  retreat 9–11 blocks for up to 100 ticks) and never swing it in melee;
+  zombified piglins use `SpearUseGoal`.
