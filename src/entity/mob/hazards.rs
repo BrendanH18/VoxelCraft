@@ -440,11 +440,11 @@ mod tests {
         for _ in 0..200 {
             m.physics_step(0.05, &world, None, 0.0);
         }
-        assert_eq!(m.fuse, 25.0 / 20.0, "28 ticks, held to 25");
+        assert_eq!(m.fuse, 25.0 / 20.0, "31 ticks, held to 25");
         // Powder snow doesn't call `causeFallDamage`: no swell.
         let mut snow = Grid::flat(1);
         snow.set(glam::IVec3::new(0, 0, 0), crate::world::scaffolding::POWDER_SNOW);
-        let mut m = Mob::new(MobKind::Creeper, DVec3::new(0.5, 11.5, 0.5), 0.0);
+        let mut m = Mob::new(MobKind::Creeper, DVec3::new(0.5, 1.0, 0.5), 0.0);
         m.restore_fall_distance(10.0);
         m.on_ground = false;
         m.track_fall(&snow, m.pos.y, true);

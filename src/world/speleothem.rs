@@ -66,6 +66,24 @@ pub fn of(b: Block) -> Option<Speleothem> {
 pub fn stalagmite_tip(b: Block) -> bool {
     of(b).is_some_and(|s| s.kind == Kind::Dripstone && !s.down && s.thickness == Thickness::Tip)
 }
+/// `SpeleothemBlock.getShape`, which is its collision shape too: a column
+/// centred in the cell as (width, bottom, top) in sixteenths, by thickness
+/// (`SHAPE_TIP_MERGE` 6 wide and full height, `SHAPE_TIP_UP` 6 by 11,
+/// `SHAPE_TIP_DOWN` 6 from 5 up, `SHAPE_FRUSTUM` 8, `SHAPE_MIDDLE` 10,
+/// `SHAPE_BASE` 12). Java moves it by the block's random XZ offset
+/// (`OffsetType.XZ`, up to 2/16), which the game's drawing doesn't have
+/// either, so here it stays centred.
+pub fn column(s: Speleothem) -> (u8, u8, u8) {
+    match s.thickness {
+        Thickness::TipMerge => (6, 0, 16),
+        Thickness::Tip if s.down => (6, 5, 16),
+        Thickness::Tip => (6, 0, 11),
+        Thickness::Frustum => (8, 0, 16),
+        Thickness::Middle => (10, 0, 16),
+        Thickness::Base => (12, 0, 16),
+    }
+}
+
 /// The distance `PointedDripstoneBlock.fallOn` adds to the fall.
 pub const STALAGMITE_FALL_EXTRA: f64 = 2.5;
 /// The `damageModifier` it passes.

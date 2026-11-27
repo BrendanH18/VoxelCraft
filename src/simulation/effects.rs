@@ -1138,6 +1138,31 @@ impl Effects {
         }
     }
 
+    /// A LAN guest's view of its own effects: the host's arrive afresh in
+    /// every snapshot, so the client keeps its tick count and Darkness's
+    /// blend from `previous`, as Java's client copies the blend to an
+    /// updated instance (`copyBlendState`). A Darkness the client hadn't
+    /// seen fades in, unless the guest is `joining`, when the host's
+    /// effects are shown at once (`skipBlending`).
+    pub fn keep_client_view(&mut self, previous: &Effects, joining: bool) {
+        self.age = previous.age;
+        self.darkness_blend = match self.get(Effect::Darkness) {
+            Some(d) if joining => Blend::immediate(d),
+            Some(_) if previous.has(Effect::Darkness) => previous.darkness_blend,
+            _ => Blend::default(),
+        };
+    }
+
+    /// A LAN guest's `tickClient` for what the client keeps itself: its
+    /// tick count and Darkness's blend (the host counts the durations).
+    pub fn tick_client_view(&mut self) {
+        self.age = self.age.wrapping_add(1);
+        match self.get(Effect::Darkness).copied() {
+            Some(darkness) => self.darkness_blend.tick(&darkness),
+            None => self.darkness_blend = Blend::default(),
+        }
+    }
+
     /// `LivingEntity.getEffectBlendFactor(DARKNESS, partialTick)`: how far
     /// Darkness has faded in, 0..=1, `partial` ticks after the last tick.
     /// The fog and the lightmap both scale by it.
@@ -1495,6 +1520,29 @@ mod tests {
         e.remove(Effect::Darkness);
         e.add(Effect::Darkness, 0, 200);
         assert_eq!(e.darkness_blend(1.0), 0.0);
+    }
+
+    /// A LAN guest gets fresh effects in every snapshot: the blend and the
+    /// tick count carry over and its own ticks move them on.
+    #[test]
+    fn a_lan_guest_keeps_its_darkness_blend_across_snapshots() {
+        let mut view = Effects::default();
+        let mut host = Effects::default();
+        host.add(Effect::Darkness, 0, 260);
+        let mut fresh = Effects::deserialize(&host.serialize());
+        fresh.keep_client_view(&view, false);
+        assert_eq!(fresh.darkness_blend(1.0), 0.0, "given while playing: fades in");
+        view = fresh;
+        for _ in 0..5 {
+            view.tick_client_view();
+        }
+        let mut fresh = Effects::deserialize(&host.serialize());
+        fresh.keep_client_view(&view, false);
+        assert!((fresh.darkness_blend(1.0) - 5.0 / 22.0).abs() < 1e-6);
+        assert_eq!(fresh.age, 5);
+        let mut joined = Effects::deserialize(&host.serialize());
+        joined.keep_client_view(&Effects::default(), true);
+        assert_eq!(joined.darkness_blend(0.0), 1.0, "shown at once on joining");
     }
 
     /// `calculateDarknessScale`: `max(0, cos(tickCount * PI * 0.025)) * 0.45
