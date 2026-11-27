@@ -339,6 +339,18 @@ to, so Java's Force Unicode Font option is left out (UX-03f). Player
 impact: the option is missing from Language settings, and text outside
 those ranges is not drawn.
 
+**Fidelity exception FE-04 — overlapping Nether decoration regions
+(owner, 2026-11-27).** Java decorates each chunk over its 3 × 3
+neighbourhood, so where two neighbourhoods overlap its result depends on
+which chunk the server decorated first, that is on how the player moved.
+Generation 7 follows Java's decoration order exactly within each
+neighbourhood; where two overlap, neither sees the other's features and
+the first by z then x keeps a block both changed (GEN-04a,
+[v1.0 gap Track 5](verification/2026-11-27-v1.0-gap-track-05-nether-portals.md)).
+Following one Java load order would mean decorating about 16 chunks out
+around every chunk. Player impact: none visible beyond Java's own
+load-order variation.
+
 The End's islands are not covered by FE-01: the owner chose on 2026-11-27
 to port Java's `EndIslandFunction` for new worlds
 ([gap-closing plan](#v10-gap-plan-2026-11-27)).
@@ -2266,7 +2278,7 @@ behaviour against the Java 26.3 jar, runs its targeted checks on Boat and
 writes a verification record; the integrator applies the inventory
 changes. Generation changes go into a new world generation, so the golden
 chunk hashes of generations 3 to 6 don't move. Tracks 6 and 7 merge only
-once the owner approves their look.
+once the owner approves their look (Track 7's approved on 2026-11-27).
 
 1. **Effects and mob damage** (PLY-03b, MOB-02d): Darkness darkening the
    lightmap, not only the fog; Smite and Bane of Arthropods on mobs'
