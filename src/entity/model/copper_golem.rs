@@ -108,15 +108,10 @@ pub(super) fn cargo(m: &Mob, origin: Vec3, body: Quat, light: ([u8; 4], u8), out
         rot: Quat::IDENTITY,
     };
     let tint = crate::inventory::components::dye_tint_bytes(stack);
-    super::super::player_model::textured_box(out, &held, 0., origin, body, light, 2, layer, 1., tint);
+    // v1.0 gap track 6: a block keeps its item shape (a slab, a fence).
     if let Some(b) = block {
-        let start = out.len() - 36;
-        for (i, face) in out[start..].as_chunks_mut::<6>().0.iter_mut().enumerate() {
-            let tex = b.info().tex[i ^ 1];
-            for v in face {
-                v.torch[2] = tex as u8;
-                v.torch[3] = (tex >> 8) as u8;
-            }
-        }
+        super::super::player_model::held_block(out, &held, origin, body, light, b, 2.3, 1., tint);
+    } else {
+        super::super::player_model::textured_box(out, &held, 0., origin, body, light, 2, layer, 1., tint);
     }
 }

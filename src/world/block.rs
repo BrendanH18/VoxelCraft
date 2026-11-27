@@ -1179,6 +1179,7 @@ impl Block {
             || super::wood::flat_icon(self)
             || super::colour_blocks::flat_icon(self)
             || super::cave_blocks::multiface_of(self).is_some()
+            || java_flat_block_item(self)
     }
 
     /// Badlands terracotta: 0 plain, then orange, yellow, red, brown, white
@@ -3961,6 +3962,62 @@ static OPAQUE: [bool; STATE_CAPACITY] = {
     }
     arr
 };
+
+/// v1.0 gap track 6: block items Java 26.3 draws as a flat sprite of one of
+/// the block's own textures (`item/generated` with a `block/...` layer, from
+/// `tests/fixtures/java/26.3/item_models.json`), which drew their world
+/// shape in 3D until 2026-11-27: glass panes show their glass, bars their
+/// bars, and the lily pad, vine, lever, redstone torch, tripwire hook and
+/// frogspawn their own texture.
+const JAVA_FLAT_BLOCK_ITEMS: &[&str] = &[
+    "glass_pane",
+    "white_stained_glass_pane",
+    "orange_stained_glass_pane",
+    "magenta_stained_glass_pane",
+    "light_blue_stained_glass_pane",
+    "yellow_stained_glass_pane",
+    "lime_stained_glass_pane",
+    "pink_stained_glass_pane",
+    "gray_stained_glass_pane",
+    "light_gray_stained_glass_pane",
+    "cyan_stained_glass_pane",
+    "purple_stained_glass_pane",
+    "blue_stained_glass_pane",
+    "brown_stained_glass_pane",
+    "green_stained_glass_pane",
+    "red_stained_glass_pane",
+    "black_stained_glass_pane",
+    "iron_bars",
+    "copper_bars",
+    "exposed_copper_bars",
+    "weathered_copper_bars",
+    "oxidized_copper_bars",
+    "waxed_copper_bars",
+    "waxed_exposed_copper_bars",
+    "waxed_weathered_copper_bars",
+    "waxed_oxidized_copper_bars",
+    "lily_pad",
+    "vine",
+    "lever",
+    "redstone_torch",
+    "tripwire_hook",
+    "frogspawn",
+];
+
+/// Whether `block` is the block of one of [`JAVA_FLAT_BLOCK_ITEMS`]' items.
+fn java_flat_block_item(block: Block) -> bool {
+    static BLOCKS: std::sync::OnceLock<Vec<Block>> = std::sync::OnceLock::new();
+    BLOCKS
+        .get_or_init(|| {
+            JAVA_FLAT_BLOCK_ITEMS
+                .iter()
+                // The vine's English name is plural ("Vines").
+                .filter_map(|&id| crate::java_registry::item(id, if id == "vine" { "Vines" } else { "" }))
+                .filter_map(crate::item::Item::block)
+                .collect()
+        })
+        .contains(&block)
+}
 
 #[cfg(test)]
 mod tests {

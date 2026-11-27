@@ -953,6 +953,23 @@ pub fn collision_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: 
     out
 }
 
+/// v1.0 gap track 6: the boxes every drawing of `block` as an item uses
+/// (its icon, dropped, held, framed and shelved models): [`item_shape`], or
+/// for blocks whose world shape is a whole cube cut lower (slabs, carpets,
+/// beds, farmland, paths) one full-width box that much lower. Until
+/// 2026-11-27 the dropped and framed models drew those as full cubes.
+pub fn item_boxes(block: Block) -> Boxes {
+    let boxes = item_shape(block);
+    if boxes.is_empty() { Boxes::from_box(Box16 { min: [0; 3], max: [16, 16 - block.top_drop(), 16] }) } else { boxes }
+}
+
+/// The layer box `index` of `block`'s item boxes is drawn with when it
+/// isn't the block's face layer, as the world mesh draws it: candle wax and
+/// wicks, the straw bed's pillow, the beacon's obsidian plinth and core.
+pub fn item_box_layer(block: Block, index: usize) -> Option<u16> {
+    super::colour_blocks::box_layer(block, index).or_else(|| super::beacon::box_layer(block, index))
+}
+
 /// The shape shown for `block` as an item (in inventories and when
 /// dropped): stairs face east, so their profile shows on the left of an
 /// icon, and fences reach out east and west.
@@ -995,6 +1012,22 @@ mod tests {
         assert_eq!(door.turned(Facing::West), b([0, 0, 0], [3, 16, 16]));
         assert_eq!(door.turned(Facing::North), b([0, 0, 0], [16, 16, 3]));
         assert_eq!(door.turned(Facing::East), b([13, 0, 0], [16, 16, 16]));
+    }
+
+    #[test]
+    fn items_keep_the_height_of_low_blocks() {
+        // v1.0 gap track 6: every item model shares these boxes; a slab or
+        // carpet item is as low as the placed block, not a whole cube.
+        let one = |block: Block| item_boxes(block).as_slice().to_vec();
+        assert_eq!(one(Block::STONE_SLAB), [b([0, 0, 0], [16, 8, 16])]);
+        let carpet = Block(576);
+        assert_eq!(one(carpet), [b([0, 0, 0], [16, 1, 16])]);
+        assert_eq!(one(Block::DIRT), [Box16::FULL]);
+        assert_eq!(one(Block::OAK_FENCE).len(), 5, "a post and two rails each way");
+        // The beacon's plinth and core keep their own layers.
+        let beacon = item_boxes(super::super::beacon::BEACON);
+        assert_eq!(beacon.as_slice().len(), 3);
+        assert_eq!(item_box_layer(super::super::beacon::BEACON, 1), Some(super::super::block::tex::OBSIDIAN));
     }
 
     #[test]

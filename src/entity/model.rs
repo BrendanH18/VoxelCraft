@@ -1599,20 +1599,7 @@ fn draw_held(
         uv: [0.0; 2],
     };
     if let Some(block) = item.block().filter(|b| !b.flat_icon()) {
-        held.min = [-3.2; 3];
-        held.max = [3.2; 3];
-        super::player_model::textured_box(
-            out,
-            &held,
-            0.0,
-            origin,
-            body,
-            light,
-            2,
-            block.info().tex[0],
-            scale,
-            [255, 255, 255, 0],
-        );
+        super::player_model::held_block(out, &held, origin, body, light, block, 3.2, scale, [255, 255, 255, 0]);
         return;
     }
     held.rot *= Quat::from_rotation_y(-FRAC_PI_2) * Quat::from_rotation_z(55f32.to_radians());

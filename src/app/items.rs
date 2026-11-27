@@ -241,7 +241,8 @@ impl Game {
                 continue;
             }
             let pos = item.previous_pos.lerp(item.pos, alpha);
-            let bob = 0.1 + 0.07 * (item.age * 2.0 + item.phase).sin() as f64;
+            // `ItemEntityRenderer`: `sin(ageInTicks / 10 + bobOffs) * 0.1 + 0.1`.
+            let bob = 0.1 + 0.1 * (item.age * 2.0 + item.phase).sin() as f64;
             self.dropped_models(item.stack, pos, item.age + item.phase, bob, &mut out);
         }
         // v1.0 gap track 6: `--item-review`'s staged item, at rest.
@@ -252,11 +253,11 @@ impl Game {
     }
 
     /// The models of a dropped `stack` lying at `pos`, turned `spin` and
-    /// raised `bob` (with copies for bigger stacks).
+    /// raised `bob` (with copies for bigger stacks). As Java's
+    /// `ItemEntityRenderer` places them, the model's lowest point (its
+    /// bounding box's) hovers 1/16 above the item's feet before the bob.
     fn dropped_models(&self, stack: Stack, pos: DVec3, spin: f32, bob: f64, out: &mut Vec<BlockModel>) {
-        let block = crate::world::copper_golem_statue::item_model(stack)
-            .or_else(|| stack.item.block())
-            .filter(|b| !b.flat_icon());
+        let block = crate::item::model_block(&stack);
         let icon = match block {
             Some(_) => None,
             None => stack
@@ -267,6 +268,12 @@ impl Game {
                 .or_else(|| stack.item.icon_layer()),
         };
         let size = if block.is_some() { 0.25 } else { 0.5 };
+        // `ITEM_MIN_HOVER_HEIGHT` less the model's own lowest point (a
+        // flat icon's quad starts at its bottom edge).
+        let lowest = block.map_or(0.0, |b| {
+            crate::world::shape::item_boxes(b).as_slice().iter().map(|bx| bx.min[1]).min().unwrap_or(0) as f64 / 16.0
+        });
+        let lift = HOVER - lowest * size;
         let sky_light = crate::entity::sky_light(&self.world, pos + DVec3::Y * 0.25);
         let block_light = self.torch_light(pos + DVec3::Y * 0.25);
         let copies = match stack.count {
@@ -279,7 +286,7 @@ impl Game {
             // Copies sit a little apart, the same way every frame.
             let k = i as f64;
             let offset = DVec3::new((k * 2.3).sin(), 0.0, (k * 1.7).cos()) * 0.06 * k.min(1.0);
-            let min = pos + offset + DVec3::new(-size / 2.0, bob + k * 0.03, -size / 2.0);
+            let min = pos + offset + DVec3::new(-size / 2.0, lift + bob + k * 0.03, -size / 2.0);
             out.push(BlockModel {
                 patterns: None,
                 lid: None,
@@ -296,6 +303,10 @@ impl Game {
         }
     }
 }
+
+/// `ItemEntityRenderer.ITEM_MIN_HOVER_HEIGHT`: how far a dropped item's
+/// model floats above its feet at the bottom of its bob.
+const HOVER: f64 = 1.0 / 16.0;
 
 /// The orb pickup ding (Java's random pitch around 0.9) and, every five
 /// levels, the level-up fanfare. `at` is `None` for the local player.
