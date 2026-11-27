@@ -1489,6 +1489,27 @@ kinds, item icons, options, game events) contiguous in landing order.
 | — | — | — | 1. Save compatibility; 2. Render-distance performance; 3. Long-session soak; 9. Controls and sculk |
 | 14080–14335 | 1938–1949, 1990–2199 | 4080–4095 | Integrator |
 
+### v1.0 gap-closing track reservations
+
+Reserved on 2026-11-27 when the owner approved the gap-closing build
+([roadmap](roadmap.md#v10-gap-plan-2026-11-27)), after
+`examples/id_map.rs` at `ceadfc2` showed states 13974–14335, items
+1938–1949 and 1957 up and texture layers 4066–4095 unregistered. The rules
+of the acceptance reservations above apply: allocate only inside your
+row, record what you used, leave the rest unregistered; the integrator
+makes appended orderings contiguous in landing order.
+
+| Block states | Item IDs | Texture layers | Track |
+| --- | --- | --- | --- |
+| — | 1957–1961 | — | 1. Effects and mob damage |
+| 13974–13989 | 1962–1966 | — | 2. Hostile AI |
+| 13990–14005 | 1967–1971 | — | 3. Mounts and water |
+| 14006–14021 | 1972–1976 | — | 4. The End |
+| 14022–14037 | — | — | 5. Nether generation and portals |
+| 14038–14053 | 1977–1981 | 4080–4087 | 6. Items and utilities |
+| 14054–14069 | — | 4066–4079 | 7. Art and motion |
+| 14070–14335 | 1938–1949, 1982–2199 | 4088–4095 | Integrator |
+
 ## Assessment branch ID reservations
 
 The assessment inspected `main` and retained v0.7 `f5bf0d1` before allocating

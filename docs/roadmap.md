@@ -57,14 +57,20 @@ their recorded runs. This replaces the audit's rule that every release
 records a run ([§6.1](#61-reference-configuration-and-frame-time-gate),
 [§7](#7-feature-completion-and-release-policy)).
 
+**Partial rows (owner, 2026-11-27): close them before 1.0.** Asked
+whether to tag `1.0` with the 22 Partial rows as known limitations, as
+v0.16 to v0.18 were tagged, the owner chose to close their gaps first. No
+1.0 paperwork (version bump, release notes) starts until they are closed;
+the proposed [gap-closing build](#v10-gap-plan-2026-11-27) is below the
+v1.0 plan.
+
 **Play (owner, 2026-11-27): v1.0 plays really well.** The owner played
 the v1.0 build on `main` and reported that it plays really well. That is
 the owner's play the v1.0 rows were waiting for; no row has moved to
 Verified yet. Before the `1.0` tag, the requirement inventory and the
 [final acceptance record](#8-final-acceptance-record-for-10) still need
-refreshing, and the owner still has to decide on the rows that remain
-Partial: tag with them, as v0.16 to v0.18 were tagged, or close them
-first.
+refreshing, and the rows that remain Partial are to be closed first
+(above).
 
 **Release (owner, 2026-11-23): v0.16 is released.** The owner played
 v0.16 and asked for it to be tagged and released, then for v0.17 to be
@@ -326,6 +332,17 @@ listed under [content assigned by the audit](#content-assigned-by-the-2026-11-09
 New structures (woodland mansions in v0.15, End cities in v0.16) are drawn
 as original templates to the same contract.
 
+**Fidelity exception FE-03 — no Force Unicode Font (owner, 2026-11-27).**
+VoxelCraft's original font covers ASCII, Latin-1 and Latin Extended-A
+with Java 26.3's advances and metrics, and has no Unicode font to switch
+to, so Java's Force Unicode Font option is left out (UX-03f). Player
+impact: the option is missing from Language settings, and text outside
+those ranges is not drawn.
+
+The End's islands are not covered by FE-01: the owner chose on 2026-11-27
+to port Java's `EndIslandFunction` for new worlds
+([gap-closing plan](#v10-gap-plan-2026-11-27)).
+
 Modern biomes, building materials, mobs, equipment and travel mechanics
 belong in 1.0 when they participate in the chosen core loops. Being introduced
 in a recent release does not make a feature optional.
@@ -350,6 +367,13 @@ States:
 - **Implemented, unverified:** behavior is implemented but required acceptance evidence is incomplete.
 - **Verified:** all applicable completion checks passed for the recorded commit and scope.
 - **Deferred:** explicitly outside the current milestone, with a reason and destination.
+
+How a row reaches Verified (owner, 2026-11-27): when the owner plays a
+build and reports it plays well, that play verifies every row the build
+carries whose record has its Java-reference evidence and its save/reload
+evidence for that commit, except rows the owner names as not covered. The
+integrator records the play, the commit and the rows it moved. A row with
+an open gap, or without those records, stays where it is.
 
 A shipped release is not a completion state. A passing test suite is not
 proof that all requirements are implemented. Record desktop, headless,
@@ -2216,6 +2240,76 @@ acknowledgments flowing
 The Windows packaging timeout fix is verified in the
 [delivery record](delivery-records.md#38-v018-delivery-record--2026-11-25)
 ([#101](https://github.com/BrendanH18/VoxelCraft/issues/101)).
+
+<a id="v10-gap-plan-2026-11-27"></a>
+
+**v1.0 gap-closing plan (approved by the owner, 2026-11-27).** The owner
+chose to close the 22 Partial rows before tagging `1.0`
+([current plan](#current-plan--updated-2026-11-13)) and approved this
+plan the same day. Read against
+the [requirement inventory](requirements.md) at `ceadfc2`, they fall in
+two groups.
+
+*Partial only on paper.* Six rows have nothing left but the owner's play
+or review, or record a gap that has since closed: BLD-01b (its "missing
+stonecutter screen" shipped in v0.15), BLD-01d, MOB-04b, PRO-02, UX-02
+(nobody has listened to the sounds yet) and UX-03c. The integrator moves
+them to Implemented, unverified in the inventory refresh, with no code.
+UX-03f joins them, its Force Unicode Font recorded as
+[FE-03](#14-what-can-follow-10).
+
+*Code gaps,* in seven parallel tracks, each in its own worktree with IDs
+from the [gap-closing reservations](architecture.md#v10-gap-closing-track-reservations),
+taken from what `examples/id_map.rs` showed free at `ceadfc2`. They branch
+from and merge into `t3/prep-release-1-0`. Each track checks its
+behaviour against the Java 26.3 jar, runs its targeted checks on Boat and
+writes a verification record; the integrator applies the inventory
+changes. Generation changes go into a new world generation, so the golden
+chunk hashes of generations 3 to 6 don't move. Tracks 6 and 7 merge only
+once the owner approves their look.
+
+1. **Effects and mob damage** (PLY-03b, MOB-02d): Darkness darkening the
+   lightmap, not only the fog; Smite and Bane of Arthropods on mobs'
+   weapons; a creeper's fall adding to its fuse; pointed dripstone's
+   doubled fall damage; mobs' fall distance saved.
+2. **Hostile AI** (MOB-04a, MOB-04c, and the spear part of MOB-02d and
+   FOO-04c): zombies breaking doors (`BreakDoorGoal`; `CanBreakDoors` is
+   already saved), mobs using spears (`SpearUseGoal`), Java's goal
+   scheduling for the shared chase; baby piglins riding baby hoglins
+   (`babySometimesRideBabyHoglin`) and the piglin stacking rule; a ridden
+   strider steered by its zombified piglin.
+3. **Mounts and water** (FOO-04c, MOB-03c): camels' own ride (dash,
+   sitting, the two seats) and horses' ride in water on Java's
+   `travelRidden`; the nautilus inventory screen; baby dolphins, guardians
+   targeting squid and axolotls, and water currents pushing swimmers, as
+   [aquatic mobs](aquatic-mobs.md) lists.
+4. **The End** (PRO-05, GEN-04b): the dragon landing on Java's scanning
+   perch, a creative player no longer ending its strafe the wrong way, and
+   its death flight to the portal; gateway cooldowns and beams; and Java's
+   `EndIslandFunction` for new worlds' End islands (owner, 2026-11-27; the
+   End isn't covered by FE-01).
+5. **Nether generation and portals** (GEN-04a, GEN-04c): Nether features
+   placed in Java's decoration order on decorated terrain, rather than
+   first write wins; the gravel and lava edges of floors by the lava sea;
+   the relative position inside the exit portal and the world border in
+   portal search; portal linking and arrival added to the generation
+   corpus.
+6. **Items and utilities** (BLD-05b, BLD-05c): bundle sounds, dropping a
+   bundle's contents and its contents tooltip; a captured review of every
+   registered item's icon, held and dropped model on Boat
+   (`scripts/boat-capture.sh`), fixing each mismatch with world geometry.
+7. **Art and motion** (UX-01, MOB-06): amethyst buds' and the potted
+   bamboo's own art, bamboo leaves as crossed planes; mob walk cycles, the
+   death topple, hurt flash and attack swings against Java's client
+   (`WalkAnimationState` and the models' animations).
+
+Owner decisions taken with the plan (2026-11-27): port Java's End island
+function; leave out Force Unicode Font ([FE-03](#14-what-can-follow-10));
+and the owner's play of the finished build verifies every row with its
+reference and save/reload records, unless the owner names exceptions
+([§2](#2-status-and-tracking-rules)). After the tracks merge and the
+owner plays the build, the integrator applies that rule, refreshes the
+inventory and §8, bumps the version to 1.0.0 and writes the release notes.
 
 **M7 exit:** all mandatory core rows are Verified; every remaining exception/
 deferral is explicit; current stable Java scope has been reconciled;
