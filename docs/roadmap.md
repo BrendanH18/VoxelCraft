@@ -2108,7 +2108,9 @@ owner-approved move under the release policy, not a silent deferral past 1.0.
 owner's play and the frame-time runs on the reference Mac, so agents can't
 finish v1.0 alone. The owner approved a ten-track acceptance build that
 closes every remaining Partial gap agents can close, so that those two
-steps are what remains. Java 26.3 is still the current stable release
+steps are what remains. (On 2026-11-27 the owner dropped the frame-time
+runs, leaving the owner's play as the step agents can't take;
+[current plan](#current-plan--updated-2026-11-13).) Java 26.3 is still the current stable release
 (checked 2026-11-25: 26.4 is at its first pre-release), so the reference
 and the core scope are unchanged ([§1.2](#12-reference-version-policy)).
 Each track works in its own worktree with IDs from the
