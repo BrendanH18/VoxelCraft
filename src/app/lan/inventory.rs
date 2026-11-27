@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::crafting::Grid;
-use crate::inventory::{Inventory, SLOTS, Stack, components, stack_from_str, stack_to_string};
+use crate::inventory::{HOTBAR_SLOTS, Inventory, SLOTS, Stack, components, stack_from_str, stack_to_string};
 use voxelcraft::lan::{INVENTORY_PART_BYTES, Packet};
 
 const MAX_INVENTORY_BYTES: usize = 32 * 1024 * 1024;
@@ -38,6 +38,8 @@ fn displayed_stack(slot: &mut Option<Stack>, payload_budget: &mut usize) {
 #[derive(Default)]
 pub(super) struct Sender {
     captured: Option<Inventory>,
+    shown: Option<Inventory>,
+    pending_shown: Option<Inventory>,
     grid: Option<Grid>,
     remaining: std::vec::IntoIter<u8>,
     large: Vec<Arc<str>>,
@@ -60,8 +62,7 @@ impl Sender {
         let held = |inv: &Inventory| {
             if slot == voxelcraft::session::books::OFFHAND_SLOT { inv.offhand } else { inv.get(slot) }
         };
-        self.remaining.len() == 0
-            && self.captured.as_ref().is_some_and(|sent| held(sent).is_some() && held(sent) == held(inventory))
+        self.shown.as_ref().is_some_and(|sent| held(sent).is_some() && held(sent) == held(inventory))
     }
 
     pub(super) fn awaiting_large_update(&self, displayed_revision: u32) -> bool {
@@ -91,12 +92,26 @@ impl Sender {
                 .map(|slot| stack_to_string(slot.map(|stack| Stack { payload: None, ..stack })).len())
                 .sum();
             let mut budget = (MAX_INVENTORY_BYTES - 128 * MAX_FIELDS).saturating_sub(metadata_bytes);
-            for slot in std::iter::once(&mut carried.cursor)
-                .chain(&mut carried.slots)
-                .chain(&mut carried.armor)
+            // Reserve pages for held books before spending the budget on storage.
+            for slot in carried.slots[..HOTBAR_SLOTS].iter_mut().chain(std::iter::once(&mut carried.offhand)) {
+                if slot.as_ref().is_some_and(|s| voxelcraft::content::books::lectern_book(s.item)) {
+                    displayed_stack(slot, &mut budget);
+                }
+            }
+            for (index, slot) in carried
+                .slots
+                .iter_mut()
                 .chain(std::iter::once(&mut carried.offhand))
+                .chain(std::iter::once(&mut carried.cursor))
+                .chain(&mut carried.armor)
                 .chain(&mut shown_grid.cells)
+                .enumerate()
             {
+                if (index < HOTBAR_SLOTS || index == SLOTS)
+                    && slot.as_ref().is_some_and(|s| voxelcraft::content::books::lectern_book(s.item))
+                {
+                    continue;
+                }
                 displayed_stack(slot, &mut budget);
             }
             let cells = shown_grid.cells[..grid.size * grid.size]
@@ -105,6 +120,7 @@ impl Sender {
                 .collect::<Vec<_>>()
                 .join(",");
             let text = format!("{}\n{},{cells}\n{}", stack_to_string(carried.cursor), grid.size, carried.serialize());
+            self.pending_shown = Some(carried);
             let previous = std::mem::take(&mut self.large);
             let known: HashMap<_, _> = previous.iter().enumerate().map(|(i, s)| (s.as_ref(), i)).collect();
             let mut update = String::new();
@@ -130,6 +146,7 @@ impl Sender {
         let last = self.remaining.len() == 0;
         if last {
             self.remaining = Default::default();
+            self.shown = self.pending_shown.take();
             self.revision = self.revision.wrapping_add(1);
         }
         Some(Packet::InventoryPart { last, bytes })
@@ -159,6 +176,18 @@ mod tests {
         assert!(sender.held_matches(0, &inventory));
         inventory.slots[0] = None;
         assert!(!sender.held_matches(0, &inventory));
+    }
+
+    #[test]
+    fn a_book_with_omitted_pages_cannot_be_opened_or_edited() {
+        let mut inventory = Inventory::default();
+        let book = Stack::new(Item::WRITABLE_BOOK, 1).with_payload(Payload::WritableBook(vec!["host pages".into()]));
+        inventory.offhand = Some(book);
+        let mut shown = inventory.clone();
+        let mut budget = 0;
+        displayed_stack(&mut shown.offhand, &mut budget);
+        let sender = Sender { captured: Some(inventory.clone()), shown: Some(shown), ..Sender::default() };
+        assert!(!sender.held_matches(voxelcraft::session::books::OFFHAND_SLOT, &inventory));
     }
 
     #[test]

@@ -77,6 +77,11 @@ pub(super) struct Peer {
     inventory: inventory::Sender,
 }
 impl Peer {
+    fn can_edit_book(&self, agent: &Agent, offhand: bool) -> bool {
+        let slot = if offhand { voxelcraft::session::books::OFFHAND_SLOT } else { agent.selected };
+        self.inventory.held_matches(slot, &agent.session.inventory)
+    }
+
     fn new(connection: Connection) -> Self {
         Self {
             connection,
@@ -709,6 +714,10 @@ impl Game {
                     }
                     Packet::Book { pages, title, offhand } => {
                         let bot = self.agents.players.get_mut(peer.profile.as_deref().unwrap()).unwrap();
+                        if !peer.can_edit_book(&bot.agent, offhand) {
+                            let _ = peer.connection.send(Packet::Chat("Error: Book contents are unavailable".into()));
+                            continue;
+                        }
                         let book = Command::Book { pages, title, offhand };
                         if let Err(e) = bot.agent.execute(book, &mut self.world, &mut self.mobs.entities, &[]) {
                             let _ = peer.connection.send(Packet::Chat(format!("Error: {e}")));
@@ -904,6 +913,11 @@ impl Game {
                 let parsed = Command::parse(c)?;
                 let name = peer.profile.as_deref().unwrap();
                 let bot = self.agents.players.get_mut(name).unwrap();
+                if let Command::Book { offhand, .. } = &parsed
+                    && !peer.can_edit_book(&bot.agent, *offhand)
+                {
+                    return Err("Book contents are unavailable".into());
+                }
                 bot.agent.execute(parsed, &mut self.world, &mut self.mobs.entities, &[]).map_err(|e| e.to_string())?;
             }
             c if c.starts_with("sign ") => {

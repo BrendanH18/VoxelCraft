@@ -159,7 +159,8 @@ so a delayed click from the 2×2 panel cannot affect the 3×3 table.
 Spill stacks awaiting a drop stay on the host. Inventory updates are capped
 at 32 MiB. If a storage payload exceeds the stack decoder's field limit or
 the remaining update budget, the guest sees the item and the host retains its
-contents.
+contents. Held books get first use of the payload budget. The host opens a
+held book for the guest and accepts edits only after sending its full stack.
 
 Sockets are nonblocking during gameplay. Each peer has at most 2 MiB queued;
 chunk sending yields at 512 KiB backlog and sends at most 32 new chunks per
