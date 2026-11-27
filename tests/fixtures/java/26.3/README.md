@@ -1712,6 +1712,42 @@ scripts/boat-check.sh -- 'cargo test --profile ci --locked --lib nether_generati
 and the tags against the file both ways
 ([record](../../../../docs/verification/2026-11-25-v1.0-track-08-generation.md)).
 
+v1.0 gap Track 5 added the Nether's surface rules to the same file: 26.3's
+`worldgen/material_rule/nether.json` with the `bedrock_floor` and
+`bedrock_roof` rules and the `on_floor`, `under_floor` and `under_ceiling`
+conditions it names (`material_rules`, `material_conditions`),
+`worldgen/noise_settings/nether.json` without its noise router
+(`noise_settings`), and the seven noises the rules read (`surface_noises`).
+The earlier keys regenerate unchanged. `nether_surface_tests` runs the rule
+JSON as `MaterialSystem` would over a million combinations of biome,
+height, stone depths, surface depth and noise values and compares
+`world::nether_surface`, checks each noise's 26.3 parameters are the
+1.21 layout's parity parameters, and `nether_order_tests` sorts the biomes'
+feature lists as `FeatureSorter` does and compares generation 7's order
+([record](../../../../docs/verification/2026-11-27-v1.0-gap-track-05-nether-portals.md)).
+
+## Portal travel (v1.0 gap Track 5)
+
+`portals.json` is `tools/extract_java_portal_fixtures.py`, which compiles
+`tools/JavaPortalVectors.java` against the jar and records what the jar's
+own code returns: `PortalForcer`'s search radii, the default
+`WorldBorder`'s bounds with `isWithinBounds` and `clampToBounds` for sample
+positions, `PortalShape.getRelativePosition` for sample entry rectangles,
+positions and entity sizes, and `BlockUtil.getLargestRectangleAround` for
+sample portal shapes; and each dimension type's coordinate scale and
+heights. It needs `javac` and `java` (JDK 25):
+
+```sh
+python3 tools/extract_java_portal_fixtures.py /path/to/server.jar --output target/java-portals.json
+diff tests/fixtures/java/26.3/portals.json target/java-portals.json
+scripts/boat-check.sh -- 'cargo test --profile ci --locked --lib portal'
+```
+
+`world::portal`'s `java_tests` check the border, the rectangles and the
+relative positions against it; `terrain::portal_corpus` takes a trip each
+way on the corpus seeds
+([record](../../../../docs/verification/2026-11-27-v1.0-gap-track-05-nether-portals.md)).
+
 ## The bastion catalogue (v1.0 Track 8)
 
 `bastion_catalogue.json` is `tools/extract_java_structure_catalogues.py`
