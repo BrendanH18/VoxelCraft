@@ -54,6 +54,7 @@ pub mod dungeon;
 pub mod end;
 pub mod end_blocks;
 pub mod end_city;
+pub mod end_islands;
 pub mod end_portal;
 pub mod explorer_maps;
 pub mod explosion;

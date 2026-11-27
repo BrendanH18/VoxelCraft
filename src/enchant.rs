@@ -747,6 +747,13 @@ impl JavaRandom {
     pub fn next_float(&mut self) -> f32 {
         self.next(24) as f32 / (1 << 24) as f32
     }
+
+    /// `Random.nextDouble`: 26 then 27 bits, scaled by 2^-53.
+    pub fn next_double(&mut self) -> f64 {
+        let high = i64::from(self.next(26));
+        let low = i64::from(self.next(27));
+        ((high << 27) + low) as f64 * (1.0 / (1u64 << 53) as f64)
+    }
 }
 
 /// A uniform roll in `0..1` for enchantment chances (unbreaking, mending)
