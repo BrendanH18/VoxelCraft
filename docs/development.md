@@ -162,8 +162,8 @@ used its own `boat run` and a daily start until the long-lived sandbox of
 
 Sandboxes run Linux, like the Linux CI job: they check the code and tests
 but not macOS- or Windows-only code, the GPU or performance. Run the game,
-screenshots, scripted scenes and benchmarks locally; frame-time gates are
-measured on the reference M5 MacBook Pro. CI runs the same checks on every
+screenshots, scripted scenes and benchmarks locally; frame-time runs, when
+one is made, are measured on the reference M5 MacBook Pro. CI runs the same checks on every
 pull request: Linux on the owner's `namespace-profile-gitrunner` Namespace
 profile, macOS on an inline `nscloud-*` label with a cache volume, and
 Windows on GitHub's `windows-latest`, since the Namespace plan doesn't allow
@@ -452,7 +452,7 @@ picks another folder). The game sees `llvmpipe (LLVM …) (Vulkan)` as its GPU.
 **Software captures show appearance only, never performance.** They run at
 a few frames per second, and nothing about their timing says anything about
 the Mac. The FPS counter that shows in UI captures is not a measurement.
-The frame-time gate stays on the reference Mac
+Frame-time runs, when one is made, stay on the reference Mac
 ([§6.1](roadmap.md#61-reference-configuration-and-frame-time-gate)).
 
 Differences from Metal seen so far (2026-11-23,
@@ -704,8 +704,10 @@ repeats. The fingerprint covers the files embedded by `build.rs`, including
 Neither this suite nor the older offscreen sweep alone proves 1.0 performance
 acceptance.
 
+Releases no longer run these suites (owner, 2026-11-27): they are for
+diagnosing a reported performance problem or for a run the owner asks for.
 The frame-time gate (owner, 2026-11-14; [roadmap §6.1](roadmap.md#61-reference-configuration-and-frame-time-gate))
-needs two full suites at the commit to be tagged. `--offscreen` runs the
+needs two full suites at the measured commit. `--offscreen` runs the
 gate itself: each scene is drawn into an offscreen image of the same size and
 nothing is presented; each frame waits for the frame two back to finish on
 the GPU, as a window's three images would make it, so the interval is the

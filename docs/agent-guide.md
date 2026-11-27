@@ -54,7 +54,9 @@ streaming without opening a GPU window. VoxelCraft uses 32-block chunks, so
 
 Historical results live in [architecture](architecture.md#performance-design)
 and dated performance reports. They are not the roadmap's 1080p/120 FPS
-acceptance result. Compare the same scene, seed, build, resolution, view distance
+acceptance result. Releases no longer record frame-time runs (owner,
+2026-11-27): measure when a reported problem or a change you suspect
+needs it. Compare the same scene, seed, build, resolution, view distance
 and hardware; report frame-time distribution, streaming behavior and memory
 when relevant. The [restructuring plan](restructuring.md#str-01--reference-fixtures-and-performance-scenes)
 defines the planned reproducible suite.
