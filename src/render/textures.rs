@@ -1179,6 +1179,21 @@ mod tests {
         write_sheet(&path, &final_art_b_layers());
     }
 
+    /// Writes v1.0 gap Track 7's layers (the amethyst buds and cluster
+    /// standing then hanging, the bamboo's two leaf sprites, the potted
+    /// bamboo and its leaf) as a review sheet to `$VC_FINAL_ART_C_SHEET`.
+    #[test]
+    #[ignore]
+    fn final_art_c_sheet() {
+        let Ok(path) = std::env::var("VC_FINAL_ART_C_SHEET") else { return };
+        use crate::world::overworld_blocks::t as ob;
+        let mut layers: Vec<u16> = (ob::BUDS..ob::BUDS + 8).collect();
+        layers.extend([ob::BAMBOO_SMALL_LEAVES, ob::BAMBOO_LARGE_LEAVES]);
+        layers.push(crate::world::utilities::t::POTTED + crate::world::utilities::POTTED_BAMBOO as u16);
+        layers.push(crate::world::utilities::POTTED_BAMBOO_LEAF);
+        write_sheet(&path, &layers);
+    }
+
     /// Writes one FNV-1a checksum per block layer (every layer below
     /// `tex::COUNT`, as `pixel` draws it) to `$VC_LAYER_DIGESTS`, one
     /// `layer checksum` line each: comparing two commits' files shows which

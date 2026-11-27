@@ -1069,6 +1069,23 @@ pub fn boxes(b: Block) -> Option<&'static [super::shape::Box16]> {
     })
 }
 
+/// v1.0 gap Track 7: bamboo with small or large leaves draws them, as
+/// Java's `bamboo_small_leaves` and `bamboo_large_leaves` models do, on two
+/// planes crossing at the middle of the cell (Java's run 0.8 to 15.2; these
+/// 1 to 15), beside its post. Drawn only: the post is still the only box
+/// that collides or outlines.
+pub fn bamboo_leaf_planes(b: Block) -> Option<[super::shape::Box16; 2]> {
+    use super::shape::Box16 as B;
+    matches!(b.0, 2023 | 2024)
+        .then_some([B { min: [1, 0, 8], max: [15, 16, 8] }, B { min: [8, 0, 1], max: [8, 16, 15] }])
+}
+
+/// The layer a leafy bamboo's mesh box `index` draws with: its post is the
+/// bare stalk (Java's `bamboo_stalk`), the planes the leaves.
+pub fn box_layer(b: Block, index: usize) -> Option<u16> {
+    (bamboo_leaf_planes(b).is_some() && index == 0).then_some(t::BAMBOO)
+}
+
 /// Collision boxes where they differ from [`boxes`]: vines are passable.
 pub fn collision(b: Block) -> Option<&'static [super::shape::Box16]> {
     match b.0 {

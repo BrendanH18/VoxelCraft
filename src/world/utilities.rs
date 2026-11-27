@@ -212,6 +212,31 @@ pub const POTTED: [(Block, &str); 33] = {
 /// Index of the cactus and the bamboo in [`POTTED`] (drawn as posts).
 pub const POTTED_CACTUS: usize = 25;
 pub const POTTED_BAMBOO: usize = 26;
+/// v1.0 gap Track 7: the potted bamboo's single leaf, on its own plane
+/// (Java's `potted_bamboo` model, texture `bamboo_singleleaf`). The first
+/// of the track's reserved layers 4066..=4079.
+pub const POTTED_BAMBOO_LEAF: u16 = 4066;
+/// One past the layers the gap tracks added.
+pub const GAP_TEX_END: u16 = POTTED_BAMBOO_LEAF + 1;
+
+/// The potted bamboo.
+pub const fn is_potted_bamboo(b: Block) -> bool {
+    b.0 == POTTED_FIRST + POTTED_BAMBOO as u16
+}
+
+/// v1.0 gap Track 7: the potted bamboo's leaf plane, drawn after its pot
+/// and post (box [`POTTED_BAMBOO_LEAF_BOX`]): Java's `potted_bamboo`
+/// element from (0, 2, 8) to (16, 18, 8), cut at the top of the cell.
+/// It is drawn only, never collided with or outlined.
+pub const POTTED_BAMBOO_LEAF_PLANE: Box16 = bx([0, 2, 8], [16, 16, 8]);
+/// The leaf plane's place among the potted bamboo's mesh boxes.
+pub const POTTED_BAMBOO_LEAF_BOX: usize = POT_BOXES.len() + 1;
+
+/// The layer a potted bamboo's mesh box `index` draws with, where it
+/// isn't the pot's own.
+pub fn box_layer(b: Block, index: usize) -> Option<u16> {
+    (is_potted_bamboo(b) && index == POTTED_BAMBOO_LEAF_BOX).then_some(POTTED_BAMBOO_LEAF)
+}
 
 /// Java's coral colours for wall fan names, as in `overworld_blocks`.
 const WALL_FAN_NAMES: [&str; 10] = [

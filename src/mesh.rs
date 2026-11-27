@@ -342,7 +342,17 @@ fn shaped_boxes(blocks: &[Block], i: usize, b: Block) -> Boxes {
     }
     let neighbour = |f: Facing| at(f.offset());
     let below = i.checked_sub(D * D).map(|j| blocks[j]).unwrap_or(Block::AIR);
-    shape::shape_with(b, neighbour, below, shape::Above::read(b, at))
+    let mut boxes = shape::shape_with(b, neighbour, below, shape::Above::read(b, at));
+    // v1.0 gap Track 7: planes that are drawn but never collide: a leafy
+    // bamboo's crossed leaves and the potted bamboo's leaf.
+    let canonical = b.canonical();
+    if let Some(planes) = crate::world::overworld_blocks::bamboo_leaf_planes(canonical) {
+        planes.into_iter().for_each(|p| boxes.push(p));
+    } else if crate::world::utilities::is_potted_bamboo(canonical) {
+        debug_assert_eq!(boxes.as_slice().len(), crate::world::utilities::POTTED_BAMBOO_LEAF_BOX);
+        boxes.push(crate::world::utilities::POTTED_BAMBOO_LEAF_PLANE);
+    }
+    boxes
 }
 
 /// Lights and meshes one chunk.
@@ -562,6 +572,7 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                 || matches!(b, Block::IRON_BARS | Block::BREWING_STAND)
                 || crate::world::copper::see_through(b)
                 || crate::world::overworld_blocks::bud_facing(b).is_some()
+                || crate::world::overworld_blocks::bamboo_leaf_planes(b).is_some()
                 || crate::world::utilities::see_through(b)
                 || b == crate::world::beacon::BEACON
                 || crate::world::cave_blocks::see_through(b)
@@ -599,6 +610,8 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                 // Candle wax and wicks have layers of their own.
                 let layer = crate::world::colour_blocks::box_layer(b, j)
                     .or_else(|| crate::world::beacon::box_layer(b, j))
+                    .or_else(|| crate::world::overworld_blocks::box_layer(b, j))
+                    .or_else(|| crate::world::utilities::box_layer(b, j))
                     .map_or(layer, u32::from);
                 let depth = if positive { bx.max[d] } else { bx.min[d] };
                 let r = [bx.min[u], bx.max[u], bx.min[v], bx.max[v]];
@@ -1168,6 +1181,43 @@ mod tests {
         let m = mesh_blocks(&[([5, 5, 5], vine)]);
         assert_eq!(m.pass_quads(OPAQUE), 0);
         assert!(m.pass_quads(CUTOUT) > 0);
+    }
+
+    /// A detail quad's texture layer, decoded as `chunk.wgsl` does.
+    fn detail_layer(q: [u32; 3]) -> u16 {
+        ((q[1] & 255) | (q[0] >> 5 & 1) << 8 | (q[0] >> 11 & 1) << 9 | (q[0] >> 17 & 1) << 10 | (q[0] >> 30 & 1) << 11)
+            as u16
+    }
+
+    /// v1.0 gap Track 7: leafy bamboo draws its leaves on two crossed planes
+    /// beside a bare-stalk post (Java's `bamboo_*_leaves` models), in the
+    /// alpha-tested pass; bare bamboo has no planes. The potted bamboo
+    /// draws its single leaf on a plane of its own layer.
+    #[test]
+    fn leafy_bamboo_crosses_its_leaves_beside_the_post() {
+        use crate::world::overworld_blocks::{BAMBOO, BAMBOO_LARGE_LEAVES, BAMBOO_SMALL_LEAVES, t};
+        let layers = |b: Block| {
+            let m = mesh_blocks(&[([5, 5, 5], b)]);
+            let cutout = m.quads_of(CUTOUT);
+            (m.pass_quads(OPAQUE), cutout.quads.iter().map(|&q| detail_layer(q)).collect::<Vec<_>>())
+        };
+        for (b, leaves) in
+            [(BAMBOO_SMALL_LEAVES, t::BAMBOO_SMALL_LEAVES), (BAMBOO_LARGE_LEAVES, t::BAMBOO_LARGE_LEAVES)]
+        {
+            let (opaque, cutout) = layers(b);
+            assert_eq!(opaque, 0);
+            // Both faces of both planes; the post's four sides and its ends.
+            assert_eq!(cutout.iter().filter(|&&l| l == leaves).count(), 4, "{cutout:?}");
+            assert_eq!(cutout.iter().filter(|&&l| l == t::BAMBOO).count(), 6, "{cutout:?}");
+        }
+        let (_, cutout) = layers(BAMBOO);
+        assert!(!cutout.contains(&t::BAMBOO_SMALL_LEAVES) && !cutout.contains(&t::BAMBOO_LARGE_LEAVES));
+        let potted = crate::world::utilities::potted(BAMBOO).expect("bamboo pots");
+        let (_, cutout) = layers(potted);
+        assert_eq!(cutout.iter().filter(|&&l| l == crate::world::utilities::POTTED_BAMBOO_LEAF).count(), 2);
+        // The planes are drawn only: the post is still all that collides.
+        let shape = crate::world::shape::collision(BAMBOO_LARGE_LEAVES, |_| Block::AIR, Block::AIR);
+        assert_eq!(shape.as_slice().len(), 1);
     }
 
     #[test]

@@ -4495,6 +4495,7 @@ mod motion_tests {
         m.dying = Some(3.0 * motion::TICK);
         assert!(close(m.death_ticks(0.25), 3.25));
         // Removed between its 19th and 20th tick of `dying`.
-        assert!(18.0 * motion::TICK < DEATH_TIME && DEATH_TIME < 19.0 * motion::TICK);
+        let ticks = std::hint::black_box(DEATH_TIME) / motion::TICK;
+        assert!(ticks > 18.0 && ticks < 19.0, "{ticks}");
     }
 }

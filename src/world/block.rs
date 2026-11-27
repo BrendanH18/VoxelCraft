@@ -381,11 +381,13 @@ pub mod tex {
         ];
         // v0.15 Track D's frosted ice (layers 4000..4004) and Track F's
         // explorer maps (4056..4066) set the count.
-        const ENDS2: [u32; 3] = [
+        const ENDS2: [u32; 4] = [
             super::super::frosted_ice::TEX_END as u32,
             super::super::explorer_maps::TEX_END as u32,
             // v0.16 Track A (layers 529..541).
             super::super::end_blocks::TEX_END as u32,
+            // v1.0 gap Track 7: the potted bamboo's leaf (4066).
+            super::super::utilities::GAP_TEX_END as u32,
         ];
         let mut max = 0;
         let mut i = 0;
