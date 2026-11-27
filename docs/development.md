@@ -349,7 +349,9 @@ options) and `--size WxH` the window's size in physical pixels.
 use the [per-user data folder](releases.md#player-data-and-old-saves); add
 `--data-dir target/screenshots` to isolate a scripted run. In `--place` and
 `--spawn`, `~` for the y coordinate means the terrain surface
-(`--spawn allay,x,y,z,item` also gives the allay an item to hold); `--place` also
+(`--spawn allay,x,y,z,item` also gives the allay an item to hold, any other
+mob that item in its main hand, and `--spawn kind,x,y,z,baby` spawns a baby);
+`--place` also
 takes a raw block id instead of a name, for oriented states such as stairs
 facing east. Placing the lower half of a double plant (tall flowers, tall
 seagrass, pitcher plants and mature pitcher crops) also places its upper half,

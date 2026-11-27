@@ -379,6 +379,7 @@ impl Game {
             audio,
             mobs: mobs::Mobs::new(seed, args.spawn.clone(), args.wait)
                 .holding(args.spawn_held.clone())
+                .babies(args.spawn_baby.clone())
                 .still(args.still_mobs),
             particles: crate::particles::System::new(seed),
             menu: menu::startup_menu(args.open_menu.as_deref()),

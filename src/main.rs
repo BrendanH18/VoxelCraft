@@ -117,8 +117,11 @@ pub struct Args {
     /// Mobs to spawn once the world has loaded (y = i32::MIN: surface).
     /// The optional armor material forces a full set on a zombie or skeleton.
     pub spawn: Vec<(entity::MobKind, glam::IVec3, Option<entity::armor::Equipped>)>,
-    /// `--spawn allay,x,y,z,item`: the item a spawned allay holds (by index).
+    /// `--spawn allay,x,y,z,item`: the item a spawned allay holds (by index);
+    /// any other mob holds it in its main hand.
     pub spawn_held: Vec<(usize, item::Item)>,
+    /// `--spawn kind,x,y,z,baby`: spawned mobs that are babies (by index).
+    pub spawn_baby: Vec<usize>,
     /// Seconds to keep running after loading before `--screenshot`.
     pub wait: f64,
     /// `--animation-time`: hold the animation clock here, so captures can be compared.
@@ -256,7 +259,8 @@ voxelcraft [options]
                     for the terrain surface, e.g. zombie,4,~,10). material
                     (leather, chainmail, iron, gold, diamond, netherite) and
                     glint equip a zombie or skeleton; allay,x,y,z,item gives
-                    an allay an item to hold
+                    an allay an item to hold, and any other mob that item in
+                    its main hand; kind,x,y,z,baby spawns a baby
   --wait <secs>     with --screenshot: keep simulating this long first
   --animation-time <secs>  hold the animation clock (idle animations, clouds, water) at this time, for comparable captures
   --still-mobs      landed mobs stop moving and face the starting camera, for comparable captures
@@ -361,6 +365,7 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
         brush: Vec::new(),
         spawn: Vec::new(),
         spawn_held: Vec::new(),
+        spawn_baby: Vec::new(),
         wait: 0.0,
         animation_time: None,
         still_mobs: false,
@@ -648,7 +653,12 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
                     .iter()
                     .map(|s| if *s == "~" { Ok(i32::MIN) } else { s.parse().map_err(|_| bad()) })
                     .collect::<Result<_, _>>()?;
-                let armor = if parts.len() == 5 && kind == entity::MobKind::Allay {
+                let armor = if parts.len() == 5 && parts[4] == "baby" {
+                    args.spawn_baby.push(args.spawn.len());
+                    None
+                } else if parts.len() == 5
+                    && (kind == entity::MobKind::Allay || entity::armor::ArmorKind::from_name(parts[4]).is_none())
+                {
                     let held =
                         item::Item::from_name(parts[4]).ok_or_else(|| format!("--spawn: unknown item {}", parts[4]))?;
                     args.spawn_held.push((args.spawn.len(), held));
@@ -818,6 +828,7 @@ impl Args {
         self.open_block = None;
         self.spawn.clear();
         self.spawn_held.clear();
+        self.spawn_baby.clear();
         self.still_mobs = false;
         self.pose = None;
         self.health = None;
