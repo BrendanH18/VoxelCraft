@@ -29,9 +29,12 @@ use crate::world::portal::{
 
 const SEEDS: [u64; 2] = [12345, 42];
 
+/// A seed's pinned trip.
+type Trip = (u64, [i32; 3], [i32; 3], [i32; 3]);
+
 /// By seed: the Overworld portal's bottom corner, the Nether portal built
 /// for it, and where the player arrives there (thousandths of a block).
-const PORTAL_CORPUS: &[(u64, [i32; 3], [i32; 3], [i32; 3])] =
+const PORTAL_CORPUS: &[Trip] =
     &[(12345, [8, 64, 8], [4, 63, 5], [5550, 63000, 5800]), (42, [8, 69, 8], [-2, 74, 4], [-450, 74000, 4800])];
 
 /// A world of `dimension` loaded around `at`.

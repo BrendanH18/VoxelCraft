@@ -183,9 +183,12 @@ fn missing(dimension: Dimension, blocks: &HashSet<Block>, features: &[Feature]) 
     checks.into_iter().filter(|(_, ok)| !ok).map(|(name, _)| name).collect()
 }
 
+/// A pinned set: seed, dimension, block hash and feature hash.
+type Pin = (u64, &'static str, u64, u64);
+
 /// The block and feature hashes of every pinned set of `generation`, by
 /// seed and dimension, and what any set lacks. See the module notes.
-fn hashes(generation: Generation) -> (Vec<(u64, &'static str, u64, u64)>, Vec<String>) {
+fn hashes(generation: Generation) -> (Vec<Pin>, Vec<String>) {
     let mut got = Vec::new();
     let mut failures = Vec::new();
     for seed in SEEDS {
