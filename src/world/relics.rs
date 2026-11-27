@@ -10,7 +10,7 @@ use glam::{IVec2, IVec3};
 use rustc_hash::FxHashMap;
 
 use super::block::Block;
-use super::chunk::{CHUNK_SIZE_I, CHUNK_VOLUME, WORLD_MAX_Y, WORLD_MIN_Y, index};
+use super::chunk::{CHUNK_SIZE_I, CHUNK_VOLUME, WORLD_MAX_Y, WORLD_MIN_Y};
 use super::jigsaw::{self, Library, Palette, Placed};
 use super::noise::hash3;
 use super::structure::{Bounds, Rng};
@@ -53,14 +53,21 @@ pub struct Relic {
 
 impl Relic {
     pub(super) fn paint(&self, blocks: &mut [Block; CHUNK_VOLUME], base: IVec3) {
-        let bounds = Bounds { min: base, max: base + IVec3::splat(CHUNK_SIZE_I - 1) };
+        self.paint_box(blocks, base, base + IVec3::splat(CHUNK_SIZE_I - 1));
+    }
+
+    /// [`Relic::paint`] into the box from `base` to `top` (inclusive), held
+    /// X fastest, then Z, then Y (a chunk's order for a 32-block cube).
+    pub(super) fn paint_box(&self, blocks: &mut [Block], base: IVec3, top: IVec3) {
+        let bounds = Bounds { min: base, max: top };
         if !bounds.intersects(&self.bounds) {
             return;
         }
+        let size = top - base + IVec3::ONE;
         for &(p, b) in &self.cells {
             if bounds.contains(p) {
                 let l = p - base;
-                let i = index(l.x as usize, l.y as usize, l.z as usize);
+                let i = ((l.y * size.z + l.z) * size.x + l.x) as usize;
                 if !super::geode::cannot_replace(blocks[i]) {
                     blocks[i] = b;
                 }
@@ -305,6 +312,7 @@ impl Relics {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::world::chunk::index;
 
     #[test]
     fn fossil_integrity_and_overlay_rates_match_processors() {

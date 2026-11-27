@@ -172,6 +172,12 @@ impl NetherFossils {
         }
     }
 
+    /// The fossils whose bones reach the columns from `base` to `top`.
+    pub(super) fn meeting(&self, g: &NetherGen, base: IVec3, top: IVec3) -> Vec<Arc<Relic>> {
+        let columns = Bounds { min: IVec3::new(base.x, i32::MIN, base.z), max: IVec3::new(top.x, i32::MAX, top.z) };
+        self.nearby(g, base, top.x - base.x + 1).into_iter().filter(|r| r.bounds.intersects(&columns)).collect()
+    }
+
     /// Exposure checks must see the same bones as full chunk generation.
     pub(super) fn column_at(
         &self,

@@ -84,7 +84,7 @@ fn setup(b: Biome, nether: bool, rng: &mut JavaRandom) -> Setup {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Variant {
+pub(super) enum Variant {
     Standard,
     Desert,
     Jungle,
@@ -190,14 +190,67 @@ pub struct Portal {
     blocks: Vec<(IVec3, Block)>,
     features: Vec<(IVec3, Feature)>,
 }
+impl Portal {
+    /// The blocks the portal sets, each where nothing protected stands.
+    pub(super) fn cells(&self) -> &[(IVec3, Block)] {
+        &self.blocks
+    }
+
+    /// Its loot chests.
+    pub(super) fn chests(&self) -> &[(IVec3, Feature)] {
+        &self.features
+    }
+}
+
 type Cache = FxHashMap<IVec2, Option<Arc<Portal>>>;
 pub struct RuinedPortals {
     seed: u64,
     cache: Mutex<Cache>,
+    /// Generation 7's Nether: layouts by region (see [`Self::nether_layouts`]).
+    layouts: Mutex<FxHashMap<IVec2, Option<Arc<Layout>>>>,
 }
 impl RuinedPortals {
     pub fn new(seed: u64) -> Self {
-        Self { seed, cache: Mutex::new(FxHashMap::default()) }
+        Self { seed, cache: Mutex::new(FxHashMap::default()), layouts: Mutex::new(FxHashMap::default()) }
+    }
+
+    /// v1.0 gap Track 5b, generation 7's Nether: the layouts of the portals
+    /// whose middle ([`Layout::centre`]) lies in the columns from `min` to
+    /// `max`, region by region (z, then x). Java places such a portal whole
+    /// while it decorates the chunk holding its middle.
+    pub(super) fn nether_layouts(&self, nether: &super::nether::NetherGen, min: IVec2, max: IVec2) -> Vec<Arc<Layout>> {
+        // A portal's middle lies within 16 blocks of its start chunk's corner.
+        let lo = (min - 32).div_euclid(IVec2::splat(640));
+        let hi = (max + 32).div_euclid(IVec2::splat(640));
+        let mut out = Vec::new();
+        for z in lo.y..=hi.y {
+            for x in lo.x..=hi.x {
+                let region = IVec2::new(x, z);
+                let start = self.start(region) * 16;
+                if (start - 32).cmpgt(max).any() || (start + 32).cmplt(min).any() {
+                    continue;
+                }
+                let cached = self.layouts.lock().unwrap().get(&region).cloned();
+                let layout = cached.unwrap_or_else(|| {
+                    let column = |x, z| nether.structure_column(x, z);
+                    let biome = |_| Biome::Plains;
+                    let site = Site { nether: true, min_y: 0, column: &column, biome: &biome };
+                    let layout = self.layout(&site, self.start(region), Variant::Nether).map(Arc::new);
+                    let mut cache = self.layouts.lock().unwrap();
+                    if cache.len() >= 256 {
+                        cache.clear();
+                    }
+                    cache.entry(region).or_insert(layout).clone()
+                });
+                if let Some(l) = layout {
+                    let c = l.centre();
+                    if c.x >= min.x && c.x <= max.x && c.z >= min.y && c.z <= max.y {
+                        out.push(l);
+                    }
+                }
+            }
+        }
+        out
     }
     pub fn start(&self, region: IVec2) -> IVec2 {
         let seed = self
@@ -341,6 +394,36 @@ impl RuinedPortals {
         if (variant == Variant::Nether) != nether {
             return None;
         }
+        let column = |x, z| g.structure_column(x, z);
+        let biome = |p| g.biome_at(p);
+        let site = Site { nether, min_y: g.dimension.min_y(), column: &column, biome: &biome };
+        let layout = self.layout(&site, chunk, variant)?;
+        // v1.0 gap Track 5b: generation 7 places the Nether's portals while
+        // it decorates the Java chunk holding their middle (see
+        // `NetherGen::ruined_portals`), so here, where `nearest` asks, the
+        // layout is enough.
+        if nether && g.generation >= Generation::V7 {
+            return Some(layout.unprocessed());
+        }
+        // Placement above used Java's base columns. Piece processors operate
+        // on the level instead: retain actual cave air, ores, decorations and
+        // older structures. These local snapshots exclude portals/treasure,
+        // so rebuilding a layout cannot recurse or depend on generation order.
+        let mut terrain = FxHashMap::default();
+        let level = |at: IVec3| {
+            let c = chunk_of(at);
+            let data = terrain.entry(c).or_insert_with(|| g.portal_terrain(c));
+            let l = at - c * CHUNK_SIZE_I;
+            data.get(l.x as usize, l.y as usize, l.z as usize)
+        };
+        Some(layout.process(g.dimension.min_y(), g.dimension.max_y(), level))
+    }
+
+    /// The portal of the region whose start chunk is `chunk`, laid out on
+    /// the base columns of `site` (`StructurePlacement`, `findSuitableY`),
+    /// its processors not yet run.
+    pub(super) fn layout(&self, site: &Site, chunk: IVec2, variant: Variant) -> Option<Layout> {
+        let nether = site.nether;
         let mut r = piece_random(self.seed, chunk);
         let start = chunk * 16;
         let biome = variant.representative();
@@ -357,9 +440,9 @@ impl RuinedPortals {
             - jigsaw::rotate(pivot + IVec3::X * if mirror { t.size.x - 1 } else { 0 }, rotation);
         let mut piece = jigsaw::single(lib, &name, corner, rotation, self.seed);
         let centre = piece.bounds.min + (piece.bounds.max - piece.bounds.min + IVec3::ONE) / 2;
-        let center_col = g.structure_column(centre.x, centre.z);
+        let center_col = (site.column)(centre.x, centre.z);
         let surface = center_col.top(s.placement == Placement::Ocean);
-        let min_y = if nether { 15 } else { g.dimension.min_y() + 15 };
+        let min_y = if nether { 15 } else { site.min_y + 15 };
         let height = t.size.y;
         let mut y = match s.placement {
             Placement::Nether => {
@@ -382,7 +465,7 @@ impl RuinedPortals {
             (piece.bounds.min.x, piece.bounds.max.z),
             (piece.bounds.max.x, piece.bounds.max.z),
         ]
-        .map(|(x, z)| g.structure_column(x, z));
+        .map(|(x, z)| (site.column)(x, z));
         while y > min_y {
             if corners
                 .iter()
@@ -400,36 +483,75 @@ impl RuinedPortals {
         piece.origin.y = y;
         piece.bounds.min.y += y;
         piece.bounds.max.y += y;
-        let cold_biome = if nether { biome } else { g.biome_at(IVec3::new(start.x, y, start.y)) };
+        let cold_biome = if nether { biome } else { (site.biome)(IVec3::new(start.x, y, start.y)) };
         // Structure.generate validates the biome at GenerationStub.position,
         // after findSuitableY; in particular deep-dark underground starts fail.
         if !nether && Variant::for_biome(cold_biome) != Some(variant) {
             return None;
         }
         s.cold = s.cold && (cold_biome.is_cold() || cold_biome.temperature() - (y - 80).max(0) as f32 / 800.0 < 0.15);
+        Some(Layout { lib, piece, setup: s, nether, giant, start, r })
+    }
+}
+
+/// What laying a portal out needs of its dimension: the base columns
+/// (`getBaseColumn`) and, outside the Nether, the biome at its start.
+pub(super) struct Site<'a> {
+    pub nether: bool,
+    pub min_y: i32,
+    pub column: &'a dyn Fn(i32, i32) -> StructureColumn,
+    pub biome: &'a dyn Fn(IVec3) -> Biome,
+}
+
+/// A portal laid out, before its processors run: its piece and setup, and
+/// the random sequence the processors go on with.
+#[derive(Clone)]
+pub(super) struct Layout {
+    lib: &'static Library,
+    pub piece: Placed,
+    setup: Setup,
+    nether: bool,
+    giant: bool,
+    start: IVec2,
+    r: JavaRandom,
+}
+
+impl Layout {
+    /// `BoundingBox.getCenter` of the template's box: Java places the
+    /// whole portal while decorating the chunk that holds it
+    /// (`RuinedPortalPiece.postProcess`).
+    pub fn centre(&self) -> IVec3 {
+        self.piece.bounds.min + (self.piece.bounds.max - self.piece.bounds.min + IVec3::ONE) / 2
+    }
+
+    /// The portal with no blocks yet (its origin and box are the layout's).
+    fn unprocessed(&self) -> Portal {
+        Portal {
+            bounds: self.piece.bounds,
+            placement: self.setup.placement,
+            giant: self.giant,
+            origin: IVec3::new(self.start.x, self.piece.bounds.min.y, self.start.y),
+            blocks: Vec::new(),
+            features: Vec::new(),
+        }
+    }
+
+    /// Runs the portal's processors, its netherrack spread and drips and
+    /// its vines and leaves (`RuinedPortalPiece.postProcess`) over the
+    /// level `level` reads, from height `min_y` up to below `max_y`.
+    pub(super) fn process(self, min_y: i32, max_y: i32, mut level: impl FnMut(IVec3) -> Block) -> Portal {
+        let Layout { lib, piece, setup: s, nether, giant, start, mut r } = self;
+        let t = &lib.templates[piece.template as usize];
+        let y = piece.bounds.min.y;
         // A local base-column canvas also makes submerged lava processing and
         // spread/drips independent of the chunk being painted.
         let centre = piece.bounds.min + (piece.bounds.max - piece.bounds.min + IVec3::ONE) / 2;
         let lo = piece.bounds.min.min(centre - IVec3::new(14, 0, 14)) - IVec3::new(1, 9, 1);
         let hi = piece.bounds.max.max(centre + IVec3::new(14, 0, 14)) + IVec3::ONE;
         let mut columns = FxHashMap::default();
-        // Placement above used Java's base columns. Piece processors operate
-        // on the level instead: retain actual cave air, ores, decorations and
-        // older structures. These local snapshots exclude portals/treasure,
-        // so rebuilding a layout cannot recurse or depend on generation order.
-        let mut terrain = FxHashMap::default();
         for x in lo.x..=hi.x {
             for z in lo.z..=hi.z {
-                let min_y = g.dimension.min_y();
-                let blocks = (min_y..g.dimension.max_y())
-                    .map(|y| {
-                        let at = IVec3::new(x, y, z);
-                        let c = chunk_of(at);
-                        let data = terrain.entry(c).or_insert_with(|| g.portal_terrain(c));
-                        let l = at - c * CHUNK_SIZE_I;
-                        data.get(l.x as usize, l.y as usize, l.z as usize)
-                    })
-                    .collect();
+                let blocks = (min_y..max_y).map(|y| level(IVec3::new(x, y, z))).collect();
                 columns.insert(IVec2::new(x, z), StructureColumn { min_y, blocks });
             }
         }
@@ -566,14 +688,7 @@ impl RuinedPortals {
             min: blocks.iter().fold(piece.bounds.min, |a, (p, _)| a.min(*p)),
             max: blocks.iter().fold(piece.bounds.max, |a, (p, _)| a.max(*p)),
         };
-        Some(Portal {
-            bounds,
-            placement: s.placement,
-            giant,
-            origin: IVec3::new(start.x, y, start.y),
-            blocks,
-            features,
-        })
+        Portal { bounds, placement: s.placement, giant, origin: IVec3::new(start.x, y, start.y), blocks, features }
     }
 }
 
@@ -597,7 +712,7 @@ fn full_collision_face(b: Block, f: Facing) -> bool {
 }
 
 /// The represented members of Java's features_cannot_replace tag.
-fn protected(b: Block) -> bool {
+pub(super) fn protected(b: Block) -> bool {
     b == Block::BEDROCK || b == Block::SPAWNER || b.base() == Block::CHEST || b.base() == Block::END_PORTAL_FRAME
 }
 

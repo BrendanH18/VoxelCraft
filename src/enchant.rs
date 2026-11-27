@@ -702,6 +702,7 @@ impl Enchants {
 
 /// Java's `java.util.Random` (and Minecraft's legacy random source): the
 /// enchanting table's offers come from it, seeded per player.
+#[derive(Clone)]
 pub struct JavaRandom(u64);
 
 const MULTIPLIER: u64 = 0x5_DEEC_E66D;

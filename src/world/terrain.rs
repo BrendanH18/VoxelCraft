@@ -831,7 +831,12 @@ impl Generator {
         };
         if self.generation >= Generation::V3 {
             features.extend(self.ancient_cities.features(self, cpos));
-            features.extend(self.ruined_portals.features(self, cpos));
+            match &self.nether {
+                Some(n) if self.generation >= Generation::V7 => {
+                    features.extend(super::nether_order::structure_chests(n, cpos));
+                }
+                _ => features.extend(self.ruined_portals.features(self, cpos)),
+            }
             features.extend(self.buried_treasure.features(self, cpos));
             features.extend(self.trial_chambers.features(self, cpos));
             // v1.0 Track 5: trail ruins' suspicious gravel.
@@ -921,7 +926,9 @@ impl Generator {
         }
         if let Some(nether) = &self.nether {
             let chunk = nether.generate(cpos);
-            return if self.generation >= Generation::V3 && portals {
+            // Generation 7 places the Nether's ruined portals in their
+            // decoration step (`world::nether_order`).
+            return if self.generation >= Generation::V3 && self.generation < Generation::V7 && portals {
                 self.ruined_portals.paint_generated(self, chunk, cpos)
             } else {
                 chunk

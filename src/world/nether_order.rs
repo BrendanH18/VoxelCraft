@@ -24,8 +24,19 @@
 //! the other's, and the earlier cell's block is kept (a later Java feature
 //! rarely replaces another's: ores take only netherrack, plants only air).
 //!
-//! Structures still paint after the features and ancient debris keeps its
-//! own pass (`NetherGen::generate`), as in generation 6.
+//! Structures are placed in their own steps as Java places them (v1.0 gap
+//! Track 5b): before each step's features, the structures of that step,
+//! in registry order ([`STRUCTURES`]), each piece clipped to the cell being
+//! decorated (`getWritableArea`: its 16 × 16 columns from y 1); a ruined
+//! portal goes whole into the cell holding its middle
+//! (`RuinedPortalPiece.postProcess`). Structures read the region as earlier
+//! steps left it (fortress pillars stop on basalt pillars, a portal's
+//! processors see the bastion before it) and later features read them
+//! (glowstone hangs from bastion blackstone, ores and fire skip their
+//! bricks). Where regions overlap, a block a structure changed wins over
+//! the other cells' changes: Java's result when the structure's chunk was
+//! decorated after the others, as its pieces replace what they cover.
+//! Ancient debris is the step 7 `scattered_ore` it is in Java, in order.
 
 use std::cell::Cell;
 use std::collections::VecDeque;
@@ -41,6 +52,7 @@ use super::nether_decoration::Probe;
 use super::nether_features::{self as features, Level};
 use super::nether_placed::{self as placed, Feature, Mod, PLACED, Placed};
 use super::noise::hash3;
+use super::ruined_portal::protected;
 use super::structure::Rng;
 
 /// A Java chunk.
@@ -56,6 +68,30 @@ const CACHE_LIMIT: usize = 4_000_000;
 const SALT: u64 = 0xDEC0_0707;
 /// A block the region hasn't read yet.
 const UNREAD: Block = Block(u16::MAX);
+/// Marks a change a structure made in a [`CellDiff`] key.
+const CLAIMED: u32 = 1 << 31;
+
+/// The Nether's structures.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Structure {
+    BastionRemnant,
+    Fortress,
+    NetherFossil,
+    RuinedPortalNether,
+}
+
+/// The Nether's structures with their decoration steps, in the order
+/// `applyBiomeDecoration` places a step's structures: the structure
+/// registry's, which `RegistryLoadTask` registers sorted by id. Step 4 is
+/// `surface_structures`, 7 `underground_decoration`.
+pub const STRUCTURES: [(&str, u8, Structure); 4] = [
+    ("bastion_remnant", 4, Structure::BastionRemnant),
+    ("fortress", 7, Structure::Fortress),
+    ("nether_fossil", 7, Structure::NetherFossil),
+    ("ruined_portal_nether", 4, Structure::RuinedPortalNether),
+];
+/// The last decoration step (`top_layer_modification`).
+const LAST_STEP: u8 = 10;
 
 /// The Nether's placed features in Java 26.3's decoration order: by step,
 /// then `FeatureSorter.buildFeaturesPerStep` over the biome source's
@@ -114,16 +150,18 @@ fn order() -> &'static [usize] {
 }
 
 /// What decorating one cell changed: per 32-block row of heights, each
-/// changed block as its position in the region and its new block, and
-/// where its lava springs went.
+/// changed block as its position in the region ([`CLAIMED`] set where a
+/// structure changed it) and its new block, where its lava springs went
+/// and the chests of the ruined portals it placed.
 pub(super) struct CellDiff {
     rows: [Vec<(u32, Block)>; 5],
     springs: Vec<IVec3>,
+    chests: Vec<(IVec3, super::fortress::Feature)>,
 }
 
 impl CellDiff {
     fn len(&self) -> usize {
-        self.rows.iter().map(Vec::len).sum::<usize>() + self.springs.len()
+        self.rows.iter().map(Vec::len).sum::<usize>() + self.springs.len() + self.chests.len()
     }
 }
 
@@ -146,7 +184,7 @@ fn key(l: IVec3) -> u32 {
 }
 
 fn unkey(k: u32) -> IVec3 {
-    IVec3::new((k & 63) as i32, (k >> 12) as i32, (k >> 6 & 63) as i32)
+    IVec3::new((k & 63) as i32, (k & !CLAIMED) as i32 >> 12, (k >> 6 & 63) as i32)
 }
 
 /// The first block of the region of cell `c`.
@@ -186,29 +224,67 @@ fn cells_reaching(base: IVec3) -> impl Iterator<Item = IVec2> {
     (lo.y..=hi.y).flat_map(move |z| (lo.x..=hi.x).map(move |x| IVec2::new(x, z)))
 }
 
-/// Paints the features of every cell that reaches the chunk at `base`.
+/// Paints the features and structures of every cell that reaches the
+/// chunk at `base`: first the blocks structures changed, then the rest.
 pub(super) fn decorate(nether: &NetherGen, blocks: &mut [Block; CHUNK_VOLUME], base: IVec3) {
     let row = base.y.div_euclid(CHUNK_SIZE_I);
     if !(0..5).contains(&row) {
         return;
     }
     let mut touched = vec![0u64; CHUNK_VOLUME / 64];
+    let cells: Vec<(IVec2, Arc<CellDiff>)> = cells_reaching(base).map(|c| (c, cell(nether, c))).collect();
+    for claimed in [true, false] {
+        for (c, diff) in &cells {
+            apply(&diff.rows[row as usize], *c, base, blocks, &mut touched, claimed);
+        }
+    }
+}
+
+/// Paints the changes of cell `c` in `entries` (those a structure made if
+/// `claimed`, else the others) where no earlier change landed.
+fn apply(
+    entries: &[(u32, Block)],
+    c: IVec2,
+    base: IVec3,
+    blocks: &mut [Block; CHUNK_VOLUME],
+    touched: &mut [u64],
+    claimed: bool,
+) {
+    let min = region_min(c);
+    let offset = IVec3::new(min.x - base.x, -base.y, min.y - base.z);
+    for &(k, block) in entries {
+        if (k & CLAIMED != 0) != claimed {
+            continue;
+        }
+        let l = unkey(k) + offset;
+        if l.cmplt(IVec3::ZERO).any() || l.cmpge(IVec3::splat(CHUNK_SIZE_I)).any() {
+            continue;
+        }
+        let i = index(l.x as usize, l.y as usize, l.z as usize);
+        if touched[i / 64] >> (i % 64) & 1 == 0 {
+            touched[i / 64] |= 1 << (i % 64);
+            blocks[i] = block;
+        }
+    }
+}
+
+/// The loot chests of the ruined portals placed in the chunk at `cpos`
+/// (generation 7: they are placed with the cell decorations).
+pub fn structure_chests(nether: &NetherGen, cpos: IVec3) -> Vec<(IVec3, super::fortress::Feature)> {
+    let base = cpos * CHUNK_SIZE_I;
+    let mut out = Vec::new();
+    if !(0..5).contains(&cpos.y) {
+        return out;
+    }
     for c in cells_reaching(base) {
-        let diff = cell(nether, c);
-        let min = region_min(c);
-        let offset = IVec3::new(min.x - base.x, -base.y, min.y - base.z);
-        for &(k, block) in &diff.rows[row as usize] {
-            let l = unkey(k) + offset;
-            if l.cmplt(IVec3::ZERO).any() || l.cmpge(IVec3::splat(CHUNK_SIZE_I)).any() {
-                continue;
-            }
-            let i = index(l.x as usize, l.y as usize, l.z as usize);
-            if touched[i / 64] >> (i % 64) & 1 == 0 {
-                touched[i / 64] |= 1 << (i % 64);
-                blocks[i] = block;
+        for &(p, f) in &cell(nether, c).chests {
+            let l = p - base;
+            if l.cmpge(IVec3::ZERO).all() && l.cmplt(IVec3::splat(CHUNK_SIZE_I)).all() {
+                out.push((p, f));
             }
         }
     }
+    out
 }
 
 /// The springs a generated chunk holds, to schedule their first fluid tick
@@ -245,7 +321,10 @@ struct Region<'a> {
     dirty: Vec<u64>,
     /// ...and, in order, what each held before its first write.
     written: Vec<(u32, Block)>,
+    /// Which blocks a structure changed.
+    claimed: Vec<u64>,
     springs: Vec<IVec3>,
+    chests: Vec<(IVec3, super::fortress::Feature)>,
 }
 
 impl Region<'_> {
@@ -268,6 +347,14 @@ impl Region<'_> {
         let b = self.probe.terrain(p);
         cell.set(b);
         b
+    }
+
+    /// A structure sets block `p` (in the region) to `b`.
+    fn claim(&mut self, p: IVec3, b: Block) {
+        let Some(l) = self.local(p) else { return };
+        let i = Self::slot(l);
+        self.claimed[i / 64] |= 1 << (i % 64);
+        self.place(p, b);
     }
 
     /// Java's `MOTION_BLOCKING` heightmap: one above the highest block that
@@ -350,28 +437,119 @@ fn decorate_cell(nether: &NetherGen, c: IVec2) -> CellDiff {
         blocks: (0..volume).map(|_| Cell::new(UNREAD)).collect(),
         dirty: vec![0; volume.div_ceil(64)],
         written: Vec::new(),
+        claimed: vec![0; volume.div_ceil(64)],
         springs: Vec::new(),
+        chests: Vec::new(),
     };
     let origin = IVec3::new(c.x * CELL, 0, c.y * CELL);
-    for &i in order() {
-        let entry = &PLACED[i];
-        if !entry.feature.runs() || !entry.biomes.iter().any(|&b| present[b as usize]) {
-            continue;
+    let features = order();
+    let mut next = 0;
+    for step in 0..=LAST_STEP {
+        // `applyBiomeDecoration`: a step's structures, then its features.
+        for &(_, at, structure) in &STRUCTURES {
+            if at == step {
+                place_structure(nether, &mut region, c, structure);
+            }
         }
-        let mut rng = Rng(hash3(c.x, i32::from(entry.step) << 8 | i as i32, c.y, nether.seed() ^ SALT));
-        place_with_modifiers(&mut region, entry, origin, &mut rng);
+        while let Some(&i) = features.get(next).filter(|&&i| PLACED[i].step == step) {
+            next += 1;
+            let entry = &PLACED[i];
+            let runs = entry.feature.runs() || matches!(entry.feature, Feature::Debris { .. });
+            if !runs || !entry.biomes.iter().any(|&b| present[b as usize]) {
+                continue;
+            }
+            let mut rng = Rng(hash3(c.x, i32::from(entry.step) << 8 | i as i32, c.y, nether.seed() ^ SALT));
+            place_with_modifiers(&mut region, entry, origin, &mut rng);
+        }
     }
+    debug_assert_eq!(next, features.len(), "JAVA_ORDER runs by step");
     let mut rows: [Vec<(u32, Block)>; 5] = Default::default();
     let mut written = std::mem::take(&mut region.written);
     written.sort_unstable_by_key(|&(k, _)| k);
     for (k, before) in written {
         let l = unkey(k);
-        let now = region.blocks[Region::slot(l)].get();
+        let i = Region::slot(l);
+        let now = region.blocks[i].get();
         if now != before {
-            rows[(l.y / CHUNK_SIZE_I) as usize].push((k, now));
+            let claimed = region.claimed[i / 64] >> (i % 64) & 1 != 0;
+            rows[(l.y / CHUNK_SIZE_I) as usize].push((if claimed { k | CLAIMED } else { k }, now));
         }
     }
-    CellDiff { rows, springs: region.springs }
+    CellDiff { rows, springs: region.springs, chests: region.chests }
+}
+
+/// Places `structure`'s pieces in cell `c` (`StructureStart.placeInChunk`
+/// with the cell's writable area), reading and writing the region.
+fn place_structure(nether: &NetherGen, region: &mut Region, c: IVec2, structure: Structure) {
+    // `getWritableArea`: the chunk's columns, from one above the bottom.
+    let base = IVec3::new(c.x * CELL, 1, c.y * CELL);
+    let top = IVec3::new(base.x + CELL - 1, HEIGHT - 1, base.z + CELL - 1);
+    let (lo, hi) = (IVec2::new(base.x, base.z), IVec2::new(top.x, top.z));
+    match structure {
+        Structure::BastionRemnant => {
+            let bastions = &nether.fortresses.bastions;
+            if !bastions.near(lo, hi).is_empty() {
+                paint_clipped(region, base, top, |blocks| bastions.paint_region(blocks, base, top));
+            }
+        }
+        Structure::Fortress => {
+            if !nether.fortresses.near(lo, hi).is_empty() {
+                // No piece stands above the region, so pillars start in it.
+                let open = |_, _, _, _| false;
+                paint_clipped(region, base, top, |blocks| nether.fortresses.paint_box(blocks, base, top, &open));
+            }
+        }
+        Structure::NetherFossil => {
+            let fossils = nether.fossils.meeting(nether, base, top);
+            if !fossils.is_empty() {
+                paint_clipped(region, base, top, |blocks| {
+                    for f in &fossils {
+                        f.paint_box(blocks, base, top);
+                    }
+                });
+            }
+        }
+        Structure::RuinedPortalNether => {
+            let dim = super::terrain::Dimension::Nether;
+            for layout in nether.ruined_portals.nether_layouts(nether, lo, hi) {
+                if !(base.y..=top.y).contains(&layout.centre().y) {
+                    continue;
+                }
+                let portal = (*layout).clone().process(dim.min_y(), dim.max_y(), |p| region.block(p));
+                for &(p, b) in portal.cells() {
+                    if !protected(region.block(p)) {
+                        region.claim(p, b);
+                    }
+                }
+                let chests: Vec<_> =
+                    portal.chests().iter().filter(|(p, _)| region.local(*p).is_some()).copied().collect();
+                region.chests.extend(chests);
+            }
+        }
+    }
+}
+
+/// Runs `paint` over the box from `base` to `top` (held X fastest, then Z,
+/// then Y) as the region holds it, and claims what it changed.
+fn paint_clipped(region: &mut Region, base: IVec3, top: IVec3, paint: impl FnOnce(&mut [Block])) {
+    let size = top - base + IVec3::ONE;
+    let mut blocks = Vec::with_capacity((size.x * size.y * size.z) as usize);
+    for y in base.y..=top.y {
+        for z in base.z..=top.z {
+            for x in base.x..=top.x {
+                blocks.push(region.block(IVec3::new(x, y, z)));
+            }
+        }
+    }
+    let before = blocks.clone();
+    paint(&mut blocks);
+    for (i, (&was, &now)) in before.iter().zip(&blocks).enumerate() {
+        if was != now {
+            let i = i as i32;
+            let l = IVec3::new(i % size.x, i / (size.x * size.z), i / size.x % size.z);
+            region.claim(base + l, now);
+        }
+    }
 }
 
 /// `FeaturePlacer.place`: each modifier maps a position to zero or more,
@@ -502,9 +680,35 @@ fn place(region: &mut Region, feature: Feature, p: IVec3, rng: &mut Rng) {
         Feature::BasaltPillar => {
             features::basalt_pillar(region, rng, p);
         }
-        Feature::Debris { .. } | Feature::Inert => {}
+        Feature::Debris { size } => {
+            scattered_debris(region, rng, p, size);
+        }
+        Feature::Inert => {}
     }
 }
+
+/// `ScatteredOreFeature` of ancient debris (`ore_ancient_debris_large` and
+/// `_small`): up to `size` tries, each `round((a - b) × min(i, 7))` from
+/// `origin` on every axis for two random floats `a` and `b`, replacing
+/// `#base_stone_nether` (netherrack, basalt, blackstone) with no air beside
+/// it (`discard_chance_on_air_exposure` 1, so no random draw for it).
+pub(super) fn scattered_debris(level: &mut impl Level, rng: &mut Rng, origin: IVec3, size: i32) -> u32 {
+    let mut placed = 0;
+    for i in 0..rng.below(size as u32 + 1) {
+        let reach = i.min(7) as f32;
+        // `Math.round(float)`: half up.
+        let mut axis = || ((rng.unit() as f32 - rng.unit() as f32) * reach + 0.5).floor() as i32;
+        let p = origin + IVec3::new(axis(), axis(), axis());
+        let stone = matches!(level.block(p).base(), Block::NETHERRACK | Block::BASALT | Block::BLACKSTONE);
+        if stone && !DIRECTIONS.iter().any(|&d| level.block(p + d) == Block::AIR) {
+            level.place(p, Block::ANCIENT_DEBRIS);
+            placed += 1;
+        }
+    }
+    placed
+}
+
+const DIRECTIONS: [IVec3; 6] = [IVec3::NEG_Y, IVec3::Y, IVec3::NEG_Z, IVec3::Z, IVec3::NEG_X, IVec3::X];
 
 #[cfg(test)]
 #[path = "nether_order_tests.rs"]
