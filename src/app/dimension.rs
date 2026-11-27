@@ -16,6 +16,7 @@ use crate::audio::SoundSource;
 use crate::audio::sounds::{Material, Sound};
 use crate::world::World;
 use crate::world::block::Block;
+use crate::world::portal::{BORDER, PortalTrip};
 use crate::world::storage::{self, SavedChunks, Storage};
 use crate::world::terrain::{Dimension, Generator};
 
@@ -75,15 +76,22 @@ pub(super) const DIMENSION_KEYS: [&str; 40] = [
 /// How far around the arrival point to look for an existing portal.
 const SEARCH_RADIUS: i32 = 16;
 
+/// Java's `EntityDimensions` of a collision shape: width and height, as
+/// floats.
+fn java_size(shape: crate::physics::Shape) -> (f64, f64) {
+    (f64::from((shape.half_width * 2.0) as f32), f64::from(shape.height as f32))
+}
+
 /// Where the player is headed while the destination streams in.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub(super) enum Arrival {
-    /// Through a portal, to the nearest portal around this cell (one is
-    /// built, along X if `true` else Z, if there's none).
-    Portal(IVec3, bool),
+    /// Through a portal, to the nearest portal around the trip's target
+    /// (one is built along the entry portal's axis if there's none), at the
+    /// same place in it (v1.0 gap Track 5).
+    Portal(PortalTrip),
     /// v0.16 Track G: the portal the search found, out of the loaded area:
     /// wait for it to load, then step in.
-    PortalAt(IVec3),
+    PortalAt(IVec3, PortalTrip),
     /// Back from the dead: the bed or world spawn.
     Respawn,
     /// Back from the dead to the Nether respawn anchor at this cell.
@@ -469,16 +477,21 @@ impl Game {
     fn travel(&mut self) {
         let to = self.dimension.other();
         let scale = if to == Dimension::Nether { 1.0 / 8.0 } else { 8.0 };
-        let (x, z) =
-            ((self.session.player.pos.x * scale).floor() as i32, (self.session.player.pos.z * scale).floor() as i32);
+        let player = &self.session.player;
         // `NetherPortalBlock.getPortalDestination`: the scaled position at
-        // the traveller's own height; a new portal follows the one entered.
-        let y = self.session.player.pos.y.floor() as i32;
-        let along_x = self.touched(Block::NETHER_PORTAL).is_none_or(|cell| {
-            let holds = |p: IVec3| matches!(self.world.get_block(p), Some(Block::NETHER_PORTAL | Block::OBSIDIAN));
-            holds(cell + IVec3::X) && holds(cell - IVec3::X)
-        });
-        self.switch_dimension(to, Arrival::Portal(IVec3::new(x, y, z), along_x));
+        // the traveller's own height, clamped to the world border; a new
+        // portal follows the one entered, and the traveller arrives where
+        // they stood in it (`getRelativePortalPosition`), keeping their motion.
+        let target = BORDER.clamp(DVec3::new(player.pos.x * scale, player.pos.y, player.pos.z * scale));
+        let (width, height) = java_size(player.collision_shape());
+        let mut trip = PortalTrip::without_portal(target);
+        if let Some(cell) = self.touched(Block::NETHER_PORTAL) {
+            let (rect, along_x) = self.world.portal_rect(cell);
+            trip.along_x = along_x;
+            trip.offset = crate::world::portal::relative_position(rect, along_x, player.pos, width, height);
+        }
+        trip.vel = player.vel;
+        self.switch_dimension(to, Arrival::Portal(trip));
     }
 
     /// While travelling: holds the player in place until the destination
@@ -487,7 +500,8 @@ impl Game {
     pub(super) fn update_arrival(&mut self) -> bool {
         let Some(arrival) = self.arrival else { return false };
         let target = match arrival {
-            Arrival::Portal(p, _) | Arrival::PortalAt(p) => p,
+            Arrival::Portal(trip) => trip.target,
+            Arrival::PortalAt(p, _) => p,
             Arrival::EndSpawn => crate::world::end::SPAWN,
             Arrival::Gateway { exit, .. } => exit,
             // Load where `respawn_point` will put the player: the bed (checked
@@ -498,7 +512,7 @@ impl Game {
         };
         let r = match arrival {
             Arrival::Portal(..) => SEARCH_RADIUS,
-            Arrival::PortalAt(_) => 2,
+            Arrival::PortalAt(..) => 2,
             Arrival::Respawn => 0,
             Arrival::Anchor(_) => 1,
             Arrival::EndSpawn => 2,
@@ -524,9 +538,9 @@ impl Game {
             }
         }
         self.session.player.pos = match arrival {
-            Arrival::Portal(..) | Arrival::PortalAt(_) => {
-                let at = match arrival {
-                    Arrival::Portal(p, along_x) => {
+            Arrival::Portal(trip) | Arrival::PortalAt(_, trip) => {
+                let exit = match arrival {
+                    Arrival::Portal(_) => {
                         // `PortalForcer`: an existing portal within 16 blocks
                         // into the Nether or 128 out of it, else a new one.
                         let radius = if self.dimension == Dimension::Nether {
@@ -534,27 +548,40 @@ impl Game {
                         } else {
                             crate::world::portal::OVERWORLD_PORTAL_RADIUS
                         };
-                        match self.world.find_portal(p, radius) {
+                        match self.world.find_portal(trip.target, radius) {
                             Some(at) if !self.world.column_loaded(at.x, at.z) => {
-                                self.arrival = Some(Arrival::PortalAt(at));
+                                self.arrival = Some(Arrival::PortalAt(at, trip));
                                 return true;
                             }
-                            Some(at) => at,
-                            None => self.world.create_portal(p, along_x),
+                            Some(at) => Some(self.world.portal_rect(at)),
+                            None => self.world.create_portal(trip.target, trip.along_x).map(|r| (r, trip.along_x)),
                         }
                     }
-                    Arrival::PortalAt(at) => at,
+                    Arrival::PortalAt(at, _) => Some(self.world.portal_rect(at)),
                     _ => unreachable!(),
                 };
                 // Arriving in a portal doesn't send you straight back.
                 self.portal_locked = true;
-                // Face out of the portal's open side.
-                let along_x = [IVec3::X, IVec3::NEG_X]
-                    .iter()
-                    .any(|&d| matches!(self.world.get_block(at + d), Some(Block::NETHER_PORTAL | Block::OBSIDIAN)));
-                self.session.player.yaw = if along_x { std::f32::consts::FRAC_PI_2 } else { 0.0 };
-                self.session.player.pitch = 0.0;
-                at.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)
+                match exit {
+                    Some((rect, along_x)) => {
+                        // `createDimensionTransition`: the same place in the
+                        // exit portal, free of collisions, turned a quarter
+                        // if the portals' axes differ; pitch and motion kept.
+                        let (width, height) = java_size(self.session.player.collision_shape());
+                        let at = crate::world::portal::exit_position(rect, along_x, trip.offset, width, height);
+                        if along_x != trip.along_x {
+                            let yaw = self.session.player.yaw + std::f32::consts::FRAC_PI_2;
+                            self.session.player.yaw = yaw.rem_euclid(std::f32::consts::TAU);
+                        }
+                        self.world.collision_free_position(at, width, height)
+                    }
+                    // Java finds no room even for a ledge (never in these
+                    // dimensions' heights): arrive at the target.
+                    None => {
+                        log::error!("unable to create a portal at {}", trip.target);
+                        trip.target.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)
+                    }
+                }
             }
             Arrival::EndSpawn => {
                 let spawn = crate::world::end::SPAWN;
@@ -613,6 +640,7 @@ impl Game {
         self.relocate_agents();
         self.session.player.vel = match arrival {
             Arrival::Gateway { vel, .. } => vel,
+            Arrival::Portal(trip) | Arrival::PortalAt(_, trip) => trip.vel,
             _ => DVec3::ZERO,
         };
         self.session.player.flying = self.session.player.flying && self.session.mode.can_fly();

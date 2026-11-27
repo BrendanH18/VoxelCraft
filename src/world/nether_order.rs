@@ -28,6 +28,7 @@
 //! own pass (`NetherGen::generate`), as in generation 6.
 
 use std::cell::Cell;
+use std::collections::VecDeque;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use glam::{IVec2, IVec3};
@@ -48,8 +49,10 @@ const CELL: i32 = 16;
 const SPAN: i32 = 3 * CELL;
 /// Heights a cell writes: the Nether's 128, and the roof's top (mushrooms).
 const HEIGHT: i32 = ROOF + 2;
-/// The cache keeps at most this many changed blocks (8 bytes each).
-const CACHE_LIMIT: usize = 6_000_000;
+/// The cache keeps at most this many changed blocks (8 bytes each, so 32
+/// MB): a basalt delta cell changes about 17,000 (its blobs), a cell of
+/// another biome 400 to 2,000.
+const CACHE_LIMIT: usize = 4_000_000;
 const SALT: u64 = 0xDEC0_0707;
 /// A block the region hasn't read yet.
 const UNREAD: Block = Block(u16::MAX);
@@ -124,10 +127,18 @@ impl CellDiff {
     }
 }
 
-/// Decorated cells shared by every chunk, bounded by [`CACHE_LIMIT`].
+/// Decorated cells shared by every chunk, the oldest dropped first once
+/// they hold more than [`CACHE_LIMIT`] changes.
 #[derive(Default)]
 pub(super) struct CellCache {
-    inner: Mutex<(FxHashMap<IVec2, Arc<CellDiff>>, usize)>,
+    inner: Mutex<Cached>,
+}
+
+#[derive(Default)]
+struct Cached {
+    cells: FxHashMap<IVec2, Arc<CellDiff>>,
+    added: VecDeque<IVec2>,
+    total: usize,
 }
 
 fn key(l: IVec3) -> u32 {
@@ -145,24 +156,26 @@ fn region_min(c: IVec2) -> IVec2 {
 
 /// The cell decorated, from the cache or decorated now.
 fn cell(nether: &NetherGen, c: IVec2) -> Arc<CellDiff> {
-    if let Some(d) = nether.cells.inner.lock().unwrap().0.get(&c) {
+    if let Some(d) = nether.cells.inner.lock().unwrap().cells.get(&c) {
         return Arc::clone(d);
     }
     // Decorate outside the lock so workers fill different cells at once.
     let diff = Arc::new(decorate_cell(nether, c));
     let mut guard = nether.cells.inner.lock().unwrap();
-    let (map, total) = &mut *guard;
-    if let Some(found) = map.get(&c) {
+    let cache = &mut *guard;
+    if let Some(found) = cache.cells.get(&c) {
         return Arc::clone(found);
     }
-    while *total + diff.len() > CACHE_LIMIT
-        && let Some(k) = map.keys().next().copied()
+    while cache.total + diff.len() > CACHE_LIMIT
+        && let Some(old) = cache.added.pop_front()
     {
-        let gone = map.remove(&k).expect("a cached cell");
-        *total -= gone.len();
+        if let Some(gone) = cache.cells.remove(&old) {
+            cache.total -= gone.len();
+        }
     }
-    *total += diff.len();
-    Arc::clone(map.entry(c).or_insert(diff))
+    cache.total += diff.len();
+    cache.added.push_back(c);
+    Arc::clone(cache.cells.entry(c).or_insert(diff))
 }
 
 /// The cells whose regions reach the chunk at `base`, in the order their
