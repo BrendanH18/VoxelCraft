@@ -600,6 +600,7 @@ impl Mob {
                         attacker: self.uid,
                         damage: 6.0,
                         knockback: dir * 4.0 + DVec3::Y * 2.0,
+                        melee: true,
                     }),
                 }
             }

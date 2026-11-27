@@ -399,6 +399,7 @@ impl Arrow {
                                     attacker,
                                     damage: self.mob_damage(speed),
                                     knockback: push,
+                                    melee: false,
                                 });
                                 return false;
                             }

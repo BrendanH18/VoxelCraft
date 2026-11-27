@@ -530,6 +530,9 @@ impl Cause {
     pub const CAMPFIRE: Cause = Cause::new(DamageType::Campfire, "went up in flames");
     pub const STARVE: Cause = Cause::new(DamageType::Starve, super::survival::CAUSE_STARVE);
     pub const FALLING_STALACTITE: Cause = Cause::new(DamageType::FallingStalactite, super::survival::CAUSE_STALACTITE);
+    /// Landing on an upward pointed dripstone tip (`PointedDripstoneBlock.fallOn`,
+    /// `stalagmite()`): `death.attack.stalagmite`.
+    pub const STALAGMITE: Cause = Cause::new(DamageType::Stalagmite, "was impaled on a stalagmite");
     pub const FREEZE: Cause = Cause::new(DamageType::Freeze, super::survival::CAUSE_FREEZE);
     /// Drunk or commanded Instant Damage (`magic()`). VoxelCraft also uses it
     /// for splash potions, which Java types `indirect_magic`.
@@ -609,6 +612,7 @@ impl Cause {
         Cause::CAMPFIRE,
         Cause::STARVE,
         Cause::FALLING_STALACTITE,
+        Cause::STALAGMITE,
         Cause::FREEZE,
         Cause::MAGIC,
         Cause::WITHER,

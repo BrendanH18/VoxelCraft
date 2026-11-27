@@ -2484,6 +2484,7 @@ impl Game {
                 .vitals
                 .effects
                 .vision(scene.time, self.session.player.head_in_water(&self.world)),
+            darkness: crate::render::Darkness::of(&self.session.vitals.effects, alpha as f32),
             ui,
             // v0.18 Track 2: a menu over the world blurs what is under it.
             blur: blur_from.map_or(0, |_| self.settings.menu_blur),

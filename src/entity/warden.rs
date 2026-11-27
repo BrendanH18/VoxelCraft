@@ -1127,6 +1127,7 @@ impl Entities {
                     attacker: uid,
                     damage: MELEE_DAMAGE,
                     knockback: away * 8.0 + DVec3::Y * 4.0,
+                    melee: true,
                 }),
             }
         }
@@ -1171,6 +1172,7 @@ impl Entities {
                         attacker: uid,
                         damage: SONIC_DAMAGE,
                         knockback: push,
+                        melee: false,
                     });
                 }
             }

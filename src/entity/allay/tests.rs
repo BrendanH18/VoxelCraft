@@ -546,7 +546,8 @@ fn creepers_killed_by_skeletons_drop_one_creeper_disc() {
         e.spawn(killer, DVec3::new(6.5, 10., 0.5));
         e.ensure_mob_ids();
         let (target, attacker) = (e.mobs[0].uid, e.mobs[1].uid);
-        let mut events = vec![EntityEvent::MobHit { target, attacker, damage: 100., knockback: DVec3::ZERO }];
+        let mut events =
+            vec![EntityEvent::MobHit { target, attacker, damage: 100., knockback: DVec3::ZERO, melee: true }];
         e.resolve_mob_hits(&mut events);
         assert!(!e.mobs[0].alive());
         let found: Vec<_> = e.items.iter().filter(|i| discs.contains(&i.stack.item)).collect();

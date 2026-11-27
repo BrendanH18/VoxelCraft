@@ -28,6 +28,8 @@ struct Uniforms {
     ambient: Vec3,
     night_vision: f32,
     brightness: f32,
+    /// `g.effects.z`: Darkness's lightmap scale.
+    darkness: f32,
 }
 
 fn to_srgb(c: Vec3) -> Vec3 {
@@ -59,9 +61,10 @@ fn brightness(u: &Uniforms, lit: Vec3) -> Vec3 {
     c.lerp(curved, u.brightness)
 }
 
-fn night_vision(u: &Uniforms, lit: Vec3) -> Vec3 {
+fn night_vision(u: &Uniforms, lit: Vec3, raw: Vec3) -> Vec3 {
     let peak = lit.x.max(lit.y).max(lit.z.max(1e-3));
-    brightness(u, lit.lerp(lit / peak, u.night_vision))
+    let over = (raw - Vec3::ONE).max(Vec3::ZERO);
+    brightness(u, lit.lerp(lit / peak, u.night_vision) + over - Vec3::splat(u.darkness))
 }
 
 fn daylight_tint(u: &Uniforms, normal: Vec3) -> Vec3 {
@@ -87,12 +90,13 @@ fn overworld_parts(u: &Uniforms, sky_level: f32, block_level: f32, normal: Vec3)
     let p = (2.0 * block_level - 1.0) * (2.0 * block_level - 1.0);
     let hue = Vec3::new(1.0, 0.847, 0.549).lerp(Vec3::ONE, 0.9 * p);
     let block = hue * (block_level / (4.0 - 3.0 * block_level)) * 1.4;
-    let java = (u.ambient + sky + block).clamp(Vec3::ZERO, Vec3::ONE);
+    let raw = u.ambient + sky + block;
+    let java = raw.clamp(Vec3::ZERO, Vec3::ONE);
     let s = sky.x.max(sky.y).max(sky.z);
     let b = block.x.max(block.y).max(block.z);
     let share = (s / (s + b).max(1e-4)).clamp(0.0, 1.0);
     let sun = Vec3::ONE.lerp(daylight_tint(u, normal), share);
-    (from_srgb(night_vision(u, java)), sun)
+    (from_srgb(night_vision(u, java, raw)), sun)
 }
 
 /// What the sRGB target stores, as bytes.
@@ -109,7 +113,10 @@ fn the_mirror_follows_the_shader() {
         "let block = hue * (block_level / (4.0 - 3.0 * block_level)) * 1.4;",
         "let share = clamp(s / max(s + b, 1e-4), 0.0, 1.0);",
         "return o.lit * shade * o.sun;",
-        "return OverworldLight(from_srgb(night_vision(java)), sun);",
+        "return OverworldLight(from_srgb(night_vision(java, raw)), sun);",
+        "let java = clamp(raw, vec3<f32>(0.0), vec3<f32>(1.0));",
+        "let over = max(raw - vec3<f32>(1.0), vec3<f32>(0.0));",
+        "return brightness(mix(lit, lit / peak, g.effects.x) + over - vec3<f32>(g.effects.z));",
         "return mix(tint * (0.62 + 0.38 * diffuse), vec3<f32>(0.85), g.params.w);",
         "let uniform_light = w2 == (w2 & 255u) * 0x01010101u;",
         "let o = overworld_parts(out.light.x, out.light.y, out.normal);",
@@ -129,7 +136,9 @@ fn settings() -> Vec<Uniforms> {
     {
         for sun in suns {
             for (rain, enhanced) in [(0.0, true), (1.0, true), (0.0, false)] {
-                for (night_vision, brightness) in [(0.0, 0.0), (0.0, 0.5), (1.0, 1.0), (0.4, 0.0)] {
+                for (night_vision, brightness, darkness) in
+                    [(0.0, 0.0, 0.0), (0.0, 0.5, 0.0), (1.0, 1.0, 0.0), (0.4, 0.0, 0.0), (0.0, 0.2, 0.3)]
+                {
                     out.push(Uniforms {
                         daylight,
                         rain,
@@ -139,6 +148,7 @@ fn settings() -> Vec<Uniforms> {
                         ambient: Vec3::splat(10.0 / 255.0),
                         night_vision,
                         brightness,
+                        darkness,
                     });
                 }
             }
@@ -240,4 +250,54 @@ fn the_fog_blend_is_the_same_with_the_fog_colour_encoded_once() {
     );
     assert_eq!(differing, 0, "{differing} of {compared} fragments changed (largest difference {worst:e})");
     assert!(worst < 1e-5 && worst_encode < 1e-6, "{worst} {worst_encode}");
+}
+
+/// Darkness against Java 26.3's `lightmap.fsh`: without night vision the
+/// mirror is `clamp(ambient + sky + block - DarknessScale)` moved toward
+/// `notGamma` by the Brightness the CPU lowered, so dim light goes black at
+/// the pulse's peak while light well above full (daylight with a torch)
+/// stays bright; with no Darkness every light is as before.
+#[test]
+fn darkness_comes_off_the_lightmap_before_its_clamp() {
+    let not_gamma = |c: Vec3| {
+        let peak = c.max_element();
+        let inv = 1.0 - peak;
+        c * ((1.0 - inv * inv * inv * inv) / peak)
+    };
+    let base = Uniforms {
+        daylight: 1.0,
+        rain: 0.0,
+        sun: Vec3::Y,
+        enhanced: false,
+        sky_light: Vec3::ONE,
+        ambient: Vec3::ZERO,
+        night_vision: 0.0,
+        brightness: 0.5,
+        darkness: 0.0,
+    };
+    for (daylight, scale, gamma) in [(1.0, 0.45, 0.0), (0.24, 0.3, 0.5), (0.6, 0.12, 0.2), (1.0, 0.0, 0.5)] {
+        let u = Uniforms { daylight, darkness: scale, brightness: gamma, ..base };
+        for sky in 0..16 {
+            for block in 0..16 {
+                let (s, b) = (sky as f32 / 15.0, block as f32 / 15.0);
+                let (lit, _) = overworld_parts(&u, s, b, Vec3::Y);
+                // lightmap.fsh, in Java's own order.
+                let sky_light = (s / (4.0 - 3.0 * s)) * daylight * u.sky_light;
+                let p = (2.0 * b - 1.0) * (2.0 * b - 1.0);
+                let tint = Vec3::new(1.0, 0.847, 0.549).lerp(Vec3::ONE, 0.9 * p);
+                let color = (u.ambient + sky_light + tint * (b / (4.0 - 3.0 * b)) * 1.4 - Vec3::splat(scale))
+                    .clamp(Vec3::ZERO, Vec3::ONE);
+                let java = if color.max_element() > 0.0 { color.lerp(not_gamma(color), gamma) } else { color };
+                assert!(
+                    (lit - from_srgb(java)).abs().max_element() < 1e-5,
+                    "sky {sky} block {block} scale {scale}: {lit} against {}",
+                    from_srgb(java)
+                );
+            }
+        }
+    }
+    // At the peak, dark corners go black and daylight beside a torch doesn't.
+    let peak = Uniforms { darkness: 0.45, brightness: 0.0, ..base };
+    assert_eq!(overworld_parts(&peak, 4.0 / 15.0, 0.0, Vec3::Y).0, Vec3::ZERO);
+    assert_eq!(overworld_parts(&peak, 1.0, 1.0, Vec3::Y).0, Vec3::ONE);
 }

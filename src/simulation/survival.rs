@@ -93,7 +93,13 @@ pub const HAY_FALL_MULTIPLIER: f32 = 0.2;
 /// Damage for landing on hay after falling `distance` blocks: Java's
 /// `floor((distance + 1e-6 - 3) * (double)0.2f)`.
 pub fn hay_fall_damage(distance: f64) -> f32 {
-    ((distance + 1e-6 - SAFE_FALL) * f64::from(HAY_FALL_MULTIPLIER)).floor().max(0.0) as f32
+    scaled_fall_damage(distance, HAY_FALL_MULTIPLIER)
+}
+
+/// `LivingEntity.calculateFallDamage` with a block's `damageModifier`:
+/// `floor((distance + 1e-6 - 3) * modifier)`.
+pub fn scaled_fall_damage(distance: f64, modifier: f32) -> f32 {
+    ((distance + 1e-6 - SAFE_FALL) * f64::from(modifier)).floor().max(0.0) as f32
 }
 
 /// What the player is touching this frame.
@@ -134,6 +140,10 @@ pub struct Env {
     /// v0.16 Track D: `Block.fallOn`'s `fallDistanceReduction` of the block
     /// landed on (0.5 for a shelf mushroom): the fall counts that much less.
     pub fall_reduction: f32,
+    /// v1.0 gap Track 1: standing on an upward pointed dripstone tip, whose
+    /// `fallOn` adds 2.5 blocks to the fall and doubles its damage, typed
+    /// `stalagmite`.
+    pub on_stalagmite: bool,
     /// Landing on a slime block. Java 26.3's `SlimeBlock.fallOn` multiplies
     /// the damage by zero, and when sneaking suppresses the bounce it
     /// returns without calling `causeFallDamage` at all.
@@ -177,6 +187,8 @@ pub struct Hurts {
     pub freeze: f32,
     /// A falling stalactite (`DamageTypes.FALLING_STALACTITE`).
     pub stalactite: f32,
+    /// A landing on an upward dripstone tip (`DamageTypes.STALAGMITE`).
+    pub stalagmite: f32,
     /// v0.16 Track B: a glide into a wall (`fly_into_wall`).
     pub kinetic: f32,
 }
@@ -688,7 +700,14 @@ impl Vitals {
                 // `LivingEntity.causeFallDamage` after a mace smash: the fall
                 // counts only from the impact height, and the context ends on
                 // landing above it, once its grace runs out or once it hurts.
-                let mut fallen = peak - env.y;
+                // `PointedDripstoneBlock.fallOn` passes `fallDistance + 2.5`,
+                // which the impulse clamp then sees.
+                let extra = if env.on_stalagmite && peak > env.y {
+                    crate::world::speleothem::STALAGMITE_FALL_EXTRA
+                } else {
+                    0.0
+                };
+                let mut fallen = peak - env.y + extra;
                 if fallen > 0.0
                     && let Some(impact) = self.impulse_impact_y
                 {
@@ -699,7 +718,11 @@ impl Vitals {
                     }
                 }
                 let distance = fallen - jump_levels;
-                hurts.fall = if env.on_slime {
+                if env.on_stalagmite {
+                    hurts.stalagmite =
+                        scaled_fall_damage(distance, crate::world::speleothem::STALAGMITE_FALL_MULTIPLIER);
+                }
+                hurts.fall = if env.on_slime || env.on_stalagmite {
                     0.0
                 } else if env.on_hay || env.on_honey {
                     hay_fall_damage(distance)
@@ -708,7 +731,7 @@ impl Vitals {
                 } else {
                     fall_damage(distance)
                 };
-                if hurts.fall > 0.0 {
+                if hurts.fall > 0.0 || hurts.stalagmite > 0.0 {
                     self.impulse_impact_y = None;
                     self.impulse_grace = 0;
                 }
@@ -1043,6 +1066,26 @@ mod tests {
         let hay = Env { on_hay: true, ..ground(64.0) };
         assert_eq!(fall(&mut v, 84.0, 64.0, hay).fall, 3.0, "20 blocks onto hay vs 17 on stone");
         assert_eq!(fall(&mut v, 84.0, 64.0, ground(64.0)).fall, 17.0);
+    }
+
+    /// v1.0 gap Track 1: `PointedDripstoneBlock.fallOn` calls
+    /// `causeFallDamage(fallDistance + 2.5, 2, stalagmite)`: twenty blocks
+    /// onto an upward tip are `floor(19.5 * 2)` stalagmite damage, a short
+    /// hop onto one hurts too, and Jump Boost still counts.
+    #[test]
+    fn upward_dripstone_tips_double_the_fall_as_stalagmite_damage() {
+        let mut v = Vitals::default();
+        let tip = Env { on_stalagmite: true, ..ground(64.0) };
+        let h = fall(&mut v, 84.0, 64.0, tip);
+        assert_eq!((h.fall, h.stalagmite), (0.0, 39.0));
+        // One block: (1 + 2.5 - 3) * 2 = 1.
+        let h = fall(&mut v, 65.0, 64.0, tip);
+        assert_eq!((h.fall, h.stalagmite), (0.0, 1.0));
+        // Standing on one is no fall.
+        assert_eq!(v.tick(DT, &tip, false).stalagmite, 0.0);
+        use crate::simulation::damage::{Cause, DamageTag, DamageType};
+        assert_eq!(Cause::STALAGMITE.kind, DamageType::Stalagmite);
+        assert!(Cause::STALAGMITE.is(DamageTag::IsFall) && Cause::STALAGMITE.is(DamageTag::BypassesArmor));
     }
 
     /// v0.16 Track D: a shelf mushroom's `fallDistanceReduction(0.5F)`

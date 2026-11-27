@@ -1001,6 +1001,10 @@ impl Entities {
                     if m.uid != 0 {
                         saved["uid"] = json!(m.uid);
                     }
+                    // v1.0 gap Track 1: Java's `fall_distance`, written only mid-fall.
+                    if m.saved_fall_distance() > 0.0 {
+                        saved["fall_distance"] = json!(m.saved_fall_distance());
+                    }
                     Some(saved)
                 }
                 MobKind::Villager | MobKind::ZombieVillager | MobKind::WanderingTrader => {
@@ -1027,6 +1031,10 @@ impl Entities {
                     // hearts name; written only once it has one.
                     if m.uid != 0 {
                         saved["uid"] = json!(m.uid);
+                    }
+                    // v1.0 gap Track 1: Java's `fall_distance`, written only mid-fall.
+                    if m.saved_fall_distance() > 0.0 {
+                        saved["fall_distance"] = json!(m.saved_fall_distance());
                     }
                     Some(saved)
                 }
@@ -1177,6 +1185,7 @@ impl Entities {
                 m.effects = crate::simulation::effects::Effects::deserialize(a["effects"].as_str().unwrap_or(""));
                 super::leash::load(&mut m, &a["identity"]);
                 m.riding = a["riding"].as_u64().and_then(|u| u32::try_from(u).ok());
+                m.restore_fall_distance(a["fall_distance"].as_f64().unwrap_or(0.0));
                 // v1.0 Track 3b: the uid it had, unless another mob has it.
                 if let Some(uid) = a["uid"].as_u64().and_then(|u| u32::try_from(u).ok()).filter(|&u| u != 0)
                     && !self.mobs.iter().any(|o| o.uid == uid)

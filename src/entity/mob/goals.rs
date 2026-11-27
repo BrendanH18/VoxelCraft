@@ -491,7 +491,7 @@ impl Mob {
         self.goals.ticks = self.goals.ticks.wrapping_add(1);
         // A creeper swelling (`SwellGoal`, priority 2) holds off its avoid goal.
         if self.kind == MobKind::Creeper
-            && (self.fuse > 0.0
+            && (self.swelling
                 || ctx.nearest_target(self.pos).is_some_and(|p| p.targetable && p.pos.distance_squared(self.pos) < 9.0))
         {
             self.stop_goal(world);

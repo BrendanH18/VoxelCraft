@@ -16,8 +16,8 @@
 //!
 //! In 26.3 only `PointedDripstoneBlock` overrides `fallOn` (landing on an
 //! upward tip doubles the fall and adds 2.5 blocks), so sulfur spikes hurt
-//! nothing that lands on them, as in Java; the dripstone's own landing
-//! damage is a different code path and is not part of this module.
+//! nothing that lands on them, as in Java; [`stalagmite_tip`] tells the
+//! player's and the mobs' landings (v1.0 gap Track 1).
 
 use glam::IVec3;
 
@@ -58,6 +58,18 @@ pub fn of(b: Block) -> Option<Speleothem> {
     let (down, thickness) = ob::dripstone_of(b.canonical())?;
     Some(Speleothem { kind: Kind::Dripstone, down, thickness, wet: b.is_waterlogged() })
 }
+
+/// `PointedDripstoneBlock.fallOn`: what lands on an upward dripstone tip
+/// (`tip_direction` up, `thickness` tip) falls 2.5 blocks further and takes
+/// twice the damage, as `stalagmite` damage. Sulfur spikes don't (only
+/// `PointedDripstoneBlock` overrides `fallOn` in 26.3), nor do merged tips.
+pub fn stalagmite_tip(b: Block) -> bool {
+    of(b).is_some_and(|s| s.kind == Kind::Dripstone && !s.down && s.thickness == Thickness::Tip)
+}
+/// The distance `PointedDripstoneBlock.fallOn` adds to the fall.
+pub const STALAGMITE_FALL_EXTRA: f64 = 2.5;
+/// The `damageModifier` it passes.
+pub const STALAGMITE_FALL_MULTIPLIER: f32 = 2.0;
 
 /// The block of a speleothem state.
 pub fn block(s: Speleothem) -> Block {

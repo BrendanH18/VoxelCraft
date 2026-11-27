@@ -463,6 +463,7 @@ fn axolotl<W: MobWorld + ?Sized>(
                 attacker: m.uid,
                 damage: 2.0,
                 knockback: delta.normalize_or_zero() * 0.3,
+                melee: true,
             });
         }
         let s = m.goal_speed(0.6);

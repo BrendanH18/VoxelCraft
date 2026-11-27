@@ -134,7 +134,8 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     if alpha <= 0.0 {
         discard;
     }
-    let light = curve(in.params.y) * g.params.z * 0.9 + 0.1;
+    // Darkness's pulse (g.effects.z) comes off the light, as in the lightmap.
+    let light = max(curve(in.params.y) * g.params.z * 0.9 + 0.1 - g.effects.z, 0.0);
     var c = pow(color, vec3<f32>(2.2)) * light;
     c = apply_fog(c, in.dist);
     return vec4<f32>(c, alpha * in.params.z);

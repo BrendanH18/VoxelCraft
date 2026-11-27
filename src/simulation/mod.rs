@@ -231,6 +231,11 @@ pub fn player_environment(player: &Player, world: &World, moved: f64) -> Env {
         } else {
             0.0
         },
+        // `Entity.checkFallDamage` hands `fallOn` the block at `getOnPosLegacy`.
+        on_stalagmite: player.on_ground
+            && world
+                .get_block((player.pos - DVec3::Y * 0.2).floor().as_ivec3())
+                .is_some_and(crate::world::speleothem::stalagmite_tip),
         on_hay: player.on_ground
             && world.get_block((player.pos - DVec3::Y * 0.01).floor().as_ivec3()).map(|b| b.base())
                 == Some(crate::world::block::Block::HAY_BALE),

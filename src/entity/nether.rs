@@ -638,15 +638,15 @@ impl Entities {
         let hits: Vec<_> = events
             .iter()
             .filter_map(|e| match *e {
-                EntityEvent::MobHit { target, attacker, damage, knockback } => {
-                    Some((target, attacker, damage, knockback))
+                EntityEvent::MobHit { target, attacker, damage, knockback, melee } => {
+                    Some((target, attacker, damage, knockback, melee))
                 }
                 _ => None,
             })
             .collect();
         if !hits.is_empty() {
             events.retain(|e| !matches!(e, EntityEvent::MobHit { .. }));
-            for (target, attacker, damage, knockback) in hits {
+            for (target, attacker, damage, knockback, melee) in hits {
                 let Some(i) = self.mobs.iter().position(|m| m.uid == target && m.alive()) else { continue };
                 let (kind, pos, burning) = (self.mobs[i].kind, self.mobs[i].pos, self.mobs[i].burning);
                 // v0.16 Track H: `WitherBoss.hurtServer` refuses hits from
@@ -658,8 +658,28 @@ impl Entities {
                     }
                     self.wither_hurt_by_mob(i, attacker);
                 }
+                // `Mob.doHurtTarget`: `EnchantmentHelper.modifyDamage` adds the
+                // main-hand weapon's Smite or Bane of Arthropods when the target
+                // is sensitive to it (Sharpness is already in the attack).
+                let weapon = if melee {
+                    self.mobs
+                        .iter()
+                        .find(|m| m.uid == attacker)
+                        .and_then(|a| a.main_hand())
+                        .map(|s| s.active_enchants())
+                } else {
+                    None
+                };
+                let damage = damage + weapon.map_or(0.0, |w| crate::enchant::creature_damage_bonus(w, kind.creature()));
                 let anger = self.mobs[i].provocation();
+                let before = self.mobs[i].health;
                 let killed = self.mobs[i].damage(damage, Some(knockback), &mut self.rng);
+                // `doPostAttackEffects` on a hit that hurt: Bane's Slowness IV.
+                if let Some(w) = weapon
+                    && self.mobs[i].health < before
+                {
+                    self.bane_slowness(i, w);
+                }
                 if kind == MobKind::Enderman
                     && self.mobs.iter().any(|m| m.uid == attacker && m.kind == MobKind::Endermite)
                 {
@@ -1756,6 +1776,11 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
             v["hand"] = json!(crate::inventory::stack_to_string(Some(s)));
         }
     }
+    // v1.0 gap Track 1: Java's `fall_distance`, written only mid-fall.
+    let fall = m.saved_fall_distance();
+    if fall > 0.0 {
+        v["fall_distance"] = json!(fall);
+    }
     v
 }
 
@@ -1968,6 +1993,7 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
             h.is_finite().then_some(h)
         });
     }
+    m.restore_fall_distance(v["fall_distance"].as_f64().unwrap_or(0.0));
     Some(m)
 }
 

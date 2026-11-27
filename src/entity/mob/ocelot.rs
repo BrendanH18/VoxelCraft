@@ -50,6 +50,7 @@ impl Mob {
                 attacker: self.uid,
                 damage: 3.0,
                 knockback: flat.normalize_or_zero() * 8.0,
+                melee: true,
             });
         }
         Some((self.follow_path(w, speed, true), speed))

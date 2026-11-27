@@ -301,7 +301,7 @@ impl Mob {
                     };
                     EntityEvent::PlayerHit { player, damage, knockback: knockback.as_vec3(), java: Some(hit), cause }
                 }
-                Foe::Mob(target) => EntityEvent::MobHit { target, attacker: self.uid, damage, knockback },
+                Foe::Mob(target) => EntityEvent::MobHit { target, attacker: self.uid, damage, knockback, melee: true },
             });
             if let Foe::Player(id) = foe
                 && let Some(target) = ctx.players.iter().find(|t| t.id == id)

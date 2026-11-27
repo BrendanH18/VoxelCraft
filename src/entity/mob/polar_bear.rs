@@ -82,6 +82,7 @@ impl Mob {
                     attacker: self.uid,
                     damage,
                     knockback: dir * 4.0 + DVec3::Y * 2.0,
+                    melee: true,
                 }),
             }
         } else if delta.length_squared() < (target.shape.half_width * 2.0 + 3.0).powi(2) {

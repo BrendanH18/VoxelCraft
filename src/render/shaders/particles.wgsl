@@ -92,7 +92,7 @@ fn curve(l: f32) -> f32 { return l / (4. - 3. * l); }
 // The Overworld retains its existing daylight presentation in this scoped fix.
 fn dimension_light(sky: vec3<f32>, torch: vec3<f32>) -> vec3<f32> {
     if g.ambient.w > 0.0 {
-        return clamp(g.ambient.rgb + sky + torch, vec3<f32>(0.0), vec3<f32>(1.0));
+        return g.ambient.rgb + sky + torch;
     }
     return max(sky, torch) * 0.96 + 0.04;
 }
@@ -112,9 +112,14 @@ fn dimension_light(sky: vec3<f32>, torch: vec3<f32>) -> vec3<f32> {
     let sky = curve(in.light.x) * g.params.z;
     let torch = curve(in.light.y) * vec3<f32>(1., 0.86, 0.66);
     var lit = dimension_light(vec3<f32>(sky), torch);
-    if in.light.w > 1.5 { lit = vec3<f32>(1.); }
+    // Darkness (g.effects.z) comes off the light before its clamp, as in
+    // chunk.wgsl; full-bright particles keep their light.
+    var dark = g.effects.z;
+    if in.light.w > 1.5 { lit = vec3<f32>(1.); dark = 0.; }
+    let over = max(lit - vec3<f32>(1.), vec3<f32>(0.));
+    lit = clamp(lit, vec3<f32>(0.), vec3<f32>(1.));
     let peak = max(max(lit.r, lit.g), max(lit.b, 0.001));
-    lit = clamp(mix(lit, lit / peak, g.effects.x), vec3<f32>(0.), vec3<f32>(1.));
+    lit = clamp(mix(lit, lit / peak, g.effects.x) + over - vec3<f32>(dark), vec3<f32>(0.), vec3<f32>(1.));
     // Brightness (Java's gamma, g.effects.y), as in chunk.wgsl.
     let top = max(max(lit.r, lit.g), max(lit.b, 1e-4));
     let inv = 1. - top;

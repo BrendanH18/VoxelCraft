@@ -674,6 +674,49 @@ pub struct Effects {
     /// duration to time an infinite effect's periodic ticks. Java does not
     /// save `tickCount`, so neither saves nor equality include it.
     age: u32,
+    /// Darkness's `MobEffectInstance.BlendState` (the client's fade, which
+    /// Java doesn't save either): kept through a merge, as
+    /// `LivingEntity.forceAddEffect` copies it to the replacing instance.
+    darkness_blend: Blend,
+}
+
+/// Java 26.3's `MobEffectInstance.BlendState`: the factor the client fades
+/// an effect's look in and out with, once a tick.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct Blend {
+    factor: f32,
+    previous: f32,
+}
+
+/// `MobEffects.DARKNESS.setBlendDuration(22)`: 22 ticks in, 22 out, and the
+/// fade out starts 22 ticks before the effect ends.
+pub const DARKNESS_BLEND_TICKS: u32 = 22;
+
+impl Blend {
+    /// `BlendState.setImmediate`: full at once (an effect the client didn't
+    /// see given, such as one loaded with the world), or none when it's
+    /// already in its last ticks.
+    fn immediate(active: &Active) -> Self {
+        let factor = if active.ends_within(DARKNESS_BLEND_TICKS) { 0.0 } else { 1.0 };
+        Self { factor, previous: factor }
+    }
+
+    /// `BlendState.tick`: a step of `1 / 22` toward 1 while the effect has
+    /// more than its fade-out advance left, else toward 0.
+    fn tick(&mut self, active: &Active) {
+        self.previous = self.factor;
+        let has = !active.ends_within(DARKNESS_BLEND_TICKS);
+        let target = if has { 1.0 } else { 0.0 };
+        if self.factor != target {
+            let step = 1.0 / DARKNESS_BLEND_TICKS as f32;
+            self.factor += (target - self.factor).clamp(-step, step);
+        }
+    }
+
+    /// `BlendState.getFactor`: eased between the last two ticks.
+    fn at(&self, partial: f32) -> f32 {
+        self.previous + (self.factor - self.previous) * partial
+    }
 }
 
 impl PartialEq for Effects {
@@ -887,6 +930,9 @@ impl Effects {
     }
 
     pub fn remove(&mut self, effect: Effect) -> bool {
+        if effect == Effect::Darkness {
+            self.darkness_blend = Blend::default();
+        }
         let before = self.active.len();
         self.active.retain(|a| a.effect != effect);
         self.hidden.retain(|a| a.effect != effect);
@@ -895,6 +941,7 @@ impl Effects {
     }
 
     pub fn clear(&mut self) {
+        self.darkness_blend = Blend::default();
         self.active.clear();
         self.hidden.clear();
         self.absorption = 0.0;
@@ -961,6 +1008,12 @@ impl Effects {
             }
             self.active.retain(|a| a.ticks > 0);
             self.clamp_absorption();
+            // `MobEffectInstance.tickClient`: the blend follows the countdown.
+            // A removed instance takes its blend with it.
+            match self.get(Effect::Darkness).copied() {
+                Some(darkness) => self.darkness_blend.tick(&darkness),
+                None => self.darkness_blend = Blend::default(),
+            }
         }
         out
     }
@@ -1085,6 +1138,27 @@ impl Effects {
         }
     }
 
+    /// `LivingEntity.getEffectBlendFactor(DARKNESS, partialTick)`: how far
+    /// Darkness has faded in, 0..=1, `partial` ticks after the last tick.
+    /// The fog and the lightmap both scale by it.
+    pub fn darkness_blend(&self, partial: f32) -> f32 {
+        if self.has(Effect::Darkness) { self.darkness_blend.at(partial.clamp(0.0, 1.0)) } else { 0.0 }
+    }
+
+    /// Darkness's pulse, `LightmapRenderStateExtractor.calculateDarknessScale`:
+    /// `max(0, cos((tickCount - partial) * PI * 0.025) * 0.45 * blend)`, the
+    /// amount `lightmap.fsh` takes off every light level before its clamp.
+    /// It swings once every 80 ticks. The Darkness Pulsing accessibility
+    /// option isn't in the game, so its scale is Java's default 1.
+    pub fn darkness_scale(&self, partial: f32) -> f32 {
+        let blend = self.darkness_blend(partial);
+        if blend <= 0.0 {
+            return 0.0;
+        }
+        let t = self.age as f32 - partial.clamp(0.0, 1.0);
+        ((t * std::f32::consts::PI * 0.025).cos() * (0.45 * blend)).max(0.0)
+    }
+
     /// `effect:amplifier:ticks|...` for saves: the active instances, then
     /// the hidden ones, each effect's nearest first. Ticks are `-1` for an
     /// infinite effect. The active Absorption entry adds the absorption
@@ -1165,6 +1239,11 @@ impl Effects {
         }
         effects.active.sort_by_key(|a| a.effect);
         effects.set_absorption(absorption.unwrap_or(started));
+        // A player joining with Darkness sees it at once: the server sends
+        // its effects with `blend` false and the client calls `skipBlending`.
+        if let Some(darkness) = effects.get(Effect::Darkness).copied() {
+            effects.darkness_blend = Blend::immediate(&darkness);
+        }
         effects
     }
 }
@@ -1368,5 +1447,74 @@ mod tests {
         assert_eq!(level_name(1), "II");
         assert_eq!(duration_text(3 * 60 * 20 + 20 * 5), "03:05");
         assert_eq!(duration_text(INFINITE), "\u{221e}");
+    }
+
+    /// Darkness's `BlendState`: a given Darkness fades in over 22 ticks, a
+    /// re-application keeps the blend, the fade out starts 22 ticks before
+    /// the end, and a loaded one is full at once.
+    #[test]
+    fn darkness_blends_in_and_out_like_javas_blend_state() {
+        let tick = 1.0 / TPS;
+        let mut e = Effects::default();
+        assert_eq!((e.darkness_blend(0.5), e.darkness_scale(0.5)), (0.0, 0.0));
+        e.add(Effect::Darkness, 0, 260);
+        assert_eq!(e.darkness_blend(1.0), 0.0, "given this tick: nothing yet");
+        e.tick(tick);
+        assert!((e.darkness_blend(1.0) - 1.0 / 22.0).abs() < 1e-6);
+        assert!((e.darkness_blend(0.5) - 0.5 / 22.0).abs() < 1e-6, "eased between ticks");
+        for _ in 0..30 {
+            e.tick(tick);
+        }
+        assert_eq!(e.darkness_blend(0.3), 1.0);
+        // The warden tops it up: the blend carries over.
+        e.add(Effect::Darkness, 0, 260);
+        e.tick(tick);
+        assert_eq!(e.darkness_blend(0.0), 1.0);
+        // Out: 22 ticks before the end it steps down, reaching 0 as it ends.
+        let left = e.get(Effect::Darkness).unwrap().ticks;
+        for _ in 0..left - 22 {
+            e.tick(tick);
+        }
+        assert_eq!(e.get(Effect::Darkness).unwrap().ticks, 22);
+        assert!((e.darkness_blend(1.0) - 21.0 / 22.0).abs() < 1e-6);
+        for _ in 0..21 {
+            e.tick(tick);
+        }
+        assert!(e.darkness_blend(1.0) < 1e-5);
+        e.tick(tick);
+        assert!(!e.has(Effect::Darkness));
+        assert_eq!(e.darkness_blend(1.0), 0.0);
+        // Loaded with the world: full at once (`skipBlending`).
+        let mut given = Effects::default();
+        given.add(Effect::Darkness, 0, 200);
+        let loaded = Effects::deserialize(&given.serialize());
+        assert_eq!(loaded.darkness_blend(0.0), 1.0);
+        assert_eq!(Effects::deserialize("darkness:0:10").darkness_blend(0.0), 0.0);
+        // Removed (milk): gone, and a new one fades in again.
+        let mut e = loaded;
+        e.remove(Effect::Darkness);
+        e.add(Effect::Darkness, 0, 200);
+        assert_eq!(e.darkness_blend(1.0), 0.0);
+    }
+
+    /// `calculateDarknessScale`: `max(0, cos(tickCount * PI * 0.025)) * 0.45
+    /// * blend`, a pulse every 80 ticks that rests at 0 half the time.
+    #[test]
+    fn darkness_pulses_every_eighty_ticks() {
+        let tick = 1.0 / TPS;
+        let mut e = Effects::deserialize("darkness:0:-1");
+        let mut scales = Vec::new();
+        for _ in 0..160 {
+            e.tick(tick);
+            scales.push(e.darkness_scale(0.0));
+        }
+        // Age 80 and 160: cos(2 PI) and cos(4 PI), the peak.
+        assert!((scales[79] - 0.45).abs() < 1e-4 && (scales[159] - 0.45).abs() < 1e-4, "{scales:?}");
+        // Age 40: cos(PI) < 0, clamped to 0; ages 21 to 59 are all dark-free.
+        assert!(scales[20..59].iter().all(|&s| s == 0.0), "{scales:?}");
+        assert!(scales[60..79].windows(2).all(|w| w[0] < w[1]));
+        // Partial ticks count back from the age.
+        let between = e.darkness_scale(0.5);
+        assert!((between - (0.45 * (159.5f32 * std::f32::consts::PI * 0.025).cos()).max(0.0)).abs() < 1e-5);
     }
 }

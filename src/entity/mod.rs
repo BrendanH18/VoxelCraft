@@ -520,6 +520,10 @@ pub enum EntityEvent {
         attacker: u32,
         damage: f32,
         knockback: DVec3,
+        /// A direct melee hit (`Mob.doHurtTarget`), whose main-hand weapon's
+        /// Smite or Bane of Arthropods the target's kind decides; projectiles
+        /// and the warden's sonic boom aren't.
+        melee: bool,
     },
     /// A mob's equipment drops at `pos` outside a death (`Mob.spawnAtLocation`,
     /// e.g. preserved gear on a zombie villager's cure; handled internally).
