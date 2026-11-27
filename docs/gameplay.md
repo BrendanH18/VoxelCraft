@@ -625,7 +625,12 @@ Esc closes the inventory. Agents can use `catalog [query]` for the same search.
 
 The End is reached through a stronghold's End portal, or with
 `/dimension end` or `--dimension end`. Return with `/dimension overworld`.
-It includes a seeded central end-stone island, ten obsidian pillars, an arrival platform, a void gap and outer islands,
+It includes a seeded central end-stone island, ten obsidian pillars, an arrival platform, a void gap and outer islands.
+In worlds made since the v1.0 gap-closing build (generation 7) the islands
+are Java 26.3's own: the same seed gives the same island shapes, End
+biomes, chorus highlands and End city spots as Java
+([gap Track 4](verification/2026-11-27-v1.0-gap-track-04-the-end.md));
+older worlds keep their islands. It has
 a static violet sky, no weather or natural Overworld/Nether mob spawning, and
 its own `end/` save folder. Water works; beds explode. End stone is mineable
 with a pickaxe and appears in the creative catalog.
@@ -640,13 +645,19 @@ high, above whatever stands under each, pillars included; only the inner 12
 once no crystal is left;
 [v1.0 Track 7b](verification/2026-11-25-v1.0-track-07b-end-fight-seats.md)), sometimes
 swoops at a player to spit a fireball that leaves a spreading cloud of
-harmful breath, and sometimes perches on the exit portal's pillar to breathe
-fire, roar at anyone close, then take off or charge at them. Its wings shove
+harmful breath, and sometimes lands on the exit portal's pillar. Perched, it
+looks about for a player within 20 blocks and level with it, roars at them,
+breathes fire, and looks again; after four flames, or with no one about for
+five seconds, it takes off (or charges a player within 150). A player it has
+chosen to strafe stays its target even after switching to creative, as in
+Java. Its wings shove
 and hurt players, its head bites for 10, and it smashes through any block but
 end stone, obsidian, bedrock, iron bars and portals. Head hits do full damage,
 anywhere else a quarter (plus up to one); arrows glance off a perched dragon,
 and bed or TNT blasts hurt it. The boss bar shows within 192 blocks of the
-island's centre. On death it rises for ten seconds in beams of light,
+island's centre. Killed in flight, it first flies to the exit portal (at
+one health, untouchable), as Java's does; then, or at once if killed while
+perched, it rises for ten seconds in beams of light,
 spilling 12,000 experience (500 for later kills), then the bedrock exit
 portal opens, with the dragon egg on its pillar after the first kill. The egg
 teleports up to 15 blocks when hit or used, and falls like sand. The fight
@@ -659,10 +670,14 @@ to go through. The first trip finds the outer islands like Java does: 1024
 blocks straight out, then the nearest chunk with land, ten blocks above the
 highest ground there (building a small island if the void goes on). An exit
 gateway is built there, linked back, and you land on the highest ground
-beside it. The links are saved with the End.
+beside it. The links are saved with the End. Like Java's, a new gateway
+shines a magenta beam the height of the world for ten seconds; once used
+(by you or a pearl) it cools down for two seconds with a shorter purple beam,
+doing nothing for anyone else meanwhile, and it flashes the same way every
+two minutes. Arriving, you can't use a gateway for half a second, and
+touching one meanwhile restarts that wait.
 
-Respawning the dragon, the gateway beam, chorus trees, cities, shulkers and
-elytra are still roadmap work. Mojang's [End Highlands overview](https://www.minecraft.net/en-us/article/around-block--end-highlands)
+Mojang's [End Highlands overview](https://www.minecraft.net/en-us/article/around-block--end-highlands)
 describes the larger progression being built toward.
 
 ## Sound categories

@@ -330,6 +330,10 @@ struct Game {
     portal_time: f32,
     /// Just came out of a portal: stepping out of it rearms it.
     portal_locked: bool,
+    /// v1.0 gap Track 4: Java's `portalCooldown` after a gateway trip, in
+    /// seconds (`Player.getDimensionChangingDelay`, 10 ticks); touching a
+    /// gateway meanwhile restarts it rather than using the gateway.
+    portal_cooldown: f64,
 }
 
 pub struct App {

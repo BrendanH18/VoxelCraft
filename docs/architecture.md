@@ -263,6 +263,8 @@ src/
     mob/dolphin.rs   the dolphin's 26.3 goals, item play and treasure search
     mob/turtle.rs    the turtle's travel, go-home, go-to-water and egg goals
     model/nether.rs  their box models
+    dragon.rs        the End fight: the dragon's phases, crystals, death, saves
+    dragon/gateway.rs End gateways' block entities: age, cooldown, beams
     item.rs          dropped items: physics, merging, despawning, saving
     chunk_storage.rs entities of unloaded chunks: in their region records (in memory without one)
     model.rs         animated box models -> camera-relative box instances and triangles
@@ -294,6 +296,8 @@ src/
     nether_biome_blocks.rs  crimson/warped/soul blocks (ids 1600..=1793)
     nether_features.rs  huge fungi, vines, deltas, basalt columns (Java ports)
     nether_decoration.rs  per-chunk feature placement across chunk borders
+    end.rs           the End: islands, pillars, podium, biomes, chorus, cities
+    end_islands.rs   Java's End noise router (generation 7's islands)
     nether_flora.rs  nylium, vine growth and Nether bone meal
     fortress.rs      Nether fortress layouts (Java's pieces), painted per chunk
     bastion.rs       bastion remnants: Java pieces (generations 1-2), templates (3)

@@ -130,7 +130,16 @@ pub struct EndGen {
     pub cities: super::end_city::Cities,
     /// Chorus plants grown per 16-block chunk, cached (generation 5).
     chorus: Mutex<rustc_hash::FxHashMap<IVec2, Plants>>,
+    /// Generation 7 (v1.0 gap Track 4): Java's End terrain noise.
+    noise: Option<super::end_islands::EndNoise>,
+    /// Generation 7's end stone per 16-block chunk (see
+    /// [`super::end_islands::EndNoise::chunk`]), cached.
+    terrain: Mutex<rustc_hash::FxHashMap<IVec2, Terrain>>,
 }
+
+/// One 16 x 16 chunk's end stone: bit y of `[z * 16 + x]`.
+type Terrain = Arc<[u128; 256]>;
+const TERRAIN_CACHE: usize = 1024;
 
 /// The blocks of the chorus plants grown in one 16-block chunk.
 type Plants = Arc<Vec<(IVec3, Block)>>;
@@ -197,11 +206,45 @@ impl EndGen {
             generation,
             cities: super::end_city::Cities::new(seed),
             chorus: Mutex::new(rustc_hash::FxHashMap::default()),
+            noise: (generation >= super::terrain::Generation::V7).then(|| super::end_islands::EndNoise::new(seed)),
+            terrain: Mutex::new(rustc_hash::FxHashMap::default()),
         }
     }
 
     fn v5(&self) -> bool {
         self.generation >= super::terrain::Generation::V5
+    }
+
+    /// Generation 7: the end stone of the 16-block chunk `chunk`.
+    fn terrain(&self, noise: &super::end_islands::EndNoise, chunk: IVec2) -> Terrain {
+        if let Some(found) = self.terrain.lock().unwrap().get(&chunk) {
+            return Arc::clone(found);
+        }
+        let found = Arc::new(noise.chunk(chunk.x, chunk.y));
+        let mut cache = self.terrain.lock().unwrap();
+        if cache.len() >= TERRAIN_CACHE
+            && let Some(key) = cache.keys().next().copied()
+        {
+            cache.remove(&key);
+        }
+        Arc::clone(cache.entry(chunk).or_insert(found))
+    }
+
+    /// Generation 7: the column's end stone, bit y for y 0..128.
+    fn terrain_column(&self, noise: &super::end_islands::EndNoise, x: i32, z: i32) -> u128 {
+        let t = self.terrain(noise, IVec2::new(x >> 4, z >> 4));
+        t[((z & 15) * 16 + (x & 15)) as usize]
+    }
+
+    /// Whether the terrain (before pillars, the podium and structures) has
+    /// end stone at `p`.
+    pub fn solid(&self, p: IVec3) -> bool {
+        match &self.noise {
+            Some(noise) => {
+                (0..super::end_islands::HEIGHT).contains(&p.y) && self.terrain_column(noise, p.x, p.z) & (1 << p.y) != 0
+            }
+            None => self.column(p.x, p.z).is_some_and(|(top, bottom)| p.y >= bottom && p.y <= top),
+        }
     }
 
     pub fn pillars(&self) -> &[Pillar; 10] {
@@ -233,7 +276,13 @@ impl EndGen {
     }
 
     /// Surface and bottom of the floating island, or no land. No bedrock floor under the void.
+    /// Generation 7's islands can overhang: its top is the highest end
+    /// stone, its bottom the lowest, with gaps between possible.
     pub fn column(&self, x: i32, z: i32) -> Option<(i32, i32)> {
+        if let Some(noise) = &self.noise {
+            let c = self.terrain_column(noise, x, z);
+            return (c != 0).then(|| (127 - c.leading_zeros() as i32, c.trailing_zeros() as i32));
+        }
         let radius = (x as f64).hypot(z as f64);
         let rough = self.detail.noise2(x as f32 / 32.0, z as f32 / 32.0);
         let mass = if radius < 140.0 {
@@ -293,18 +342,13 @@ impl EndGen {
             return EndBiome::TheEnd;
         }
         let (bx, bz) = ((cx * 2 + 1) * 8, (cz * 2 + 1) * 8);
+        // Generation 7: Java's own value, `end/islands` there.
+        if let Some(noise) = &self.noise {
+            return biome_of(f64::from(noise.islands(bx, bz)));
+        }
         let rough = self.detail.noise2(bx as f32 / 32.0, bz as f32 / 32.0);
         let doffs = (f64::from(self.outer_mass(bx, bz, rough)) * 100.0).clamp(-100.0, 80.0);
-        let value = (doffs - 8.0) / 128.0;
-        if value > HIGHLANDS_ABOVE {
-            EndBiome::Highlands
-        } else if value >= MIDLANDS_FROM {
-            EndBiome::Midlands
-        } else if value < SMALL_ISLANDS_BELOW {
-            EndBiome::SmallIslands
-        } else {
-            EndBiome::Barrens
-        }
+        biome_of((doffs - 8.0) / 128.0)
     }
 
     /// The chorus plants Java's `chorus_plant` placed feature grows in the
@@ -332,10 +376,7 @@ impl EndGen {
                     continue;
                 }
                 let placed = out.clone();
-                let empty = |p: IVec3| {
-                    self.column(p.x, p.z).is_none_or(|(top, bottom)| p.y > top || p.y < bottom)
-                        && !placed.iter().any(|(q, _)| *q == p)
-                };
+                let empty = |p: IVec3| !self.solid(p) && !placed.iter().any(|(q, _)| *q == p);
                 let mut int = |n: u32| rng.next_bounded(n as i32) as u32;
                 out.extend(super::end_blocks::generate_plant(origin, super::end_blocks::MAX_SPREAD, &empty, &mut int));
             }
@@ -397,7 +438,10 @@ impl EndGen {
     }
     pub fn generate(&self, cpos: IVec3) -> ChunkData {
         let base = cpos * CHUNK_SIZE_I;
-        if base.y < 0 || base.y > 104 {
+        // Terrain, pillars and the podium stay below y 105 (generation 7's
+        // noise below 128).
+        let terrain_top = if self.noise.is_some() { super::end_islands::HEIGHT - 1 } else { 104 };
+        if base.y < 0 || base.y > terrain_top {
             if self.v5() && base.y >= 0 {
                 let mut blocks = ChunkData::new_dense(Block::AIR);
                 self.paint_v5(&mut blocks[..], base);
@@ -411,6 +455,7 @@ impl EndGen {
             for x in 0..CHUNK_SIZE {
                 let (wx, wz) = (base.x + x as i32, base.z + z as i32);
                 let column = self.column(wx, wz);
+                let stone = self.noise.as_ref().map(|n| self.terrain_column(n, wx, wz));
                 let pillar = self.pillars.iter().find(|p| p.holds(wx, wz));
                 // Generation 5: `placeSpike` also clears its square above y 65.
                 let square = self
@@ -436,7 +481,10 @@ impl EndGen {
                         Block::AIR
                     } else if let Some(b) = podium_block(podium, IVec3::new(wx, wy, wz), false) {
                         b
-                    } else if column.is_some_and(|(top, bottom)| wy >= bottom && wy <= top) {
+                    } else if match stone {
+                        Some(stone) => (0..128).contains(&wy) && stone & (1 << wy) != 0,
+                        None => column.is_some_and(|(top, bottom)| wy >= bottom && wy <= top),
+                    } {
                         Block::END_STONE
                     } else {
                         Block::AIR
@@ -451,6 +499,19 @@ impl EndGen {
         ChunkData::from_dense(blocks)
     }
 }
+/// `TheEndBiomeSource.getNoiseBiome`'s thresholds outside the centre.
+fn biome_of(value: f64) -> EndBiome {
+    if value > HIGHLANDS_ABOVE {
+        EndBiome::Highlands
+    } else if value >= MIDLANDS_FROM {
+        EndBiome::Midlands
+    } else if value < SMALL_ISLANDS_BELOW {
+        EndBiome::SmallIslands
+    } else {
+        EndBiome::Barrens
+    }
+}
+
 impl super::end_city::Terrain for EndGen {
     fn city_biome(&self, x: i32, z: i32) -> bool {
         matches!(self.biome(x, z), EndBiome::Highlands | EndBiome::Midlands)
@@ -630,6 +691,82 @@ mod tests {
         assert_eq!(gateway_spot(5), IVec3::new(-1, 75, 96));
         // Generation 4 keeps its own order and round pillars.
         assert!(EndGen::new(0).pillars().iter().all(|p| !p.java));
+    }
+
+    /// Generation 7 (v1.0 gap Track 4): Java's End terrain (checked
+    /// against the jar in `end_islands::tests`), with the pillars, podium,
+    /// biomes, chorus, cities and gateway exits laid on it.
+    #[test]
+    fn generation_7_lays_the_end_on_javas_islands() {
+        use super::super::chunk::{chunk_of, local_of};
+        use super::super::terrain::Generation;
+        let g = EndGen::with_generation(0, Generation::V7);
+        let noise = super::super::end_islands::EndNoise::new(0);
+        let block = |p: IVec3| {
+            let l = local_of(p);
+            g.generate(chunk_of(p)).get(l.x as usize, l.y as usize, l.z as usize)
+        };
+        // The terrain is the noise's: the central island's column at the
+        // origin (the fixture's seed 0 chunk 0, 0) and an outer island chunk.
+        let centre = noise.chunk(0, 0)[0];
+        assert_eq!(g.column(0, 0), Some((127 - centre.leading_zeros() as i32, centre.trailing_zeros() as i32)));
+        let outer = noise.chunk(63, 19);
+        let mut stone = 0;
+        for (i, &c) in outer.iter().enumerate() {
+            let (x, z) = (63 * 16 + (i as i32 & 15), 19 * 16 + (i as i32 >> 4));
+            for y in 0..128 {
+                let p = IVec3::new(x, y, z);
+                let solid = c & (1 << y) != 0;
+                assert_eq!(g.solid(p), solid, "{p}");
+                let b = block(p);
+                if b == Block::END_STONE {
+                    assert!(solid, "{p}");
+                    stone += 1;
+                } else if solid {
+                    // Only a city may stand in the terrain.
+                    assert_ne!(b, Block::AIR, "{p}");
+                }
+            }
+        }
+        assert!(stone > 1000, "{stone}");
+        // Generation 5's spike layout and Java's podium height on the island.
+        assert_eq!(g.pillars(), &java_spikes(0));
+        let top = g.column(0, 0).unwrap().0;
+        assert!((50..75).contains(&top), "{top}");
+        assert_eq!(g.podium(), IVec3::new(0, top, 0));
+        assert_eq!(block(g.podium()), Block::BEDROCK);
+        // Biomes come from Java's island value at each chunk's middle.
+        let mut seen = std::collections::HashSet::new();
+        for cz in (-120..120).step_by(3) {
+            for cx in (-120..120).step_by(3) {
+                let b = g.biome(cx * 16, cz * 16);
+                let value = f64::from(noise.islands((cx * 2 + 1) * 8, (cz * 2 + 1) * 8));
+                let far = i64::from(cx) * i64::from(cx) + i64::from(cz) * i64::from(cz) > CENTRE_CHUNKS_SQUARED;
+                assert_eq!(b, if far { biome_of(value) } else { EndBiome::TheEnd });
+                seen.insert(b.name());
+            }
+        }
+        assert_eq!(seen.len(), 5, "{seen:?}");
+        // Chorus grows on the highlands' end stone.
+        let plants: Vec<_> = (60..90)
+            .flat_map(|cx| (-20..20).map(move |cz| IVec2::new(cx, cz)))
+            .filter(|&c| g.biome(c.x * 16, c.y * 16) == EndBiome::Highlands)
+            .flat_map(|c| g.chorus_plants(c).iter().copied().collect::<Vec<_>>())
+            .collect();
+        assert!(!plants.is_empty());
+        for (p, b) in plants.iter().filter(|(_, b)| *b != Block::AIR) {
+            assert!(!g.solid(*p), "{b:?} at {p} inside the island");
+        }
+        // End cities stand on the islands, in the highlands or midlands.
+        let city = g.nearest_city(IVec2::new(1200, 0), 4000).expect("an End city");
+        assert!(matches!(g.biome(city.x, city.z), EndBiome::Highlands | EndBiome::Midlands), "{city}");
+        assert!(g.solid(city - IVec3::Y) || g.column(city.x, city.z).is_some(), "{city}");
+        // Gateways lead out to the islands.
+        for gate in &g.gateways()[..4] {
+            let found = super::super::end_portal::gateway_exit(&g, &|_| None, *gate, 256);
+            let r = f64::from(found.exit.x).hypot(f64::from(found.exit.z));
+            assert!((768.0..=1400.0).contains(&r), "exit {} at {r}", found.exit);
+        }
     }
 
     #[test]

@@ -893,8 +893,7 @@ mod tests {
     #[test]
     fn generation_6_places_javas_nether_features_in_their_biomes() {
         use crate::world::gen5_blocks::NETHER_GOLD_ORE;
-        let g = NetherGen::new(2024);
-        assert_eq!(g.generation, crate::world::terrain::Generation::V6);
+        let g = NetherGen::with_generation(2024, crate::world::terrain::Generation::V6);
         let sea = super::super::nether::LAVA_SEA;
         let springs =
             |blocks: &HashMap<IVec3, Block>| blocks.iter().filter(|(p, b)| **b == Block::LAVA && p.y > sea + 1).count();

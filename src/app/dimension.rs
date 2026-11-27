@@ -21,6 +21,9 @@ use crate::world::terrain::{Dimension, Generator};
 
 use super::Game;
 
+/// `Player.getDimensionChangingDelay`: 10 ticks, in seconds.
+const PORTAL_COOLDOWN: f64 = 10.0 / 20.0;
+
 /// Level properties that belong to one dimension rather than the player.
 pub(super) const DIMENSION_KEYS: [&str; 40] = [
     "furnaces",
@@ -607,6 +610,8 @@ impl Game {
                     fight.link_gateways(exit, from);
                 }
                 self.audio.play_in(SoundSource::Ambient, Sound::Teleport, None, 0.8, (0.9, 1.0));
+                // `handlePortal` sets the cooldown as it teleports.
+                self.portal_cooldown = PORTAL_COOLDOWN;
                 self.world.gateway_arrival(exit)
             }
         };
@@ -673,11 +678,25 @@ impl Game {
         if self.credits.is_some() {
             return;
         }
+        self.portal_cooldown = (self.portal_cooldown - dt).max(0.0);
         if self.dimension == Dimension::End
             && !self.session.vitals.is_dead()
             && let Some(cell) = self.touched(Block::END_GATEWAY)
         {
-            self.enter_gateway(cell);
+            // `EndGatewayBlock.entityInside`: a gateway cooling down does
+            // nothing; otherwise it starts its cooldown (and beam) and the
+            // player enters it, or, still on their own portal cooldown,
+            // only restarts that (`setAsInsidePortal`).
+            let Some(fight) = &mut self.mobs.entities.fight else { return };
+            if fight.gateway_entities.cooling(cell) {
+                return;
+            }
+            fight.gateway_entities.trigger(cell);
+            if self.portal_cooldown > 0.0 {
+                self.portal_cooldown = PORTAL_COOLDOWN;
+            } else {
+                self.enter_gateway(cell);
+            }
             return;
         }
         // Java's End portal block spans 6..12 sixteenths: coming up from

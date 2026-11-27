@@ -9,7 +9,7 @@ use glam::{DVec3, Quat, Vec3};
 
 use super::crystal::Crystals;
 use super::dragon::{Dragon, DragonFireball, Fight, Phase, Wild};
-use super::model::{Cuboid, EntityMesh, Rgb, cube, push_cuboid};
+use super::model::{Cuboid, EntityMesh, Rgb, cube, glass, push_cuboid};
 
 const SCALE: Rgb = [30, 26, 36];
 const BELLY: Rgb = [44, 38, 52];
@@ -80,6 +80,44 @@ pub fn build_fight(fight: &Fight, crystals: &Crystals, camera: DVec3, time: f32,
         build_dragon(d, crystals, camera, time, alpha, out);
     }
     build_fireballs(&fight.fireballs, camera, time, alpha, out);
+    build_gateway_beams(fight, camera, time, out);
+}
+
+/// v1.0 gap Track 4: End gateway beams (`TheEndGatewayRenderer`, through
+/// `BeaconRenderer.submitBeaconBeam`): a spinning column of radius 0.15 and
+/// a translucent glow of 0.175, magenta while the gateway spawns and
+/// purple while it cools down, from `height` below the block to `height`
+/// above it. Drawn within the renderer's view distance of 256 blocks.
+fn build_gateway_beams(fight: &Fight, camera: DVec3, time: f32, out: &mut EntityMesh) {
+    use crate::color::DyeColor;
+    const VIEW: f64 = 256.0;
+    let top = crate::world::terrain::Dimension::End.max_y();
+    let partial = fight.partial_tick();
+    for g in &fight.gateway_entities.list {
+        let Some((_, height, spawning)) = g.beam(partial, top) else { continue };
+        let base = g.pos.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
+        if (base - camera).length_squared() > VIEW * VIEW {
+            continue;
+        }
+        let color = if spawning { DyeColor::Magenta.rgb() } else { DyeColor::Purple.rgb() };
+        let rel = (base - camera).as_vec3();
+        let spin = Quat::from_rotation_y(time * 2.25 * 0.1);
+        // Model pixels: 16 to a block.
+        let (lo, hi) = (-height as f32 * 16.0, height as f32 * 16.0);
+        let inner = glass([-2.4, lo, -2.4], [2.4, hi, 2.4], color, 10);
+        let glow = glass([-2.8, lo, -2.8], [2.8, hi, 2.8], color, 0);
+        for (j, c) in [inner, glow].iter().enumerate() {
+            push_cuboid(
+                out,
+                c,
+                &|v: Vec3| rel + spin * v / 16.0,
+                spin,
+                ([255, 255, 0, 255], 255),
+                ([0.0; 3], 0.0),
+                j as f32,
+            );
+        }
+    }
 }
 
 /// v1.0 Track 7: the dragons no fight owns, drawn like the fight's.
@@ -290,7 +328,8 @@ fn dragon(out: &mut EntityMesh, d: &Dragon, rel: Vec3, alpha: f32) {
             push_cuboid(out, c, &xf, rot, (l, 0), if glow { ([0.0; 3], 0.0) } else { tint }, (pi * 8 + ci) as f32);
         }
     }
-    if d.phase == Phase::Dying {
+    // The rays come with `tickDeath`, not the flight to the portal before it.
+    if d.phase == Phase::Dying && d.health <= 0.0 {
         rays(out, rel + Vec3::Y * 1.5, death);
     }
 }
