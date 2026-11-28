@@ -681,10 +681,10 @@ fn create_new_world_cycles_modes_and_switches_tabs() {
     let (_, new) = played(click(&mut stack, &mut host, create)).unwrap();
     let new = new.unwrap();
     assert_eq!((new.mode, new.hardcore, new.difficulty), (GameMode::Creative, false, Difficulty::Hard));
-    // The controller: up to the tab bar, right to World; focusing a tab shows it.
+    // The controller: up to the tab bar, onto World (the middle of three,
+    // above the name); focusing a tab shows it.
     let mut stack = over_title(CreateWorld::new());
     stack.nav(&mut host, Nav::Up, SIZE);
-    stack.nav(&mut host, Nav::Right, SIZE);
     let (shape, _) = stack.peek(&host, SIZE);
     assert_eq!(shape.slots.len(), 6, "World tab: the seed field and the footer");
     stack.nav(&mut host, Nav::Down, SIZE);
@@ -695,7 +695,6 @@ fn create_new_world_cycles_modes_and_switches_tabs() {
     // Packs; the rules chosen there go with the new world.
     let mut stack = over_title(CreateWorld::new());
     stack.nav(&mut host, Nav::Up, SIZE);
-    stack.nav(&mut host, Nav::Right, SIZE);
     stack.nav(&mut host, Nav::Right, SIZE);
     let (shape, _) = stack.peek(&host, SIZE);
     assert_eq!(shape.slots.len(), 8, "More tab: three buttons and the footer");

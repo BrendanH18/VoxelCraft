@@ -173,10 +173,6 @@ fn every_options_screen_fits_and_every_widget_is_reachable() {
     check(|| credits::CreditsAndAttribution, "Credits and Attribution");
 }
 
-fn slider_value<S: Screen<Host>>(screen: &S, host: &Host, id: S::Id) -> Option<f32> {
-    slider_steps(screen, host, id).map(|(v, _)| v)
-}
-
 /// A slider's position and its number of steps.
 fn slider_steps<S: Screen<Host>>(screen: &S, host: &Host, id: S::Id) -> Option<(f32, u32)> {
     screen.widgets(host, (640.0, 360.0)).into_iter().find_map(|w| match w.kind {
@@ -675,11 +671,13 @@ fn final_f6_options_use_javas_labels_ranges_and_keys() {
     assert!(at(accessibility::Id::FovEffects) + 1 == at(accessibility::Id::DarknessPulsing));
 
     // Saved under Java's keys; a file without them gets Java's defaults.
-    let mut s = Settings::default();
-    s.entity_distance = 2.25;
-    s.weather_radius = 5;
-    s.darkness_effect_scale = 0.36;
-    s.voice_volume = 0.4;
+    let mut s = Settings {
+        entity_distance: 2.25,
+        weather_radius: 5,
+        darkness_effect_scale: 0.36,
+        voice_volume: 0.4,
+        ..Settings::default()
+    };
     s.chat.visibility = crate::app::settings::ChatVisibility::System;
     s.chat.colors = false;
     s.chat.delay = 2.5;
