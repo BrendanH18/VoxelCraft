@@ -56,9 +56,12 @@ impl Game {
                             }
                         }
                     };
-                    apply(&mut self.session);
-                    for bot in self.agents.players.values_mut().filter(|b| b.active) {
-                        apply(&mut bot.agent.session);
+                    // v1.0 final F11: nobody is in a background level.
+                    if !self.unattended {
+                        apply(&mut self.session);
+                        for bot in self.agents.players.values_mut().filter(|b| b.active) {
+                            apply(&mut bot.agent.session);
+                        }
                     }
                 }
                 Event::Ambient(p) => self.beacon_sound(Cue::Ambient, p),
@@ -67,7 +70,7 @@ impl Game {
                 Event::PowerSelect(p) => self.beacon_sound(Cue::PowerSelect, p),
             }
         }
-        if self.difficulty != voxelcraft::simulation::difficulty::Difficulty::Peaceful {
+        if self.difficulty != voxelcraft::simulation::difficulty::Difficulty::Peaceful && !self.unattended {
             rose_contact(&mut self.session, &self.world);
             for bot in self.agents.players.values_mut().filter(|b| b.active) {
                 rose_contact(&mut bot.agent.session, &self.world);
@@ -85,9 +88,11 @@ impl Game {
                 self.audio.play(Sound::Geyser(cue), Some(pos), 1.0, (1.0, 1.0));
                 continue;
             }
-            self.session.potent_sulfur(&self.world, &event);
-            for bot in self.agents.players.values_mut().filter(|b| b.active) {
-                bot.agent.session.potent_sulfur(&self.world, &event);
+            if !self.unattended {
+                self.session.potent_sulfur(&self.world, &event);
+                for bot in self.agents.players.values_mut().filter(|b| b.active) {
+                    bot.agent.session.potent_sulfur(&self.world, &event);
+                }
             }
             self.mobs.entities.potent_sulfur(&self.world, &event);
         }

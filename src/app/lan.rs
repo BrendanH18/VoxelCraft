@@ -572,8 +572,7 @@ impl Game {
             // v1.0 gap Track 8f: each profile's pearls with its player data.
             for p in profiles.iter_mut() {
                 let id = p["name"].as_str().and_then(|n| self.agents.players.get(n)).map(|b| b.id);
-                if let Some(pearls) = id.and_then(|id| self.owned_pearls.save(&self.mobs.entities, self.dimension, id))
-                {
+                if let Some(pearls) = id.and_then(|id| self.saved_pearls(id)) {
                     p[super::save::PEARLS_KEY] = pearls;
                 }
             }

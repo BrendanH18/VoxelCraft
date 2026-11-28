@@ -91,6 +91,9 @@ pub struct Audio {
     /// Dropping this ends the audio thread (and closes the device).
     _stop: Option<Sender<()>>,
     muted: bool,
+    /// v1.0 final F11: a level nobody is in is ticking; nothing it plays
+    /// reaches the player (or a LAN guest's tap, or the captions).
+    suppressed: bool,
     volume: f32,
     rng: Rng,
     // Player-state tracking for footsteps, landings, jumps and water.
@@ -121,6 +124,12 @@ pub struct Audio {
 }
 
 impl Audio {
+    /// v1.0 final F11: while `on`, nothing played reaches anyone (a level
+    /// nobody is in is ticking). Returns the previous setting.
+    pub fn suppress(&mut self, on: bool) -> bool {
+        std::mem::replace(&mut self.suppressed, on)
+    }
+
     /// Starts the audio thread. `volume` is the master volume (0..1).
     pub fn new(muted: bool, volume: f32) -> Self {
         let volume = volume.clamp(0.0, 1.0);
@@ -172,6 +181,7 @@ impl Audio {
             music,
             _stop: stop,
             muted,
+            suppressed: false,
             volume,
             rng: Rng::new(seed),
             was_on_ground: true,
@@ -213,6 +223,9 @@ impl Audio {
     /// than the sound's own (see [`Sound::source`]), such as a footstep
     /// standing in for a hoe tilling soil (`BLOCKS`).
     pub fn play_in(&mut self, source: SoundSource, sound: Sound, pos: Option<DVec3>, gain: f32, pitch: (f32, f32)) {
+        if self.suppressed {
+            return;
+        }
         if let Some(tap) = &mut self.tap
             && tap.len() < 512
         {

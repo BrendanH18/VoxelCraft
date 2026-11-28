@@ -71,7 +71,7 @@ pub(super) fn parse_owed_portals(text: &str) -> Vec<OwedPortal> {
 }
 
 /// Level properties that belong to one dimension rather than the player.
-pub(super) const DIMENSION_KEYS: [&str; 41] = [
+pub(super) const DIMENSION_KEYS: [&str; 42] = [
     "furnaces",
     "chests",
     "items",
@@ -122,6 +122,8 @@ pub(super) const DIMENSION_KEYS: [&str; 41] = [
     "save_generation",
     // v1.0 final F9: legacy walls waiting for a neighbouring chunk.
     "legacy_walls",
+    // v1.0 final F11: the level's portal tickets (`chunk_tickets`).
+    "chunk_tickets",
 ];
 /// How far around the arrival point to look for an existing portal.
 const SEARCH_RADIUS: i32 = 16;
@@ -161,6 +163,10 @@ pub(super) enum Arrival {
     /// the vehicle's arrival, the world spawn's top
     /// (`Entity.adjustSpawnLocation`), keeping `vel`, with the player aboard.
     SpawnTop { vel: DVec3 },
+    /// v1.0 final F11: where the host's pearl landed in another level
+    /// (`ThrownEnderpearl.onHit`: the pearl's `oldPosition`, no motion, the
+    /// rotation kept, then 5 `enderPearl` damage).
+    Pearl { pos: DVec3 },
 }
 
 /// Whether `b` is `block`, a Nether portal counting along either axis.
@@ -375,15 +381,27 @@ impl Game {
         if let Some(fight) = &self.mobs.entities.fight {
             props.insert("dragon".to_string(), fight.serialize(&self.mobs.entities.crystals));
         }
+        // v1.0 final F11: `TicketStorage`'s persistent tickets, only when
+        // there are some.
+        if let Some(t) = self.tickets.save() {
+            props.insert(super::levels::TICKETS_KEY.to_string(), t);
+        }
         props
     }
 
     /// Sets up a freshly loaded dimension's containers and items.
     pub(super) fn restore_dimension(&mut self, props: &BTreeMap<String, String>) {
-        self.session.player.vehicle = None;
-        for bot in self.agents.players.values_mut() {
-            bot.agent.session.player.vehicle = None;
+        // v1.0 final F11: a background level has no players to seat.
+        let attended = !self.unattended;
+        if attended {
+            self.session.player.vehicle = None;
+            for bot in self.agents.players.values_mut() {
+                bot.agent.session.player.vehicle = None;
+            }
         }
+        self.tickets = props
+            .get(super::levels::TICKETS_KEY)
+            .map_or_else(Default::default, |t| voxelcraft::world::tickets::Tickets::load(t));
         if let Some(r) = props.get("redstone") {
             self.world.load_redstone(r);
         }
@@ -465,7 +483,7 @@ impl Game {
         if let Some(t) = props.get("entity_ids") {
             self.mobs.entities.load_entity_ids(t);
         }
-        if props.contains_key("minecarts") {
+        if attended && props.contains_key("minecarts") {
             if let Some(id) = self.mobs.entities.claim_rider(crate::entity::PlayerId::HOST) {
                 self.session.player.vehicle = Some(id);
             }
@@ -478,7 +496,7 @@ impl Game {
                 }
             }
         }
-        if props.contains_key("nether_mobs") {
+        if attended && props.contains_key("nether_mobs") {
             self.session.player.vehicle =
                 self.mobs.entities.mount_for_player(crate::entity::PlayerId::HOST).or(self.session.player.vehicle);
             for bot in self.agents.players.values_mut() {
@@ -529,34 +547,74 @@ impl Game {
             }
             self.overworld_props = self.dimension_props();
         }
-        let (chunks, props, notice) = load_dimension(&self.storage, to, &self.overworld_props);
-        let (seed, generation) = (self.world.generator.seed, self.world.generator.generation);
-        log::info!("travelling to the {} ({} modified chunks)", to.name(), chunks.len());
-        let loot_sequences = std::mem::take(&mut self.world.loot_sequences);
-        let maps = std::mem::take(&mut self.world.maps);
-        self.world = World::new(
-            Arc::new(Generator::with_generation(seed, to, generation)),
-            chunks,
-            self.settings.render_distance,
-        );
-        self.world.maps = maps;
-        self.world.loot_sequences = loot_sequences;
-        self.world.set_simulation_distance(self.settings.simulation_distance);
-        let region_notice = attach_regions(&mut self.world, &self.storage, to, &props, self.settings_path.is_some());
-        // v1.0 gap Track 8f: pearls in flight stay in the level they fly
-        // in, saved with their owners until they're back there.
-        if self.lan.client.is_none() {
-            let from = self.dimension;
-            self.owned_pearls.leave_level(&mut self.mobs.entities, from);
+        // v1.0 final F11: the level left stays loaded and runs in the
+        // background, as Java's does; one already running there becomes
+        // the host's. Without region storage to save it to (a LAN client's
+        // world, or one whose region files couldn't open) the level left
+        // goes, as before.
+        let keep = self.lan.client.is_none() && (self.world.writes_records() || self.settings_path.is_none());
+        let from = self.dimension;
+        if let Some(i) = self.level_index(to) {
+            log::info!("travelling to the {}, which runs in the background", to.name());
+            let mut level = self.levels.remove(i);
+            self.swap_level(&mut level);
+            level.world.set_background(true);
+            self.world.set_background(false);
+            self.world.set_render_distance(self.settings.render_distance);
+            self.world.set_simulation_distance(self.settings.simulation_distance);
+            if keep {
+                self.levels.push(level);
+            }
+            self.session.player.vehicle = None;
+            for bot in self.agents.players.values_mut() {
+                bot.agent.session.player.vehicle = None;
+            }
+            self.renderer.clear_world();
+            self.particles.clear();
+        } else {
+            let (chunks, props, notice) = load_dimension(&self.storage, to, &self.overworld_props);
+            let (seed, generation) = (self.world.generator.seed, self.world.generator.generation);
+            log::info!("travelling to the {} ({} modified chunks)", to.name(), chunks.len());
+            let loot_sequences = std::mem::take(&mut self.world.loot_sequences);
+            let maps = std::mem::take(&mut self.world.maps);
+            let mut left = std::mem::replace(
+                &mut self.world,
+                World::new(
+                    Arc::new(Generator::with_generation(seed, to, generation)),
+                    chunks,
+                    self.settings.render_distance,
+                ),
+            );
+            self.world.maps = maps;
+            self.world.loot_sequences = loot_sequences;
+            self.world.set_simulation_distance(self.settings.simulation_distance);
+            let region_notice =
+                attach_regions(&mut self.world, &self.storage, to, &props, self.settings_path.is_some());
+            let entities = std::mem::replace(&mut self.mobs.entities, crate::entity::Entities::new(seed));
+            if keep {
+                left.set_background(true);
+                self.levels.push(super::levels::Level {
+                    dimension: from,
+                    world: left,
+                    entities,
+                    tickets: std::mem::take(&mut self.tickets),
+                    empty: std::mem::take(&mut self.empty_time),
+                });
+            } else {
+                // v1.0 gap Track 8f: pearls in flight stay in the level
+                // they fly in, saved with their owners until it's back.
+                self.owned_pearls.leave_level(&mut { entities }, from);
+            }
+            self.renderer.clear_world();
+            self.particles.clear();
+            self.dimension = to;
+            self.restore_dimension(&props);
+            if let Some(notice) = notice.into_iter().chain(region_notice).reduce(|a, b| format!("{a} {b}")) {
+                self.report_load_damage(&notice);
+            }
         }
-        self.mobs.entities = crate::entity::Entities::new(seed);
-        self.renderer.clear_world();
-        self.particles.clear();
-        self.dimension = to;
-        self.restore_dimension(&props);
-        if let Some(notice) = notice.into_iter().chain(region_notice).reduce(|a, b| format!("{a} {b}")) {
-            self.report_load_damage(&notice);
-        }
+        // The host is in it: its players' tickets keep it active.
+        self.empty_time = Default::default();
         // Java's player keeps its `portalProcess` through a Nether portal
         // trip (`teleportCrossDimension` moves the same `ServerPlayer`); an
         // End portal's own processor or a respawn's new player drops it.
@@ -603,11 +661,27 @@ impl Game {
         // a portal already there (`getPortalDestination` gives no
         // transition otherwise, and none is built).
         trip.spectator = self.session.mode == voxelcraft::rules::GameMode::Spectator;
-        if trip.spectator && self.lan.client.is_none() && !saved_portal_near(&self.storage, to, target) {
+        if trip.spectator && self.lan.client.is_none() && !self.portal_near(to, target) {
             log::info!("a spectator's trip to the {} found no portal there: not travelling", to.name());
             return;
         }
         self.depart(to, Arrival::Portal(trip));
+    }
+
+    /// Whether an arrival's search from `target` in `to` finds a portal
+    /// ([`saved_portal_near`]). v1.0 final F11: a destination running in
+    /// the background is asked directly; its save may be older.
+    fn portal_near(&self, to: Dimension, target: IVec3) -> bool {
+        match self.level_index(to) {
+            Some(i) => {
+                let radius = match to {
+                    Dimension::Nether => crate::world::portal::NETHER_PORTAL_RADIUS,
+                    _ => crate::world::portal::OVERWORLD_PORTAL_RADIUS,
+                };
+                self.levels[i].world.find_portal(target, radius).is_some()
+            }
+            None => saved_portal_near(&self.storage, to, target),
+        }
     }
 
     /// v1.0 final Track F2: the trip of the host, or of the vehicle the
@@ -695,6 +769,29 @@ impl Game {
         true
     }
 
+    /// v1.0 final F11: in the Nether, wherever the host is, the portals
+    /// refused trips owe are built as soon as the ground around them loads,
+    /// oldest first ([`OwedPortal`]: Java builds them at the time of the
+    /// trip, loading the ground at once; here it streams in first, held by
+    /// a loading ticket, and nothing else there runs meanwhile).
+    pub(super) fn build_ready_owed_portals(&mut self) {
+        if self.dimension != Dimension::Nether || self.lan.client.is_some() {
+            return;
+        }
+        while let Some(&owed) = self.owed_portals.first() {
+            if !self.ground_loaded(owed.target, SEARCH_RADIUS) {
+                self.hold_ground(owed.target, SEARCH_RADIUS);
+                return;
+            }
+            if self.world.find_portal(owed.target, crate::world::portal::NETHER_PORTAL_RADIUS).is_none()
+                && self.world.create_portal(owed.target, owed.along_x).is_none()
+            {
+                log::error!("unable to create a portal at {}", owed.target);
+            }
+            self.owed_portals.remove(0);
+        }
+    }
+
     /// While travelling: holds the player in place until the destination
     /// has streamed in, then puts them in (or builds) the portal there, or
     /// at their respawn point. Returns whether the player is still waiting.
@@ -713,6 +810,7 @@ impl Game {
             Arrival::EndSpawn { .. } => crate::world::end::SPAWN,
             Arrival::Gateway { exit, .. } => exit,
             Arrival::SpawnTop { .. } => self.world_spawn,
+            Arrival::Pearl { pos } => pos.floor().as_ivec3(),
             // Load where `respawn_point` will put the player: the bed (checked
             // once its chunk is in), else the set spawn point or the
             // `spawnRadius` spot around the world spawn.
@@ -722,7 +820,7 @@ impl Game {
         let r = match arrival {
             Arrival::Portal(..) => SEARCH_RADIUS,
             Arrival::PortalAt(..) => 2,
-            Arrival::Respawn | Arrival::SpawnTop { .. } => 0,
+            Arrival::Respawn | Arrival::SpawnTop { .. } | Arrival::Pearl { .. } => 0,
             Arrival::Anchor(_) => 1,
             Arrival::EndSpawn { .. } => 2,
             // Room for the gateway's arrival search and a new island.
@@ -748,6 +846,18 @@ impl Game {
         }
         // The motion a quarter-turned Nether portal exit leaves the player.
         let mut turned_vel = None;
+        // v1.0 final F11: where the trip's `PORTAL` ticket goes: the exit
+        // portal found (`getExitPortal`), else where the player arrives
+        // (`PLACE_PORTAL_TICKET`); none for a respawn or a pearl.
+        let mut ticket_at: Option<IVec3> = None;
+        let mut ticket_here = matches!(
+            arrival,
+            Arrival::Portal(_)
+                | Arrival::PortalAt(..)
+                | Arrival::EndSpawn { .. }
+                | Arrival::SpawnTop { .. }
+                | Arrival::Gateway { .. }
+        );
         self.session.player.pos = match arrival {
             Arrival::Portal(trip) | Arrival::PortalAt(_, trip) => {
                 let exit = match arrival {
@@ -764,14 +874,20 @@ impl Game {
                                 self.arrival = Some(Arrival::PortalAt(at, trip));
                                 return true;
                             }
-                            Some(at) => Some(self.world.portal_rect(at)),
+                            Some(at) => {
+                                ticket_at = Some(at);
+                                Some(self.world.portal_rect(at))
+                            }
                             // `travel` checked that a spectator has a portal
                             // to arrive in: Java never builds them one.
                             None if trip.spectator => None,
                             None => self.world.create_portal(trip.target, trip.along_x).map(|r| (r, trip.along_x)),
                         }
                     }
-                    Arrival::PortalAt(at, _) => Some(self.world.portal_rect(at)),
+                    Arrival::PortalAt(at, _) => {
+                        ticket_at = Some(at);
+                        Some(self.world.portal_rect(at))
+                    }
                     _ => unreachable!(),
                 };
                 // Arriving in a portal doesn't send you straight back:
@@ -821,6 +937,10 @@ impl Game {
                 spawn.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)
             }
             Arrival::SpawnTop { .. } => self.spawn_top(),
+            Arrival::Pearl { pos } => {
+                ticket_here = false;
+                pos
+            }
             Arrival::Respawn => {
                 let (at, yaw) = self.respawn_point();
                 self.session.player.yaw = yaw;
@@ -904,6 +1024,19 @@ impl Game {
         self.session.player.flying = self.session.player.flying && self.session.mode.can_fly();
         self.session.vitals.reset_fall();
         self.arrival = None;
+        if let Some(at) = ticket_at {
+            self.place_portal_ticket(at);
+        } else if ticket_here {
+            self.place_portal_ticket(self.session.player.pos.floor().as_ivec3());
+        }
+        if let Arrival::Pearl { pos } = arrival {
+            // `ThrownEnderpearl.onHit`: the teleport's sound where the pearl
+            // landed, then 5 `enderPearl` damage.
+            let source = SoundSource::Players;
+            self.audio.play_in(source, Sound::Teleport, Some(pos + DVec3::Y), 0.8, (0.9, 1.1));
+            self.previous_eye = self.session.player.eye();
+            self.damage_player(crate::entity::pearl::DAMAGE, voxelcraft::simulation::damage::Cause::ENDER_PEARL);
+        }
         // `TeleportTransition.PLAY_PORTAL_SOUND` (level event 1032): Nether
         // portals and the End portal into the End play `PORTAL_TRAVEL`, a
         // local `AMBIENT` sound at volume 0.25, pitch 0.8 to 1.2; leaving

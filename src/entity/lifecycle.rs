@@ -353,6 +353,7 @@ impl Entities {
         let dragons_from = events.len();
         self.wild_dragons.update(dt, world, ctx, &mut self.rng, &self.crystals, self.fight.as_ref(), &mut events);
         if let Some(fight) = &mut self.fight {
+            fight.dragon_ticking = fight.dragon.as_ref().is_none_or(|d| world.entity_ticking(d.pos.floor().as_ivec3()));
             // The End's crystals tick with the fight.
             fight.update_beside(dt, world, ctx, &mut self.rng, &mut self.crystals, &self.wild_dragons, &mut events);
         } else if !self.crystals.is_empty() {
@@ -510,17 +511,20 @@ impl Entities {
             });
             // Thrown things are removed when they hit (`Projectile.onHit`).
             let mut gateways = self.fight.as_mut().map(|f| &mut f.gateway_entities);
+            let pearl_tickets = &mut self.pearl_tickets;
             self.pearls.retain_mut(|p| {
-                // v1.0 gap Track 8f: a pearl keeps its own chunk ticking for
-                // its owner (`registerAndUpdateEnderPearlTicket`, radius 2),
-                // so it flies on wherever the terrain is loaded.
-                let cell = p.pos.floor().as_ivec3();
-                if !world.entity_ticking(cell) && !world.loaded(cell) {
+                // v1.0 final F11: a pearl ticks where its chunk is
+                // entity-ticking, which its own ticket keeps it (the
+                // owner's `ENDER_PEARL` ticket, [`Entities::pearl_tickets`]),
+                // in whatever level it flies.
+                if !world.entity_ticking(p.pos.floor().as_ivec3()) {
                     return true;
                 }
                 let keep = p.update(dt, world, mobs, rng, &mut events, gateways.as_deref_mut(), &boss);
                 if !keep {
                     sculk.land(world, p.pos, p.vel, sculk_events::Sculk::projectile_source(Some(p.owner), None));
+                } else if let Some(chunk) = p.ticket() {
+                    pearl_tickets.push(chunk);
                 }
                 keep
             });

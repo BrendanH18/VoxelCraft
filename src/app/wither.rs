@@ -50,8 +50,10 @@ impl Game {
         let mut events = Vec::new();
         self.mobs.entities.wither_blast_mobs(&self.world, center, power, blast.destroys_blocks, &mut events);
         let cause = wither::BLAST_CAUSE;
-        // A player watching the credits isn't in the level (v1.0 gap Track 8e).
+        // A player watching the credits isn't in the level (v1.0 gap Track 8e),
+        // and nobody is in a background one (v1.0 final F11).
         if self.credits.is_none()
+            && !self.unattended
             && let Some((damage, push)) = self.session.blast(&self.world, center, power)
         {
             let toward = Some(center - self.session.player.pos);
@@ -60,7 +62,7 @@ impl Game {
             }
             self.session.player.vel += push;
         }
-        if self.arrival.is_none() {
+        if self.arrival.is_none() && !self.unattended {
             for bot in self.agents.players.values_mut().filter(|b| b.active) {
                 if let Some((damage, push)) = bot.agent.session.blast(&self.world, center, power) {
                     bot.agent.hurt(self.difficulty.mob_damage(damage), cause, DVec3::ZERO, &mut self.mobs.entities);

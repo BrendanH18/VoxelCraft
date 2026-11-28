@@ -13,11 +13,15 @@ pub(super) struct Activity {
     /// tick loaded cells without creating a streaming/player session.
     centers: Option<Vec<IVec2>>,
     distance: i32,
+    /// v1.0 final F11: the level's simulation tickets (Java chunk, level),
+    /// which tick chunks with or without players
+    /// ([`super::tickets::Tickets::simulation`]).
+    pub(super) tickets: Vec<(IVec2, i32)>,
 }
 
 impl Default for Activity {
     fn default() -> Self {
-        Self { centers: None, distance: DEFAULT_SIMULATION_DISTANCE }
+        Self { centers: None, distance: DEFAULT_SIMULATION_DISTANCE, tickets: Vec::new() }
     }
 }
 
@@ -30,6 +34,8 @@ impl Activity {
         let c = java_chunk(p);
         let radius = self.distance + i32::from(block);
         self.centers.as_ref().is_none_or(|centers| centers.iter().any(|&s| (c - s).abs().max_element() <= radius))
+            || (!self.tickets.is_empty()
+                && super::tickets::level_at(&self.tickets, c) <= super::tickets::ENTITY_TICKING + i32::from(block))
     }
 
     /// Storage columns reaching the block-ticking border (level 32), or None
@@ -37,7 +43,13 @@ impl Activity {
     pub(super) fn block_columns(&self) -> Option<Vec<(IVec2, IVec2)>> {
         let radius = self.distance + 1;
         let centers = self.centers.as_ref()?;
-        Some(centers.iter().map(|&c| ((c - IVec2::splat(radius)) >> 1, (c + IVec2::splat(radius)) >> 1)).collect())
+        let players = centers.iter().map(|&c| ((c - IVec2::splat(radius)) >> 1, (c + IVec2::splat(radius)) >> 1));
+        // v1.0 final F11: and what the level's tickets block-tick.
+        let tickets = self.tickets.iter().filter_map(|&(c, level)| {
+            let r = super::tickets::BLOCK_TICKING - level;
+            (r >= 0).then(|| ((c - IVec2::splat(r)) >> 1, (c + IVec2::splat(r)) >> 1))
+        });
+        Some(players.chain(tickets).collect())
     }
 }
 

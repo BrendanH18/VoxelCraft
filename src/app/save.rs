@@ -78,7 +78,7 @@ impl Game {
         }
         // v1.0 gap Track 8f: the host's pearls (`ServerPlayer.saveEnderPearls`).
         let host = crate::entity::PlayerId::HOST;
-        if let Some(pearls) = self.owned_pearls.save(&self.mobs.entities, self.dimension, host) {
+        if let Some(pearls) = self.saved_pearls(host) {
             props.insert(PEARLS_KEY.to_string(), pearls.to_string());
         }
         props.insert("dimension".to_string(), self.dimension.name().to_string());
@@ -120,6 +120,9 @@ impl Game {
         }
         let seed = self.world.generator.seed;
         record_generation(&mut props, self.world.generator.generation);
+        // v1.0 final F11: the levels running in the background first (an
+        // Overworld among them gives the root level file its state).
+        self.save_background_levels(seed);
         if self.world.writes_records() {
             self.save_regions(seed, props, wait);
             self.last_save = Instant::now();
@@ -227,6 +230,50 @@ impl Game {
                 log::error!("save failed: {e}");
                 self.show_popup(&format!("Could not save the world: {e}"));
                 self.save_error = Some(e.to_string());
+            }
+        }
+    }
+}
+
+impl Game {
+    /// v1.0 final F11: saves each background level as the host's level is
+    /// saved: entities stored in its unloaded chunks and its loaded chunks
+    /// to their region records, then (once those are on disk) its level
+    /// file. A background Overworld's level state goes into the root level
+    /// file with the player's (`overworld_props`), written by the host's
+    /// level's save after it. Each waits until it is on disk: they hold
+    /// only what their tickets reach.
+    fn save_background_levels(&mut self, seed: u64) {
+        for i in 0..self.levels.len() {
+            let result = self.with_level(i, |g| {
+                if !g.world.writes_records() {
+                    return Ok(None);
+                }
+                let stored = g.mobs.entities.take_stored_batches(&mut g.world);
+                let records = g.world.save_records(stored);
+                let props = g.dimension_props();
+                log::info!("saved {records} {} chunk records (in the background)", g.dimension.name());
+                if g.dimension == Dimension::Overworld {
+                    return g.world.flush_regions().map(|()| Some(props));
+                }
+                let dimension = dimension::storage_for(&g.storage, g.dimension);
+                let own = LevelInfo { seed, player: None, props };
+                if let Some(store) = g.world.regions() {
+                    store.after_writes(move || {
+                        dimension.save_level(&own)?;
+                        dimension.retire_chunks_file()
+                    });
+                }
+                g.world.flush_regions().map(|()| None)
+            });
+            match result {
+                Ok(Some(overworld)) => self.overworld_props = overworld,
+                Ok(None) => {}
+                Err(e) => {
+                    log::error!("save failed: {e}");
+                    self.show_popup(&format!("Could not save the world: {e}"));
+                    self.save_error = Some(e.to_string());
+                }
             }
         }
     }

@@ -30,9 +30,29 @@ pub struct Pearl {
     /// v1.0 gap Track 8d: `remainingFireTicks` (it applies block effects,
     /// `ThrowableProjectile.tick`). Saved (v1.0 gap Track 8e), as Java's `Fire`.
     fire: u16,
+    /// v1.0 final F11: `ThrownEnderpearl.ticketTimer` and the Java chunk it
+    /// was in when its last tick began (neither is saved, as in Java).
+    ticket_timer: i32,
+    ticket_chunk: Option<glam::IVec2>,
 }
 
 impl Pearl {
+    /// v1.0 final F11: the end of `ThrownEnderpearl.tick`: the chunk to
+    /// (re)place its owner's `ENDER_PEARL` ticket at
+    /// (`registerAndUpdateEnderPearlTicket`, radius 2, which also resets
+    /// its level's `emptyTime`) when its timer runs out (every 39 ticks
+    /// after the first) or it has moved into another chunk.
+    pub fn ticket(&mut self) -> Option<glam::IVec2> {
+        let chunk = crate::world::tickets::chunk_of(self.pos.x.floor() as i32, self.pos.z.floor() as i32);
+        let before = self.ticket_chunk.replace(chunk);
+        self.ticket_timer -= 1;
+        if self.ticket_timer <= 0 || before.is_some_and(|b| b != chunk) {
+            self.ticket_timer = (crate::world::tickets::TicketKind::EnderPearl.timeout() - 1) as i32;
+            return Some(chunk);
+        }
+        None
+    }
+
     /// v1.0 gap Track 8e: the saved copy, with its fire. v1.0 gap Track
     /// 8f: kept with its owner's player data, as Java's
     /// `ServerPlayer.saveEnderPearls` keeps it.
@@ -57,6 +77,8 @@ impl Pearl {
             vel: s::read_v3(&v["motion"]).unwrap_or(DVec3::ZERO),
             age: s::read_f32(v, "age", 0.0).clamp(0.0, MAX_FLIGHT),
             fire: s::read_fire(v),
+            ticket_timer: 0,
+            ticket_chunk: None,
         })
     }
 
@@ -72,7 +94,16 @@ impl Pearl {
 
     /// A LAN client's copy: drawn only, never simulated.
     pub(super) fn replica(pos: DVec3, previous_pos: DVec3) -> Self {
-        Self { owner: PlayerId::HOST, pos, previous_pos, vel: DVec3::ZERO, age: 0.0, fire: 0 }
+        Self {
+            owner: PlayerId::HOST,
+            pos,
+            previous_pos,
+            vel: DVec3::ZERO,
+            age: 0.0,
+            fire: 0,
+            ticket_timer: 0,
+            ticket_chunk: None,
+        }
     }
 
     /// Thrown from `eye` along `dir`, carrying the thrower's velocity
@@ -81,7 +112,16 @@ impl Pearl {
         let mut spread = || rng.range(-1.0, 1.0) as f64 * 0.0075 * 1.7;
         let aim = dir.normalize_or(DVec3::X) + DVec3::new(spread(), spread(), spread());
         let pos = eye - DVec3::Y * 0.1;
-        Self { owner, pos, previous_pos: pos, vel: aim.normalize() * SPEED + carry, age: 0.0, fire: 0 }
+        Self {
+            owner,
+            pos,
+            previous_pos: pos,
+            vel: aim.normalize() * SPEED + carry,
+            age: 0.0,
+            fire: 0,
+            ticket_timer: 0,
+            ticket_chunk: None,
+        }
     }
 
     /// Moves the pearl; returns `false` once it has landed (pushing a
