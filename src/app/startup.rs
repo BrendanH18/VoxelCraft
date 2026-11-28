@@ -402,6 +402,9 @@ impl Game {
             portal_seen: false,
             portal_locked: false,
             portal_cooldown: 0.0,
+            owed_portals: root_props
+                .get(super::dimension::OWED_PORTALS_KEY)
+                .map_or_else(Vec::new, |t| super::dimension::parse_owed_portals(t)),
             terrain_version: existing
                 .as_ref()
                 .map_or(2, |l| l.props.get("terrain").and_then(|v| v.parse().ok()).unwrap_or(1)),

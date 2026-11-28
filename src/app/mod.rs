@@ -350,6 +350,13 @@ struct Game {
     /// (`Player.getDimensionChangingDelay`, 10 ticks); touching a portal or
     /// gateway meanwhile restarts it rather than using it.
     portal_cooldown: f64,
+    /// v1.0 gap Track 8c: Nether portals owed by trips the
+    /// `allow_entering_nether_using_portals` rule refused (Java's
+    /// `getPortalDestination` builds the exit portal before
+    /// `teleportToPortalDestination` refuses the trip), built when the
+    /// Nether next loads ([`dimension::OwedPortal`]). Saved in the root
+    /// level file.
+    owed_portals: Vec<dimension::OwedPortal>,
 }
 
 pub struct App {

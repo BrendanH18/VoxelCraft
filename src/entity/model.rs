@@ -20,6 +20,7 @@ use super::{Arrow, Puff, XpOrb};
 use crate::simulation::experience;
 use bytemuck::{Pod, Zeroable};
 
+mod flame;
 mod labels;
 mod nether;
 
@@ -1952,10 +1953,15 @@ fn flames(out: &mut EntityMesh, m: &Mob, rel: Vec3, time: f32) {
     }
 }
 
-/// Arrows, pointing along their flight.
-pub fn build_arrows(arrows: &[Arrow], camera: DVec3, alpha: f64, out: &mut EntityMesh) {
+/// Arrows, pointing along their flight. v1.0 gap Track 8c: a burning one
+/// (Flame, fire, lava, a perched dragon's scales) carries Java's flame
+/// ([`flame::flame`]) over its 0.5 by 0.5 box, seen along `forward`.
+pub fn build_arrows(arrows: &[Arrow], camera: DVec3, forward: Vec3, time: f32, alpha: f64, out: &mut EntityMesh) {
     for a in arrows {
         let rel = (a.previous_pos.lerp(a.pos, alpha) - camera).as_vec3();
+        if a.burning() {
+            flame::flame(out, rel, (0.5, 0.5), forward, 230, time);
+        }
         let rot = Quat::from_rotation_arc(Vec3::Z, a.dir.normalize_or(Vec3::Z));
         // Stuck arrows sit with the tip buried.
         let origin = if a.is_stuck() { rel - a.dir * 0.2 } else { rel };
@@ -1989,9 +1995,21 @@ const TRIDENT: &[Cuboid] = &[
 /// Thrown tridents (v0.16): stuck ones sit with their prongs buried.
 pub use illager::build_fangs;
 
-pub fn build_tridents(tridents: &[super::trident::Trident], camera: DVec3, alpha: f64, out: &mut EntityMesh) {
+/// v1.0 gap Track 8c: a burning trident carries Java's flame over its 0.5
+/// by 0.5 box too.
+pub fn build_tridents(
+    tridents: &[super::trident::Trident],
+    camera: DVec3,
+    forward: Vec3,
+    time: f32,
+    alpha: f64,
+    out: &mut EntityMesh,
+) {
     for t in tridents {
         let rel = (t.previous_pos.lerp(t.pos, alpha) - camera).as_vec3();
+        if t.burning() {
+            flame::flame(out, rel, (0.5, 0.5), forward, 230, time);
+        }
         let dir = t.dir.normalize_or(Vec3::Z);
         let rot = Quat::from_rotation_arc(Vec3::Z, dir);
         let origin = if t.in_ground { rel - dir * 0.45 } else { rel + Vec3::Y * 0.25 };

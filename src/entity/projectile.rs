@@ -414,9 +414,16 @@ impl Arrow {
                             });
                             return true;
                         }
-                        // Endermen dodge arrows by teleporting; the arrow flies on.
-                        if mob.kind == super::MobKind::Enderman {
+                        // `EnderMan.hurtServer` refuses a projectile and teleports
+                        // away (unless riding), and `projectileReceivesSideEffectsOnHit`
+                        // is false for it: the arrow flies on, and (v1.0 gap Track 8c)
+                        // a burning one has already set it alight (`igniteForSeconds(5)`
+                        // comes before the hurt, and nothing puts the fire back).
+                        if dodges_projectiles(mob) {
                             mob.teleport_pending = true;
+                            if self.burning() {
+                                mob.ignite(5.0);
+                            }
                         } else {
                             use crate::enchant::Enchantment;
                             // `AbstractArrow.onHitEntity`: a piercing arrow passes through
@@ -436,10 +443,18 @@ impl Arrow {
                             let punch = 1.0 + 3.0 * self.enchants.level(Enchantment::Punch) as f64;
                             let push = DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 4.0 * punch
                                 + DVec3::Y * 4.0;
-                            // `onHitEntity` undoes Flame and skips `doPostHurtEffects`
-                            // (the potion) when `hurtOrSimulate` refuses the hit.
-                            let refused = mob.refuses_hit(damage);
-                            if self.burning() && !refused {
+                            // v1.0 gap Track 8c: `hurtOrSimulate` refused (a charging
+                            // or armored Wither, a shut shulker, a digging warden, a
+                            // lit sulfur cube...): `onHitEntity` puts back the fire it
+                            // lit and the arrow bounces back off the mob
+                            // (`deflect(REVERSE, .., 0.2)`, a tenth of its speed), from
+                            // outside its box so it doesn't meet it again, with no
+                            // knockback, potion or kill credit.
+                            if refuses_arrow(mob, damage) {
+                                self.pos = from;
+                                return self.bounce(rng, events);
+                            }
+                            if self.burning() {
                                 mob.ignite(5.0);
                             }
                             if self.from_player {
@@ -449,9 +464,7 @@ impl Arrow {
                                 }
                             }
                             if let Some(attacker) = self.shooter {
-                                if !refused {
-                                    self.effects_on_mob(mob, rng);
-                                }
+                                self.effects_on_mob(mob, rng);
                                 // Resolve through the shared mob-on-mob path so
                                 // retaliation and loot attribution retain the shooter.
                                 events.push(EntityEvent::MobHit {
@@ -467,7 +480,7 @@ impl Arrow {
                             let motion = self.vel / crate::knockback::TICK_RATE;
                             let killed =
                                 mob.damage_projectile(damage, &[crate::knockback::Push::projectile(motion)], rng);
-                            if !killed && !refused {
+                            if !killed {
                                 self.effects_on_mob(mob, rng);
                             }
                             let killed = !mob.alive();
@@ -664,6 +677,28 @@ impl Arrow {
 
 /// v1.0 gap Track 8b: a block a burning projectile's hit lights or
 /// primes: a candle or candle cake, a campfire, TNT.
+/// v1.0 gap Track 8c: `EnderMan.hurtServer` refuses every projectile
+/// (`#is_projectile`) and teleports away, unless it is riding
+/// (`isPassenger`), and its `projectileReceivesSideEffectsOnHit` is false,
+/// so an arrow or trident flies on through it.
+pub(super) fn dodges_projectiles(mob: &Mob) -> bool {
+    mob.kind == super::MobKind::Enderman && mob.riding.is_none()
+}
+
+/// v1.0 gap Track 8c: whether `hurtServer` refuses `amount` from an
+/// `AbstractArrow` (an arrow or a trident): `Shulker.hurtServer` shut,
+/// `WitherBoss.hurtServer` charging or armored, and the rest of
+/// [`Mob::refuses_hit`], read with the arrow's damage type.
+pub(super) fn refuses_arrow(mob: &mut Mob, amount: f32) -> bool {
+    if mob.shulker.as_ref().is_some_and(|s| s.closed()) {
+        return true;
+    }
+    let cause = mob.hit_cause.replace(crate::simulation::damage::Cause::ARROW);
+    let refused = mob.refuses_hit(amount);
+    mob.hit_cause = cause;
+    refused
+}
+
 pub(super) fn lights(b: crate::world::block::Block) -> bool {
     crate::world::colour_blocks::candle::can_light(b)
         || crate::world::utilities::campfire_of(b).is_some()
@@ -1079,6 +1114,58 @@ mod tests {
         let (eased, _) = a.rot.unwrap();
         let want = lerp_rotation(yaw, target);
         assert!((eased - want).abs() < 1e-3, "eased from {yaw} toward {target}: {eased}");
+    }
+
+    /// v1.0 gap Track 8c: a mob whose `hurtServer` refuses an arrow (a
+    /// charging Wither, an armored one at half health, a shut shulker)
+    /// bounces it back at a tenth of its speed, turned about, and takes
+    /// nothing: no damage, no fire, no event. A burning arrow sets an
+    /// enderman alight as it dodges, and flies on through.
+    #[test]
+    fn mobs_that_refuse_an_arrow_bounce_it_back() {
+        let world = Grid::flat(0);
+        let setups: [(MobKind, fn(&mut Mob)); 3] = [
+            (MobKind::Wither, |m| m.health = crate::entity::wither::MAX_HEALTH / 2.0),
+            (MobKind::Wither, |m| m.wither.as_mut().unwrap().invul = 100),
+            (MobKind::Shulker, |_| {}),
+        ];
+        for (kind, setup) in setups {
+            let mut mob = Mob::new(kind, DVec3::new(5.5, 49.5, 0.5), 0.0);
+            mob.uid = 3;
+            setup(&mut mob);
+            if let Some(s) = mob.shulker.as_ref() {
+                assert!(s.closed(), "a new shulker is shut");
+            }
+            let health = mob.health;
+            let mut mobs = vec![mob];
+            let (mut rng, mut events) = (Rng::new(5), Vec::new());
+            let mut a = Arrow::shot(DVec3::new(0.5, 50.2, 0.5), DVec3::X, 1.0, true);
+            a.fire = 100;
+            let mut before = a.velocity();
+            for _ in 0..10 {
+                before = a.velocity();
+                assert!(a.update(0.05, &world, &sky_ctx(), &mut mobs, &[], None, &mut rng, &mut events), "{kind:?}");
+                if a.velocity().x < 0.0 {
+                    break;
+                }
+            }
+            assert!((a.velocity().x + before.x * 0.1).abs() < 1e-9, "{kind:?}: a tenth back: {}", a.velocity());
+            assert_eq!(mobs[0].health, health, "{kind:?} took nothing");
+            assert!(!mobs[0].burning, "{kind:?}: the fire is put back");
+            assert!(events.iter().all(|e| !matches!(e, EntityEvent::MobShot { .. })), "{kind:?}");
+        }
+
+        // An enderman dodges and the arrow flies on, having set it alight.
+        let mut mobs = vec![Mob::new(MobKind::Enderman, DVec3::new(5.5, 49.0, 0.5), 0.0)];
+        let (mut rng, mut events) = (Rng::new(5), Vec::new());
+        let mut a = Arrow::shot(DVec3::new(0.5, 50.2, 0.5), DVec3::X, 1.0, true);
+        a.fire = 100;
+        for _ in 0..4 {
+            assert!(a.update(0.05, &world, &sky_ctx(), &mut mobs, &[], None, &mut rng, &mut events));
+        }
+        assert!(a.pos.x > 7.0 && a.velocity().x > 0.0, "it flew on: {}", a.pos);
+        assert!(mobs[0].teleport_pending && mobs[0].burning);
+        assert_eq!(mobs[0].health, MobKind::Enderman.max_health());
     }
 
     /// v1.0 gap Track 8b: fire sets an arrow alight for 8 seconds and lava

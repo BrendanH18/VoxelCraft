@@ -993,7 +993,7 @@ mod tests {
             ExplosionRules { destroys_blocks: true, drop_decay: true }
         );
         assert_eq!(
-            blast(&rules, "was blown up by an End crystal"),
+            blast(&rules, crate::simulation::damage::Cause::END_CRYSTAL.text),
             ExplosionRules { destroys_blocks: true, drop_decay: true }
         );
         let mut rules = GameRules::default();

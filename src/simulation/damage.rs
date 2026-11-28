@@ -567,7 +567,14 @@ impl Cause {
     pub const GHAST_FIREBALL: Cause = Cause::new(DamageType::PlayerExplosion, "was fireballed by a ghast");
     /// Unowned primed TNT.
     pub const TNT: Cause = Cause::new(DamageType::Explosion, "was blown up by TNT");
-    pub const END_CRYSTAL: Cause = Cause::new(DamageType::Explosion, "was blown up by an End crystal");
+    /// An End crystal's blast with nobody behind the blow (`explosion(crystal,
+    /// null)`, v1.0 gap Track 8c): `death.attack.explosion`, which names
+    /// no one ("blew up"), as [`Cause::EXPLOSION`].
+    pub const END_CRYSTAL: Cause = Cause::new(DamageType::Explosion, "blew up");
+    /// v1.0 gap Track 8c: a blast a player set off (`explosion(crystal,
+    /// player)` for an End crystal they broke), `player_explosion`'s
+    /// `death.attack.explosion.player`, "was blown up by" the player.
+    pub const PLAYER_EXPLOSION: Cause = Cause::new(DamageType::PlayerExplosion, "was blown up by a player");
     /// v0.16 Track G: a blast with no source (`death.attack.explosion`),
     /// the dragon respawn ritual's pillar blasts.
     pub const EXPLOSION: Cause = Cause::new(DamageType::Explosion, "blew up");
@@ -637,6 +644,7 @@ impl Cause {
         Cause::GHAST_FIREBALL,
         Cause::TNT,
         Cause::END_CRYSTAL,
+        Cause::PLAYER_EXPLOSION,
         Cause::EXPLOSION,
         Cause::BAD_RESPAWN_POINT,
         Cause::GUARDIAN_SPIKES,

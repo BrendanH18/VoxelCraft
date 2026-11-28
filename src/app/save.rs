@@ -79,6 +79,9 @@ impl Game {
         if self.credits_seen {
             props.insert("credits_seen".to_string(), "1".to_string());
         }
+        if !self.owed_portals.is_empty() {
+            props.insert(dimension::OWED_PORTALS_KEY.to_string(), dimension::owed_portals_text(&self.owed_portals));
+        }
         if let Some(b) = self.session.spawn_bed {
             props.insert("bed".to_string(), format!("{},{},{}", b.x, b.y, b.z));
         }
