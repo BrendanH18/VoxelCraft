@@ -59,6 +59,14 @@ impl GameMode {
         !matches!(self, Self::Spectator)
     }
 
+    /// v1.0 gap Track 8: portals take the player. `Player.tick` sets
+    /// `noPhysics` for spectators, so `isAffectedByBlocks` is false and
+    /// `checkInsideBlocks` never calls a Nether portal's, End portal's or
+    /// End gateway's `entityInside` for them (Java 26.3; MC-46421).
+    pub const fn uses_portals(self) -> bool {
+        !matches!(self, Self::Spectator)
+    }
+
     /// Hostile mobs cannot see Creative or Spectator players.
     pub const fn targetable(self) -> bool {
         self.is_survival()
@@ -580,6 +588,9 @@ mod tests {
         assert!(GameMode::Creative.invulnerable() && GameMode::Creative.can_fly());
         assert!(GameMode::Spectator.invulnerable() && !GameMode::Spectator.can_interact());
         assert!(GameMode::Adventure.is_survival() && !GameMode::Adventure.can_build());
+        // v1.0 gap Track 8: only spectators pass through portals untouched.
+        assert!(!GameMode::Spectator.uses_portals());
+        assert!([GameMode::Survival, GameMode::Creative, GameMode::Adventure].iter().all(|m| m.uses_portals()));
     }
 
     /// Java 26.3 `GameRules.<clinit>` read from `server-26.3-classes.jar`:

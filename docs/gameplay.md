@@ -531,10 +531,12 @@ builds one (on an obsidian ledge if there's nowhere to stand) if there
 isn't. You come out where you stood in the portal you entered (across it,
 up it and in front of it, scaled to the exit portal's size), nudged clear
 of any block in the way, still looking and moving the way you were, and
-turned a quarter if the two portals face different ways. Nothing is placed
-or found beyond the world border, 29,999,984 blocks out. A spectator only
-travels to a portal already on the other side; with none there, nothing
-happens and no portal is built. Each portal block remembers which way its
+turned a quarter, your momentum with you, if the two portals face
+different ways. Nothing is placed or found beyond the world border,
+29,999,984 blocks out. Spectators pass through Nether portals, End
+portals and End gateways without travelling, as in Java
+([gap Track 8](verification/2026-11-27-v1.0-gap-track-08-leftovers.md)).
+Each portal block remembers which way its
 portal stands (Java's `axis`), and breaking the frame along that way (or
 above or below) puts the portal out; portals from saves made before
 remember it from their frames when their chunk loads.
@@ -678,20 +680,23 @@ chosen to strafe stays its target even after switching to creative, as in
 Java. Its wings shove
 and hurt players, its head bites for 10, and it smashes through any block but
 Java's dragon-immune ones (end stone, obsidian and crying obsidian, bedrock,
-iron bars, respawn anchors, reinforced deepslate, End portals and gateways);
+iron bars, respawn anchors, reinforced deepslate, End portals and gateways),
+silently, in a puff of smoke, leaving the water of a waterlogged block;
 with `mobGriefing` off it breaks nothing, and every block in its way slows
-it and its wing beat. Head and neck hits do full damage, anywhere else a
+it and its wing beat. Its wing beats set off sculk sensors. Head and neck hits do full damage, anywhere else a
 quarter (plus up to one), and only a player's hits (or a blast) take its
 health; arrows, tridents and a player's wind charges glance off a perched
-dragon, and everything glances off a dying one. Everything Java lets hit
+dragon (an arrow comes off alight for a second), and everything glances
+off a dying one. Everything Java lets hit
 it does here
 ([gap Track 4c](verification/2026-11-27-v1.0-gap-track-04c-end-final.md)):
-snowballs and eggs stop on it (and break End crystals), an ender pearl
+snowballs and eggs stop on it (and break End crystals, as llama spit does
+on its way past), an ender pearl
 takes you to where it was a moment before it hit, splash and lingering
 Harming hurt it and Healing mends it, wind charges sting it and push it,
 tridents bounce off, firework blasts within five blocks of its feet hurt
 it, a ghast's fireball explodes on it (the blast, not the fire, hurts it),
-its own fireballs burst on it harmlessly, and a fishing hook can catch on
+its fireballs, and any other dragon's, burst on it harmlessly, and a fishing hook can catch on
 it. Blasts and wind push it about as in Java. Between its targets it
 flies exactly as Java's `aiStep` moves it, checked tick for tick against
 the Java server. The boss bar shows within 192 blocks of the

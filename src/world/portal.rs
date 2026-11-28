@@ -599,9 +599,9 @@ impl World {
     }
 }
 
-/// [`World::find_portal`] over the chunk sections `section` holds (loaded,
-/// saved or in region records), from height `min_y` up to below `max_y`.
-pub fn find_portal_in(
+/// [`World::find_portal`] over the chunk sections `section` holds, from
+/// height `min_y` up to below `max_y`.
+fn find_portal_in(
     section: impl Fn(IVec3) -> Option<Arc<ChunkData>>,
     near: IVec3,
     radius: i32,
@@ -665,13 +665,29 @@ pub fn spiral(center: IVec3, radius: i32) -> Vec<IVec3> {
 /// the End. `EndPortalBlock.getPortalDestination` keeps it
 /// (`Relative.DELTA`) and sets the yaw to west (90°) while keeping the
 /// pitch (`Relative.X_ROT`); `ROTATE_DELTA` turns the motion with the
-/// yaw (`PositionMoveRotation.calculateAbsolute`: `yRot` by the old yaw
-/// less the new, in Java's float radians and `Mth` tables, after an
-/// `xRot` by the unchanged pitch's zero). `java_yaw` is the old yaw in
-/// Java's degrees; the motion is in any unit.
+/// yaw ([`rotate_delta`]). `java_yaw` is the old yaw in Java's degrees; the
+/// motion is in any unit.
 pub fn end_arrival_motion(vel: glam::DVec3, java_yaw: f32) -> glam::DVec3 {
+    rotate_delta(vel, java_yaw, 90.0)
+}
+
+/// v1.0 gap Track 8: a traveller's motion leaving a Nether portal whose
+/// exit stands along the other axis. `NetherPortalBlock.createDimensionTransition`
+/// adds 90° to the yaw (`Relative.ROTATION` with `outputRotation` 90) and
+/// keeps the motion (`Relative.DELTA`), which `ROTATE_DELTA` turns with the
+/// yaw; with both portals along one axis it is unchanged. `java_yaw` is the
+/// yaw in Java's degrees.
+pub fn quarter_turn_motion(vel: glam::DVec3, java_yaw: f32) -> glam::DVec3 {
+    rotate_delta(vel, java_yaw, java_yaw + 90.0)
+}
+
+/// `PositionMoveRotation.calculateAbsolute`'s `ROTATE_DELTA`: the motion
+/// turned by the old yaw less the new (Java degrees, as floats), in Java's
+/// float radians and `Mth` tables, after an `xRot` by the pitch's change,
+/// which is zero for every teleport that keeps the pitch.
+fn rotate_delta(vel: glam::DVec3, old_yaw: f32, new_yaw: f32) -> glam::DVec3 {
     use crate::knockback::{mth_cos, mth_sin};
-    let radians = f64::from(f64::from(java_yaw - 90.0).to_radians() as f32);
+    let radians = f64::from(f64::from(old_yaw - new_yaw).to_radians() as f32);
     let (cos, sin) = (f64::from(mth_cos(radians)), f64::from(mth_sin(radians)));
     glam::DVec3::new(vel.x * cos + vel.z * sin, vel.y, vel.z * cos - vel.x * sin)
 }
@@ -700,6 +716,27 @@ mod tests {
         let v = end_arrival_motion(DVec3::new(0.1, 0.0, -0.4), 180.0);
         assert!((v - DVec3::new(-0.4, 0.0, -0.1)).length() < 1e-6, "{v}");
         assert!((v.length() - DVec3::new(0.1, 0.0, -0.4).length()).abs() < 1e-6);
+    }
+
+    /// v1.0 gap Track 8: leaving by a portal along the other axis turns the
+    /// motion a quarter with the view (`ROTATE_DELTA`), so whatever was
+    /// ahead of the traveller stays ahead; sideways and vertical motion
+    /// turn with it.
+    #[test]
+    fn a_quarter_turned_exit_turns_the_motion_with_the_view() {
+        // Running south (Java yaw 0): running west, the way they now face.
+        let v = quarter_turn_motion(DVec3::new(0.0, -0.2, 0.3), 0.0);
+        assert!((v - DVec3::new(-0.3, -0.2, 0.0)).length() < 1e-6, "{v}");
+        for yaw in [-170.0f32, -35.5, 12.25, 90.0, 400.0, 1234.5] {
+            let facing = |yaw: f32| {
+                let r = f64::from(yaw).to_radians();
+                DVec3::new(-r.sin(), 0.0, r.cos())
+            };
+            let side = |yaw: f32| facing(yaw + 90.0);
+            let v = quarter_turn_motion(facing(yaw) * 0.4 + side(yaw) * 0.1, yaw);
+            let want = facing(yaw + 90.0) * 0.4 + side(yaw + 90.0) * 0.1;
+            assert!((v - want).length() < 1e-4, "yaw {yaw}: {v} against {want}");
+        }
     }
 
     /// A loaded world with a hollow sky high above the terrain to build in.

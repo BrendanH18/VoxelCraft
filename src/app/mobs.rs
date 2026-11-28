@@ -768,7 +768,6 @@ impl Game {
                             continue;
                         }
                         MobSound::DragonShoot => (Sound::Fireball, 1.0),
-                        MobSound::DragonSmash => (Sound::Explosion, 0.25),
                         // Java plays the death to the whole dimension.
                         MobSound::DragonDeath => {
                             self.audio.play(Sound::DragonDeath, None, 1.0, (1.0, 1.0));
@@ -840,6 +839,11 @@ impl Game {
                     }
                 }
                 EntityEvent::BreakBlock { cell } => smashed.push(cell),
+                // Level event 2008 (`LevelEventHandler`): one explosion particle.
+                EntityEvent::DragonSmashed { cell } => {
+                    let pos = cell.as_dvec3() + DVec3::splat(0.5);
+                    self.world.particles.push(crate::particles::Request::Explosion { pos, large: false });
+                }
                 EntityEvent::Shove { player: PlayerId::HOST, velocity } => {
                     if self.session.mode.is_survival() && !self.session.vitals.is_dead() {
                         let push = crate::simulation::survival::knockback_taken(
@@ -926,10 +930,9 @@ fn mob_sound_source(sound: MobSound) -> Option<SoundSource> {
             Some(SoundSource::Blocks)
         }
         MobSound::FrogAction(_) => Some(SoundSource::Neutral),
-        // `AbstractVillager`, boats and the dragon's smashing: `NEUTRAL`, `NEUTRAL`, `HOSTILE`.
+        // `AbstractVillager` and boats: `NEUTRAL`.
         MobSound::TraderDrink(_) | MobSound::BoatPaddle(_) => Some(SoundSource::Neutral),
         MobSound::Thunder => Some(SoundSource::Weather),
-        MobSound::DragonSmash => Some(SoundSource::Hostile),
         // Skeletons and pillagers shoot as hostile mobs, not as the player.
         MobSound::Bow => Some(SoundSource::Hostile),
         MobSound::Shulker(_) => Some(SoundSource::Hostile),

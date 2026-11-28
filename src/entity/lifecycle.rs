@@ -342,10 +342,11 @@ impl Entities {
         if let Some(fight) = &mut self.fight {
             fight.griefing_off = !self.villager_griefing;
         }
-        self.wild_dragons.update(dt, world, ctx, &mut self.rng, &self.crystals, &mut events);
+        let dragons_from = events.len();
+        self.wild_dragons.update(dt, world, ctx, &mut self.rng, &self.crystals, self.fight.as_ref(), &mut events);
         if let Some(fight) = &mut self.fight {
             // The End's crystals tick with the fight.
-            fight.update(dt, world, ctx, &mut self.rng, &mut self.crystals, &mut events);
+            fight.update_beside(dt, world, ctx, &mut self.rng, &mut self.crystals, &self.wild_dragons, &mut events);
         } else if !self.crystals.is_empty() {
             self.crystal_time += dt;
             while self.crystal_time >= 0.05 - 1e-9 {
@@ -354,6 +355,14 @@ impl Entities {
             }
         } else {
             self.crystal_time = 0.0;
+        }
+        // v1.0 gap Track 8: `EnderDragon.aiStep`'s `processFlappingMovement`
+        // posts `flap` at the dragon with each wing beat it sounds.
+        for e in &events[dragons_from..] {
+            if let EntityEvent::Sound { sound: super::MobSound::DragonFlap, pos } = *e {
+                let none = crate::world::vibration::EventSource::NONE;
+                self.sculk.post(pos, crate::world::vibration::GameEvent::Flap, none, None);
+            }
         }
 
         // Mob bow/crossbow shots become arrows, blaze shots fireballs.

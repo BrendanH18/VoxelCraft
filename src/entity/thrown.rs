@@ -289,6 +289,8 @@ impl Thrown {
         }
         let delta = self.vel * dt;
         let steps = (delta.length() / STEP).ceil().max(1.0) as u32;
+        // v1.0 gap Track 8: the End crystal this spit broke this tick.
+        let mut spat = None;
         for _ in 0..steps {
             let next = self.pos + delta / steps as f64;
             if world.block(next.floor().as_ivec3()).is_some_and(|b| b.is_solid()) {
@@ -369,10 +371,24 @@ impl Thrown {
                     hit = Some(i);
                 }
             });
+            // v1.0 gap Track 8: `LlamaSpit.onHitEntity` hurts what it hits
+            // by 1 (`spit`) while its llama lives (`getOwner` is a
+            // `LivingEntity`), and isn't stopped by it: an End crystal
+            // breaks (`EndCrystal.hurtServer`, any source but a dragon) and
+            // the spit flies on. It can't hurt a dragon (not a player's), so
+            // passes its parts.
+            if hit.is_none()
+                && self.kind == Kind::LlamaSpit
+                && let Some(crystal) = boss.crystal_at(next).filter(|&c| spat != Some(c))
+                && self.shooter.is_some_and(|uid| mobs.iter().any(|m| m.uid == uid && m.alive()))
+            {
+                spat = Some(crystal);
+                let blow = super::dragon::Blow::projectile(1.0, false);
+                events.push(EntityEvent::DragonStruck { hit: crystal, blow, by: None });
+            }
             // v1.0 gap Track 4c: an End crystal or a dragon part
             // (`EnderDragonPart` is pickable; wind charges pass crystals,
-            // `AbstractWindCharge.canHitEntity`). Llama spit isn't stopped
-            // by what it hits and can't hurt a dragon, so it flies on.
+            // `AbstractWindCharge.canHitEntity`).
             if hit.is_none()
                 && self.kind != Kind::LlamaSpit
                 && let Some(struck) = boss.hit_at(next, !self.kind.is_wind())
