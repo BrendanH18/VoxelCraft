@@ -1241,8 +1241,8 @@ mod tests {
         let mut e = Entities::new(5);
         e.load_props(&props);
         e.sync_chunk_entities(&mut w);
-        // Arrows and primed TNT were never part of the save format.
-        assert_eq!(e.stored_entities(), count - 2);
+        // v1.0 gap Track 8e: the arrow and the primed TNT are saved too.
+        assert_eq!(e.stored_entities(), count);
         assert_eq!(normalized(&e), saved);
         w.load_test_column(IVec2::new(2, 0), GROUND);
         e.sync_chunk_entities(&mut w);
