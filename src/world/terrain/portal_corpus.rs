@@ -95,6 +95,7 @@ fn trip(world: &World, cell: IVec3, pos: DVec3, scale: f64) -> PortalTrip {
         along_x,
         offset: relative_position(rect, along_x, pos, w, h),
         vel: DVec3::ZERO,
+        spectator: false,
     }
 }
 

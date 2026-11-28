@@ -398,7 +398,8 @@ impl Game {
             dimension,
             overworld_props: if dimension != Dimension::Overworld { overworld_props } else { Default::default() },
             arrival,
-            portal_time: 0.0,
+            portal: Default::default(),
+            portal_seen: false,
             portal_locked: false,
             portal_cooldown: 0.0,
             terrain_version: existing

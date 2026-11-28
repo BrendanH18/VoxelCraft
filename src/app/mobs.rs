@@ -308,11 +308,12 @@ impl Game {
             match event {
                 EntityEvent::ArrowEffectsStart { player } => arrow_effects.begin(player),
                 EntityEvent::ArrowEffectsEnd => arrow_effects.end(),
-                EntityEvent::ProjectileBlockHit { cell, pos, normal, arrow, burning } => {
+                EntityEvent::ProjectileBlockHit { cell, pos, normal, arrow, burning, mob_owned } => {
                     self.world.hit_redstone_target(cell, pos, normal, arrow);
                     self.world.touch_redstone_ore(cell);
                     if burning {
                         self.world.light_candle(cell);
+                        self.burning_projectile_hit(cell, mob_owned);
                     }
                     // v0.16 Track A: `ChorusFlowerBlock.onProjectileHit`: a
                     // projectile that may break blocks breaks the flower.
@@ -1090,6 +1091,26 @@ impl Game {
             // What the blasts broke drops now, before the save is written.
             self.spawn_world_drops();
             self.mobs.entities.release_silverfish(&mut self.world.released_silverfish);
+        }
+    }
+
+    /// v1.0 gap Track 8b: a burning projectile's `onProjectileHit` on a
+    /// campfire (`CampfireBlock`: lit unless waterlogged) or TNT
+    /// (`TntBlock`: primed and removed while `tnt_explodes`), if it may
+    /// interact there (`Projectile.mayInteract`: a mob's only with
+    /// `mob_griefing`).
+    fn burning_projectile_hit(&mut self, cell: IVec3, mob_owned: bool) {
+        if mob_owned && !self.gamerules.bool("mob_griefing") {
+            return;
+        }
+        if self.world.light_campfire(cell) {
+            return;
+        }
+        use crate::world::block::Block;
+        if self.world.get_block(cell) == Some(Block::TNT) && self.world.rules.tnt_explodes {
+            self.world.set_block(cell, Block::AIR);
+            self.mobs.entities.prime_tnt(cell, false);
+            self.audio.play_in(SoundSource::Blocks, Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.95, 1.05));
         }
     }
 

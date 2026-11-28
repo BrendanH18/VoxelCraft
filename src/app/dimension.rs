@@ -117,6 +117,29 @@ fn same_block(b: Block, block: Block) -> bool {
     b == block || (block == Block::NETHER_PORTAL && b.is_nether_portal())
 }
 
+/// v1.0 gap Track 5b, restored by Track 8b: whether the save of dimension
+/// `to` (its saved chunks and region records, read without loading it)
+/// holds a portal block that an arrival's search from `target` finds
+/// (`PortalForcer.findClosestPortalPosition`: 16 blocks into the Nether,
+/// 128 out of it). Only a player who turned spectator on the count's last
+/// tick asks.
+pub(super) fn saved_portal_near(root: &Storage, to: Dimension, target: IVec3) -> bool {
+    use crate::world::region::{REGION_DIR, RegionStore};
+    let storage = storage_for(root, to);
+    let chunks = storage.load_chunks().unwrap_or_default();
+    let store = RegionStore::open(storage.dir().join(REGION_DIR), false).ok().map(|(store, _)| store);
+    // A record with blocks is newer than `chunks.bin` (`World::attach_regions`).
+    let section = |c: IVec3| {
+        let record = store.as_ref().and_then(|s| s.read(c)).and_then(|r| r.blocks);
+        record.or_else(|| chunks.get(&c).cloned())
+    };
+    let radius = match to {
+        Dimension::Nether => crate::world::portal::NETHER_PORTAL_RADIUS,
+        _ => crate::world::portal::OVERWORLD_PORTAL_RADIUS,
+    };
+    crate::world::portal::find_portal_in(section, target, radius, to.min_y(), to.max_y()).is_some()
+}
+
 /// Where a dimension's save lives inside the world folder.
 pub(super) fn storage_for(root: &Storage, dim: Dimension) -> Storage {
     match dim {
@@ -469,8 +492,13 @@ impl Game {
         if let Some(notice) = notice.into_iter().chain(region_notice).reduce(|a, b| format!("{a} {b}")) {
             self.report_load_damage(&notice);
         }
+        // Java's player keeps its `portalProcess` through a Nether portal
+        // trip (`teleportCrossDimension` moves the same `ServerPlayer`); an
+        // End portal's own processor or a respawn's new player drops it.
+        if !matches!(arrival, Arrival::Portal(_)) {
+            self.portal = Default::default();
+        }
         self.arrival = Some(arrival);
-        self.portal_time = 0.0;
         self.session.sleeping = None;
         self.body.actions.reset();
         self.session.cancel_mining();
@@ -498,6 +526,15 @@ impl Game {
             trip.offset = crate::world::portal::relative_position(rect, along_x, player.pos, width, height);
         }
         trip.vel = player.vel;
+        // v1.0 gap Track 8b, `getExitPortal`: a player who turned spectator
+        // after the count's last tick in the portal still goes, but only to
+        // a portal already there (`getPortalDestination` gives no
+        // transition otherwise, and none is built).
+        trip.spectator = self.session.mode == voxelcraft::rules::GameMode::Spectator;
+        if trip.spectator && self.lan.client.is_none() && !saved_portal_near(&self.storage, to, target) {
+            log::info!("a spectator's trip to the {} found no portal there: not travelling", to.name());
+            return;
+        }
         self.switch_dimension(to, Arrival::Portal(trip));
     }
 
@@ -563,14 +600,19 @@ impl Game {
                                 return true;
                             }
                             Some(at) => Some(self.world.portal_rect(at)),
+                            // `travel` checked that a spectator has a portal
+                            // to arrive in: Java never builds them one.
+                            None if trip.spectator => None,
                             None => self.world.create_portal(trip.target, trip.along_x).map(|r| (r, trip.along_x)),
                         }
                     }
                     Arrival::PortalAt(at, _) => Some(self.world.portal_rect(at)),
                     _ => unreachable!(),
                 };
-                // Arriving in a portal doesn't send you straight back.
-                self.portal_locked = true;
+                // Arriving in a portal doesn't send you straight back:
+                // `handlePortal` set the cooldown as it teleported, and
+                // standing in the exit portal keeps restarting it.
+                self.portal_cooldown = PORTAL_COOLDOWN;
                 match exit {
                     Some((rect, along_x)) => {
                         // `createDimensionTransition`: the same place in the
@@ -738,11 +780,10 @@ impl Game {
     /// Standing in a Nether portal long enough takes you to the other
     /// dimension. Falling into an End portal takes you at once: to the End's
     /// obsidian platform, or out of the End to your spawn point.
-    pub(super) fn update_portal(&mut self, dt: f64) {
+    pub(super) fn update_portal(&mut self) {
         if self.credits.is_some() {
             return;
         }
-        self.portal_cooldown = (self.portal_cooldown - dt).max(0.0);
         // v1.0 gap Track 8: a spectator passes through every portal as if
         // it weren't there (`noPhysics`: no `entityInside`), so a countdown
         // already begun runs down as it does outside.
@@ -792,33 +833,73 @@ impl Game {
         }
         if self.dimension == Dimension::End || !touches || !self.in_portal(Block::NETHER_PORTAL, (0.0, 1.0)) {
             self.portal_locked = false;
-            self.portal_time = (self.portal_time - dt as f32 * 2.0).max(0.0);
             return;
         }
-        if self.portal_locked {
+        // `NetherPortalBlock.entityInside` -> `setAsInsidePortal`, on the
+        // server and the client alike: on cooldown it only restarts the
+        // cooldown (the client has the server's from the trip's spawn info).
+        if self.portal_cooldown > 0.0 {
+            self.portal_cooldown = PORTAL_COOLDOWN;
             return;
         }
-        let before = self.portal_time;
-        self.portal_time += dt as f32;
-        // `LocalPlayer.handlePortalTransitionEffect`: `PORTAL_TRIGGER` as the
-        // portal's effect starts from nothing, a local `AMBIENT` sound at
-        // volume 0.25, pitch 0.8 to 1.2.
-        if before == 0.0 {
-            self.audio.play(Sound::Portal(PortalCue::Trigger), None, 0.25, (0.8, 1.2));
-        }
-        // `ServerLevel.isAllowedToEnterPortal`: only the Nether is gated.
-        let allowed = self.gamerules.portal_allows_trip_from(self.dimension);
-        if self.portal_time >= self.portal_needed() && allowed {
-            self.travel();
+        self.portal_seen = true;
+        if !self.portal_locked {
+            self.portal.enter();
         }
     }
 
-    /// Seconds in a portal before it takes you: Java's
-    /// `NetherPortalBlock.getPortalTransitionTime` ticks, from the creative
-    /// delay for invulnerable players and the default delay otherwise.
-    pub(super) fn portal_needed(&self) -> f32 {
-        self.gamerules.portal_delay_ticks(self.session.mode.invulnerable()) as f32
-            * crate::simulation::TICK_SECONDS as f32
+    /// v1.0 gap Track 8b: `Entity.handlePortal`, at the start of the tick
+    /// before the player moves: the cooldown runs down, and the Nether
+    /// portal count ([`crate::world::portal::PortalProcessor`]) counts the
+    /// tick the player was last marked inside the portal, or runs down 4.
+    /// Returns whether the player set off (and so waits to arrive).
+    pub(super) fn process_portal(&mut self) -> bool {
+        if self.credits.is_some() {
+            return false;
+        }
+        self.portal_cooldown = (self.portal_cooldown - crate::simulation::TICK_SECONDS).max(0.0);
+        // `canUsePortal(false)`: not riding, alive and (`LivingEntity`) not asleep.
+        let allowed =
+            self.session.player.vehicle.is_none() && !self.session.vitals.is_dead() && self.session.sleeping.is_none();
+        if !self.portal.process(allowed, self.portal_delay()) {
+            return false;
+        }
+        self.portal_cooldown = PORTAL_COOLDOWN;
+        // `teleportToPortalDestination`: `ServerLevel.isAllowedToEnterPortal`
+        // gates only the Nether. Java builds the Nether's exit portal
+        // first; here a refused trip doesn't load the Nether at all.
+        if !self.gamerules.portal_allows_trip_from(self.dimension) {
+            return false;
+        }
+        self.travel();
+        self.arrival.is_some()
+    }
+
+    /// Ticks the count takes: Java's `NetherPortalBlock.getPortalTransitionTime`,
+    /// the creative delay for invulnerable players and the default delay
+    /// otherwise.
+    fn portal_delay(&self) -> u32 {
+        self.gamerules.portal_delay_ticks(self.session.mode.invulnerable())
+    }
+
+    /// v1.0 gap Track 8b: `LocalPlayer.handlePortalTransitionEffect`, the
+    /// client's side of the same tick: used up, the mark this tick's move
+    /// left plays `PORTAL_TRIGGER` as the purple starts from nothing (a
+    /// local `AMBIENT` sound at volume 0.25, pitch 0.8 to 1.2) and closes
+    /// the inventory and any container (`isAllowedInPortal`: only pause,
+    /// chat, death and credits screens stay). Returns whether the player
+    /// stood in the portal, for [`super::distortion::Distortion::tick`].
+    pub(super) fn portal_effect(&mut self) -> bool {
+        if !std::mem::take(&mut self.portal_seen) {
+            return false;
+        }
+        if self.inventory_open {
+            self.toggle_inventory();
+        }
+        if self.distortion.portal(1.0) == 0.0 {
+            self.audio.play(Sound::Portal(PortalCue::Trigger), None, 0.25, (0.8, 1.2));
+        }
+        true
     }
 
     /// Beds explode in both the Nether and the End.
@@ -979,6 +1060,43 @@ mod tests {
         let (loaded, p, notice) = load_dimension(&root, Dimension::Nether, &none);
         assert_eq!((loaded.len(), p.len()), (2, 0));
         assert!(notice.unwrap().contains("containers and entities are lost"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// v1.0 gap Track 5b (restored by Track 8b): a player who turned
+    /// spectator on the count's last tick goes only to a portal already in
+    /// the destination's save, in `chunks.bin` or a region record, within
+    /// the arrival's search (16 blocks into the Nether, 128 out of it).
+    #[test]
+    fn spectators_find_saved_exit_portals_without_loading_them() {
+        use crate::world::chunk::index;
+        use crate::world::portal::{AXIS_X, AXIS_Z};
+        use crate::world::region::{ChunkRecord, Patch, REGION_DIR, RegionStore};
+        let dir = std::env::temp_dir().join(format!("voxelcraft-dims-spectator-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let root = Storage::new(&dir);
+        let with_portal = |portal: Block| {
+            let mut blocks = ChunkData::new_dense(Block::AIR);
+            blocks[index(10, 6, 12)] = portal;
+            Arc::new(ChunkData::from_dense(blocks))
+        };
+        // The portal block is at (42, 70, 44).
+        let near = IVec3::new(40, 70, 40);
+        assert!(!saved_portal_near(&root, Dimension::Nether, near), "no save, no portal");
+        let nether = storage_for(&root, Dimension::Nether);
+        let level = LevelInfo { seed: 9, player: None, props: BTreeMap::new() };
+        nether.save(&level, &[(IVec3::new(1, 2, 1), with_portal(AXIS_Z))]).unwrap();
+        assert!(saved_portal_near(&root, Dimension::Nether, near));
+        assert!(!saved_portal_near(&root, Dimension::Nether, near + IVec3::new(20, 0, 0)), "16 into the Nether");
+        assert!(!saved_portal_near(&root, Dimension::Overworld, near), "each dimension its own");
+        {
+            let (store, _) = RegionStore::open(dir.join(REGION_DIR), true).unwrap();
+            let record = ChunkRecord { blocks: Some(with_portal(AXIS_X)), ..Default::default() };
+            store.queue([(IVec3::new(1, 2, 1), Patch::replace(record))]);
+            store.flush().unwrap();
+        }
+        assert!(saved_portal_near(&root, Dimension::Overworld, near + IVec3::new(120, 0, 0)), "128 out of it");
+        assert!(!saved_portal_near(&root, Dimension::Overworld, near + IVec3::new(140, 0, 0)));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

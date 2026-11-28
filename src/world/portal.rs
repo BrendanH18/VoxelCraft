@@ -158,13 +158,16 @@ pub struct PortalTrip {
     pub along_x: bool,
     pub offset: DVec3,
     pub vel: DVec3,
+    /// v1.0 gap Track 8b: the traveller set off as a spectator (turned one
+    /// on the count's last tick), so no exit portal is built for them.
+    pub spectator: bool,
 }
 
 impl PortalTrip {
     /// A trip that didn't start in a portal block: Java's fallback, the
     /// middle of the exit portal's bottom (axis X, offset (0.5, 0, 0)).
     pub fn without_portal(target: IVec3) -> Self {
-        Self { target, along_x: true, offset: DVec3::new(0.5, 0.0, 0.0), vel: DVec3::ZERO }
+        Self { target, along_x: true, offset: DVec3::new(0.5, 0.0, 0.0), vel: DVec3::ZERO, spectator: false }
     }
 }
 
@@ -599,9 +602,9 @@ impl World {
     }
 }
 
-/// [`World::find_portal`] over the chunk sections `section` holds, from
-/// height `min_y` up to below `max_y`.
-fn find_portal_in(
+/// [`World::find_portal`] over the chunk sections `section` holds (loaded,
+/// saved or in region records), from height `min_y` up to below `max_y`.
+pub fn find_portal_in(
     section: impl Fn(IVec3) -> Option<Arc<ChunkData>>,
     near: IVec3,
     radius: i32,
@@ -635,6 +638,73 @@ fn find_portal_in(
         }
     }
     best.map(|(_, _, p)| p)
+}
+
+/// v1.0 gap Track 8b: Java 26.3's `PortalProcessor` for a player in a
+/// Nether portal, the server's countdown. `NetherPortalBlock.entityInside`
+/// calls `setAsInsidePortal` ([`PortalProcessor::enter`]) as the player
+/// moves, and the next tick's `Entity.handlePortal` (at the start of the
+/// tick, before moving) counts it ([`PortalProcessor::process`]): the trip
+/// comes on the tick `portalTime++` reaches the delay (80 ticks for a
+/// survivor), the 81st after the one the player stepped in, and every tick
+/// spent out of the portal takes 4 off the count until it runs out.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PortalProcessor {
+    /// `Entity.portalProcess` isn't null.
+    active: bool,
+    /// `portalTime`.
+    time: u32,
+    /// `insidePortalThisTick`.
+    inside: bool,
+}
+
+impl PortalProcessor {
+    /// `Entity.setAsInsidePortal` off cooldown: a new count starts at 0,
+    /// or the running one is marked inside for the next tick.
+    pub fn enter(&mut self) {
+        if !self.active {
+            *self = Self { active: true, time: 0, inside: true };
+        } else {
+            self.inside = true;
+        }
+    }
+
+    /// `handlePortal`'s `processPortalTeleportation(level, entity,
+    /// canUsePortal(false))`, then `hasExpired`: whether the player goes
+    /// now, `allowed` (not riding, alive, not asleep) and `delay` ticks
+    /// (`getPortalTransitionTime`) after the count began.
+    pub fn process(&mut self, allowed: bool, delay: u32) -> bool {
+        if !self.active {
+            return false;
+        }
+        let go = if self.inside {
+            self.inside = false;
+            // `allowedToTeleport && this.portalTime++ >= delay`.
+            allowed && {
+                let reached = self.time >= delay;
+                self.time += 1;
+                reached
+            }
+        } else {
+            // `decayTick`.
+            self.time = self.time.saturating_sub(4);
+            false
+        };
+        if !go && self.time == 0 {
+            *self = Self::default();
+        }
+        go
+    }
+
+    /// `portalTime`: ticks counted, 0 with no count running.
+    pub fn time(&self) -> u32 {
+        self.time
+    }
+
+    /// Whether a count is running (`portalProcess` isn't null).
+    pub fn active(&self) -> bool {
+        self.active
+    }
 }
 
 /// `BlockPos.spiralAround(center, radius, EAST, SOUTH)`: the centre, then
@@ -737,6 +807,67 @@ mod tests {
             let want = facing(yaw + 90.0) * 0.4 + side(yaw + 90.0) * 0.1;
             assert!((v - want).length() < 1e-4, "yaw {yaw}: {v} against {want}");
         }
+    }
+
+    /// v1.0 gap Track 8b: `PortalProcessor`'s count. A player who steps in
+    /// on tick 0 and stays goes on tick 81 (`portalTime++ >= 80`); out of
+    /// the portal the count loses 4 a tick and, run out, starts again from
+    /// 0; riding (`canUsePortal` false) clears the mark without counting.
+    #[test]
+    fn the_portal_count_takes_81_ticks_and_runs_down_4_a_tick() {
+        let mut p = PortalProcessor::default();
+        assert!(!p.process(true, 80), "nothing before the player steps in");
+        // Tick 0: moving into the portal.
+        p.enter();
+        let mut went = None;
+        for tick in 1..=100 {
+            if p.process(true, 80) {
+                went = Some(tick);
+                break;
+            }
+            p.enter();
+        }
+        assert_eq!(went, Some(81));
+        assert_eq!(p.time(), 81, "the count stays after the trip");
+        assert!(!p.process(true, 80));
+        assert_eq!(p.time(), 77, "4 off a tick outside");
+        for _ in 0..19 {
+            p.process(true, 80);
+        }
+        assert_eq!(p.time(), 1);
+        assert!(!p.process(true, 80));
+        assert!(!p.active(), "run out: the count is gone");
+
+        // Stepping back in before it runs out carries the count on.
+        let mut p = PortalProcessor::default();
+        p.enter();
+        for _ in 0..40 {
+            p.process(true, 80);
+            p.enter();
+        }
+        p.process(true, 80);
+        assert_eq!(p.time(), 41);
+        for _ in 0..5 {
+            p.process(true, 80);
+        }
+        assert_eq!(p.time(), 21);
+        p.enter();
+        let ticks = (1..).find(|_| {
+            let go = p.process(true, 80);
+            p.enter();
+            go
+        });
+        assert_eq!(ticks, Some(60), "21 counted, 59 more to reach 80, the trip on the next");
+
+        // Not allowed (riding): the mark is used up, nothing counts, and a
+        // count still at 0 is dropped.
+        let mut p = PortalProcessor::default();
+        p.enter();
+        assert!(!p.process(false, 80));
+        assert!(!p.active());
+        // The creative delay of 0 goes on the tick after stepping in.
+        p.enter();
+        assert!(p.process(true, 0));
     }
 
     /// A loaded world with a hollow sky high above the terrain to build in.
