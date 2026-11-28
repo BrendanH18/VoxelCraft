@@ -1122,7 +1122,7 @@ impl World {
         let r = self.render_distance as f32 + 1.5;
         loads.iter().any(|&(c, level)| {
             let reach = tickets::FULL - level;
-            let (lo, hi) = ((c - IVec2::splat(reach)) >> 1, (c + IVec2::splat(reach)) >> 1);
+            let (lo, hi): (IVec2, IVec2) = ((c - IVec2::splat(reach)) >> 1i32, (c + IVec2::splat(reach)) >> 1i32);
             [(lo.x, lo.y), (hi.x, lo.y), (lo.x, hi.y), (hi.x, hi.y)]
                 .iter()
                 .any(|&(x, z)| (self.horizontal_dist2(IVec3::new(x, 0, z)) as f32) > r * r)
