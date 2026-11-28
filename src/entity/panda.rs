@@ -77,12 +77,16 @@ pub struct State {
     fall_distance: f64,
     carry: f64,
     pub(super) spit: Option<Stack>,
+    /// v1.0 gap Track 2d: `PandaBreedGoal` found no bamboo and points its
+    /// `PandaLookAtPlayerGoal` at the nearest player (`setTarget`), which the
+    /// look goals pick up.
+    pub(crate) look_at_nearest: bool,
 }
 impl State {
     pub fn variant(&self) -> Gene {
         if matches!(self.main, Gene::Brown | Gene::Weak) && self.main != self.hidden { Gene::Normal } else { self.main }
     }
-    pub(super) fn can_act(&self) -> bool {
+    pub(crate) fn can_act(&self) -> bool {
         !self.on_back && !self.scared && !self.sitting && self.eating == 0 && self.rolling == 0
     }
     pub fn save(&self) -> Value {
@@ -160,6 +164,7 @@ impl Mob {
         if s.ticks >= s.unhappy_cooldown {
             s.unhappy = 32;
             s.unhappy_cooldown = s.ticks.saturating_add(600);
+            s.look_at_nearest = true;
         }
         false
     }
@@ -318,6 +323,13 @@ impl Entities {
                             s.target = None;
                         }
                     }
+                }
+                // v1.0 gap Track 2d: `aiStep` turns an unhappy panda toward
+                // its target (`lookAt(target, 90, 90)`).
+                if s.unhappy > 0
+                    && let Some(a) = s.target
+                {
+                    m.turn_body_to(a.pos, 90.0);
                 }
                 if matches!(s.unhappy, 29 | 14) {
                     events.push(super::EntityEvent::Sound {

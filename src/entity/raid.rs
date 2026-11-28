@@ -2015,6 +2015,7 @@ impl Entities {
                 v.bell_hide = 1.0;
                 v.sleeping = false;
                 v.trading = false;
+                v.customer = None;
                 if v.goal.is_none() {
                     v.goal = v.home.map(|p| p.as_dvec3() + DVec3::new(0.5, 0.6, 0.5));
                 }
@@ -2044,6 +2045,7 @@ impl Entities {
             && (meeting - cell).as_dvec3().length_squared() > 4.0
         {
             v.trading = false;
+            v.customer = None;
             v.goal = Some(meeting.as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
         }
     }

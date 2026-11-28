@@ -518,6 +518,10 @@ impl Mob {
                 if self.goals.running == Some(i as u8)
                     || matches!(entry.goal, G::Panic | G::Stroll | G::GoHome | G::Travel)
                     || self.priority_of_running(t).is_some_and(|p| entry.priority >= p)
+                    || !self.idle_look_allows(
+                        entry.priority,
+                        matches!(entry.goal, G::Breed | G::Tempt | G::FollowOwner { .. }),
+                    )
                 {
                     continue;
                 }
@@ -599,7 +603,13 @@ impl Mob {
     /// `Goal.stop` for the running table goal.
     pub(crate) fn stop_goal<W: MobWorld + ?Sized>(&mut self, _world: &W) {
         let Some(i) = self.goals.running.take() else { return };
-        match table(self.kind)[i as usize].goal {
+        let goal = table(self.kind)[i as usize].goal;
+        // Track 2d: `AnimalMakeLove.stop` and `FollowTemptation.stop` erase
+        // `LOOK_TARGET`.
+        if matches!(goal, G::Breed | G::Tempt) && super::head::brain(self.kind) {
+            self.head.target = None;
+        }
+        match goal {
             G::Breed => {
                 if let Some(a) = &mut self.animal {
                     a.courtship = 0.0;
@@ -776,9 +786,14 @@ impl Mob {
         match entry.goal {
             G::Breed => {
                 let Some((uid, at)) = self.animal.as_ref().and_then(|a| a.partner) else { return };
-                // `setLookAt(partner, 10, getMaxHeadXRot())`.
-                let x = self.max_head_x_rot();
-                self.set_look_at(at + DVec3::Y * self.eye_height(), 10.0, x);
+                // `setLookAt(partner, 10, getMaxHeadXRot())`; a brain's
+                // `AnimalMakeLove` locks both gazes through `LOOK_TARGET`.
+                if super::head::brain(self.kind) {
+                    self.set_look_target(super::head::Tracked::Mob(uid, at + DVec3::Y * self.eye_height()));
+                } else {
+                    let x = self.max_head_x_rot();
+                    self.goal_look_at(at + DVec3::Y * self.eye_height(), 10.0, x);
+                }
                 self.walk_to(world, at.floor().as_ivec3(), 1, speed, false);
                 let a = self.animal.as_mut().unwrap();
                 a.courtship += 0.1;
@@ -793,9 +808,14 @@ impl Mob {
                     return;
                 };
                 let at = t.pos;
-                // `setLookAt(player, getMaxHeadYRot() + 20, getMaxHeadXRot())`.
-                let (y, x) = (self.max_head_y_rot() + 20.0, self.max_head_x_rot());
-                self.set_look_at(at + DVec3::Y * super::head::player_eye(t), y, x);
+                // `setLookAt(player, getMaxHeadYRot() + 20, getMaxHeadXRot())`;
+                // a brain's `FollowTemptation` sets `LOOK_TARGET` every tick.
+                if super::head::brain(self.kind) {
+                    self.set_look_target(super::head::Tracked::Player(t.id));
+                } else {
+                    let (y, x) = (self.max_head_y_rot() + 20.0, self.max_head_x_rot());
+                    self.goal_look_at(at + DVec3::Y * super::head::player_eye(t), y, x);
+                }
                 let close = if self.kind == MobKind::Armadillo { if self.baby { 1.0 } else { 2.0 } } else { 2.5 };
                 if at.distance_squared(self.pos) < close * close {
                     self.nav.stop();
@@ -814,7 +834,13 @@ impl Mob {
             }
             G::FollowAdult => {
                 // The walk target tracks the adult; close enough within 4.
-                let Some((_, at)) = self.goals.parent else { return };
+                let Some((uid, at)) = self.goals.parent else { return };
+                // Track 2d: `BabyFollowAdult` sets `LOOK_TARGET` on the adult's
+                // eyes with the walk target.
+                if self.head.target.is_none() {
+                    let eye = at + DVec3::Y * self.adult_eye_height();
+                    self.set_look_target(super::head::Tracked::Mob(uid, eye));
+                }
                 self.walk_to(world, at.floor().as_ivec3(), 4, speed, false);
             }
             G::FollowOwner { .. } => {
@@ -824,7 +850,7 @@ impl Mob {
                 if !teleport {
                     // `setLookAt(owner, 10, getMaxHeadXRot())`.
                     let x = self.max_head_x_rot();
-                    self.set_look_at(at + DVec3::Y * super::head::player_eye(t), 10.0, x);
+                    self.goal_look_at(at + DVec3::Y * super::head::player_eye(t), 10.0, x);
                 }
                 self.goals.recalc -= 1;
                 if self.goals.recalc <= 0 {

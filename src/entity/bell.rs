@@ -57,6 +57,7 @@ impl Entities {
                 v.bell_hide = 15.0;
                 v.sleeping = false;
                 v.trading = false;
+                v.customer = None;
                 v.goal = v.home.map(|p| p.as_dvec3() + DVec3::new(0.5, 0.6, 0.5));
             }
         });

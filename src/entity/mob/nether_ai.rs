@@ -226,16 +226,25 @@ impl Mob {
         let flat = DVec3::new(to.x, 0.0, to.z);
         let hdist = flat.length();
         let dir = if hdist > 1e-6 { flat / hdist } else { DVec3::X };
-        // `MeleeAttack` and `CrossbowAttack`: `LOOK_TARGET` on the target,
-        // followed at the mob's own speeds.
-        // Track 2d: the target's own eye (`getEyeY`).
+        // `MeleeAttack`, `CrossbowAttack` and
+        // `SetWalkTargetFromAttackTargetIfTargetOutOfReach`: `LOOK_TARGET` on
+        // the target's eyes, which `LookAtTargetSink` follows at the mob's
+        // own speeds (Track 2d: through the sink, as Java does).
         let foe_eye = match foe {
             Foe::Player(id) => {
                 ctx.players.iter().find(|t| t.id == id).map_or(crate::player::EYE_HEIGHT, |t| t.eye_height())
             }
             Foe::Mob(_) => self.nether.as_ref().map_or(1.2, |n| n.foe_eye),
         };
-        self.look_toward(at + DVec3::Y * foe_eye);
+        if super::head::brain(self.kind) {
+            self.set_look_target(match foe {
+                Foe::Player(id) => super::head::Tracked::Player(id),
+                Foe::Mob(uid) => super::head::Tracked::Mob(uid, at + DVec3::Y * foe_eye),
+            });
+        } else {
+            // Goal mobs (a zombified piglin or strider rider) ask the look control.
+            self.look_toward(at + DVec3::Y * foe_eye);
+        }
         let weapon = self.nether.as_ref().map_or(Weapon::None, |n| n.weapon);
         let eye = self.look_eye();
         let aim = at + DVec3::Y * 1.2;

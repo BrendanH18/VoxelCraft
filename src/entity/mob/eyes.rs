@@ -125,6 +125,11 @@ impl Mob {
         f64::from(self.eye_height_f32())
     }
 
+    /// An adult of this kind's eye height (a baby following its parent).
+    pub(crate) fn adult_eye_height(&self) -> f64 {
+        f64::from(adult(self.kind))
+    }
+
     fn eye_height_f32(&self) -> f32 {
         let baby = self.baby || self.age < 0;
         // `Pose.SLEEPING`: `SLEEPING_DIMENSIONS`.

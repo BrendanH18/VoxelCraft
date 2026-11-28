@@ -77,7 +77,9 @@ impl Mob {
                 if !ceiling || s.wake {
                     s.resting = false;
                 } else if rng.next_int(200) == 0 {
-                    self.head_yaw = rng.range(-std::f32::consts::PI, std::f32::consts::PI);
+                    // `yHeadRot = nextInt(360)`; the plain look and body
+                    // controls turn them toward each other after (Track 2d).
+                    self.look.head = rng.next_int(360) as f32;
                 }
             } else {
                 if s.target.is_some_and(|p| world.block(p) != Some(Block::AIR) || p.y <= s.min_y) {

@@ -534,13 +534,6 @@ impl Mob {
             self.stop_navigation();
             return (None, 0.0);
         }
-        if let Some(look) = s.look {
-            let to = look - self.pos;
-            if to.with_y(0.0).length_squared() > 1e-6 {
-                let yaw = (to.z as f32).atan2(to.x as f32);
-                self.yaw = super::mob::turn_toward(self.yaw, yaw, 0.6);
-            }
-        }
         let Some((goal, modifier)) = s.walk else {
             self.stop_navigation();
             return (None, 0.0);
@@ -723,6 +716,13 @@ impl Entities {
                 // `Digging.stop`: discarded, without loot or experience.
                 self.mobs.swap_remove(i);
                 continue;
+            }
+            // v1.0 gap Track 2d: what the warden's behaviours set as
+            // `LOOK_TARGET` this update (`SetWardenLookTarget`, `Roar`, the
+            // fight's walk target, a disturbance) goes to its brain's
+            // `LookAtTargetSink`, which turns its head (and its body after it).
+            if let Some(at) = s.look.take() {
+                self.mobs[i].head.target = Some(super::mob::head::Tracked::Point(at));
             }
             self.mobs[i].warden = Some(s);
         }
@@ -941,6 +941,11 @@ impl Entities {
         if let Some(elapsed) = &mut s.sonic {
             *elapsed += 1;
             let elapsed = *elapsed;
+            // v1.0 gap Track 2d: `SonicBoom.tick` asks the look control for the
+            // attack target's feet (`setLookAt(target.position())`).
+            if let Some(foe) = s.attack_target.and_then(|t| self.foe(ctx, t)) {
+                self.mobs[i].look_toward(foe.pos);
+            }
             if elapsed == SONIC_SOUND_AT {
                 self.warden_sonic_boom(i, s, w, ctx);
             }

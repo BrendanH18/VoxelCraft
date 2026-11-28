@@ -183,6 +183,9 @@ pub struct Villager {
     pub offers: [Option<Offer>; 10],
     pub sleeping: bool,
     pub trading: bool,
+    /// v1.0 gap Track 2d: the player trading (`AbstractVillager.tradingPlayer`,
+    /// not saved), set with `trading`.
+    pub customer: Option<crate::entity::PlayerId>,
     pub goal: Option<DVec3>,
     pub fleeing: bool,
     pub(crate) growth: f32,
@@ -267,6 +270,7 @@ impl Villager {
             offers: [None; 10],
             sleeping: false,
             trading: false,
+            customer: None,
             goal: None,
             fleeing: false,
             seed,
@@ -971,8 +975,13 @@ impl Entities {
                 && hash(v.seed ^ now as u64).is_multiple_of(2)
             {
                 v.work_check = Some(now);
-                if v.job.is_some_and(|p| m.pos.distance_squared(p.as_dvec3() + 0.5) < WORK_DISTANCE * WORK_DISTANCE) {
+                if let Some(p) =
+                    v.job.filter(|p| m.pos.distance_squared(p.as_dvec3() + 0.5) < WORK_DISTANCE * WORK_DISTANCE)
+                {
                     v.restock(now, self.village_day);
+                    // v1.0 gap Track 2d: `WorkAtPoi.start` looks at the job site
+                    // (`BlockPosTracker`, the block's centre).
+                    m.head.target = Some(super::mob::head::Tracked::Point(p.as_dvec3() + 0.5));
                 }
             }
         }

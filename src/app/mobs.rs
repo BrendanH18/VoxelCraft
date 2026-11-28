@@ -257,10 +257,21 @@ impl Game {
         self.mobs.entities.neutral_universal_anger = self.gamerules.bool("universal_anger");
         self.mobs.entities.village_time = self.day_time;
         self.mobs.entities.village_day = self.day_count;
+        // v1.0 gap Track 2d: each merchant's customer (`tradingPlayer`): the
+        // host, a controller player or a LAN player with its screen open.
+        let mut customers: Vec<(u64, crate::entity::PlayerId)> = Vec::new();
+        if self.inventory_open
+            && let super::Container::Trading(id) = self.body.container
+        {
+            customers.push((id, crate::entity::PlayerId::HOST));
+        }
+        let agent = |name: &str| self.agents.players.get(name).map(|b| b.agent.session.id);
+        customers.extend(self.pads.trading_seats().filter_map(|(id, name)| Some((id, agent(name)?))));
+        customers.extend(self.lan_trading().filter_map(|(id, name)| Some((id, agent(name)?))));
         for m in &mut self.mobs.entities.mobs {
             if let Some(v) = &mut m.villager {
-                v.trading = self.inventory_open && self.body.container == super::Container::Trading(v.id)
-                    || self.pads.trading(v.id);
+                v.customer = customers.iter().find(|c| c.0 == v.id).map(|c| c.1);
+                v.trading = v.customer.is_some() || self.pads.trading(v.id);
             }
         }
         // Java keeps the hook while a rod is in either hand.

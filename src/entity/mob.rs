@@ -1855,6 +1855,7 @@ impl Mob {
             self.convert_by = None;
             v.sleeping = false;
             v.trading = false;
+            v.customer = None;
             v.fleeing = false;
             v.goal = None;
         }
@@ -3304,7 +3305,14 @@ impl Mob {
                 } else if self.kind.walks_paths() {
                     // `RandomStrollGoal`: a 1-in-`interval` chance a tick (1 in
                     // half the interval per goal update, every other tick).
-                    if rng.chance(dt * 20.0 / self.kind.stroll_interval()) && self.try_stroll(world, ctx, rng) {
+                    // Track 2d: a running idle look goal holding `MOVE` at a
+                    // better priority keeps the stroll from starting.
+                    let stroll = goals::table(self.kind).iter().find(|e| matches!(e.goal, goals::Goal::Stroll));
+                    let allowed = stroll.is_none_or(|e| self.idle_look_allows(e.priority, false));
+                    if allowed
+                        && rng.chance(dt * 20.0 / self.kind.stroll_interval())
+                        && self.try_stroll(world, ctx, rng)
+                    {
                         self.path_move = true;
                     }
                 } else if self.ai_timer <= 0.0 {
