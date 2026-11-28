@@ -2384,8 +2384,8 @@ impl Entities {
             m.set_pose_values(pose);
             (m.yaw, m.body_yaw) = (yaw, body);
         }
-        model::build_arrows(&self.arrows, camera, alpha, &mut self.mesh);
-        model::build_tridents(&self.tridents, camera, alpha, &mut self.mesh);
+        model::build_arrows(&self.arrows, camera, forward, time, alpha, &mut self.mesh);
+        model::build_tridents(&self.tridents, camera, forward, time, alpha, &mut self.mesh);
         model::build_fangs(&self.fangs, camera, &mut self.mesh);
         model::build_pearls(&self.pearls, camera, alpha, &mut self.mesh);
         model::build_fireworks(&self.fireworks, camera, alpha, &mut self.mesh);

@@ -106,6 +106,17 @@ fn a_crystal_broken_by_a_mob_blames_that_mob() {
     let events: Vec<_> = (0..5).flat_map(|_| e.update(0.05, &world, &ctx(Vec::new()))).collect();
     let (cause, _) = blast(&events).expect("the crystal blew up");
     assert_eq!(cause, crate::simulation::damage::Cause::END_CRYSTAL);
+    // v1.0 gap Track 8c: Java's `death.attack.explosion` names no one.
+    assert_eq!((cause.kind, cause.text), (DamageType::Explosion, "blew up"));
+    // v1.0 gap Track 8c: a player's arrow: `explosion(crystal, player)`, a
+    // `player_explosion` naming the player, credited to them.
+    let mut e = Entities::new(1);
+    e.crystals.place(DVec3::new(0.5, 11.0, 0.5));
+    e.arrows.push(Arrow::shot(DVec3::new(-4.0, 12.0, 0.5), DVec3::X, 1.0, true));
+    let events: Vec<_> = (0..5).flat_map(|_| e.update(0.05, &world, &ctx(Vec::new()))).collect();
+    let (cause, credit) = blast(&events).expect("the crystal blew up");
+    assert_eq!((cause.kind, cause.text, credit), (DamageType::PlayerExplosion, "was blown up by a player", true));
+    assert_eq!(cause, crate::simulation::damage::Cause::PLAYER_EXPLOSION);
 }
 
 /// `checkWalls` on a bubble column: `removeBlock` leaves its fluid's

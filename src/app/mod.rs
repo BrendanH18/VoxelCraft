@@ -291,6 +291,8 @@ struct Game {
     decor_scene: Vec<(IVec3, IVec3, Item, Option<Item>)>,
     /// `--brush`: strokes on suspicious blocks, after `--place`.
     brush_scene: Vec<(IVec3, IVec3, u8)>,
+    /// v1.0 gap Track 8c: `--projectile` arrows and tridents to stick in blocks.
+    projectile_scene: Vec<(bool, IVec3, bool)>,
     /// `--open-block`: a container to open once placements are done.
     open_block: Option<IVec3>,
     /// `--drop`: thrown once the world has loaded.
@@ -350,6 +352,13 @@ struct Game {
     /// (`Player.getDimensionChangingDelay`, 10 ticks); touching a portal or
     /// gateway meanwhile restarts it rather than using it.
     portal_cooldown: f64,
+    /// v1.0 gap Track 8c: Nether portals owed by trips the
+    /// `allow_entering_nether_using_portals` rule refused (Java's
+    /// `getPortalDestination` builds the exit portal before
+    /// `teleportToPortalDestination` refuses the trip), built when the
+    /// Nether next loads ([`dimension::OwedPortal`]). Saved in the root
+    /// level file.
+    owed_portals: Vec<dimension::OwedPortal>,
 }
 
 pub struct App {
@@ -1902,6 +1911,9 @@ impl Game {
         }
         for (pos, face, item, held) in std::mem::take(&mut self.decor_scene) {
             self.place_scripted_decor(pos, face, item, held);
+        }
+        for (trident, cell, fire) in std::mem::take(&mut self.projectile_scene) {
+            self.mobs.entities.stick_scripted_projectile(trident, cell, fire);
         }
         for (pos, face, strokes) in std::mem::take(&mut self.brush_scene) {
             if !self.world.brush_scripted(pos, face, strokes) {

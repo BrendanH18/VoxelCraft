@@ -62,6 +62,9 @@ pub struct Trident {
     pub in_ground: bool,
     in_ground_time: u32,
     life: u32,
+    /// v1.0 gap Track 8c: a scripted scene's trident ([`Trident::stuck`]),
+    /// which never despawns. Not saved.
+    pinned: bool,
     pub shake: u8,
     dealt_damage: bool,
     /// Returning with Loyalty: flies through blocks toward its owner.
@@ -109,6 +112,7 @@ impl Trident {
             in_ground: false,
             in_ground_time: 0,
             life: 0,
+            pinned: false,
             shake: 0,
             dealt_damage: false,
             no_physics: false,
@@ -120,6 +124,18 @@ impl Trident {
             fire: 0,
             rot: None,
         }
+    }
+
+    /// v1.0 gap Track 8c: a scripted scene's trident (`--projectile`), stuck
+    /// in the ground at `pos` pointing along `dir`, with `fire` ticks of
+    /// fire, which never despawns (software captures take minutes).
+    pub fn stuck(pos: DVec3, dir: DVec3, fire: u16) -> Self {
+        let mut t = Self::new(Stack::new(crate::weapons::TRIDENT, 1), pos, dir, None, Pickup::Disallowed);
+        t.in_ground = true;
+        t.vel = DVec3::ZERO;
+        t.fire = fire;
+        t.pinned = true;
+        t
     }
 
     /// `TridentItem.releaseUsing`: thrown by a player (see [`Throw`]).
@@ -274,7 +290,7 @@ impl Trident {
                     f64::from(rng.next_f32() * 0.2),
                 );
                 self.life = 0;
-            } else if (self.pickup != Pickup::Allowed || loyalty == 0) && {
+            } else if (self.pickup != Pickup::Allowed || loyalty == 0) && !self.pinned && {
                 self.life += 1;
                 self.life >= tr::DESPAWN_TICKS
             } {
@@ -466,11 +482,15 @@ impl Trident {
             Hit::Mob(i) => {
                 let mob = &mut mobs[i];
                 let damage = tr::BASE_DAMAGE + crate::weapons::impaling_bonus(enchants, mob.kind);
-                // `EnderMan.hurtServer` dodges every projectile.
-                let hurt = if mob.kind == MobKind::Enderman {
+                // `EnderMan.hurtServer` dodges every projectile, and (v1.0
+                // gap Track 8c) `projectileReceivesSideEffectsOnHit(false)`
+                // is false for it: no hit sound and no bounce, the trident
+                // flies on (having dealt its damage, it hits nothing more).
+                if super::projectile::dodges_projectiles(mob) {
                     mob.teleport_pending = true;
-                    false
-                } else if mob.refuses_hit(damage) {
+                    return;
+                }
+                let hurt = if super::projectile::refuses_arrow(mob, damage) {
                     false
                 } else {
                     let before = mob.health;
@@ -1043,6 +1063,28 @@ mod tests {
             EntityEvent::Sound { sound: MobSound::Breeze(crate::entity::breeze::Cue::Deflect), .. }
         )));
         assert!(e.arrows[0].velocity().x < 0.0, "it flies back");
+    }
+
+    /// v1.0 gap Track 8c: an enderman dodges a trident
+    /// (`projectileReceivesSideEffectsOnHit(false)` is false for it): no hit
+    /// sound and no bounce, it flies on, hitting nothing more.
+    #[test]
+    fn a_trident_flies_on_past_a_dodging_enderman() {
+        let world = Grid::flat(10);
+        let mut e = Entities::new(3);
+        e.spawn(MobKind::Enderman, DVec3::new(4.5, 10.0, 0.5));
+        e.spawn(MobKind::Cow, DVec3::new(7.5, 10.0, 0.5));
+        e.tridents.push(flying(Stack::new(crate::weapons::TRIDENT, 1), DVec3::new(0.5, 10.6, 0.5), DVec3::X * 1.2));
+        let events = run(&mut e, &world, 4);
+        assert!(
+            !events.iter().any(|ev| matches!(ev, EntityEvent::Sound { sound: MobSound::Weapon(Cue::TridentHit), .. }))
+        );
+        let t = &e.tridents[0];
+        assert!(t.dealt_damage && t.vel.x > 0.0 && t.pos.x > 5.0, "flew on: {} at {}", t.vel, t.pos);
+        let enderman = &e.mobs[0];
+        assert!(enderman.teleport_pending || enderman.pos.x != 4.5, "it dodged: {}", enderman.pos);
+        assert_eq!(enderman.health, MobKind::Enderman.max_health());
+        assert_eq!(e.mobs[1].health, MobKind::Cow.max_health(), "it hits nothing more");
     }
 
     #[test]
