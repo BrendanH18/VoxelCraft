@@ -353,8 +353,8 @@ a ruined portal goes whole into the cell holding its middle
 (`RuinedPortalPiece.postProcess`), its processors, netherrack spread and
 drips reading that cell's region. Structures read the region as earlier
 steps left it (fortress pillars stop on what is under them then) and later
-features read them: glowstone hangs from bastion blackstone, fire lies on
-a portal's netherrack, ores and blobs pass the bricks by. Where two cells'
+features read them: glowstone hangs from bastion blackstone, fire can lie
+on a portal's netherrack, ores and blobs pass the bricks by. Where two cells'
 regions overlap, a block a structure changed wins over the other cell's
 change there, Java's result when the structure's chunk was decorated
 after the other (its pieces replace what they cover).
