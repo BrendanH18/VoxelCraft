@@ -2001,7 +2001,11 @@ mod tests {
                     for locked in [false, true] {
                         let label = format!("delay={delay},facing={java},locked={locked},powered={on}");
                         let mut blocks = vec![([5, 5, 5], b)];
+                        let mut faces = fixture["repeaters"][&label].clone();
                         if locked {
+                            // Both on stone (a placed diode needs it), so the
+                            // plate's underside is culled.
+                            faces.retain(|f| !(f.0 == 3 && f.1[1] == 0.0));
                             // A powered repeater to the side, its output
                             // pointing into this one.
                             let side = facing.clockwise();
@@ -2014,8 +2018,10 @@ mod tests {
                                 })
                                 .unwrap();
                             blocks.push((at, Block(id)));
+                            blocks.insert(0, ([5, 4, 5], Block::STONE));
+                            blocks.insert(0, ([at[0], 4, at[2]], Block::STONE));
                         }
-                        let drawn = check_model_faces(&mesh_blocks(&blocks), &fixture["repeaters"][&label], &label);
+                        let drawn = check_model_faces(&mesh_blocks(&blocks), &faces, &label);
                         let torch = if on { 1116 } else { 1117 };
                         let top = if on {
                             crate::content::item_models::REPEATER_TOP_ON
