@@ -270,7 +270,8 @@ pub(super) fn llama(m: &Mob) -> Parts {
     let mut p = Parts::new();
     p.push(part(LLAMA_BODY, [0.; 3], Quat::IDENTITY));
     p.push(part(LLAMA_HEAD, [0., 20. * LY, 5.], head));
-    for (x, z, phase) in [(-3., 5., swing), (3., 5., -swing), (-3., -5., -swing), (3., -5., swing)] {
+    // v1.0 gap Track 7c: the right hind leg (-X) on the walk's cosine.
+    for (x, z, phase) in [(-3., 5., -swing), (3., 5., swing), (-3., -5., swing), (3., -5., -swing)] {
         p.push(part(LLAMA_LEG, [x, 14. * LY, z], rx(phase)));
     }
     if s.is_some_and(|s| s.slots[1].is_some()) {

@@ -107,6 +107,11 @@ impl Mob {
         }
         if let Some(s) = self.bee {
             v["bee"] = s.save();
+            // v1.0 gap Track 7c: `shouldRoll`, which the bee's tumble
+            // (`rollAmount`) eases toward; not part of its saved state.
+            if s.rolling {
+                v["bee_roll"] = json!(true);
+            }
         }
         if let Some(a) = &self.animal {
             v["animal"] = json!({
@@ -146,6 +151,11 @@ impl Mob {
         }
         if let Some(a) = &self.aquatic {
             v["aquatic"] = json!({"variant": a.variant, "puff": a.puff});
+            // v1.0 gap Track 7c: the squid's tentacle cycle, which its
+            // client animation (`Squid.aiStep`'s `tentacleAngle`) follows.
+            if matches!(self.kind, MobKind::Squid | MobKind::GlowSquid) {
+                v["aquatic"]["tentacle"] = json!(a.tentacle);
+            }
         }
         if let Some(villager) = &self.villager {
             v["villager"] = json!({
@@ -158,6 +168,19 @@ impl Mob {
             v["dancing"] = json!(n.dancing);
         }
         v
+    }
+
+    /// v1.0 gap Track 7c: a squid's tentacle cycle (`Squid.tentacleMovement`),
+    /// which LAN guests draw its tentacles from.
+    pub fn tentacle_cycle(&self) -> Option<f32> {
+        matches!(self.kind, MobKind::Squid | MobKind::GlowSquid).then(|| self.aquatic.as_ref().map(|a| a.tentacle))?
+    }
+
+    /// Sets the cycle a host sent, kept within a turn.
+    pub fn set_tentacle_cycle(&mut self, t: f32) {
+        if let Some(a) = self.aquatic.as_mut().filter(|_| t.is_finite()) {
+            a.tentacle = t.rem_euclid(std::f32::consts::TAU);
+        }
     }
 
     /// Applies [`Mob::look`] from the host; missing fields keep their previous values.
@@ -279,7 +302,9 @@ impl Mob {
             }
         });
         if self.kind == MobKind::Bee {
-            self.bee = Some(super::bee::State::load(&v["bee"]));
+            let mut bee = super::bee::State::load(&v["bee"]);
+            bee.rolling = v["bee_roll"] == true;
+            self.bee = Some(bee);
         }
         if let (Some(a), w) = (self.animal.as_mut(), &v["animal"])
             && w.is_object()
@@ -337,6 +362,9 @@ impl Mob {
             a.variant = small(&w["variant"]).unwrap_or(a.variant);
             a.puff = small(&w["puff"]).unwrap_or(0).min(2);
         }
+        if let Some(t) = v["aquatic"]["tentacle"].as_f64() {
+            self.set_tentacle_cycle(t as f32);
+        }
         if let (Some(villager), w) = (self.villager.as_mut(), &v["villager"])
             && w.is_object()
         {
@@ -371,6 +399,25 @@ impl Mob {
 mod tests {
     use super::*;
     use crate::entity::MobKind;
+
+    /// v1.0 gap Track 7c: a guest's squid draws its tentacles from the
+    /// host's cycle, and its bee tumbles while the host's rolls.
+    #[test]
+    fn squid_tentacles_and_bee_rolls_reach_lan_guests() {
+        let mut squid = Mob::new(MobKind::Squid, DVec3::ZERO, 0.0);
+        squid.set_tentacle_cycle(2.5);
+        let mut copy = Mob::new(MobKind::Squid, DVec3::ZERO, 0.0);
+        copy.apply_look(&squid.look());
+        assert_eq!(copy.tentacle_cycle(), Some(2.5));
+        let mut bee = Mob::new(MobKind::Bee, DVec3::ZERO, 0.0);
+        bee.bee.as_mut().unwrap().rolling = true;
+        let mut copy = Mob::new(MobKind::Bee, DVec3::ZERO, 0.0);
+        copy.apply_look(&bee.look());
+        assert!(copy.bee.unwrap().rolling);
+        bee.bee.as_mut().unwrap().rolling = false;
+        copy.apply_look(&bee.look());
+        assert!(!copy.bee.unwrap().rolling);
+    }
 
     #[test]
     fn look_round_trips_render_state() {

@@ -53,30 +53,6 @@ const FOX_TAIL: &[Cuboid] = &[
     cube([-2.0, -2.0, -7.0], [2.0, 2.0, 0.0], [201, 108, 47], 24),
     cube([-2.0, -2.0, -10.0], [2.0, 2.0, -7.0], [242, 234, 218], 16),
 ];
-/// The rabbit's body and tail; v1.0 gap Track 7b split its head off onto
-/// its own pivot (`RABBIT_HEAD_AT`), the same boxes in the same places.
-const RABBIT: &[Cuboid] = &[
-    cube([-2.0, 2.0, -3.0], [2.0, 6.0, 3.0], [158, 123, 88], 24),
-    cube([-1.0, 3.0, -4.5], [1.0, 5.0, -3.0], [236, 225, 202], 12),
-];
-const RABBIT_HEAD_AT: [f32; 3] = [0.0, 5.0, 2.0];
-const RABBIT_HEAD: &[Cuboid] = &[
-    cube([-2.0, -1.0, 0.0], [2.0, 3.0, 4.0], [173, 143, 106], 22),
-    cube([-2.0, 3.0, 0.0], [-0.6, 10.0, 1.2], [169, 137, 103], 18),
-    cube([0.6, 3.0, 0.0], [2.0, 10.0, 1.2], [169, 137, 103], 18),
-    cube([-1.8, 3.5, 1.2], [-0.8, 9.0, 1.3], [220, 164, 161], 0),
-    cube([0.8, 3.5, 1.2], [1.8, 9.0, 1.3], [220, 164, 161], 0),
-    cube([-2.1, 1.0, 2.0], [-2.0, 2.0, 3.0], [30, 28, 26], 0),
-    cube([2.0, 1.0, 2.0], [2.1, 2.0, 3.0], [30, 28, 26], 0),
-    cube([-1.0, 0.0, 4.0], [1.0, 1.0, 4.1], [218, 170, 166], 0),
-    // v0.18 Track 6: eye glints, a mouth and whiskers.
-    cube([-2.15, 1.6, 2.6], [-2.1, 1.9, 2.9], [222, 218, 210], 0),
-    cube([2.1, 1.6, 2.6], [2.15, 1.9, 2.9], [222, 218, 210], 0),
-    cube([-0.5, -0.5, 4.0], [0.5, -0.2, 4.05], [120, 90, 84], 0),
-    cube([-2.6, 0.2, 3.4], [-2.0, 0.3, 3.6], [214, 210, 200], 0),
-    cube([2.0, 0.2, 3.4], [2.6, 0.3, 3.6], [214, 210, 200], 0),
-];
-const RABBIT_FOOT: &[Cuboid] = &[cube([-1.0, -1.0, -3.0], [1.0, 1.0, 1.0], [158, 123, 88], 24)];
 const GOAT_BODY: &[Cuboid] = &[cube([-4.0, 8.0, -7.0], [4.0, 17.0, 6.0], [224, 219, 201], 28)];
 const GOAT_HEAD: &[Cuboid] = &[
     cube([-2.5, -3.0, 0.0], [2.5, 4.0, 7.0], [232, 227, 211], 18),
@@ -117,7 +93,9 @@ const PARROT_HEAD: &[Cuboid] = &[
 const PARROT_TAIL_AT: [f32; 3] = [0.0, 3.0, -2.0];
 const PARROT_TAIL: &[Cuboid] = &[cube([-1.0, -1.0, -4.0], [1.0, 1.0, 0.0], [61, 82, 185], 18)];
 const PARROT_LEGS_AT: [f32; 3] = [0.0, 3.0, -0.5];
-const PARROT_LEGS: &[Cuboid] = &[cube([-1.0, -3.0, -0.5], [1.0, 0.0, 0.5], [79, 76, 69], 15)];
+/// v1.0 gap Track 7c: each leg on its own joint (`left_leg`, `right_leg`;
+/// the same box as the pair at rest).
+const PARROT_LEG: &[Cuboid] = &[cube([-0.5, -3.0, -0.5], [0.5, 0.0, 0.5], [79, 76, 69], 15)];
 const PARROT_WING: &[Cuboid] = &[cube([0.0, -6.0, -1.0], [1.0, 0.0, 2.0], [61, 82, 185], 18)];
 pub(super) fn pose(m: &Mob, time: f32, alpha: f32) -> Parts {
     let a = m.animal.as_deref();
@@ -125,8 +103,9 @@ pub(super) fn pose(m: &Mob, time: f32, alpha: f32) -> Parts {
     // `QuadrupedModel`) trot, `cos(pos * 0.6662) * 1.4 * speed` with each
     // diagonal pair together. (The rabbit hops; its feet keep this swing.)
     let swing = walk_cos(m) * motion::LEG_SWING;
-    // Left front, right front, left hind, right hind.
-    let trot = [1.0, -1.0, -1.0, 1.0];
+    // Right front, left front, right hind, left hind (v1.0 gap Track 7c:
+    // Java's right legs, on -X, with the right hind on the cosine).
+    let trot = [-1.0, 1.0, 1.0, -1.0];
     let head = Quat::from_rotation_y(-m.head_yaw) * Quat::from_rotation_x(-m.head_pitch);
     let rx = Quat::from_rotation_x;
     match m.kind {
@@ -157,7 +136,7 @@ pub(super) fn pose(m: &Mob, time: f32, alpha: f32) -> Parts {
             p.push(part(
                 if wolf { WOLF_TAIL } else { FOX_TAIL },
                 [0.0, if wolf { 10.0 } else { 7.0 } + y, -6.0],
-                Quat::from_rotation_y(wag) * rx(tail_pitch),
+                Quat::from_rotation_y(-wag) * rx(tail_pitch),
             ));
             if wolf {
                 for armor in super::passive::wolf_armor(m, [0.0, y, 0.0], body_rot).iter().copied() {
@@ -169,7 +148,7 @@ pub(super) fn pose(m: &Mob, time: f32, alpha: f32) -> Parts {
             }
             p
         }
-        MobKind::Rabbit => rabbit(m, alpha, head, swing),
+        MobKind::Rabbit => super::rigged::rabbit::pose(m, alpha),
         MobKind::Goat => {
             let mut p = parts![
                 part(GOAT_BODY, [0.0; 3], Quat::IDENTITY),
@@ -208,7 +187,12 @@ fn parrot(m: &Mob, time: f32, alpha: f32, head: Quat) -> Parts {
     let (rx, rz) = (Quat::from_rotation_x, Quat::from_rotation_z);
     // Java's `y` runs down: its `+= bob` is a drop here.
     let (mut shift, mut head_rot, mut tail, mut legs, mut wing, mut legs_y) = (Vec3::ZERO, head, 0.0, 0.0, 0.0873, 0.0);
+    // v1.0 gap Track 7c: standing, the legs walk (`cos(pos * 0.6662) * 1.4
+    // * speed`, the left leg, on +X, leading); dancing, they splay 20
+    // degrees each way (Java's z turns, changing sign here).
+    let (mut walk, mut splay) = (0.0, 0.0);
     if party {
+        splay = PI / 9.0;
         shift = Vec3::new(age.cos(), -age.sin(), 0.0);
         head_rot = rz(-age.sin() * 0.4);
         wing += fa;
@@ -224,6 +208,8 @@ fn parrot(m: &Mob, time: f32, alpha: f32, head: Quat) -> Parts {
         wing += fa;
         if flying {
             legs = PI * 2.0 / 9.0;
+        } else {
+            walk = walk_cos(m) * motion::LEG_SWING;
         }
     }
     let at = |p: [f32; 3]| (Vec3::from_array(p) + shift).to_array();
@@ -231,47 +217,12 @@ fn parrot(m: &Mob, time: f32, alpha: f32, head: Quat) -> Parts {
         part(PARROT, at([0.0; 3]), Quat::IDENTITY),
         part(PARROT_HEAD, at(PARROT_HEAD_AT), head_rot),
         part(PARROT_TAIL, at(PARROT_TAIL_AT), rx(tail)),
-        part(PARROT_LEGS, [PARROT_LEGS_AT[0], PARROT_LEGS_AT[1] + legs_y, PARROT_LEGS_AT[2]], rx(legs)),
+        part(PARROT_LEG, [-0.5, PARROT_LEGS_AT[1] + legs_y, PARROT_LEGS_AT[2]], rz(-splay) * rx(legs - walk)),
+        part(PARROT_LEG, [0.5, PARROT_LEGS_AT[1] + legs_y, PARROT_LEGS_AT[2]], rz(splay) * rx(legs + walk)),
         // The right wing on -X, each opening outward (`zRot` -+ for Java's
         // left and right, turned to this model's sides).
         part(PARROT_WING, at([-1.5, 10.0, 0.0]), rz(-wing)),
         part(PARROT_WING, at([1.5, 10.0, 0.0]), rz(wing))
-    ]
-}
-
-/// `RabbitAnimation.HOP`'s and `IDLE_HEAD_TILT`'s lengths in seconds.
-const RABBIT_HOP: f32 = 0.75;
-const RABBIT_TILT: f32 = 4.0;
-
-/// v1.0 gap Track 7b: `RabbitModel`: the hop plays on Java's clock, from
-/// the tick `Rabbit.setupAnimationStates` starts it (as the rabbit leaves
-/// the ground) round its 0.75 s loop, until it lands; now and then, at
-/// rest, the head tilts for 4 s (`IDLE_HEAD_TILT`), not following the look
-/// meanwhile. This game's own drawn motion: the body pitches forward and
-/// back over the middle of the hop, the head holding level, the hind feet
-/// kicking back; the tilt rocks the head to one side and back.
-fn rabbit(m: &Mob, alpha: f32, head: Quat, swing: f32) -> Parts {
-    let (rx, rz) = (Quat::from_rotation_x, Quat::from_rotation_z);
-    let bump = |t: f32, from: f32, to: f32| {
-        if t <= from || t >= to { 0.0 } else { ((t - from) / (to - from) * PI).sin() }
-    };
-    let (pitch, kick) = m
-        .loop_time(m.anim.hop_start, RABBIT_HOP, alpha)
-        .map_or((0.0, 0.0), |t| (0.55 * bump(t, 0.17, 1.0), 1.6 * bump(t, 0.17, 0.89)));
-    let look = match m.loop_time(m.anim.tilt_start, RABBIT_TILT, alpha) {
-        Some(t) if m.anim.tilt_start.is_some_and(|s| m.age_in_ticks(alpha) - (s as f32) < RABBIT_TILT * 20.0) => {
-            rz(0.4 * (t * TAU).sin() * bump(t, 0.0, 1.0))
-        }
-        Some(_) => Quat::IDENTITY,
-        None => head,
-    };
-    let body = rx(pitch);
-    let head_at = (body * Vec3::from_array(RABBIT_HEAD_AT)).to_array();
-    parts![
-        part(RABBIT, [0.0; 3], body),
-        part(RABBIT_HEAD, head_at, body * rx(-pitch) * look),
-        part(RABBIT_FOOT, [-2.0, 1.0, -2.0], rx(swing + kick)),
-        part(RABBIT_FOOT, [2.0, 1.0, -2.0], rx(swing + kick))
     ]
 }
 
@@ -337,7 +288,6 @@ pub(super) fn model_scale(m: &Mob) -> Vec3 {
         match m.kind {
             MobKind::Wolf => 0.8,
             MobKind::Fox => 0.7467,
-            MobKind::Rabbit => 0.5333,
             MobKind::Goat => 0.84,
             MobKind::Parrot => 0.8471,
             _ => 1.0,

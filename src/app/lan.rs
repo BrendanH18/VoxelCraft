@@ -1549,6 +1549,18 @@ impl Game {
                     if let Some(mount) = m.mount.as_ref().filter(|s| s.jump_charge > 0.0) {
                         v["jump"] = json!(mount.jump_charge);
                     }
+                    // v1.0 gap Track 7c: the squid's tentacle cycle and the
+                    // bee's `shouldRoll` drive their client animations
+                    // every tick, so they ride with the pose too.
+                    if let Some(t) = m.tentacle_cycle() {
+                        v["tc"] = json!(r3(t as f64));
+                    }
+                    if m.bee.is_some_and(|b| b.rolling) {
+                        v["roll"] = json!(true);
+                    }
+                    if let Some(t) = m.crossbow_draw() {
+                        v["draw"] = json!(r3(t as f64));
+                    }
                     looked.insert(m.uid);
                     v
                 })
@@ -2076,6 +2088,13 @@ impl Game {
                 if let Some(mount) = mob.mount.as_mut() {
                     mount.jump_charge = m["jump"].as_f64().map_or(0.0, |j| j.clamp(0.0, 1.0) as f32);
                 }
+                if let Some(t) = m["tc"].as_f64() {
+                    mob.set_tentacle_cycle(t as f32);
+                }
+                if let Some(bee) = mob.bee.as_mut() {
+                    bee.rolling = m["roll"] == true;
+                }
+                mob.set_crossbow_draw(m["draw"].as_f64().map(|t| t as f32));
                 mob.riding = m["r"].as_u64().and_then(|r| u32::try_from(r).ok());
                 mob.animate_replica(voxelcraft::simulation::TICK_SECONDS as f32);
                 mob.previous_pose = if known { before } else { mob.pose_values() };

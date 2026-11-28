@@ -239,6 +239,18 @@ pub(super) fn pose(m: &Mob, time: f32) -> Parts {
                 body_y = -(d * 40.0).sin() * 0.35;
             } else if attacking && m.swing.anim == 0.0 {
                 h.right_arm.x = -1.8;
+            } else if let Some(used) = m.crossbow_draw() {
+                // v1.0 gap Track 7c: `CROSSBOW_CHARGE`
+                // (`AnimationUtils.animateCrossbowCharge`): the pulling arm
+                // draws back from 0.4 to 0.85 and up to level over the 25
+                // ticks the crossbow loads (`getTicksUsingItem`).
+                let used = (used / 25.0).clamp(0.0, 1.0);
+                h.right_arm = Limb { x: -0.970_796_35, y: -0.8, z: h.right_arm.z };
+                h.left_arm = Limb {
+                    x: -0.970_796_35 + (-FRAC_PI_2 + 0.970_796_35) * used,
+                    y: 0.4 + (0.85 - 0.4) * used,
+                    z: h.left_arm.z,
+                };
             } else if weapon == Weapon::Crossbow && fighting {
                 // Java's `head.yRot` is the head yaw on Java's sides.
                 let hy = m.head_yaw;
@@ -324,10 +336,11 @@ pub(super) fn pose(m: &Mob, time: f32) -> Parts {
             let leg = m.limb_phase.cos() * 1.2 * m.limb_amp;
             let mut parts = Parts::new();
             parts.push(part(body, [0.0; 3], Quat::IDENTITY));
-            parts.push(part(front, [-4.5, 12.0, 8.0], rx(-leg)));
-            parts.push(part(front, [4.5, 12.0, 8.0], rx(leg)));
-            parts.push(part(back, [-4.5, 12.0, -9.0], rx(leg)));
-            parts.push(part(back, [4.5, 12.0, -9.0], rx(-leg)));
+            // v1.0 gap Track 7c: Java's right legs on -X.
+            parts.push(part(front, [-4.5, 12.0, 8.0], rx(leg)));
+            parts.push(part(front, [4.5, 12.0, 8.0], rx(-leg)));
+            parts.push(part(back, [-4.5, 12.0, -9.0], rx(-leg)));
+            parts.push(part(back, [4.5, 12.0, -9.0], rx(leg)));
             parts.push(part(head_box, [0.0, 15.0, 12.0], Quat::from_rotation_y(-m.head_yaw) * rx(head_x)));
             if zoglin {
                 parts.push(part(ZOGLIN_ROT, [0.0; 3], Quat::IDENTITY));
@@ -343,13 +356,15 @@ pub(super) fn pose(m: &Mob, time: f32) -> Parts {
             // shivers.
             let (pos, speed) = (m.limb_phase, m.limb_amp.min(0.25));
             let half = pos * 0.75;
-            let rock = 0.4 * (pos * 1.5).sin() * speed;
+            // v1.0 gap Track 7c: on Java's sides (the right leg on -X; y
+            // and z turns change sign).
+            let rock = -0.4 * (pos * 1.5).sin() * speed;
             let bob = 4.0 * (pos * 1.5).cos() * speed;
             let shiver = if cold { (time * 45.0).sin() * 0.04 } else { 0.0 };
             let leg_rot = |sign: f32| {
-                Limb { x: sign * half.sin() * 2.0 * speed, y: 0.0, z: sign * PI / 18.0 * half.cos() * speed }.quat()
+                Limb { x: -sign * half.sin() * 2.0 * speed, y: 0.0, z: sign * PI / 18.0 * half.cos() * speed }.quat()
             };
-            let lift = |sign: f32| sign * 4.0 * half.sin() * speed;
+            let lift = |sign: f32| -sign * 4.0 * half.sin() * speed;
             let mut parts = Parts::new();
             // Unridden, the whole body looks where the strider looks.
             let ridden = m.mount.as_ref().is_some_and(|s| s.rider.is_some());
