@@ -2292,6 +2292,8 @@ decisions the same day, all to match Java unless noted: spectators can't
 use portals (Java's `noPhysics`); bamboo gets sub-texel terrain geometry;
 slot icons take Java's orientation; controller seats pick bundle stacks
 with the right stick (Java has no gamepad support; owner's choice).
+Track 7c's look approved by the owner on 2026-11-27, with the adult
+nautilus to be turned to Java's shell-first facing.
 
 1. **Effects and mob damage** (PLY-03b, MOB-02d): Darkness darkening the
    lightmap, not only the fog; Smite and Bane of Arthropods on mobs'
