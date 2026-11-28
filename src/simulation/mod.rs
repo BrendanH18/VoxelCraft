@@ -127,6 +127,7 @@ pub fn tick_world_rules_marked(
     world.clear_removed_shulker_boxes();
     world.tick_shulker_boxes();
     world.tick_lids();
+    world.tick_bells();
     // `ServerLevel.tick`: scheduled block ticks, fluid ticks, then the
     // chunk tick (random ticks), then block events; entities and block
     // entities follow in the caller (docs/redstone.md "Tick phases").

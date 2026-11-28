@@ -39,6 +39,9 @@ pub struct BlockModel {
     /// a chest's lid the same way (`ChestRenderer`), and a barrel in use with
     /// its open top.
     pub lid: Option<f32>,
+    /// v1.0 final track F3: a shaking bell's body turned about x and z
+    /// (radians, `BellModel.setupAnim`) about its pivot (`world::bell`).
+    pub swing: Option<[f32; 2]>,
     /// v1.0 gap track 6b: an item with the enchantment glint
     /// (`ItemStack.hasFoil`).
     pub glint: bool,
@@ -87,6 +90,7 @@ pub fn held_model(h: &crate::entity::model::HeldItemModel) -> BlockModel {
         tint,
         patterns: None,
         lid: None,
+        swing: None,
         glint: stack.has_foil(),
         translucent: crate::item::translucent(&stack),
         mesh,
@@ -210,25 +214,38 @@ fn model_vertices(
                 min + Vec3::new(x * cos - z * sin + 0.5, c.y, x * sin + z * cos + 0.5) * s
             }
         };
+        // v1.0 final track F3: a shaking bell's body, `ModelPart`'s turn
+        // `rotationZYX(zRot, 0, xRot)` about the body's pivot.
+        let swing = m.swing.map(|[x, z]| {
+            let pivot = Vec3::from_array(crate::world::bell::PIVOT);
+            let turn = glam::Mat3::from_rotation_z(z) * glam::Mat3::from_rotation_x(x);
+            move |c: Vec3| pivot + turn * (c - pivot)
+        });
         // v1.0 gap track 6d: Java's face UVs, as `chunk.wgsl` maps them.
         // v1.0 gap track 6f: a box face (its box in sixteenths) takes the
-        // jar's item UVs where the item model has them (trapdoors' rims).
-        let mut quad = |corners: [Vec3; 4], layer: u16, shade: f32, face: usize, bx: Option<([u8; 3], [u8; 3])>| {
-            let mut uvs = corners.map(|c| crate::mesh::face_uv(face, c.to_array()));
-            if let Some((lo, hi)) = bx {
-                uvs = crate::mesh::item_face_uvs(m.block, face, lo, hi, uvs);
-            }
-            for i in [0, 1, 2, 2, 3, 0] {
-                let c = corners[i];
-                out.push(BlockVertex {
-                    pos: place(c).to_array(),
-                    uv: uvs[i],
-                    layer: layer as u32,
-                    light: [m.sky_light, shade, m.block_light],
-                    tint: m.tint,
-                });
-            }
-        };
+        // jar's item UVs where the item model has them (trapdoors' rims);
+        // v1.0 final track F3: `swung` faces turn with a shaking bell.
+        let mut quad =
+            |corners: [Vec3; 4], layer: u16, shade: f32, face: usize, bx: Option<([u8; 3], [u8; 3])>, swung: bool| {
+                let mut uvs = corners.map(|c| crate::mesh::face_uv(face, c.to_array()));
+                if let Some((lo, hi)) = bx {
+                    uvs = crate::mesh::item_face_uvs(m.block, face, lo, hi, uvs);
+                }
+                for i in [0, 1, 2, 2, 3, 0] {
+                    let c = corners[i];
+                    let at = match swing {
+                        Some(turn) if swung => turn(c),
+                        _ => c,
+                    };
+                    out.push(BlockVertex {
+                        pos: place(at).to_array(),
+                        uv: uvs[i],
+                        layer: layer as u32,
+                        light: [m.sky_light, shade, m.block_light],
+                        tint: m.tint,
+                    });
+                }
+            };
         if let Some(layer) = m.icon {
             // v1.0 gap track 6b: Java's `item/generated` model, the sprite
             // extruded 1/16 of the model deep and centred (7.5 to 8.5), so
@@ -262,8 +279,8 @@ fn model_vertices(
             // Both diagonal planes run 0 -> 1 in z, so z works as u (a west
             // face's mapping).
             let v = |x: f32, y: f32, z: f32| Vec3::new(x, y, z);
-            quad([v(0., 0., 0.), v(1., 0., 1.), v(1., 1., 1.), v(0., 1., 0.)], tex[0], 0.9, 1, None);
-            quad([v(1., 0., 0.), v(0., 0., 1.), v(0., 1., 1.), v(1., 1., 0.)], tex[0], 0.9, 1, None);
+            quad([v(0., 0., 0.), v(1., 0., 1.), v(1., 1., 1.), v(0., 1., 0.)], tex[0], 0.9, 1, None, false);
+            quad([v(1., 0., 0.), v(0., 0., 1.), v(0., 1., 1.), v(1., 1., 0.)], tex[0], 0.9, 1, None, false);
             return;
         }
         // Falling blocks and every item model share the item's boxes.
@@ -271,6 +288,7 @@ fn model_vertices(
         for (i, bx) in boxes.as_slice().iter().enumerate() {
             // Candle wicks, the beacon's plinth and core: their own layers.
             let tex = shape::item_box_layer(m.block, i).map_or(tex, |l| [l; 6]);
+            let swung = m.swing.is_some() && crate::world::bell::is_body(bx.min, bx.max);
             let (lo, mut hi) = (bx.min.map(|c| c as f32 / 16.0), bx.max.map(|c| c as f32 / 16.0));
             if m.block == crate::world::frog_blocks::FROGSPAWN {
                 hi[1] = crate::world::frog_blocks::HEIGHT as f32;
@@ -292,7 +310,7 @@ fn model_vertices(
                 } else {
                     [corner(false, false), corner(false, true), corner(true, true), corner(true, false)]
                 };
-                quad(c, layer, shade, face, Some((bx.min, bx.max)));
+                quad(c, layer, shade, face, Some((bx.min, bx.max)), swung);
             }
         }
     }
@@ -600,6 +618,7 @@ mod tests {
         let at = |block| BlockModel {
             patterns: None,
             lid: None,
+            swing: None,
             min: DVec3::new(10.0, 64.0, 5.0),
             size: 1.0,
             block,
@@ -640,6 +659,7 @@ mod tests {
         let item = |translucent, glint| BlockModel {
             patterns: None,
             lid: None,
+            swing: None,
             min: DVec3::ZERO,
             size: 0.25,
             block: Block::SAND,

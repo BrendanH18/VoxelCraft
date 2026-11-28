@@ -121,7 +121,18 @@ impl ThrownPotion {
     }
 
     pub fn new(potion: Potion, owner: Option<PlayerId>, pos: DVec3, vel: DVec3) -> Self {
-        Self { portal_cooldown: 0, potion, lingering: false, owner, thrower: None, pos, previous_pos: pos, vel, age: 0.0, fire: 0 }
+        Self {
+            portal_cooldown: 0,
+            potion,
+            lingering: false,
+            owner,
+            thrower: None,
+            pos,
+            previous_pos: pos,
+            vel,
+            age: 0.0,
+            fire: 0,
+        }
     }
 
     /// A player's throw from `eye` along their look direction `dir`, adding

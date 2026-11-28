@@ -49,6 +49,7 @@ pub fn emerging_items(world: &World, camera: DVec3, range: f64, out: &mut Vec<Bl
         out.push(BlockModel {
             patterns: None,
             lid: None,
+            swing: None,
             min: centre - DVec3::splat(SIZE / 2.0),
             size: SIZE as f32,
             block: block.unwrap_or(Block::AIR),

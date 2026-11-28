@@ -453,6 +453,7 @@ pub fn shelf_items(world: &World, camera: DVec3, out: &mut Vec<BlockModel>) {
             out.push(BlockModel {
                 patterns: None,
                 lid: None,
+                swing: None,
                 min: DVec3::ZERO,
                 size: 1.0,
                 block: block.unwrap_or(Block::AIR),

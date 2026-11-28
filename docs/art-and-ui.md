@@ -178,6 +178,24 @@ of the Nether and End):
 - Tileable in both directions. Logs tile vertically. Leaves keep their
   cut-out holes (8–15 % transparent texels).
 
+Java turns or mirrors some natural blocks at random by position (v1.0
+final track F3, [record](verification/2026-11-28-v1.0-final-f3-visuals.md)):
+grass, dirt, sand, red sand, mycelium, podzol, rooted dirt and concrete
+powder show their tops and bottoms turned 0, 90, 180 or 270 degrees;
+stone, bedrock, sculk and deepslate are mirrored and their tops turned a
+half turn; netherrack every face any way. Their tiles are seen in every
+such orientation side by side, so they must read as the same material
+turned: no up direction in their clusters, and a cluster's top-left light
+reads as a small speck, not a lit side. Gravel has one model in Java 26.3
+and isn't turned.
+
+Fire has two textures, as Java's `fire_0` and `fire_1` (v1.0 final track
+F3): the first is broad tongues in pairs of columns that sway with the
+rows; the second, narrower one-column tongues leaning the other way that
+reach higher, with more embers breaking off the upper half. Both run seven
+frames at ten a second from a solid hot base, in the same heat ramp (red
+at the tips to pale yellow at the root; soul fire's cyan to pale blue).
+
 Manufactured materials (planks, bricks, cut and polished stone, metal,
 glass, workstations):
 
@@ -324,4 +342,6 @@ as it was until the title track's panorama lands.
   the groove dark, its lower and right walls lit) follow the manufactured
   rules above. Metal blocks (copper, iron, gold, netherite) are plates in
   the same masonry; copper's patina spreads in the same blotches over every
-  face of one oxidation stage.
+  face of one oxidation stage. Fire's second texture is
+  [`fire_1_textures.rs`](../src/render/fire_1_textures.rs) (packed one
+  frame a colour channel; the shaders colour it).

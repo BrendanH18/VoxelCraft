@@ -383,3 +383,32 @@ Checked against the Java 26.3 client
   after a refused trade or a use on a child), `VillagerModel` bows the
   head to 0.4 and rolls it `0.3 * sin(0.45 * ageInTicks)`, children too.
   Guests get the counter with the pose.
+
+## Random block variants, fire's two textures and bells (v1.0 final track F3)
+
+Checked against the Java 26.3 client
+([record](verification/2026-11-28-v1.0-final-f3-visuals.md)).
+
+- **Random model variants.** `ModelBlockRenderer.tesselateBlock` seeds a
+  `SingleThreadedRandomSource` with `BlockState.getSeed(pos)`
+  (`Mth.getSeed`), and a blockstate entry listing several models
+  (`WeightedVariants`) takes `nextInt(totalWeight)`. Every full cube the
+  game draws with variants (stone, infested stone, bedrock, sculk,
+  deepslate and infested deepslate mirrored and turned a half; grass,
+  dirt, sand, red sand, mycelium, podzol, rooted dirt and the concrete
+  powders turned; netherrack turned every way) is drawn with the variant
+  Java picks for its cell, chosen per fragment by the chunk shader from the
+  cell's world position, so merged quads stay merged and the quad stays 12
+  bytes. Items and falling blocks keep the unturned model, as Java's items
+  do.
+- **Fire's two textures.** Fire's and soul fire's floor models are
+  `fire_floor0` (`fire_0`) or `fire_floor1` (`fire_1`), picked per block:
+  `MultiPartModel` draws a `nextLong` from the position's random and
+  reseeds with it for each part. A burning entity's flame alternates
+  `fire_0` and `fire_1` quad by quad (`FlameFeatureRenderer`).
+- **Bells.** A rung bell swings for 50 ticks (`BellBlockEntity`): its body
+  turns about its pivot (8, 12, 8) by `sin(t / pi) / (4 + t / 3)` radians
+  (`BellModel.setupAnim`), about x when struck on the north or south face,
+  about z on the east or west, from the struck face for a player's use and
+  from the bell's facing (north) for redstone and villagers. LAN guests get
+  the swing in their snapshots.

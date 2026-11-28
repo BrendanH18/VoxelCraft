@@ -121,6 +121,20 @@ fn sample_block(uv: vec2<f32>, layer: u32) -> vec4<f32> {
     }
 }
 
+fn sample_block_grad(uv: vec2<f32>, layer: u32, dx: vec2<f32>, dy: vec2<f32>) -> vec4<f32> {
+    if !BLOCK_PAGING { return textureSampleGrad(blocks, blocks_sampler, uv, layer, dx, dy); }
+    let local = layer & ((1u << PAGE_SHIFT) - 1u);
+    switch layer >> PAGE_SHIFT {
+        case 1u: { return textureSampleGrad(blocks_1, blocks_sampler, uv, local, dx, dy); }
+        case 2u: { return textureSampleGrad(blocks_2, blocks_sampler, uv, local, dx, dy); }
+        case 3u: { return textureSampleGrad(blocks_3, blocks_sampler, uv, local, dx, dy); }
+        case 4u: { return textureSampleGrad(blocks_4, blocks_sampler, uv, local, dx, dy); }
+        case 5u: { return textureSampleGrad(blocks_5, blocks_sampler, uv, local, dx, dy); }
+        case 6u: { return textureSampleGrad(blocks_6, blocks_sampler, uv, local, dx, dy); }
+        case 7u: { return textureSampleGrad(blocks_7, blocks_sampler, uv, local, dx, dy); }
+        default: { return textureSampleGrad(blocks, blocks_sampler, uv, local, dx, dy); }
+    }
+}
 
 @group(2) @binding(0) var<storage, read> quads: array<u32>;
 
@@ -142,6 +156,11 @@ struct VsOut {
     // interpolated light.
     @location(7) @interpolate(flat) lightmap: vec4<f32>,
     @location(8) @interpolate(flat) sun_tint: vec3<f32>,
+    // v1.0 final track F3: a normal quad's chunk origin in world blocks and,
+    // in w, its random variant group (bits 0-3) and face (bits 4-6); `local`
+    // is the chunk-local position, so the fragment finds its cell.
+    @location(9) @interpolate(flat) variant: vec4<i32>,
+    @location(10) local: vec3<f32>,
 };
 
 // Reserved detail coordinate 31 is the half-sixteenth frogspawn height.
@@ -223,8 +242,94 @@ fn java_uv(uv: vec2<f32>, m: u32, offset: u32) -> vec2<f32> {
     return vec2<f32>(r.x * uv.x + r.y * uv.y, r.z * uv.x + r.w * uv.y) + offsets[offset & 7u] / 16.0;
 }
 
+// v1.0 final track F3: Java's random block model variants
+// (src/mesh/variants.rs). 64-bit integers as (low, high) words.
+fn mul_wide(a: u32, b: u32) -> vec2<u32> {
+    let a0 = a & 0xFFFFu;
+    let a1 = a >> 16u;
+    let b0 = b & 0xFFFFu;
+    let b1 = b >> 16u;
+    let p00 = a0 * b0;
+    let p01 = a0 * b1;
+    let p10 = a1 * b0;
+    let mid = (p00 >> 16u) + (p01 & 0xFFFFu) + (p10 & 0xFFFFu);
+    return vec2<u32>((p00 & 0xFFFFu) | (mid << 16u), a1 * b1 + (p01 >> 16u) + (p10 >> 16u) + (mid >> 16u));
+}
+fn mul64(a: vec2<u32>, b: vec2<u32>) -> vec2<u32> {
+    let p = mul_wide(a.x, b.x);
+    return vec2<u32>(p.x, p.y + a.x * b.y + a.y * b.x);
+}
+fn add64(a: vec2<u32>, b: vec2<u32>) -> vec2<u32> {
+    let lo = a.x + b.x;
+    return vec2<u32>(lo, a.y + b.y + select(0u, 1u, lo < a.x));
+}
+fn widen(i: i32) -> vec2<u32> {
+    return vec2<u32>(bitcast<u32>(i), select(0u, 0xFFFFFFFFu, i < 0));
+}
+// Java's pick out of 2^bits equal variants at `cell`: `Mth.getSeed`, a
+// `SingleThreadedRandomSource` seeded with it (the 48-bit LCG) and
+// `nextInt`, whose power-of-two bound takes the top bits of one step.
+fn java_seeded(cell: vec3<i32>) -> vec2<u32> {
+    let s = widen(bitcast<i32>(bitcast<u32>(cell.x) * 3129871u)) ^ mul64(widen(cell.z), vec2<u32>(116129781u, 0u))
+        ^ widen(cell.y);
+    let t = add64(mul64(mul64(s, s), vec2<u32>(42317861u, 0u)), mul64(s, vec2<u32>(11u, 0u)));
+    // The seed's low 48 bits (t >> 16), xor the multiplier 0x5DEECE66D.
+    return vec2<u32>(((t.x >> 16u) | (t.y << 16u)) ^ 0xDEECE66Du, ((t.y >> 16u) & 0xFFFFu) ^ 5u);
+}
+// One step of the LCG (48 bits, the high word's low 16).
+fn java_step(state: vec2<u32>) -> vec2<u32> {
+    let n = add64(mul64(state, vec2<u32>(0xDEECE66Du, 5u)), vec2<u32>(11u, 0u));
+    return vec2<u32>(n.x, n.y & 0xFFFFu);
+}
+fn java_variant(cell: vec3<i32>, bits: u32) -> u32 {
+    return java_step(java_seeded(cell)).y >> (16u - bits);
+}
+// Fire's floor model out of two (`fire_floor0` with `fire_0`, `fire_floor1`
+// with `fire_1`): `MultiPartModel` draws a `nextLong` and reseeds with it.
+fn java_fire_floor(cell: vec3<i32>) -> u32 {
+    let s1 = java_step(java_seeded(cell));
+    let s2 = java_step(s1);
+    let upper = (s1.x >> 16u) | (s1.y << 16u);
+    let lower = (s2.x >> 16u) | (s2.y << 16u);
+    let part = add64(vec2<u32>(0u, upper), widen(bitcast<i32>(lower)));
+    return java_step(vec2<u32>(part.x ^ 0xDEECE66Du, (part.y ^ 5u) & 0xFFFFu)).y >> 15u;
+}
+// v1.0 final track F3: fire's second texture (src/render/fire_1_textures.rs):
+// frame f is channel f % 3 of layer FIRE_1 + f / 3, its sRGB byte 0 where
+// see-through, else 128 + heat * 127, coloured by fire's or soul fire's ramp.
+const FIRE_1: u32 = 4088u;
+fn fire_1_color(texel: vec4<f32>, channel: u32, soul: bool) -> vec4<f32> {
+    let v = clamp(texel[channel], 0.0, 1.0);
+    let e = select(1.055 * pow(v, 1.0 / 2.4) - 0.055, v * 12.92, v <= 0.0031308) * 255.0;
+    if e < 127.5 {
+        return vec4<f32>(0.0);
+    }
+    let h = clamp((round(e) - 128.0) / 127.0, 0.0, 1.0);
+    var c = vec3<f32>(255.0, 75.0 + 180.0 * h, 15.0 + 105.0 * h * h);
+    if soul {
+        c = vec3<f32>(40.0 + 120.0 * h * h, 170.0 + 85.0 * h, 215.0 + 40.0 * h);
+    }
+    return vec4<f32>(from_srgb(round(c) / 255.0), 1.0);
+}
+// Each group's variants (src/mesh/variants.rs's `GROUPS`): per face (+X,
+// -X, +Y, -Y, +Z, -Z) the symmetry of `java_uv`, 3 bits each.
+fn variant_symmetry(group: u32, index: u32, face: u32) -> u32 {
+    var turned = array<u32, 4>(0x0u, 0xB80u, 0x6C0u, 0xD40u);
+    var mirrored = array<u32, 4>(0x0u, 0x9249u, 0x6C0u, 0x9489u);
+    var netherrack = array<u32, 16>(
+        0x0u, 0x1862Eu, 0x1B01Bu, 0x180F5u, 0xB80u, 0x2ED83u, 0x1BB9Bu, 0x35B43u,
+        0x6C0u, 0x30F5u, 0x1B6DBu, 0x362Eu, 0xD40u, 0x35B58u, 0x1BD5Bu, 0x2ED98u);
+    var packed = netherrack[index & 15u];
+    if group == 1u {
+        packed = turned[index & 3u];
+    } else if group == 2u {
+        packed = mirrored[index & 3u];
+    }
+    return (packed >> (3u * face)) & 7u;
+}
+
 @vertex
-fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>, @location(2) origin: vec2<i32>) -> VsOut {
+fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>, @location(2) origin: vec3<i32>) -> VsOut {
     let q = (vi >> 2u) * 3u;
     let w0 = quads[q];
     let w1 = quads[q + 1u];
@@ -250,7 +355,7 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>, @loca
     var light = (w2 >> (8u * c)) & 255u;
     let coord_mask = select(63u, 31u, detail);
     let base = vec3<u32>(w0 & coord_mask, (w0 >> 6u) & coord_mask, (w0 >> 12u) & coord_mask);
-    let column = vec2<i32>(origin.x + i32(base.x), origin.y + i32(base.z));
+    let column = vec2<i32>(origin.x + i32(base.x), origin.z + i32(base.z));
 
     var local: vec3<f32>;
     var uv: vec2<f32>;
@@ -425,6 +530,16 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>, @loca
         vec3<f32>(0.0, 0.0, 1.0), vec3<f32>(0.0, 0.0, -1.0),
         vec3<f32>(-0.707, 0.0, 0.707), vec3<f32>(0.707, 0.0, 0.707));
     out.normal = normals[shade_face];
+    // v1.0 final track F3: a normal quad's variant group (word 1 bits 25-26).
+    let group = select((w1 >> 25u) & 3u, 0u, detail || face >= 6u);
+    // A fire cross's texture: bit 8 picks `fire_1` (Java's floor model).
+    let is_fire = face >= 6u && !detail && (out.layer == 89u || out.layer == 1300u);
+    var second = 0u;
+    if is_fire {
+        second = java_fire_floor(origin + vec3<i32>(base)) << 8u;
+    }
+    out.variant = vec4<i32>(origin, i32(group | (face << 4u) | second));
+    out.local = local;
     out.light = vec2<f32>(f32(light & 15u), f32(light >> 4u)) / 15.0;
     // Four equal corner bytes: the light is constant across the quad.
     let uniform_light = model_face || w2 == (w2 & 255u) * 0x01010101u;
@@ -535,19 +650,54 @@ fn sky_at(dir: vec3<f32>) -> vec3<f32> {
     return from_srgb(mix(to_srgb(g.zenith_color.rgb), to_srgb(g.fog_color.rgb), fogged));
 }
 
+// v1.0 final track F3: the texture of an opaque face, its cell's UVs
+// turned or mirrored by Java's random model variant (`java_variant`).
+// Sampled with the planar UVs' gradients, turned alike, so the mip level
+// stays smooth across the cells' edges.
+fn sample_opaque(in: VsOut) -> vec4<f32> {
+    let dx = dpdx(in.uv);
+    let dy = dpdy(in.uv);
+    let group = u32(in.variant.w) & 15u;
+    var m = 0u;
+    if group != 0u {
+        let face = (u32(in.variant.w) >> 4u) & 7u;
+        var normals = array<vec3<f32>, 6>(
+            vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(-1.0, 0.0, 0.0),
+            vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(0.0, -1.0, 0.0),
+            vec3<f32>(0.0, 0.0, 1.0), vec3<f32>(0.0, 0.0, -1.0));
+        let cell = in.variant.xyz + vec3<i32>(floor(in.local - normals[face] * 0.5));
+        m = variant_symmetry(group, java_variant(cell, select(2u, 4u, group == 3u)), face);
+    }
+    var rows = array<vec4<f32>, 8>(
+        vec4<f32>(1.0, 0.0, 0.0, 1.0), vec4<f32>(-1.0, 0.0, 0.0, 1.0),
+        vec4<f32>(1.0, 0.0, 0.0, -1.0), vec4<f32>(-1.0, 0.0, 0.0, -1.0),
+        vec4<f32>(0.0, 1.0, 1.0, 0.0), vec4<f32>(0.0, -1.0, 1.0, 0.0),
+        vec4<f32>(0.0, 1.0, -1.0, 0.0), vec4<f32>(0.0, -1.0, -1.0, 0.0));
+    let r = rows[m];
+    let turn = mat2x2<f32>(vec2<f32>(r.x, r.z), vec2<f32>(r.y, r.w));
+    return sample_block_grad(turn * in.uv, in.layer, turn * dx, turn * dy);
+}
+
 @fragment
 fn fs_opaque(in: VsOut) -> @location(0) vec4<f32> {
-    let tex = sample_block(in.uv, in.layer);
+    let tex = sample_opaque(in);
     return vec4<f32>(apply_fog(tex.rgb * lighting(in), in.dist), 1.0);
 }
 
 @fragment
 fn fs_cutout(in: VsOut) -> @location(0) vec4<f32> {
     // Fire occupies layers 89..95 (soul fire 1300..1306) and animates entirely on the GPU.
+    // v1.0 final track F3: or Java's second texture, packed in FIRE_1.
     let soul = in.layer == 1300u;
     let fire = in.layer == 89u || soul;
-    let layer = select(in.layer, select(89u, 1300u, soul) + u32(g.sun.w * 10.0) % 7u, fire);
-    let tex = sample_block(in.uv, layer);
+    let frame = u32(g.sun.w * 10.0) % 7u;
+    let second = fire && ((u32(in.variant.w) >> 8u) & 1u) == 1u;
+    let fire_layer = select(select(89u, 1300u, soul) + frame, FIRE_1 + frame / 3u, second);
+    let layer = select(in.layer, fire_layer, fire);
+    var tex = sample_block(in.uv, layer);
+    if second {
+        tex = fire_1_color(tex, frame % 3u, soul);
+    }
     if tex.a < 0.5 {
         discard;
     }

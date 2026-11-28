@@ -17,6 +17,8 @@ mod colour;
 mod copper;
 #[path = "copper_golem_statue_textures.rs"]
 mod copper_golem_statue;
+#[path = "fire_1_textures.rs"]
+pub(crate) mod fire_1;
 #[path = "gen5_textures.rs"]
 mod gen5;
 #[path = "material_textures.rs"]
@@ -116,6 +118,10 @@ pub fn mob_pattern_pixel(layer: u16, x: usize, y: usize) -> Rgba {
 }
 
 pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
+    // v1.0 final track F3: fire's second texture, packed.
+    if (tex::FIRE_1..tex::FIRE_1_END).contains(&layer) {
+        return fire_1::packed(layer - tex::FIRE_1, x, y);
+    }
     // v1.0 gap track 6b: the item models' plant layers.
     if (voxelcraft::content::item_models::TEX..voxelcraft::content::item_models::TEX_END).contains(&layer) {
         return voxelcraft::content::item_models::pixel(layer, x, y);

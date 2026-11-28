@@ -41,6 +41,18 @@ fn from_srgb(c: vec3<f32>) -> vec3<f32> {
     let x = max(c, vec3<f32>(0.0));
     return select(pow((x + 0.055) / 1.055, vec3<f32>(2.4)), x / 12.92, x <= vec3<f32>(0.04045));
 }
+// v1.0 final track F3: fire's second texture, as chunk.wgsl's
+// `fire_1_color` decodes it (a flame is always fire's colours).
+fn fire_1_color(texel: vec4<f32>, channel: u32) -> vec4<f32> {
+    let v = clamp(texel[channel], 0.0, 1.0);
+    let e = select(1.055 * pow(v, 1.0 / 2.4) - 0.055, v * 12.92, v <= 0.0031308) * 255.0;
+    if e < 127.5 {
+        return vec4<f32>(0.0);
+    }
+    let h = clamp((round(e) - 128.0) / 127.0, 0.0, 1.0);
+    let c = vec3<f32>(255.0, 75.0 + 180.0 * h, 15.0 + 105.0 * h * h);
+    return vec4<f32>(from_srgb(round(c) / 255.0), 1.0);
+}
 // Java 26.3's fog.glsl: spherical and cylindrical distance, and the larger
 // of the environmental and render-distance fogs, blended in sRGB as Java
 // blends it (exact sRGB, matching the fog colour's conversion).
@@ -311,7 +323,10 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     // sampled up front so derivatives stay in uniform control flow.
     // Patterned boxes (material 6) sample one texel per model pixel.
     let block_uv = select(in.uv, in.uv / 16.0, in.material == 6u);
-    let held_block = sample_block(block_uv, min(in.layer, 4095u));
+    // v1.0 final track F3: a flame's `fire_1` quad (material 7) names its
+    // packed layer in bits 0-11 and the frame's channel in bits 12-13.
+    let block_layer = select(min(in.layer, 4095u), in.layer & 4095u, in.material == 7u);
+    let held_block = sample_block(block_uv, block_layer);
     let held_icon = textureSample(items, blocks_sampler, in.uv, max(in.layer, 4096u) - 4096u);
     let texel = clamp(vec2<i32>(floor(in.uv)), vec2<i32>(0), vec2<i32>(63));
     // v0.18 Track 6: a ground shadow (`entity/shadow.rs`). The uv runs 0..1
@@ -340,6 +355,10 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     } else if in.material == 6u {
         // v0.18 Track 6: the pattern is a grey modulation, neutral at linear 0.5.
         base = pow(in.color.rgb, vec3<f32>(2.2)) * held_block.rgb * 2.0;
+    } else if in.material == 7u {
+        let tex = fire_1_color(held_block, (in.layer >> 12u) & 3u);
+        if tex.a < 0.5 { discard; }
+        base = tex.rgb;
     } else if in.material == 2u {
         // Block layers are below tex::ITEM_BASE (4096); icons are at and above it.
         let tex = select(held_block, held_icon, in.layer >= 4096u);

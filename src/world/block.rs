@@ -130,6 +130,11 @@ pub mod tex {
     /// Seven flame animation frames.
     pub const FIRE_0: u16 = 89;
     pub const FIRE_FRAMES: u8 = 7;
+    /// v1.0 final track F3: Java's second fire texture (`fire_1`, and
+    /// `soul_fire_1` in soul fire's colours), seven frames packed one per
+    /// colour channel into three layers (`render::textures::fire_1`).
+    pub const FIRE_1: u16 = 4088;
+    pub const FIRE_1_END: u16 = FIRE_1 + 3;
     pub const SPRUCE_LOG_SIDE: u16 = 96;
     pub const SPRUCE_LOG_TOP: u16 = 97;
     pub const BIRCH_LOG_SIDE: u16 = 98;
@@ -381,7 +386,7 @@ pub mod tex {
         ];
         // v0.15 Track D's frosted ice (layers 4000..4004) and Track F's
         // explorer maps (4056..4066) set the count.
-        const ENDS2: [u32; 5] = [
+        const ENDS2: [u32; 6] = [
             super::super::frosted_ice::TEX_END as u32,
             super::super::explorer_maps::TEX_END as u32,
             // v0.16 Track A (layers 529..541).
@@ -390,6 +395,8 @@ pub mod tex {
             super::super::utilities::GAP_TEX_END as u32,
             // v1.0 gap track 6b: the item models' plant layers (4080..4084).
             crate::content::item_models::TEX_END as u32,
+            // v1.0 final track F3: fire's second texture (4088..4091).
+            FIRE_1_END as u32,
         ];
         let mut max = 0;
         let mut i = 0;

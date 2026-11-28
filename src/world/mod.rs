@@ -529,6 +529,8 @@ pub struct World {
     /// v1.0 gap Track 2h: bone meal sounds (level event 1505) to play.
     bone_meal_sounds: Vec<IVec3>,
     bell_rings: Vec<IVec3>,
+    /// v1.0 final track F3: bells shaking after a ring (`world::bell`).
+    bell_shakes: rustc_hash::FxHashMap<IVec3, bell::Shake>,
     /// Whether it's raining (set by the game each frame).
     pub raining: bool,
     pub mesh_uploads: Vec<(IVec3, MeshData)>,
@@ -935,6 +937,7 @@ impl World {
             composter_cues: Vec::new(),
             bone_meal_sounds: Vec::new(),
             bell_rings: Vec::new(),
+            bell_shakes: Default::default(),
             raining: false,
             mesh_uploads: Vec::new(),
             mesh_removals: Vec::new(),
@@ -1563,7 +1566,8 @@ impl World {
             sky: std::array::from_fn(|i| slots[i].and_then(|s| s.sky_light.clone())),
         };
         let foliage = cols[4].and_then(|c| c.foliage.clone()).unwrap_or_else(|| Box::new([0; CHUNK_SIZE * CHUNK_SIZE]));
-        let models = self.lidded_in_chunk(pos).into_iter().map(local_of).collect();
+        let models =
+            self.lidded_in_chunk(pos).into_iter().chain(self.shaking_bells_in_chunk(pos)).map(local_of).collect();
         Box::new(MeshInput {
             neighbors,
             light: Box::new([0; REGION_VOLUME]),

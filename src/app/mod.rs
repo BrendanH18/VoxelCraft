@@ -2802,6 +2802,7 @@ impl Game {
             .map(|f| crate::render::BlockModel {
                 patterns: None,
                 lid: None,
+                swing: None,
                 min: f.previous_pos.lerp(f.pos, alpha),
                 size: 1.0,
                 block: f.block,
@@ -2821,6 +2822,7 @@ impl Game {
                 crate::render::BlockModel {
                     patterns: None,
                     lid: None,
+                    swing: None,
                     min: t.previous_pos.lerp(t.pos, alpha)
                         - glam::DVec3::new(s as f64 / 2.0, (s as f64 - 1.0) / 2.0, s as f64 / 2.0),
                     size: s,
@@ -2842,6 +2844,7 @@ impl Game {
                 |(block, min)| crate::render::BlockModel {
                     patterns: None,
                     lid: None,
+                    swing: None,
                     min,
                     size: 1.0,
                     block,
@@ -2861,6 +2864,7 @@ impl Game {
             .chain(self.banner_models(camera))
             .chain(self.shulker_models(camera, alpha))
             .chain(self.lid_models(alpha))
+            .chain(self.bell_models(alpha))
             .chain(self.decor_models(camera, view))
             .collect()
     }

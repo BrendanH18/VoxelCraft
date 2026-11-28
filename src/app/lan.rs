@@ -1706,6 +1706,8 @@ impl Game {
             snapshot["raid_bar"] = raid_bar_json(self.mobs.entities.raids.bar_for(bot.agent.session.id));
             // v1.0 final Track F4: brushed finds rising out of their blocks.
             snapshot["emerging"] = json!(self.world.emerging_near(here, crate::render::signs::RANGE));
+            // v1.0 final track F3: bells shaking after a ring.
+            snapshot["bells"] = json!(self.world.bells_near(here, 160.0));
             if let Some((open, serial)) = &peer.book_open
                 && (open["lectern"].is_array()
                     || open["slot"].as_u64().is_some_and(|slot| peer.inventory.held_matches(slot as usize, inventory)))
@@ -2005,6 +2007,7 @@ impl Game {
         self.world.apply_lids(&snapshot["lids"]);
         self.lan.raid_bar = raid_bar_from(&snapshot["raid_bar"]);
         self.world.apply_emerging(&snapshot["emerging"]);
+        self.world.apply_bells(&snapshot["bells"]);
         let edit = &snapshot["sign_edit"];
         if let (Some(serial), Some(p)) = (edit["serial"].as_u64(), vector(&edit["pos"]))
             && serial as u32 != self.lan.sign_serial

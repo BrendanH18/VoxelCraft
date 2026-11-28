@@ -31,6 +31,7 @@ impl Game {
                 transform: None,
                 patterns: None,
                 lid: Some(self.world.shulker_lid(cell, alpha as f32)),
+                swing: None,
             }
         })
     }
