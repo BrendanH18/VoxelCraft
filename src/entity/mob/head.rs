@@ -449,9 +449,9 @@ pub(crate) struct Seen {
 /// Track 2g: whether `m` is a farmer villager and whether it
 /// `wantsMoreFood`.
 fn villager_wants(m: &Mob) -> (bool, bool) {
-    m.villager.as_ref().map_or((false, false), |v| {
-        (v.profession == crate::entity::villager::Profession::Farmer, v.wants_more_food())
-    })
+    m.villager
+        .as_ref()
+        .map_or((false, false), |v| (v.profession == crate::entity::villager::Profession::Farmer, v.wants_more_food()))
 }
 
 /// What a look goal or `LOOK_TARGET` follows.

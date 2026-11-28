@@ -202,7 +202,8 @@ impl Mob {
                     }
                 }
             }
-            let jump = LongJump { candidates, initial: self.pos, tries: TRIES, chosen: None, prepared: 0, left: TIMEOUT };
+            let jump =
+                LongJump { candidates, initial: self.pos, tries: TRIES, chosen: None, prepared: 0, left: TIMEOUT };
             self.animal.as_mut().unwrap().long_jump = Some(Box::new(jump));
         }
         let mut jump = self.animal.as_mut().unwrap().long_jump.take().unwrap();

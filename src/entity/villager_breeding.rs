@@ -142,7 +142,9 @@ impl Entities {
             // farmer's bone meal as well as food).
             if !self.villager_griefing
                 || item.pickup_delay > 0.0
-                || !(picked_up(item.stack.item) || food_points(item.stack.item) > 0 || item.stack.item == Item::BONE_MEAL)
+                || !(picked_up(item.stack.item)
+                    || food_points(item.stack.item) > 0
+                    || item.stack.item == Item::BONE_MEAL)
                 || !world.loaded(item.pos.floor().as_ivec3())
             {
                 continue;

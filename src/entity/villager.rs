@@ -1111,10 +1111,7 @@ impl Entities {
                 v.meeting = pos(&a["meeting"]);
                 if let Some(food) = a["food"].as_array() {
                     for (slot, s) in v.food.iter_mut().zip(food) {
-                        *slot = s
-                            .as_str()
-                            .and_then(|s| stack_from_str(s).flatten())
-                            .filter(|s| s.count > 0);
+                        *slot = s.as_str().and_then(|s| stack_from_str(s).flatten()).filter(|s| s.count > 0);
                     }
                 }
                 v.food_level = a["food_level"].as_u64().unwrap_or(0).min(15) as u8;

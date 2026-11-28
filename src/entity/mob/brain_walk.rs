@@ -27,9 +27,9 @@
 //! running `DoNothing`, `JumpOnBed`, scent or sniff holds it. Nothing here
 //! is saved, as Java saves none of it.
 use super::head::{Sel, Tracked};
-use crate::inventory::Stack;
 use super::*;
 use crate::entity::PlayerId;
+use crate::inventory::Stack;
 
 /// What a `WALK_TARGET` follows (`EntityTracker(entity, false)` walks to the
 /// entity's feet; `BlockPosTracker` to a block).
@@ -713,9 +713,10 @@ impl Mob {
                     && closer_to_centre(c, self.pos, 1.0)
                 {
                     // `BoneMealItem.growCrop`: a crop short of its last age.
-                    let slot = self.villager.as_ref().and_then(|v| {
-                        v.inventory().iter().position(|s| s.is_some_and(|s| s.item == Item::BONE_MEAL))
-                    });
+                    let slot = self
+                        .villager
+                        .as_ref()
+                        .and_then(|v| v.inventory().iter().position(|s| s.is_some_and(|s| s.item == Item::BONE_MEAL)));
                     if let Some(slot) = slot
                         && growing_crop(world, c)
                     {
@@ -850,9 +851,7 @@ impl Mob {
                 // Track 2g: a farmer's `WorkAtComposter.useWorkstation`.
                 let farmer =
                     self.villager.as_ref().is_some_and(|v| v.profession == crate::entity::villager::Profession::Farmer);
-                if farmer
-                    && let Some(level) = world.block(job).and_then(crate::world::composter::level)
-                {
+                if farmer && let Some(level) = world.block(job).and_then(crate::world::composter::level) {
                     self.make_bread(rng);
                     self.compost_items(job, level, rng);
                 }
@@ -1390,11 +1389,7 @@ impl Mob {
             let v = self.villager.as_mut().unwrap();
             let Some((i, count)) = v.inventory().iter().enumerate().find_map(|(i, s)| {
                 let s = (*s).filter(wanted)?;
-                if s.count > s.max() / 2 {
-                    Some((i, s.count / 2))
-                } else {
-                    (s.count > 24).then_some((i, s.count - 24))
-                }
+                if s.count > s.max() / 2 { Some((i, s.count / 2)) } else { (s.count > 24).then_some((i, s.count - 24)) }
             }) else {
                 continue;
             };

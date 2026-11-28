@@ -617,9 +617,11 @@ impl Thrown {
             _ => None,
         };
         if let Some(item) = item {
-            let mut local = Rng::new(pos.x.to_bits() ^ pos.y.to_bits().rotate_left(13) ^ pos.z.to_bits().rotate_left(29));
+            let mut local =
+                Rng::new(pos.x.to_bits() ^ pos.y.to_bits().rotate_left(13) ^ pos.z.to_bits().rotate_left(29));
             for _ in 0..8 {
-                let mut spread = || if item == Item::SNOWBALL { 0.0 } else { (f64::from(local.next_f32()) - 0.5) * 0.08 };
+                let mut spread =
+                    || if item == Item::SNOWBALL { 0.0 } else { (f64::from(local.next_f32()) - 0.5) * 0.08 };
                 let vel = DVec3::new(spread(), spread(), spread());
                 events.push(EntityEvent::ItemParticle { pos, vel, item });
             }

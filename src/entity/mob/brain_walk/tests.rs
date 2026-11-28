@@ -23,7 +23,17 @@ fn mob(kind: MobKind) -> Mob {
 }
 
 fn seen(uid: u32, kind: MobKind, at: DVec3) -> Seen {
-    Seen { uid, kind, eye: at + DVec3::Y, pos: at, breedable: false, baby: false, chasing: None, farmer: false, wants_food: false }
+    Seen {
+        uid,
+        kind,
+        eye: at + DVec3::Y,
+        pos: at,
+        breedable: false,
+        baby: false,
+        chasing: None,
+        farmer: false,
+        wants_food: false,
+    }
 }
 
 /// The idle `RunOne` sends a villager to a villager it sees within 8
@@ -380,7 +390,8 @@ fn farmers_bake_bread_and_compost_their_spare_seeds() {
                 {
                     assert_eq!((cell, from), (job, if emptied { 8 } else { 0 }));
                     assert!((1..=7).contains(&to));
-                    let bone_meal = acts.iter().any(|a| matches!(a, FarmAct::Item(s, _, _) if s.item == Item::BONE_MEAL));
+                    let bone_meal =
+                        acts.iter().any(|a| matches!(a, FarmAct::Item(s, _, _) if s.item == Item::BONE_MEAL));
                     assert_eq!(bone_meal, emptied);
                     let v = v.villager.as_ref().unwrap();
                     assert_eq!((v.count_item(Item::BREAD), v.count_item(Item::WHEAT)), (3, 1));
