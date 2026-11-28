@@ -2044,7 +2044,8 @@ mod tests {
         bare.vitals.reset_fall();
         bare.hurt(30.0, "was blown up by a creeper", DVec3::ZERO, &mut entities);
         assert!(bare.vitals.is_dead() && !bare.targetable());
-        assert_eq!(bare.vitals.death.as_deref(), Some("was blown up by a creeper"));
+        // v1.0 gap Track 8g: Java names the mob by its type ("Creeper").
+        assert_eq!(bare.vitals.death.as_deref(), Some("was blown up by Creeper"));
         assert!(bare.inventory.get(0).is_none());
         assert_eq!(entities.items.iter().map(|i| i.stack.count).sum::<u8>(), 2);
     }
