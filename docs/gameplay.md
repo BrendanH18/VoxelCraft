@@ -640,8 +640,13 @@ and so is their decoration: the small floating islands among the
 `small_end_islands`, the chorus plants of the highlands and, now and then
 in the highlands, a return gateway that takes you straight back to the
 arrival platform
-([gap Track 4b](verification/2026-11-27-v1.0-gap-track-04b-end-leftovers.md));
-older worlds keep their islands. It has
+([gap Track 4b](verification/2026-11-27-v1.0-gap-track-04b-end-leftovers.md)),
+with Java's End cities standing where and as high as Java's do, piece for
+piece (their blocks are VoxelCraft's own,
+[gap Track 4c](verification/2026-11-27-v1.0-gap-track-04c-end-final.md));
+older worlds keep their islands. Jumping into the End portal keeps your
+momentum: you arrive facing west, still moving as you were relative to
+where you faced. It has
 a static violet sky, no weather or natural Overworld/Nether mob spawning, and
 its own `end/` save folder. Water works; beds explode. End stone is mineable
 with a pickaxe and appears in the creative catalog.
@@ -664,9 +669,22 @@ five seconds, it takes off (or charges a player within 150). A player it has
 chosen to strafe stays its target even after switching to creative, as in
 Java. Its wings shove
 and hurt players, its head bites for 10, and it smashes through any block but
-end stone, obsidian, bedrock, iron bars and portals. Head hits do full damage,
-anywhere else a quarter (plus up to one); arrows glance off a perched dragon
-and off a dying one, and bed or TNT blasts hurt it. Between its targets it
+Java's dragon-immune ones (end stone, obsidian and crying obsidian, bedrock,
+iron bars, respawn anchors, reinforced deepslate, End portals and gateways);
+with `mobGriefing` off it breaks nothing, and every block in its way slows
+it and its wing beat. Head and neck hits do full damage, anywhere else a
+quarter (plus up to one), and only a player's hits (or a blast) take its
+health; arrows, tridents and a player's wind charges glance off a perched
+dragon, and everything glances off a dying one. Everything Java lets hit
+it does here
+([gap Track 4c](verification/2026-11-27-v1.0-gap-track-04c-end-final.md)):
+snowballs and eggs stop on it (and break End crystals), an ender pearl
+takes you to where it was a moment before it hit, splash and lingering
+Harming hurt it and Healing mends it, wind charges sting it and push it,
+tridents bounce off, firework blasts within five blocks of its feet hurt
+it, a ghast's fireball explodes on it (the blast, not the fire, hurts it),
+its own fireballs burst on it harmlessly, and a fishing hook can catch on
+it. Blasts and wind push it about as in Java. Between its targets it
 flies exactly as Java's `aiStep` moves it, checked tick for tick against
 the Java server. The boss bar shows within 192 blocks of the
 island's centre. Killed in flight, it first flies to the exit portal (at
