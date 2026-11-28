@@ -471,6 +471,29 @@ Differences from Metal seen so far (2026-11-23,
   distance 6 for world scenes, 4 for in-world UI scenes and 2 for the title
   screens.
 
+### Item review sheets
+
+`--item-review DIR` (v1.0 gap track 6) stages every registered item, one a
+frame, and lays the frames into contact sheets `items-NN.png` in DIR, 6 ×
+5 tiles each: the slot icon and the same icon three times as large under
+its list index and Java id, the item lying dropped on a block 1.15 ahead
+of the pose (at the bottom of its bob, turned to show two sides), and the
+item held in first person. The list is every Java 26.3 item id the game
+resolves, then the game's own variants; `--item-review-range 2,13,30-35`
+picks entries by index. Run it at `--size 320x320` with a block placed
+under the stage; the review runs in about 1½ minutes on Boat:
+
+```sh
+places=(); for x in -1 0 1 2 3 4; do for z in -2 -1 0 1 2; do places+=(--place "$x,150,$z,smooth_stone"); done; done
+scripts/boat-capture.sh --out target/captures/item-review --name review -- --world review --new \
+    --seed 42 --creative --pose 0.5,151,0.5,0,-24 --place 1,151,0,smooth_stone --size 320x320 --rd 2 \
+    --time 0.25 --gamerule advance_time=false --weather clear --gamerule advance_weather=false \
+    --animation-time 7.3 "${places[@]}" --item-review /home/user/captures/review
+```
+
+A larger `--size` (640x640) with a short range is a closer look at a few
+items.
+
 ### The title panorama
 
 The title screen's panorama is six 1024 x 1024 faces in

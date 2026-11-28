@@ -37,6 +37,8 @@ pub enum Used {
     /// A lead, name tag, food or taming item was used on an animal.
     Animal,
     BrushStarted,
+    /// v1.0 gap track 6: a bundle is now in use (`BundleItem.use`).
+    BundleStarted,
     /// The player now rides this vehicle.
     Mounted(u32),
     CartPlaced,
@@ -338,6 +340,9 @@ impl PlayerSession {
             self.inventory.swap_offhand(slot);
             if result.as_ref().is_ok_and(|u| *u == Some(Used::BrushStarted)) {
                 self.brushing.off = true;
+            }
+            if result.as_ref().is_ok_and(|u| *u == Some(Used::BundleStarted)) {
+                self.bundle_use.off = true;
             }
             match result {
                 Ok(u) => {
@@ -696,6 +701,13 @@ impl PlayerSession {
         // the book (`Player.openItemGui`).
         if self.inventory.get(slot).is_some_and(|s| matches!(s.item, Item::WRITABLE_BOOK | Item::WRITTEN_BOOK)) {
             return Ok(Some(Used::OpenBook { slot }));
+        }
+        // v1.0 gap track 6: `BundleItem.use` starts using the bundle; held
+        // use then throws its contents out (`session::bundles`).
+        if self.inventory.get(slot).is_some_and(|s| crate::content::bundle::is_bundle(s.item))
+            && self.start_bundle_use(slot, entities)
+        {
+            return Ok(Some(Used::BundleStarted));
         }
         if self.inventory.get(slot).is_some_and(|s| s.item == Item::MAP) {
             let pos = self.player.pos.floor().as_ivec3();

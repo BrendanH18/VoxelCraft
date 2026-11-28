@@ -15,6 +15,7 @@
 
 pub mod block_sounds;
 mod breeze;
+mod bundle;
 mod crafter;
 mod dsp;
 mod events;

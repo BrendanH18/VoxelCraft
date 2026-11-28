@@ -4,6 +4,7 @@
 //! Camera, hand animation and screen navigation belong to their adapters.
 mod archaeology;
 pub mod books;
+pub mod bundles;
 pub use archaeology::Stroke;
 mod allay;
 pub mod combat;
@@ -76,6 +77,8 @@ pub struct PlayerSession {
     ranged: ranged::State,
     consumption: consumption::State,
     brushing: archaeology::State,
+    /// v1.0 gap track 6: a bundle being emptied by holding use.
+    bundle_use: bundles::State,
     hands: hands::State,
     mining: mining::State,
     weapons: weapons::State,
@@ -242,6 +245,7 @@ impl PlayerSession {
             ranged: Default::default(),
             consumption: Default::default(),
             brushing: Default::default(),
+            bundle_use: Default::default(),
             hands: Default::default(),
             mining: Default::default(),
             weapons: Default::default(),
@@ -279,6 +283,7 @@ impl PlayerSession {
             ranged: Default::default(),
             consumption: Default::default(),
             brushing: Default::default(),
+            bundle_use: Default::default(),
             hands: Default::default(),
             mining: Default::default(),
             weapons: Default::default(),

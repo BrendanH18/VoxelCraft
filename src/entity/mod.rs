@@ -1717,6 +1717,7 @@ impl Entities {
         };
         if items {
             let sculk = &mut self.sculk;
+            let mut destroyed = Vec::new();
             self.items.retain_mut(|item| match hit(item.pos, item.aabb(), item::ItemEntity::EYE) {
                 // v0.16 Track C: the Nether star's `damage_resistant`
                 // spares it the damage, not the push.
@@ -1729,10 +1730,17 @@ impl Entities {
                     // v1.0 Track 9: `ItemEntity.hurtServer` posts `entity_damage`.
                     let none = crate::world::vibration::EventSource::NONE;
                     sculk.post(item.pos, crate::world::vibration::GameEvent::EntityDamage, none, None);
-                    item.hurt(damage)
+                    let alive = item.hurt(damage);
+                    if !alive {
+                        destroyed.push(*item);
+                    }
+                    alive
                 }
                 None => true,
             });
+            for item in destroyed {
+                self.spill_destroyed(&item);
+            }
         }
         self.orbs.retain_mut(|orb| match hit(orb.pos, orb.aabb(), orb::XpOrb::EYE) {
             Some((damage, push)) => {
@@ -1986,6 +1994,19 @@ impl Entities {
             let vel = DVec3::new(self.rng.range(-1.5, 1.5) as f64, 4.0, self.rng.range(-1.5, 1.5) as f64);
             let stack = crate::inventory::Stack::new(item, count);
             self.items.push(ItemEntity::new(stack, pos + DVec3::Y * 0.5, vel, item::PICKUP_DELAY, &mut self.rng));
+        }
+    }
+
+    /// v1.0 gap track 6: `Item.onDestroyed` for an item entity that burnt or
+    /// was blown up: a bundle's contents come out where it was
+    /// (`BundleItem.onDestroyed`, `ItemUtils.onContainerDestroyed`), each as
+    /// a fresh item entity with `ItemEntity`'s own random start, 0.2 up and
+    /// up to 0.1 sideways a tick, and no pickup delay.
+    pub(crate) fn spill_destroyed(&mut self, item: &item::ItemEntity) {
+        for &stack in crate::content::bundle::destroyed_contents(&item.stack) {
+            let mut side = || f64::from(self.rng.next_f32()) * 0.2 - 0.1;
+            let vel = DVec3::new(side(), 0.2, side()) * 20.0;
+            self.items.push(item::ItemEntity::new(stack, item.pos, vel, 0.0, &mut self.rng));
         }
     }
 
@@ -5362,6 +5383,34 @@ mod tests {
         e.orbs.push(orb::XpOrb::new(3, DVec3::new(1.0, 10.0, 0.5), &mut rng));
         e.explode_with(&world, center, 4.0, false, false);
         assert_eq!((e.items.len(), e.items[0].health, e.orbs.len()), (1, 5, 0));
+    }
+
+    #[test]
+    fn a_bundle_blown_up_spills_its_contents_where_it_lay() {
+        use crate::content::bundle;
+        use crate::inventory::{Stack, components::Payload};
+        let world = Grid::flat(10);
+        let mut e = Entities::new(9);
+        let mut rng = Rng::new(2);
+        let held = [Stack::new(crate::item::Item::DIAMOND, 3), Stack::new(crate::item::Item::STICK, 5)];
+        let filled = Stack::new(bundle::BUNDLE, 1).with_payload(Payload::Bundle(held.to_vec()));
+        let at = DVec3::new(1.0, 10.0, 0.5);
+        e.items.push(ItemEntity::new(filled, at, DVec3::ZERO, 0.0, &mut rng));
+        e.explode(&world, DVec3::new(0.5, 10.5, 0.5), 4.0);
+        // `BundleItem.onDestroyed`: the bundle is gone and its stacks lie
+        // where it was, front first, each thrown up at 0.2 a tick.
+        let stacks: Vec<Stack> = e.items.iter().map(|i| i.stack).collect();
+        assert_eq!(stacks, held);
+        for item in &e.items {
+            assert_eq!(item.pos, at);
+            assert_eq!(item.vel.y, 4.0);
+            assert!(item.vel.x.abs() <= 2.0 && item.vel.z.abs() <= 2.0);
+            assert_eq!(item.pickup_delay, 0.0);
+        }
+        // Anything else burns or blows up with nothing to spill.
+        let mut e = Entities::new(9);
+        e.spill_destroyed(&ItemEntity::new(held[0], at, DVec3::ZERO, 0.0, &mut rng));
+        assert!(e.items.is_empty());
     }
 
     #[test]

@@ -154,6 +154,7 @@ impl Sound {
                 ContainerCue::CopperChestOxidizedClose => "block.copper_chest_oxidized.close",
             }),
             Sound::SoulEscape => s("particle.soul_escape"),
+            Sound::Bundle(c) => s(c.event()),
         }
     }
 }

@@ -89,7 +89,11 @@ pub fn vertices(models: &[BlockModel], camera: DVec3, ticks: f64) -> Vec<BlockVe
             continue;
         }
         // v0.18 Track 9: a barrel in use shows its open top.
-        let tex = m.lid.and_then(|_| crate::world::lids::barrel_faces(m.block)).unwrap_or(m.block.info().tex);
+        // An item's front faces north, as Java's item models have it.
+        let tex = m
+            .lid
+            .and_then(|_| crate::world::lids::barrel_faces(m.block))
+            .unwrap_or_else(|| if m.lid.is_none() { m.block.item_facing() } else { m.block }.info().tex);
         let (sin, cos) = m.yaw.sin_cos();
         // Unit-cube corner -> camera-relative position, turned about the centre.
         let place = |c: Vec3| match m.orient {
@@ -129,11 +133,11 @@ pub fn vertices(models: &[BlockModel], camera: DVec3, ticks: f64) -> Vec<BlockVe
             quad([v(1., 0., 0.), v(0., 0., 1.), v(0., 1., 1.), v(1., 1., 0.)], tex[0], 0.9, 0);
             continue;
         }
-        let mut boxes = shape::item_shape(m.block);
-        if boxes.is_empty() {
-            boxes = shape::Boxes::from_box(shape::Box16::FULL);
-        }
-        for bx in boxes.as_slice() {
+        // Falling blocks and every item model share the item's boxes.
+        let boxes = shape::item_boxes(m.block);
+        for (i, bx) in boxes.as_slice().iter().enumerate() {
+            // Candle wicks, the beacon's plinth and core: their own layers.
+            let tex = shape::item_box_layer(m.block, i).map_or(tex, |l| [l; 6]);
             let (lo, mut hi) = (bx.min.map(|c| c as f32 / 16.0), bx.max.map(|c| c as f32 / 16.0));
             if m.block == crate::world::frog_blocks::FROGSPAWN {
                 hi[1] = crate::world::frog_blocks::HEIGHT as f32;

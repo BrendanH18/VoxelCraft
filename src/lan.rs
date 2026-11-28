@@ -21,7 +21,7 @@ use glam::IVec3;
 /// numbers, so a build still versioned 0.15.0 refuses v0.15 peers.
 /// It also adds the Book packet (issue #97), before any release used 5.
 /// 6: desktop hosts send inventory changes separately from tick state.
-pub const PROTOCOL: u16 = 6;
+pub const PROTOCOL: u16 = 7;
 pub const GAME_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const MAX_FRAME: usize = 256 * 1024;
 /// One inventory part per host tick leaves half the I/O budget for state and terrain.
@@ -78,6 +78,9 @@ pub enum Packet {
         revision: u32,
         /// The displayed crafting grid, or zero while its contents are pending.
         grid_size: u8,
+        /// v1.0 gap track 6: the clicked bundle's selected stack, chosen
+        /// with the wheel over it (Java's `ServerboundSelectBundleItemPacket`).
+        selected: Option<u8>,
     },
     Chat(String),
     State(serde_json::Value),
@@ -206,15 +209,19 @@ impl Packet {
                     out.extend_from_slice(&b.0.to_le_bytes());
                 }
             }
-            Self::Click { slot, right, shift, revision, grid_size } => {
+            Self::Click { slot, right, shift, revision, grid_size, selected } => {
                 if !matches!(grid_size, 0 | 2 | 3) {
                     return Err(bad("invalid crafting grid size"));
+                }
+                if selected.is_some_and(|i| usize::from(i) >= crate::content::bundle::SHOWN_MAX) {
+                    return Err(bad("invalid bundle selection"));
                 }
                 out.push(8);
                 out.extend_from_slice(&slot.to_le_bytes());
                 out.extend_from_slice(&[u8::from(*right), u8::from(*shift)]);
                 out.extend_from_slice(&revision.to_le_bytes());
                 out.push(*grid_size);
+                out.push(selected.map_or(0, |i| i + 1));
             }
             Self::Book { pages, title, offhand } => {
                 if pages.len() > WRITABLE_MAX_PAGES {
@@ -338,7 +345,12 @@ impl Packet {
                 if !matches!(grid_size, 0 | 2 | 3) {
                     return Err(bad("invalid crafting grid size"));
                 }
-                Self::Click { slot, right: right != 0, shift: shift != 0, revision, grid_size }
+                let selected = match r.u8()? {
+                    0 => None,
+                    i if usize::from(i) <= crate::content::bundle::SHOWN_MAX => Some(i - 1),
+                    _ => return Err(bad("invalid bundle selection")),
+                };
+                Self::Click { slot, right: right != 0, shift: shift != 0, revision, grid_size, selected }
             }
             10 => {
                 let flags = r.u8()?;
@@ -721,7 +733,17 @@ mod tests {
             assert!(Packet::decode(&Packet::Input(input).encode().unwrap()[4..]).is_err());
         }
         assert!(Packet::Chat("x".repeat(1025)).encode().is_err());
-        assert!(Packet::Click { slot: 100, right: false, shift: false, revision: 0, grid_size: 1 }.encode().is_err());
+        assert!(
+            Packet::Click { slot: 100, right: false, shift: false, revision: 0, grid_size: 1, selected: None }
+                .encode()
+                .is_err()
+        );
+        let click = Packet::Click { slot: 3, right: true, shift: false, revision: 9, grid_size: 2, selected: Some(11) };
+        let encoded = click.encode().unwrap();
+        assert!(matches!(Packet::decode(&encoded[4..]), Ok(Packet::Click { selected: Some(11), .. })));
+        let mut too_far = encoded[4..].to_vec();
+        *too_far.last_mut().unwrap() = 13;
+        assert!(Packet::decode(&too_far).is_err(), "a bundle shows at most twelve stacks");
         assert!(Packet::decode(&[8, 0, 0, 2, 0]).is_err());
         assert!(Packet::decode(&[9]).is_err());
         let mut chunk = vec![6];

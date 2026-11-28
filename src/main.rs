@@ -128,6 +128,11 @@ pub struct Args {
     /// v0.18 Track 7: `--panorama DIR`, with `--screenshot`: render the six
     /// title panorama faces from the pose into DIR before the screenshot.
     pub panorama: Option<std::path::PathBuf>,
+    /// v1.0 gap track 6: `--item-review DIR`, with `--screenshot`: contact
+    /// sheets of every item's icon, dropped and held models, and the range
+    /// of `Item::all_items` (`--item-review-range FROM-TO`) to show.
+    pub item_review: Option<std::path::PathBuf>,
+    pub item_review_range: Vec<(usize, usize)>,
     /// v0.18 Track 7: `--world-icon`: take the world's icon in a scripted
     /// run too (by the usual rule), waiting for it before `--screenshot` exits.
     pub world_icon: bool,
@@ -263,6 +268,11 @@ voxelcraft [options]
   --panorama <dir>  with --screenshot and a square --size: render the title
                     panorama's six faces (panorama_0..5.png) from the --pose
                     position into dir first
+  --item-review <dir>  with --screenshot: contact sheets (items-NN.png) of
+                    every item's icon, dropped model and held model, one
+                    tile each, staged ahead of the --pose position
+  --item-review-range <n|from-to,...>  only these items (indices into the
+                    full item list, as the sheets number them)
   --world-icon      take the world's icon.png even in a scripted run
   --time <0..1>     starting time of day (0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight)
   --weather <w>     start with clear skies, rain or a thunderstorm (clear,
@@ -365,6 +375,8 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
         animation_time: None,
         still_mobs: false,
         panorama: None,
+        item_review: None,
+        item_review_range: Vec::new(),
         world_icon: false,
         pose: None,
         health: None,
@@ -743,6 +755,19 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
             }
             "--screenshot" => args.screenshot = Some(value("--screenshot")?),
             "--panorama" => args.panorama = Some(value("--panorama")?.into()),
+            "--item-review" => args.item_review = Some(value("--item-review")?.into()),
+            "--item-review-range" => {
+                let v = value("--item-review-range")?;
+                let bad = || format!("--item-review-range needs N or FROM-TO, comma-separated (got {v})");
+                for part in v.split(',') {
+                    let (a, b) = part.split_once('-').unwrap_or((part, part));
+                    let (a, b) = (a.trim().parse().map_err(|_| bad())?, b.trim().parse().map_err(|_| bad())?);
+                    if a > b {
+                        return Err(bad());
+                    }
+                    args.item_review_range.push((a, b));
+                }
+            }
             "--world-icon" => args.world_icon = true,
             "--pose" => {
                 let v: Vec<f64> = value("--pose")?.split(',').filter_map(|s| s.trim().parse().ok()).collect();

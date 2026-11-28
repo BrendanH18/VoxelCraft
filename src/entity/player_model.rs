@@ -116,6 +116,44 @@ pub struct PlayerAppearance {
 const PLAYER_SCALE: f32 = 0.9375;
 const UNTINTED: [u8; 4] = [255, 255, 255, 0];
 
+/// v1.0 gap track 6: a held block item, `half` model units from its centre
+/// to a face of a whole cube: each of the item's boxes
+/// ([`crate::world::shape::item_boxes`]) in `held`'s place, every face with
+/// the block's own texture, so a held slab, stair or fence keeps its shape.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn held_block(
+    out: &mut Vec<EntityVertex>,
+    held: &Limb,
+    origin: Vec3,
+    body: Quat,
+    light: ([u8; 4], u8),
+    block: crate::world::block::Block,
+    half: f32,
+    scale: f32,
+    tint: [u8; 4],
+) {
+    let block = block.item_facing();
+    let tex = block.info().tex;
+    let half = half * crate::world::shape::item_scale(block).hand;
+    for (index, bounds) in crate::world::shape::item_boxes(block).as_slice().iter().enumerate() {
+        let tex = crate::world::shape::item_box_layer(block, index).map_or(tex, |l| [l; 6]);
+        let part = Limb {
+            min: bounds.min.map(|v| (v as f32 - 8.0) * half / 8.0),
+            max: bounds.max.map(|v| (v as f32 - 8.0) * half / 8.0),
+            ..*held
+        };
+        textured_box(out, &part, 0.0, origin, body, light, 2, tex[0], scale, tint);
+        let start = out.len() - 36;
+        for (i, face) in out[start..].as_chunks_mut::<6>().0.iter_mut().enumerate() {
+            let layer = tex[i ^ 1];
+            for vertex in face {
+                vertex.torch[2] = layer as u8;
+                vertex.torch[3] = (layer >> 8) as u8;
+            }
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 pub(crate) struct Limb {
     pub pivot: Vec3,
@@ -411,18 +449,8 @@ pub fn build_player(
                 }
             }
         } else if let Some(block) = item.block().filter(|b| !b.flat_icon()) {
-            held.min = [-3.2; 3];
-            held.max = [3.2; 3];
-            textured_box(out, &held, 0.0, origin, body, light, 2, block.info().tex[0], PLAYER_SCALE, UNTINTED);
-            // Use the appropriate face textures (grass, logs, crafting tables).
-            let start = out.len() - 36;
-            for (i, face) in out[start..].as_chunks_mut::<6>().0.iter_mut().enumerate() {
-                let tex = block.info().tex[i ^ 1];
-                for vertex in face {
-                    vertex.torch[2] = tex as u8;
-                    vertex.torch[3] = (tex >> 8) as u8;
-                }
-            }
+            // The item's own boxes, with the block's face textures.
+            held_block(out, &held, origin, body, light, block, 3.2, PLAYER_SCALE, UNTINTED);
         } else {
             // The default thirdperson_righthand display for handheld items.
             held.rot *= Quat::from_rotation_y(-FRAC_PI_2) * Quat::from_rotation_z(55f32.to_radians());

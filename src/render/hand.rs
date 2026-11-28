@@ -383,15 +383,14 @@ pub(super) fn vertices(
     match block {
         Some(block) => {
             // Block models: turned 45 degrees and shrunk to 0.4, centred.
-            let m = arm * rot_y(45.0) * Mat4::from_scale(Vec3::splat(0.4)) * translate(-0.5, -0.5, -0.5);
+            let block = block.item_facing();
+            let k = 0.4 * shape::item_scale(block).hand;
+            let m = arm * rot_y(45.0) * Mat4::from_scale(Vec3::splat(k)) * translate(-0.5, -0.5, -0.5);
             let tex = block.info().tex;
-            let mut boxes = shape::item_shape(block);
-            if boxes.is_empty() {
-                let top = 16 - block.top_drop();
-                boxes = shape::Boxes::from_box(shape::Box16 { min: [0; 3], max: [16, top, 16] });
-            }
-            for bx in boxes.as_slice() {
+            let boxes = shape::item_boxes(block);
+            for (i, bx) in boxes.as_slice().iter().enumerate() {
                 let (lo, hi) = (Vec3::from_array(bx.min.map(f32::from)), Vec3::from_array(bx.max.map(f32::from)));
+                let tex = shape::item_box_layer(block, i).map_or(tex, |l| [l; 6]);
                 b.cuboid(m, lo / 16.0, hi / 16.0, tex);
             }
         }

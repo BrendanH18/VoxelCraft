@@ -248,23 +248,31 @@ impl Ui {
             self.icon(x - 1.0, y - 1.0, size + 2.0, t[0], WHITE);
             return;
         }
-        let mut boxes = shape::item_shape(block);
-        if boxes.is_empty() {
-            boxes = shape::Boxes::from_box(shape::Box16 { min: [0; 3], max: [16, 16 - block.top_drop(), 16] });
-        }
+        let block = block.item_facing();
+        let t = block.info().tex;
+        let boxes = shape::item_boxes(block);
         // Half width `s`: the top diamond is `s` tall, each side face `s` tall.
         let (l, s) = (x, size / 2.0);
         let q = s / 2.0;
         // A point of the unit cube in icon pixels: +X runs down-right, +Z
         // up-right, +Y up. The top, -Z (left) and +X (right) faces show.
-        let at = |p: [f32; 3]| [l + s * (p[0] + p[2]), y + q * (1.0 + p[0] - p[2]) + s * (1.0 - p[1])];
+        // v1.0 gap track 6: an item Java draws larger or smaller in a slot
+        // grows or shrinks about the cube's centre.
+        let k = shape::item_scale(block).gui;
+        let grow = |p: [f32; 3]| p.map(|c| (c - 0.5) * k + 0.5);
+        let at = |p: [f32; 3]| {
+            let p = grow(p);
+            [l + s * (p[0] + p[2]), y + q * (1.0 + p[0] - p[2]) + s * (1.0 - p[1])]
+        };
         let shade = |f: f32| [f, f, f, 1.0];
         // Far boxes first, so nearer ones paint over them.
-        let mut order: Vec<_> = boxes.as_slice().to_vec();
-        order.sort_by_key(|b| {
+        let mut order: Vec<_> = boxes.as_slice().iter().copied().enumerate().collect();
+        order.sort_by_key(|&(_, b)| {
             b.min[0] as i32 + b.max[0] as i32 + b.min[1] as i32 + b.max[1] as i32 - b.min[2] as i32 - b.max[2] as i32
         });
-        for b in order {
+        for (i, b) in order {
+            // Candle wicks, the beacon's plinth and core: their own layers.
+            let t = shape::item_box_layer(block, i).map_or(t, |l| [l; 6]);
             let (lo, hi) = (b.min.map(|c| c as f32 / 16.0), b.max.map(|c| c as f32 / 16.0));
             let top = [[lo[0], hi[1], lo[2]], [lo[0], hi[1], hi[2]], [hi[0], hi[1], hi[2]], [hi[0], hi[1], lo[2]]];
             let left = [[lo[0], hi[1], lo[2]], [hi[0], hi[1], lo[2]], [hi[0], lo[1], lo[2]], [lo[0], lo[1], lo[2]]];

@@ -953,6 +953,63 @@ pub fn collision_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: 
     out
 }
 
+/// v1.0 gap track 6: the boxes every drawing of `block` as an item uses
+/// (its icon, dropped, held, framed and shelved models): [`item_shape`], or
+/// for blocks whose world shape is a whole cube cut lower (slabs, carpets,
+/// beds, farmland, paths) one full-width box that much lower. Until
+/// 2026-11-27 the dropped and framed models drew those as full cubes.
+pub fn item_boxes(block: Block) -> Boxes {
+    let boxes = item_shape(block);
+    if boxes.is_empty() { Boxes::from_box(Box16 { min: [0; 3], max: [16, 16 - block.top_drop(), 16] }) } else { boxes }
+}
+
+/// v1.0 gap track 6: how much larger than an ordinary block item a 3D item
+/// is drawn, from Java 26.3's item model display transforms divided by
+/// `block/block`'s (GUI 0.625, ground 0.25, first person 0.4).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ItemScale {
+    /// In a slot.
+    pub gui: f32,
+    /// Dropped (and framed and shelved, which share the dropped model).
+    pub ground: f32,
+    /// Held, in first and third person.
+    pub hand: f32,
+}
+
+impl ItemScale {
+    pub const ONE: Self = Self { gui: 1.0, ground: 1.0, hand: 1.0 };
+}
+
+/// [`ItemScale`] for `block`'s item: the conduit (`item/conduit`: GUI 1,
+/// ground 0.5, first person 0.8), the heavy core (GUI 1, ground 0.5),
+/// fence gates and the dried ghast (GUI
+/// 0.8), copper golem statues (GUI 0.55, ground 0.35, first person
+/// 0.5) and shelves (first person 0.5); every other block 1.
+pub fn item_scale(block: Block) -> ItemScale {
+    let block = block.canonical();
+    if block == super::conduit::CONDUIT {
+        ItemScale { gui: 1.0 / 0.625, ground: 2.0, hand: 2.0 }
+    } else if block == super::heavy_core::HEAVY_CORE {
+        // `heavy_core` shares the heads' display: GUI 1, ground 0.5.
+        ItemScale { gui: 1.0 / 0.625, ground: 2.0, ..ItemScale::ONE }
+    } else if block.is_gate() || super::dried_ghast::decode(block).is_some() {
+        ItemScale { gui: 0.8 / 0.625, ..ItemScale::ONE }
+    } else if super::copper_golem_statue::decode(block).is_some() {
+        ItemScale { gui: 0.55 / 0.625, ground: 0.35 / 0.25, hand: 0.5 / 0.4 }
+    } else if super::wood::shelves::shelf(block).is_some() {
+        ItemScale { hand: 0.5 / 0.4, ..ItemScale::ONE }
+    } else {
+        ItemScale::ONE
+    }
+}
+
+/// The layer box `index` of `block`'s item boxes is drawn with when it
+/// isn't the block's face layer, as the world mesh draws it: candle wax and
+/// wicks, the straw bed's pillow, the beacon's obsidian plinth and core.
+pub fn item_box_layer(block: Block, index: usize) -> Option<u16> {
+    super::colour_blocks::box_layer(block, index).or_else(|| super::beacon::box_layer(block, index))
+}
+
 /// The shape shown for `block` as an item (in inventories and when
 /// dropped): stairs face east, so their profile shows on the left of an
 /// icon, and fences reach out east and west.
@@ -975,6 +1032,11 @@ pub fn item_shape(block: Block) -> Boxes {
     if let Some(boxes) = super::end_blocks::item_boxes(block) {
         return boxes;
     }
+    // v1.0 gap track 6: Java's `button_inventory`, a 6 x 4 x 4 block,
+    // rather than the 2-high button a floor holds.
+    if matches!(super::redstone_blocks::component(block), Some(super::redstone_blocks::Component::Button { .. })) {
+        return Boxes::from_box(b([5, 6, 6], [11, 10, 10]));
+    }
     let block = if block.stairs_base().is_some() { block.with_facing(Facing::East) } else { block };
     shape(block, |f| if f.along_x() { block } else { Block::AIR }, Block::AIR)
 }
@@ -995,6 +1057,22 @@ mod tests {
         assert_eq!(door.turned(Facing::West), b([0, 0, 0], [3, 16, 16]));
         assert_eq!(door.turned(Facing::North), b([0, 0, 0], [16, 16, 3]));
         assert_eq!(door.turned(Facing::East), b([13, 0, 0], [16, 16, 16]));
+    }
+
+    #[test]
+    fn items_keep_the_height_of_low_blocks() {
+        // v1.0 gap track 6: every item model shares these boxes; a slab or
+        // carpet item is as low as the placed block, not a whole cube.
+        let one = |block: Block| item_boxes(block).as_slice().to_vec();
+        assert_eq!(one(Block::STONE_SLAB), [b([0, 0, 0], [16, 8, 16])]);
+        let carpet = Block(576);
+        assert_eq!(one(carpet), [b([0, 0, 0], [16, 1, 16])]);
+        assert_eq!(one(Block::DIRT), [Box16::FULL]);
+        assert_eq!(one(Block::OAK_FENCE).len(), 5, "a post and two rails each way");
+        // The beacon's plinth and core keep their own layers.
+        let beacon = item_boxes(super::super::beacon::BEACON);
+        assert_eq!(beacon.as_slice().len(), 3);
+        assert_eq!(item_box_layer(super::super::beacon::BEACON, 1), Some(super::super::block::tex::OBSIDIAN));
     }
 
     #[test]

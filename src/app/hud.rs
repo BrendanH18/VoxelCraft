@@ -135,6 +135,10 @@ impl Game {
             self.credits_ui(&mut ui, t);
             return (ui.verts, None);
         }
+        // v1.0 gap track 6: `--item-review` labels its tiles and nothing else.
+        if self.item_review_ui(&mut ui) {
+            return (ui.verts, None);
+        }
         if self.camera.first_person() && self.session.scoping() {
             spyglass_overlay(&mut ui, sw, sh, self.session.scoping_ticks());
         }
@@ -770,18 +774,36 @@ fn shield_veil(ui: &mut Ui, stack: Stack, cooldown: f32, x: f32, y: f32) {
 }
 
 pub(super) fn draw_stack(ui: &mut Ui, x: f32, y: f32, stack: Stack, counts: bool, dial: crate::item::Dial) {
+    draw_model(ui, x, y, stack, dial);
+    draw_decorations(ui, x, y, stack, counts);
+}
+
+/// A stack's model in a slot at `(x, y)`: its block icon or flat icon, with
+/// the glint and banner patterns.
+pub(super) fn draw_model(ui: &mut Ui, x: f32, y: f32, stack: Stack, dial: crate::item::Dial) {
+    draw_model_sized(ui, x, y, 16.0, stack, dial);
+    super::patterns::draw_icon_patterns(ui, x, y, &stack);
+}
+
+/// [`draw_model`] `size` pixels across (16 in a slot), without the banner
+/// patterns.
+pub(super) fn draw_model_sized(ui: &mut Ui, x: f32, y: f32, size: f32, stack: Stack, dial: crate::item::Dial) {
     let layer = stack.item.dial_layer(dial.for_stack(&stack)).or_else(|| stack.item.icon_layer());
+    let px = size / 16.0;
     match (voxelcraft::world::copper_golem_statue::item_model(stack).or_else(|| stack.item.block()), layer) {
-        (Some(block), _) => ui.block_icon(x + 2.0, y + 2.0, 14.0, block),
+        (Some(block), _) => ui.block_icon(x + 2.0 * px, y + 2.0 * px, 14.0 * px, block),
         (None, Some(layer)) => {
-            ui.icon(x + 1.0, y + 1.0, 16.0, layer, crate::entity::wolf_armor::item_tint(stack));
+            ui.icon(x + px, y + px, size, layer, crate::entity::wolf_armor::item_tint(stack));
             if !stack.enchants.is_empty() || stack.item.has_glint() || stack.lodestone.is_some() {
-                glint(ui, x + 1.0, y + 1.0, 16.0, layer);
+                glint(ui, x + px, y + px, size, layer);
             }
         }
         (None, None) => {}
     }
-    super::patterns::draw_icon_patterns(ui, x, y, &stack);
+}
+
+/// A stack's bars and count over its model (`GuiGraphics.itemDecorations`).
+pub(super) fn draw_decorations(ui: &mut Ui, x: f32, y: f32, stack: Stack, counts: bool) {
     if let Some(wear) = stack.wear() {
         // Minecraft's bar: green when new, through yellow to red.
         let w = (13.0 * wear).round().max(1.0);
@@ -1185,21 +1207,7 @@ impl Game {
                 style::big_slot(ui, x, y);
             }
             style::slot(ui, x, y);
-            let stack = match r {
-                SlotRef::Inventory(i) => self.session.inventory.get(i),
-                SlotRef::Palette(stack) => Some(stack),
-                SlotRef::PaletteEmpty | SlotRef::Destroy => None,
-                SlotRef::Craft(i) => self.craft.cells[i],
-                SlotRef::CraftResult => super::screen::crafting_result(
-                    &self.craft,
-                    &self.world,
-                    &self.session,
-                    self.gamerules.bool("limited_crafting"),
-                ),
-                SlotRef::Armor(p) => self.session.inventory.armor[p as usize],
-                SlotRef::Offhand => self.session.inventory.offhand,
-                f => self.container_slot(f),
-            };
+            let stack = self.slot_stack(r);
             // Faint outline of what goes in an empty armor or lapis slot.
             let outline = match (r, stack) {
                 (SlotRef::Armor(p), None) => Item::armor(p, ArmorMaterial::Iron).icon_layer(),
@@ -1217,7 +1225,12 @@ impl Game {
                 ui.icon_shape(x + 1.0, y + 1.0, 16.0, layer, [0.0, 0.0, 1.0, 1.0], style::srgba(0xE0E0E0, 0.5));
             }
             if let Some(stack) = stack {
-                if matches!(self.body.container, Container::Trading(_)) {
+                // v1.0 gap track 6: a hovered bundle holds up its selection.
+                let chosen = (hovered == Some(r)).then(|| self.bundle_selected_stack(r, &stack)).flatten();
+                if let Some(chosen) = chosen {
+                    let dial = self.dial_of(&self.session.player);
+                    super::bundles::draw_open_bundle(ui, x, y, stack, chosen, dial);
+                } else if matches!(self.body.container, Container::Trading(_)) {
                     draw_stack(ui, x, y, stack, true, self.dial_of(&self.session.player));
                 } else {
                     self.stack_ui(ui, x, y, stack);
@@ -1246,26 +1259,10 @@ impl Game {
         if let Some(p) = crafter {
             self.crafter_ui(ui, p, px, top_py);
         }
-        let hovered_stack = match hovered {
-            Some(SlotRef::Inventory(i)) => self.session.inventory.get(i),
-            Some(SlotRef::Palette(stack)) => Some(stack),
-            Some(SlotRef::PaletteEmpty) => None,
-            Some(SlotRef::Destroy) => {
-                self.tooltip(ui, "Destroy Item");
-                None
-            }
-            Some(SlotRef::Craft(i)) => self.craft.cells[i],
-            Some(SlotRef::CraftResult) => super::screen::crafting_result(
-                &self.craft,
-                &self.world,
-                &self.session,
-                self.gamerules.bool("limited_crafting"),
-            ),
-            Some(SlotRef::Armor(p)) => self.session.inventory.armor[p as usize],
-            Some(SlotRef::Offhand) => self.session.inventory.offhand,
-            Some(f) => self.container_slot(f),
-            None => None,
-        };
+        if hovered == Some(SlotRef::Destroy) {
+            self.tooltip(ui, "Destroy Item");
+        }
+        let hovered_stack = hovered.and_then(|h| self.slot_stack(h));
         // v0.18 Track 5: the recipe book, its button and the ghost recipe.
         let recipe_hint = self
             .recipe_book_ui(ui, Instant::now())
@@ -1298,6 +1295,12 @@ impl Game {
                 .or(stack.arrow_potion())
             {
                 Some(potion) => self.potion_tooltip(ui, stack.display_name(), potion),
+                // v1.0 gap track 6: a bundle's contents (`ClientBundleTooltip`).
+                None if voxelcraft::content::bundle::is_bundle(stack.item) => {
+                    let selected = hovered.and_then(|h| self.bundle_selected_at(h));
+                    let colour = if stack.enchants.is_empty() { WHITE } else { [0.33, 1.0, 1.0, 1.0] };
+                    self.bundle_tooltip(ui, stack, selected, colour)
+                }
                 // v0.15 Track D: armor trims and trim templates.
                 None if stack.trim.is_some() || voxelcraft::content::trim::template_pattern(stack.item).is_some() => {
                     self.trim_tooltip(ui, stack)
@@ -1326,6 +1329,25 @@ impl Game {
         if let Some(stack) = self.session.inventory.cursor {
             let scale = ui.scale;
             self.stack_ui(ui, self.cursor_px.0 / scale - 9.0, self.cursor_px.1 / scale - 9.0, stack);
+        }
+    }
+
+    /// The stack a slot of the open screen shows.
+    pub(super) fn slot_stack(&self, slot: SlotRef) -> Option<Stack> {
+        match slot {
+            SlotRef::Inventory(i) => self.session.inventory.get(i),
+            SlotRef::Palette(stack) => Some(stack),
+            SlotRef::PaletteEmpty | SlotRef::Destroy => None,
+            SlotRef::Craft(i) => self.craft.cells[i],
+            SlotRef::CraftResult => super::screen::crafting_result(
+                &self.craft,
+                &self.world,
+                &self.session,
+                self.gamerules.bool("limited_crafting"),
+            ),
+            SlotRef::Armor(p) => self.session.inventory.armor[p as usize],
+            SlotRef::Offhand => self.session.inventory.offhand,
+            f => self.container_slot(f),
         }
     }
 
