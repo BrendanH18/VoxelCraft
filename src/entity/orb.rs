@@ -57,7 +57,18 @@ impl XpOrb {
     pub fn new(value: u32, pos: DVec3, rng: &mut Rng) -> Self {
         let vel = DVec3::new(rng.range(-4.0, 4.0) as f64, rng.range(0.0, 8.0) as f64, rng.range(-4.0, 4.0) as f64);
         let phase = rng.range(0.0, std::f32::consts::TAU);
-        Self { portal_cooldown: 0, value, count: 1, pos, previous_pos: pos, vel, age: 0.0, phase, health: HEALTH, fall_distance: 0.0 }
+        Self {
+            portal_cooldown: 0,
+            value,
+            count: 1,
+            pos,
+            previous_pos: pos,
+            vel,
+            age: 0.0,
+            phase,
+            health: HEALTH,
+            fall_distance: 0.0,
+        }
     }
 
     /// `ExperienceOrb(level, pos, roughly, value)`: a fresh orb whose random
