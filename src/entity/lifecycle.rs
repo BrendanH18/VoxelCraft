@@ -57,6 +57,7 @@ impl Entities {
         self.village_upkeep(dt as f32, world);
         self.villager_pickup(world);
         self.populate_village_residents(world, difficulty);
+        self.populate_mineshaft_carts(world);
         self.cat_spawner_tick(dt, world, ctx);
         self.assign_hunts(ctx);
         self.endermite_upkeep(dt, world);

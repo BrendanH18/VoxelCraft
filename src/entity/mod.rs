@@ -821,6 +821,9 @@ pub trait MobWorld: BlockSource {
     /// Generation 4 village residents (v0.15 Track G): spawn cells of
     /// Java's villager, cat, golem and animal pieces.
     fn village_residents(&self, _visit: &mut dyn FnMut(IVec3, crate::world::village::Resident)) {}
+    /// v1.0 final F5: generation 7 mineshafts' chest minecarts (rail cell,
+    /// `abandoned_mineshaft` loot seed) still to spawn.
+    fn mineshaft_carts(&self, _visit: &mut dyn FnMut(IVec3, u64)) {}
     fn seed(&self) -> u64 {
         0
     }
@@ -930,6 +933,9 @@ impl MobWorld for World {
     }
     fn village_residents(&self, visit: &mut dyn FnMut(IVec3, crate::world::village::Resident)) {
         self.visit_village_residents(visit);
+    }
+    fn mineshaft_carts(&self, visit: &mut dyn FnMut(IVec3, u64)) {
+        self.visit_mineshaft_carts(visit);
     }
     fn seed(&self) -> u64 {
         self.generator.seed

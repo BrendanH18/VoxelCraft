@@ -418,6 +418,10 @@ pub struct World {
     village_homes: FxHashMap<IVec3, IVec3>,
     /// Generation 4 village residents by spawn cell (see `village_life`).
     village_residents: FxHashMap<IVec3, village::Resident>,
+    /// v1.0 final F5: generation 7 mineshafts' chest minecarts still to
+    /// spawn, by rail cell, with their `abandoned_mineshaft` loot seeds
+    /// (derived from generation like `village_residents`, never saved).
+    mineshaft_carts: FxHashMap<IVec3, u64>,
     /// Banners in loaded chunks (see `colour_blocks`), which draw as models.
     banners: FxHashMap<IVec3, Block>,
     /// Straw beds in use (head, where the sleeper lies), which break when left.
@@ -874,6 +878,7 @@ impl World {
             navigation_updates: navigation::Updates::default(),
             village_homes: FxHashMap::default(),
             village_residents: FxHashMap::default(),
+            mineshaft_carts: FxHashMap::default(),
             banners: FxHashMap::default(),
             straw_sleepers: Vec::new(),
             leaf_decay: FxHashMap::default(),
@@ -1861,6 +1866,7 @@ impl World {
         self.village_pois.retain(|p, _| chunk_of(*p) != pos);
         self.village_homes.retain(|p, _| chunk_of(*p) != pos);
         self.village_residents.retain(|p, _| chunk_of(*p) != pos);
+        self.mineshaft_carts.retain(|p, _| chunk_of(*p) != pos);
         self.banners.retain(|p, _| chunk_of(*p) != pos);
         self.forget_shulker_boxes(pos);
         self.forget_campfires(pos);

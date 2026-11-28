@@ -1052,6 +1052,30 @@ impl super::Entities {
         Some(self.spawn_cart(kind, cell.as_dvec3() + DVec3::new(0.5, 0.0625 + height, 0.5)))
     }
 
+    /// v1.0 final F5: spawns each generation 7 mineshaft chest minecart
+    /// once, when its rail cell ticks (`MineShaftCorridor.createChest`
+    /// adds a `MinecartChest` at the cell's centre with the
+    /// `abandoned_mineshaft` table). The cell joins the saved
+    /// `villager_births` receipts, so a cart broken or ridden away never
+    /// respawns when its unedited chunk generates again. The contents are
+    /// rolled at spawn rather than when the cart is first opened.
+    pub(super) fn populate_mineshaft_carts<W: super::MobWorld + ?Sized>(&mut self, world: &W) {
+        let mut due = Vec::new();
+        world.mineshaft_carts(&mut |p, seed| {
+            if !self.villager_births.contains(&p) && world.entity_ticking(p) {
+                due.push((p, seed));
+            }
+        });
+        for (p, seed) in due {
+            self.villager_births.insert(p);
+            let id = self.spawn_cart(CartKind::Chest, p.as_dvec3() + DVec3::new(0.5, 0.0625, 0.5));
+            let chest = crate::world::mineshaft::loot(seed);
+            if let Some(cart) = self.cart_mut(id) {
+                cart.slots = chest.slots;
+            }
+        }
+    }
+
     pub fn spawn_cart(&mut self, kind: CartKind, pos: DVec3) -> u32 {
         let id = self.next_cart;
         self.next_cart = self.next_cart.saturating_add(1);
@@ -1814,6 +1838,59 @@ mod tests {
     use crate::world::chunk::ChunkData;
     use crate::world::terrain::Generator;
     use std::sync::Arc;
+
+    /// Rails holding generation 7 mineshaft chest minecarts.
+    struct Shaft(Vec<(IVec3, u64)>);
+
+    impl BlockSource for Shaft {
+        fn block(&self, p: IVec3) -> Option<Block> {
+            Some(if p.y < 0 { Block::PLANKS } else { Block::AIR })
+        }
+    }
+
+    impl super::super::MobWorld for Shaft {
+        fn loaded(&self, _: IVec3) -> bool {
+            true
+        }
+        fn surface(&self, _: i32, _: i32) -> Option<i32> {
+            Some(-1)
+        }
+        fn exposed(&self, _: IVec3) -> bool {
+            false
+        }
+        fn mineshaft_carts(&self, visit: &mut dyn FnMut(IVec3, u64)) {
+            for &(p, seed) in &self.0 {
+                visit(p, seed)
+            }
+        }
+    }
+
+    /// `MineShaftCorridor.createChest`: one chest minecart per cell, at
+    /// its centre, filled from `abandoned_mineshaft`, saved with the level
+    /// and never spawned twice, even after a reload.
+    #[test]
+    fn mineshaft_chest_minecarts_spawn_once_with_their_loot_and_stay_saved() {
+        let w = Shaft(vec![(IVec3::new(3, 0, 5), 11), (IVec3::new(9, 0, 5), 12)]);
+        let mut e = super::super::Entities::new(7);
+        e.populate_mineshaft_carts(&w);
+        assert_eq!(e.minecarts.len(), 2);
+        let cart = &e.minecarts[0];
+        assert_eq!(cart.kind, CartKind::Chest);
+        assert_eq!((cart.pos.x, cart.pos.z), (3.5, 5.5));
+        assert_eq!(cart.slots, crate::world::mineshaft::loot(11).slots);
+        assert!(cart.slots.iter().any(Option::is_some), "the abandoned_mineshaft table always rolls something");
+        e.populate_mineshaft_carts(&w);
+        assert_eq!(e.minecarts.len(), 2, "a cart's cell spawns it once");
+        let saved = e.minecarts_to_string();
+        let mut reloaded = super::super::Entities::new(7);
+        reloaded.load_minecarts(&saved);
+        assert_eq!(reloaded.minecarts.len(), 2);
+        assert_eq!(reloaded.minecarts[0].slots, e.minecarts[0].slots);
+        reloaded.load_villagers(&e.villagers_to_string());
+        reloaded.minecarts.clear();
+        reloaded.populate_mineshaft_carts(&w);
+        assert!(reloaded.minecarts.is_empty(), "a reloaded world respawned its mineshaft carts");
+    }
 
     fn world() -> World {
         let mut w = World::new_headless(Arc::new(Generator::new(3)), Default::default(), 2);

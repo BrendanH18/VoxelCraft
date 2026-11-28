@@ -395,6 +395,9 @@ pub enum Feature {
     DungeonChest(u64),
     /// A chest filled from the abandoned mineshaft table.
     MineshaftChest(u64),
+    /// v1.0 final F5 (generation 7): a chest minecart on the rail here,
+    /// filled from the abandoned mineshaft table with this seed.
+    MineshaftCart(u64),
     BastionChest(u64, super::bastion::ChestKind),
     VillageChest(u64, super::village::Style),
     VillageHome(IVec3),
