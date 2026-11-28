@@ -522,6 +522,8 @@ impl Entities {
             if let Some((pull, spin)) = pull {
                 m.vel += pull * 20.0 * ticks;
                 m.leash_spin += spin;
+                // `onElasticLeashPull` (v1.0 gap Track 3b: a seated camel stands).
+                m.camel_leash_pull(w);
             } else {
                 m.leash_close = true;
             }

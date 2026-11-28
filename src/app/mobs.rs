@@ -666,6 +666,8 @@ impl Game {
                             }
                         }
                         MobSound::SulfurCube(cue) => (Sound::SulfurCube(cue), 0.8),
+                        // v1.0 gap Track 3b: `makeSound` at volume 1.
+                        MobSound::Mount(cue) => (Sound::Mount(cue), 1.0),
                         MobSound::CopperGolem(action, stage) => (Sound::CopperGolem(action, stage), 0.7),
                         MobSound::Hurt(MobKind::CopperGolem) => {
                             (Sound::CopperGolem(voxelcraft::entity::copper_golem::Sound::Hurt, 0), 0.9)

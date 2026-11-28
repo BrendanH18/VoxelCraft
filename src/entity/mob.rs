@@ -1278,6 +1278,14 @@ pub struct Mob {
     /// Java 26.3 `AgeableMob.AGE_LOCKED`: a golden dandelion stopped this
     /// baby growing up (v0.16 Track D). Saved.
     pub age_locked: bool,
+    /// v1.0 gap Track 3b: `AgeableMob.forcedAge`, the growth a baby was
+    /// forced (fed) through, given back as its age when it comes of age by
+    /// feeding (saved when set), and `forcedAgeTimer`, the 40 ticks of
+    /// happy-villager particles after a forced growth (not saved).
+    pub forced_age: i32,
+    pub(crate) forced_age_timer: u8,
+    /// Forced-growth particles due since the last particle pass.
+    pub(crate) forced_sparkles: u8,
     /// Java slime size (1, 2 or 4).
     pub size: u8,
     /// A baby zombie: half size and 50% faster.
@@ -1380,6 +1388,14 @@ pub struct Mob {
     pub dying: Option<f32>,
     pub on_ground: bool,
     pub in_water: bool,
+    /// v1.0 gap Track 3b: the dimension's `FAST_LAVA` (the Nether), for
+    /// lava currents, set from the update's context.
+    pub(crate) fast_lava: bool,
+    /// v1.0 gap Track 3b: the part of a land mob's motion (blocks a tick)
+    /// that water and lava currents built up, kept apart from its walking
+    /// in the continuous fluid model and dragged as Java's `travelInWater`
+    /// and `travelInLava` drag the whole motion.
+    pub(crate) current: DVec3,
     pub burning: bool,
     /// v1.0 gap Track 7: Java's `WalkAnimationState` position and speed
     /// ([`super::motion`]). While a model is built they hold what Java's
@@ -1568,6 +1584,9 @@ impl Mob {
             persistent: super::mounts::equine(kind) && kind != MobKind::CamelHusk
                 || matches!(kind, MobKind::Tadpole | MobKind::CopperGolem | MobKind::Allay),
             age_locked: false,
+            forced_age: 0,
+            forced_age_timer: 0,
+            forced_sparkles: 0,
             size: 1,
             baby: false,
             grow: 0.0,
@@ -1635,6 +1654,8 @@ impl Mob {
             dying: None,
             on_ground: false,
             in_water: false,
+            fast_lava: false,
+            current: DVec3::ZERO,
             burning: false,
             limb_phase: 0.0,
             limb_amp: 0.0,
@@ -2112,6 +2133,14 @@ impl Mob {
             _ => amount,
         };
         self.health -= self.effects.absorb(amount);
+        // v1.0 gap Track 3b: `AbstractHorse.hurtServer` rears one time in
+        // three after a hit that hurt (`standIfPossible`).
+        if super::mounts::rears(self.kind)
+            && let Some(s) = self.mount.as_mut()
+            && rng.next_int(3) == 0
+        {
+            s.stand_if_possible(self.kind);
+        }
         // `InfestedMobEffect.onMobHurt`, after a hit that didn't kill (a
         // death clears the effects first).
         if self.health > 0.0
@@ -2331,6 +2360,7 @@ impl Mob {
     ) {
         let event_start = events.len();
         let tick_start = self.pos;
+        self.fast_lava = ctx.dimension == crate::world::terrain::Dimension::Nether;
         self.advance_swing();
         let before = self.kind;
         self.tick_water_conversion(dt, world);
@@ -2452,6 +2482,14 @@ impl Mob {
         }
         super::bee::upkeep(self, dtf, rng, events);
         self.pathing = false;
+        // v1.0 gap Track 3b: the camel brain's look memory, before its
+        // idle behaviours pick (`SetWalkTargetFromLookTarget` reads it).
+        let body_yaw = self.yaw;
+        if self.dying.is_none() {
+            for _ in 0..((dtf / super::motion::TICK).round() as u32).max(1) {
+                self.camel_look(world, ctx, rng);
+            }
+        }
         let (wish, speed) = if let Some(t) = &mut self.dying {
             *t += dtf;
             (None, 0.0)
@@ -2558,6 +2596,21 @@ impl Mob {
                 events.push(EntityEvent::PlayerFall { player, damage });
             }
         }
+        // v1.0 gap Track 3b: the camel's sit, stand, dash and dash-ready
+        // sounds, and a horse's angry and rearing calls.
+        let mount_events = self.mount.as_mut().map(|s| s.take_events()).unwrap_or_default();
+        if !mount_events.is_empty() {
+            let at = self.pos + DVec3::Y * (self.shape().height * 0.8);
+            for event in mount_events {
+                let sound = match event {
+                    super::mounts::Event::Ambient => Some(MobSound::Ambient(self.kind)),
+                    e => super::mounts::Cue::for_event(self.kind, self.baby, e).map(MobSound::Mount),
+                };
+                if let Some(sound) = sound {
+                    events.push(EntityEvent::Sound { sound, pos: at });
+                }
+            }
+        }
         if self.health <= 0.0 && (self.dying.is_none() || alive_before_move) {
             // v0.16 Track C: `LivingEntity.createWitherRose` for a death
             // the Wither is credited with.
@@ -2590,6 +2643,9 @@ impl Mob {
         let k = (dtf * 6.0).min(1.0);
         self.head_yaw += (self.head_target.0 - self.head_yaw) * k;
         self.head_pitch += (self.head_target.1 - self.head_pitch) * k;
+        // v1.0 gap Track 3b: a camel's body follows its head within 30
+        // degrees, and holds still while it sits or changes pose.
+        self.camel_turn(body_yaw, self.pos - tick_start);
 
         let (health, provoked) = (self.health, self.provoked);
         let alive = self.alive();
@@ -2772,7 +2828,7 @@ impl Mob {
         }
         // A guardian aiming its beam stands still, and an axolotl playing
         // dead (`PLAY_DEAD`, its top activity) does nothing else.
-        if self.kind.is_aquatic() && super::aquatic::upkeep(self, dt, world, ctx, events) {
+        if self.kind.is_aquatic() && super::aquatic::upkeep(self, dt, world, ctx, rng, events) {
             self.stop_goal(world);
             return (None, 0.0);
         }
@@ -3834,12 +3890,8 @@ impl Mob {
             self.vel += (target - self.vel) * k;
         } else if self.in_water {
             let k = (dt * 4.0).min(1.0);
-            // v1.0 gap Track 3: flowing water carries the mob. Java adds
-            // `CurrentAccumulator`'s push each tick against `travelInWater`'s
-            // 0.8 drag, a steady drift of four times the push; this
-            // continuous model eases toward that drift.
-            let drift = self.water_current(world, self.vel * swim::TICK, false) * (0.8 / 0.2) / swim::TICK;
-            let target = target + drift / 0.6;
+            // Flowing water and lava carry the mob in `Mob::current` (v1.0
+            // gap Track 3b; see `fluid_current_flow`).
             self.vel.x += (target.x * 0.6 - self.vel.x) * k;
             self.vel.z += (target.z * 0.6 - self.vel.z) * k;
             if self.kind.floats() {
@@ -3892,6 +3944,10 @@ impl Mob {
                 self.vel.y = self.vel.y.max(3.0); // climbs walls
             } else if self.alive()
                 && !matches!(self.kind, MobKind::Ghast | MobKind::Blaze | MobKind::Parrot)
+                // v1.0 gap Track 3b: `AbstractHorse.onClimbable` is false:
+                // horses, llamas and camels never climb.
+                && !super::mounts::equine(self.kind)
+                && self.kind != MobKind::TraderLlama
                 && world.block(self.pos.floor().as_ivec3()).is_some_and(Block::is_climbable)
             {
                 // Java `LivingEntity.handleOnClimbable`: a mob inside a ladder or vine slides at
@@ -3924,14 +3980,21 @@ impl Mob {
             }
         }
         // v1.0 Track 5: `makeStuckInBlock` in a cobweb (see `hazards`).
+        // v1.0 gap Track 3b: the current's share of the motion, built up a
+        // tick at a time (`fluid_current_flow`).
+        let flow = self.fluid_current_flow(world, dt);
+        let before = self.vel + flow;
+        let mut moving = before;
         let delta = match self.web_hold(world) {
             Some(hold) => {
-                let delta = self.vel * dt * hold;
+                let delta = moving * dt * hold;
                 self.vel = DVec3::ZERO;
+                self.current = DVec3::ZERO;
+                moving = DVec3::ZERO;
                 self.fall_distance = 0.0;
                 delta
             }
-            None => self.vel * dt,
+            None => moving * dt,
         };
         let from_y = self.pos.y;
         let falling = self.vel.y;
@@ -3947,10 +4010,17 @@ impl Mob {
             crate::player::STEP_HEIGHT
         };
         let hit = if self.on_ground {
-            physics::move_box_stepping(world, &mut self.pos, &mut self.vel, delta, shape, step_height)
+            physics::move_box_stepping(world, &mut self.pos, &mut moving, delta, shape, step_height)
         } else {
-            physics::move_box(world, &mut self.pos, &mut self.vel, delta, shape)
+            physics::move_box(world, &mut self.pos, &mut moving, delta, shape)
         };
+        // A blocked axis stops the walking and the current alike.
+        for axis in 0..3 {
+            if moving[axis] == 0.0 && before[axis] != 0.0 {
+                self.vel[axis] = 0.0;
+                self.current[axis] = 0.0;
+            }
+        }
         // `Entity.restituteMovementAfterCollisions`: slime blocks and beds
         // throw a falling mob back up, once it falls faster than one tick of
         // gravity (0.08 a tick).

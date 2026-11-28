@@ -170,6 +170,11 @@ impl MobKind {
         self == other || matches!((self, other), (Self::Horse, Self::Donkey) | (Self::Donkey, Self::Horse))
     }
 }
+/// `AgeableMob.getSpeedUpSecondsWhenFeeding`: `(int)(ticks / 20 * 0.1F)`.
+pub(crate) fn speed_up_seconds(ticks_left: i32) -> i32 {
+    ((ticks_left / 20) as f32 * 0.1) as i32
+}
+
 impl Mob {
     pub fn ready_to_breed(&self) -> bool {
         self.alive()
@@ -195,23 +200,54 @@ impl Mob {
             self.baby = self.age < 0;
         }
     }
+    /// v1.0 gap Track 3b: `AgeableMob.ageUp(seconds, forced)`: older by
+    /// `seconds`, at most to adulthood; forced growth adds to
+    /// [`Mob::forced_age`] and starts 40 ticks of particles; coming of age
+    /// this way, the adult takes the forced age as its age (counting down).
+    pub fn age_up(&mut self, seconds: i32, forced: bool) {
+        let old = self.age;
+        let age = (old + seconds * 20).min(0);
+        self.age = age;
+        if forced {
+            self.forced_age += age - old;
+            if self.forced_age_timer == 0 {
+                self.forced_age_timer = 40;
+            }
+        }
+        if self.age == 0 {
+            self.age = self.forced_age;
+        }
+        self.baby = self.age < 0;
+    }
     pub(super) fn advance_animal_age(&mut self, dt: f32) {
+        // v1.0 gap Track 3b: `AgeableMob.aiStep` for a dolphin (no animal
+        // state): the forced-growth particle every fourth tick, then a
+        // baby a tick older a tick (unless age-locked) and a forced adult
+        // a tick younger, down to 0.
+        if self.kind == MobKind::Dolphin && self.alive() && (self.age != 0 || self.forced_age_timer > 0) {
+            self.grow += dt * 20.0;
+            let ticks = self.grow.floor() as i32;
+            self.grow -= ticks as f32;
+            for _ in 0..ticks {
+                if self.forced_age_timer > 0 {
+                    if self.forced_age_timer % 4 == 0 {
+                        self.forced_sparkles = self.forced_sparkles.saturating_add(1);
+                    }
+                    self.forced_age_timer -= 1;
+                }
+            }
+            if !(self.age_locked && self.baby) {
+                self.age = if self.age < 0 { (self.age + ticks).min(0) } else { (self.age - ticks).max(0) };
+            }
+            self.baby = self.age < 0;
+            return;
+        }
         // `AgeableMob.canAgeUp`: an age-locked baby stays one.
         if !self.alive() || self.kind == MobKind::Turtle && self.baby || self.age_locked && self.baby {
             return;
         }
         if self.baby && self.age == 0 {
             self.age = if self.kind == MobKind::Sniffer { -48000 } else { BABY_AGE };
-        }
-        // v1.0 gap Track 3: `AgeableMob.aiStep` for a baby dolphin, which
-        // has no animal state: a tick older each tick until grown.
-        if self.kind == MobKind::Dolphin && self.age < 0 {
-            self.grow += dt * 20.0;
-            let ticks = self.grow.floor() as i32;
-            self.grow -= ticks as f32;
-            self.age = (self.age + ticks).min(0);
-            self.baby = self.age < 0;
-            return;
         }
         if let Some(a) = &mut self.animal {
             a.growth += dt * 20.0;

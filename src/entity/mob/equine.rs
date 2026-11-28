@@ -92,7 +92,9 @@ impl Mob {
         let contact = self.fluid_contact(world, true);
         self.in_water = contact.in_water();
         let mut dm = self.vel / 20.0;
-        dm += contact.entity_water_impulse(dm);
+        // Water's push, and lava's (v1.0 gap Track 3b: 0.0023 a tick, the
+        // Nether's `FAST_LAVA` 0.007).
+        dm += contact.entity_current_impulse(dm, self.fast_lava);
         let Some(s) = self.mount.as_mut() else { return };
         // `LivingEntity.aiStep`: tiny motion is dropped. The mount's own
         // float jump (`FloatGoal`, the camel brain's `Swim`) sets `jumping`
@@ -104,14 +106,17 @@ impl Mob {
                 *v = 0.0;
             }
         }
-        // `getRiddenInput`: nothing while a camel sits or changes pose.
+        // `getRiddenInput`: nothing while a camel sits or changes pose, or
+        // while a horse rears on the ground with no jump pending and no
+        // `allowStandSliding` (v1.0 gap Track 3b).
         let refuse = camel && s.refuses_to_move();
+        let rearing = !camel && s.rearing_holds(self.on_ground);
         let sideways = -f64::from(s.strafe) * 0.5;
         let mut forward = f64::from(s.forward);
         if forward <= 0.0 {
             forward *= 0.25;
         }
-        let input = if refuse { DVec3::ZERO } else { DVec3::new(sideways, 0.0, forward) };
+        let input = if refuse || rearing { DVec3::ZERO } else { DVec3::new(sideways, 0.0, forward) };
         // `tickRidden`: the rider's heading (a camel that refuses to move
         // keeps its own), then a released jump on the ground.
         if !refuse {
@@ -148,6 +153,10 @@ impl Mob {
                 }
             }
         }
+        // The server's `handleStartJump` for the jump the rider let go of
+        // (v1.0 gap Track 3b): a camel's dash sound and `DASH`, a horse's
+        // rearing.
+        s.start_jump(self.kind);
         // `Camel.tickRidden`: forward input stands a seated camel up.
         if camel && s.forward > 0.0 && s.camel_sitting && !s.in_pose_transition() {
             s.stand_up();
@@ -290,6 +299,137 @@ impl Mob {
         if s.refuses_to_move() && self.on_ground { (None, 0.0) } else { (wish, speed) }
     }
 
+    /// v1.0 gap Track 3b: `Camel.onElasticLeashPull`: a lead pulling past
+    /// its elastic reach stands a seated camel up (once it has finished
+    /// sitting down, and has room).
+    pub(crate) fn camel_leash_pull<W: BlockSource + ?Sized>(&mut self, world: &W) {
+        if !camel_like(self.kind) {
+            return;
+        }
+        let can = self.can_camel_change_pose(world);
+        if let Some(s) = self.mount.as_mut()
+            && s.camel_sitting
+            && !s.in_pose_transition()
+            && can
+        {
+            s.stand_up();
+        }
+    }
+
+    /// v1.0 gap Track 3b: the camel brain's look memory, a tick: the core
+    /// `LookAtTargetSink(45, 90)` keeps `LOOK_TARGET` while it stays
+    /// visible, for 45 to 90 ticks from its start, turning the head toward
+    /// it (`CamelLookControl`, not while a rider steers), then erases it;
+    /// the idle `SetEntityLookTargetSometimes(PLAYER, 6, 30..=60)` sets it to
+    /// the nearest visible player within 6 blocks, when its ticker comes
+    /// round (`Ticker.tickDownAndCheck`, counted only while such a player
+    /// is there).
+    pub(super) fn camel_look<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx, rng: &mut Rng) {
+        if !camel_like(self.kind) || !self.alive() {
+            return;
+        }
+        let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
+        // `NEAREST_VISIBLE_LIVING_ENTITIES`: within the 16-block follow
+        // range and in sight.
+        let visible = |p: &crate::entity::Target| {
+            p.alive
+                && !p.spectator
+                && p.pos.distance_squared(self.pos) <= 16.0 * 16.0
+                && super::line_of_sight(world, eye, p.pos + DVec3::Y * crate::player::EYE_HEIGHT)
+        };
+        let Some(s) = self.mount.as_ref() else { return };
+        let mut target = s.look_target;
+        let mut left = s.look_left;
+        let mut ticker = s.look_ticker;
+        if let Some((id, _)) = target {
+            let seen = ctx.players.iter().find(|p| p.id == id && visible(p));
+            match seen {
+                Some(p) if left > 1 => {
+                    target = Some((id, p.pos + DVec3::Y * crate::player::EYE_HEIGHT));
+                    left -= 1;
+                }
+                _ => {
+                    target = None;
+                    left = 0;
+                }
+            }
+        } else {
+            let nearest = ctx
+                .players
+                .iter()
+                .filter(|p| visible(p) && p.pos.distance_squared(self.pos) <= 6.0 * 6.0)
+                .min_by(|a, b| a.pos.distance_squared(self.pos).total_cmp(&b.pos.distance_squared(self.pos)));
+            if let Some(p) = nearest {
+                let fire = if ticker == 0 {
+                    ticker = 30 + rng.next_int(31) as i32 - 1;
+                    false
+                } else {
+                    ticker -= 1;
+                    ticker == 0
+                };
+                if fire {
+                    target = Some((p.id, p.pos + DVec3::Y * crate::player::EYE_HEIGHT));
+                    // `Behavior.tryStart`: `minDuration + nextInt(max + 1 - min)`.
+                    left = 45 + rng.next_int(46) as u16;
+                }
+            }
+        }
+        let controlled = s.controlled();
+        let s = self.mount.as_mut().unwrap();
+        (s.look_target, s.look_left, s.look_ticker) = (target, left, ticker);
+        if let Some((_, at)) = target
+            && !controlled
+        {
+            let to = at - eye;
+            let flat = to.with_y(0.0).length();
+            let yaw = (to.z as f32).atan2(to.x as f32);
+            self.head_target = (super::wrap(yaw - self.yaw), (to.y as f32).atan2(flat as f32));
+        }
+    }
+
+    /// v1.0 gap Track 3b: `CamelBodyRotationControl` (Java's
+    /// `BodyRotationControl`, skipped while it sits or changes pose) and
+    /// `Camel.tick`'s `clampHeadRotationToBody`, a tick, with `MAX_HEAD_Y_ROT`
+    /// 30. Moving, the head stays within 30 degrees of the body; standing
+    /// still, a head turned more than 15 degrees since it last settled pulls
+    /// the body round to within 30 degrees of it, and once the head has
+    /// been still for 10 ticks the body turns to face it over the next 10.
+    /// A camel that refuses to move keeps its body where it was
+    /// (`body_yaw`) and its head within 30 degrees of it. A steered camel's
+    /// body and head follow the rider (`tickRidden`).
+    pub(super) fn camel_turn(&mut self, body_yaw: f32, moved: DVec3) {
+        if !camel_like(self.kind) {
+            return;
+        }
+        let Some(s) = self.mount.as_mut() else { return };
+        if s.controlled() {
+            return;
+        }
+        let max = camel::MAX_HEAD_Y_ROT.to_radians();
+        let head = self.yaw + self.head_yaw;
+        if s.refuses_to_move() {
+            self.yaw = body_yaw;
+        } else if moved.x * moved.x + moved.z * moved.z > f64::from(2.500_000_3e-7_f32) {
+            s.last_stable_head = head;
+            s.head_stable = 0;
+        } else if super::wrap(head - s.last_stable_head).abs() > 15f32.to_radians() {
+            s.head_stable = 0;
+            s.last_stable_head = head;
+            self.yaw = rotate_if_necessary(self.yaw, head, max);
+        } else {
+            s.head_stable = s.head_stable.saturating_add(1);
+            if s.head_stable > 10 {
+                let fraction = ((f32::from(s.head_stable) - 10.0) / 10.0).clamp(0.0, 1.0);
+                self.yaw = rotate_if_necessary(self.yaw, head, max * (1.0 - fraction));
+            }
+        }
+        // The head keeps its heading as the body turns under it, within
+        // 30 degrees of the body.
+        let turned = super::wrap(self.yaw - (head - self.head_yaw));
+        self.head_yaw = super::wrap(head - self.yaw).clamp(-max, max);
+        self.head_target.0 = super::wrap(self.head_target.0 - turned).clamp(-max, max);
+    }
+
     /// `Camel.canCamelChangePose`: the other pose's box fits where it stands.
     fn can_camel_change_pose<W: BlockSource + ?Sized>(&self, world: &W) -> bool {
         let Some(s) = self.mount.as_ref() else { return false };
@@ -316,6 +456,9 @@ impl Mob {
             return;
         }
         let stroll = !s.refuses_to_move();
+        // v1.0 gap Track 3b: `SetWalkTargetFromLookTarget.create(2.0, 3)`,
+        // gated like the stroll, needs the `LOOK_TARGET` memory.
+        let walk_to_look = (!s.refuses_to_move()).then_some(s.look_target).flatten();
         let sit = !in_water
             && s.pose_time >= camel::RANDOM_SIT_TICKS
             && !leashed
@@ -323,11 +466,24 @@ impl Mob {
             && !s.controlled()
             && !s.mob_controlled
             && can_change;
-        let options = 1 + u32::from(stroll) + u32::from(sit);
+        let options = 1 + u32::from(stroll) + u32::from(walk_to_look.is_some()) + u32::from(sit);
         let mut pick = rng.next_int(options);
         if stroll {
             if pick == 0 {
                 if self.try_stroll(world, ctx, rng) {
+                    self.path_move = true;
+                }
+                return;
+            }
+            pick -= 1;
+        }
+        if let Some((_, at)) = walk_to_look {
+            if pick == 0 {
+                // A `WalkTarget` on the look target, close enough within 3.
+                let speed = self.stroll_speed();
+                if self.walk_to(world, at.floor().as_ivec3(), 3, speed, false) {
+                    self.ai = super::Ai::Wander;
+                    self.ai_timer = 30.0;
                     self.path_move = true;
                 }
                 return;
@@ -344,6 +500,12 @@ impl Mob {
         }
         s.idle_wait = 30 + rng.next_int(31) as u16;
     }
+}
+
+/// `Mth.rotateIfNecessary`: `base` turned just enough to lie within `max`
+/// of `target` (radians).
+fn rotate_if_necessary(base: f32, target: f32, max: f32) -> f32 {
+    super::wrap(target + super::wrap(base - target).clamp(-max, max))
 }
 
 /// `LivingEntity.getFluidFallingAdjustedMovement` for a mount that isn't sprinting.

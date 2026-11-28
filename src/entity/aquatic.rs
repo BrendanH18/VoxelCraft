@@ -25,6 +25,10 @@ pub struct State {
     target: Option<super::PlayerId>,
     /// v1.0 gap Track 3: a guardian's squid or axolotl target (its uid).
     mob_target: Option<u32>,
+    /// v1.0 gap Track 3b: which of `Mob.serverAiStep`'s alternating ticks
+    /// this is; the target selector's full update (`canUse`) runs on every
+    /// other one.
+    selector_parity: bool,
     prey: Option<(u32, DVec3)>,
     sense_timer: f32,
     pub(super) play_dead: f32,
@@ -57,6 +61,7 @@ impl State {
         Self {
             target: None,
             mob_target: None,
+            selector_parity: false,
             prey: None,
             sense_timer: 0.0,
             play_dead: 0.0,
@@ -92,9 +97,19 @@ pub(super) fn environment<W: MobWorld + ?Sized>(m: &mut Mob, dt: f32, w: &W) {
     if !m.alive() {
         return;
     }
-    let Some(a) = &mut m.aquatic else { return };
-    let submerged = wet(w, m.pos + DVec3::Y * (m.kind.shape().height * 0.8));
     let dolphin = m.kind == MobKind::Dolphin;
+    // v1.0 gap Track 3b: a dolphin breathes at its own eyes
+    // (`isEyeInFluid`, `updateFluidOnEyes` 0.11111111 under `getEyeY`):
+    // 0.3 up, a calf's 0.09375 (`BABY_DIMENSIONS`), and dries by its box
+    // (`isInWaterOrRain`).
+    let eye = if dolphin {
+        super::mob::dolphin::eye_height(m.baby || m.age < 0) - 0.111_111_11
+    } else {
+        m.kind.shape().height * 0.8
+    };
+    let box_wet = dolphin && m.touching_water(w);
+    let Some(a) = &mut m.aquatic else { return };
+    let submerged = wet(w, m.pos + DVec3::Y * eye);
     let axolotl = m.kind == MobKind::Axolotl;
     let guardian = matches!(m.kind, MobKind::Guardian | MobKind::ElderGuardian);
     if guardian {
@@ -102,7 +117,7 @@ pub(super) fn environment<W: MobWorld + ?Sized>(m: &mut Mob, dt: f32, w: &W) {
     }
     if dolphin {
         a.air = if submerged { a.air - dt } else { 240.0 };
-        a.dry = if wet(w, m.pos) || w.rains_on(m.pos.floor().as_ivec3()) { 0.0 } else { a.dry + dt };
+        a.dry = if box_wet || w.rains_on(m.pos.floor().as_ivec3()) { 0.0 } else { a.dry + dt };
     } else {
         a.dry = if submerged || (axolotl && w.rains_on(m.pos.floor().as_ivec3())) { 0.0 } else { a.dry + dt };
     }
@@ -136,6 +151,7 @@ pub(super) fn upkeep<W: MobWorld + ?Sized>(
     dt: f32,
     w: &W,
     ctx: &Ctx,
+    rng: &mut super::Rng,
     events: &mut Vec<EntityEvent>,
 ) -> bool {
     let shape = m.shape();
@@ -191,7 +207,21 @@ pub(super) fn upkeep<W: MobWorld + ?Sized>(
         } else {
             None
         };
+        // v1.0 gap Track 3b: without a target, `NearestAttackableTargetGoal`
+        // looks for one only on the selector's full updates (every other
+        // tick), and then only one time in five (`randomInterval`,
+        // `reducedTickDelay(10)`).
+        let mut roll = false;
+        for _ in 0..((dt / 0.05).round() as u32).max(1) {
+            a.selector_parity = !a.selector_parity;
+            if a.selector_parity && rng.next_int(5) == 0 {
+                roll = true;
+            }
+        }
         let target = kept.or_else(|| {
+            if !roll {
+                return None;
+            }
             let players = ctx
                 .players
                 .iter()
@@ -221,19 +251,34 @@ pub(super) fn upkeep<W: MobWorld + ?Sized>(
                 match aim {
                     Aim::Player(player) => events.push(EntityEvent::PlayerBeam { player, physical, magic }),
                     Aim::Mob(target) => {
-                        // The magic hit, then `doHurtTarget` inside the same
-                        // invulnerability window: only the larger counts.
-                        // `hurtServer`'s 0.4 push away from the guardian.
+                        // v1.0 gap Track 3b: `GuardianAttackGoal.tick`'s two
+                        // hits. First `indirectMagic` (1, 2 more on Hard and
+                        // 2 more from an elder), whole, with `hurtServer`'s
+                        // 0.4 push away from the guardian; then `doHurtTarget`
+                        // (6, an elder's 8) inside the same invulnerability
+                        // window, which takes only what it adds over the
+                        // first (`actuallyHurt(damage - lastHurt)`) and
+                        // pushes nothing, or nothing at all if it adds none.
+                        let magic = magic + if elder { 2.0 } else { 0.0 };
                         let away = (pos - m.pos).with_y(0.0).normalize_or_zero();
                         events.push(EntityEvent::MobHit {
                             target,
                             attacker: m.uid,
-                            damage: physical.max(magic + if elder { 2.0 } else { 0.0 }),
+                            damage: magic,
                             knockback: away * 8.0,
-                            // Java ends the beam with `doHurtTarget`; a guardian
-                            // holds no weapon, so no Smite or Bane applies.
-                            melee: true,
+                            melee: false,
                         });
+                        if physical > magic {
+                            events.push(EntityEvent::MobHit {
+                                target,
+                                attacker: m.uid,
+                                damage: physical - magic,
+                                knockback: DVec3::ZERO,
+                                // A guardian holds no weapon, so no Smite or
+                                // Bane applies.
+                                melee: true,
+                            });
+                        }
                     }
                 }
                 a.charge = -1.0;
@@ -1054,19 +1099,25 @@ mod tests {
         let mut m = Mob::new(MobKind::Guardian, DVec3::ZERO, 0.0);
         let c = ctx(DVec3::new(10.0, 0.0, 0.0));
         let mut e = vec![];
+        let mut rng = Rng::new(3);
         for _ in 0..80 {
-            upkeep(&mut m, 0.05, &w, &c, &mut e);
+            upkeep(&mut m, 0.05, &w, &c, &mut rng, &mut e);
         }
         assert!(!e.iter().any(|e| matches!(e, EntityEvent::PlayerBeam { .. })));
         w.set(IVec3::new(5, 0, 0), Block::STONE);
         w.set(IVec3::new(5, 1, 0), Block::STONE);
-        upkeep(&mut m, 0.05, &w, &c, &mut e);
+        upkeep(&mut m, 0.05, &w, &c, &mut rng, &mut e);
         assert!(m.aquatic.as_ref().unwrap().beam.is_none());
         w.set(IVec3::new(5, 0, 0), Block::WATER);
         w.set(IVec3::new(5, 1, 0), Block::WATER);
-        for _ in 0..92 {
-            upkeep(&mut m, 0.05, &w, &c, &mut e);
+        // v1.0 gap Track 3b: the target comes back on a 1-in-5 roll every
+        // other tick, then the 4.5-second windup and charge.
+        let mut ticks = 0;
+        while ticks < 400 && !e.iter().any(|e| matches!(e, EntityEvent::PlayerBeam { .. })) {
+            upkeep(&mut m, 0.05, &w, &c, &mut rng, &mut e);
+            ticks += 1;
         }
+        assert!(ticks > 90, "the beam took its windup and charge: {ticks}");
         assert!(
             e.iter().any(
                 |e| matches!(e,EntityEvent::PlayerBeam{player,physical,..} if *player==PlayerId(7)&&*physical==6.0)
@@ -1075,8 +1126,43 @@ mod tests {
         assert!(e.iter().any(|e| matches!(e,EntityEvent::PlayerBeam{magic,..} if *magic==1.0)));
         let mut other = c;
         other.players[0].id = PlayerId(8);
-        upkeep(&mut m, 0.05, &w, &other, &mut e);
+        upkeep(&mut m, 0.05, &w, &other, &mut rng, &mut e);
+        for _ in 0..200 {
+            if m.aquatic.as_ref().unwrap().target == Some(PlayerId(8)) {
+                break;
+            }
+            upkeep(&mut m, 0.05, &w, &other, &mut rng, &mut e);
+        }
+        assert_eq!(m.aquatic.as_ref().unwrap().target, Some(PlayerId(8)));
         assert!(m.aquatic.as_ref().unwrap().charge < 0.0);
+    }
+
+    /// v1.0 gap Track 3b: `NearestAttackableTargetGoal`'s `randomInterval`:
+    /// without a target a guardian looks on every other tick, one time in
+    /// five, so it finds a player in sight after ten ticks on average.
+    #[test]
+    fn guardians_find_targets_one_selector_update_in_five() {
+        let w = water();
+        let c = ctx(DVec3::new(10.0, 0.0, 0.0));
+        let mut total = 0;
+        let runs = 400;
+        for seed in 0..runs {
+            let mut m = Mob::new(MobKind::Guardian, DVec3::ZERO, 0.0);
+            let mut rng = Rng::new(seed);
+            let mut e = vec![];
+            let mut ticks = 1;
+            upkeep(&mut m, 0.05, &w, &c, &mut rng, &mut e);
+            while m.aquatic.as_ref().unwrap().target.is_none() {
+                upkeep(&mut m, 0.05, &w, &c, &mut rng, &mut e);
+                ticks += 1;
+            }
+            // Found on a full update (the first, third, ... tick).
+            assert_eq!(ticks % 2, 1, "seed {seed}");
+            total += ticks;
+        }
+        let mean = total as f64 / runs as f64;
+        // Geometric over full updates: 2 × 5 - 1 = 9 ticks on average.
+        assert!((mean - 9.0).abs() < 1.2, "mean {mean}");
     }
     #[test]
     fn elders_fatigue_survival_players_even_through_walls_and_ignore_creative() {
@@ -1085,7 +1171,8 @@ mod tests {
         let mut c = ctx(DVec3::new(40.0, 0.0, 0.0));
         c.players.push(Target::new(PlayerId(8), DVec3::Y, false));
         let mut e = vec![];
-        upkeep(&mut m, 0.05, &w, &c, &mut e);
+        let mut rng = Rng::new(1);
+        upkeep(&mut m, 0.05, &w, &c, &mut rng, &mut e);
         assert_eq!(
             e.iter()
                 .filter(|e| matches!(
@@ -1096,7 +1183,7 @@ mod tests {
             1
         );
         e.clear();
-        upkeep(&mut m, 1.0, &w, &c, &mut e);
+        upkeep(&mut m, 1.0, &w, &c, &mut rng, &mut e);
         assert!(e.is_empty());
     }
     #[test]
@@ -1104,8 +1191,9 @@ mod tests {
         let w = water();
         let c = ctx(DVec3::new(0.3, 0.0, 0.0));
         let mut e = vec![];
+        let mut rng = Rng::new(1);
         let mut p = Mob::new(MobKind::Pufferfish, DVec3::ZERO, 0.0);
-        upkeep(&mut p, 0.6, &w, &c, &mut e);
+        upkeep(&mut p, 0.6, &w, &c, &mut rng, &mut e);
         // The Poison rides on the sting: `Pufferfish.playerTouch` applies it only when the sting hurts.
         assert!(e.iter().any(|e| matches!(e, EntityEvent::PlayerSting { poison: 120, .. })));
         assert!(!e.iter().any(|e| matches!(e, EntityEvent::PlayerEffect { effect: Effect::Poison, .. })));

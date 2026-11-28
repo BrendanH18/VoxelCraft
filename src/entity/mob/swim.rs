@@ -225,13 +225,66 @@ impl Mob {
         crate::player::fluid::contact(world, min, max, eye, pushed)
     }
 
-    /// `Entity.updateFluidInteraction`'s push from flowing water this tick
-    /// (blocks a tick), for a pushed mob; `dm` is its movement before it.
+    /// `Entity.updateFluidInteraction`'s push from flowing water and (v1.0
+    /// gap Track 3b) lava this tick (blocks a tick), for a pushed mob; `dm`
+    /// is its movement before it. Lava pushes 0.0023 a tick, the Nether's
+    /// `FAST_LAVA` 0.007.
     pub(crate) fn water_current<W: BlockSource + ?Sized>(&self, world: &W, dm: DVec3, swimming: bool) -> DVec3 {
-        if !self.pushed_by_fluid(swimming) || !self.touching_water(world) {
+        if !self.pushed_by_fluid(swimming) || !self.touching_water(world) && !self.touching_lava(world) {
             return DVec3::ZERO;
         }
-        self.fluid_contact(world, true).entity_water_impulse(dm)
+        self.fluid_contact(world, true).entity_current_impulse(dm, self.fast_lava)
+    }
+
+    /// `getWaterSlowDown`: 0.8, a polar bear's 0.98, a skeleton horse's
+    /// 0.96; Dolphin's Grace makes it 0.96 (`travelInWater`).
+    pub(crate) fn water_slow_down(&self) -> f64 {
+        let own = match self.kind {
+            MobKind::PolarBear => 0.98_f32,
+            MobKind::SkeletonHorse => 0.96,
+            _ => 0.8,
+        };
+        let own = if self.effects.has(crate::simulation::effects::Effect::DolphinsGrace) { 0.96 } else { own };
+        f64::from(own)
+    }
+
+    /// v1.0 gap Track 3b: the current's share of a land mob's motion in
+    /// the continuous fluid model, a Java tick at a time (`dt` of one;
+    /// fractions of a tick interpolate). Java adds `CurrentAccumulator`'s
+    /// push to the motion before the move and drags the whole motion
+    /// after it (`travelInWater`'s `getWaterSlowDown` and 0.8, or
+    /// `travelInLava`'s 0.5, its 0.8 upward in shallow lava); the drag is
+    /// linear, so the current's part is kept apart from the walking
+    /// ([`Mob::current`]): this tick the mob moves by that part plus the
+    /// push, and the part becomes their dragged sum. From rest the push
+    /// builds up tick by tick (`p`, `1.8 p`, ...) toward Java's steady
+    /// `5 p` a tick in water (`p / (1 - 0.8) `) and `2 p` in lava. Out of
+    /// both fluids it joins the ordinary motion. Returns the velocity
+    /// (blocks a second) to move by on top of the walking.
+    pub(crate) fn fluid_current_flow<W: BlockSource + ?Sized>(&mut self, world: &W, dt: f64) -> DVec3 {
+        if !self.pushed_by_fluid(false) {
+            self.current = DVec3::ZERO;
+            return DVec3::ZERO;
+        }
+        let contact = self.fluid_contact(world, true);
+        if !contact.in_water() && !contact.in_lava() {
+            self.vel += std::mem::take(&mut self.current) * 20.0;
+            return DVec3::ZERO;
+        }
+        let push = contact.entity_current_impulse(self.vel * TICK + self.current, self.fast_lava);
+        let moving = self.current + push;
+        let drag = if contact.in_water() {
+            let slow = self.water_slow_down();
+            DVec3::new(slow, f64::from(0.8_f32), slow)
+        } else if contact.lava_height <= if self.shape().height * 0.85 < 0.4 { 0.0 } else { 0.4 } {
+            // `isInShallowFluid`: up to `getFluidJumpThreshold`.
+            DVec3::new(0.5, f64::from(0.8_f32), 0.5)
+        } else {
+            DVec3::splat(0.5)
+        };
+        let f = (dt * 20.0).min(1.0);
+        self.current += (moving * drag - self.current) * f;
+        moving * 20.0
     }
 
     /// `isInWater`: the box touches water.
