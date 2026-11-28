@@ -452,7 +452,12 @@ impl Entities {
         if s.invul > 0 {
             let left = s.invul - 1;
             if left <= 0 {
-                events.push(EntityEvent::WitherBlast { center: eye, power: SPAWN_POWER, dangerous: false });
+                events.push(EntityEvent::WitherBlast {
+                    center: eye,
+                    power: SPAWN_POWER,
+                    dangerous: false,
+                    owner: Some(w.uid),
+                });
                 events.push(EntityEvent::Sound { sound: MobSound::Wither(Cue::Spawn), pos: w.pos });
             }
             s.invul = left;
@@ -790,7 +795,12 @@ impl Entities {
                     let heading = k.pos - k.previous_pos;
                     self.sculk.land(world, k.pos, heading, source);
                     self.wither_skull_hit(k, hit, difficulty, events);
-                    events.push(EntityEvent::WitherBlast { center: k.pos, power: SKULL_POWER, dangerous: k.dangerous });
+                    events.push(EntityEvent::WitherBlast {
+                        center: k.pos,
+                        power: SKULL_POWER,
+                        dangerous: k.dangerous,
+                        owner: k.owner,
+                    });
                     false
                 }
             }

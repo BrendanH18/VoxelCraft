@@ -35,7 +35,9 @@ impl Game {
     /// The Wither's charge-up blast or a skull's: a mob explosion
     /// (`ExplosionInteraction.MOB`) that spares the Wither, with a
     /// dangerous skull's 0.8 resistance cap.
-    pub(super) fn wither_explode(&mut self, center: DVec3, power: f32, dangerous: bool) {
+    /// v1.0 gap Track 8e: `owner` is the Wither behind it (the blast's
+    /// source, or the skull's owner), which TNT it sets off takes as its own.
+    pub(super) fn wither_explode(&mut self, center: DVec3, power: f32, dangerous: bool, owner: Option<u32>) {
         self.world.emit_game_event(
             center,
             crate::world::vibration::GameEvent::Explode,
@@ -48,7 +50,10 @@ impl Game {
         let mut events = Vec::new();
         self.mobs.entities.wither_blast_mobs(&self.world, center, power, blast.destroys_blocks, &mut events);
         let cause = wither::BLAST_CAUSE;
-        if let Some((damage, push)) = self.session.blast(&self.world, center, power) {
+        // A player watching the credits isn't in the level (v1.0 gap Track 8e).
+        if self.credits.is_none()
+            && let Some((damage, push)) = self.session.blast(&self.world, center, power)
+        {
             let toward = Some(center - self.session.player.pos);
             if self.damage_player_from(self.difficulty.mob_damage(damage), cause, toward) > 0.0 {
                 self.session.player.hurt_from(push);
@@ -67,7 +72,7 @@ impl Game {
             self.world.detonate(&cells, power, self.gamerules.bool("block_drops"), blast.drop_decay, false);
         }
         for (cell, short_fuse) in std::mem::take(&mut self.world.primed_tnt) {
-            self.mobs.entities.prime_tnt(cell, short_fuse);
+            self.mobs.entities.prime_tnt(cell, short_fuse, owner.map(crate::entity::trident::Owner::Mob));
         }
         self.audio.play(Sound::Explosion, Some(center), 1.0, (0.9, 1.05));
         for e in events {

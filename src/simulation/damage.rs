@@ -499,11 +499,21 @@ pub struct Cause {
     /// gives `ExplosionInteraction.TNT` though its message is the plain
     /// `death.attack.explosion` of any ownerless blast. Never saved.
     pub tnt: bool,
+    /// v1.0 gap Track 8e: the living entity behind the damage (Java's
+    /// `DamageSource.getEntity`, for a blast `Explosion.getIndirectSourceEntity`),
+    /// which TNT the blast primes takes as its owner (`TntBlock.wasExploded`).
+    /// Never saved; the death message is `text`.
+    pub by: Option<crate::entity::trident::Owner>,
 }
 
 impl Cause {
     pub const fn new(kind: DamageType, text: &'static str) -> Self {
-        Self { kind, text, tnt: false }
+        Self { kind, text, tnt: false, by: None }
+    }
+
+    /// v1.0 gap Track 8e: this cause with `by` as the entity behind it.
+    pub const fn by(self, by: Option<crate::entity::trident::Owner>) -> Self {
+        Self { by, ..self }
     }
 
     /// A mob's melee hit (`DamageSources.mobAttack`).
@@ -675,11 +685,31 @@ impl Cause {
         Cause::THORNS,
     ];
 
+    /// v1.0 gap Track 8e: death messages older saves may hold that the
+    /// game no longer words that way, with the cause that now stands for
+    /// them: TNT's and an ownerless End crystal's blasts said "was blown up
+    /// by TNT" and "was blown up by an End crystal" before Java's
+    /// `death.attack.explosion` ("blew up", v1.0 gap Tracks 8c and 8d).
+    pub const RETIRED: &'static [(&'static str, Cause)] =
+        &[("was blown up by TNT", Cause::TNT), ("was blown up by an End crystal", Cause::END_CRYSTAL)];
+
+    /// The named cause a saved death message stands for: one of
+    /// [`Cause::KNOWN`] with exactly this text, or the cause a
+    /// [`Cause::RETIRED`] text now has.
+    pub fn saved(text: &str) -> Option<Self> {
+        Self::KNOWN
+            .iter()
+            .copied()
+            .find(|c| c.text == text)
+            .or_else(|| Self::RETIRED.iter().find(|(old, _)| *old == text).map(|&(_, c)| c))
+    }
+
     /// The cause for a bare death message, for callers that still pass
-    /// text: a named cause with exactly this text, otherwise a mob's melee
-    /// hit. New damage should name its [`Cause`] instead.
+    /// text: a named cause with exactly this text (or a retired text's,
+    /// [`Cause::saved`]), otherwise a mob's melee hit. New damage should
+    /// name its [`Cause`] instead.
     pub fn legacy(text: &'static str) -> Self {
-        Self::KNOWN.iter().copied().find(|c| c.text == text).unwrap_or(Self::mob(text))
+        Self::saved(text).unwrap_or(Self::mob(text))
     }
 }
 
@@ -722,5 +752,19 @@ mod tests {
         assert_eq!(Cause::from("was killed"), Cause::GENERIC_KILL);
         assert_eq!(Cause::from("fell from a high place"), Cause::FALL);
         assert_eq!(Cause::from("was slain by a zombie"), Cause::mob("was slain by a zombie"));
+    }
+
+    /// v1.0 gap Track 8e: an old save's TNT and End crystal deaths read
+    /// back as the blasts they were, not as a mob's hit.
+    #[test]
+    fn retired_blast_texts_read_back_as_blasts() {
+        assert_eq!(Cause::from("was blown up by TNT"), Cause::TNT);
+        assert_eq!(Cause::saved("was blown up by TNT").map(|c| c.text), Some("blew up"));
+        assert_eq!(Cause::from("was blown up by an End crystal").kind, DamageType::Explosion);
+        assert_eq!(Cause::saved("blew up"), Some(Cause::EXPLOSION));
+        assert_eq!(Cause::saved("was slain by a zombie"), None);
+        for (old, _) in Cause::RETIRED {
+            assert!(!Cause::KNOWN.iter().any(|c| c.text == *old), "{old} is still a cause's text");
+        }
     }
 }

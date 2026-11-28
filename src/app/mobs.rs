@@ -233,6 +233,12 @@ impl Game {
                 self.session.mode.targetable() && !self.session.vitals.is_dead(),
             )
         }];
+        // v1.0 gap Track 8e: a player watching the End credits has left the
+        // level (`ServerPlayer.showEndCredits`: `removePlayerImmediately`),
+        // so no mob, projectile or spawn rule finds them.
+        if self.credits.is_some() {
+            players.clear();
+        }
         // Agents keep source-dimension positions until arrival relocates them.
         if self.arrival.is_none() {
             players.extend(self.agents.targets());
@@ -333,8 +339,10 @@ impl Game {
                 }
             });
         }
+        // Fire, redstone and dispensers light TNT for no one (`TntBlock.prime`
+        // with no source, `DispenseItemBehavior`'s `PrimedTnt(.., null)`).
         for (cell, short_fuse) in std::mem::take(&mut self.world.primed_tnt) {
-            self.mobs.entities.prime_tnt(cell, short_fuse);
+            self.mobs.entities.prime_tnt(cell, short_fuse, None);
             self.audio.play_in(SoundSource::Blocks, Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.95, 1.05));
         }
         // v0.16 Track E: silverfish out of broken infested blocks.
@@ -354,12 +362,12 @@ impl Game {
             match event {
                 EntityEvent::ArrowEffectsStart { player } => arrow_effects.begin(player),
                 EntityEvent::ArrowEffectsEnd => arrow_effects.end(),
-                EntityEvent::ProjectileBlockHit { cell, pos, normal, arrow, burning, mob_owned } => {
+                EntityEvent::ProjectileBlockHit { cell, pos, normal, arrow, burning, mob_owned, by } => {
                     self.world.hit_redstone_target(cell, pos, normal, arrow);
                     self.world.touch_redstone_ore(cell);
                     if burning {
                         self.world.light_candle(cell);
-                        self.burning_projectile_hit(cell, mob_owned);
+                        self.burning_projectile_hit(cell, mob_owned, by);
                     }
                     // v0.16 Track A: `ChorusFlowerBlock.onProjectileHit`: a
                     // projectile that may break blocks breaks the flower.
@@ -620,7 +628,9 @@ impl Game {
                 }
                 EntityEvent::WindBurst(burst) => self.wind_burst(&burst),
                 // v0.16 Track C: the Wither's blasts, broken blocks and roses.
-                EntityEvent::WitherBlast { center, power, dangerous } => self.wither_explode(center, power, dangerous),
+                EntityEvent::WitherBlast { center, power, dangerous, owner } => {
+                    self.wither_explode(center, power, dangerous, owner)
+                }
                 EntityEvent::WitherBreak { min, max, pos } => self.wither_break(min, max, pos),
                 EntityEvent::WitherRose { pos } => self.wither_rose(pos),
                 EntityEvent::PearlLanded { owner, pos } => {
@@ -1119,7 +1129,9 @@ impl Game {
     /// player in this world: wind charges, and the shared entry point the
     /// mace's Wind Burst can call.
     pub(super) fn wind_burst(&mut self, burst: &voxelcraft::entity::wind::WindBurst) {
-        let mut sessions: Vec<&mut voxelcraft::session::PlayerSession> = vec![&mut self.session];
+        // A player watching the credits isn't in the level (v1.0 gap Track 8e).
+        let mut sessions: Vec<&mut voxelcraft::session::PlayerSession> =
+            if self.credits.is_none() { vec![&mut self.session] } else { Vec::new() };
         if self.arrival.is_none() {
             sessions.extend(self.agents.players.values_mut().filter(|b| b.active).map(|b| &mut b.agent.session));
         }
@@ -1161,8 +1173,9 @@ impl Game {
     /// campfire (`CampfireBlock`: lit unless waterlogged) or TNT
     /// (`TntBlock`: primed and removed while `tnt_explodes`), if it may
     /// interact there (`Projectile.mayInteract`: a mob's only with
-    /// `mob_griefing`).
-    fn burning_projectile_hit(&mut self, cell: IVec3, mob_owned: bool) {
+    /// `mob_griefing`). v1.0 gap Track 8e: the TNT's owner is the
+    /// projectile's owner, `by` (`TntBlock.onProjectileHit`).
+    fn burning_projectile_hit(&mut self, cell: IVec3, mob_owned: bool, by: Option<crate::entity::trident::Owner>) {
         if mob_owned && !self.gamerules.bool("mob_griefing") {
             return;
         }
@@ -1172,7 +1185,7 @@ impl Game {
         use crate::world::block::Block;
         if self.world.get_block(cell) == Some(Block::TNT) && self.world.rules.tnt_explodes {
             self.world.set_block(cell, Block::AIR);
-            self.mobs.entities.prime_tnt(cell, false);
+            self.mobs.entities.prime_tnt(cell, false, by);
             self.audio.play_in(SoundSource::Blocks, Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.95, 1.05));
         }
     }
@@ -1232,7 +1245,10 @@ impl Game {
             (true, true) => self.world.rail_sparing_exploded_cells(center, power),
         };
         self.mobs.entities.explode_with(&self.world, center, power, credit_player, blast.destroys_blocks);
-        if let Some((damage, push)) = self.session.blast(&self.world, center, power) {
+        // A player watching the credits isn't in the level (v1.0 gap Track 8e).
+        if self.credits.is_none()
+            && let Some((damage, push)) = self.session.blast(&self.world, center, power)
+        {
             let toward = Some(center - self.session.player.pos);
             if self.damage_player_from(self.difficulty.mob_damage(damage), cause, toward) > 0.0 {
                 self.session.player.hurt_from(push);
@@ -1248,12 +1264,15 @@ impl Game {
             }
         }
         if blast.destroys_blocks {
-            let fire = self.gamerules.explosion_fire(cause.text);
+            // TNT never sets fires, whoever lit it (its text may name a ghast).
+            let fire = !cause.tnt && self.gamerules.explosion_fire(cause.text);
             self.world.detonate(&cells, power, self.gamerules.bool("block_drops"), blast.drop_decay, fire);
         }
-        // TNT caught in the blast goes off soon after.
+        // TNT caught in the blast goes off soon after, lit by whoever was
+        // behind it (`TntBlock.wasExploded`: `explosion.getIndirectSourceEntity()`,
+        // v1.0 gap Track 8e).
         for (cell, short_fuse) in std::mem::take(&mut self.world.primed_tnt) {
-            self.mobs.entities.prime_tnt(cell, short_fuse);
+            self.mobs.entities.prime_tnt(cell, short_fuse, cause.by);
         }
         self.audio.play(Sound::Explosion, Some(center), 1.0, (0.9, 1.05));
     }

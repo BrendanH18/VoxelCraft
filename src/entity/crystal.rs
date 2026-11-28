@@ -87,10 +87,38 @@ impl Blow {
 /// v1.0 gap Track 8b: a crystal's blast that a mob set off is
 /// `explosion(crystal, mob)`, `PLAYER_EXPLOSION` (`explosion.player`: "was
 /// blown up by" the mob) for the mobs whose projectiles can break one.
+/// Any other mob's blow keeps the general "a mob": the blast's rules are
+/// read from its text (`ExplosionSource::of_cause`), and a crystal's blast
+/// is a block's whoever broke it.
 pub fn blame(kind: super::MobKind) -> crate::simulation::damage::Cause {
     use super::MobKind as K;
-    use crate::simulation::damage::{Cause, DamageType::PlayerExplosion};
     let text = match kind {
+        K::Llama
+        | K::TraderLlama
+        | K::Skeleton
+        | K::Stray
+        | K::Bogged
+        | K::Parched
+        | K::Pillager
+        | K::Piglin
+        | K::Illusioner
+        | K::Drowned
+        | K::SnowGolem
+        | K::Breeze
+        | K::Shulker
+        | K::Wither => blown_up_by(kind),
+        _ => "was blown up by a mob",
+    };
+    crate::simulation::damage::Cause::new(crate::simulation::damage::DamageType::PlayerExplosion, text)
+}
+
+/// `death.attack.explosion.player` for a blast `kind` is behind: "was
+/// blown up by" the mob, named as VoxelCraft's other death messages name
+/// mobs ("a skeleton", "the Wither"). v1.0 gap Track 8e: any mob, as
+/// primed TNT can name whatever lit it; each text is made once.
+pub fn blown_up_by(kind: super::MobKind) -> &'static str {
+    use super::MobKind as K;
+    match kind {
         K::Llama => "was blown up by a llama",
         K::TraderLlama => "was blown up by a trader llama",
         K::Skeleton => "was blown up by a skeleton",
@@ -104,10 +132,23 @@ pub fn blame(kind: super::MobKind) -> crate::simulation::damage::Cause {
         K::SnowGolem => "was blown up by a snow golem",
         K::Breeze => "was blown up by a breeze",
         K::Shulker => "was blown up by a shulker",
+        K::Creeper => "was blown up by a creeper",
+        K::Ghast => "was blown up by a ghast",
+        K::Blaze => "was blown up by a blaze",
         K::Wither => "was blown up by the Wither",
-        _ => return Cause::new(PlayerExplosion, "was blown up by a mob"),
-    };
-    Cause::new(PlayerExplosion, text)
+        _ => {
+            static TEXTS: std::sync::Mutex<Vec<(super::MobKind, &'static str)>> = std::sync::Mutex::new(Vec::new());
+            let mut texts = TEXTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Some(&(_, t)) = texts.iter().find(|(k, _)| *k == kind) {
+                return t;
+            }
+            let name = kind.name();
+            let article = if name.starts_with(['a', 'e', 'i', 'o', 'u']) { "an" } else { "a" };
+            let text: &'static str = Box::leak(format!("was blown up by {article} {name}").into_boxed_str());
+            texts.push((kind, text));
+            text
+        }
+    }
 }
 
 /// A crystal that went this tick, for the fight (`onCrystalDestroyed`).

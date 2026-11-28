@@ -421,11 +421,14 @@ impl Vitals {
         }
     }
 
-    /// Restores saved values; zero health means the player died.
+    /// Restores saved values; zero health means the player died. A death
+    /// message the game has since reworded ([`super::damage::Cause::RETIRED`])
+    /// comes back in today's words (v1.0 gap Track 8e).
     pub fn restore(health: f32, air: f32, death: Option<String>) -> Self {
         let mut v = Self { health: health.clamp(0.0, MAX_HEALTH), air: air.clamp(0.0, MAX_AIR), ..Self::default() };
         if v.health <= 0.0 {
-            v.death = Some(death.unwrap_or_else(|| "died".into()));
+            let death = death.unwrap_or_else(|| "died".into());
+            v.death = Some(super::damage::Cause::saved(&death).map_or(death, |c| c.text.to_string()));
         }
         v
     }
@@ -1612,6 +1615,12 @@ mod tests {
         assert!(restored.is_dead());
         let restored = Vitals::restore(7.5, 99.0, None);
         assert_eq!((restored.health, restored.air), (7.5, MAX_AIR));
+        // v1.0 gap Track 8e: an old save's TNT death comes back in Java's
+        // words; a mob's stays as it was.
+        let restored = Vitals::restore(0.0, 3.0, Some("was blown up by TNT".into()));
+        assert_eq!(restored.death.as_deref(), Some("blew up"));
+        let restored = Vitals::restore(0.0, 3.0, Some("was slain by a zombie".into()));
+        assert_eq!(restored.death.as_deref(), Some("was slain by a zombie"));
     }
 }
 

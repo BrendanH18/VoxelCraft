@@ -52,6 +52,34 @@ pub enum Kind {
 }
 
 impl Kind {
+    /// v1.0 gap Track 8e: the saved id (append-only).
+    fn id(self) -> u8 {
+        match self {
+            Kind::Snowball => 0,
+            Kind::Egg => 1,
+            Kind::LlamaSpit => 2,
+            Kind::WindCharge => 3,
+            Kind::BreezeWindCharge => 4,
+            Kind::ExperienceBottle => 5,
+            Kind::BlueEgg => 6,
+            Kind::BrownEgg => 7,
+        }
+    }
+
+    fn from_id(id: u64) -> Option<Self> {
+        Some(match id {
+            0 => Kind::Snowball,
+            1 => Kind::Egg,
+            2 => Kind::LlamaSpit,
+            3 => Kind::WindCharge,
+            4 => Kind::BreezeWindCharge,
+            5 => Kind::ExperienceBottle,
+            6 => Kind::BlueEgg,
+            7 => Kind::BrownEgg,
+            _ => return None,
+        })
+    }
+
     /// v1.0 gap Track 8d: the box (`EntityTypes`): 0.25 square, a wind
     /// charge's 0.3125.
     pub fn size(self) -> f64 {
@@ -174,11 +202,44 @@ pub struct Thrown {
     /// applies block effects (`ThrowableProjectile.tick`,
     /// `AbstractHurtingProjectile.tick`), so fire and lava set it alight,
     /// and water and rain put it out; a burning one is drawn with Java's
-    /// flame and lights what its block hit lights. Not saved.
+    /// flame and lights what its block hit lights. Saved (v1.0 gap Track
+    /// 8e), as Java's `Fire`.
     fire: u16,
 }
 
 impl Thrown {
+    /// v1.0 gap Track 8e: the level file's copy, with its fire.
+    pub(super) fn save(&self) -> serde_json::Value {
+        use super::saved_projectiles::{owner_json, v3};
+        serde_json::json!({
+            "kind": self.kind.id(),
+            "owner": owner_json(super::projectile::owner_of(self.owner, None)),
+            "shooter": self.shooter,
+            "pos": v3(self.pos),
+            "motion": v3(self.vel),
+            "age": self.age,
+            "origin": v3(self.origin),
+            "fire": self.fire,
+        })
+    }
+
+    pub(super) fn load(v: &serde_json::Value) -> Option<Self> {
+        use super::saved_projectiles as s;
+        let pos = s::read_v3(&v["pos"])?;
+        Some(Self {
+            kind: Kind::from_id(v["kind"].as_u64()?)?,
+            owner: s::player_of(s::read_owner(&v["owner"])),
+            shooter: v["shooter"].as_u64().and_then(|u| u32::try_from(u).ok()),
+            pos,
+            previous_pos: pos,
+            vel: s::read_v3(&v["motion"]).unwrap_or(DVec3::ZERO),
+            age: s::read_f32(v, "age", 0.0).clamp(0.0, MAX_FLIGHT),
+            origin: s::read_v3(&v["origin"]).unwrap_or(pos),
+            spat_on: [None; 4],
+            fire: s::read_fire(v),
+        })
+    }
+
     /// A LAN client's copy: drawn only, never simulated.
     pub(super) fn replica(kind: Kind, pos: DVec3, previous_pos: DVec3) -> Self {
         Self {
@@ -368,6 +429,7 @@ impl Thrown {
                         arrow: false,
                         burning: self.burning(),
                         mob_owned: self.shooter.is_some(),
+                        by: super::projectile::owner_of(self.owner, self.shooter),
                     });
                 }
                 if self.kind == Kind::ExperienceBottle {

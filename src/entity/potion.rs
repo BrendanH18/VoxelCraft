@@ -37,7 +37,7 @@ pub struct ThrownPotion {
     pub vel: DVec3,
     age: f32,
     /// v1.0 gap Track 8d: `remainingFireTicks` (it applies block effects,
-    /// `ThrowableProjectile.tick`). Not saved.
+    /// `ThrowableProjectile.tick`). Saved (v1.0 gap Track 8e), as Java's `Fire`.
     fire: u16,
 }
 
@@ -50,6 +50,35 @@ pub fn aim_up(dir: DVec3) -> DVec3 {
 }
 
 impl ThrownPotion {
+    /// v1.0 gap Track 8e: the level file's copy, with its fire.
+    pub(super) fn save(&self) -> serde_json::Value {
+        use super::saved_projectiles::v3;
+        serde_json::json!({
+            "potion": self.potion.info().id,
+            "lingering": self.lingering,
+            "owner": self.owner.map(|p| p.0),
+            "pos": v3(self.pos),
+            "motion": v3(self.vel),
+            "age": self.age,
+            "fire": self.fire,
+        })
+    }
+
+    pub(super) fn load(v: &serde_json::Value) -> Option<Self> {
+        use super::saved_projectiles as s;
+        let pos = s::read_v3(&v["pos"])?;
+        Some(Self {
+            potion: Potion::from_id(v["potion"].as_str()?)?,
+            lingering: v["lingering"].as_bool().unwrap_or(false),
+            owner: v["owner"].as_u64().and_then(|u| u32::try_from(u).ok()).map(PlayerId),
+            pos,
+            previous_pos: pos,
+            vel: s::read_v3(&v["motion"]).unwrap_or(DVec3::ZERO),
+            age: s::read_f32(v, "age", 0.0).clamp(0.0, MAX_FLIGHT),
+            fire: s::read_fire(v),
+        })
+    }
+
     /// v1.0 gap Track 8d: on fire (`isOnFire`).
     pub fn burning(&self) -> bool {
         self.fire > 0
@@ -98,7 +127,13 @@ impl ThrownPotion {
             let next = self.pos + delta / steps as f64;
             if world.block(next.floor().as_ivec3()).is_some_and(|b| b.is_solid()) {
                 let cell = next.floor().as_ivec3();
-                events.push(super::projectile::block_hit(cell, self.pos, self.burning(), self.owner.is_none()));
+                events.push(super::projectile::block_hit(
+                    cell,
+                    self.pos,
+                    self.burning(),
+                    self.owner.is_none(),
+                    self.owner.map(super::trident::Owner::Player),
+                ));
                 self.pos = next;
                 self.shatter(ctx, mobs, boss, rng, events);
                 return false;

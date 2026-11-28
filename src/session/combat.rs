@@ -339,7 +339,7 @@ impl PlayerSession {
                 eye + dir * 2.0
             }
             Target::Fireball => {
-                landed = entities.punch_fireball(eye, dir, reach);
+                landed = entities.punch_fireball(eye, dir, reach, self.id);
                 eye + dir * 2.0
             }
             Target::Decor(_) => {

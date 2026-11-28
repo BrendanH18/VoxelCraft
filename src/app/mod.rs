@@ -2282,9 +2282,10 @@ impl Game {
         self.poll_agents();
         // v1.0 gap Track 8d: only a pause screen pauses (`isPauseScreen`):
         // not the sign editor, a lectern's book or the console (Java's
-        // `ChatScreen`).
+        // `ChatScreen`). Track 8e: nor the End credits (`WinScreen` with
+        // its poem), during which the player has left the level.
         let paused = pauses_simulation(
-            self.menu.pauses() || self.credits.is_some(),
+            self.menu.pauses(),
             self.agents.host.is_some() || self.lan.host.is_some() || self.lan.client.is_some(),
         );
         self.respawn_if_due();

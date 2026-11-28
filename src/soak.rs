@@ -779,7 +779,7 @@ impl Soak {
         e.village_day = self.day_count;
         e.thundering = thundering;
         for (cell, short_fuse) in std::mem::take(&mut w.primed_tnt) {
-            e.prime_tnt(cell, short_fuse);
+            e.prime_tnt(cell, short_fuse, None);
         }
         e.release_silverfish(&mut w.released_silverfish);
         crate::entity::golem::finish_golems(w, e);
