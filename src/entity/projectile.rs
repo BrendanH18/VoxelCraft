@@ -677,6 +677,26 @@ impl Arrow {
 
 /// v1.0 gap Track 8b: a block a burning projectile's hit lights or
 /// primes: a candle or candle cake, a campfire, TNT.
+impl super::Entities {
+    /// v1.0 gap Track 8c: a scripted scene's arrow or trident
+    /// (`--projectile`), stuck in the top of the block at `cell` slanting
+    /// down along +X, burning (Flame's 100 seconds) with `fire`. Stuck, an
+    /// `AbstractArrow`'s fire doesn't burn down.
+    pub fn stick_scripted_projectile(&mut self, trident: bool, cell: glam::IVec3, fire: bool) {
+        let dir = DVec3::new(1.0, -1.0, 0.0).normalize();
+        let pos = cell.as_dvec3() + DVec3::new(0.5, 0.98, 0.5);
+        let fire = if fire { 2000 } else { 0 };
+        if trident {
+            self.tridents.push(super::trident::Trident::stuck(pos, dir, fire));
+            return;
+        }
+        let mut a = Arrow::shot(pos, dir, 0.0, false);
+        (a.pos, a.previous_pos, a.vel, a.stuck, a.fire) = (pos, pos, DVec3::ZERO, true, fire);
+        a.rot = Some(rotation_of(dir));
+        self.arrows.push(a);
+    }
+}
+
 /// v1.0 gap Track 8c: `EnderMan.hurtServer` refuses every projectile
 /// (`#is_projectile`) and teleports away, unless it is riding
 /// (`isPassenger`), and its `projectileReceivesSideEffectsOnHit` is false,
@@ -1124,7 +1144,8 @@ mod tests {
     #[test]
     fn mobs_that_refuse_an_arrow_bounce_it_back() {
         let world = Grid::flat(0);
-        let setups: [(MobKind, fn(&mut Mob)); 3] = [
+        type Setup = fn(&mut Mob);
+        let setups: [(MobKind, Setup); 3] = [
             (MobKind::Wither, |m| m.health = crate::entity::wither::MAX_HEALTH / 2.0),
             (MobKind::Wither, |m| m.wither.as_mut().unwrap().invul = 100),
             (MobKind::Shulker, |_| {}),

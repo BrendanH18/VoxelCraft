@@ -373,6 +373,7 @@ impl Game {
             cart_sound_tick: 0,
             decor_scene: args.decor.clone(),
             brush_scene: args.brush.clone(),
+            projectile_scene: args.projectiles.clone(),
             open_block: args.open_block,
             drop: args.drop.clone(),
             orbs: args.orbs.clone(),

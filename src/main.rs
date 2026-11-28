@@ -114,6 +114,9 @@ pub struct Args {
     pub decor: Vec<(glam::IVec3, glam::IVec3, item::Item, Option<item::Item>)>,
     /// `--brush`: accepted brush strokes on a suspicious block's face.
     pub brush: Vec<(glam::IVec3, glam::IVec3, u8)>,
+    /// v1.0 gap Track 8c, `--projectile`: an arrow (false) or trident (true)
+    /// stuck in the top of a block, and whether it burns.
+    pub projectiles: Vec<(bool, glam::IVec3, bool)>,
     /// Mobs to spawn once the world has loaded (y = i32::MIN: surface).
     /// The optional armor material forces a full set on a zombie or skeleton.
     pub spawn: Vec<(entity::MobKind, glam::IVec3, Option<entity::armor::Equipped>)>,
@@ -250,6 +253,7 @@ voxelcraft [options]
   --dye c[,c...]    dye the first hotbar stack and the worn armor, when
                     dyeable, with these dyes mixed (e.g. --dye red,blue)
   --cart x,y,z,kind spawn a cart on rails, or a named boat/raft (repeatable)
+  --projectile arrow|trident,x,y,z[,fire] an arrow or trident stuck in the top of a block, burning with fire (repeatable)
   --decor x,y,z,face,item[,held]
                     hang an item frame or painting on, or stand an armor stand
                     against, face up|down|north|south|east|west of block x,y,z;
@@ -373,6 +377,7 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
         carts: Vec::new(),
         decor: Vec::new(),
         brush: Vec::new(),
+        projectiles: Vec::new(),
         spawn: Vec::new(),
         spawn_held: Vec::new(),
         spawn_baby: Vec::new(),
@@ -625,6 +630,21 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
                 };
                 let strokes = parts[4].parse().ok().filter(|s| (1..=9).contains(s)).ok_or_else(bad)?;
                 args.brush.push((glam::IVec3::new(n[0], n[1], n[2]), face, strokes));
+            }
+            "--projectile" => {
+                let v = value("--projectile")?;
+                let parts: Vec<_> = v.split(',').collect();
+                let bad = || format!("--projectile needs arrow|trident,x,y,z[,fire] (got {v})");
+                if !(4..=5).contains(&parts.len()) || parts.get(4).is_some_and(|&f| f != "fire") {
+                    return Err(bad());
+                }
+                let trident = match parts[0] {
+                    "arrow" => false,
+                    "trident" => true,
+                    _ => return Err(bad()),
+                };
+                let n: Vec<i32> = parts[1..4].iter().map(|s| s.parse()).collect::<Result<_, _>>().map_err(|_| bad())?;
+                args.projectiles.push((trident, glam::IVec3::new(n[0], n[1], n[2]), parts.len() == 5));
             }
             "--cart" => {
                 let v = value("--cart")?;

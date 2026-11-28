@@ -45,10 +45,11 @@ pub(super) fn flame(
     let (mut r, mut yo, mut zo) = (0.5f32, 0.0f32, 0.0f32);
     let mut ss = 0u32;
     while h > 0.0 {
-        let layer = tex::FIRE_0 + ((frame + if ss % 2 == 0 { 0 } else { 3 }) % u32::from(tex::FIRE_FRAMES)) as u16;
+        let layer =
+            tex::FIRE_0 + ((frame + if ss.is_multiple_of(2) { 0 } else { 3 }) % u32::from(tex::FIRE_FRAMES)) as u16;
         // `fire_0` and `fire_1` as they are for the first two quads, then
         // mirrored for two, and so on.
-        let (left_u, right_u) = if ss / 2 % 2 == 0 { (0.0, 1.0) } else { (1.0, 0.0) };
+        let (left_u, right_u) = if (ss / 2).is_multiple_of(2) { (0.0, 1.0) } else { (1.0, 0.0) };
         let at = |x: f32, y: f32| origin + (right * x + Vec3::Y * (y - yo) + back * (zo + push)) * s;
         let corners = [
             (at(-r, 0.0), [left_u, 1.0]),

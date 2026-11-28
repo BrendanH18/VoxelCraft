@@ -9351,6 +9351,76 @@
    "args": [
     "--still-mobs"
    ]
+  },
+  {
+   "group": "materials",
+   "pose": [
+    -2.0,
+    150.0,
+    0.5,
+    0,
+    -28
+   ],
+   "hud": false,
+   "fill": [
+    [
+     -4,
+     149,
+     -3,
+     4,
+     149,
+     3,
+     "stone"
+    ]
+   ],
+   "place": [],
+   "name": "burning-projectiles",
+   "description": "Two burning arrows and a burning trident stuck in a stone floor in the sky at noon, a plain arrow beside them, from two blocks away: Java's flame (`FlameFeatureRenderer`: two camera-facing fire quads over each 0.5 by 0.5 box) on the burning ones (v1.0 gap Track 8c)",
+   "args": [
+    "--projectile",
+    "arrow,0,149,-1,fire",
+    "--projectile",
+    "arrow,1,149,1,fire",
+    "--projectile",
+    "trident,0,149,1,fire",
+    "--projectile",
+    "arrow,1,149,-1"
+   ]
+  },
+  {
+   "group": "materials",
+   "pose": [
+    -2.0,
+    150.0,
+    0.5,
+    0,
+    -28
+   ],
+   "hud": false,
+   "fill": [
+    [
+     -4,
+     149,
+     -3,
+     4,
+     149,
+     3,
+     "stone"
+    ]
+   ],
+   "place": [],
+   "name": "unlit-projectiles",
+   "description": "The burning-projectiles scene with none of them burning, as every burning arrow and trident was drawn before v1.0 gap Track 8c",
+   "args": [
+    "--projectile",
+    "arrow,0,149,-1",
+    "--projectile",
+    "arrow,1,149,1",
+    "--projectile",
+    "trident,0,149,1",
+    "--projectile",
+    "arrow,1,149,-1"
+   ]
   }
  ]
 }

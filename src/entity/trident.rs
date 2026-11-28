@@ -122,6 +122,16 @@ impl Trident {
         }
     }
 
+    /// v1.0 gap Track 8c: a scripted scene's trident (`--projectile`), stuck
+    /// in the ground at `pos` pointing along `dir`, with `fire` ticks of fire.
+    pub fn stuck(pos: DVec3, dir: DVec3, fire: u16) -> Self {
+        let mut t = Self::new(Stack::new(crate::weapons::TRIDENT, 1), pos, dir, None, Pickup::Disallowed);
+        t.in_ground = true;
+        t.vel = DVec3::ZERO;
+        t.fire = fire;
+        t
+    }
+
     /// `TridentItem.releaseUsing`: thrown by a player (see [`Throw`]).
     /// Creative throws can only be picked up in Creative.
     pub fn thrown(stack: Stack, throw: Throw, rng: &mut Rng) -> Self {
@@ -1065,7 +1075,9 @@ mod tests {
         );
         let t = &e.tridents[0];
         assert!(t.dealt_damage && t.vel.x > 0.0 && t.pos.x > 5.0, "flew on: {} at {}", t.vel, t.pos);
-        assert!(e.mobs[0].teleport_pending);
+        let enderman = &e.mobs[0];
+        assert!(enderman.teleport_pending || enderman.pos.x != 4.5, "it dodged: {}", enderman.pos);
+        assert_eq!(enderman.health, MobKind::Enderman.max_health());
         assert_eq!(e.mobs[1].health, MobKind::Cow.max_health(), "it hits nothing more");
     }
 
