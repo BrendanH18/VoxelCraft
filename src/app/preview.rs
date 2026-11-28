@@ -306,7 +306,7 @@ mod tests {
         crate::entity::model::build(std::slice::from_ref(&m), m.pos, forward, 64.0, 1.0, &mut mesh);
         let triangles = mesh.len() / 3;
         let mut ui = Ui::with_scale(400.0, 300.0, 1.0);
-        mob(&mut ui, &m, (26.0, 18.0, 78.0, 70.0), 17.0, 0.25, (52.0, 44.0), 0.0);
+        mob(&mut ui, &m, (26.0, 18.0, 78.0, 70.0), 17.0, 0.25, (52.0, 44.0));
         let quads = ui.verts.len() / 6;
         assert!(quads > triangles * 2, "{quads} quads for {triangles} triangles");
         let colours: std::collections::HashSet<[u32; 3]> = ui
