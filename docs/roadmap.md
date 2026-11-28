@@ -2286,6 +2286,12 @@ changes. Generation changes go into a new world generation, so the golden
 chunk hashes of generations 3 to 6 don't move. Tracks 6 and 7 merge only
 once the owner approves their look (Track 7's and Track 6's approved on 2026-11-27; for the items Java
 draws differently, flat or 3D, the owner chose to match Java the same day).
+Follow-up looks approved by the owner on 2026-11-27: Tracks 5c (portal
+plane, Night Vision), 6b (item drawing) and 7b (mob animations). Owner
+decisions the same day, all to match Java unless noted: spectators can't
+use portals (Java's `noPhysics`); bamboo gets sub-texel terrain geometry;
+slot icons take Java's orientation; controller seats pick bundle stacks
+with the right stick (Java has no gamepad support; owner's choice).
 
 1. **Effects and mob damage** (PLY-03b, MOB-02d): Darkness darkening the
    lightmap, not only the fog; Smite and Bane of Arthropods on mobs'
