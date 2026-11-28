@@ -523,8 +523,12 @@ Build a frame of obsidian (pour a water bucket over lava source blocks,
 then mine the obsidian with a diamond pickaxe) at least 4 wide and 5 tall around an
 empty inside of 2x3 up to 21x21; the corners can be left out. Light it
 with flint and steel (iron ingot and flint, shapeless; 64 uses) to fill it
-with a swirling portal. Stand in it for 4 seconds (half a second in
-creative) to travel to the Nether, and the same way back. Each block in
+with a swirling portal. Stand in it for 4 seconds (the 81st tick; at once
+in creative) to travel to the Nether, and the same way back; stepping out
+lets the count run down four times as fast, and you can't go back until
+you have been out of the exit portal for half a second, as in Java
+([gap Track 8b](verification/2026-11-27-v1.0-gap-track-08b-details.md)).
+Each block in
 the Nether is eight in the overworld: the game looks for a portal within
 16 blocks of the matching spot on the other side (128 coming back), and
 builds one (on an obsidian ledge if there's nowhere to stand) if there
@@ -681,12 +685,13 @@ Java. Its wings shove
 and hurt players, its head bites for 10, and it smashes through any block but
 Java's dragon-immune ones (end stone, obsidian and crying obsidian, bedrock,
 iron bars, respawn anchors, reinforced deepslate, End portals and gateways),
-silently, in a puff of smoke, leaving the water of a waterlogged block;
+silently, in a puff of smoke, leaving the water of a waterlogged block
+(a bubble column it flies through turns to still water for a moment);
 with `mobGriefing` off it breaks nothing, and every block in its way slows
 it and its wing beat. Its wing beats set off sculk sensors. Head and neck hits do full damage, anywhere else a
 quarter (plus up to one), and only a player's hits (or a blast) take its
 health; arrows, tridents and a player's wind charges glance off a perched
-dragon (an arrow comes off alight for a second), and everything glances
+dragon (an arrow or trident comes off alight for a second), and everything glances
 off a dying one. Everything Java lets hit
 it does here
 ([gap Track 4c](verification/2026-11-27-v1.0-gap-track-04c-end-final.md)):
