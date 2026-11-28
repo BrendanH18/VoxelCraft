@@ -87,8 +87,29 @@ impl Blow {
 /// v1.0 gap Track 8b: a crystal's blast that a mob set off is
 /// `explosion(crystal, mob)`, `PLAYER_EXPLOSION` (`explosion.player`: "was
 /// blown up by" the mob) for the mobs whose projectiles can break one.
+/// Any other mob's blow keeps the general "a mob": the blast's rules are
+/// read from its text (`ExplosionSource::of_cause`), and a crystal's blast
+/// is a block's whoever broke it.
 pub fn blame(kind: super::MobKind) -> crate::simulation::damage::Cause {
-    crate::simulation::damage::Cause::new(crate::simulation::damage::DamageType::PlayerExplosion, blown_up_by(kind))
+    use super::MobKind as K;
+    let text = match kind {
+        K::Llama
+        | K::TraderLlama
+        | K::Skeleton
+        | K::Stray
+        | K::Bogged
+        | K::Parched
+        | K::Pillager
+        | K::Piglin
+        | K::Illusioner
+        | K::Drowned
+        | K::SnowGolem
+        | K::Breeze
+        | K::Shulker
+        | K::Wither => blown_up_by(kind),
+        _ => "was blown up by a mob",
+    };
+    crate::simulation::damage::Cause::new(crate::simulation::damage::DamageType::PlayerExplosion, text)
 }
 
 /// `death.attack.explosion.player` for a blast `kind` is behind: "was
