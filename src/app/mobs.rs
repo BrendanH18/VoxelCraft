@@ -1039,6 +1039,8 @@ fn mob_sound_source(sound: MobSound) -> Option<SoundSource> {
         MobSound::FrogAction(_) => Some(SoundSource::Neutral),
         // `AbstractVillager` and boats: `NEUTRAL`.
         MobSound::TraderDrink(_) | MobSound::BoatPaddle(_) => Some(SoundSource::Neutral),
+        // v1.0 gap Track 2h: the panda's `playSound`, `NEUTRAL`.
+        MobSound::PandaEat => Some(SoundSource::Neutral),
         MobSound::Thunder => Some(SoundSource::Weather),
         // Skeletons and pillagers shoot as hostile mobs, not as the player.
         MobSound::Bow => Some(SoundSource::Hostile),
