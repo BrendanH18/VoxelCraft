@@ -1826,6 +1826,10 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
     if let Some(s) = &m.ocelot {
         v["ocelot"] = json!({"trusting":s.trusting});
     }
+    // v1.0 gap Track 2e: `Fox`'s `Sleeping`, `Sitting` and `Crouching`, only when set.
+    if let Some(s) = &m.fox {
+        s.save_into(&mut v, m.animal.as_ref().is_some_and(|a| a.sleeping));
+    }
     if let Some(s) = &m.armadillo {
         v["armadillo"] = s.save();
     }
@@ -1981,6 +1985,12 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     }
     if let Some(s) = &mut m.ocelot {
         s.trusting = v["ocelot"]["trusting"].as_bool().unwrap_or(false);
+    }
+    if let Some(s) = &mut m.fox
+        && s.load(v)
+        && let Some(a) = &mut m.animal
+    {
+        a.sleeping = true;
     }
     if let Some(s) = &mut m.armadillo {
         s.load(&v["armadillo"]);

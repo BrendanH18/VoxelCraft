@@ -992,13 +992,7 @@ impl Entities {
                     t.pos.distance_squared(m.pos) < 64.0 && t.held_item.is_some_and(|i| i == Item::BONE || wolf_food(i))
                 });
             if m.kind == MobKind::Fox {
-                a.sleeping = ctx.daylight > 0.5
-                    && a.love == 0.0
-                    && !m.in_water
-                    && !ctx
-                        .players
-                        .iter()
-                        .any(|t| t.pos.distance_squared(m.pos) < 64.0 && !a.trusted.contains(&Some(t.id)));
+                // v1.0 gap Track 2e: `SleepGoal` (`mob::fox`) puts it to sleep.
                 a.mouth_time += dt;
                 if self.villager_griefing
                     && a.mouth.is_none()

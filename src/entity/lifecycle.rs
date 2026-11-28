@@ -89,6 +89,7 @@ impl Entities {
         self.panda_upkeep(dt, world, ctx, &mut events);
         self.armadillo_upkeep(dt, world, ctx, &mut events);
         self.ocelot_upkeep(dt, ctx);
+        self.fox_upkeep(ctx);
         self.tick_allays(dt, world, ctx, &mut events);
         self.tick_animals(dt as f32, world, ctx, &mut events);
         self.tick_leashes(dt as f32, world, ctx);

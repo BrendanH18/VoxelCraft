@@ -475,7 +475,7 @@ pub(crate) struct Head {
     /// A running `ShowTradesToPlayer`: ticks before it times out, its
     /// `lookTime`, and the player's held item it last saw (`None` before
     /// its first tick).
-    show_trades: Option<(i32, i32, Option<Option<crate::item::Item>>)>,
+    show_trades: Option<ShowTrades>,
     /// `PandaLookAtPlayerGoal.lookAt` kept between `canUse` calls (its
     /// `setTarget`; Track 2d).
     preset: Option<PlayerId>,
@@ -493,6 +493,23 @@ pub(crate) struct Head {
     pub(crate) carrying_mob: bool,
     /// `NEAREST_VISIBLE_LIVING_ENTITIES` (mobs only; players are read live).
     pub(crate) seen: Vec<Seen>,
+}
+
+/// A running `ShowTradesToPlayer` (Track 2d; its held item, Track 2e).
+#[derive(Clone, Debug)]
+struct ShowTrades {
+    /// Ticks before it times out.
+    left: i32,
+    /// `lookTime`.
+    look: i32,
+    /// `playerItemStack`: the player's main-hand item it last saw (`None`
+    /// before its first tick).
+    seen: Option<Option<crate::item::Item>>,
+    /// `displayItems`: the results of the offers the item pays for.
+    display: Vec<crate::inventory::Stack>,
+    /// `cycleCounter` and `displayIndex`.
+    cycle: i32,
+    index: usize,
 }
 
 impl Mob {
@@ -959,9 +976,11 @@ impl Mob {
         }
     }
 
-    /// `FoxLookAtPlayerGoal`: not while faceplanted or interested.
-    fn fox_busy(&self) -> bool {
+    /// `FoxLookAtPlayerGoal`: not while faceplanted or interested (Track
+    /// 2e); a sleeping fox's look control rests.
+    pub(crate) fn fox_busy(&self) -> bool {
         self.animal.as_ref().is_some_and(|a| a.sleeping)
+            || self.fox.as_ref().is_some_and(|s| s.faceplanted || s.interested)
     }
 
     /// The brain's look behaviours this tick: the activity's `LOOK_TARGET`
@@ -1006,8 +1025,10 @@ impl Mob {
             self.show_trades_start(ctx, rng);
             self.set_look_and_interact(world, ctx, 4.0);
         }
-        if package.is_none() {
-            self.head.show_trades = None;
+        if package.is_none() && self.head.show_trades.take().is_some() {
+            // The activity's end stops the behaviour (`stop`).
+            self.head.interaction = None;
+            self.clear_shown_trade();
         }
         self.show_trades_tick(ctx);
         // Tick phase: `LookAtTargetSink.tickOrStop`.
@@ -1082,40 +1103,94 @@ impl Mob {
     /// `ShowTradesToPlayer(400, 1600).tryStart`.
     fn show_trades_start(&mut self, ctx: &Ctx, rng: &mut Rng) {
         if self.head.show_trades.is_none() && self.show_trades_valid(ctx).is_some() {
-            // `start`: `lookAtTarget`, `lookTime = 40`.
+            // `start`: `lookAtTarget`, `cycleCounter = displayIndex = 0`,
+            // `lookTime = 40`.
             let left = 400 + rng.next_int(1201) as i32;
-            self.head.show_trades = Some((left, 40, None));
+            self.head.show_trades =
+                Some(ShowTrades { left, look: 40, seen: None, display: Vec::new(), cycle: 0, index: 0 });
             self.head.target = self.head.interaction.map(Tracked::Player);
         }
     }
 
     /// `ShowTradesToPlayer.tickOrStop`: it keeps `LOOK_TARGET` on the
-    /// player, for 900 ticks while the player holds the cost of an offer in
-    /// stock (40 otherwise), and erases `INTERACTION_TARGET` when it stops.
+    /// player; when the player's main-hand item changes to one that pays
+    /// for offers in stock, the villager holds up the first offer's result
+    /// (`displayAsHeldItem`, drop chance 0) for 900 ticks, cycling through
+    /// the others every 40 ticks; otherwise its hand is cleared and it
+    /// looks for at most 40 more. Stopping erases `INTERACTION_TARGET` and
+    /// clears the hand.
     fn show_trades_tick(&mut self, ctx: &Ctx) {
-        let Some((left, look, seen)) = self.head.show_trades else { return };
+        let Some(mut st) = self.head.show_trades.take() else { return };
         let held = self.show_trades_valid(ctx).map(|t| t.held_item);
-        let Some(held) = held.filter(|_| left > 0 && look > 0) else {
-            self.head.show_trades = None;
+        let Some(held) = held.filter(|_| st.left > 0 && st.look > 0) else {
             self.head.interaction = None;
+            self.clear_shown_trade();
             return;
         };
         self.head.target = self.head.interaction.map(Tracked::Player);
-        let mut look = look;
-        let matches = |item: crate::item::Item, v: &crate::entity::villager::Villager| {
-            v.offers
-                .iter()
-                .flatten()
-                .any(|o| o.uses < o.max_uses && (o.cost.item == item || o.second.is_some_and(|s| s.item == item)))
-        };
-        let displaying = held.zip(self.villager.as_ref()).is_some_and(|(item, v)| matches(item, v));
-        if seen != Some(held) && displaying {
-            look = 900;
+        // `findItemsToDisplay`.
+        if st.seen != Some(held) {
+            st.seen = Some(held);
+            st.display.clear();
+            if let (Some(item), Some(v)) = (held, self.villager.as_ref()) {
+                st.display = v
+                    .offers
+                    .iter()
+                    .flatten()
+                    .filter(|o| {
+                        o.uses < o.max_uses && (o.cost.item == item || o.second.is_some_and(|s| s.item == item))
+                    })
+                    .map(|o| o.output)
+                    .collect();
+                if let Some(first) = st.display.first().copied() {
+                    st.look = 900;
+                    self.show_trade_item(first);
+                }
+            }
         }
-        if !displaying {
-            look = look.min(40);
+        if st.display.is_empty() {
+            self.clear_shown_trade();
+            st.look = st.look.min(40);
+        } else if st.display.len() >= 2 {
+            // `displayCyclingItems`.
+            st.cycle += 1;
+            if st.cycle >= 40 {
+                st.index = (st.index + 1) % st.display.len();
+                st.cycle = 0;
+                self.show_trade_item(st.display[st.index]);
+            }
         }
-        self.head.show_trades = Some((left - 1, look - 1, Some(held)));
+        st.left -= 1;
+        st.look -= 1;
+        self.head.show_trades = Some(st);
+    }
+
+    /// `displayAsHeldItem`: the main hand holds `stack`, never dropped.
+    fn show_trade_item(&mut self, stack: crate::inventory::Stack) {
+        use crate::entity::equipment::Slot;
+        self.equipment.set(Slot::MainHand, Some(stack));
+        self.equipment.set_drop_chance(Slot::MainHand, 0.0);
+    }
+
+    /// `clearHeldItem`: an empty main hand with the default drop chance.
+    fn clear_shown_trade(&mut self) {
+        use crate::entity::equipment::Slot;
+        if self.kind != MobKind::Villager {
+            return;
+        }
+        self.equipment.set(Slot::MainHand, None);
+        self.equipment.set_drop_chance(Slot::MainHand, crate::entity::equipment::DEFAULT_DROP_CHANCE);
+    }
+
+    /// v1.0 gap Track 2e: the offer result a villager holds up to a player
+    /// (`ShowTradesToPlayer`'s `displayAsHeldItem`), for the model's
+    /// `CrossedArmsItemLayer` (Track 7d). It is the main-hand item, which
+    /// LAN clients receive with the equipment.
+    pub fn shown_trade_item(&self) -> Option<crate::inventory::Stack> {
+        if self.kind != MobKind::Villager {
+            return None;
+        }
+        self.equipment.main_hand().copied()
     }
 
     /// The `LOOK_TARGET` writers of the brain's current activity.
@@ -1364,6 +1439,11 @@ impl Mob {
                 let keep_pitch = match self.kind {
                     MobKind::Frog => self.frog.as_ref().is_some_and(|f| f.tongue.is_some()),
                     MobKind::Bee => self.bee.is_some_and(|b| b.pollinating()),
+                    // `FoxLookControl.resetXRotOnTick` (Track 2e): not while
+                    // pouncing, crouching, interested or faceplanted.
+                    MobKind::Fox => {
+                        self.fox.as_ref().is_some_and(|s| s.pouncing || s.crouching || s.interested || s.faceplanted)
+                    }
                     _ => false,
                 };
                 if !keep_pitch {

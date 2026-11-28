@@ -461,6 +461,11 @@ impl Mob {
     }
 
     fn priority_of_running(&self, t: &[Entry]) -> Option<u8> {
+        // v1.0 gap Track 2e: a running fox goal holds `MOVE` at its priority.
+        if let Some(p) = self.fox_move_priority() {
+            let table = self.goals.running.map(|i| t[i as usize].priority);
+            return Some(table.map_or(p, |q| q.min(p)));
+        }
         if let Some(i) = self.goals.running {
             return Some(t[i as usize].priority);
         }
@@ -766,6 +771,10 @@ impl Mob {
             G::FollowParent | G::FollowAdult => {
                 self.goals.parent = self.goals.adult;
                 self.goals.recalc = 0;
+                // `FoxFollowParentGoal.start` (Track 2e).
+                if self.fox.is_some() {
+                    self.fox_clear_states();
+                }
             }
             G::FollowOwner { .. } => {
                 self.goals.recalc = 0;
@@ -774,6 +783,11 @@ impl Mob {
             G::Breed => {
                 if let Some(a) = &mut self.animal {
                     a.courtship = 0.0;
+                }
+                // `FoxBreedGoal.start` clears the states (Track 2e; the
+                // partner clears its own as its goal starts).
+                if self.fox.is_some() {
+                    self.fox_clear_states();
                 }
             }
             _ => {}

@@ -21,6 +21,7 @@ mod drowned;
 mod endermite;
 pub(crate) mod equine;
 mod eyes;
+pub(crate) use eyes::baby_shape;
 mod frog;
 pub(crate) mod goals;
 pub(super) mod hazards;
@@ -28,6 +29,7 @@ pub(crate) mod head;
 mod illager;
 mod navigate;
 pub(crate) use navigate::is_sand;
+mod fox;
 mod nether_ai;
 mod ocelot;
 mod polar_bear;
@@ -1321,6 +1323,8 @@ pub struct Mob {
     pub panda: Option<Box<super::panda::State>>,
     pub armadillo: Option<Box<super::armadillo::State>>,
     pub ocelot: Option<Box<super::ocelot::State>>,
+    /// v1.0 gap Track 2e: the fox's hunting states and goals.
+    pub fox: Option<Box<super::fox::State>>,
     pub copper_golem: Option<Box<super::copper_golem::State>>,
     pub creaking: Option<Box<super::creaking::State>>,
     pub sniffer: Option<Box<super::sniffer::State>>,
@@ -1637,6 +1641,7 @@ impl Mob {
             panda: (kind == MobKind::Panda).then(Box::default),
             armadillo: (kind == MobKind::Armadillo).then(Box::default),
             ocelot: (kind == MobKind::Ocelot).then(Box::default),
+            fox: (kind == MobKind::Fox).then(Box::default),
             copper_golem: (kind == MobKind::CopperGolem).then(Box::default),
             creaking: (kind == MobKind::Creaking).then(Box::default),
             sniffer: (kind == MobKind::Sniffer).then(Box::default),
@@ -1886,19 +1891,7 @@ impl Mob {
             let (width, height) = super::mounts::camel::dimensions(self.baby || self.age < 0, s.camel_sitting);
             Shape::new(width / 2.0, height)
         } else if self.baby || self.age < 0 {
-            let s = self.kind.shape();
-            let scale = if super::undead_mounts::undead(self.kind) {
-                0.7
-            } else if self.kind == MobKind::Armadillo {
-                0.6
-            } else if self.kind == MobKind::HappyGhast {
-                super::happy_ghast::BABY_SCALE
-            } else if self.kind == MobKind::Dolphin {
-                dolphin::BABY_SCALE
-            } else {
-                0.5
-            };
-            Shape::new(s.half_width * scale, s.height * scale)
+            baby_shape(self.kind)
         } else {
             self.kind.shape()
         }
@@ -2881,6 +2874,32 @@ impl Mob {
         if let Some(wish) = self.polar_think(world, rng, events) {
             return wish;
         }
+        // v1.0 gap Track 2e: the fox's goals around the shared table
+        // (`FoxMoveControl` holds it still while it can't move).
+        if self.fox.is_some() {
+            let full = self.goals.full(self.uid);
+            let wish = match self.fox_pre_think(world, full, events) {
+                Some(wish) => {
+                    self.goals.ticks = self.goals.ticks.wrapping_add(1);
+                    Some(wish)
+                }
+                None => {
+                    let base = self.run_goals(world, ctx, rng);
+                    self.fox_think(world, ctx, rng, full, events).or(base)
+                }
+            };
+            let s = self.fox.as_ref().unwrap();
+            let can_move = s.can_move(self.animal.as_ref().is_some_and(|a| a.sleeping));
+            let wish = wish.map(|w| if can_move { w } else { (None, 0.0) });
+            if let Some(wish) = wish {
+                self.fox.as_mut().unwrap().still = wish.0.is_none();
+                return wish;
+            }
+            if !can_move {
+                self.fox.as_mut().unwrap().still = true;
+                return (None, 0.0);
+            }
+        }
         if let Some(wish) = self.companion_think(dt, world, ctx, rng, events) {
             return wish;
         }
@@ -2904,6 +2923,7 @@ impl Mob {
         }
         if self.panda.is_none()
             && self.ocelot.is_none()
+            && self.fox.is_none()
             && let Some(wish) = self.run_goals(world, ctx, rng)
         {
             return wish;

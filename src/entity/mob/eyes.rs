@@ -12,6 +12,7 @@
 //! emerging, phantoms and cubes by size, a shulker's lid on the floor).
 //! `EntityDimensions.scale` scales the eye with the height.
 use super::{Mob, MobKind};
+use crate::physics::Shape;
 
 /// The adult eye height of a kind (`EntityTypes`' `eyeHeight`, or 0.85 of
 /// its height).
@@ -119,6 +120,42 @@ fn baby_eye(kind: MobKind) -> f32 {
     }
 }
 
+/// A baby's box (v1.0 gap Track 2e): the kind's own `BABY_DIMENSIONS`
+/// where Java gives one (`EntityDimensions.scalable(width, height)` or the
+/// adult's `scale(f)`), otherwise `LivingEntity.getDefaultDimensions`'s
+/// adult box scaled by `getAgeScale` (0.5). Widths and heights are Java's
+/// floats; the box's half width is `width / 2` in float.
+pub(crate) fn baby_shape(kind: MobKind) -> Shape {
+    use MobKind as K;
+    let own = |w: f32, h: f32| Shape::new(f64::from(w / 2.0), f64::from(h));
+    let adult = kind.shape();
+    // `scale(f)` of the adult box (kept in double, as the adult boxes are).
+    let scaled = |f: f64| Shape::new(adult.half_width * f, adult.height * f);
+    match kind {
+        K::Sheep | K::Goat => own(0.45, 0.65),
+        K::Cat | K::Ocelot => own(0.3, 0.35),
+        K::Squid | K::GlowSquid => own(0.5, 0.5),
+        K::Pig => own(0.45, 0.45),
+        K::Chicken => own(0.3, 0.4),
+        K::Rabbit => own(0.24, 0.4),
+        K::Cow | K::Mooshroom => own(0.45, 0.7),
+        K::PolarBear => own(0.7, 0.7),
+        K::Axolotl => own(0.375, 0.21),
+        K::Wolf => own(0.3, 0.425),
+        K::Strider => own(0.45, 0.85),
+        K::Hoglin | K::Zoglin => own(0.75, 0.85),
+        K::Piglin | K::ZombifiedPiglin | K::Zombie | K::Husk | K::Drowned | K::ZombieVillager | K::Villager => {
+            own(0.49, 0.98)
+        }
+        K::Dolphin => scaled(super::dolphin::BABY_SCALE),
+        K::Armadillo | K::Fox => scaled(0.6),
+        K::Turtle => scaled(0.3),
+        K::HappyGhast => scaled(crate::entity::happy_ghast::BABY_SCALE),
+        K::Horse | K::SkeletonHorse | K::ZombieHorse => scaled(0.7),
+        _ => scaled(0.5),
+    }
+}
+
 impl Mob {
     /// Java's `getEyeHeight()` for this mob's age, pose and size.
     pub(crate) fn eye_height(&self) -> f64 {
@@ -185,5 +222,30 @@ mod tests {
         assert!(close(baby_eye(MobKind::Horse), 1.064));
         assert!(close(baby_eye(MobKind::Turtle), 0.102));
         assert!(close(adult(MobKind::Spider), 0.65));
+    }
+
+    /// v1.0 gap Track 2e: each kind's `BABY_DIMENSIONS` (26.3 server jar).
+    #[test]
+    fn baby_boxes_follow_javas_baby_dimensions() {
+        let size = |k: MobKind| {
+            let s = baby_shape(k);
+            ((s.half_width * 2.0) as f32, s.height as f32)
+        };
+        let close = |a: (f32, f32), b: (f32, f32)| (a.0 - b.0).abs() < 1e-6 && (a.1 - b.1).abs() < 1e-6;
+        for k in [MobKind::Zombie, MobKind::Villager, MobKind::Piglin, MobKind::ZombieVillager, MobKind::Husk] {
+            assert!(close(size(k), (0.49, 0.98)), "{k:?}: {:?}", size(k));
+        }
+        assert!(close(size(MobKind::Chicken), (0.3, 0.4)));
+        assert!(close(size(MobKind::Rabbit), (0.24, 0.4)));
+        assert!(close(size(MobKind::Hoglin), (0.75, 0.85)));
+        assert!(close(size(MobKind::Squid), (0.5, 0.5)));
+        assert!(close(size(MobKind::Fox), (0.36, 0.42)));
+        assert!(close(size(MobKind::Turtle), (0.36, 0.12)));
+        assert!(close(size(MobKind::Horse), (1.396 * 0.7, 1.12)));
+        assert!(close(size(MobKind::Donkey), (0.698, 0.75)));
+        assert!(close(size(MobKind::Bee), (0.35, 0.3)));
+        // Kinds whose `BABY_DIMENSIONS` are the adult's halved keep it.
+        assert!(close(size(MobKind::Cow), (0.45, 0.7)));
+        assert!(close(size(MobKind::Wolf), (0.3, 0.425)));
     }
 }

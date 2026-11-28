@@ -44,6 +44,7 @@ pub mod equipment;
 pub mod eye;
 pub mod fireball;
 pub mod firework;
+pub mod fox;
 pub mod frog;
 pub mod golem;
 pub mod happy_ghast;
@@ -3349,7 +3350,8 @@ mod tests {
         assert_eq!(MobKind::Drowned.biome_chance(Biome::River), 1.0);
         assert_eq!(MobKind::Drowned.biome_chance(Biome::Desert), 0.0);
         assert!(MobKind::Zombie.biome_chance(Biome::Desert) < 0.5);
-        // About one in twenty zombies is a baby: half size, 50% faster.
+        // About one in twenty zombies is a baby: `Zombie.BABY_DIMENSIONS`
+        // (0.49 by 0.98, v1.0 gap Track 2e), 50% faster.
         let mut e = Entities::new(5);
         for _ in 0..2000 {
             e.spawn(MobKind::Zombie, DVec3::ZERO);
@@ -3357,7 +3359,7 @@ mod tests {
         let babies = e.mobs.iter().filter(|m| m.baby).count();
         assert!((60..140).contains(&babies), "{babies}");
         let baby = e.mobs.iter().find(|m| m.baby).unwrap();
-        assert_eq!(baby.shape().height, MobKind::Zombie.shape().height * 0.5);
+        assert_eq!(baby.shape().height, f64::from(0.98_f32));
     }
 
     #[test]
