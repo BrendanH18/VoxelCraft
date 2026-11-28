@@ -92,6 +92,25 @@ pub enum Voice {
     Silverfish,
     Turtle,
     BabyTurtle,
+    /// v1.0 final Track F4: kin's calls made their own
+    /// ([`super::creatures::kin`]), for mobs with their own Java events.
+    Husk,
+    Drowned,
+    ZombieVillager,
+    ZombifiedPiglin,
+    Stray,
+    Bogged,
+    WitherSkeleton,
+    MagmaCube,
+    WanderingTrader,
+    SkeletonHorse,
+    ZombieHorse,
+    Donkey,
+    Mule,
+    PiglinBrute,
+    Zoglin,
+    GlowSquid,
+    ElderGuardian,
 }
 
 /// What kind of sound a voice makes.
@@ -104,7 +123,7 @@ pub enum Call {
 }
 
 impl Voice {
-    pub const ALL: [Voice; 63] = [
+    pub const ALL: [Voice; 80] = [
         Voice::Pig,
         Voice::Cow,
         Voice::Sheep,
@@ -168,6 +187,23 @@ impl Voice {
         Voice::Silverfish,
         Voice::Turtle,
         Voice::BabyTurtle,
+        Voice::Husk,
+        Voice::Drowned,
+        Voice::ZombieVillager,
+        Voice::ZombifiedPiglin,
+        Voice::Stray,
+        Voice::Bogged,
+        Voice::WitherSkeleton,
+        Voice::MagmaCube,
+        Voice::WanderingTrader,
+        Voice::SkeletonHorse,
+        Voice::ZombieHorse,
+        Voice::Donkey,
+        Voice::Mule,
+        Voice::PiglinBrute,
+        Voice::Zoglin,
+        Voice::GlowSquid,
+        Voice::ElderGuardian,
     ];
 
     /// The category the creature plays in: `Monster`, `Ghast`, `Hoglin` and
@@ -201,7 +237,19 @@ impl Voice {
             | Voice::Pillager
             // `Phantom.getSoundSource` is HOSTILE; the silverfish is a `Monster`.
             | Voice::Phantom
-            | Voice::Silverfish => SoundSource::Hostile,
+            | Voice::Silverfish
+            | Voice::Husk
+            | Voice::Drowned
+            | Voice::ZombieVillager
+            | Voice::ZombifiedPiglin
+            | Voice::Stray
+            | Voice::Bogged
+            | Voice::WitherSkeleton
+            | Voice::MagmaCube
+            | Voice::PiglinBrute
+            | Voice::Zoglin
+            | Voice::ElderGuardian
+            => SoundSource::Hostile,
             Voice::Sniffer
             | Voice::Allay
             | Voice::Bat
@@ -242,7 +290,14 @@ impl Voice {
             | Voice::Camel
             | Voice::SnowGolem
             | Voice::Turtle
-            | Voice::BabyTurtle => SoundSource::Neutral,
+            | Voice::BabyTurtle
+            | Voice::WanderingTrader
+            | Voice::SkeletonHorse
+            | Voice::ZombieHorse
+            | Voice::Donkey
+            | Voice::Mule
+            | Voice::GlowSquid
+            => SoundSource::Neutral,
         }
     }
 
@@ -311,6 +366,23 @@ impl Voice {
             Voice::Silverfish => "silverfish",
             Voice::Turtle => "turtle",
             Voice::BabyTurtle => "baby_turtle",
+            Voice::Husk => "husk",
+            Voice::Drowned => "drowned",
+            Voice::ZombieVillager => "zombie_villager",
+            Voice::ZombifiedPiglin => "zombified_piglin",
+            Voice::Stray => "stray",
+            Voice::Bogged => "bogged",
+            Voice::WitherSkeleton => "wither_skeleton",
+            Voice::MagmaCube => "magma_cube",
+            Voice::WanderingTrader => "wandering_trader",
+            Voice::SkeletonHorse => "skeleton_horse",
+            Voice::ZombieHorse => "zombie_horse",
+            Voice::Donkey => "donkey",
+            Voice::Mule => "mule",
+            Voice::PiglinBrute => "piglin_brute",
+            Voice::Zoglin => "zoglin",
+            Voice::GlowSquid => "glow_squid",
+            Voice::ElderGuardian => "elder_guardian",
         }
     }
 }
@@ -441,6 +513,194 @@ pub fn render(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
         Voice::Silverfish => super::creatures::silverfish(call, rng),
         Voice::Turtle => super::creatures::turtle(call, rng, false),
         Voice::BabyTurtle => super::creatures::turtle(call, rng, true),
+        Voice::Husk => super::creatures::kin(
+            super::creatures::Kin {
+                base: Voice::Zombie,
+                rate: 0.88,
+                low: 3200.0,
+                high: 0.0,
+                layer: super::creatures::Layer::Sand,
+            },
+            call,
+            rng,
+        ),
+        Voice::Drowned => super::creatures::kin(
+            super::creatures::Kin {
+                base: Voice::Zombie,
+                rate: 0.95,
+                low: 1800.0,
+                high: 0.0,
+                layer: super::creatures::Layer::Water,
+            },
+            call,
+            rng,
+        ),
+        Voice::ZombieVillager => super::creatures::kin(
+            super::creatures::Kin {
+                base: Voice::Villager,
+                rate: 0.8,
+                low: 2600.0,
+                high: 0.0,
+                layer: super::creatures::Layer::None,
+            },
+            call,
+            rng,
+        ),
+        Voice::ZombifiedPiglin => super::creatures::kin(
+            super::creatures::Kin {
+                base: Voice::Piglin,
+                rate: 0.85,
+                low: 2400.0,
+                high: 0.0,
+                layer: super::creatures::Layer::Moss,
+            },
+            call,
+            rng,
+        ),
+        Voice::Stray => super::creatures::kin(
+            super::creatures::Kin {
+                base: Voice::Skeleton,
+                rate: 1.1,
+                low: 0.0,
+                high: 900.0,
+                layer: super::creatures::Layer::Frost,
+            },
+            call,
+            rng,
+        ),
+        Voice::Bogged => super::creatures::kin(
+            super::creatures::Kin {
+                base: Voice::Skeleton,
+                rate: 0.85,
+                low: 2500.0,
+                high: 0.0,
+                layer: super::creatures::Layer::Moss,
+            },
+            call,
+            rng,
+        ),
+        Voice::WitherSkeleton => super::creatures::kin(
+            super::creatures::Kin {
+                base: Voice::Skeleton,
+                rate: 0.7,
+                low: 3000.0,
+                high: 0.0,
+                layer: super::creatures::Layer::Hollow,
+            },
+            call,
+            rng,
+        ),
+        Voice::MagmaCube => super::creatures::kin(
+            super::creatures::Kin {
+                base: Voice::Slime,
+                rate: 0.8,
+                low: 0.0,
+                high: 0.0,
+                layer: super::creatures::Layer::Sizzle,
+            },
+            call,
+            rng,
+        ),
+        Voice::WanderingTrader => super::creatures::kin(
+            super::creatures::Kin {
+                base: Voice::Villager,
+                rate: 1.08,
+                low: 0.0,
+                high: 250.0,
+                layer: super::creatures::Layer::Hum,
+            },
+            call,
+            rng,
+        ),
+        Voice::SkeletonHorse => super::creatures::kin(
+            super::creatures::Kin {
+                base: Voice::Horse,
+                rate: 1.05,
+                low: 0.0,
+                high: 600.0,
+                layer: super::creatures::Layer::Hollow,
+            },
+            call,
+            rng,
+        ),
+        Voice::ZombieHorse => super::creatures::kin(
+            super::creatures::Kin {
+                base: Voice::Horse,
+                rate: 0.82,
+                low: 2200.0,
+                high: 0.0,
+                layer: super::creatures::Layer::Moss,
+            },
+            call,
+            rng,
+        ),
+        Voice::Donkey => super::creatures::kin(
+            super::creatures::Kin {
+                base: Voice::Horse,
+                rate: 0.9,
+                low: 3000.0,
+                high: 0.0,
+                layer: super::creatures::Layer::None,
+            },
+            call,
+            rng,
+        ),
+        Voice::Mule => super::creatures::kin(
+            super::creatures::Kin {
+                base: Voice::Horse,
+                rate: 0.95,
+                low: 2800.0,
+                high: 0.0,
+                layer: super::creatures::Layer::Hum,
+            },
+            call,
+            rng,
+        ),
+        Voice::PiglinBrute => super::creatures::kin(
+            super::creatures::Kin {
+                base: Voice::Piglin,
+                rate: 0.77,
+                low: 2800.0,
+                high: 0.0,
+                layer: super::creatures::Layer::None,
+            },
+            call,
+            rng,
+        ),
+        Voice::Zoglin => super::creatures::kin(
+            super::creatures::Kin {
+                base: Voice::Hoglin,
+                rate: 0.77,
+                low: 2600.0,
+                high: 0.0,
+                layer: super::creatures::Layer::Moss,
+            },
+            call,
+            rng,
+        ),
+        Voice::GlowSquid => super::creatures::kin(
+            super::creatures::Kin {
+                base: Voice::Squid,
+                rate: 1.12,
+                low: 0.0,
+                high: 0.0,
+                layer: super::creatures::Layer::Frost,
+            },
+            call,
+            rng,
+        ),
+        Voice::ElderGuardian => super::creatures::kin(
+            super::creatures::Kin {
+                base: Voice::Guardian,
+                rate: 0.75,
+                low: 2600.0,
+                high: 0.0,
+                layer: super::creatures::Layer::Hollow,
+            },
+            call,
+            rng,
+        ),
+
         Voice::Wolf | Voice::Fox | Voice::Parrot | Voice::Rabbit | Voice::Goat => animal_voice(voice, call, rng),
         Voice::Fish | Voice::Squid | Voice::Dolphin | Voice::Axolotl | Voice::Guardian | Voice::Cat => {
             aquatic(voice, call, rng)

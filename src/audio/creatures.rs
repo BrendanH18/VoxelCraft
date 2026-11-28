@@ -252,3 +252,124 @@ pub(super) fn turtle(call: Call, rng: &mut Rng, baby: bool) -> Vec<f32> {
     );
     dsp::finish(out, 0.45)
 }
+
+/// v1.0 final Track F4: the mobs whose Java events are their own but whose
+/// kin's voice was all they had. Each takes its kin's call recipe and makes
+/// it its own: transposed, filtered and layered with the mob's own
+/// texture (a husk's sand, a drowned's water, a stray's frost, a bogged's
+/// moss, a magma cube's sizzle, a skeleton horse's hollow bones).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(super) struct Kin {
+    pub base: super::voices::Voice,
+    /// Playback rate: above 1 is higher and shorter.
+    pub rate: f32,
+    /// Low-pass corner (Hz), or 0 for none.
+    pub low: f32,
+    /// High-pass corner (Hz), or 0 for none.
+    pub high: f32,
+    /// The texture layered over the call.
+    pub layer: Layer,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(super) enum Layer {
+    None,
+    /// Dry, fine grit.
+    Sand,
+    /// Wet bubbling.
+    Water,
+    /// A thin, glassy shimmer.
+    Frost,
+    /// A soft, damp rustle.
+    Moss,
+    /// A hot crackle.
+    Sizzle,
+    /// A low, hollow resonance.
+    Hollow,
+    /// A breathy hum.
+    Hum,
+}
+
+pub(super) fn kin(k: Kin, call: Call, rng: &mut Rng) -> Vec<f32> {
+    let src = super::voices::render(k.base, call, rng);
+    let len = ((src.len() as f32) / k.rate) as usize;
+    let mut out: Vec<f32> = (0..len)
+        .map(|i| {
+            let x = i as f32 * k.rate;
+            let j = x as usize;
+            let f = x - j as f32;
+            let a = src.get(j).copied().unwrap_or(0.0);
+            let b = src.get(j + 1).copied().unwrap_or(0.0);
+            a + (b - a) * f
+        })
+        .collect();
+    if k.low > 0.0 {
+        Biquad::lowpass(k.low, 0.7).run(&mut out);
+    }
+    if k.high > 0.0 {
+        Biquad::highpass(k.high, 0.7).run(&mut out);
+    }
+    let secs = out.len() as f32 / dsp::RATE;
+    let env = |t: f32| swell(t, 0.02, secs * 0.5, secs);
+    let layer = match k.layer {
+        Layer::None => None,
+        Layer::Sand => {
+            let mut l = crackle(rng, out.len(), (0.3, 1.0), |t| 2200.0 * env(t));
+            Biquad::highpass(3000.0, 0.7).run(&mut l);
+            Some((l, 0.25))
+        }
+        Layer::Water => {
+            let mut l = vec![0.0; out.len()];
+            let mut t = 0.0;
+            while t < secs {
+                let f = rng.range(300.0, 900.0);
+                add_mode(
+                    &mut l,
+                    samples(t),
+                    Mode { freq: f, amp: rng.range(0.3, 0.8) * env(t), tau: 0.02, glide: 1.6, glide_tau: 0.015 },
+                );
+                t += rng.range(0.03, 0.09);
+            }
+            Some((l, 0.35))
+        }
+        Layer::Frost => {
+            let mut l = noise(rng, out.len(), |t| env(t) * 0.5);
+            Biquad::bandpass(6500.0, 4.0).run(&mut l);
+            Some((l, 0.3))
+        }
+        Layer::Moss => {
+            let mut l = noise(rng, out.len(), |t| env(t) * 0.5);
+            Biquad::lowpass(1200.0, 0.7).run(&mut l);
+            Some((l, 0.25))
+        }
+        Layer::Sizzle => {
+            let mut l = crackle(rng, out.len(), (0.2, 0.8), |t| 3500.0 * env(t));
+            Biquad::highpass(4000.0, 0.7).run(&mut l);
+            Some((l, 0.3))
+        }
+        Layer::Hollow => {
+            let mut l = vec![0.0; out.len()];
+            add_mode(
+                &mut l,
+                0,
+                Mode { freq: rng.range(180.0, 220.0), amp: 0.6, tau: secs * 0.3, glide: 0.9, glide_tau: 0.2 },
+            );
+            Some((l, 0.3))
+        }
+        Layer::Hum => {
+            let f = rng.range(140.0, 170.0);
+            let l: Vec<f32> = (0..out.len())
+                .map(|i| {
+                    let t = i as f32 / dsp::RATE;
+                    (std::f32::consts::TAU * f * t).sin() * env(t)
+                })
+                .collect();
+            Some((l, 0.15))
+        }
+    };
+    if let Some((l, gain)) = layer {
+        let peak = out.iter().fold(0.0f32, |m, s| m.max(s.abs())).max(1e-6);
+        mix_into(&mut out, &l, gain * peak, 0);
+    }
+    dsp::finish(out, 0.5)
+}

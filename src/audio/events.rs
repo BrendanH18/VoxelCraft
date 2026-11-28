@@ -181,6 +181,7 @@ fn mob_event(v: Voice, c: Call) -> String {
         (Voice::Axolotl, Call::Ambient) => Some("entity.axolotl.idle_water"),
         (Voice::Bee, Call::Ambient) => Some("entity.bee.loop"),
         (Voice::Slime, Call::Ambient) => Some("entity.slime.squish"),
+        (Voice::MagmaCube, Call::Ambient) => Some("entity.magma_cube.squish"),
         (Voice::SulfurCube, Call::Ambient) => Some("entity.sulfur_cube.squish"),
         // The creeper's ambient voice stands in for its fuse hiss.
         (Voice::Creeper, Call::Ambient) => Some("entity.creeper.primed"),
