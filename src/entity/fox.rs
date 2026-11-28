@@ -81,6 +81,9 @@ pub(crate) enum Running {
     Melee { repath: i32, attack: i32 },
     /// `SleepGoal` (7).
     Sleep,
+    /// `FoxEatBerriesGoal` (10), a `MoveToBlockGoal(1.2, 12, 1)`: the bush
+    /// or vine, `tryTicks`, `maxStayTicks`, `ticksWaited`.
+    Berries { block: glam::IVec3, tries: i32, stay: i32, waited: i32 },
     /// `LeapAtTargetGoal` (10), until it lands.
     Leap,
     /// `FoxSearchForItemsGoal` (11).
@@ -96,7 +99,7 @@ impl Running {
             Running::Stalk => 5,
             Running::Pounce | Running::Shelter => 6,
             Running::Melee { .. } | Running::Sleep => 7,
-            Running::Leap => 10,
+            Running::Leap | Running::Berries { .. } => 10,
             Running::Items => 11,
             Running::Perch { .. } => 13,
         }
@@ -133,6 +136,8 @@ pub struct State {
     pub(crate) sleep_countdown: Option<i32>,
     /// `SeekShelterGoal.interval` (full updates).
     pub(crate) shelter_interval: Option<i32>,
+    /// `MoveToBlockGoal.nextStartTick` of `FoxEatBerriesGoal` (full updates).
+    pub(crate) berries_next: i32,
     /// The hiding place `SeekShelterGoal` walks to.
     pub(crate) shelter_at: Option<DVec3>,
     /// `MeleeAttackGoal.lastCanUseCheck` (game ticks of the fox).

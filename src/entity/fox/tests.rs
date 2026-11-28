@@ -174,3 +174,29 @@ fn the_crouch_and_interest_ease_as_java_ticks_them() {
     assert_eq!(s.crouch_amount, 0.0);
     assert!((s.crouch(0.5) - 2.5).abs() < 1e-6);
 }
+
+/// `FoxEatBerriesGoal`: a fox finds a ripe bush within 12 blocks, waits 40
+/// ticks beside it, takes a berry into its empty mouth and sets the bush
+/// back to age 1.
+#[test]
+fn foxes_eat_sweet_berries_from_ripe_bushes() {
+    use crate::{entity::EntityEvent, item::Item, world::overworld_blocks as ob};
+    let mut grid = Grid::flat(64);
+    let bush = IVec3::new(6, 64, 0);
+    grid.set(bush, ob::berry_bush(3));
+    let w = Field { grid, open: true };
+    let mut e = Entities::new(17);
+    fox(&mut e, DVec3::new(0.5, 64.0, 0.5));
+    let mut picked = false;
+    for _ in 0..2400 {
+        let events = e.update(0.05, &w, &ctx(0.0));
+        if events.iter().any(
+            |ev| matches!(ev, EntityEvent::AnimalBlock { cell, to, .. } if *cell == bush && *to == ob::berry_bush(1)),
+        ) {
+            picked = true;
+            break;
+        }
+    }
+    assert!(picked, "the fox never picked the bush");
+    assert_eq!(e.mobs[0].animal.as_ref().unwrap().mouth.map(|s| s.item), Some(Item::SWEET_BERRIES));
+}

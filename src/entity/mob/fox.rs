@@ -1,7 +1,8 @@
 //! v1.0 gap Track 2e: the fox's goals outside the shared table
 //! (`Fox.registerGoals`): `FaceplantGoal` (1), `StalkPreyGoal` (5),
 //! `FoxPounceGoal` and `SeekShelterGoal` (6), `FoxMeleeAttackGoal` and
-//! `SleepGoal` (7), `LeapAtTargetGoal` (10), `FoxSearchForItemsGoal` (11)
+//! `SleepGoal` (7), `FoxEatBerriesGoal` and `LeapAtTargetGoal` (10),
+//! `FoxSearchForItemsGoal` (11)
 //! and `PerchAndSearchGoal` (13), each holding `MOVE`, beside the table's
 //! panic (2), breeding (3), avoiding (4), following a parent (8) and
 //! strolling (11). A goal starts only over goals of a strictly worse
@@ -289,6 +290,20 @@ impl Mob {
                 }
                 (self.fox_can_sleep(world, ctx, rng) || asleep).then_some(Running::Sleep)
             }
+            Candidate::Berries => {
+                if asleep {
+                    return None;
+                }
+                // `MoveToBlockGoal.canUse`.
+                let s = self.fox.as_mut().unwrap();
+                if s.berries_next > 0 {
+                    s.berries_next -= 1;
+                    return None;
+                }
+                s.berries_next = selector::reduced(200 + rng.next_int(200) as i32);
+                let block = self.nearest_berries(world)?;
+                Some(Running::Berries { block, tries: 0, stay: 0, waited: 0 })
+            }
             Candidate::Leap => {
                 let t = target?;
                 let d = self.pos.distance_squared(t.pos);
@@ -363,6 +378,9 @@ impl Mob {
             Running::Melee { .. } => target.is_some(),
             Running::Sleep => self.fox_can_sleep(world, ctx, rng),
             Running::Leap => !self.on_ground,
+            Running::Berries { block, tries, stay, .. } => {
+                tries >= -stay && tries <= 1200 && world.block(block).is_some_and(ripe_berries)
+            }
             Running::Perch { looks, .. } => looks > 0,
             Running::Faceplant { .. } | Running::Pounce => true,
         }
@@ -434,6 +452,17 @@ impl Mob {
                     self.on_ground = false;
                 }
             }
+            Running::Berries { block, .. } => {
+                // `start`: no longer sitting; `moveMobToBlock`.
+                self.fox.as_mut().unwrap().sitting = false;
+                let stay = {
+                    let bound = rng.next_int(1200) + 1200;
+                    rng.next_int(bound) as i32 + 1200
+                };
+                let speed = self.goal_speed(1.2);
+                self.walk_to(world, block + IVec3::Y, 1, speed, false);
+                r = Running::Berries { block, tries: 0, stay, waited: 0 };
+            }
             Running::Items => {
                 if let Some(at) = self.fox.as_ref().unwrap().item_near {
                     let speed = self.goal_speed(1.2);
@@ -484,7 +513,9 @@ impl Mob {
                 self.fox_clear_states();
             }
             Running::Perch { .. } => self.fox.as_mut().unwrap().sitting = false,
-            Running::Melee { .. } | Running::Shelter | Running::Items => self.stop_navigation(),
+            Running::Melee { .. } | Running::Shelter | Running::Items | Running::Berries { .. } => {
+                self.stop_navigation()
+            }
             Running::Leap => {}
         }
     }
@@ -561,6 +592,29 @@ impl Mob {
                 (None, 0.0)
             }
             Running::Leap => (None, 0.0),
+            Running::Berries { block, tries, stay, waited } => {
+                // `FoxEatBerriesGoal.tick` and `MoveToBlockGoal.tick` (every tick).
+                let speed = self.goal_speed(1.2);
+                let above = block + IVec3::Y;
+                let reached = (above.as_dvec3() + 0.5).distance_squared(self.pos) < 4.0;
+                let mut waited = waited;
+                if reached {
+                    if waited >= 40 {
+                        self.eat_berries(world, block, rng, events);
+                    } else {
+                        waited += 1;
+                    }
+                }
+                let tries = if reached { tries - 1 } else { tries + 1 };
+                if !reached && tries % 100 == 0 {
+                    self.walk_to(world, above, 1, speed, false);
+                }
+                self.fox.as_mut().unwrap().running = Some(Running::Berries { block, tries, stay, waited });
+                if reached {
+                    return (None, 0.0);
+                }
+                (self.follow_path(world, speed, false), speed)
+            }
             Running::Perch { rel, look, looks } => {
                 if full {
                     let (mut rel, mut look, mut looks) = (rel, look - 1, looks);
@@ -631,6 +685,65 @@ impl Mob {
         }
     }
 
+    /// `MoveToBlockGoal.findNearestBlock` (search range 12, vertical 1):
+    /// rings outward from the fox, one block down, level, then two down.
+    fn nearest_berries<W: MobWorld + ?Sized>(&self, world: &W) -> Option<IVec3> {
+        let at = self.pos.floor().as_ivec3();
+        let next = |v: i32| if v > 0 { -v } else { 1 - v };
+        let mut k = 0;
+        while k <= 1 {
+            for l in 0..12 {
+                let mut m = 0;
+                while m <= l {
+                    let mut n = if m < l && m > -l { l } else { 0 };
+                    while n <= l {
+                        let p = at + IVec3::new(m, k - 1, n);
+                        if self.within_home(p) && world.block(p).is_some_and(ripe_berries) {
+                            return Some(p);
+                        }
+                        n = next(n);
+                    }
+                    m = next(m);
+                }
+            }
+            k = next(k);
+        }
+        None
+    }
+
+    /// `FoxEatBerriesGoal.onReachedTarget` (with `mobGriefing`): a ripe bush
+    /// gives one to three berries (one more at age 3), the first into an
+    /// empty mouth, and goes back to age 1; glow berries drop off the vine.
+    fn eat_berries<W: MobWorld + ?Sized>(
+        &mut self,
+        world: &W,
+        cell: IVec3,
+        rng: &mut Rng,
+        events: &mut Vec<EntityEvent>,
+    ) {
+        use crate::{inventory::Stack, item::Item, world::overworld_blocks as ob};
+        if !self.griefing {
+            return;
+        }
+        let Some(b) = world.block(cell) else { return };
+        let pos = cell.as_dvec3() + 0.5;
+        if let Some(age) = ob::berry_age(b).filter(|&a| a >= 2) {
+            let mut count = 1 + rng.next_int(2) as u8 + u8::from(age == 3);
+            if let Some(a) = self.animal.as_mut().filter(|a| a.mouth.is_none()) {
+                a.mouth = Some(Stack::new(Item::SWEET_BERRIES, 1));
+                a.mouth_time = 0.0;
+                count -= 1;
+            }
+            if count > 0 {
+                events.push(EntityEvent::DropEquipment { stack: Stack::new(Item::SWEET_BERRIES, count), pos });
+            }
+            events.push(EntityEvent::AnimalBlock { cell, from: b, to: ob::berry_bush(1) });
+        } else if glow_berries(b) {
+            events.push(EntityEvent::DropEquipment { stack: Stack::new(Item::GLOW_BERRIES, 1), pos });
+            events.push(EntityEvent::AnimalBlock { cell, from: b, to: Block(b.0 - 1) });
+        }
+    }
+
     /// `doHurtTarget` with the fox's 2 attack damage.
     fn fox_bite(&mut self, t: Prey, events: &mut Vec<EntityEvent>) {
         let flat = (t.pos - self.pos).with_y(0.0);
@@ -643,6 +756,18 @@ impl Mob {
             melee: true,
         });
     }
+}
+
+/// `CaveVines.hasGlowBerries`: the two cave vine states with berries.
+fn glow_berries(b: Block) -> bool {
+    use crate::world::overworld_blocks as ob;
+    b == ob::CAVE_VINES_LIT || b == ob::CAVE_VINES_PLANT_LIT
+}
+
+/// `FoxEatBerriesGoal.isValidTarget`: a sweet berry bush of age 2 or more,
+/// or a cave vine with glow berries.
+fn ripe_berries(b: Block) -> bool {
+    crate::world::overworld_blocks::berry_age(b).is_some_and(|a| a >= 2) || glow_berries(b)
 }
 
 /// `PerchAndSearchGoal.resetLook`: a random direction and
@@ -661,6 +786,7 @@ enum Candidate {
     Shelter,
     Melee,
     Sleep,
+    Berries,
     Leap,
     Items,
     Perch,
@@ -672,6 +798,7 @@ const CANDIDATES: &[(u8, Candidate)] = &[
     (6, Candidate::Shelter),
     (7, Candidate::Melee),
     (7, Candidate::Sleep),
+    (10, Candidate::Berries),
     (10, Candidate::Leap),
     (11, Candidate::Items),
     (13, Candidate::Perch),
