@@ -681,7 +681,7 @@ impl super::Entities {
     /// v1.0 gap Track 8c: a scripted scene's arrow or trident
     /// (`--projectile`), stuck in the top of the block at `cell` slanting
     /// down along +X, burning (Flame's 100 seconds) with `fire`. Stuck, an
-    /// `AbstractArrow`'s fire doesn't burn down.
+    /// `AbstractArrow`'s fire doesn't burn down. Neither despawns.
     pub fn stick_scripted_projectile(&mut self, trident: bool, cell: glam::IVec3, fire: bool) {
         let dir = DVec3::new(1.0, -1.0, 0.0).normalize();
         let pos = cell.as_dvec3() + DVec3::new(0.5, 0.98, 0.5);
@@ -692,6 +692,9 @@ impl super::Entities {
         }
         let mut a = Arrow::shot(pos, dir, 0.0, false);
         (a.pos, a.previous_pos, a.vel, a.stuck, a.fire) = (pos, pos, DVec3::ZERO, true, fire);
+        // Software captures take minutes: the minute in the ground an arrow
+        // gets before it goes starts long after the screenshot.
+        a.age = -1.0e6;
         a.rot = Some(rotation_of(dir));
         self.arrows.push(a);
     }

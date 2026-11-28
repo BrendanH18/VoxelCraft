@@ -62,6 +62,9 @@ pub struct Trident {
     pub in_ground: bool,
     in_ground_time: u32,
     life: u32,
+    /// v1.0 gap Track 8c: a scripted scene's trident ([`Trident::stuck`]),
+    /// which never despawns. Not saved.
+    pinned: bool,
     pub shake: u8,
     dealt_damage: bool,
     /// Returning with Loyalty: flies through blocks toward its owner.
@@ -109,6 +112,7 @@ impl Trident {
             in_ground: false,
             in_ground_time: 0,
             life: 0,
+            pinned: false,
             shake: 0,
             dealt_damage: false,
             no_physics: false,
@@ -123,12 +127,14 @@ impl Trident {
     }
 
     /// v1.0 gap Track 8c: a scripted scene's trident (`--projectile`), stuck
-    /// in the ground at `pos` pointing along `dir`, with `fire` ticks of fire.
+    /// in the ground at `pos` pointing along `dir`, with `fire` ticks of
+    /// fire, which never despawns (software captures take minutes).
     pub fn stuck(pos: DVec3, dir: DVec3, fire: u16) -> Self {
         let mut t = Self::new(Stack::new(crate::weapons::TRIDENT, 1), pos, dir, None, Pickup::Disallowed);
         t.in_ground = true;
         t.vel = DVec3::ZERO;
         t.fire = fire;
+        t.pinned = true;
         t
     }
 
@@ -284,7 +290,7 @@ impl Trident {
                     f64::from(rng.next_f32() * 0.2),
                 );
                 self.life = 0;
-            } else if (self.pickup != Pickup::Allowed || loyalty == 0) && {
+            } else if (self.pickup != Pickup::Allowed || loyalty == 0) && !self.pinned && {
                 self.life += 1;
                 self.life >= tr::DESPAWN_TICKS
             } {
