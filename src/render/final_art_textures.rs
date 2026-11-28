@@ -1999,8 +1999,9 @@ mod tests {
         assert!(layers.iter().all(|&l| (l as u32) < tex::COUNT), "a layer past the block array");
         // Only gap Track 7 (its potted bamboo leaf, 4066), gap track 6b
         // (the item models' plant layers, 4080-4083) and gap track 6d (the
-        // in-hand models' layers, 4084-4085) have grown the array since.
-        assert_eq!(tex::COUNT, 4086, "the block array grew");
+        // in-hand models' layers, 4084-4085) and gap track 6f (the
+        // hopper's top and inside, 4086-4087) have grown the array since.
+        assert_eq!(tex::COUNT, 4088, "the block array grew");
         for &l in &layers {
             tile(l);
         }

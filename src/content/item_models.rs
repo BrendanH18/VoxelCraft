@@ -394,7 +394,14 @@ pub const DRIPLEAF_STEM: u16 = TEX + 3;
 /// down column 0, the base at (2, 0), the spikes at (6, 0)).
 pub const SPYGLASS_MODEL: u16 = TEX + 4;
 pub const TRIDENT_MODEL: u16 = TEX + 5;
-pub const TEX_END: u16 = TEX + 6;
+/// v1.0 gap track 6f: the hopper's `#top` (the rim's top, a ring two
+/// texels wide) and `#inside` (the plate inside the rim and the funnel's
+/// and spout's undersides) textures, which Java's `hopper` model gives
+/// faces the game drew with the outside texture. Not item art, but Track
+/// 6's last two layers live here with the rest.
+pub const HOPPER_TOP: u16 = TEX + 6;
+pub const HOPPER_INSIDE: u16 = TEX + 7;
+pub const TEX_END: u16 = TEX + 8;
 
 /// Original 16 × 16 art for [`TEX`]'s layers: light from the top left as
 /// the game's plants are.
@@ -492,6 +499,35 @@ pub fn pixel(layer: u16, x: usize, y: usize) -> [u8; 4] {
                 (6, 0) => [168, 236, 222],
                 (6, 1..=3) => [110, 200, 186],
                 _ => return [0; 4],
+            };
+            rgba(shade(c, grain))
+        }
+        HOPPER_TOP => {
+            // The rim's top: a ring two texels wide in the hopper's
+            // outside grey, lit on its outer edge and darker on the inner
+            // one; the middle (no face of the model shows it) the inside's
+            // dark grey.
+            let ring = !(2..=13).contains(&x) || !(2..=13).contains(&y);
+            let c = if !ring {
+                [36, 38, 39]
+            } else if x == 0 || y == 0 || x == 15 || y == 15 {
+                [88, 92, 93]
+            } else {
+                [66, 69, 70]
+            };
+            rgba(shade(c, grain))
+        }
+        HOPPER_INSIDE => {
+            // The plate inside the rim and the funnel's underside: dark
+            // iron in four panels with lighter seams and a rivet in each.
+            let seam = x.is_multiple_of(8) || y.is_multiple_of(8);
+            let rivet = x % 8 == 3 && y % 8 == 3;
+            let c = if rivet {
+                [70, 73, 74]
+            } else if seam {
+                [52, 55, 56]
+            } else {
+                [40, 42, 43]
             };
             rgba(shade(c, grain))
         }

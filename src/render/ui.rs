@@ -469,7 +469,14 @@ pub fn block_item_quads(block: Block) -> Vec<voxelcraft::world::colour_blocks::b
             } else {
                 [corner(false, false), corner(false, true), corner(true, true), corner(true, false)]
             };
-            let uv = c.map(|p| voxelcraft::mesh::face_uv(face, p.to_array()));
+            // v1.0 gap track 6f: trapdoors' rims take the jar's item UVs.
+            let uv = voxelcraft::mesh::item_face_uvs(
+                block,
+                face,
+                b.min,
+                b.max,
+                c.map(|p| voxelcraft::mesh::face_uv(face, p.to_array())),
+            );
             let mut normal = Vec3::ZERO;
             normal[d] = if positive { 1.0 } else { -1.0 };
             out.push(voxelcraft::world::colour_blocks::banner::Quad {
