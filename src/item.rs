@@ -2664,12 +2664,24 @@ mod tests {
 
     #[test]
     fn icon_layers_fit_the_texture_array() {
+        // v1.0 gap track 6b: the oak door (the one plain item among the block
+        // items drawn as sprites) shows its new sprite, after the open
+        // bundles; its old icon keeps its slot in the array.
+        let door = crate::content::block_item_sprites::index(Item::OAK_DOOR).unwrap();
+        assert_eq!(Item::OAK_DOOR.icon_layer(), Some(tex::item_layer(block_item_icon_base() + door)));
+        let layer = |i: Item| {
+            if crate::content::block_item_sprites::index(i).is_some() {
+                sprite_index(i).map(tex::item_layer)
+            } else {
+                i.icon_layer()
+            }
+        };
         // Maps and v0.16 Track A's items draw their own texture layers.
         // So does v0.16 Track G's End crystal.
         for i in Item::all_items().filter(|i| {
             !i.is_map() && !crate::content::chorus::is_item(*i) && *i != crate::entity::crystal::END_CRYSTAL
         }) {
-            let index = tex::item_index(i.icon_layer().unwrap()).unwrap();
+            let index = tex::item_index(layer(i).unwrap()).unwrap();
             assert!((index as u32) < icon_count());
 
             assert_eq!(sprite_for_layer(index), Some(i.info().sprite));
@@ -2679,7 +2691,7 @@ mod tests {
             .filter(|i| {
                 !i.is_map() && !crate::content::chorus::is_item(*i) && *i != crate::entity::crystal::END_CRYSTAL
             })
-            .map(|i| i.icon_layer().unwrap())
+            .map(|i| layer(i).unwrap())
             .collect();
         assert_eq!(layers.len() as u32, icon_count());
         assert_eq!(Item::SUSPICIOUS_STEW.icon_layer(), Item::MUSHROOM_STEW.icon_layer());

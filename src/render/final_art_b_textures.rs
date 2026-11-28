@@ -767,8 +767,9 @@ mod tests {
         let first: std::collections::BTreeSet<u16> = super::super::layers().into_iter().collect();
         assert!(layers.iter().all(|l| !first.contains(l)), "a layer Track 10 already draws");
         assert!(layers.iter().all(|&l| (l as u32) < crate::world::block::tex::COUNT), "a layer past the block array");
-        // Only gap Track 7 has grown the array since: its potted bamboo leaf, 4066.
-        assert_eq!(crate::world::block::tex::COUNT, 4067, "the block array grew");
+        // Only gap Track 7 (its potted bamboo leaf, 4066) and gap track 6b
+        // (the item models' plant layers, 4080-4083) have grown the array since.
+        assert_eq!(crate::world::block::tex::COUNT, 4084, "the block array grew");
         for &l in &layers {
             tile(l);
         }

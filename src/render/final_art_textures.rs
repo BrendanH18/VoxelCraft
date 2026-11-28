@@ -1997,8 +1997,9 @@ mod tests {
         let unique: std::collections::BTreeSet<u16> = layers.iter().copied().collect();
         assert_eq!(unique.len(), layers.len(), "a layer is listed twice");
         assert!(layers.iter().all(|&l| (l as u32) < tex::COUNT), "a layer past the block array");
-        // Only gap Track 7 has grown the array since: its potted bamboo leaf, 4066.
-        assert_eq!(tex::COUNT, 4067, "the block array grew");
+        // Only gap Track 7 (its potted bamboo leaf, 4066) and gap track 6b
+        // (the item models' plant layers, 4080-4083) have grown the array since.
+        assert_eq!(tex::COUNT, 4084, "the block array grew");
         for &l in &layers {
             tile(l);
         }
