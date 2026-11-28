@@ -625,7 +625,15 @@ once it has stood more than 32 blocks from everyone for 30 seconds; hostile mobs
 chase the nearest survival player. Every mob burns
 in lava. Player hits deal damage based on the held item, with knockback, at most
 every 0.5 s: a fist deals 1, and swords deal 4–7 depending on their tier.
-Hostile mobs ignore creative players.
+Hostile mobs ignore creative players. A mob, like a player, shrugs off a
+hit no harder than the one it took within the last half second, and a
+harder one lands only by what it adds, with no knockback; arrows bounce
+off a mob or player that shrugs them off, and off creative players
+([gap Track 8d](verification/2026-11-28-v1.0-gap-track-08d-combat-fire.md)).
+Burning mobs and players are drawn in Java's flame, and snowballs, eggs,
+pearls, potions, rockets and fishing hooks catch fire in fire or lava
+and then light candles and campfires and prime TNT they hit, as burning
+arrows do.
 
 Ender pearls (stack of 16) are thrown with **right click**, at most once a
 second (a pale veil drains from the hotbar slot): they fly like Java's

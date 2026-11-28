@@ -58,6 +58,12 @@ impl Fireball {
         self.large
     }
 
+    /// v1.0 gap Track 8d: the box (`EntityTypes`): a ghast's fireball is
+    /// 1 block square, a blaze's 0.3125.
+    pub fn size(&self) -> f64 {
+        if self.large { 1.0 } else { 0.3125 }
+    }
+
     /// Sends a ghast fireball back along the puncher's look direction.
     pub fn deflect(&mut self, look: DVec3) {
         let dir = look.normalize_or(DVec3::X);
@@ -89,12 +95,27 @@ impl Fireball {
         for _ in 0..steps {
             let next = self.pos + delta / steps as f64;
             if world.block(next.floor().as_ivec3()).is_some_and(|b| b.is_solid()) {
+                // v1.0 gap Track 8d: `Projectile.onHitBlock`'s
+                // `onProjectileHit` first; a fireball is always on fire
+                // (`AbstractHurtingProjectile.shouldBurn`), so it lights a
+                // candle or campfire or primes TNT.
+                let cell = next.floor().as_ivec3();
+                events.push(super::projectile::block_hit(cell, self.pos, true, !self.deflected));
                 self.impact(None, events);
                 return false;
             }
             self.pos = next;
             if let Some(hit) = ctx.players.iter().find(|t| t.targetable && t.contains(next)) {
                 self.impact(Some(hit), events);
+                return false;
+            }
+            // v1.0 gap Track 8d: a creative player is hit too and refuses it
+            // (`SmallFireball.onHitEntity` puts their fire back); the
+            // fireball is spent all the same, and a ghast's bursts there.
+            if ctx.players.iter().any(|t| t.invulnerable && t.alive && !t.spectator && t.contains(next)) {
+                if self.large {
+                    self.impact(None, events);
+                }
                 return false;
             }
             // v0.17 Track D1: a burning fireball hits vehicles too. A blaze's
@@ -219,6 +240,27 @@ mod tests {
         assert!(events.is_empty());
     }
 
+    /// v1.0 gap Track 8d: a creative player (`abilities.invulnerable`) is
+    /// hit and refuses it: a blaze's fireball is spent with no damage, fire
+    /// or burning block, and a ghast's bursts there.
+    #[test]
+    fn fireballs_are_spent_on_creative_players() {
+        let world = Grid::flat(0);
+        let creative = Target { invulnerable: true, ..Target::new(PlayerId(2), DVec3::new(20.5, 10.0, 0.5), false) };
+        for large in [false, true] {
+            let from = DVec3::new(0.5, 11.0, 0.5);
+            let mut f = if large { Fireball::large(from, DVec3::X) } else { Fireball::new(from, DVec3::X) };
+            let mut events = Vec::new();
+            while f.update(0.05, &world, &ctx(vec![creative]), &[], &[], &Default::default(), &mut events) {}
+            assert!(f.pos.x < 21.0, "stopped at the player");
+            if large {
+                assert!(matches!(events.as_slice(), [EntityEvent::Explosion { .. }]), "{events:?}");
+            } else {
+                assert!(events.is_empty(), "{events:?}");
+            }
+        }
+    }
+
     #[test]
     fn burning_fireballs_hit_carts() {
         let world = Grid::flat(0);
@@ -255,7 +297,9 @@ mod tests {
         let mut f = Fireball::new(DVec3::new(0.5, 12.5, 0.5), DVec3::new(1.0, -1.0, 0.0));
         let mut events = Vec::new();
         while f.update(0.05, &world, &ctx(vec![]), &[], &[], &Default::default(), &mut events) {}
-        let Some(EntityEvent::IgniteBlock { cell }) = events.first().copied() else { panic!("{events:?}") };
+        // v1.0 gap Track 8d: `onProjectileHit` (the block hit) comes first.
+        assert!(matches!(events.first(), Some(EntityEvent::ProjectileBlockHit { burning: true, .. })), "{events:?}");
+        let Some(EntityEvent::IgniteBlock { cell }) = events.get(1).copied() else { panic!("{events:?}") };
         assert_eq!(cell.y, 10, "the air cell above the floor");
         assert!(cell.x >= 2 && cell.x <= 3, "{cell}");
     }

@@ -52,6 +52,12 @@ pub enum Kind {
 }
 
 impl Kind {
+    /// v1.0 gap Track 8d: the box (`EntityTypes`): 0.25 square, a wind
+    /// charge's 0.3125.
+    pub fn size(self) -> f64 {
+        if self.is_wind() { 0.3125 } else { 0.25 }
+    }
+
     pub fn is_wind(self) -> bool {
         matches!(self, Kind::WindCharge | Kind::BreezeWindCharge)
     }
@@ -164,6 +170,12 @@ pub struct Thrown {
     /// (mob uids, players as `u32::MAX - id`), standing in for their hurt
     /// cooldown (`invulnerableTime`), which refuses the same spit's 1 again.
     spat_on: [Option<u32>; 4],
+    /// v1.0 gap Track 8d: `remainingFireTicks`. Every kind but llama spit
+    /// applies block effects (`ThrowableProjectile.tick`,
+    /// `AbstractHurtingProjectile.tick`), so fire and lava set it alight,
+    /// and water and rain put it out; a burning one is drawn with Java's
+    /// flame and lights what its block hit lights. Not saved.
+    fire: u16,
 }
 
 impl Thrown {
@@ -179,6 +191,7 @@ impl Thrown {
             age: 0.0,
             origin: pos,
             spat_on: [None; 4],
+            fire: 0,
         }
     }
 
@@ -199,6 +212,7 @@ impl Thrown {
             age: 0.0,
             origin: from,
             spat_on: [None; 4],
+            fire: 0,
         }
     }
 
@@ -223,6 +237,7 @@ impl Thrown {
             age: 0.0,
             origin: from,
             spat_on: [None; 4],
+            fire: 0,
         }
     }
 
@@ -244,6 +259,7 @@ impl Thrown {
                 age: 0.0,
                 origin: pos,
                 spat_on: [None; 4],
+                fire: 0,
             };
         }
         let mut wobble = || rng.range(-0.017, 0.017) as f64;
@@ -259,6 +275,7 @@ impl Thrown {
             age: 0.0,
             origin: pos,
             spat_on: [None; 4],
+            fire: 0,
         }
     }
 
@@ -276,6 +293,7 @@ impl Thrown {
             age: 0.0,
             origin: pos,
             spat_on: [None; 4],
+            fire: 0,
         }
     }
 
@@ -284,8 +302,18 @@ impl Thrown {
         self.vel
     }
 
+    /// v1.0 gap Track 8d: on fire (`isOnFire`).
+    pub fn burning(&self) -> bool {
+        self.fire > 0
+    }
+
+    /// v1.0 gap Track 8d: a LAN client's copy burns as the host says.
+    pub fn set_burning(&mut self, burning: bool) {
+        self.fire = if burning { self.fire.max(1) } else { 0 };
+    }
+
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn update<W: BlockSource + ?Sized>(
+    pub(super) fn update<W: super::MobWorld + ?Sized>(
         &mut self,
         dt: f64,
         world: &W,
@@ -316,14 +344,33 @@ impl Thrown {
             self.vel.y -= self.kind.gravity() * 400.0 * dt;
         }
         let delta = self.vel * dt;
+        // v1.0 gap Track 8d: `applyEffectsFromBlocks` along the move, then
+        // `baseTick` burns it down a tick.
+        if self.kind != Kind::LlamaSpit {
+            let size = self.kind.size();
+            super::projectile::tick_fire(&mut self.fire, world, self.pos, self.pos + delta, size / 2.0, size);
+        }
         let steps = (delta.length() / STEP).ceil().max(1.0) as u32;
         // v1.0 gap Track 8: the End crystal this spit broke this tick.
         let mut spat = None;
         for _ in 0..steps {
             let next = self.pos + delta / steps as f64;
             if world.block(next.floor().as_ivec3()).is_some_and(|b| b.is_solid()) {
+                // v1.0 gap Track 8d: `Projectile.onHitBlock`'s
+                // `onProjectileHit` (a burning one lights candles and
+                // campfires and primes TNT).
+                let (at, normal) = face_hit(world, self.pos, next);
+                if self.kind != Kind::LlamaSpit {
+                    events.push(EntityEvent::ProjectileBlockHit {
+                        cell: next.floor().as_ivec3(),
+                        pos: at,
+                        normal: normal.as_ivec3(),
+                        arrow: false,
+                        burning: self.burning(),
+                        mob_owned: self.shooter.is_some(),
+                    });
+                }
                 if self.kind == Kind::ExperienceBottle {
-                    let (at, normal) = face_hit(world, self.pos, next);
                     self.pos = at;
                     self.bottle_burst(at, normal, rng, events);
                     return false;
@@ -955,5 +1002,42 @@ mod tests {
         // Straight down: x and z stay 0, yd = -sin(90 - 20 degrees).
         let h = heading_from_rotation(DVec3::NEG_Y, -20.0);
         assert!(h.x.abs() < 1e-12 && h.z.abs() < 1e-12 && (h.y + 70f64.to_radians().sin()).abs() < 1e-9, "{h}");
+    }
+
+    /// v1.0 gap Track 8d: a snowball applies block effects
+    /// (`ThrowableProjectile.tick`): through lava it catches fire, and its
+    /// block hit (`onProjectileHit`) carries that, so the TNT it hits is
+    /// primed; water puts it out.
+    #[test]
+    fn a_snowball_through_lava_burns_and_lights_what_it_hits() {
+        use crate::world::block::Block;
+        for (through, lit) in [(Block::LAVA, true), (Block::FIRE, true), (Block::WATER, false), (Block::AIR, false)] {
+            let mut world = Grid::flat(0);
+            world.set(glam::IVec3::new(2, 1, 0), through);
+            world.set(glam::IVec3::new(6, 1, 0), Block::TNT);
+            let mut rng = Rng::new(1);
+            let mut t = Thrown::launch(
+                Kind::Snowball,
+                PlayerId::HOST,
+                DVec3::new(0.5, 1.6, 0.5),
+                DVec3::X,
+                DVec3::ZERO,
+                &mut rng,
+            );
+            if through == Block::WATER {
+                t.fire = 100;
+            }
+            let (index, mut events) = (super::super::mob_index::MobIndex::default(), Vec::new());
+            for _ in 0..10 {
+                if !t.update(0.05, &world, &mut [], &index, &[], &Default::default(), &mut rng, &mut events) {
+                    break;
+                }
+            }
+            let hit = events.iter().find_map(|e| match e {
+                EntityEvent::ProjectileBlockHit { cell, burning, .. } => Some((*cell, *burning)),
+                _ => None,
+            });
+            assert_eq!(hit, Some((glam::IVec3::new(6, 1, 0), lit)), "through {through:?}");
+        }
     }
 }

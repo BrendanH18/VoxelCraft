@@ -432,6 +432,11 @@ pub enum ExplosionSource {
 }
 
 impl ExplosionSource {
+    /// Classifies a blast by its cause: TNT's, or else by the death message.
+    pub fn of(cause: crate::simulation::damage::Cause) -> Self {
+        if cause.tnt { Self::Tnt } else { Self::of_cause(cause.text) }
+    }
+
     /// Classifies a blast by the death message it carries.
     pub fn of_cause(cause: &str) -> Self {
         if cause.contains("TNT") {
@@ -978,6 +983,8 @@ mod tests {
     fn explosions_choose_block_interaction_and_decay_like_server_level_explode() {
         let rules = GameRules::default();
         let blast = |rules: &GameRules, cause: &str| rules.explosion(ExplosionSource::of_cause(cause));
+        // v1.0 gap Track 8d: TNT's message is "blew up"; its cause says it's TNT.
+        let tnt = |rules: &GameRules| rules.explosion(ExplosionSource::of(crate::simulation::damage::Cause::TNT));
         // Java defaults: mobs and blocks decay their drops, TNT does not.
         assert_eq!(
             blast(&rules, "was blown up by a creeper"),
@@ -987,7 +994,7 @@ mod tests {
             blast(&rules, "was fireballed by a ghast"),
             ExplosionRules { destroys_blocks: true, drop_decay: true }
         );
-        assert_eq!(blast(&rules, "was blown up by TNT"), ExplosionRules { destroys_blocks: true, drop_decay: false });
+        assert_eq!(tnt(&rules), ExplosionRules { destroys_blocks: true, drop_decay: false });
         assert_eq!(
             blast(&rules, "was killed by [Intentional Game Design]"),
             ExplosionRules { destroys_blocks: true, drop_decay: true }
@@ -1000,7 +1007,7 @@ mod tests {
         rules.set("mob_griefing", "false").unwrap();
         assert!(!blast(&rules, "was blown up by a creeper").destroys_blocks);
         assert!(!blast(&rules, "was fireballed by a ghast").destroys_blocks);
-        assert!(blast(&rules, "was blown up by TNT").destroys_blocks, "TNT ignores mob_griefing");
+        assert!(tnt(&rules).destroys_blocks, "TNT ignores mob_griefing");
         assert!(blast(&rules, "was killed by [Intentional Game Design]").destroys_blocks);
         for (rule, cause) in [
             ("mob_explosion_drop_decay", "was blown up by a creeper"),
@@ -1010,7 +1017,7 @@ mod tests {
             assert!(!blast(&rules, cause).drop_decay, "{rule}");
         }
         rules.set("tnt_explosion_drop_decay", "true").unwrap();
-        assert!(blast(&rules, "was blown up by TNT").drop_decay);
+        assert!(tnt(&rules).drop_decay);
     }
 
     #[test]

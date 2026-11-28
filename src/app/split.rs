@@ -453,7 +453,7 @@ impl Game {
             }
             let shadows = self.settings.entity_shadows;
             let verts = self.mobs.entities.shadows(&self.world, camera, scene.alpha, &casters, shadows);
-            super::push_avatars(&self.world, &others, camera, fog_end, scene.time, verts);
+            super::push_avatars(&self.world, &others, (camera, forward), fog_end, scene.time, verts);
             crate::render::signs::text(
                 &mut self.mobs.sign_text,
                 crate::render::signs::FONT_VERSION,
@@ -473,16 +473,19 @@ impl Game {
                         self.world.block_light(eye.floor().as_ivec3()) as f32 / 15.0,
                     ),
                     scene.time,
-                    Self::stamp_look(
-                        host_dial.at(a.player.yaw, a.player.pos.x, a.player.pos.z),
-                        bot.hand.appearance(
-                            &a.vitals,
-                            pad.map_or(a.eating(), |p| p.1),
-                            scene.alpha,
-                            a.inventory.armor,
-                            a.inventory.get(bot.agent.selected),
-                        ),
-                    ),
+                    crate::entity::model::PlayerAppearance {
+                        view: forward,
+                        ..Self::stamp_look(
+                            host_dial.at(a.player.yaw, a.player.pos.x, a.player.pos.z),
+                            bot.hand.appearance(
+                                &a.vitals,
+                                pad.map_or(a.eating(), |p| p.1),
+                                scene.alpha,
+                                a.inventory.armor,
+                                a.inventory.get(bot.agent.selected),
+                            ),
+                        )
+                    },
                     verts,
                 );
             }

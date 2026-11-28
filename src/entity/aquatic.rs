@@ -93,7 +93,7 @@ fn wet<W: physics::BlockSource + ?Sized>(w: &W, p: DVec3) -> bool {
     w.block(p.floor().as_ivec3()).is_some_and(Block::holds_water)
 }
 
-pub(super) fn environment<W: MobWorld + ?Sized>(m: &mut Mob, dt: f32, w: &W) {
+pub(super) fn environment<W: MobWorld + ?Sized>(m: &mut Mob, dt: f32, w: &W, rng: &mut super::Rng) {
     if !m.alive() {
         return;
     }
@@ -126,8 +126,10 @@ pub(super) fn environment<W: MobWorld + ?Sized>(m: &mut Mob, dt: f32, w: &W) {
     if suffocating {
         a.damage_tick += dt;
         if a.damage_tick >= 1.0 {
-            m.health -= m.effects.absorb(2.0 * m.effects.resistance_factor());
             a.damage_tick %= 1.0;
+            // v1.0 gap Track 8d: `hurtServer(dryOut, 2)`, through the hurt
+            // cooldown and the rest of `hurtServer`.
+            m.damage_from(2.0, crate::simulation::damage::Cause::DRY_OUT, rng);
         }
     } else {
         a.damage_tick = 0.0;
@@ -259,6 +261,9 @@ pub(super) fn upkeep<W: MobWorld + ?Sized>(
                         // window, which takes only what it adds over the
                         // first (`actuallyHurt(damage - lastHurt)`) and
                         // pushes nothing, or nothing at all if it adds none.
+                        // v1.0 gap Track 8d: the target's hurt cooldown
+                        // does that now; the second hit carries its whole
+                        // damage.
                         let magic = magic + if elder { 2.0 } else { 0.0 };
                         let away = (pos - m.pos).with_y(0.0).normalize_or_zero();
                         events.push(EntityEvent::MobHit {
@@ -272,7 +277,7 @@ pub(super) fn upkeep<W: MobWorld + ?Sized>(
                             events.push(EntityEvent::MobHit {
                                 target,
                                 attacker: m.uid,
-                                damage: physical - magic,
+                                damage: physical,
                                 knockback: DVec3::ZERO,
                                 // A guardian holds no weapon, so no Smite or
                                 // Bane applies.
@@ -1090,11 +1095,11 @@ mod tests {
     fn fish_suffocate_and_water_resets_the_air_timer() {
         let mut m = Mob::new(MobKind::Cod, DVec3::ZERO, 0.0);
         let dry = Grid::flat(-64);
-        environment(&mut m, 15.5, &dry);
+        environment(&mut m, 15.5, &dry, &mut super::super::Rng::new(1));
         assert_eq!(m.health, 1.0);
-        environment(&mut m, 1.0, &water());
+        environment(&mut m, 1.0, &water(), &mut super::super::Rng::new(1));
         assert_eq!(m.aquatic.as_ref().unwrap().dry, 0.0);
-        environment(&mut m, 14.0, &dry);
+        environment(&mut m, 14.0, &dry, &mut super::super::Rng::new(1));
         assert_eq!(m.health, 1.0);
     }
     #[test]
@@ -1372,13 +1377,15 @@ mod tests {
             Some(Stack::new(Item::armor(crate::item::ArmorPiece::Leggings, crate::item::ArmorMaterial::Diamond), 1)),
             Some(Stack::new(Item::armor(crate::item::ArmorPiece::Boots, crate::item::ArmorMaterial::Diamond), 1)),
         ];
+        // v1.0 gap Track 8d: the magic lands whole (no armor), then the
+        // attack inside the hurt cooldown by its excess, 5, through armor.
         let expected =
-            crate::simulation::survival::armor_reduce(6.0, a.inventory.armor_points(), a.inventory.armor_toughness())
+            crate::simulation::survival::armor_reduce(5.0, a.inventory.armor_points(), a.inventory.armor_toughness())
                 + 1.0;
         let taken = a.hurt_beam(6.0, 1.0, &mut e);
         assert!((taken - expected).abs() < 1e-5);
         let mut bare = crate::agent::Agent::new(DVec3::ZERO);
-        assert_eq!(bare.hurt_beam(6.0, 1.0, &mut e), 7.0);
+        assert_eq!(bare.hurt_beam(6.0, 1.0, &mut e), 6.0);
     }
 
     #[test]
@@ -1565,7 +1572,7 @@ mod tests {
             assert_eq!(hits.len(), 2, "{kind:?}: {hits:?}");
             assert_eq!((hits[0].0, hits[0].2), (magic, false), "{kind:?}");
             assert!(hits[0].1.x > 0.0, "pushed away");
-            assert_eq!((hits[1].0, hits[1].1, hits[1].2), (physical - magic, DVec3::ZERO, true), "{kind:?}");
+            assert_eq!((hits[1].0, hits[1].1, hits[1].2), (physical, DVec3::ZERO, true), "{kind:?}");
         }
     }
 
@@ -1587,7 +1594,7 @@ mod tests {
             let mut m = Mob::new(MobKind::Dolphin, DVec3::new(0.5, 8.85, 0.5), 0.0);
             m.baby = baby;
             m.age = if baby { -24000 } else { 0 };
-            environment(&mut m, 1.0, &w);
+            environment(&mut m, 1.0, &w, &mut super::super::Rng::new(1));
             let air = m.aquatic.as_ref().unwrap().air;
             assert_eq!(air < 240.0, under, "baby {baby}: {air}");
         }

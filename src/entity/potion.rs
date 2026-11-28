@@ -7,7 +7,6 @@
 use glam::DVec3;
 
 use super::{Ctx, EntityEvent, Mob, MobKind, PlayerId, Rng};
-use crate::physics::BlockSource;
 use crate::potion::Potion;
 use crate::simulation::effects::Effect;
 
@@ -37,6 +36,9 @@ pub struct ThrownPotion {
     pub previous_pos: DVec3,
     pub vel: DVec3,
     age: f32,
+    /// v1.0 gap Track 8d: `remainingFireTicks` (it applies block effects,
+    /// `ThrowableProjectile.tick`). Not saved.
+    fire: u16,
 }
 
 /// Aims `dir` twenty degrees higher, Java's throw offset for potions.
@@ -48,13 +50,23 @@ pub fn aim_up(dir: DVec3) -> DVec3 {
 }
 
 impl ThrownPotion {
+    /// v1.0 gap Track 8d: on fire (`isOnFire`).
+    pub fn burning(&self) -> bool {
+        self.fire > 0
+    }
+
+    /// v1.0 gap Track 8d: a LAN client's copy burns as the host says.
+    pub fn set_burning(&mut self, burning: bool) {
+        self.fire = if burning { self.fire.max(1) } else { 0 };
+    }
+
     /// A LAN client's copy: drawn only, never simulated.
     pub(super) fn replica(potion: Potion, pos: DVec3, previous_pos: DVec3) -> Self {
-        Self { potion, lingering: false, owner: None, pos, previous_pos, vel: DVec3::ZERO, age: 0.0 }
+        Self { potion, lingering: false, owner: None, pos, previous_pos, vel: DVec3::ZERO, age: 0.0, fire: 0 }
     }
 
     pub fn new(potion: Potion, owner: Option<PlayerId>, pos: DVec3, vel: DVec3) -> Self {
-        Self { potion, lingering: false, owner, pos, previous_pos: pos, vel, age: 0.0 }
+        Self { potion, lingering: false, owner, pos, previous_pos: pos, vel, age: 0.0, fire: 0 }
     }
 
     /// A player's throw from `eye` along their look direction `dir`, adding
@@ -65,7 +77,7 @@ impl ThrownPotion {
 
     /// Moves the potion; returns `false` once it has shattered.
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn update<W: BlockSource + ?Sized>(
+    pub(super) fn update<W: super::MobWorld + ?Sized>(
         &mut self,
         dt: f64,
         world: &W,
@@ -80,10 +92,13 @@ impl ThrownPotion {
         self.vel *= if water { 0.8f64 } else { 0.99 }.powf(dt * 20.0);
         self.vel.y -= GRAVITY * dt;
         let delta = self.vel * dt;
+        super::projectile::tick_fire(&mut self.fire, world, self.pos, self.pos + delta, 0.125, 0.25);
         let steps = (delta.length() / STEP).ceil().max(1.0) as u32;
         for _ in 0..steps {
             let next = self.pos + delta / steps as f64;
             if world.block(next.floor().as_ivec3()).is_some_and(|b| b.is_solid()) {
+                let cell = next.floor().as_ivec3();
+                events.push(super::projectile::block_hit(cell, self.pos, self.burning(), self.owner.is_none()));
                 self.pos = next;
                 self.shatter(ctx, mobs, boss, rng, events);
                 return false;
@@ -323,7 +338,9 @@ mod tests {
             n += 1;
             assert!(n < 200);
         }
-        assert!(matches!(events[0], EntityEvent::PotionSplashed { pos, .. } if (4.0..14.0).contains(&pos.x)));
+        // v1.0 gap Track 8d: `onProjectileHit` (the block hit) comes first.
+        assert!(matches!(events[0], EntityEvent::ProjectileBlockHit { burning: false, .. }));
+        assert!(matches!(events[1], EntityEvent::PotionSplashed { pos, .. } if (4.0..14.0).contains(&pos.x)));
     }
 
     #[test]

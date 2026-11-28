@@ -25,15 +25,17 @@ impl Entities {
         const MAX: usize = 128;
         json!({
             "pearls": self.pearls.iter().filter(|p| near(p.pos)).take(MAX).map(|p| pair(p.pos, p.previous_pos)).collect::<Vec<_>>(),
+            // v1.0 gap Track 8d: which of those burn (Java's flame on them).
+            "pearls_fire": self.pearls.iter().filter(|p| near(p.pos)).take(MAX).enumerate().filter(|(_, p)| p.burning()).map(|(i, _)| i).collect::<Vec<_>>(),
             "potion_clouds": self.clouds.iter().filter(|c|near(c.pos)).take(MAX).map(super::lingering::Cloud::save).collect::<Vec<_>>(),
             "potions": self.potions.iter().filter(|p| near(p.pos)).take(MAX)
-                .map(|p| json!({"at": pair(p.pos, p.previous_pos), "potion": p.potion.0,"lingering":p.lingering})).collect::<Vec<_>>(),
+                .map(|p| json!({"at": pair(p.pos, p.previous_pos), "potion": p.potion.0,"lingering":p.lingering,"fire":p.burning()})).collect::<Vec<_>>(),
             "tridents": self.tridents.iter().filter(|t| near(t.pos)).take(MAX)
-                .map(|t| json!({"at": pair(t.pos, t.previous_pos), "dir": t.dir.to_array(), "foil": t.foil(), "stuck": t.in_ground})).collect::<Vec<_>>(),
+                .map(|t| json!({"at": pair(t.pos, t.previous_pos), "dir": t.dir.to_array(), "foil": t.foil(), "stuck": t.in_ground, "fire": t.burning()})).collect::<Vec<_>>(),
             "thrown": self.thrown.iter().filter(|t| near(t.pos)).take(MAX)
-                .map(|t| json!({"at": pair(t.pos, t.previous_pos), "kind": t.kind as u8})).collect::<Vec<_>>(),
+                .map(|t| json!({"at": pair(t.pos, t.previous_pos), "kind": t.kind as u8, "fire": t.burning()})).collect::<Vec<_>>(),
             "bobbers": self.bobbers.iter().filter(|b| near(b.pos)).take(MAX)
-                .map(|b| json!({"at": pair(b.pos, b.previous_pos), "owner": b.owner.0, "biting": b.biting})).collect::<Vec<_>>(),
+                .map(|b| json!({"at": pair(b.pos, b.previous_pos), "owner": b.owner.0, "biting": b.biting, "fire": b.burning()})).collect::<Vec<_>>(),
             "eyes": self.eyes.iter().filter(|e| near(e.pos)).take(MAX).map(|e| pair(e.pos, e.previous_pos)).collect::<Vec<_>>(),
             "shulker_bullets": self.shulker_bullets.iter().filter(|b| near(b.pos)).take(MAX).map(|b| pair(b.pos, b.previous_pos)).collect::<Vec<_>>(),
             "fireballs": self.fireballs.iter().filter(|f| near(f.pos)).take(MAX)
@@ -76,6 +78,11 @@ impl Entities {
             })
             .collect();
         self.pearls = list("pearls").into_iter().filter_map(unpair).map(|(p, q)| Pearl::replica(p, q)).collect();
+        for i in list("pearls_fire").into_iter().filter_map(Value::as_u64) {
+            if let Some(p) = self.pearls.get_mut(i as usize) {
+                p.set_burning(true);
+            }
+        }
         self.replace_fireworks(&v["fireworks"]);
         self.clouds = list("potion_clouds").into_iter().filter_map(super::lingering::Cloud::load).collect();
         self.potions = list("potions")
@@ -87,6 +94,7 @@ impl Entities {
                 let potion = crate::potion::Potion(index as u8);
                 let mut thrown = ThrownPotion::replica(potion, p, q);
                 thrown.lingering = e["lingering"] == true;
+                thrown.set_burning(e["fire"] == true);
                 Some(thrown)
             })
             .collect();
@@ -99,6 +107,7 @@ impl Entities {
                 let dir = glam::Vec3::new(f(0)?, f(1)?, f(2)?);
                 let mut t = super::trident::Trident::replica(p, q, dir.normalize_or(glam::Vec3::Z), e["foil"] == true);
                 t.in_ground = e["stuck"] == true;
+                t.fire = if e["fire"] == true { 1 } else { 0 };
                 Some(t)
             })
             .collect();
@@ -116,7 +125,9 @@ impl Entities {
                     7 => thrown::Kind::BrownEgg,
                     _ => thrown::Kind::LlamaSpit,
                 };
-                Some(thrown::Thrown::replica(kind, p, q))
+                let mut t = thrown::Thrown::replica(kind, p, q);
+                t.set_burning(e["fire"] == true);
+                Some(t)
             })
             .collect();
         self.bobbers = list("bobbers")
@@ -124,7 +135,9 @@ impl Entities {
             .filter_map(|e| {
                 let (p, q) = unpair(&e["at"])?;
                 let owner = PlayerId(u32::try_from(e["owner"].as_u64()?).ok()?);
-                Some(Bobber::replica(owner, p, q, e["biting"] == true))
+                let mut b = Bobber::replica(owner, p, q, e["biting"] == true);
+                b.set_burning(e["fire"] == true);
+                Some(b)
             })
             .collect();
         self.eyes = list("eyes").into_iter().filter_map(unpair).map(|(p, q)| EnderEye::replica(p, q)).collect();

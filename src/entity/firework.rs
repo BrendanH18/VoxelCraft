@@ -80,9 +80,17 @@ pub struct Rocket {
     /// v1.0 Track 6: the mob that launched it (a celebrating villager),
     /// which it never hits (`Projectile.canHitEntity` skips the owner).
     pub shooter: Option<u32>,
+    /// v1.0 gap Track 8d: `remainingFireTicks` (it applies block effects,
+    /// `FireworkRocketEntity.tick`). Not saved.
+    pub(crate) fire: u16,
 }
 
 impl Rocket {
+    /// v1.0 gap Track 8d: on fire (`isOnFire`).
+    pub fn burning(&self) -> bool {
+        self.fire > 0
+    }
+
     /// `new FireworkRocketEntity(level, x, y, z, stack)`.
     pub fn new(pos: DVec3, stack: &Stack, owner: Option<PlayerId>, rng: &mut Rng) -> Self {
         let fireworks = stack.payload.filter(|p| matches!(p.get(), Payload::Fireworks(_)));
@@ -101,6 +109,7 @@ impl Rocket {
             shot_at_angle: false,
             horizontal_collision: false,
             shooter: None,
+            fire: 0,
         }
     }
 
@@ -143,6 +152,7 @@ impl Rocket {
             shot_at_angle: true,
             horizontal_collision: false,
             shooter: None,
+            fire: 0,
         }
     }
 
@@ -235,7 +245,7 @@ impl Entities {
 
     /// One tick of every rocket: flight, hits, the launch sound and trail,
     /// and bursts with their damage.
-    pub(super) fn update_fireworks<W: BlockSource + ?Sized>(
+    pub(super) fn update_fireworks<W: super::MobWorld + ?Sized>(
         &mut self,
         world: &W,
         ctx: &super::Ctx,
@@ -287,6 +297,22 @@ impl Entities {
                 let hit = crate::physics::move_box(world, &mut pos, &mut vel, movement, SHAPE);
                 let block_hit = hit.on_ground || hit.ceiling || hit.horizontal;
                 r.horizontal_collision = hit.horizontal;
+                // v1.0 gap Track 8d: `applyEffectsFromBlocks` along the
+                // move, then `baseTick`'s burn.
+                super::projectile::tick_fire(&mut r.fire, world, r.pos, pos, SHAPE.half_width, SHAPE.height);
+                // A burning rocket's `onHitBlock` lights a candle or
+                // campfire or primes TNT (`onProjectileHit`).
+                if block_hit && r.burning() {
+                    let toward = if hit.on_ground {
+                        -DVec3::Y * 0.05
+                    } else if hit.ceiling {
+                        DVec3::Y * (SHAPE.height + 0.05)
+                    } else {
+                        movement.with_y(0.0).normalize_or_zero() * (SHAPE.half_width + 0.05)
+                    };
+                    let cell = (pos + toward).floor().as_ivec3();
+                    events.push(super::projectile::block_hit(cell, pos, true, r.shooter.is_some()));
+                }
                 r.pos = pos;
                 // `setDeltaMovement(movement)`: the move doesn't slow it.
                 r.vel = movement;
@@ -412,12 +438,19 @@ impl Entities {
     }
 
     /// Rockets near `at` for a LAN client: position and previous position.
-    pub fn fireworks_near(&self, at: DVec3, radius: f64) -> Vec<[f64; 6]> {
+    pub fn fireworks_near(&self, at: DVec3, radius: f64) -> Vec<Vec<f64>> {
         self.fireworks
             .iter()
             .filter(|r| r.attached.is_none() && r.pos.distance_squared(at) < radius * radius)
             .take(256)
-            .map(|r| [r.pos.x, r.pos.y, r.pos.z, r.previous_pos.x, r.previous_pos.y, r.previous_pos.z])
+            .map(|r| {
+                // v1.0 gap Track 8d: a seventh number, 1, when it burns.
+                let mut v = vec![r.pos.x, r.pos.y, r.pos.z, r.previous_pos.x, r.previous_pos.y, r.previous_pos.z];
+                if r.burning() {
+                    v.push(1.0);
+                }
+                v
+            })
             .collect()
     }
 
@@ -428,8 +461,10 @@ impl Entities {
         for v in list.iter().take(256) {
             let Some(a) = v.as_array() else { continue };
             let n: Vec<f64> = a.iter().filter_map(serde_json::Value::as_f64).collect();
-            if n.len() == 6 && n.iter().all(|x| x.is_finite()) {
-                self.fireworks.push(Rocket::replica(DVec3::new(n[0], n[1], n[2]), DVec3::new(n[3], n[4], n[5])));
+            if (6..=7).contains(&n.len()) && n.iter().all(|x| x.is_finite()) {
+                let mut r = Rocket::replica(DVec3::new(n[0], n[1], n[2]), DVec3::new(n[3], n[4], n[5]));
+                r.fire = u16::from(n.get(6) == Some(&1.0));
+                self.fireworks.push(r);
             }
         }
     }

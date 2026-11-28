@@ -581,6 +581,11 @@ first tick, and fliers hold still after ten ticks. The flag also restarts
 the entity random sequence from the world seed before the scene's
 scripted throws and spawns, so wool colours, babies and variants come out
 the same every run, and the pinned scenes compare like with like.
+`--burning` (capture-only, v1.0 gap Track 8d) starts the player alight
+for ten minutes and holds `--still-mobs` mobs still on fire, for captures
+of Java's flame; the `burning-mobs` and `burning-player` scenes instead
+set mobs and the player alight the ordinary way (the noon sun, a fire
+block), so they run on older commits too.
 
 `python3 tools/compare_captures.py target/captures/<before> target/captures/<after>`
 puts each capture the two folders share side by side (before on the left)

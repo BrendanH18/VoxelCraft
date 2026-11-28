@@ -145,6 +145,8 @@ fn infested_hits_release_silverfish() {
     let mut rng = Rng::new(7);
     for _ in 0..200 {
         e.mobs[0].health = 100.0;
+        // v1.0 gap Track 8d: separate hits, each past the last one's cooldown.
+        e.mobs[0].damage_cooldown = 0;
         e.mobs[0].damage(0.5, None, &mut rng);
     }
     let rolled = e.mobs[0].infested;

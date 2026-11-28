@@ -435,7 +435,9 @@ impl Entities {
             let p = pos.floor().as_ivec3();
             if world.snow_golem_melts(p) {
                 let at = self.mobs[i].pos;
-                if self.mobs[i].damage(1.0, None, &mut self.rng) {
+                // `SnowGolem.aiStep`: `hurtServer(onFire, 1)` each tick, which
+                // the hurt cooldown spaces (v1.0 gap Track 8d).
+                if self.mobs[i].damage_from(1.0, crate::simulation::damage::Cause::ON_FIRE, &mut self.rng) {
                     self.drop_loot_with_fire(MobKind::SnowGolem, at, 0, false, false);
                 }
                 if !self.mobs[i].alive() {

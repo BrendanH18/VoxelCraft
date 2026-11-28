@@ -912,7 +912,8 @@ impl Entities {
             }
             let o = &self.mobs[j];
             let (omin, omax) = o.aabb();
-            if !o.alive() || o.hurt > 0.0 || !(omin.cmplt(max).all() && omax.cmpgt(min).all()) {
+            // v1.0 gap Track 8d: the hurt cooldown spaces the contact hits.
+            if !o.alive() || !(omin.cmplt(max).all() && omax.cmpgt(min).all()) {
                 continue;
             }
             if o.sulfur_shrugs_off(crate::simulation::damage::DamageType::SulfurCubeHot) {

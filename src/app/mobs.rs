@@ -31,6 +31,8 @@ pub(super) struct Mobs {
     wait_start: Option<Instant>,
     /// `--still-mobs` (see `Entities::still`).
     still: bool,
+    /// v1.0 gap Track 8d: `--burning`.
+    burning: bool,
     /// Sign text laid out once and redrawn from the cache each frame.
     pub sign_text: crate::render::signs::TextCache,
 }
@@ -47,6 +49,7 @@ impl Mobs {
             wait_start: None,
             sign_text: Default::default(),
             still: false,
+            burning: false,
         }
     }
 
@@ -64,6 +67,11 @@ impl Mobs {
 
     pub fn still(self, still: bool) -> Self {
         Self { still, ..self }
+    }
+
+    /// v1.0 gap Track 8d: `--burning`: still mobs hold still on fire.
+    pub fn burning(self, burning: bool) -> Self {
+        Self { burning, ..self }
     }
 
     /// Whether `--still-mobs` pins this capture's mobs.
@@ -127,6 +135,7 @@ impl Game {
     pub(super) fn spawn_pending_mobs(&mut self) {
         if self.mobs.still {
             self.mobs.entities.still = Some(self.session.player.eye());
+            self.mobs.entities.still_burning = self.mobs.burning;
         }
         let held = std::mem::take(&mut self.mobs.held);
         let babies = std::mem::take(&mut self.mobs.babies);
@@ -183,6 +192,9 @@ impl Game {
     /// What the entities see of the players and the world this update.
     pub(super) fn entity_ctx(&self) -> entity::Ctx {
         let mut players = vec![Target {
+            invulnerable: self.session.mode.invulnerable(),
+            last_hurt: self.session.vitals.cooling_down(),
+            difficulty: self.difficulty,
             spectator: self.session.mode == voxelcraft::rules::GameMode::Spectator,
             alive: !self.session.vitals.is_dead(),
             look: self.session.player.forward().as_dvec3(),
@@ -224,6 +236,9 @@ impl Game {
         // Agents keep source-dimension positions until arrival relocates them.
         if self.arrival.is_none() {
             players.extend(self.agents.targets());
+        }
+        for p in &mut players {
+            p.difficulty = self.difficulty;
         }
         entity::Ctx {
             spawn_light: crate::simulation::lighting::SpawnLight::for_dimension(
@@ -365,7 +380,8 @@ impl Game {
                         if let Some(hit) = java {
                             let entities = &mut self.mobs.entities;
                             self.session.knocked_back(&hit, &mut || f64::from(entities.roll_range(0.0, 1.0)));
-                        } else {
+                        } else if self.session.vitals.last_hit_fresh() {
+                            // Only a full hit takes `hurtServer`'s push.
                             self.session.player.hurt_from(knockback.as_dvec3());
                             let resistance = self.session.inventory.knockback_resistance();
                             self.session.player.vel +=
@@ -480,14 +496,11 @@ impl Game {
                 EntityEvent::PlayerBeam { player, physical, magic } => {
                     let physical = self.difficulty.mob_damage(physical);
                     if player == PlayerId::HOST {
-                        let reduced = crate::simulation::survival::armor_reduce(
-                            physical,
-                            self.session.inventory.armor_points(),
-                            self.session.inventory.armor_toughness(),
-                        );
-                        if self.damage_player(reduced + magic, Cause::GUARDIAN_BEAM) > 0.0 {
-                            self.session.inventory.wear_armor(physical);
-                        }
+                        // v1.0 gap Track 8d: `GuardianAttackGoal.tick`'s two
+                        // hits, `indirectMagic` then the attack, which the
+                        // hurt cooldown lets in only by its excess.
+                        self.damage_player(magic, Cause::GUARDIAN_MAGIC);
+                        self.damage_player_armored(physical, Cause::GUARDIAN_BEAM);
                     } else if let Some(bot) = self.agents.by_id_mut(player) {
                         bot.agent.hurt_beam(physical, magic, &mut self.mobs.entities);
                     }
@@ -1190,7 +1203,7 @@ impl Game {
     ) {
         // `ServerLevel.explode`: the interaction decides whether blocks break
         // and whether their drops decay.
-        let mut blast = self.gamerules.explosion(voxelcraft::rules::ExplosionSource::of_cause(cause.text));
+        let mut blast = self.gamerules.explosion(voxelcraft::rules::ExplosionSource::of(cause));
         blast.destroys_blocks &= breaks_blocks;
         // `ServerExplosion.explode`: find the cells, hurt entities while the
         // walls about to go still shield them, then break the blocks.

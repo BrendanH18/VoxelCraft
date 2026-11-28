@@ -114,6 +114,12 @@ pub struct PlayerAppearance {
     pub glowing: bool,
     /// v0.16 Track B: an elytra is worn (its wings are drawn).
     pub elytra: bool,
+    /// v1.0 gap Track 8d: on fire (`displayFireAnimation`, which a
+    /// spectator never is): Java's flame is drawn over the player's box.
+    pub burning: bool,
+    /// The camera's look, which the flame faces (`Vec3::ZERO`: toward the
+    /// camera's position instead).
+    pub view: Vec3,
 }
 
 const PLAYER_SCALE: f32 = 0.9375;
@@ -459,6 +465,15 @@ pub fn build_player(
         [(lighting.0.clamp(0.0, 1.0) * 255.0) as u8, 0, if appearance.hurt { 255 } else { 0 }, 0],
         (lighting.1.clamp(0.0, 1.0) * 255.0) as u8,
     );
+    // v1.0 gap Track 8d: `EntityRenderDispatcher.submit`'s flame over the
+    // player's box for its pose (standing, crouching, swimming), in block
+    // light 15 and the player's sky light, invisible or not.
+    if appearance.burning {
+        let shape = player.collision_shape();
+        let size = (shape.half_width as f32 * 2.0, shape.height as f32);
+        let forward = if appearance.view == Vec3::ZERO { origin } else { appearance.view };
+        super::model::flame(out, origin, size, forward, light.0[0], time);
+    }
     let parts = pose(player, &appearance, time);
     const OVERLAYS: [[f32; 2]; 6] = [[32., 0.], [16., 32.], [40., 32.], [48., 48.], [0., 32.], [0., 48.]];
     for (i, p) in parts.iter().enumerate().filter(|_| !appearance.invisible) {

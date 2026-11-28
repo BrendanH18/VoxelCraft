@@ -93,8 +93,9 @@ impl Screen<Game> for SignEdit {
     }
 
     /// v1.0 gap Track 8c: `AbstractSignEditScreen.isPauseScreen` is false,
-    /// so a Nether portal closes it, keeping the text.
-    fn allowed_in_portal(&self) -> bool {
+    /// so a Nether portal closes it, keeping the text; and (Track 8d) an
+    /// unshared world goes on while it is open.
+    fn pauses(&self) -> bool {
         false
     }
 

@@ -190,6 +190,11 @@ fn armadillo_hits_cancel_love_shells_reduce_damage_and_environmental_panic_unrol
     assert_eq!((e.mobs[0].health, e.mobs[0].vel), (12.0, before));
     e.mobs[0].damage(5.0, Some(DVec3::X), &mut e.rng);
     assert_eq!(e.mobs[0].health, 10.0);
+    // v1.0 gap Track 8d: halved, 4 is 1.5, no harder than the 2 that
+    // landed: the hurt cooldown refuses it until it runs out.
+    e.mobs[0].damage(4.0, None, &mut e.rng);
+    assert_eq!(e.mobs[0].health, 10.0);
+    e.mobs[0].damage_cooldown = 0;
     e.mobs[0].damage(4.0, None, &mut e.rng);
     assert_eq!(e.mobs[0].health, 8.5);
     tick(&mut e, &w, &c, 1);

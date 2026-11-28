@@ -495,11 +495,15 @@ impl DamageType {
 pub struct Cause {
     pub kind: DamageType,
     pub text: &'static str,
+    /// v1.0 gap Track 8d: primed TNT's blast, which `ServerLevel.explode`
+    /// gives `ExplosionInteraction.TNT` though its message is the plain
+    /// `death.attack.explosion` of any ownerless blast. Never saved.
+    pub tnt: bool,
 }
 
 impl Cause {
     pub const fn new(kind: DamageType, text: &'static str) -> Self {
-        Self { kind, text }
+        Self { kind, text, tnt: false }
     }
 
     /// A mob's melee hit (`DamageSources.mobAttack`).
@@ -565,8 +569,11 @@ impl Cause {
     pub const CREEPER: Cause = Cause::new(DamageType::PlayerExplosion, "was blown up by a creeper");
     /// A ghast fireball's blast (`LargeFireball.onHit`'s explosion, owned by the ghast).
     pub const GHAST_FIREBALL: Cause = Cause::new(DamageType::PlayerExplosion, "was fireballed by a ghast");
-    /// Unowned primed TNT.
-    pub const TNT: Cause = Cause::new(DamageType::Explosion, "was blown up by TNT");
+    /// Unowned primed TNT: `explosion(tnt, null)`, a direct entity and no
+    /// causing one, worded `death.attack.explosion` ("%1$s blew up"), which
+    /// names no one (v1.0 gap Track 8d). `ServerLevel.explode` still treats
+    /// it as TNT (`ExplosionInteraction.TNT`).
+    pub const TNT: Cause = Cause { tnt: true, ..Cause::new(DamageType::Explosion, "blew up") };
     /// An End crystal's blast with nobody behind the blow (`explosion(crystal,
     /// null)`, v1.0 gap Track 8c): `death.attack.explosion`, which names
     /// no one ("blew up"), as [`Cause::EXPLOSION`].
@@ -578,6 +585,11 @@ impl Cause {
     /// v0.16 Track G: a blast with no source (`death.attack.explosion`),
     /// the dragon respawn ritual's pillar blasts.
     pub const EXPLOSION: Cause = Cause::new(DamageType::Explosion, "blew up");
+    /// `death.attack.dryout`: a water mob out of water (`dryOut`).
+    /// v1.0 gap Track 8d: a guardian's beam's first hit
+    /// (`indirectMagic`, `death.attack.indirectMagic`).
+    pub const GUARDIAN_MAGIC: Cause = Cause::new(DamageType::IndirectMagic, "was killed by a guardian using magic");
+    pub const DRY_OUT: Cause = Cause::new(DamageType::DryOut, "died from dehydration");
     /// v0.16 Track B: `death.attack.fireworks` and `death.attack.flyIntoWall`.
     pub const FIREWORKS: Cause = Cause::new(DamageType::Fireworks, "went off with a bang");
     pub const FLY_INTO_WALL: Cause = Cause::new(DamageType::FlyIntoWall, "experienced kinetic energy");
@@ -642,10 +654,13 @@ impl Cause {
         Cause::BLAZE_FIREBALL,
         Cause::CREEPER,
         Cause::GHAST_FIREBALL,
-        Cause::TNT,
-        Cause::END_CRYSTAL,
+        // TNT's and an ownerless End crystal's blasts are worded as the plain
+        // `explosion` (v1.0 gap Tracks 8c and 8d), which stands for all
+        // three when a saved text is looked up.
         Cause::PLAYER_EXPLOSION,
         Cause::EXPLOSION,
+        Cause::DRY_OUT,
+        Cause::GUARDIAN_MAGIC,
         Cause::BAD_RESPAWN_POINT,
         Cause::GUARDIAN_SPIKES,
         Cause::GUARDIAN_BEAM,

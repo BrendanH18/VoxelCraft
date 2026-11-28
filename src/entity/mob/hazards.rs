@@ -137,7 +137,7 @@ pub fn web_multiplier(weaving: bool) -> DVec3 {
 impl Mob {
     /// Damage of a known type: armor, Protection and the type's own
     /// protection enchantments see it.
-    pub(super) fn damage_from(&mut self, amount: f32, cause: Cause, rng: &mut super::Rng) -> bool {
+    pub(crate) fn damage_from(&mut self, amount: f32, cause: Cause, rng: &mut super::Rng) -> bool {
         self.hit_cause = Some(cause);
         let killed = self.damage(amount, None, rng);
         self.hit_cause = None;
@@ -196,7 +196,7 @@ impl Mob {
 
     /// The fall damage the last moves queued, as `minecraft:fall` (or
     /// `minecraft:stalagmite`) damage.
-    pub(super) fn take_fall(&mut self, rng: &mut super::Rng) -> bool {
+    pub(crate) fn take_fall(&mut self, rng: &mut super::Rng) -> bool {
         let damage = std::mem::take(&mut self.pending_fall);
         let cause = std::mem::replace(&mut self.pending_fall_cause, Cause::FALL);
         damage > 0.0 && self.damage_from(damage, cause, rng)

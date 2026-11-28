@@ -547,11 +547,14 @@ impl Arrow {
             if self.from_player && !self.pvp {
                 continue;
             }
-            if let Some(hit) = ctx
-                .players
-                .iter()
-                .find(|t| t.targetable && t.contains(self.pos) && !(self.from_player && Some(t.id) == self.owner))
-            {
+            // v1.0 gap Track 8d: creative players are hit too (only
+            // spectators and the dead are passed through, `canHitEntity`),
+            // and refuse it.
+            if let Some(hit) = ctx.players.iter().find(|t| {
+                (t.targetable || t.invulnerable && t.alive && !t.spectator)
+                    && t.contains(self.pos)
+                    && !(self.from_player && Some(t.id) == self.owner)
+            }) {
                 let (damage, push) = if self.from_player {
                     // Another player's bow: the same damage, criticals, Punch and Flame as on mobs.
                     use crate::enchant::Enchantment;
@@ -560,19 +563,23 @@ impl Arrow {
                         damage += (rng.next_f32() * (damage / 2.0 + 1.0)).floor();
                     }
                     let punch = 1.0 + 3.0 * self.enchants.level(Enchantment::Punch) as f64;
-                    if self.burning() {
-                        events.push(EntityEvent::Ignite { player: hit.id, secs: 5.0 });
-                    }
                     (damage, DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 3.0 * punch + DVec3::Y * 3.0)
                 } else {
-                    if self.burning() {
-                        events.push(EntityEvent::Ignite { player: hit.id, secs: 5. });
-                    }
                     (
                         self.mob_damage(self.vel.length()),
                         DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 3.0 + DVec3::Y * 3.0,
                     )
                 };
+                // `AbstractArrow.onHitEntity` on a hit `hurtServer` refuses
+                // (creative, or the hurt cooldown): the fire it lit is put
+                // back and it bounces off.
+                if hit.refuses_hit(damage, !self.from_player) {
+                    self.pos = from;
+                    return self.bounce(rng, events);
+                }
+                if self.burning() {
+                    events.push(EntityEvent::Ignite { player: hit.id, secs: 5.0 });
+                }
                 let punch = u32::from(self.enchants.level(crate::enchant::Enchantment::Punch));
                 events.push(EntityEvent::PlayerHit {
                     java: Some(crate::knockback::Hit::arrow(self.vel / crate::knockback::TICK_RATE, punch)),
@@ -663,6 +670,11 @@ impl Arrow {
     /// out, or set alight since it was shot.
     pub fn burning(&self) -> bool {
         self.fire > 0 || !self.doused && self.enchants.has(crate::enchant::Enchantment::Flame)
+    }
+
+    /// v1.0 gap Track 8d: a LAN client's copy burns as the host says.
+    pub fn set_burning(&mut self, burning: bool) {
+        self.fire = if burning { self.fire.max(1) } else { 0 };
     }
 
     /// A piercing arrow needs the mobs' ids to remember what it passed through.
@@ -823,6 +835,36 @@ pub(super) fn touched_blocks<W: BlockSource + ?Sized>(
 pub(super) fn in_rain<W: super::MobWorld + ?Sized>(world: &W, pos: DVec3, height: f64) -> bool {
     let cell = pos.floor().as_ivec3();
     world.rains_on(cell) || world.rains_on(glam::IVec3::new(cell.x, (pos.y + height).floor() as i32, cell.z))
+}
+
+/// v1.0 gap Track 8d: `Projectile.onHitBlock`'s `onProjectileHit` for a
+/// projectile other than an arrow or trident that entered the solid
+/// `cell` from `from`: target blocks and redstone ore react, and a burning
+/// one lights a candle or campfire or primes TNT.
+pub(super) fn block_hit(cell: glam::IVec3, from: DVec3, burning: bool, mob_owned: bool) -> EntityEvent {
+    let d = from.floor().as_ivec3() - cell;
+    let axis = (0..3).max_by_key(|&a| d[a].abs()).unwrap_or(1);
+    let mut normal = glam::IVec3::ZERO;
+    normal[axis] = d[axis].signum();
+    EntityEvent::ProjectileBlockHit { cell, pos: from, normal, arrow: false, burning, mob_owned }
+}
+
+/// v1.0 gap Track 8d: a projectile's `remainingFireTicks` over a tick's
+/// move from `from` to `to` with a box `half` wide either way and `height`
+/// tall: `applyEffectsFromBlocks` (fire 8 seconds, lava 15, water and rain
+/// put it out), then `Entity.baseTick` burns it down a tick.
+pub(super) fn tick_fire<W: super::MobWorld + ?Sized>(
+    fire: &mut u16,
+    world: &W,
+    from: DVec3,
+    to: DVec3,
+    half: f64,
+    height: f64,
+) {
+    if touched_blocks(world, from, to, half, height).apply(fire) || in_rain(world, to, height) {
+        *fire = 0;
+    }
+    *fire = fire.saturating_sub(1);
 }
 
 /// `Entity.isInWaterOrRain` at the start of a tick: its box touches
@@ -1017,6 +1059,38 @@ mod tests {
             }
         }
     }
+    /// v1.0 gap Track 8d: a creative player (`abilities.invulnerable`) and
+    /// a player whose hurt cooldown refuses the hit are still hit, and the
+    /// arrow bounces back off them (`deflect(REVERSE)`) with no damage.
+    #[test]
+    fn arrows_bounce_off_players_who_refuse_them() {
+        let world = Grid::flat(10);
+        let at = DVec3::new(2.0, 10.0, 0.5);
+        for (invulnerable, last_hurt) in [(true, None), (false, Some(10.0)), (false, None)] {
+            let mut arrow = Arrow::dispensed(DVec3::new(0.5, 11.0, 0.5), DVec3::X * 22.0);
+            let player = Target { invulnerable, last_hurt, ..Target::new(PlayerId::HOST, at, !invulnerable) };
+            let ctx = Ctx {
+                spawn_light: crate::simulation::lighting::SpawnLight::DAY,
+                players: vec![player],
+                daylight: 1.0,
+                spawning: false,
+                raining: false,
+                dimension: Dimension::Overworld,
+            };
+            let (mut events, mut rng) = (Vec::new(), Rng::new(7));
+            let mut bounced = false;
+            for _ in 0..3 {
+                if !arrow.update(0.05, &world, &ctx, &mut Vec::new(), &[], None, &mut rng, &mut events) {
+                    break;
+                }
+                bounced |= arrow.vel.x < 0.0;
+            }
+            let hit = events.iter().any(|e| matches!(e, EntityEvent::PlayerHit { .. }));
+            let refused = invulnerable || last_hurt.is_some();
+            assert_eq!((hit, bounced), (!refused, refused), "invulnerable {invulnerable}, cooling {last_hurt:?}");
+        }
+    }
+
     /// v0.15 integration review: a raider killed only by a player's arrow
     /// still names that player, so a ranged raid win crowns the hero.
     #[test]

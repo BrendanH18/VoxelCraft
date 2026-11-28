@@ -257,9 +257,12 @@ impl super::Entities {
                                     looting: 0,
                                 });
                             }
-                        } else if m.hurt <= 0. {
+                        } else {
+                            // `Entity.thunderHit`, each tick of the bolt:
+                            // `hurtServer(lightningBolt, 5)`, which the hurt
+                            // cooldown spaces (v1.0 gap Track 8d).
                             m.ignite(8.);
-                            if m.damage(5., None, &mut self.rng) {
+                            if m.damage_from(5., crate::simulation::damage::Cause::LIGHTNING, &mut self.rng) {
                                 self.pending_sounds.push(EntityEvent::MobKilled {
                                     kind: m.kind,
                                     pos: m.pos,

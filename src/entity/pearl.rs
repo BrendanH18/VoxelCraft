@@ -5,7 +5,6 @@
 use glam::DVec3;
 
 use super::{EntityEvent, Mob, PlayerId, Rng};
-use crate::physics::BlockSource;
 
 /// Launch speed (Java's 1.5 blocks a tick).
 pub const SPEED: f64 = 30.0;
@@ -28,12 +27,25 @@ pub struct Pearl {
     pub previous_pos: DVec3,
     pub vel: DVec3,
     age: f32,
+    /// v1.0 gap Track 8d: `remainingFireTicks` (it applies block effects,
+    /// `ThrowableProjectile.tick`). Not saved.
+    fire: u16,
 }
 
 impl Pearl {
+    /// v1.0 gap Track 8d: on fire (`isOnFire`).
+    pub fn burning(&self) -> bool {
+        self.fire > 0
+    }
+
+    /// v1.0 gap Track 8d: a LAN client's copy burns as the host says.
+    pub fn set_burning(&mut self, burning: bool) {
+        self.fire = if burning { self.fire.max(1) } else { 0 };
+    }
+
     /// A LAN client's copy: drawn only, never simulated.
     pub(super) fn replica(pos: DVec3, previous_pos: DVec3) -> Self {
-        Self { owner: PlayerId::HOST, pos, previous_pos, vel: DVec3::ZERO, age: 0.0 }
+        Self { owner: PlayerId::HOST, pos, previous_pos, vel: DVec3::ZERO, age: 0.0, fire: 0 }
     }
 
     /// Thrown from `eye` along `dir`, carrying the thrower's velocity
@@ -42,13 +54,13 @@ impl Pearl {
         let mut spread = || rng.range(-1.0, 1.0) as f64 * 0.0075 * 1.7;
         let aim = dir.normalize_or(DVec3::X) + DVec3::new(spread(), spread(), spread());
         let pos = eye - DVec3::Y * 0.1;
-        Self { owner, pos, previous_pos: pos, vel: aim.normalize() * SPEED + carry, age: 0.0 }
+        Self { owner, pos, previous_pos: pos, vel: aim.normalize() * SPEED + carry, age: 0.0, fire: 0 }
     }
 
     /// Moves the pearl; returns `false` once it has landed (pushing a
     /// [`EntityEvent::PearlLanded`]) or is lost.
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn update<W: BlockSource + ?Sized>(
+    pub(super) fn update<W: super::MobWorld + ?Sized>(
         &mut self,
         dt: f64,
         world: &W,
@@ -66,6 +78,7 @@ impl Pearl {
         self.vel *= if water { 0.8f64 } else { 0.99 }.powf(ticks);
         self.vel.y -= GRAVITY * dt;
         let delta = self.vel * dt;
+        super::projectile::tick_fire(&mut self.fire, world, self.pos, self.pos + delta, 0.125, 0.25);
         let steps = (delta.length() / STEP).ceil().max(1.0) as u32;
         for _ in 0..steps {
             let next = self.pos + delta / steps as f64;
@@ -83,6 +96,7 @@ impl Pearl {
                 return false;
             }
             if world.block(cell).is_some_and(|b| b.is_solid()) {
+                events.push(super::projectile::block_hit(cell, self.pos, self.burning(), false));
                 // Land just outside the block it hit.
                 events.push(EntityEvent::PearlLanded { owner: self.owner, pos: self.pos });
                 return false;

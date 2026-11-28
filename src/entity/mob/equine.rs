@@ -269,13 +269,11 @@ impl Mob {
         if s.rider.is_some() {
             s.rider_fall += fall_damage(fall, PLAYER_SAFE_FALL, modifier);
         }
-        self.health -= self.effects.absorb(damage * self.effects.resistance_factor());
-        // `Camel.actuallyHurt` stands it up.
-        if camel_like(self.kind)
-            && let Some(s) = self.mount.as_mut()
-        {
-            s.stand_up_instantly();
-        }
+        // v1.0 gap Track 8d: `causeFallDamage` hurts through `hurtServer`
+        // (the hurt cooldown, Resistance, `Camel.actuallyHurt` standing it
+        // up): queued for the tick's [`Mob::take_fall`].
+        self.pending_fall += damage;
+        self.pending_fall_cause = crate::simulation::damage::Cause::FALL;
     }
 
     /// v1.0 gap Track 3: `CamelMoveControl` stands a seated camel that wants

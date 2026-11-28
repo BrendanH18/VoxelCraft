@@ -284,8 +284,10 @@ pub(crate) fn upkeep(m: &mut Mob, dt: f32, rng: &mut Rng, events: &mut Vec<Entit
     }
     if m.in_water {
         s.underwater = s.underwater.saturating_add(ticks);
-        if s.underwater > 20 && m.hurt <= 0. {
-            m.damage(1., None, rng);
+        // `Bee.customServerAiStep`: `hurtServer(drown, 1)` each tick past
+        // 20 under water, which the hurt cooldown spaces (v1.0 gap Track 8d).
+        if s.underwater > 20 {
+            m.damage_from(1., crate::simulation::damage::Cause::DROWN, rng);
         }
     } else {
         s.underwater = 0;

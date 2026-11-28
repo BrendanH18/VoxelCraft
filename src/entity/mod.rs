@@ -1022,9 +1022,27 @@ pub struct Target {
     /// v0.16 Track C: the mob head worn in the helmet slot, which halves
     /// how far its own kind sees this player (`MobVisibility`).
     pub head: Option<crate::world::skulls::Kind>,
+    /// v1.0 gap Track 8d: `abilities.invulnerable` (creative), which
+    /// refuses every hit but `#bypasses_invulnerability`.
+    pub invulnerable: bool,
+    /// v1.0 gap Track 8d: the hurt cooldown's `lastHurt` while it is in
+    /// its first half, when a hit no harder is refused.
+    pub last_hurt: Option<f32>,
+    /// The world's difficulty, which scales a mob's hit on a player
+    /// (`Player.hurtServer`'s `scalesWithDifficulty`).
+    pub difficulty: crate::simulation::difficulty::Difficulty,
 }
 
 impl Target {
+    /// v1.0 gap Track 8d: whether this player's `hurtServer` refuses a hit of
+    /// `damage` outright (creative, or a hit no harder than the last within
+    /// the hurt cooldown), after the difficulty scales a mob's hit (`scaled`).
+    /// A refused arrow or trident bounces off.
+    pub fn refuses_hit(&self, damage: f32, scaled: bool) -> bool {
+        let damage = if scaled { self.difficulty.mob_damage(damage) } else { damage };
+        self.invulnerable || damage <= 0.0 || self.last_hurt.is_some_and(|last| damage <= last)
+    }
+
     /// `getEyeHeight` for the player's pose: 1.62 standing, 1.27 crouching,
     /// 0.4 swimming, gliding or crawling (Track 2d: the eye mobs look at).
     pub fn eye_height(&self) -> f64 {
@@ -1099,6 +1117,9 @@ impl Target {
             time_since_rest: 0,
             darkness_ticks: 0,
             head: None,
+            invulnerable: false,
+            last_hurt: None,
+            difficulty: crate::simulation::difficulty::Difficulty::Normal,
             blocking: false,
             fall_flying: false,
             vel: DVec3::ZERO,
@@ -1361,6 +1382,8 @@ pub struct Entities {
     /// landed stops updating (no AI, movement, burning or sounds), faces this
     /// point and keeps its lighting fresh, so its pose is the same in every run.
     pub still: Option<DVec3>,
+    /// v1.0 gap Track 8d: `--burning`: still mobs hold still on fire.
+    pub still_burning: bool,
     /// Updates since `still` was set, after which fliers hold still too.
     still_ticks: u32,
     /// v0.18 Track 6: this frame's shadow casters, kept to reuse the allocation.
@@ -1480,6 +1503,7 @@ impl Entities {
             rendered: 0,
             mesh: model::EntityMesh::default(),
             still: None,
+            still_burning: false,
             still_ticks: 0,
             casters: Vec::new(),
             poses: Vec::new(),
@@ -2398,6 +2422,26 @@ impl Entities {
         model::build_fireballs(&self.fireballs, camera, time, alpha, &mut self.mesh);
         model::build_wither_skulls(&self.wither_skulls, camera, time, alpha, &mut self.mesh);
         model::build_shulker_bullets(&self.shulker_bullets, camera, time, alpha, &mut self.mesh);
+        // v1.0 gap Track 8d: Java's flame on every other burning projectile
+        // (`displayFireAnimation`) over its box: thrown items, pearls,
+        // potions, fireballs (always alight, `shouldBurn`), rockets and
+        // hooks. Wither skulls and shulker bullets are never `isOnFire`.
+        let burning = self
+            .thrown
+            .iter()
+            .filter(|t| t.burning())
+            .map(|t| (t.previous_pos, t.pos, t.kind.size()))
+            .chain(self.pearls.iter().filter(|p| p.burning()).map(|p| (p.previous_pos, p.pos, 0.25)))
+            .chain(self.potions.iter().filter(|p| p.burning()).map(|p| (p.previous_pos, p.pos, 0.25)))
+            .chain(self.fireballs.iter().map(|f| (f.previous_pos, f.pos, f.size())))
+            .chain(self.fireworks.iter().filter(|r| r.burning()).map(|r| (r.previous_pos, r.pos, 0.25)))
+            .chain(self.bobbers.iter().filter(|b| b.burning()).map(|b| (b.previous_pos, b.pos, 0.25)));
+        // Their positions are their models' centres; the flame stands on
+        // the box's bottom.
+        for (from, to, size) in burning {
+            let rel = (from.lerp(to, alpha) - camera - DVec3::Y * (size / 2.0)).as_vec3();
+            model::flame(&mut self.mesh, rel, (size as f32, size as f32), forward, 230, time);
+        }
         model::build_lightning(&self.lightning, camera, &mut self.mesh);
         model::build_puffs(&self.puffs, camera, alpha, &mut self.mesh);
         model::build_orbs(&self.orbs, camera, &view, time, alpha, &mut self.mesh);
@@ -2824,14 +2868,21 @@ impl Entities {
         if mob.allay.as_ref().is_some_and(|s| s.player == Some(owner)) {
             return None;
         }
+        // v1.0 gap Track 8d: a hit the hurt cooldown refuses (no harder than
+        // the last within its first ten ticks) does nothing: `hurtServer`
+        // returns false before blaming anyone.
+        if mob.refuses_hit(damage) {
+            return None;
+        }
         let kind = mob.kind;
         // v0.15 Track E: the killer a raid credits as a hero.
         mob.player_hit_by(owner);
         if kind == MobKind::IronGolem && !self.neutral_universal_anger {
             mob.angry_player = Some(owner);
         }
-        let pushes: Vec<_> = pushes.iter().flatten().copied().collect();
-        let killed = mob.damage_pushed(damage, &pushes, &mut self.rng);
+        // `hurtServer`'s own push lands only with a full hit; the attack's
+        // extra or sweep push with any hit that lands.
+        let killed = mob.damage_knocked(damage, pushes[0], pushes[1].as_slice(), &mut self.rng);
         // The hit's attacker, for `Zombie.hurtServer`'s reinforcement call.
         if mob.reinforce_call.is_some() {
             mob.reinforce_call = Some(Some(owner));
@@ -2932,7 +2983,9 @@ impl Entities {
         let damage = base + magic * strength;
         let (knockback, fire) = crate::mining::weapon_extras(held);
         let extra = crate::knockback::attack_strength(0.0, u32::from(knockback), sprint_knockback);
-        if fire > 0.0 {
+        // Fire Aspect is a post-attack effect: a hit `hurtServer` refuses
+        // (the hurt cooldown, v1.0 gap Track 8d) sets nothing alight.
+        if fire > 0.0 && !self.mobs[index].refuses_hit(damage) {
             self.mobs[index].ignite(fire);
         }
         if spiked {
@@ -3913,6 +3966,9 @@ mod tests {
         e.attack(0, DVec3::X, 1.0);
         assert_eq!(sounds(e.update(1.0 / 60.0, &world, &c)), vec![MobSound::Hurt(MobKind::Cow)]);
         e.mobs[0].hurt = 0.0;
+        // v1.0 gap Track 8d: a later hit, past the first one's hurt cooldown
+        // (a kill inside it dies silently, as `hurtServer`'s does).
+        e.mobs[0].damage_cooldown = 0;
         e.attack(0, DVec3::X, 100.0);
         assert!(sounds(e.update(1.0 / 60.0, &world, &c)).contains(&MobSound::Death(MobKind::Cow)));
     }
@@ -4348,8 +4404,10 @@ mod tests {
         assert!(e.raycast(eye, DVec3::NEG_X, 6.0).is_none());
 
         // Pigs have 10 HP: three hits with a wooden sword (4 each).
+        // v1.0 gap Track 8d: hits spaced past the hurt cooldown.
         let killed = (0..3).any(|_| {
             e.mobs[1].hurt = 0.0;
+            e.mobs[1].damage_cooldown = 0;
             e.attack(1, DVec3::X, 4.0).is_some()
         });
         assert!(killed && !e.mobs[1].alive());

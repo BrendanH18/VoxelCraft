@@ -126,6 +126,9 @@ impl Game {
         if let Some(a) = args.air {
             vitals.air = a.clamp(0.0, survival::MAX_AIR);
         }
+        if args.burning {
+            vitals.ignite(600.0);
+        }
         if let Some(text) = prop("hunger") {
             let n: Vec<f32> = text.split(',').filter_map(|v| v.parse().ok()).collect();
             if let [food, saturation, exhaustion] = n[..] {
@@ -386,7 +389,8 @@ impl Game {
                 .holding(args.spawn_held.clone())
                 .babies(args.spawn_baby.clone())
                 .villagers(args.spawn_villager.clone())
-                .still(args.still_mobs),
+                .still(args.still_mobs)
+                .burning(args.burning),
             particles: crate::particles::System::new(seed),
             menu: menu::startup_menu(args.open_menu.as_deref()),
             menu_action: None,

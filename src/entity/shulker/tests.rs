@@ -87,6 +87,8 @@ fn a_shut_shulker_is_armored_and_shrugs_off_arrows() {
     assert!((m.health - (MAX_HEALTH - 6.0 * (1.0 - 17.0 / 25.0))).abs() < 1e-4, "{}", m.health);
     m.shulker.as_mut().unwrap().peek = 100;
     let before = m.health;
+    // v1.0 gap Track 8d: a later hit, past the first one's hurt cooldown.
+    m.damage_cooldown = 0;
     m.damage(6.0, None, &mut rng);
     assert!((before - m.health - 6.0).abs() < 1e-4);
 }

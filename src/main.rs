@@ -135,6 +135,10 @@ pub struct Args {
     pub animation_time: Option<f32>,
     /// `--still-mobs`: landed mobs hold still facing the camera, for comparable captures.
     pub still_mobs: bool,
+    /// v1.0 gap Track 8d: `--burning`, for captures of Java's flame: the
+    /// player starts alight for ten minutes and still mobs hold still
+    /// burning.
+    pub burning: bool,
     /// v0.18 Track 7: `--panorama DIR`, with `--screenshot`: render the six
     /// title panorama faces from the pose into DIR before the screenshot.
     pub panorama: Option<std::path::PathBuf>,
@@ -391,6 +395,7 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
         wait: 0.0,
         animation_time: None,
         still_mobs: false,
+        burning: false,
         panorama: None,
         item_review: None,
         item_review_range: Vec::new(),
@@ -744,6 +749,7 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
             }
             "--wait" => args.wait = value("--wait")?.parse().map_err(|_| "bad --wait")?,
             "--still-mobs" => args.still_mobs = true,
+            "--burning" => args.burning = true,
             "--animation-time" => {
                 args.animation_time = Some(value("--animation-time")?.parse().map_err(|_| "bad --animation-time")?);
             }
@@ -903,6 +909,7 @@ impl Args {
         self.spawn_baby.clear();
         self.spawn_villager.clear();
         self.still_mobs = false;
+        self.burning = false;
         self.pose = None;
         self.health = None;
         self.air = None;
