@@ -262,10 +262,8 @@ impl Game {
             Some(_) => None,
             None => stack
                 .item
-                .block()
-                .map(|b| b.info().tex[0])
-                .or_else(|| stack.item.dial_layer(self.dial_of(&self.session.player).for_stack(&stack)))
-                .or_else(|| stack.item.icon_layer()),
+                .dial_layer(self.dial_of(&self.session.player).for_stack(&stack))
+                .or_else(|| stack.item.flat_layer()),
         };
         let size = block.map_or(0.5, |b| 0.25 * crate::world::shape::item_scale(b).ground as f64);
         // `ITEM_MIN_HOVER_HEIGHT` less the model's own lowest point (a
@@ -299,6 +297,8 @@ impl Game {
                 icon,
                 orient: None,
                 tint: voxelcraft::entity::wolf_armor::item_tint_bytes(stack),
+                glint: stack.has_foil(),
+                translucent: crate::item::translucent(&stack),
             });
         }
     }

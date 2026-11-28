@@ -73,6 +73,8 @@ impl Game {
                 icon: None,
                 orient: None,
                 tint: [255; 4],
+                glint: false,
+                translucent: false,
                 patterns: None,
                 lid: Some(lid.at(alpha as f32)),
             })

@@ -542,8 +542,10 @@ impl Game {
     ) -> crate::render::hand::Hand {
         let main = session.inventory.get(selected);
         hand.tint = main.map(voxelcraft::entity::wolf_armor::item_tint_bytes);
-        hand.block =
-            main.filter(|s| Some(s.item) == hand.item).and_then(voxelcraft::world::copper_golem_statue::item_model);
+        let held = main.filter(|s| Some(s.item) == hand.item);
+        hand.block = held.and_then(voxelcraft::world::copper_golem_statue::item_model);
+        hand.glint = held.is_some_and(|s| s.has_foil());
+        hand.translucent = held.as_ref().is_some_and(crate::item::translucent);
         let image = |stack: Option<Stack>| {
             let stack = stack.filter(|s| s.item.is_map() && s.item != Item::MAP)?;
             let mut map = self.world.maps.maps.get(&stack.map_id?)?.clone();
@@ -788,13 +790,13 @@ pub(super) fn draw_model(ui: &mut Ui, x: f32, y: f32, stack: Stack, dial: crate:
 /// [`draw_model`] `size` pixels across (16 in a slot), without the banner
 /// patterns.
 pub(super) fn draw_model_sized(ui: &mut Ui, x: f32, y: f32, size: f32, stack: Stack, dial: crate::item::Dial) {
-    let layer = stack.item.dial_layer(dial.for_stack(&stack)).or_else(|| stack.item.icon_layer());
+    let layer = stack.item.dial_layer(dial.for_stack(&stack)).or_else(|| stack.item.flat_layer());
     let px = size / 16.0;
-    match (voxelcraft::world::copper_golem_statue::item_model(stack).or_else(|| stack.item.block()), layer) {
+    match (crate::item::model_block(&stack), layer) {
         (Some(block), _) => ui.block_icon(x + 2.0 * px, y + 2.0 * px, 14.0 * px, block),
         (None, Some(layer)) => {
             ui.icon(x + px, y + px, size, layer, crate::entity::wolf_armor::item_tint(stack));
-            if !stack.enchants.is_empty() || stack.item.has_glint() || stack.lodestone.is_some() {
+            if stack.has_foil() {
                 glint(ui, x + px, y + px, size, layer);
             }
         }

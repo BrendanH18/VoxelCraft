@@ -255,6 +255,15 @@ impl Stack {
     }
 
     /// Remaining durability as a fraction, for tools that have been used.
+    /// `ItemStack.hasFoil`: the enchantment glint, on enchanted stacks
+    /// (and enchanted books' stored enchantments), lodestone compasses and
+    /// the items Java always draws with it (written books, the enchanted
+    /// golden apple, the experience bottle, the Nether star, the End
+    /// crystal). Slots, held and dropped items all draw it.
+    pub fn has_foil(&self) -> bool {
+        !self.enchants.is_empty() || self.item.has_glint() || self.lodestone.is_some()
+    }
+
     pub fn wear(&self) -> Option<f32> {
         let max = self.item.durability()?;
         (self.damage > 0).then(|| 1.0 - self.damage as f32 / max as f32)

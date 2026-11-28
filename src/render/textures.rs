@@ -989,6 +989,9 @@ pub fn texel(layer: u16, x: usize, y: usize) -> Rgba {
     let recovery = clock + crate::item::CLOCK_FRAMES;
     let effects = recovery + crate::item::RECOVERY_FRAMES;
     match tex::item_index(layer) {
+        Some(index) if index >= crate::item::block_item_icon_base() => {
+            super::block_item_sprites::pixel(index - crate::item::block_item_icon_base(), x, y)
+        }
         Some(index) if index >= crate::item::open_bundle_icon_base() => {
             crate::item::open_bundle_sprite(index).map_or([0, 0, 0, 0], |s| super::item_sprites::pixel(s, x, y))
         }
@@ -1036,12 +1039,14 @@ pub fn generate_mips() -> Vec<Vec<u8>> {
 }
 
 /// Layers of the item icon array: every item's icon, the compass and clock
-/// frames, the status effect icons, then the open bundles.
+/// frames, the status effect icons, the open bundles, then the block items
+/// drawn as sprites (v1.0 gap track 6b).
 pub fn item_layers() -> u32 {
     crate::item::icon_count()
         + crate::item::animated_icons()
         + crate::simulation::effects::Effect::ALL.len() as u32
         + crate::item::OPEN_BUNDLE_ICONS
+        + voxelcraft::content::block_item_sprites::ICONS
 }
 
 /// Mip levels of the item icon array (see [`generate_mips`]).

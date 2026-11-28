@@ -430,7 +430,7 @@ pub fn shelf_items(world: &World, camera: DVec3, out: &mut Vec<BlockModel>) {
             let block = crate::item::model_block(stack);
             let icon = match block {
                 Some(_) => None,
-                None => stack.item.block().map(|b| b.info().tex[0]).or_else(|| stack.item.icon_layer()),
+                None => stack.item.flat_layer(),
             };
             let size = 0.25;
             out.push(BlockModel {
@@ -445,6 +445,8 @@ pub fn shelf_items(world: &World, camera: DVec3, out: &mut Vec<BlockModel>) {
                 icon,
                 orient: None,
                 tint: crate::inventory::components::dye_tint_bytes(*stack),
+                glint: stack.has_foil(),
+                translucent: crate::item::translucent(stack),
             });
         }
     }

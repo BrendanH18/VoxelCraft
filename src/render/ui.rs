@@ -244,8 +244,10 @@ impl Ui {
     pub fn block_icon(&mut self, x: f32, y: f32, size: f32, block: Block) {
         let t = block.info().tex;
         if block.flat_icon() {
-            // Plants, torches and ladders show their flat sprite, like items.
-            self.icon(x - 1.0, y - 1.0, size + 2.0, t[0], WHITE);
+            // Plants, torches and ladders show their flat sprite, like items
+            // (v1.0 gap track 6b: an item sprite of its own where it has one).
+            let layer = crate::item::Item::from_block(block).flat_layer().unwrap_or(t[0]);
+            self.icon(x - 1.0, y - 1.0, size + 2.0, layer, WHITE);
             return;
         }
         let block = block.item_facing();

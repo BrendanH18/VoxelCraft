@@ -1182,6 +1182,19 @@ impl Block {
             || super::colour_blocks::flat_icon(self)
             || super::cave_blocks::multiface_of(self).is_some()
             || java_flat_block_item(self)
+            || crate::content::block_item_sprites::is_item_block(self)
+    }
+
+    /// v1.0 gap track 6b: an item of this block draws blended, as Java's
+    /// translucent chunk layer does (`ItemBlockRenderTypes`): stained glass
+    /// and stained panes, and the translucent blocks that aren't fluids
+    /// (ice, tinted glass, slime and honey blocks).
+    pub fn item_translucent(self) -> bool {
+        self.stained_glass_color().is_some()
+            || self.stained_pane_color().is_some()
+            || (self.kind() == RenderKind::Translucent && self.fluid().is_none())
+            || super::stone_blocks::translucent_solid(self.0)
+            || self == Block::HONEY_BLOCK
     }
 
     /// v1.0 gap track 6: the state an item of this block is drawn as. Java's

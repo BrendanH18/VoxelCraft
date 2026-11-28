@@ -1756,9 +1756,7 @@ fn draw_held(
         return;
     }
     held.rot *= Quat::from_rotation_y(-FRAC_PI_2) * Quat::from_rotation_z(55f32.to_radians());
-    let layer = item
-        .block()
-        .map_or_else(|| item.icon_layer().unwrap_or(crate::world::block::tex::ITEM_BASE), |b| b.info().tex[0]);
+    let layer = item.flat_layer().unwrap_or(crate::world::block::tex::ITEM_BASE);
     let tint = crate::inventory::components::undyed_tint(item).map_or([255, 255, 255, 0], |[r, g, b]| [r, g, b, 0]);
     super::player_model::textured_box(out, &held, 0.0, origin, body, light, 2, layer, scale, tint);
 }

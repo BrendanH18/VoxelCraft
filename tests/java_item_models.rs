@@ -9,32 +9,6 @@ use std::collections::BTreeSet;
 use serde_json::Value;
 use voxelcraft::{inventory::Stack, item, java_registry};
 
-/// Block items Java draws as a sprite, which the game draws in 3D from their
-/// world shape: it has no such sprites yet (Java's are item textures of
-/// their own, or for the lever, redstone torch and tripwire hook a block
-/// texture the game's boxes don't share).
-const STILL_3D: &[&str] = &[
-    "bamboo",
-    "bell",
-    "brewing_stand",
-    "campfire",
-    "cauldron",
-    "comparator",
-    "flower_pot",
-    "hopper",
-    "leaf_litter",
-    "lever",
-    "redstone_torch",
-    "pink_petals",
-    "repeater",
-    "sniffer_egg",
-    "soul_campfire",
-    "tripwire_hook",
-    "turtle_egg",
-    "wildflowers",
-];
-/// Families of [`STILL_3D`]: every door, lantern and chain.
-const STILL_3D_SUFFIXES: &[&str] = &["_door", "lantern", "_chain"];
 /// Items Java draws in 3D that the game draws as a sprite: beds, two
 /// plants, and the banner and shield (Java's special renderers).
 const STILL_FLAT: &[&str] = &["small_dripleaf", "spore_blossom", "shield"];
@@ -62,17 +36,14 @@ fn every_item_is_flat_or_3d_as_in_java() {
         checked += 1;
         if java_3d != ours_3d {
             differ.insert(id.as_str());
-            let expected = if java_3d {
-                listed(id, STILL_FLAT, STILL_FLAT_SUFFIXES)
-            } else {
-                listed(id, STILL_3D, STILL_3D_SUFFIXES)
-            };
+            // v1.0 gap track 6b: every item Java draws as a sprite is one.
+            let expected = java_3d && listed(id, STILL_FLAT, STILL_FLAT_SUFFIXES);
             assert!(expected, "{id}: Java draws it {}, the game {}", kind(java_3d), kind(ours_3d));
         }
     }
     assert!(checked > 1600, "only {checked} items resolved");
     // Every listed difference still exists (a fixed one comes off the list).
-    for id in STILL_3D.iter().chain(STILL_FLAT) {
+    for id in STILL_FLAT {
         assert!(differ.contains(id), "{id} now matches Java: take it off the list");
     }
     println!("{checked} items checked, {} still drawn differently", differ.len());

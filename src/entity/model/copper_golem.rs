@@ -101,8 +101,10 @@ pub(super) fn cargo(m: &Mob, origin: Vec3, body: Quat, light: ([u8; 4], u8), out
         return;
     }
     let block = stack.item.block().filter(|b| !b.flat_icon());
-    let layer = block
-        .map_or_else(|| stack.item.icon_layer().unwrap_or(crate::world::block::tex::ITEM_BASE), |b| b.info().tex[0]);
+    let layer = match block {
+        Some(b) => b.info().tex[0],
+        None => stack.item.flat_layer().unwrap_or(crate::world::block::tex::ITEM_BASE),
+    };
     let held = super::super::player_model::Limb {
         pivot: Vec3::new(0., 6.5, 5.),
         min: if block.is_some() { [-2.3; 3] } else { [-3., -3., -0.3] },

@@ -1757,6 +1757,10 @@ impl Item {
     /// Texture layer of the flat inventory icon (non-block items only), in
     /// the item icon range from `tex::ITEM_BASE`.
     pub fn icon_layer(self) -> Option<u16> {
+        // v1.0 gap track 6b: block items Java draws as sprites of their own.
+        if let Some(i) = crate::content::block_item_sprites::index(self) {
+            return Some(tex::item_layer(block_item_icon_base() + i));
+        }
         if self == crate::world::trial::TRIAL_CHAMBERS_MAP {
             return Some(crate::world::trial::MAP_TEX);
         }
@@ -2426,6 +2430,31 @@ pub fn open_bundle_sprite(index: u16) -> Option<Sprite> {
     let item = Item(crate::content::bundle::ITEM_FIRST + i / 2);
     let Sprite::Bundle(c) = crate::content::bundle::is_bundle(item).then(|| item.info().sprite)? else { return None };
     Some(if i % 2 == 0 { Sprite::BundleOpenBack(c) } else { Sprite::BundleOpenFront(c) })
+}
+
+/// v1.0 gap track 6b: the first icon of the block items Java draws as
+/// sprites (`content::block_item_sprites`), after the open bundles.
+pub fn block_item_icon_base() -> u16 {
+    open_bundle_icon_base() + OPEN_BUNDLE_ICONS as u16
+}
+
+impl Item {
+    /// The layer an item drawn flat shows (a slot icon, a held or dropped
+    /// sprite): its own icon, or a flat block item's block sprite.
+    pub fn flat_layer(self) -> Option<u16> {
+        if let Some(i) = crate::content::block_item_sprites::index(self) {
+            return Some(tex::item_layer(block_item_icon_base() + i));
+        }
+        self.block().map(|b| b.info().tex[0]).or_else(|| self.icon_layer())
+    }
+}
+
+/// v1.0 gap track 6b: whether a stack draws translucent held, dropped or
+/// framed: Java gives a block item its block's chunk layer
+/// (`ItemBlockRenderTypes`), so stained glass and its panes, tinted glass,
+/// ice, slime and honey blocks blend; plain glass is cut out.
+pub fn translucent(stack: &crate::inventory::Stack) -> bool {
+    stack.item.block().is_some_and(crate::world::block::Block::item_translucent)
 }
 
 /// The sprite drawn on item icon `index` (see `tex::item_layer`).

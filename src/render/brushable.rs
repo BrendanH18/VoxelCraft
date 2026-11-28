@@ -40,7 +40,7 @@ pub fn emerging_items(world: &World, camera: DVec3, range: f64, out: &mut Vec<Bl
         let block = stack.item.block().filter(|b| !b.flat_icon());
         let icon = match block {
             Some(_) => None,
-            None => stack.item.block().map(|b| b.info().tex[0]).or_else(|| stack.item.icon_layer()),
+            None => stack.item.flat_layer(),
         };
         // Java turns 75° then 11° (plus 90° on the east-west axis) about +Y;
         // a positive `BlockModel` yaw turns the other way.
@@ -58,6 +58,8 @@ pub fn emerging_items(world: &World, camera: DVec3, range: f64, out: &mut Vec<Bl
             icon,
             orient: None,
             tint: crate::inventory::components::dye_tint_bytes(stack),
+            glint: stack.has_foil(),
+            translucent: crate::item::translucent(&stack),
         });
     }
 }

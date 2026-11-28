@@ -83,10 +83,8 @@ impl Game {
                     Some(_) => None,
                     None => stack
                         .item
-                        .block()
-                        .map(|b| b.info().tex[0])
-                        .or_else(|| stack.item.dial_layer(self.dial_of(&self.session.player).for_stack(&stack)))
-                        .or_else(|| stack.item.icon_layer()),
+                        .dial_layer(self.dial_of(&self.session.player).for_stack(&stack))
+                        .or_else(|| stack.item.flat_layer()),
                 };
                 // A block sits on the frame's backing rather than in the wall.
                 let out =
@@ -103,6 +101,8 @@ impl Game {
                     icon,
                     orient: Some(orient),
                     tint: voxelcraft::entity::wolf_armor::item_tint_bytes(stack),
+                    glint: stack.has_foil(),
+                    translucent: crate::item::translucent(&stack),
                 }
             },
         )

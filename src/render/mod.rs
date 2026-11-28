@@ -10,6 +10,7 @@
 //! Depth is reverse-Z with an infinite far plane.
 
 pub mod arena;
+mod block_item_sprites;
 pub mod block_model;
 mod blur;
 pub mod brushable;

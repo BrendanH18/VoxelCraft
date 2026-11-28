@@ -141,6 +141,8 @@ impl HandAnim {
             off_map: None,
             map_small: false,
             invisible: false,
+            glint: false,
+            translucent: false,
         }
     }
 }
