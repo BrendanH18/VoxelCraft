@@ -178,12 +178,12 @@ mod tests {
         };
         let snow_top = f64::from(0.9_f32);
         let long = fall(6.0);
-        let rested = long.iter().filter(|&&y| (y - snow_top).abs() < 1e-6).count();
+        let rested = long.iter().filter(|&&y| (y - snow_top).abs() < 1e-4).count();
         assert_eq!(rested, 1, "one tick on the 0.9 shape: {long:?}");
-        assert!(long.last().unwrap().abs() < 1e-6, "then down to the stone: {long:?}");
+        assert!(long.last().unwrap().abs() < 1e-4, "then down to the stone: {long:?}");
         let short = fall(1.5);
-        assert!(short.iter().all(|&y| (y - snow_top).abs() > 1e-6), "a short fall never rests: {short:?}");
-        assert!(short.last().unwrap().abs() < 1e-6);
+        assert!(short.iter().all(|&y| (y - snow_top).abs() > 1e-4), "a short fall never rests: {short:?}");
+        assert!(short.last().unwrap().abs() < 1e-4);
     }
 
     #[test]

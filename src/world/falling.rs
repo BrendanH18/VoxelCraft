@@ -464,8 +464,10 @@ impl World {
             return None;
         }
         let mut vel = DVec3::new(f.side.x, -f.speed, f.side.z);
-        let context =
-            crate::physics::CollisionContext { falling_block: true, ..crate::physics::CollisionContext::entity(feet.y, 0.0, false) };
+        let context = crate::physics::CollisionContext {
+            falling_block: true,
+            ..crate::physics::CollisionContext::entity(feet.y, 0.0, false)
+        };
         let delta = vel * dt;
         let hit = crate::physics::move_box_context(&*self, &mut feet, &mut vel, delta, FALLING_SHAPE, Some(context));
         f.pos = feet - half;

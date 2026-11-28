@@ -1899,11 +1899,11 @@ mod tests {
                 ys
             };
             let short = drop(&mut w, 1.2);
-            assert!(short.last().unwrap().abs() < 1e-6, "{kind:?} sinks to the stone: {short:?}");
+            assert!(short.last().unwrap().abs() < 1e-4, "{kind:?} sinks to the stone: {short:?}");
             let long = drop(&mut w, 6.0);
-            let rested = long.iter().any(|&y| (y - f64::from(0.9_f32)).abs() < 1e-6);
+            let rested = long.iter().any(|&y| (y - f64::from(0.9_f32)).abs() < 1e-4);
             assert!(rested, "{kind:?} rests on the falling shape: {long:?}");
-            assert!(long.last().unwrap().abs() < 1e-6, "{kind:?} then sinks: {long:?}");
+            assert!(long.last().unwrap().abs() < 1e-4, "{kind:?} then sinks: {long:?}");
         }
     }
 

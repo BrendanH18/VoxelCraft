@@ -163,7 +163,10 @@ fn broken_frames_and_paintings_play_their_break_sound() {
         power_and_push(&mut w, &mut e, 3);
         assert!(e.decor.is_empty(), "{item:?} broke");
         let played = e.pending_sounds.iter().any(|ev| {
-            matches!(ev, EntityEvent::Sound { sound: MobSound::DecorBroken(Kind::Frame { .. } | Kind::Painting(_)), .. })
+            matches!(
+                ev,
+                EntityEvent::Sound { sound: MobSound::DecorBroken(Kind::Frame { .. } | Kind::Painting(_)), .. }
+            )
         });
         assert_eq!(played, sound, "{item:?} with drops {drops}");
     }
