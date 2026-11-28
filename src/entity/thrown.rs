@@ -1003,4 +1003,41 @@ mod tests {
         let h = heading_from_rotation(DVec3::NEG_Y, -20.0);
         assert!(h.x.abs() < 1e-12 && h.z.abs() < 1e-12 && (h.y + 70f64.to_radians().sin()).abs() < 1e-9, "{h}");
     }
+
+    /// v1.0 gap Track 8d: a snowball applies block effects
+    /// (`ThrowableProjectile.tick`): through lava it catches fire, and its
+    /// block hit (`onProjectileHit`) carries that, so the TNT it hits is
+    /// primed; water puts it out.
+    #[test]
+    fn a_snowball_through_lava_burns_and_lights_what_it_hits() {
+        use crate::world::block::Block;
+        for (through, lit) in [(Block::LAVA, true), (Block::FIRE, true), (Block::WATER, false), (Block::AIR, false)] {
+            let mut world = Grid::flat(0);
+            world.set(glam::IVec3::new(2, 1, 0), through);
+            world.set(glam::IVec3::new(6, 1, 0), Block::TNT);
+            let mut rng = Rng::new(1);
+            let mut t = Thrown::launch(
+                Kind::Snowball,
+                PlayerId::HOST,
+                DVec3::new(0.5, 1.6, 0.5),
+                DVec3::X,
+                DVec3::ZERO,
+                &mut rng,
+            );
+            if through == Block::WATER {
+                t.fire = 100;
+            }
+            let (index, mut events) = (super::super::mob_index::MobIndex::default(), Vec::new());
+            for _ in 0..10 {
+                if !t.update(0.05, &world, &mut [], &index, &[], &Default::default(), &mut rng, &mut events) {
+                    break;
+                }
+            }
+            let hit = events.iter().find_map(|e| match e {
+                EntityEvent::ProjectileBlockHit { cell, burning, .. } => Some((*cell, *burning)),
+                _ => None,
+            });
+            assert_eq!(hit, Some((glam::IVec3::new(6, 1, 0), lit)), "through {through:?}");
+        }
+    }
 }

@@ -109,6 +109,15 @@ impl Fireball {
                 self.impact(Some(hit), events);
                 return false;
             }
+            // v1.0 gap Track 8d: a creative player is hit too and refuses it
+            // (`SmallFireball.onHitEntity` puts their fire back); the
+            // fireball is spent all the same, and a ghast's bursts there.
+            if ctx.players.iter().any(|t| t.invulnerable && t.alive && !t.spectator && t.contains(next)) {
+                if self.large {
+                    self.impact(None, events);
+                }
+                return false;
+            }
             // v0.17 Track D1: a burning fireball hits vehicles too. A blaze's
             // deals its 5 damage (`SmallFireball.onHitEntity`), which breaks a
             // cart or boat and primes a TNT cart (`MinecartTNT.destroy`); a
@@ -229,6 +238,27 @@ mod tests {
         let mut events = Vec::new();
         while f.update(0.05, &world, &c, &[], &[], &Default::default(), &mut events) {}
         assert!(events.is_empty());
+    }
+
+    /// v1.0 gap Track 8d: a creative player (`abilities.invulnerable`) is
+    /// hit and refuses it: a blaze's fireball is spent with no damage, fire
+    /// or burning block, and a ghast's bursts there.
+    #[test]
+    fn fireballs_are_spent_on_creative_players() {
+        let world = Grid::flat(0);
+        let creative = Target { invulnerable: true, ..Target::new(PlayerId(2), DVec3::new(20.5, 10.0, 0.5), false) };
+        for large in [false, true] {
+            let from = DVec3::new(0.5, 11.0, 0.5);
+            let mut f = if large { Fireball::large(from, DVec3::X) } else { Fireball::new(from, DVec3::X) };
+            let mut events = Vec::new();
+            while f.update(0.05, &world, &ctx(vec![creative]), &[], &[], &Default::default(), &mut events) {}
+            assert!(f.pos.x < 21.0, "stopped at the player");
+            if large {
+                assert!(matches!(events.as_slice(), [EntityEvent::Explosion { .. }]), "{events:?}");
+            } else {
+                assert!(events.is_empty(), "{events:?}");
+            }
+        }
     }
 
     #[test]

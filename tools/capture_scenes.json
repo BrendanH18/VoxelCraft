@@ -9526,6 +9526,87 @@
     "--projectile",
     "arrow,1,149,-1"
    ]
+  },
+  {
+   "name": "burning-mobs",
+   "group": "materials",
+   "description": "Two zombies, a skeleton and a pig pinned with --still-mobs and held alight with --burning (capture-only), on stone at noon: Java's flame (`FlameFeatureRenderer`: camera-facing fire quads over each mob's box) on burning mobs (v1.0 gap Track 8d; before it, rising cubes and an orange tint). Without --burning, as on older commits, the same mobs stand unlit",
+   "pose": [
+    0.5,
+    153.0,
+    12.5,
+    90,
+    -14
+   ],
+   "hud": false,
+   "wait": 2.0,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "fill": [
+    [
+     -6,
+     150,
+     14,
+     6,
+     150,
+     24,
+     "stone"
+    ]
+   ],
+   "place": [
+    "3,151,18,fire"
+   ],
+   "spawn": [
+    "zombie,-3,151,19",
+    "skeleton,-1,151,19",
+    "zombie,1,151,19",
+    "pig,3,151,18"
+   ],
+   "args": [
+    "--still-mobs",
+    "--burning"
+   ]
+  },
+  {
+   "name": "burning-player",
+   "group": "materials",
+   "description": "A survival player standing in a fire on stone at noon (`fire_damage` off, so a slow software capture can't kill them), seen in third person from behind: Java's flame over the player's box (v1.0 gap Track 8d; before it a burning player wasn't drawn on fire)",
+   "mode": "survival",
+   "pose": [
+    0.5,
+    151.0,
+    0.5,
+    30,
+    10
+   ],
+   "hud": false,
+   "wait": 1.0,
+   "fill": [
+    [
+     -4,
+     150,
+     -4,
+     4,
+     150,
+     4,
+     "stone"
+    ]
+   ],
+   "place": [
+    "0,151,0,fire"
+   ],
+   "args": [
+    "--camera",
+    "third"
+   ],
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "fire_damage=false"
+   ]
   }
  ]
 }

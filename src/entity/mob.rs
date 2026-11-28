@@ -2152,8 +2152,9 @@ impl Mob {
         if self.armadillo.is_some() && amount <= 0.0 {
             return false;
         }
-        // v1.0 gap Track 8d: `LivingEntity.hurtServer`'s hurt cooldown, on the
-        // amount `Armadillo.hurtServer` passes on, before armor (`actuallyHurt` reduces only what lands).
+        // v1.0 gap Track 8d: `LivingEntity.hurtServer`'s hurt cooldown, on
+        // the amount `Armadillo.hurtServer` passes on, before armor
+        // (`actuallyHurt` reduces only what lands).
         let full = self.full_hit();
         let amount = if full {
             self.last_hurt = amount;
@@ -2161,6 +2162,7 @@ impl Mob {
             amount
         } else {
             if amount <= self.last_hurt {
+                self.hit_cause = None;
                 return false;
             }
             let excess = amount - self.last_hurt;
