@@ -180,13 +180,49 @@ persist in the root level file. See [the CLI protocol and limitations](agents.md
 
 Controller and LAN players run the shared actions on their own session
 (`hands::Actor` for hands, `screen::Screen` for container clicks); no player's
-state is swapped into the host's. Independent simultaneous dimensions and
-shape-aware light occlusion remain future work. A first desktop LAN slice uses
+state is swapped into the host's. Shape-aware light occlusion remains
+future work. A first desktop LAN slice uses
 bounded binary-framed TCP and authoritative chunk snapshots; see [LAN](lan.md).
 Split-screen is implemented, and each view blends its biome's fog and sky
 colours around its own eye and keeps its own rain fog and water vision
 (`voxelcraft::atmosphere`, v0.18 Track 8).
 See [the headless smoke run and checks](development.md#headless-simulation-foundation).
+
+### Levels the host isn't in (v1.0 final F11)
+
+Java 26.3 ticks every dimension's `ServerLevel` each server tick, players
+or not; what keeps a level's chunks loaded and ticking is its chunk
+tickets ([record](verification/2026-11-28-v1.0-final-f11-dimensions.md)).
+`voxelcraft::world::tickets` holds a level's tickets (`PORTAL`,
+`ENDER_PEARL`, and a loading-only ticket for work waiting on ground) and
+its `emptyTime`. `World::set_tickets` makes their simulation levels part
+of the world's activity (`is_entity_ticking`, `is_block_ticking`) and
+their loading levels part of what streams. `World::set_background(true)`
+takes the host's view out of the world: nothing outside the tickets
+loads or stays loaded, nothing is meshed, and `World::update_background`
+streams it without a host position. `simulation::tick_unattended_world_rules`
+is the world part of a tick with no players.
+
+The game keeps the host's level where it always was (`Game::world`,
+`Game::mobs.entities`) and every other dimension that has been loaded as
+a background `app::levels::Level` with its own `World`, `Entities`,
+tickets and empty time. The choice was between factoring a level tick out
+of `Game::tick` and swapping each background level into those fields
+around a player-free tick; the swap was taken because the entity events
+(explosions, mob griefing, villagers' doors and farms, the dragon, pearls,
+portal departures) are handled by `Game` methods that read and write
+`self.world` and `self.mobs.entities`, and a swap runs exactly the code the
+host's level runs. `Game::with_level` swaps a level in (the game-wide maps
+and loot sequences stay put), sets `Game::unattended` and suppresses the
+audio; `Game::tick_unattended` runs the level's tick; every use of the host
+or the other players in that path is gated on `unattended` (nobody is
+targeted, hurt by blasts, given beacon or conduit power, or seated; no
+natural spawning). Levels tick in Java's order around the host's: those
+before it, the host's own tick, those after it. Travelling to a loaded
+background level swaps it in for good; the level left becomes a
+background level. Saving writes every level's records and level file.
+A LAN client runs no background levels (the host's world is its world);
+guests stay in the host's dimension.
 
 ## Code layout
 
@@ -1560,7 +1596,9 @@ chunk unloads out of the level and back when it loads (Java's per-chunk
 entity sections); stored entities are saved in the dimension's existing
 entity properties ([evidence](verification/2026-10-17-entity-storage.md)). Application startup, disk-save assembly, fixed gameplay
 steps and client action adapters are in `src/app/startup.rs`, `save.rs`,
-`tick.rs` and `player_actions.rs`. Window events and frame rendering remain
+`tick.rs` and `player_actions.rs`; `src/app/levels.rs` runs the dimensions
+the host isn't in ([levels the host isn't in](#levels-the-host-isnt-in-v10-final-f11)),
+on `src/world/tickets.rs`. Window events and frame rendering remain
 in the coordinator. Controller/CLI/desktop action ownership is a separate,
 ongoing extraction; moving a file alone does not complete STR-03.
 `src/session/placement.rs` owns validated block placement and actor outcomes;

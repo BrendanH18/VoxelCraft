@@ -1116,6 +1116,19 @@ impl World {
             })
     }
 
+    /// v1.0 final F11: whether any storage column the `loads` reach lies
+    /// outside the host's view's load range.
+    fn beyond_view(&self, loads: &[(IVec2, i32)]) -> bool {
+        let r = self.render_distance as f32 + 1.5;
+        loads.iter().any(|&(c, level)| {
+            let reach = tickets::FULL - level;
+            let (lo, hi) = ((c - IVec2::splat(reach)) >> 1, (c + IVec2::splat(reach)) >> 1);
+            [(lo.x, lo.y), (hi.x, lo.y), (lo.x, hi.y), (hi.x, hi.y)]
+                .iter()
+                .any(|&(x, z)| (self.horizontal_dist2(IVec3::new(x, 0, z)) as f32) > r * r)
+        })
+    }
+
     /// v1.0 final F11: makes this a level nobody is in (`true`): the host's
     /// view no longer loads, keeps or meshes anything, so only what its
     /// tickets ([`World::set_tickets`]) reach stays loaded, and nothing is
@@ -1155,8 +1168,14 @@ impl World {
         let loads = tickets.loading();
         let sims = tickets.simulation();
         if loads != self.ticket_loads {
+            // Streaming is planned again only when a ticket reaches (or
+            // reached) past what the host's view keeps loaded anyway: a
+            // pearl flying near the host changes nothing there.
+            let replan = self.background || self.beyond_view(&loads) || self.beyond_view(&self.ticket_loads);
             self.ticket_loads = loads;
-            self.center = None;
+            if replan {
+                self.center = None;
+            }
         }
         if sims != self.activity.tickets {
             self.activity.tickets = sims;
