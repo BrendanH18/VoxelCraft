@@ -132,12 +132,7 @@ impl ItemEntity {
         let falling = self.vel.y;
         let start_y = self.pos.y;
         let hit = physics::move_box_context(world, &mut self.pos, &mut self.vel, delta, SHAPE, context);
-        // `Entity.checkFallDamage`: falling adds up, landing resets it.
-        if hit.on_ground {
-            self.fall_distance = 0.0;
-        } else if self.pos.y < start_y {
-            self.fall_distance += start_y - self.pos.y;
-        }
+        self.fall_distance = fallen(self.fall_distance, hit.on_ground, start_y, self.pos.y);
         if hit.on_ground {
             let below = world.block(below_pos(self.pos));
             // `Entity.restituteMovementAfterCollisions`: slime blocks and beds
@@ -241,6 +236,20 @@ pub fn block_drop(stack: Stack, cell: IVec3, rng: &mut Rng) -> ItemEntity {
     let pos = cell.as_dvec3() + DVec3::new(rng.range(0.25, 0.75) as f64, 0.25, rng.range(0.25, 0.75) as f64);
     let vel = DVec3::new(rng.range(-2.0, 2.0) as f64, 4.0, rng.range(-2.0, 2.0) as f64);
     ItemEntity::new(stack, pos, vel, PICKUP_DELAY, rng)
+}
+
+/// `Entity.checkFallDamage`'s fall distance after a move from `start_y` to
+/// `end_y`: falling adds up, landing resets it. On powder snow this gives
+/// Java's one tick of rest: a fall of more than 2.5 blocks lands on the
+/// 0.9 shape, which resets it, and the entity sinks in on the next tick.
+pub(crate) fn fallen(fall_distance: f64, on_ground: bool, start_y: f64, end_y: f64) -> f64 {
+    if on_ground {
+        0.0
+    } else if end_y < start_y {
+        fall_distance + (start_y - end_y)
+    } else {
+        fall_distance
+    }
 }
 
 #[cfg(test)]

@@ -327,3 +327,31 @@ fn a_waiting_legacy_wall_settles_when_its_neighbour_chunk_loads() {
     assert_eq!(up(w.get_block(edge).unwrap()), Some(false), "now the middle of a run");
     assert!(w.legacy_walls.is_empty());
 }
+
+/// v1.0 final F9: the wait list is saved (`legacy_walls`, only while some
+/// wall waits) and a wall read back from it settles once its neighbour's
+/// chunk loads, as in the session that found it.
+#[test]
+fn the_legacy_wall_wait_list_is_saved_and_a_reloaded_wall_still_settles() {
+    let mut w = world();
+    assert!(!w.has_legacy_walls());
+    assert_eq!(w.legacy_walls_to_string(), "");
+    let (west, edge) = (IVec3::new(30, 140, 8), IVec3::new(31, 140, 8));
+    w.legacy_walls.insert(edge);
+    w.legacy_walls.insert(IVec3::new(-3, 120, 40));
+    let saved = w.legacy_walls_to_string();
+    assert_eq!(saved, "-3,120,40;31,140,8", "sorted");
+    // A later session: the same blocks, the list read back.
+    let mut later = world();
+    later.set_block(west, WALL);
+    later.set_block(edge, WALL);
+    later.load_legacy_walls(&saved);
+    later.load_legacy_walls("damaged;1,2;4,5,6,7");
+    assert_eq!(later.legacy_walls.len(), 2, "damaged entries skipped");
+    assert_eq!(up(later.get_block(edge).unwrap()), Some(true));
+    let mut east = ChunkData::Uniform(Block::AIR);
+    east.set(0, 12, 8, WALL);
+    later.insert_chunk(IVec3::new(1, 4, 0), Arc::new(east), true);
+    assert_eq!(up(later.get_block(edge).unwrap()), Some(false), "settled after the reload");
+    assert_eq!(later.legacy_walls_to_string(), "-3,120,40", "the other still waits");
+}

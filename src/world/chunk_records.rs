@@ -152,6 +152,25 @@ impl<T> Owned for Vec<(IVec3, T)> {
     }
 }
 
+impl Owned for FxHashSet<IVec3> {
+    fn take_where(&mut self, at: At) -> Self {
+        if self.is_empty() {
+            return Self::default();
+        }
+        self.extract_if(|p| at(chunk_of(*p))).collect()
+    }
+    fn by_chunk(self) -> FxHashMap<IVec3, Self> {
+        let mut out: FxHashMap<IVec3, Self> = FxHashMap::default();
+        for p in self {
+            out.entry(chunk_of(p)).or_default().insert(p);
+        }
+        out
+    }
+    fn merge(&mut self, other: Self) {
+        self.extend(other);
+    }
+}
+
 impl Owned for Vec<IVec3> {
     fn take_where(&mut self, at: At) -> Self {
         if !self.iter().any(|p| at(chunk_of(*p))) {
@@ -226,7 +245,7 @@ macro_rules! system {
 /// restored (the order `Game::restore_dimension` loads the level file in).
 /// Redstone and hopper scheduling (`redstone`, `automation`) stay in the
 /// level file: they are scheduled ticks with a world-wide clock.
-fn systems() -> [System; 19] {
+fn systems() -> [System; 20] {
     [
         System { key: "falling", take: take_falling, load: load_falling },
         system!("brewing", brewing_stands_to_string, load_brewing_stands, [a b: brewing_stands]),
@@ -262,12 +281,14 @@ fn systems() -> [System; 19] {
         system!("conduits", conduits_to_string, load_conduits, [a b: conduits.conduits]),
         system!("crafters", crafters_to_string, load_crafters, [a b: crafters.map, c d: crafters.active]),
         system!("potent_sulfur", potent_sulfur_to_string, load_potent_sulfur, [a b: potent_sulfur.cells]),
+        // v1.0 final F9: legacy walls waiting for a neighbouring chunk.
+        system!("legacy_walls", legacy_walls_to_string, load_legacy_walls, [a b: legacy_walls]),
     ]
 }
 
 /// The level file keys whose entries move into chunk records. With region
 /// storage the level file holds only the loaded chunks' entries for them.
-pub const CHUNK_KEYS: [&str; 19] = [
+pub const CHUNK_KEYS: [&str; 20] = [
     "falling",
     "brewing",
     "furnaces",
@@ -287,6 +308,7 @@ pub const CHUNK_KEYS: [&str; 19] = [
     "conduits",
     "crafters",
     "potent_sulfur",
+    "legacy_walls",
 ];
 
 /// Falling blocks stored in unloaded chunks (Java keeps them with the

@@ -91,3 +91,83 @@ fn a_frame_beside_the_path_stays() {
     power_and_push(&mut w, &mut e, 3);
     assert_eq!(e.decor.len(), 1);
 }
+
+/// v1.0 final F9: thrown projectiles, fireballs, skulls, bullets and fangs
+/// in the stone's way end just ahead of it too, each by its own box; a
+/// shulker bullet (`noPhysics`) would pass through blocks, the others
+/// stop against them.
+#[test]
+fn thrown_projectiles_skulls_bullets_and_fangs_move_ahead_of_the_pushed_stone() {
+    use crate::entity::{Rng, illager::Fang, pearl::Pearl, wither::Skull};
+    let mut w = world();
+    let mut e = Entities::new(1);
+    let mut rng = Rng::new(5);
+    let at = |x: f64| O.as_dvec3() + DVec3::new(x, 0.25, 0.5);
+    let mut pearl = Pearl::thrown(crate::entity::PlayerId::HOST, at(2.2), DVec3::X, DVec3::ZERO, &mut rng);
+    pearl.pos = at(2.2);
+    pearl.vel = DVec3::ZERO;
+    e.pearls.push(pearl);
+    let mut skull = Skull::new(at(2.3), DVec3::X, false, None);
+    skull.motion = DVec3::ZERO;
+    e.wither_skulls.push(skull);
+    e.fangs.push(Fang::new(O.as_dvec3() + DVec3::new(2.5, 0.0, 0.5), 0.0, 10, 0));
+    power_and_push(&mut w, &mut e, 3);
+    assert_eq!(w.get_block(O + IVec3::X * 2), Some(Block::STONE));
+    let face = O.x as f64 + 3.0 + crate::world::piston::PUSH_OFFSET;
+    assert!(close(e.pearls[0].pos.x - 0.125, face), "pearl at {}", e.pearls[0].pos.x);
+    assert!(close(e.wither_skulls[0].pos.x - 0.15625, face), "skull at {}", e.wither_skulls[0].pos.x);
+    assert!(close(e.fangs[0].pos.x - 0.25, face), "fangs at {}", e.fangs[0].pos.x);
+}
+
+/// A slime block pushing sideways sets a projectile's speed on the push
+/// axis (`moveCollidedEntities`' bounce), in each one's own units.
+#[test]
+fn a_slime_block_launches_a_pearl_along_the_push() {
+    use crate::entity::{Rng, pearl::Pearl};
+    let mut w = world();
+    assert!(w.set_block(O + IVec3::X, crate::world::stone_blocks::SLIME_BLOCK));
+    let mut e = Entities::new(1);
+    let mut rng = Rng::new(5);
+    let at = O.as_dvec3() + DVec3::new(2.2, 0.25, 0.5);
+    let mut pearl = Pearl::thrown(crate::entity::PlayerId::HOST, at, DVec3::X, DVec3::ZERO, &mut rng);
+    pearl.pos = at;
+    pearl.vel = DVec3::new(0.0, -3.0, 0.0);
+    e.pearls.push(pearl);
+    power_and_push(&mut w, &mut e, 3);
+    // One block a tick, in the pearl's blocks a second; y untouched.
+    assert!(close(e.pearls[0].vel.x, 20.0), "{:?}", e.pearls[0].vel);
+    assert!(close(e.pearls[0].vel.y, -3.0));
+}
+
+/// Item frames and paintings a piston breaks play their break sound
+/// (`ItemFrame.dropItem` always, `Painting.dropItem` with entity drops).
+#[test]
+fn broken_frames_and_paintings_play_their_break_sound() {
+    use crate::entity::{EntityEvent, MobSound, decor::Kind};
+    for (item, drops, sound) in [
+        (Item::ITEM_FRAME, true, true),
+        (Item::ITEM_FRAME, false, true),
+        (Item::PAINTING, true, true),
+        (Item::PAINTING, false, false),
+    ] {
+        let mut w = world();
+        let mut e = Entities::new(1);
+        e.entity_drops = drops;
+        assert!(w.set_block(O + IVec3::X * 3, Block::STONE));
+        if item == Item::PAINTING {
+            for d in [IVec3::Y, IVec3::NEG_Y, IVec3::Z, IVec3::NEG_Z] {
+                assert!(w.set_block(O + IVec3::X * 2 + d, Block::STONE));
+            }
+        }
+        e.place_decor(&w, item, O + IVec3::X * 3, IVec3::NEG_X, 90.0, &[]);
+        power_and_push(&mut w, &mut e, 3);
+        assert!(e.decor.is_empty(), "{item:?} broke");
+        let played = e.pending_sounds.iter().any(|ev| {
+            matches!(
+                ev,
+                EntityEvent::Sound { sound: MobSound::DecorBroken(Kind::Frame { .. } | Kind::Painting(_)), .. }
+            )
+        });
+        assert_eq!(played, sound, "{item:?} with drops {drops}");
+    }
+}

@@ -193,7 +193,7 @@ pub struct DragonFireball {
     pub pos: DVec3,
     pub previous_pos: DVec3,
     /// Blocks per tick.
-    vel: DVec3,
+    pub(super) vel: DVec3,
     dir: DVec3,
     age: u32,
 }

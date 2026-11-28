@@ -15,7 +15,7 @@ pub struct EnderEye {
     /// Position at the start of the last simulation step, for rendering.
     pub previous_pos: DVec3,
     /// Blocks per tick.
-    vel: DVec3,
+    pub(super) vel: DVec3,
     /// Where it steers (`target`); none for an eye loaded from a save, as
     /// Java doesn't save it (v1.0 gap Track 8f).
     target: Option<DVec3>,

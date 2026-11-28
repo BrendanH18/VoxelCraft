@@ -136,6 +136,9 @@ pub struct Decor {
     pub pos: DVec3,
     pub previous_pos: DVec3,
     pub(super) vel_y: f64,
+    /// v1.0 final F9: an armor stand's `fallDistance` (not saved), for
+    /// powder snow.
+    pub(super) fall_distance: f64,
     /// Armor stands: Java's yaw in degrees (0 faces south, +Z).
     pub yaw: f32,
     /// What an item frame holds, turned `rotation` eighths of a turn.
@@ -169,6 +172,7 @@ impl Decor {
             pos,
             previous_pos: pos,
             vel_y: 0.0,
+            fall_distance: 0.0,
             yaw: 0.0,
             item: None,
             rotation: 0,
@@ -722,8 +726,10 @@ impl Entities {
             // boots hold it up on powder snow).
             let boots = d.armor[ArmorPiece::Boots as usize]
                 .is_some_and(|s| s.item.as_armor() == Some((ArmorPiece::Boots, ArmorMaterial::Leather)));
-            let context = Some(physics::CollisionContext::entity(d.pos.y, 0.0, boots));
+            let context = Some(physics::CollisionContext::entity(d.pos.y, d.fall_distance, boots));
+            let start_y = d.pos.y;
             let hit = physics::move_box_context(world, &mut d.pos, &mut vel, DVec3::Y * d.vel_y, STAND_SHAPE, context);
+            d.fall_distance = super::item::fallen(d.fall_distance, hit.on_ground, start_y, d.pos.y);
             if hit.on_ground {
                 d.vel_y = 0.0;
             }
@@ -793,7 +799,16 @@ impl Entities {
     pub(super) fn piston_break_decor(&mut self, i: usize) {
         let drops = self.entity_drops;
         self.post_decor_event(i, GameEvent::EntityDie, EventSource::NONE);
-        if matches!(self.decor[i].kind, Kind::Frame { .. }) {
+        // v1.0 final F9: `dropItem`'s break sound: a frame's always
+        // (`ItemFrame.dropItem`), a painting's only under `doEntityDrops`
+        // (`Painting.dropItem`).
+        let kind = self.decor[i].kind;
+        let frame = matches!(kind, Kind::Frame { .. });
+        if frame || drops {
+            let pos = self.decor[i].pos;
+            self.pending_sounds.push(super::EntityEvent::Sound { sound: super::MobSound::DecorBroken(kind), pos });
+        }
+        if frame {
             self.post_decor_event(i, GameEvent::BlockChange, EventSource::NONE);
         }
         self.break_decor(i, drops, drops);

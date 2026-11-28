@@ -15,10 +15,14 @@ const TERMINAL_SPEED: f64 = 40.0;
 #[derive(Clone, Copy, Debug)]
 pub struct FallingBlock {
     pub block: Block,
-    /// Minimum corner; x and z stay on the grid.
+    /// Minimum corner; x and z stay on the grid unless a piston pushed it.
     pub pos: DVec3,
     pub previous_pos: DVec3,
     speed: f64,
+    /// v1.0 final F9: sideways speed (blocks a second, y unused) a slime
+    /// block's horizontal push gave it (`deltaMovement`, 0.98 drag a tick).
+    /// Not saved.
+    side: DVec3,
     /// Damage per block fallen to whatever it lands on
     /// (`FallingBlockEntity.setHurtsEntities`; only a stalactite's tip).
     pub(super) hurt: f32,
@@ -28,7 +32,7 @@ pub struct FallingBlock {
 
 impl FallingBlock {
     pub(super) fn new(block: Block, pos: DVec3, speed: f64) -> Self {
-        FallingBlock { block, pos, previous_pos: pos, speed, hurt: 0.0, from_y: pos.y }
+        FallingBlock { block, pos, previous_pos: pos, speed, side: DVec3::ZERO, hurt: 0.0, from_y: pos.y }
     }
 }
 
@@ -43,8 +47,9 @@ pub fn can_fall_into(b: Block) -> bool {
 impl World {
     /// v1.0 final F7: `PistonMovingBlockEntity.moveCollidedEntities` for
     /// falling blocks, right after the moving blocks advance. A slime
-    /// block's launch becomes its fall speed; a horizontal push moves it
-    /// off the grid, and it lands in the cell under its centre.
+    /// block's launch becomes its fall speed (v1.0 final F9: or, pushing
+    /// sideways, its sideways speed); a horizontal push moves it off the
+    /// grid, and it then moves as its box does ([`World::tick_falling`]).
     pub(super) fn push_falling_blocks(&mut self) {
         if self.falling.is_empty() {
             return;
@@ -53,7 +58,7 @@ impl World {
         for f in &mut falling {
             let half = DVec3::new(0.5, 0.0, 0.5);
             let mut feet = f.pos + half;
-            let mut vel = DVec3::new(0.0, -f.speed, 0.0);
+            let mut vel = DVec3::new(f.side.x, -f.speed, f.side.z);
             let body = super::piston::PushBody {
                 pos: &mut feet,
                 vel: &mut vel,
@@ -65,6 +70,7 @@ impl World {
             if super::piston::push_body(self, body) {
                 f.pos = feet - half;
                 f.speed = -vel.y;
+                f.side = DVec3::new(vel.x, 0.0, vel.z);
             }
         }
         self.falling = falling;
@@ -289,6 +295,20 @@ impl World {
                 return true;
             }
             f.speed = (f.speed + GRAVITY * dt).min(TERMINAL_SPEED);
+            // v1.0 final F9: off the grid, or moving sideways, it moves as
+            // `FallingBlockEntity.tick`'s `move(SELF, deltaMovement)` does:
+            // its 0.98 box against every block shape it meets.
+            let on_grid = |v: f64| (v - v.round()).abs() < 1.0e-9;
+            if f.side != DVec3::ZERO || !on_grid(f.pos.x) || !on_grid(f.pos.z) {
+                return match self.move_falling_box(f, dt) {
+                    Some(Some(cell)) => {
+                        landed.push((cell, *f));
+                        false
+                    }
+                    Some(None) => false,
+                    None => true,
+                };
+            }
             let target = f.pos.y - f.speed * dt;
             // `blockPosition`: the cell under its centre (v1.0 final F7: a
             // piston can push it off the grid).
@@ -426,6 +446,54 @@ impl World {
         self.update_block_light();
     }
 
+    /// v1.0 final F9: one step of a falling block that left the grid: its
+    /// 0.98 box moves through `physics` with the falling block's collision
+    /// context (powder snow holds it), then 0.98 drag a tick on its
+    /// sideways speed. Returns the cell it lands in (`blockPosition`, the
+    /// cell its bottom centre is in) once it is on the ground, or a
+    /// concrete powder's in water; `Some(None)` when it landed with that
+    /// cell's floor free (on a ledge's edge): `wouldContinueFalling`, so
+    /// Java drops it as an item. It waits while the cell below it isn't
+    /// loaded.
+    fn move_falling_box(&mut self, f: &mut FallingBlock, dt: f64) -> Option<Option<IVec3>> {
+        let half = DVec3::new(0.5, 0.0, 0.5);
+        let mut feet = f.pos + half;
+        let cell = feet.floor().as_ivec3();
+        if self.get_block(cell - IVec3::Y).is_none() || self.get_block(cell).is_none() {
+            f.speed = 0.0;
+            return None;
+        }
+        let mut vel = DVec3::new(f.side.x, -f.speed, f.side.z);
+        let context = crate::physics::CollisionContext {
+            falling_block: true,
+            ..crate::physics::CollisionContext::entity(feet.y, 0.0, false)
+        };
+        let delta = vel * dt;
+        let hit = crate::physics::move_box_context(&*self, &mut feet, &mut vel, delta, FALLING_SHAPE, Some(context));
+        f.pos = feet - half;
+        f.speed = -vel.y;
+        f.side = DVec3::new(vel.x, 0.0, vel.z) * 0.98f64.powf(dt * 20.0);
+        if f.side.length_squared() < 1.0e-10 {
+            f.side = DVec3::ZERO;
+        }
+        let cell = feet.floor().as_ivec3();
+        let here = self.get_block(cell);
+        if here == Some(super::frog_blocks::FROGSPAWN) {
+            self.edit(cell, Block::AIR, false);
+        }
+        let wet = f.block.concrete_powder_color().is_some() && here.is_some_and(Block::is_water);
+        if !hit.on_ground && !wet {
+            return None;
+        }
+        if !wet && self.get_block(cell - IVec3::Y).is_some_and(can_fall_into) {
+            // `spawnAtLocation(block)`: the block's own item.
+            let item = crate::item::Item::from_block(f.block.canonical());
+            self.drops.push((cell, crate::inventory::Stack::new(item, 1)));
+            return Some(None);
+        }
+        Some(Some(cell))
+    }
+
     pub fn falling_blocks(&self) -> &[FallingBlock] {
         &self.falling
     }
@@ -465,5 +533,38 @@ mod piston_tests {
             w.tick_falling(0.05);
         }
         assert_eq!(w.get_block(O + IVec3::X * 3 - IVec3::Y), Some(Block::SAND));
+    }
+
+    /// v1.0 final F9: a slime block's sideways push leaves the sand moving
+    /// at a block a tick (`deltaMovement`, 0.98 drag a tick); off the grid
+    /// it collides as its 0.98 box does, so it stops against a pillar,
+    /// falls down its face and lands in the column under its centre.
+    #[test]
+    fn sand_a_slime_block_launches_sideways_flies_on_and_lands_against_a_pillar() {
+        let mut w = World::new_headless(Arc::new(Generator::new(7)), Default::default(), 2);
+        for c in [IVec3::new(0, 4, 0), IVec3::new(1, 4, 0)] {
+            w.insert_chunk(c, Arc::new(ChunkData::Uniform(Block::AIR)), false);
+        }
+        assert!(w.set_block(O, r::piston(2, false, false)));
+        assert!(w.set_block(O + IVec3::X, crate::world::stone_blocks::SLIME_BLOCK));
+        w.falling.push(FallingBlock::new(Block::SAND, (O + IVec3::X * 2).as_dvec3(), 0.0));
+        let floor = O.y - 3;
+        for x in O.x..O.x + 12 {
+            assert!(w.set_block(IVec3::new(x, floor, O.z), Block::STONE));
+        }
+        for y in floor..O.y + 2 {
+            assert!(w.set_block(IVec3::new(O.x + 6, y, O.z), Block::STONE));
+        }
+        assert!(w.set_block(O - IVec3::Z, r::REDSTONE_BLOCK));
+        for _ in 0..3 {
+            w.tick_redstone();
+        }
+        let f = w.falling[0];
+        assert!((f.side.x - 20.0).abs() < 1e-9, "launched east: {:?}", f.side);
+        for _ in 0..60 {
+            w.tick_falling(0.05);
+        }
+        assert!(w.falling.is_empty(), "landed");
+        assert_eq!(w.get_block(IVec3::new(O.x + 5, floor + 1, O.z)), Some(Block::SAND));
     }
 }

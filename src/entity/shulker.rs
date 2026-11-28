@@ -205,7 +205,7 @@ pub struct Bullet {
     pub pos: DVec3,
     /// Position at the start of the last simulation step, for rendering.
     pub previous_pos: DVec3,
-    vel: DVec3,
+    pub(super) vel: DVec3,
     /// The shooting shulker's id (never hit by its own bullet).
     owner: u32,
     target: Option<PlayerId>,
