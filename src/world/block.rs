@@ -1286,7 +1286,16 @@ impl Block {
         let c = if super::sugar_cane::owns(c.0) { Block::SUGAR_CANE } else { c };
         // Farmland of moisture 1-6 answers as dry farmland (v1.0 Track 4).
         let c = if super::farmland::owns(c.0) { Block::FARMLAND } else { c };
+        // A Nether portal along either axis answers as the portal (v1.0 gap
+        // Track 5b).
+        let c = if super::portal::owns(c.0) { Block::NETHER_PORTAL } else { c };
         (c != self).then_some(c)
+    }
+
+    /// A Nether portal block of either axis, or of a save from before
+    /// portals had one ([`super::portal::AXIS_X`]).
+    pub fn is_nether_portal(self) -> bool {
+        super::portal::is_portal(self)
     }
 
     /// Farmland of any moisture ([`super::farmland`]).
@@ -1405,6 +1414,9 @@ impl Block {
         }
         if super::farmland::owns(self.0) {
             return Block::FARMLAND;
+        }
+        if super::portal::owns(self.0) {
+            return Block::NETHER_PORTAL;
         }
         if super::heavy_core::owns(self.0) {
             return super::heavy_core::HEAVY_CORE;
@@ -2727,7 +2739,7 @@ impl Block {
     /// Whether the crosshair can select this block (anything visible but fluids).
     #[inline(always)]
     pub fn is_targetable(self) -> bool {
-        self.kind() != RenderKind::Invisible && !self.is_fluid() && self != Block::NETHER_PORTAL
+        self.kind() != RenderKind::Invisible && !self.is_fluid() && !self.is_nether_portal()
     }
 
     /// Sand, gravel and the dragon egg fall when nothing holds them up.
@@ -2880,6 +2892,11 @@ impl Block {
         }
         if name == "white wool" {
             return Some(Block::WOOL);
+        }
+        // Java's default state, `axis=x` (state 104 is the axis-less
+        // portal of older saves).
+        if name == "nether portal" {
+            return Some(super::portal::AXIS_X);
         }
         (0..STATE_CAPACITY as u16)
             .map(Block)
@@ -3373,6 +3390,8 @@ pub(super) const fn make(id: u16) -> BlockInfo {
         12256..=super::frosted_ice::LAST => super::frosted_ice::registry(id),
         // Sugar cane ages 1-15 (13952 itself stays unregistered).
         13953..=super::sugar_cane::LAST => super::sugar_cane::registry(id),
+        // v1.0 gap Track 5b: the Nether portal along X and along Z.
+        super::portal::FIRST..=super::portal::LAST => ("nether portal", Translucent, all(tex::PORTAL)),
         // v1.0 Track 4: farmland moistures 1-6.
         super::farmland::FIRST..=super::farmland::LAST => {
             super::farmland::registry(id, column(tex::DIRT, tex::FARMLAND, tex::DIRT))
@@ -3739,6 +3758,7 @@ pub(super) const fn make(id: u16) -> BlockInfo {
         kind,
         solid: solid && !(id >= 7936 && id <= 7968) && id != super::frog_blocks::FROGSPAWN.0,
         self_cull: matches!(id, 5 | 10 | 97 | 104 | 7968 | 8128)
+            || super::portal::owns(id)
             || stained_glass
             || super::stone_blocks::self_cull(id)
             || super::copper::self_culls(id),
@@ -3850,6 +3870,7 @@ const fn emission_of(i: usize) -> u8 {
             36 => 14,                                               // torch
             46 | 50..=52 | 913..=916 | 921..=924 => 13,             // lit furnace, every facing
             104 => 11,                                              // Nether portal
+            _ if super::portal::owns(i as u16) => 11,               // ... along X or Z
             200..=207 | 209 => 1,                                   // portal frames and dragon egg
             213 => 7,                                               // enchanting table
             1152 | 1154 | 1156 | 1158 | 1160 => 7,                  // lit redstone torches

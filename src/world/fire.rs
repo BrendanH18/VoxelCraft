@@ -703,7 +703,7 @@ mod tests {
         assert!(w.ignite(AT));
         for y in 0..3 {
             for dx in 0..2 {
-                assert_eq!(w.get_block(AT + IVec3::new(dx, y, 0)), Some(Block::NETHER_PORTAL));
+                assert_eq!(w.get_block(AT + IVec3::new(dx, y, 0)), Some(super::portal::AXIS_X));
             }
         }
         assert!(w.fire.pending.is_empty());

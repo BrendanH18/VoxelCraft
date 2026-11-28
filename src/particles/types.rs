@@ -606,7 +606,7 @@ impl System {
     }
 
     fn break_block(&mut self, cell: IVec3, block: Block, world: &World) {
-        if block == Block::AIR || block.is_fluid() || block == Block::NETHER_PORTAL {
+        if block == Block::AIR || block.is_fluid() || block.is_nether_portal() {
             return;
         }
         // Selection boxes preserve stairs/slabs/doors and 64 crumbs for a cube.

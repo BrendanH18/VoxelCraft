@@ -1281,7 +1281,7 @@ impl Game {
                 if self
                     .world
                     .get_block(p)
-                    .is_some_and(|b| b == Block::NETHER_PORTAL || b == Block::END_PORTAL || b == Block::END_GATEWAY)
+                    .is_some_and(|b| b.is_nether_portal() || b == Block::END_PORTAL || b == Block::END_GATEWAY)
                     && peer.last_portal_message.elapsed() > Duration::from_secs(5)
                 {
                     peer.last_portal_message = Instant::now();

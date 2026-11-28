@@ -152,18 +152,14 @@ impl System {
                 pos.y = base.y - 1.05;
                 self.burst(Burst::new(Kind::LavaDrip, pos, 1), setting);
             }
-        } else if block == Block::NETHER_PORTAL {
+        } else if block.is_nether_portal() {
             for _ in 0..4 {
                 let mut pos = base + random_vec(&mut self.rng);
                 let mut velocity = (random_vec(&mut self.rng) - DVec3::splat(0.5)) * 0.5;
                 let sign = if self.rng.chance(0.5) { -1.0 } else { 1.0 };
-                let axis = if world.get_block(cell - IVec3::X) != Some(block)
-                    && world.get_block(cell + IVec3::X) != Some(block)
-                {
-                    0
-                } else {
-                    2
-                };
+                // `animateTick` asks whether a portal (of any axis) is beside it.
+                let portal = |p: IVec3| world.get_block(p).is_some_and(Block::is_nether_portal);
+                let axis = if !portal(cell - IVec3::X) && !portal(cell + IVec3::X) { 0 } else { 2 };
                 pos[axis] = base[axis] + 0.5 + 0.25 * sign;
                 velocity[axis] = self.rng.next_f32() as f64 * 2.0 * sign;
                 let mut b = Burst::new(Kind::Portal, pos, 1);
