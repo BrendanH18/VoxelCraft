@@ -121,8 +121,13 @@ const OFFSET_BLOCKS: &[(&str, Kind)] = &[
 static KINDS: LazyLock<Box<[u8]>> = LazyLock::new(|| {
     (0..STATE_CAPACITY as u16)
         .map(|id| {
-            let name = Block(id).canonical().info().name;
-            OFFSET_BLOCKS.iter().find(|(n, _)| *n == name).map_or(0, |&(_, k)| k as u8)
+            // Every offset block is a cross or shaped (bamboo): only those
+            // states compare names.
+            let info = Block(id).canonical().info();
+            if !matches!(info.kind, super::block::RenderKind::Cross | super::block::RenderKind::Shaped) {
+                return 0;
+            }
+            OFFSET_BLOCKS.iter().find(|(n, _)| *n == info.name).map_or(0, |&(_, k)| k as u8)
         })
         .collect()
 });
