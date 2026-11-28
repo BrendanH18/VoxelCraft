@@ -713,7 +713,7 @@ impl Game {
         // portals and the End portal into the End play `PORTAL_TRAVEL`, a
         // local `AMBIENT` sound at volume 0.25, pitch 0.8 to 1.2; leaving
         // the End, respawning and gateways play none of it.
-        if matches!(arrival, Arrival::Portal(_) | Arrival::PortalAt(..) | Arrival::EndSpawn) {
+        if matches!(arrival, Arrival::Portal(_) | Arrival::PortalAt(..) | Arrival::EndSpawn { .. }) {
             self.audio.play(Sound::Portal(PortalCue::Travel), None, 0.25, (0.8, 1.2));
         }
         false
