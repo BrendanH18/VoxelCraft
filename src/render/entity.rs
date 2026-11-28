@@ -251,6 +251,8 @@ impl Renderer {
     /// Sets the entity geometry for the next view drawn (camera-relative to
     /// its `FrameParams::camera`).
     pub fn set_entities(&mut self, mesh: &EntityMesh) {
+        self.held_models.clear();
+        self.held_models.extend(mesh.held_items().iter().map(super::block_model::held_model));
         let e = &mut self.entities;
         let boxes = mesh.boxes();
         if boxes.len() > e.box_capacity {

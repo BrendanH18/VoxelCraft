@@ -21,6 +21,11 @@ pub(super) fn live_coral_plant(b: Block) -> bool {
         || matches!(super::utilities::wall_fan_of(b), Some((_, false, _, _)))
 }
 
+/// A bamboo shoot or stalk of either age.
+fn is_bamboo(b: Block) -> bool {
+    matches!(ob::thick_bamboo(b.canonical()).0, 2022..=2025)
+}
+
 impl World {
     /// Re-checks the plants around a changed cell: hanging plants need what
     /// they hang from, wall plants their wall, double plants both halves.
@@ -32,6 +37,8 @@ impl World {
         for q in [p, p - IVec3::Y, p + IVec3::Y, p + IVec3::X, p - IVec3::X, p + IVec3::Z, p - IVec3::Z] {
             let Some(b) = self.get_block(q).map(Block::canonical) else { continue };
             let b = if super::utilities::dripleaf_of(b).is_some() { ob::BIG_DRIPLEAF } else { b };
+            // A thin bamboo stalk lives by the thick one's rules.
+            let b = ob::thick_bamboo(b);
             if !(ob::FIRST..=ob::LAST).contains(&b.0)
                 && !super::biome_plants::owns(b.0)
                 && ob::propagule_age(b).is_none()
@@ -152,7 +159,7 @@ impl World {
     /// Random-tick growth for this module's plants. Returns whether `b`
     /// belongs here.
     pub(super) fn tick_overworld_flora(&mut self, p: IVec3, b: Block) -> bool {
-        let b = b.canonical();
+        let b = ob::thick_bamboo(b.canonical());
         match b.0 {
             2160..=2163 => {
                 self.edit(p, ob::hanging_propagule(ob::propagule_age(b).unwrap() + 1), true);
@@ -202,9 +209,8 @@ impl World {
             // Bamboo shoots and stalks grow up one in three ticks, to 12-16 tall.
             2022..=2025 => {
                 if self.one_in(3) && self.get_block(p + IVec3::Y) == Some(Block::AIR) && self.lit_enough(p + IVec3::Y) {
-                    let height = (0..16)
-                        .take_while(|&d| self.get_block(p - IVec3::Y * d).is_some_and(|q| matches!(q.0, 2022..=2025)))
-                        .count();
+                    let height =
+                        (0..16).take_while(|&d| self.get_block(p - IVec3::Y * d).is_some_and(is_bamboo)).count();
                     if height < 12 + (self.roll() % 5) as usize {
                         self.grow_bamboo(p);
                     }
@@ -288,23 +294,42 @@ impl World {
         self.growth_light(p, false) >= 9
     }
 
-    /// Adds one stalk on top of the bamboo at `p`, moving its leaves up.
+    /// Adds one stalk on top of the bamboo at `p` (v1.0 gap track 6c:
+    /// Java's rules, with the stalks' `age`). A shoot
+    /// (`BambooSaplingBlock.growBamboo`) puts a thin stalk with small leaves
+    /// above itself and becomes a bare thin stalk under it (its
+    /// `updateShape`). A stalk (`BambooStalkBlock.growBamboo`) puts one with
+    /// small leaves above a bare stalk, or with large ones above a leafy
+    /// stalk, which then has small leaves and the stalk under it none; the
+    /// new stalk is thick (`age=1`) above a thick one or once the stalk is
+    /// three tall, so a grown shoot's lowest three stay thin.
     fn grow_bamboo(&mut self, p: IVec3) {
         let top = p + IVec3::Y;
-        self.edit(top, ob::BAMBOO_LARGE_LEAVES, true);
-        if self.get_block(p) == Some(ob::BAMBOO_SAPLING) {
-            self.edit(p, ob::BAMBOO, true);
-        } else {
-            self.edit(p, ob::BAMBOO_SMALL_LEAVES, true);
-            if self.get_block(p - IVec3::Y).is_some_and(|b| matches!(b.0, 2023 | 2024)) {
-                self.edit(p - IVec3::Y, ob::BAMBOO, true);
-            }
+        let Some(here) = self.get_block(p).map(|b| b.canonical()) else { return };
+        if here == ob::BAMBOO_SAPLING {
+            self.edit(top, ob::bamboo(0, 1), true);
+            self.edit(p, ob::bamboo(0, 0), true);
+            return;
         }
+        let stalk = |b: Option<Block>| b.map(Block::canonical).and_then(ob::bamboo_stalk);
+        let (below, two_below) = (stalk(self.get_block(p - IVec3::Y)), stalk(self.get_block(p - IVec3::Y * 2)));
+        let leaves = match below {
+            Some((age, l)) if l != 0 => {
+                if let Some((two_age, _)) = two_below {
+                    self.edit(p - IVec3::Y, ob::bamboo(age, 1), true);
+                    self.edit(p - IVec3::Y * 2, ob::bamboo(two_age, 0), true);
+                }
+                2
+            }
+            _ => 1,
+        };
+        let age = if stalk(Some(here)).is_some_and(|(a, _)| a == 1) || two_below.is_some() { 1 } else { 0 };
+        self.edit(top, ob::bamboo(age, leaves), true);
     }
 
     /// Bone meal on one of this module's blocks (`None`: not ours).
     pub(super) fn overworld_bone_meal(&mut self, p: IVec3, b: Block) -> Option<bool> {
-        let (real, b) = (b, b.canonical());
+        let (real, b) = (b, ob::thick_bamboo(b.canonical()));
         // A big dripleaf facing or tilted any way grows like the plain one.
         let b = if super::utilities::dripleaf_of(b).is_some() { ob::BIG_DRIPLEAF } else { b };
         Some(match b.0 {
@@ -408,7 +433,7 @@ impl World {
             2070..=2073 => false,
             2022..=2025 => {
                 let mut top = p;
-                while self.get_block(top + IVec3::Y).is_some_and(|q| matches!(q.0, 2022..=2025)) {
+                while self.get_block(top + IVec3::Y).is_some_and(is_bamboo) {
                     top += IVec3::Y;
                 }
                 if self.get_block(top + IVec3::Y) == Some(Block::AIR) {
@@ -628,6 +653,52 @@ mod tests {
         assert_eq!(w.get_block(flower + IVec3::Y), Some(Block(ob::SUNFLOWER.0 + 1)));
         w.set_block(flower + IVec3::Y, Block::AIR);
         assert_eq!(w.get_block(flower), Some(Block::AIR), "the lower half goes with the upper");
+    }
+
+    /// v1.0 gap track 6c: bamboo grows by Java's `growBamboo`: a shoot
+    /// becomes a bare thin stalk under a thin one with small leaves, the
+    /// stalk is thin up to three tall and thick above, the top two carry
+    /// large leaves over one with small, the rest none, and a thin stalk follows the rules
+    /// of the thick one (it survives on its kind and drops bamboo).
+    #[test]
+    fn bamboo_grows_thin_then_thick_with_javas_leaves() {
+        let mut w = world();
+        let at = IVec3::new(6, 70, 6);
+        w.set_block(at - IVec3::Y, Block::GRASS);
+        w.set_block(at, ob::BAMBOO_SAPLING);
+        let stalk = |w: &World, dy: i32| w.get_block(at + IVec3::Y * dy).and_then(ob::bamboo_stalk);
+        w.grow_bamboo(at);
+        assert_eq!((stalk(&w, 0), stalk(&w, 1)), (Some((0, 0)), Some((0, 1))));
+        w.grow_bamboo(at + IVec3::Y);
+        assert_eq!(stalk(&w, 2), Some((0, 1)), "still thin: nothing two below the top");
+        w.grow_bamboo(at + IVec3::Y * 2);
+        assert_eq!(stalk(&w, 3), Some((1, 2)), "thick once three tall");
+        assert_eq!((stalk(&w, 2), stalk(&w, 1), stalk(&w, 0)), (Some((0, 1)), Some((0, 1)), Some((0, 0))));
+        w.grow_bamboo(at + IVec3::Y * 3);
+        let column: Vec<_> = (0..5).map(|dy| stalk(&w, dy).unwrap()).collect();
+        assert_eq!(column, [(0, 0), (0, 0), (0, 1), (1, 2), (1, 2)]);
+        w.grow_bamboo(at + IVec3::Y * 4);
+        let column: Vec<_> = (0..6).map(|dy| stalk(&w, dy).unwrap()).collect();
+        assert_eq!(column, [(0, 0), (0, 0), (0, 0), (1, 1), (1, 2), (1, 2)]);
+        // A thin stalk survives on the stalk below and breaks into bamboo
+        // when it loses its ground, as the thick one does.
+        w.set_block(at - IVec3::Y, Block::AIR);
+        assert_eq!(w.get_block(at), Some(Block::AIR));
+        assert!(w.drops.iter().any(|(_, s)| s.item == Item::from_block(ob::BAMBOO)));
+    }
+
+    /// v1.0 gap track 6c: `BambooStalkBlock.getStateForPlacement`.
+    #[test]
+    fn placed_bamboo_takes_its_neighbours_thickness() {
+        let air = Block::AIR;
+        assert_eq!(ob::bamboo_placed(Block::GRASS, air), ob::BAMBOO_SAPLING);
+        assert_eq!(ob::bamboo_placed(ob::BAMBOO_SAPLING, air), ob::THIN_BAMBOO);
+        assert_eq!(ob::bamboo_placed(ob::THIN_BAMBOO_SMALL_LEAVES, air), ob::THIN_BAMBOO);
+        assert_eq!(ob::bamboo_placed(ob::BAMBOO_LARGE_LEAVES, air), ob::BAMBOO);
+        assert_eq!(ob::bamboo_placed(Block::GRASS, ob::BAMBOO), ob::BAMBOO);
+        assert_eq!(ob::thick_bamboo(ob::THIN_BAMBOO_LARGE_LEAVES), ob::BAMBOO_LARGE_LEAVES);
+        assert_eq!(ob::THIN_BAMBOO.base(), ob::BAMBOO);
+        assert_eq!(ob::THIN_BAMBOO.name(), "bamboo");
     }
 
     #[test]

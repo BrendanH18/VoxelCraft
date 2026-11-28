@@ -51,6 +51,46 @@ pub struct BlockModel {
     /// (the item's origin, not a corner), turned by `orient` or `yaw` and
     /// scaled by `size`.
     pub mesh: Option<(voxelcraft::inventory::Stack, voxelcraft::content::item_models::Context)>,
+    /// v1.0 gap track 6c: an item placed by a whole matrix from its model
+    /// space (a block is 0..1) to camera-relative blocks, its display
+    /// transform included (held in a third-person hand, on a shelf):
+    /// `min`, `size`, `yaw` and `orient` are then unused, and a mesh's
+    /// context is ignored.
+    pub transform: Option<glam::Mat4>,
+}
+
+/// v1.0 gap track 6c: a held item ([`crate::entity::model::HeldItemModel`])
+/// as a model placed by its matrix: its 3D mesh, its model block (a pose's
+/// statue first) or its sprite (a compass or clock frame first), tinted as
+/// the stack is, with the glint and translucency of dropped items.
+pub fn held_model(h: &crate::entity::model::HeldItemModel) -> BlockModel {
+    let stack = h.stack;
+    let mesh = voxelcraft::content::item_models::has_mesh(stack.item)
+        .then_some((stack, voxelcraft::content::item_models::Context::ThirdPersonRightHand));
+    let block = if mesh.is_some() { None } else { h.block.or_else(|| crate::item::model_block(&stack)) };
+    let icon = match (mesh, block) {
+        (None, None) => h.icon.or_else(|| stack.item.flat_layer()),
+        _ => None,
+    };
+    let tint =
+        h.tint.or_else(|| crate::inventory::components::dye_tint(&stack)).map_or([255; 4], |[r, g, b]| [r, g, b, 255]);
+    BlockModel {
+        min: DVec3::ZERO,
+        size: 1.0,
+        block: block.unwrap_or(Block::AIR),
+        sky_light: h.sky_light,
+        block_light: h.block_light,
+        yaw: 0.0,
+        icon,
+        orient: None,
+        tint,
+        patterns: None,
+        lid: None,
+        glint: stack.has_foil(),
+        translucent: crate::item::translucent(&stack),
+        mesh,
+        transform: Some(h.transform),
+    }
 }
 
 /// v1.0 gap track 6b: a vertex flag in [`BlockVertex::layer`]'s top bit:
@@ -107,6 +147,10 @@ fn model_vertices(
     ticks: f64,
     masks: &mut super::hand::SpriteMasks,
 ) {
+    if let Some(t) = m.transform {
+        transformed_vertices(out, m, t, masks);
+        return;
+    }
     if let Some((stack, context)) = m.mesh {
         let Some(mesh) = voxelcraft::content::item_models::mesh(&stack) else { return };
         let anchor = (m.min - camera).as_vec3();
@@ -249,6 +293,119 @@ fn model_vertices(
             }
         }
     }
+}
+
+/// v1.0 gap track 6c: an item placed by `t` ([`BlockModel::transform`]):
+/// its 3D mesh, its extruded sprite (Java's `item/generated` model, 7.5 to
+/// 8.5 sixteenths deep) or its block's boxes, every face shaded by how it
+/// ends up turned.
+fn transformed_vertices(
+    out: &mut Vec<BlockVertex>,
+    m: &BlockModel,
+    t: glam::Mat4,
+    masks: &mut super::hand::SpriteMasks,
+) {
+    let mut push = |corners: [Vec3; 4], normal: Vec3, uv: [[f32; 2]; 4], layer: u16, tint: [u8; 4]| {
+        let n = t.transform_vector3(normal).normalize_or_zero();
+        let vertical = if n.y > 0.0 { FACE_SHADE[2] } else { FACE_SHADE[3] };
+        let shade = n.y * n.y * vertical + n.x * n.x * FACE_SHADE[0] + n.z * n.z * FACE_SHADE[4];
+        for i in [0, 1, 2, 2, 3, 0] {
+            out.push(BlockVertex {
+                pos: t.transform_point3(corners[i]).to_array(),
+                uv: uv[i],
+                layer: layer as u32,
+                light: [m.sky_light, shade, m.block_light],
+                tint,
+            });
+        }
+    };
+    if let Some(mesh) = m.mesh.and_then(|(stack, _)| voxelcraft::content::item_models::mesh(&stack)) {
+        for q in &mesh.quads {
+            push(q.corners, q.normal, q.uv, q.layer, q.tint.unwrap_or(m.tint));
+        }
+        return;
+    }
+    if let Some(layer) = m.icon {
+        let depth = Vec3::new(0.0, 0.0, 7.5 / 16.0);
+        super::hand::extrude(masks.get(layer), |c, uv| {
+            let normal = (c[1] - c[0]).cross(c[2] - c[0]);
+            push(c.map(|p| p + depth), normal, uv, layer, m.tint);
+        });
+        return;
+    }
+    let block = m.block.item_facing();
+    let tex = block.info().tex;
+    if block.kind() == RenderKind::Cross {
+        let v = Vec3::new;
+        let uv = [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]];
+        for (c, n) in [
+            ([v(0., 0., 0.), v(1., 0., 1.), v(1., 1., 1.), v(0., 1., 0.)], v(-1., 0., 1.)),
+            ([v(1., 0., 0.), v(0., 0., 1.), v(0., 1., 1.), v(1., 1., 0.)], v(1., 0., 1.)),
+        ] {
+            push(c, n, uv, tex[0], m.tint);
+        }
+        return;
+    }
+    for (i, bx) in shape::item_boxes(block).as_slice().iter().enumerate() {
+        // Candle wicks, the beacon's plinth and core: their own layers.
+        let tex = shape::item_box_layer(block, i).map_or(tex, |l| [l; 6]);
+        let (lo, hi) = (bx.min.map(|c| c as f32 / 16.0), bx.max.map(|c| c as f32 / 16.0));
+        for (face, &layer) in tex.iter().enumerate() {
+            let (d, positive) = (face / 2, face % 2 == 0);
+            let (u, v) = ((d + 1) % 3, (d + 2) % 3);
+            let corner = |a: bool, b: bool| {
+                let mut p = [0.0f32; 3];
+                p[d] = if positive { hi[d] } else { lo[d] };
+                p[u] = if a { hi[u] } else { lo[u] };
+                p[v] = if b { hi[v] } else { lo[v] };
+                Vec3::from_array(p)
+            };
+            let c = if positive {
+                [corner(false, false), corner(true, false), corner(true, true), corner(false, true)]
+            } else {
+                [corner(false, false), corner(false, true), corner(true, true), corner(true, false)]
+            };
+            // UVs as the other block models map them (and `chunk.wgsl`).
+            let uv = c.map(|c| match d {
+                0 => [c.z, 1.0 - c.y],
+                1 => [c.x, c.z],
+                _ => [c.x, 1.0 - c.y],
+            });
+            let mut normal = Vec3::ZERO;
+            normal[d] = if positive { 1.0 } else { -1.0 };
+            push(c, normal, uv, layer, m.tint);
+        }
+    }
+}
+
+/// v1.0 gap track 6c: the lowest and highest y of `stack`'s model placed by
+/// `local` (`ItemStackRenderState.getModelBoundingBox`): its 3D mesh, the
+/// boxes of `block`, or the whole square of its extruded sprite.
+pub fn extent_y(stack: &voxelcraft::inventory::Stack, block: Option<Block>, local: glam::Mat4) -> (f32, f32) {
+    let mut corners: Vec<Vec3> = Vec::new();
+    if let Some(mesh) = voxelcraft::content::item_models::mesh(stack) {
+        corners.extend(mesh.quads.iter().flat_map(|q| q.corners));
+    } else if let Some(block) = block {
+        for bx in shape::item_boxes(block.item_facing()).as_slice() {
+            let (lo, hi) = (bx.min.map(|c| c as f32 / 16.0), bx.max.map(|c| c as f32 / 16.0));
+            for i in 0..8 {
+                corners.push(Vec3::new(
+                    if i & 1 == 0 { lo[0] } else { hi[0] },
+                    if i & 2 == 0 { lo[1] } else { hi[1] },
+                    if i & 4 == 0 { lo[2] } else { hi[2] },
+                ));
+            }
+        }
+    } else {
+        for i in 0..8 {
+            let z = if i & 4 == 0 { 7.5 } else { 8.5 } / 16.0;
+            corners.push(Vec3::new((i & 1) as f32, ((i >> 1) & 1) as f32, z));
+        }
+    }
+    corners
+        .iter()
+        .map(|&c| local.transform_point3(c).y)
+        .fold((f32::MAX, f32::MIN), |(lo, hi), y| (lo.min(y), hi.max(y)))
 }
 
 /// Quads of a block-entity model, lit by its cell and shaded by how each
@@ -411,12 +568,18 @@ impl BlockModelPass {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         models: &[BlockModel],
+        held: &[BlockModel],
         signs: &[super::signs::SignModel],
         hand: Option<(&super::hand::Hand, Vec3, f32, f32, glam::Mat4)>,
         camera: DVec3,
         ticks: f64,
     ) {
-        let ModelVertices { opaque: mut verts, translucent } = vertices(models, camera, ticks, &mut self.sprite_masks);
+        let ModelVertices { opaque: mut verts, mut translucent } =
+            vertices(models, camera, ticks, &mut self.sprite_masks);
+        // v1.0 gap track 6c: items in third-person and mob hands.
+        let more = vertices(held, camera, ticks, &mut self.sprite_masks);
+        verts.extend(more.opaque);
+        translucent.extend(more.translucent);
         super::signs::vertices(signs, camera, &mut verts);
         let world = verts.len() as u32;
         let mut hand_translucent = Vec::new();
@@ -475,6 +638,7 @@ mod tests {
             glint: false,
             translucent: false,
             mesh: None,
+            transform: None,
         };
         let icon = BlockModel { icon: Some(crate::world::block::tex::ITEM_BASE), yaw: 1.0, ..at(Block::AIR) };
         let mut masks = super::super::hand::SpriteMasks::default();
@@ -514,6 +678,7 @@ mod tests {
             glint,
             translucent,
             mesh: None,
+            transform: None,
         };
         let mut masks = super::super::hand::SpriteMasks::default();
         let v = vertices(&[item(false, true), item(true, false)], DVec3::ZERO, 0.0, &mut masks);

@@ -61,6 +61,7 @@ pub fn emerging_items(world: &World, camera: DVec3, range: f64, out: &mut Vec<Bl
             glint: stack.has_foil(),
             translucent: crate::item::translucent(&stack),
             mesh: None,
+            transform: None,
         });
     }
 }

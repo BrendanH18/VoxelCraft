@@ -308,6 +308,7 @@ impl Game {
                 glint: stack.has_foil(),
                 translucent: crate::item::translucent(&stack),
                 mesh: mesh.map(|_| (stack, voxelcraft::content::item_models::Context::Ground)),
+                transform: None,
             });
         }
     }

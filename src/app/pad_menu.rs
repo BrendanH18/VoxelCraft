@@ -655,6 +655,26 @@ impl Game {
                 Tab::Palette(t) => palette(t, &self.hotbars).get(i).copied().flatten(),
                 _ => None,
             },
+            // v1.0 gap track 6c: the workstations' input slots, as the
+            // controller screen draws them, so a bundle there can be picked.
+            Slot::Ref(SlotRef::FurnaceInput | SlotRef::FurnaceFuel) => {
+                let Tab::Furnace(pos) = tab else { return None };
+                let furnace = self.world.furnace(pos)?;
+                if slot == Slot::Ref(SlotRef::FurnaceInput) { furnace.input } else { furnace.fuel }
+            }
+            Slot::Ref(SlotRef::BrewIngredient | SlotRef::BrewFuel | SlotRef::BrewBottle(_)) => {
+                let Tab::Brewing(pos) = tab else { return None };
+                let brewing = self.world.brewing_stand(pos)?;
+                match slot {
+                    Slot::Ref(SlotRef::BrewBottle(i)) => brewing.bottles[i],
+                    Slot::Ref(SlotRef::BrewIngredient) => brewing.ingredient,
+                    _ => brewing.fuel,
+                }
+            }
+            Slot::Ref(SlotRef::EnchantItem | SlotRef::AnvilLeft | SlotRef::SmithTemplate) => self.pad_work(name)[0],
+            Slot::Ref(SlotRef::EnchantLapis | SlotRef::AnvilRight | SlotRef::SmithBase) => self.pad_work(name)[1],
+            Slot::Ref(SlotRef::SmithAddition) => self.pad_work(name)[2],
+            Slot::Ref(s) if super::workstations::is_workstation_slot(s) => self.pad_workstation_slot(name, s),
             _ => None,
         }
     }

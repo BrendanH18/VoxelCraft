@@ -49,3 +49,41 @@ fn panes_bars_and_flat_blocks_show_their_texture_as_a_sprite() {
         assert!(item::model_block(&Stack::new(it, 1)).is_none(), "{id}");
     }
 }
+
+/// v1.0 gap track 6c: every item is placed with its Java model's display
+/// transforms in every context the game draws (`content::item_display`),
+/// read from the client's model parent chains.
+#[test]
+fn every_item_has_javas_display_transforms() {
+    use voxelcraft::content::item_display::{self, Context, Transform};
+    let reference: Value = serde_json::from_str(include_str!("fixtures/java/26.3/registry_names.json")).unwrap();
+    let models: Value = serde_json::from_str(include_str!("fixtures/java/26.3/item_models.json")).unwrap();
+    let contexts = [
+        ("gui", Context::Gui),
+        ("ground", Context::Ground),
+        ("fixed", Context::Fixed),
+        ("firstperson_righthand", Context::FirstPersonRightHand),
+        ("thirdperson_righthand", Context::ThirdPersonRightHand),
+        ("on_shelf", Context::OnShelf),
+    ];
+    let (mut checked, mut wrong) = (0, Vec::new());
+    for (id, english) in reference["items"].as_object().unwrap() {
+        let Some(it) = java_registry::item(id, english.as_str().unwrap()).filter(|_| id != "air") else { continue };
+        let java = &models["displays"][models["items"][id]["display"].as_u64().unwrap() as usize];
+        let ours = item_display::of(&Stack::new(it, 1));
+        checked += 1;
+        for (name, context) in contexts {
+            let n: Vec<f32> = java[name].as_array().unwrap().iter().map(|v| v.as_f64().unwrap() as f32).collect();
+            assert!(n[6] == n[7] && n[7] == n[8], "{id} {name}: uneven scale {n:?}");
+            let expected = Transform::new([n[0], n[1], n[2]], [n[3], n[4], n[5]], n[6]);
+            if ours.transform(context) != expected {
+                wrong.push(format!("{id} {name}: {:?}, Java {expected:?}", ours.transform(context)));
+            }
+        }
+        if ours.front_light != (java["gui_light"] == "front") {
+            wrong.push(format!("{id}: front light {}", ours.front_light));
+        }
+    }
+    assert!(wrong.is_empty(), "{} of {checked} items differ:\n{}", wrong.len(), wrong.join("\n"));
+    assert!(checked > 1600, "only {checked} items resolved");
+}

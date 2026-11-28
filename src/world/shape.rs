@@ -1016,8 +1016,9 @@ pub fn item_box_layer(block: Block, index: usize) -> Option<u16> {
 }
 
 /// The shape shown for `block` as an item (in inventories and when
-/// dropped): stairs face east, so their profile shows on the left of an
-/// icon, and fences reach out east and west.
+/// dropped): stairs face east, as Java's `block/stairs` model does, so
+/// their profile shows on the left of an icon, and fences and walls reach
+/// out north and south.
 pub fn item_shape(block: Block) -> Boxes {
     let block = block.canonical();
     // v0.16 Track C: a head item is drawn as a cube carrying the head's faces.
@@ -1043,7 +1044,10 @@ pub fn item_shape(block: Block) -> Boxes {
         return Boxes::from_box(b([5, 6, 6], [11, 10, 10]));
     }
     let block = if block.stairs_base().is_some() { block.with_facing(Facing::East) } else { block };
-    shape(block, |f| if f.along_x() { block } else { Block::AIR }, Block::AIR)
+    // v1.0 gap track 6c: fences and walls run north to south, as Java's
+    // `fence_inventory` and `wall_inventory` models do (they ran east to
+    // west for the game's mirrored slot view).
+    shape(block, |f| if f.along_x() { Block::AIR } else { block }, Block::AIR)
 }
 
 #[cfg(test)]

@@ -173,14 +173,24 @@ pub(crate) fn cell_boxes_context<W: BlockSource + ?Sized>(
             return;
         }
     }
+    // v1.0 gap track 6c: bamboo collides as Java's `SHAPE_COLLISION`, a
+    // 3-wide column, moved by the stalk's offset (`world::offset`).
+    if let Some(b) = b.filter(|&b| crate::world::overworld_blocks::bamboo_stalk(b.canonical()).is_some()) {
+        let o = crate::world::offset::offset(b, p.x, p.z);
+        let (a, c) = (6.5 / 16., 9.5 / 16.);
+        f(lo + o + DVec3::new(a, 0., a), lo + o + DVec3::new(c, 1., c));
+        return;
+    }
     // v1.0 gap Track 1: pointed dripstone and sulfur spikes collide as
-    // Java's `SpeleothemBlock` columns, so things stand and land on them.
-    if let Some(s) = b.and_then(crate::world::speleothem::of) {
+    // Java's `SpeleothemBlock` columns, so things stand and land on them
+    // (v1.0 gap track 6c: moved by their offset).
+    if let Some((s, b)) = b.and_then(|b| crate::world::speleothem::of(b).map(|s| (s, b))) {
         let (width, bottom, top) = crate::world::speleothem::column(s);
         let side = f64::from(8 - width / 2) / 16.;
+        let o = crate::world::offset::offset(b, p.x, p.z);
         f(
-            lo + DVec3::new(side, f64::from(bottom) / 16., side),
-            lo + DVec3::new(1. - side, f64::from(top) / 16., 1. - side),
+            lo + o + DVec3::new(side, f64::from(bottom) / 16., side),
+            lo + o + DVec3::new(1. - side, f64::from(top) / 16., 1. - side),
         );
         return;
     }
@@ -595,7 +605,11 @@ pub fn ray_shape<W: BlockSource + ?Sized>(world: &W, cell: IVec3, origin: DVec3,
         );
     }
     let neighbour = |side: Facing| world.block(cell + side.offset()).unwrap_or(Block::AIR);
-    let lo = cell.as_dvec3();
+    // v1.0 gap track 6c: the outlines Java moves by the block's offset.
+    let lo = cell.as_dvec3() + crate::world::offset::outline_offset(b, cell);
+    if let Some((min, max)) = crate::world::offset::bamboo_outline(b) {
+        return ray_aabb_face(origin, dir, lo + min, lo + max);
+    }
     let v = |c: [u8; 3]| DVec3::new(c[0] as f64, c[1] as f64, c[2] as f64) / 16.0;
     let below = world.block(cell - IVec3::Y).unwrap_or(Block::AIR);
     let above = shape::Above::read(b, |d| world.block(cell + d).unwrap_or(Block::AIR));
@@ -641,6 +655,33 @@ pub mod test_util {
 mod tests {
     use super::test_util::Grid;
     use super::*;
+
+    /// v1.0 gap track 6c: bamboo collides as Java's 3-wide column and is
+    /// outlined as its 6- or 10-wide one, both moved by the column's offset;
+    /// a flower's outline moves with it, a grass tuft's doesn't.
+    #[test]
+    fn bamboo_collides_and_outlines_where_javas_offset_moves_it() {
+        use crate::world::overworld_blocks::{BAMBOO, BAMBOO_LARGE_LEAVES};
+        let mut world = Grid::flat(0);
+        for (at, b) in [(IVec3::new(3, 1, -7), BAMBOO), (IVec3::new(-11, 1, 40), BAMBOO_LARGE_LEAVES)] {
+            world.set(at, b);
+            let o = crate::world::offset::offset(b, at.x, at.z);
+            assert!(o.x != 0.0 || o.z != 0.0, "pick columns with an offset");
+            let mut boxes = Vec::new();
+            cell_boxes(&world, at, |a, b| boxes.push((a, b)));
+            let [(lo, hi)] = boxes[..] else { panic!("{boxes:?}") };
+            let rel = |p: DVec3| p - at.as_dvec3() - o;
+            assert!((rel(lo) - DVec3::new(6.5, 0.0, 6.5) / 16.0).length() < 1e-9, "{lo}");
+            assert!((rel(hi) - DVec3::new(9.5, 16.0, 9.5) / 16.0).length() < 1e-9, "{hi}");
+            let half = if b == BAMBOO { 3.0 } else { 5.0 } / 16.0;
+            let centre = at.as_dvec3() + DVec3::new(0.5, 0.0, 0.5) + o;
+            let from = centre + DVec3::new(-2.0, 0.5, 0.0);
+            let (t, _) = ray_shape(&world, at, from, DVec3::X).expect("the ray meets the stalk");
+            assert!((t - (2.0 - half)).abs() < 1e-9, "{t}");
+        }
+        assert!(crate::world::offset::moves_outline(Block::POPPY));
+        assert!(!crate::world::offset::moves_outline(Block::TALL_GRASS));
+    }
 
     #[test]
     fn fire_contact_checks_the_whole_body_and_excludes_flush_faces() {
