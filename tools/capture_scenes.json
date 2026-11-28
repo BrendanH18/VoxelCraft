@@ -9529,7 +9529,7 @@
   },
   {
    "name": "mobs-still-villager-types",
-   "description": "v1.0 gap Track 7e: villager type outfits at noon, pinned with --still-mobs and facing the camera; left to right desert, jungle, plains, savanna, snow, swamp and taiga; rows front to back: jobless adult villagers, zombie villagers, then a villager child and a zombie villager cub of each type side by side",
+   "description": "v1.0 gap Track 7e: villager type outfits at noon, pinned with --still-mobs and facing the camera; desert, jungle, plains, savanna, snow, swamp and taiga from right to left on screen; rows front to back: jobless adult villagers, zombie villagers, then a villager child and a zombie villager cub of each type side by side",
    "pose": [
     0.5,
     155.0,
