@@ -387,7 +387,12 @@ pub(super) fn pose(m: &Mob, time: f32, alpha: f32, head: Quat) -> Option<Parts> 
                 part(CHILD_BODY, [0.0; 3], Quat::IDENTITY),
                 part(CHILD_LEG, [-1.0, 2.5, 0.0], rx(-swing * 0.5)),
                 part(CHILD_LEG, [1.0, 2.5, 0.0], rx(swing * 0.5)),
-                part(CHILD_HEAD, [0.0, 8.0, 0.0], head),
+                // v1.0 gap Track 7f: the look, or the unhappy shake.
+                part(
+                    CHILD_HEAD,
+                    [0.0, 8.0, 0.0],
+                    super::rig::java_quat(super::villager_outfit::head_rotation(m, time))
+                ),
                 part(CHILD_HANDS, [-3.0, 5.1, 0.96], rx(-std::f32::consts::FRAC_PI_3)),
                 part(CHILD_ARM_BAR, [0.0, 5.6, 1.82], rx(-std::f32::consts::FRAC_PI_3)),
             ];

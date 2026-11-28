@@ -203,11 +203,25 @@ static VILLAGER_BONES: &[Bone] = &[
 /// at 0.9375 about their feet.
 pub(super) const VILLAGER_SCALE: f32 = 0.9375;
 
-/// `VillagerModel.setupAnim`: the head looks, the legs walk at half the
-/// humanoid stride, the arms stay folded. Then the outfit layers.
-pub(super) fn villager(m: &Mob) -> Parts {
+/// `VillagerModel.setupAnim`'s head: the look, or (v1.0 gap Track 7f)
+/// while the villager is unhappy (`isUnhappy`, its `unhappyCounter`
+/// above 0) the shake: `zRot = 0.3 * sin(0.45 * ageInTicks)` with the
+/// head bowed to `xRot = 0.4`. Java's rotations; children too, as
+/// `BabyVillagerModel` runs the same `setupAnim`.
+pub(super) fn head_rotation(m: &Mob, time: f32) -> [f32; 3] {
+    if m.villager.as_ref().is_some_and(|v| v.unhappy > 0) {
+        [0.4, m.head_yaw, 0.3 * (0.45 * age_ticks(time)).sin()]
+    } else {
+        [head_x(m), m.head_yaw, 0.0]
+    }
+}
+
+/// `VillagerModel.setupAnim`: the head looks (or shakes, unhappy), the
+/// legs walk at half the humanoid stride, the arms stay folded. Then the
+/// outfit layers.
+pub(super) fn villager(m: &Mob, time: f32) -> Parts {
     let mut r = Rig::new(VILLAGER_BONES);
-    r.look(HEAD, m);
+    r.rot[HEAD] = head_rotation(m, time);
     let leg = walk_cos(m) * motion::LEG_SWING * 0.5;
     r.x_rot(RIGHT_LEG, leg);
     r.x_rot(LEFT_LEG, -leg);
@@ -217,7 +231,8 @@ pub(super) fn villager(m: &Mob) -> Parts {
         p.push(Part { boxes: TRADER_HOOD, ..head });
         p.push(Part { boxes: TRADER_PANEL, ..body });
     } else {
-        dress(m, &mut p, head, body, false);
+        let arms = [p[ARMS]];
+        dress(m, &mut p, head, body, &arms, false);
     }
     p
 }
@@ -278,7 +293,8 @@ pub(super) fn zombie_villager(m: &Mob, time: f32) -> Parts {
     r.rot[ZV_RIGHT_ARM] = [h.right_arm.x, h.right_arm.y, h.right_arm.z];
     let mut p = r.parts();
     let (head, body) = (p[ZV_HEAD], p[ZV_BODY]);
-    dress(m, &mut p, head, body, true);
+    let arms = [p[ZV_RIGHT_ARM], p[ZV_LEFT_ARM]];
+    dress(m, &mut p, head, body, &arms, true);
     if m.convert_left > 0.0 {
         p.transform(Vec3::new((time * 18.0).sin() * 1.5, 0.0, 0.0), Quat::IDENTITY);
     }
@@ -310,27 +326,39 @@ pub(super) fn zombie_villager_armor(parts: &[Part]) -> [crate::entity::player_mo
 }
 
 /// `VillagerProfessionLayer` on an adult: the type's accents and (while
-/// `typeHatVisible`) headwear, then a job's profession layer and, for all
-/// but nitwits, the level badge.
-fn dress(m: &Mob, p: &mut Parts, head: Part, body: Part, zombie: bool) {
+/// `typeHatVisible`) headwear, then a job's profession layer (v1.0 gap
+/// Track 7f: its clothes on the robe, face, hat and arms; `arms` are the
+/// villager's folded arms or the zombie's right and left arm) and, for all
+/// but nitwits, the level badge. A profession that repaints the whole
+/// robe (the cleric's and nitwit's) covers the type's touches on it, as
+/// its texture's pixels cover the type's.
+fn dress(m: &Mob, p: &mut Parts, head: Part, body: Part, arms: &[Part], zombie: bool) {
     let t = type_of(m);
     let (profession, level) = m.villager.as_ref().map_or((Profession::None, 1), |v| (v.profession, v.level));
     let fit = if zombie { &ZOMBIE_FIT } else { &VILLAGER_FIT };
-    if !fit.accents[t as usize].is_empty() {
-        p.push(Part { boxes: &fit.accents[t as usize], ..body });
+    let mut push = |boxes: &'static [Cuboid], at: Part| {
+        if !boxes.is_empty() {
+            p.push(Part { boxes, ..at });
+        }
+    };
+    if !covers_robe(profession) {
+        push(&fit.accents[t as usize], body);
     }
-    if type_hat_visible(t, profession, zombie) && !ADULT_HATS[t as usize].is_empty() {
-        p.push(Part { boxes: &ADULT_HATS[t as usize], ..head });
+    if type_hat_visible(t, profession, zombie) {
+        push(&ADULT_HATS[t as usize], head);
     }
     if profession == Profession::None {
         return;
     }
-    p.push(Part { boxes: &fit.aprons[profession as usize], ..body });
-    if !PROFESSION_HATS[profession as usize].is_empty() {
-        p.push(Part { boxes: &PROFESSION_HATS[profession as usize], ..head });
+    let j = profession as usize;
+    push(&fit.jobs[j], body);
+    push(&fit.faces[j], head);
+    push(&fit.hats[j], head);
+    for (boxes, arm) in fit.sleeves[j].iter().zip(arms) {
+        push(boxes, *arm);
     }
     if profession != Profession::Nitwit {
-        p.push(Part { boxes: &fit.badges[usize::from(level.clamp(1, 5) - 1)], ..body });
+        push(&fit.badges[usize::from(level.clamp(1, 5) - 1)], body);
     }
 }
 
@@ -343,20 +371,32 @@ const fn b(min: [f32; 3], max: [f32; 3], color: Rgb, noise: u8) -> Cuboid {
 
 /// The robe's outer faces (relative to the body's pivot at the neck): half
 /// width, half depth and the top and bottom of the robe.
+/// `g` is the robe's growth over the 8 x 20 x 6 body; zombie villagers
+/// also have humanoid arms where villagers fold theirs.
+#[derive(Clone, Copy)]
 struct Robe {
     hx: f32,
     hz: f32,
     top: f32,
     bottom: f32,
+    g: f32,
+    zombie: bool,
 }
 
-const VILLAGER_ROBE_SIZE: Robe = Robe { hx: 4.5, hz: 3.5, top: 0.5, bottom: -20.5 };
-const ZOMBIE_ROBE_SIZE: Robe = Robe { hx: 4.05, hz: 3.05, top: 0.05, bottom: -20.05 };
+const VILLAGER_ROBE_SIZE: Robe = Robe { hx: 4.5, hz: 3.5, top: 0.5, bottom: -20.5, g: 0.5, zombie: false };
+const ZOMBIE_ROBE_SIZE: Robe = Robe { hx: 4.05, hz: 3.05, top: 0.05, bottom: -20.05, g: 0.05, zombie: true };
 
-/// A robe's layers for every type, profession and level.
+/// A robe's layers for every type, profession and level: the type's
+/// touches, each profession's clothes on the robe (`jobs`), its face
+/// pieces and hat on the head and its sleeves or gloves on each arm part,
+/// and the level badges. Zombie villagers wear the professions' clothes
+/// rotted, as their own `profession/` textures fade them.
 struct Fit {
     accents: [Vec<Cuboid>; 7],
-    aprons: [Vec<Cuboid>; 15],
+    jobs: [Vec<Cuboid>; 15],
+    faces: [Vec<Cuboid>; 15],
+    hats: [Vec<Cuboid>; 15],
+    sleeves: [Vec<Vec<Cuboid>>; 15],
     badges: [Vec<Cuboid>; 5],
 }
 
@@ -364,16 +404,26 @@ static VILLAGER_FIT: LazyLock<Fit> = LazyLock::new(|| fit(&VILLAGER_ROBE_SIZE));
 static ZOMBIE_FIT: LazyLock<Fit> = LazyLock::new(|| fit(&ZOMBIE_ROBE_SIZE));
 
 fn fit(r: &Robe) -> Fit {
+    let rot = |v: Vec<Cuboid>| -> Vec<Cuboid> {
+        if !r.zombie {
+            return v;
+        }
+        v.into_iter().map(|c| if key(c.color).is_some() { c } else { Cuboid { color: rotted(c.color), ..c } }).collect()
+    };
+    let each = |f: &dyn Fn(Profession) -> Vec<Cuboid>| std::array::from_fn(|i| rot(f(Profession::ALL[i])));
     Fit {
         accents: Type::ALL.map(|t| accents(t, r)),
-        aprons: std::array::from_fn(|i| apron(Profession::ALL[i], r)),
+        jobs: each(&|p| job(p, r)),
+        faces: each(&face_pieces),
+        hats: each(&profession_hat_boxes),
+        sleeves: std::array::from_fn(|i| sleeves(Profession::ALL[i], r).into_iter().map(rot).collect()),
         badges: std::array::from_fn(|i| badge(i, r)),
     }
 }
 
 /// Each type's own touches on the robe.
 fn accents(t: Type, r: &Robe) -> Vec<Cuboid> {
-    let Robe { hx, hz, top, bottom } = *r;
+    let Robe { hx, hz, top, bottom, .. } = *r;
     match t {
         Type::Plains => vec![],
         // A sash down the front and a coloured collar.
@@ -416,32 +466,308 @@ fn accents(t: Type, r: &Robe) -> Vec<Cuboid> {
     }
 }
 
-/// The profession's apron on the robe's front, in the colours villagers
-/// already wore. A villager without a job wears none (Java draws no
-/// profession layer for `none`).
-fn apron(p: Profession, r: &Robe) -> Vec<Cuboid> {
-    const COLOURS: [Rgb; 15] = [
-        [114, 78, 50],
-        [79, 124, 46],
-        [155, 121, 51],
-        [166, 134, 71],
-        [223, 220, 202],
-        [139, 106, 73],
-        [226, 221, 200],
-        [224, 180, 119],
-        [135, 71, 149],
-        [90, 91, 93],
-        [69, 58, 48],
-        [86, 66, 52],
-        [218, 216, 210],
-        [159, 109, 67],
-        [204, 191, 180],
-    ];
-    if p == Profession::None {
+/// The professions whose clothes repaint the whole robe and sleeves (the
+/// cleric's vestments, the nitwit's green coat), covering the type's
+/// touches on it.
+fn covers_robe(p: Profession) -> bool {
+    matches!(p, Profession::Cleric | Profession::Nitwit)
+}
+
+/// v1.0 gap Track 7f: each profession's clothes on the robe
+/// (`profession/<profession>`), this game's own art after the
+/// professions' looks: aprons, tabards, vests and vestments with their
+/// pockets, tools and emblems. Depths are out of the robe's front (`d0`
+/// to `d1`), under the level badge (from 0.1 out).
+#[allow(clippy::too_many_lines)]
+fn job(p: Profession, r: &Robe) -> Vec<Cuboid> {
+    use Profession::*;
+    let Robe { hx, hz, top, bottom, g, zombie } = *r;
+    // A box on the robe's front, and one on its back.
+    let f = |x: [f32; 2], y: [f32; 2], d: [f32; 2], c: Rgb, n: u8| {
+        b([x[0], y[0], hz + d[0]], [x[1], y[1], hz + d[1]], c, n)
+    };
+    let k = |x: [f32; 2], y: [f32; 2], d: [f32; 2], c: Rgb, n: u8| {
+        b([x[0], y[0], -hz - d[1]], [x[1], y[1], -hz - d[0]], c, n)
+    };
+    // The apron's lowest line, just above the hem.
+    let lo = bottom + 3.0;
+    const APRON: [f32; 2] = [0.04, 0.1];
+    const DETAIL: [f32; 2] = [0.1, 0.16];
+    // The robe, hem and belt repainted (grown over the type's own boxes).
+    let repaint = |robe: Rgb, hem: Rgb, belt: Rgb| {
+        vec![
+            jboxg([-4.0, 0.0, -3.0], [8.0, 20.0, 6.0], g + 0.04, robe, 30).with(Pattern::Cloth),
+            jboxg([-4.0, 18.0, -3.0], [8.0, if zombie { 2.0 } else { 2.5 }, 6.0], g + 0.09, hem, 12),
+            jboxg([-4.0, 10.0, -3.0], [8.0, 1.0, 6.0], g + 0.07, belt, 10),
+        ]
+    };
+    match p {
+        None => vec![],
+        // The nitwit's plain green coat.
+        Nitwit => repaint([76, 122, 58], [54, 90, 42], [72, 54, 36]),
+        // A long iron-grey smithing apron with a bib, straps and rivets.
+        Armorer => {
+            const C: Rgb = [74, 76, 82];
+            vec![
+                f([-3.4, 3.4], [lo, -9.6], APRON, C, 18).with(Pattern::Hide),
+                f([-2.6, 2.6], [-9.6, -2.5], APRON, C, 18).with(Pattern::Hide),
+                f([-2.6, -1.6], [-2.5, top], APRON, C, 14),
+                f([1.6, 2.6], [-2.5, top], APRON, C, 14),
+                k([-2.6, -1.6], [-8.0, top], APRON, C, 14),
+                k([1.6, 2.6], [-8.0, top], APRON, C, 14),
+                f([-2.4, -1.8], [-3.4, -2.8], DETAIL, [168, 168, 164], 0),
+                f([1.8, 2.4], [-3.4, -2.8], DETAIL, [168, 168, 164], 0),
+                f([-3.4, 3.4], [lo, lo + 0.7], DETAIL, [52, 54, 58], 8),
+            ]
+        }
+        // A white apron with red butcher's stripes at its hem.
+        Butcher => {
+            const W: Rgb = [232, 230, 222];
+            const R: Rgb = [178, 52, 48];
+            vec![
+                f([-3.4, 3.4], [lo, -9.6], APRON, W, 12),
+                f([-2.8, 2.8], [-9.6, -1.5], APRON, W, 12),
+                f([-2.0, -1.3], [-1.5, top], APRON, W, 10),
+                f([1.3, 2.0], [-1.5, top], APRON, W, 10),
+                f([-3.4, 3.4], [lo + 1.0, lo + 1.6], DETAIL, R, 6),
+                f([-3.4, 3.4], [lo + 2.3, lo + 2.7], DETAIL, R, 6),
+            ]
+        }
+        // A tan waistcoat with gold buttons, and a rolled map in a pouch
+        // at the hip.
+        Cartographer => {
+            const V: Rgb = [196, 158, 100];
+            const GOLD: Rgb = [224, 186, 74];
+            vec![
+                f([-hx + 0.4, -0.5], [-11.5, -1.0], APRON, V, 16).with(Pattern::Cloth),
+                f([0.5, hx - 0.4], [-11.5, -1.0], APRON, V, 16).with(Pattern::Cloth),
+                f([-0.5, 0.5], [-5.0, -1.0], APRON, [236, 228, 208], 8),
+                f([0.6, 1.2], [-4.0, -3.4], DETAIL, GOLD, 0),
+                f([0.6, 1.2], [-7.0, -6.4], DETAIL, GOLD, 0),
+                b([hx, -14.0, -1.3], [hx + 0.9, -11.0, 1.3], [112, 78, 48], 14),
+                b([hx + 0.15, -11.0, -0.6], [hx + 0.75, -7.2, 0.6], [234, 224, 190], 6),
+                b([hx + 0.1, -9.4, -0.65], [hx + 0.8, -8.9, 0.65], [172, 56, 48], 0),
+            ]
+        }
+        // Purple vestments with a gold-edged mantle and stole.
+        Cleric => {
+            const GOLD: Rgb = [214, 178, 76];
+            let mut v = repaint([116, 56, 136], [84, 38, 100], GOLD);
+            v.extend([
+                b([-hx - 0.15, -3.0, -hz - 0.15], [hx + 0.15, top + 0.15, hz + 0.15], [88, 40, 106], 18)
+                    .with(Pattern::Cloth),
+                b([-hx - 0.2, -3.4, -hz - 0.2], [hx + 0.2, -2.9, hz + 0.2], GOLD, 6),
+                f([-0.9, 0.9], [-9.0, -3.0], [0.15, 0.25], GOLD, 6),
+                f([-0.9, 0.9], [lo, -12.0], [0.08, 0.16], GOLD, 6),
+            ]);
+            v
+        }
+        // Brown bib overalls with a pocket.
+        Farmer => {
+            const C: Rgb = [136, 98, 52];
+            vec![
+                f([-3.2, 3.2], [lo, -9.6], APRON, C, 18).with(Pattern::Cloth),
+                f([-2.6, 2.6], [-9.6, -3.0], APRON, C, 18).with(Pattern::Cloth),
+                f([-2.6, -1.7], [-3.0, top], APRON, C, 14),
+                f([1.7, 2.6], [-3.0, top], APRON, C, 14),
+                k([-2.6, -1.7], [-9.0, top], APRON, C, 14),
+                k([1.7, 2.6], [-9.0, top], APRON, C, 14),
+                f([-1.5, 1.5], [-7.4, -4.6], DETAIL, [168, 130, 70], 10),
+                f([-2.4, -1.9], [-3.6, -3.1], DETAIL, [190, 190, 180], 0),
+                f([1.9, 2.4], [-3.6, -3.1], DETAIL, [190, 190, 180], 0),
+            ]
+        }
+        // A waxed yellow apron with a fish on it, and a neckerchief.
+        Fisherman => {
+            const C: Rgb = [176, 154, 70];
+            vec![
+                f([-3.2, 3.2], [lo, -9.6], APRON, C, 16),
+                f([-2.6, 2.6], [-9.6, -3.5], APRON, C, 16),
+                f([-hx + 0.3, hx - 0.3], [-2.0, top], [0.04, 0.12], [68, 96, 132], 10),
+                f([-1.4, 1.4], [-3.5, -2.0], [0.04, 0.12], [68, 96, 132], 10),
+                f([-1.8, 0.6], [-15.4, -13.8], DETAIL, [84, 140, 158], 6),
+                f([0.6, 1.6], [-15.8, -13.4], DETAIL, [60, 108, 128], 6),
+                f([-1.4, -1.0], [-14.8, -14.4], [0.16, 0.2], [30, 34, 36], 0),
+            ]
+        }
+        // A green tunic over the chest, and a quiver of arrows on the back.
+        Fletcher => {
+            const C: Rgb = [76, 114, 58];
+            const Q: Rgb = [120, 80, 46];
+            vec![
+                f([-hx + 0.2, hx - 0.2], [-10.5, -1.0], APRON, C, 18).with(Pattern::Cloth),
+                f([-hx + 0.2, -1.0], [-1.0, top], APRON, C, 18),
+                f([1.0, hx - 0.2], [-1.0, top], APRON, C, 18),
+                f([-hx + 0.2, hx - 0.2], [-10.5, -9.9], DETAIL, [70, 52, 34], 6),
+                k([0.6, 3.4], [-13.5, -2.0], [0.0, 2.2], Q, 16).with(Pattern::Hide),
+                k([0.4, 3.6], [-3.0, -2.2], [0.0, 2.4], [92, 60, 36], 8),
+                k([1.0, 1.6], [-2.2, -0.2], [1.0, 1.6], [236, 234, 226], 0),
+                k([2.2, 2.8], [-2.2, -0.6], [0.6, 1.2], [194, 60, 50], 0),
+                k([1.6, 2.2], [-2.2, 0.2], [1.4, 2.0], [236, 234, 226], 0),
+            ]
+        }
+        // A tabard of cream with red edges and a red collar.
+        Librarian => {
+            const C: Rgb = [230, 224, 202];
+            const R: Rgb = [150, 40, 50];
+            vec![
+                f([-2.6, 2.6], [lo - 1.0, -1.5], APRON, C, 12).with(Pattern::Cloth),
+                f([-3.0, -2.6], [lo - 1.0, -1.5], APRON, R, 6),
+                f([2.6, 3.0], [lo - 1.0, -1.5], APRON, R, 6),
+                b([-hx - 0.1, -1.5, -hz - 0.1], [hx + 0.1, top + 0.1, hz + 0.1], R, 10),
+                f([-1.6, -0.4], [-8.4, -3.4], DETAIL, [92, 58, 40], 8),
+            ]
+        }
+        // A stitched leather apron with pockets.
+        Leatherworker => {
+            const C: Rgb = [152, 98, 56];
+            const S: Rgb = [102, 64, 36];
+            vec![
+                f([-3.4, 3.4], [lo, -9.6], APRON, C, 22).with(Pattern::Hide),
+                f([-2.8, 2.8], [-9.6, -1.5], APRON, C, 22).with(Pattern::Hide),
+                f([-2.0, -1.3], [-1.5, top], APRON, S, 10),
+                f([1.3, 2.0], [-1.5, top], APRON, S, 10),
+                f([-3.4, -3.0], [lo, -9.6], DETAIL, S, 6),
+                f([3.0, 3.4], [lo, -9.6], DETAIL, S, 6),
+                f([-3.0, -0.6], [-16.0, -13.0], DETAIL, [130, 82, 46], 12),
+                f([0.6, 3.0], [-16.0, -13.0], DETAIL, [130, 82, 46], 12),
+            ]
+        }
+        // A stone-grey apron with a pocket and a chisel.
+        Mason => {
+            const C: Rgb = [178, 172, 162];
+            vec![
+                f([-3.4, 3.4], [lo, -9.6], APRON, C, 20).with(Pattern::Speckle),
+                f([-2.6, 2.6], [-9.6, -3.0], APRON, C, 20).with(Pattern::Speckle),
+                f([-2.6, -1.8], [-3.0, top], APRON, C, 12),
+                f([1.8, 2.6], [-3.0, top], APRON, C, 12),
+                f([-2.6, 0.6], [-16.4, -13.4], DETAIL, [118, 114, 108], 10),
+                f([1.6, 2.2], [-15.8, -12.6], DETAIL, [124, 90, 56], 6),
+                f([1.5, 2.3], [-12.6, -11.8], DETAIL, [190, 190, 186], 0),
+            ]
+        }
+        // A woolly cape over the shoulders and a satchel at the hip.
+        Shepherd => vec![
+            b([-hx - 0.3, -5.0, -hz - 0.3], [hx + 0.3, top + 0.3, hz + 0.3], [226, 222, 208], 18).with(Pattern::Wool),
+            f([-2.2, 2.2], [-6.2, -5.0], [0.2, 0.3], [226, 222, 208], 18).with(Pattern::Wool),
+            b([-hx - 0.9, -14.5, -1.5], [-hx, -10.5, 1.5], [128, 92, 58], 14).with(Pattern::Hide),
+            b([-hx - 1.0, -11.5, -1.6], [-hx, -10.5, 1.6], [104, 74, 46], 8),
+            f([-3.4, -2.6], [-10.5, -5.0], [0.04, 0.12], [104, 74, 46], 8),
+        ],
+        // A near-black apron with a tool belt: a file and a hammer.
+        Toolsmith => {
+            const C: Rgb = [60, 52, 48];
+            vec![
+                f([-3.4, 3.4], [lo, -9.6], APRON, C, 16),
+                f([-2.6, 2.6], [-9.6, -2.5], APRON, C, 16),
+                f([-2.6, -1.8], [-2.5, top], APRON, C, 12),
+                f([1.8, 2.6], [-2.5, top], APRON, C, 12),
+                f([-hx + 0.2, hx - 0.2], [-12.4, -11.6], DETAIL, [104, 76, 50], 8),
+                f([-3.2, -2.6], [-15.0, -11.6], [0.16, 0.24], [172, 172, 168], 0),
+                f([2.2, 2.8], [-15.4, -11.6], [0.16, 0.24], [126, 92, 58], 6),
+                f([1.6, 3.4], [-11.6, -10.6], [0.16, 0.26], [150, 150, 148], 4),
+            ]
+        }
+        // A dark leather apron with an iron-studded hem.
+        Weaponsmith => {
+            const C: Rgb = [66, 52, 44];
+            vec![
+                f([-3.4, 3.4], [lo, -9.6], APRON, C, 18).with(Pattern::Hide),
+                f([-2.6, 2.6], [-9.6, -2.0], APRON, C, 18).with(Pattern::Hide),
+                f([-2.6, -1.8], [-2.0, top], APRON, C, 12),
+                f([1.8, 2.6], [-2.0, top], APRON, C, 12),
+                f([-3.4, 3.4], [lo, lo + 0.8], DETAIL, [116, 116, 120], 6),
+                f([-2.6, -2.0], [lo + 1.6, lo + 2.2], DETAIL, [176, 176, 172], 0),
+                f([-0.3, 0.3], [lo + 1.6, lo + 2.2], DETAIL, [176, 176, 172], 0),
+                f([2.0, 2.6], [lo + 1.6, lo + 2.2], DETAIL, [176, 176, 172], 0),
+            ]
+        }
+    }
+}
+
+/// The professions' pieces on the face (relative to the head's pivot at
+/// the neck, the face at z 4): the armorer's welding mask, the
+/// cartographer's monocle and the weaponsmith's eyepatch.
+fn face_pieces(p: Profession) -> Vec<Cuboid> {
+    match p {
+        Profession::Armorer => vec![
+            b([-4.15, 1.2, 4.0], [4.15, 7.6, 4.5], [64, 66, 70], 14),
+            b([-3.3, 3.0, 4.5], [3.3, 4.4, 4.62], [36, 56, 60], 0),
+            b([-3.9, 6.6, 4.5], [-3.3, 7.2, 4.6], [156, 156, 152], 0),
+            b([3.3, 6.6, 4.5], [3.9, 7.2, 4.6], [156, 156, 152], 0),
+            b([-4.15, 4.0, -4.15], [-4.0, 5.0, 4.0], [46, 42, 40], 6),
+            b([4.0, 4.0, -4.15], [4.15, 5.0, 4.0], [46, 42, 40], 6),
+            b([-4.15, 4.0, -4.15], [4.15, 5.0, -4.0], [46, 42, 40], 6),
+        ],
+        Profession::Cartographer => {
+            const GOLD: Rgb = [226, 190, 80];
+            vec![
+                b([-3.5, 4.4, 4.0], [-0.5, 4.8, 4.25], GOLD, 0),
+                b([-3.5, 2.2, 4.0], [-0.5, 2.6, 4.25], GOLD, 0),
+                b([-3.5, 2.6, 4.0], [-3.1, 4.4, 4.25], GOLD, 0),
+                b([-0.9, 2.6, 4.0], [-0.5, 4.4, 4.25], GOLD, 0),
+                b([-3.45, 0.3, 4.0], [-3.15, 2.2, 4.14], [188, 150, 62], 0),
+            ]
+        }
+        Profession::Weaponsmith => {
+            const S: Rgb = [38, 32, 30];
+            vec![
+                b([0.7, 2.5, 4.0], [3.2, 4.7, 4.2], [26, 24, 24], 4),
+                b([3.2, 4.3, 4.0], [4.06, 4.7, 4.12], S, 0),
+                b([0.7, 4.7, 4.0], [1.5, 5.3, 4.12], S, 0),
+                b([-4.06, 4.9, 4.0], [1.5, 5.3, 4.12], S, 0),
+                b([4.0, 4.3, -4.06], [4.06, 4.7, 4.06], S, 0),
+                b([-4.06, 4.9, -4.06], [-4.0, 5.3, 4.06], S, 0),
+                b([-4.06, 4.5, -4.06], [4.06, 5.1, -4.0], S, 0),
+            ]
+        }
+        _ => vec![],
+    }
+}
+
+/// The professions' sleeves and gloves, one list for each arm part:
+/// the villager's folded `arms` (two sleeves with the hands between), or
+/// the zombie villager's right and left arm (a sleeve with the hand out of
+/// it). The cleric's and nitwit's sleeves match their robes; smiths and
+/// craftsmen wear gloves.
+fn sleeves(p: Profession, r: &Robe) -> Vec<Vec<Cuboid>> {
+    use Profession::*;
+    let (sleeve, glove): (Option<(Rgb, Rgb)>, Option<Rgb>) = match p {
+        Cleric => (Some(([116, 56, 136], [214, 178, 76])), Option::None),
+        Nitwit => (Some(([76, 122, 58], [54, 90, 42])), Option::None),
+        Armorer => (Option::None, Some([52, 52, 56])),
+        Leatherworker => (Option::None, Some([124, 80, 44])),
+        Mason => (Option::None, Some([130, 126, 118])),
+        Weaponsmith => (Option::None, Some([58, 46, 38])),
+        _ => (Option::None, Option::None),
+    };
+    if sleeve.is_none() && glove.is_none() {
         return vec![];
     }
-    let Robe { hz, bottom, .. } = *r;
-    vec![b([-3.5, bottom + 3.0, hz + 0.02], [3.5, -9.6, hz + 0.12], COLOURS[p as usize], 20)]
+    let mut out = if r.zombie { vec![vec![], vec![]] } else { vec![vec![]] };
+    if let Some((c, cuff)) = sleeve {
+        if r.zombie {
+            for (arm, x) in out.iter_mut().zip([-3.0, -1.0]) {
+                arm.push(jboxg([x, -2.0, -2.0], [4.0, 8.0, 4.0], 0.04, c, 28).with(Pattern::Cloth));
+                arm.push(jboxg([x, 5.0, -2.0], [4.0, 1.0, 4.0], 0.08, cuff, 10));
+            }
+        } else {
+            for x in [-8.0, 4.0] {
+                out[0].push(jboxg([x, -2.0, -2.0], [4.0, 8.0, 4.0], 0.04, c, 28).with(Pattern::Cloth));
+                out[0].push(jboxg([x, 4.5, -2.0], [4.0, 1.5, 4.0], 0.1, cuff, 10));
+            }
+        }
+    }
+    if let Some(c) = glove {
+        if r.zombie {
+            for (arm, x) in out.iter_mut().zip([-3.0, -1.0]) {
+                arm.push(jboxg([x, 6.0, -2.0], [4.0, 4.0, 4.0], 0.05, c, 14).with(Pattern::Hide));
+            }
+        } else {
+            out[0].push(jboxg([-4.0, 2.0, -2.0], [8.0, 4.0, 4.0], 0.05, c, 14).with(Pattern::Hide));
+        }
+    }
+    out
 }
 
 /// The level badge on the belt: stone, iron, gold, emerald, diamond.
@@ -506,8 +832,8 @@ static ADULT_HATS: LazyLock<[Vec<Cuboid>; 7]> = LazyLock::new(|| {
 
 /// The profession hats on the adult head (full: farmer, fisherman,
 /// fletcher, librarian, shepherd; partial: butcher).
-static PROFESSION_HATS: LazyLock<[Vec<Cuboid>; 15]> = LazyLock::new(|| {
-    Profession::ALL.map(|p| match p {
+fn profession_hat_boxes(p: Profession) -> Vec<Cuboid> {
+    match p {
         // A straw hat on the brim line.
         Profession::Farmer => vec![
             b([-6.5, 5.0, -6.5], [6.5, 6.0, 6.5], [213, 177, 88], 25),
@@ -535,11 +861,11 @@ static PROFESSION_HATS: LazyLock<[Vec<Cuboid>; 15]> = LazyLock::new(|| {
             b([-4.6, 7.4, -4.6], [4.6, 10.8, 4.6], [230, 226, 214], 18).with(Pattern::Wool),
             b([-3.5, 7.4, 4.6], [3.5, 8.0, 6.2], [210, 204, 190], 14),
         ],
-        // A white headband (a partial hat).
-        Profession::Butcher => vec![b([-H, 6.4, -H], [H, 7.5, H], [228, 224, 214], 10)],
+        // A red headband (a partial hat).
+        Profession::Butcher => vec![b([-H, 6.4, -H], [H, 7.5, H], [182, 50, 46], 10)],
         _ => vec![],
-    })
-});
+    }
+}
 
 /// The wandering trader's hood (its own texture's hat) and the panel and
 /// gold belt down its robe's front.
@@ -722,21 +1048,22 @@ mod tests {
     #[test]
     fn outfits_layer_type_profession_and_level_as_java_does() {
         let desert = &ADULT_HATS[Type::Desert as usize][..];
-        let plain = villager(&dressed(MobKind::Villager, "desert", Profession::None));
+        let plain = villager(&dressed(MobKind::Villager, "desert", Profession::None), 0.0);
         // Six parts, the desert accents and the head wrap.
         assert_eq!(plain.len(), 8);
         assert!(has(&plain, desert));
         // A farmer's full hat hides the wrap; the apron, hat and badge show.
-        let farmer = villager(&dressed(MobKind::Villager, "desert", Profession::Farmer));
+        let farmer = villager(&dressed(MobKind::Villager, "desert", Profession::Farmer), 0.0);
         assert_eq!(farmer.len(), 10);
         assert!(!has(&farmer, desert));
-        assert!(has(&farmer, &PROFESSION_HATS[Profession::Farmer as usize]));
+        assert!(has(&farmer, &VILLAGER_FIT.hats[Profession::Farmer as usize]));
         assert!(has(&farmer, &VILLAGER_FIT.badges[2]));
-        // A nitwit wears no badge; plains villagers no accents or hat.
-        assert_eq!(villager(&dressed(MobKind::Villager, "plains", Profession::Nitwit)).len(), 7);
+        // A nitwit wears its coat and sleeves but no badge; plains
+        // villagers no accents or hat.
+        assert_eq!(villager(&dressed(MobKind::Villager, "plains", Profession::Nitwit), 0.0).len(), 8);
         // The butcher's partial hat hides a villager's full desert wrap but
         // not a zombie villager's (its type texture has no metadata).
-        assert!(!has(&villager(&dressed(MobKind::Villager, "desert", Profession::Butcher)), desert));
+        assert!(!has(&villager(&dressed(MobKind::Villager, "desert", Profession::Butcher), 0.0), desert));
         let mut zombie = dressed(MobKind::ZombieVillager, "desert", Profession::Butcher);
         assert!(has(&zombie_villager(&zombie, 0.0), desert));
         // The zombie's robe, its type's colours rotted; no key left over.
@@ -772,9 +1099,92 @@ mod tests {
             let parts = super::super::pose(&m, 0.0, 0.0);
             assert!(!has(&parts, &BABY_HATS[Type::Snow as usize]), "{kind:?}: a full profession hat hides it");
             assert!(!parts.iter().any(|p| {
-                VILLAGER_FIT.aprons.iter().chain(ZOMBIE_FIT.aprons.iter()).any(|a| std::ptr::eq(p.boxes, &a[..]))
+                VILLAGER_FIT.jobs.iter().chain(ZOMBIE_FIT.jobs.iter()).any(|a| std::ptr::eq(p.boxes, &a[..]))
             }));
         }
+    }
+
+    /// v1.0 gap Track 7f: every profession's own clothes, on villagers and
+    /// (rotted) on zombie villagers, layered as `VillagerProfessionLayer`
+    /// layers them: over the type's outfit, under the level badge.
+    #[test]
+    fn every_profession_wears_its_own_clothes() {
+        let mut seen = std::collections::HashSet::new();
+        for p in Profession::ALL.into_iter().skip(1) {
+            let j = p as usize;
+            assert!(!VILLAGER_FIT.jobs[j].is_empty(), "{p:?}");
+            // Each profession's clothes look different.
+            let look: Vec<Rgb> = VILLAGER_FIT.jobs[j].iter().map(|c| c.color).collect();
+            assert!(seen.insert(look), "{p:?}");
+            let m = dressed(MobKind::Villager, "taiga", p);
+            let parts = villager(&m, 0.0);
+            assert!(has(&parts, &VILLAGER_FIT.jobs[j]), "{p:?}");
+            // The clothes go on after the type's touches and before the badge.
+            let at = |boxes: &[Cuboid]| parts.iter().position(|q| std::ptr::eq(q.boxes, boxes));
+            let job = at(&VILLAGER_FIT.jobs[j]).unwrap();
+            if !covers_robe(p) {
+                assert!(at(&VILLAGER_FIT.accents[Type::Taiga as usize]).unwrap() < job, "{p:?}");
+            }
+            if p != Profession::Nitwit {
+                assert!(job < at(&VILLAGER_FIT.badges[2]).unwrap(), "{p:?}");
+            }
+            // The zombie villager's are the same clothes, rotted.
+            let mut z = dressed(MobKind::ZombieVillager, "taiga", p);
+            z.villager.as_mut().unwrap().level = 3;
+            let zparts = zombie_villager(&z, 0.0);
+            assert!(has(&zparts, &ZOMBIE_FIT.jobs[j]), "{p:?}");
+            let raw = VILLAGER_FIT.jobs[j][0].color;
+            assert_eq!(ZOMBIE_FIT.jobs[j][0].color, rotted(raw), "{p:?}");
+            let c = colours(&z);
+            assert!(c.contains(&rotted(raw)) && c.iter().all(|&c| key(c).is_none()), "{p:?}");
+        }
+        assert!(VILLAGER_FIT.jobs[Profession::None as usize].is_empty());
+        // The cleric's vestments cover the type's touches on the robe (the
+        // snow coat's fur), not its headwear; its sleeves are purple, one
+        // part on the folded arms and one on each zombie arm.
+        let cleric = villager(&dressed(MobKind::Villager, "snow", Profession::Cleric), 0.0);
+        assert!(!has(&cleric, &VILLAGER_FIT.accents[Type::Snow as usize]));
+        assert!(has(&cleric, &ADULT_HATS[Type::Snow as usize]));
+        assert_eq!(VILLAGER_FIT.sleeves[Profession::Cleric as usize].len(), 1);
+        assert_eq!(ZOMBIE_FIT.sleeves[Profession::Cleric as usize].len(), 2);
+        let z = zombie_villager(&dressed(MobKind::ZombieVillager, "snow", Profession::Cleric), 0.0);
+        let sleeves = &ZOMBIE_FIT.sleeves[Profession::Cleric as usize];
+        assert!(has(&z, &sleeves[0]) && has(&z, &sleeves[1]));
+        // Face pieces: the armorer's mask, the cartographer's monocle, the
+        // weaponsmith's patch, on the head.
+        for p in [Profession::Armorer, Profession::Cartographer, Profession::Weaponsmith] {
+            let parts = villager(&dressed(MobKind::Villager, "plains", p), 0.0);
+            let face = parts.iter().find(|q| std::ptr::eq(q.boxes, &VILLAGER_FIT.faces[p as usize][..])).unwrap();
+            assert_eq!(face.pivot, parts[HEAD].pivot, "{p:?}");
+        }
+        // Smiths' gloves cover the hands.
+        assert!(!VILLAGER_FIT.sleeves[Profession::Armorer as usize].is_empty());
+        assert!(VILLAGER_FIT.sleeves[Profession::Farmer as usize].is_empty());
+    }
+
+    /// v1.0 gap Track 7f: `VillagerModel.setupAnim` while `isUnhappy`: the
+    /// head bows to 0.4 and rolls `0.3 * sin(0.45 * ageInTicks)`, on adults,
+    /// children and wandering traders.
+    #[test]
+    fn unhappy_villagers_shake_their_heads() {
+        let mut m = dressed(MobKind::Villager, "plains", Profession::Nitwit);
+        m.head_pitch = 0.3;
+        assert_eq!(head_rotation(&m, 1.0), [-0.3, 0.0, 0.0]);
+        m.villager.as_mut().unwrap().unhappy = 40;
+        let t = 3.0 * motion::TICK;
+        let [x, y, z] = head_rotation(&m, t);
+        assert_eq!((x, y), (0.4, 0.0));
+        assert!((z - 0.3 * (0.45 * age_ticks(t)).sin()).abs() < 1e-6);
+        // Posed: the head tilts with it, adult and child.
+        let mut calm = dressed(MobKind::Villager, "plains", Profession::Nitwit);
+        calm.head_pitch = 0.3;
+        assert!(villager(&m, t)[HEAD].rot.angle_between(villager(&calm, t)[HEAD].rot) > 0.5);
+        for c in [&mut m, &mut calm] {
+            c.baby = true;
+            c.age = crate::entity::animals::BABY_AGE;
+        }
+        let (a, b) = (super::super::pose(&m, t, 0.0), super::super::pose(&calm, t, 0.0));
+        assert!(a[3].rot.angle_between(b[3].rot) > 0.5);
     }
 
     /// `CrossedArmsItemLayer`: the shown trade held up in front of the

@@ -1572,6 +1572,11 @@ impl Game {
                     if let Some(t) = m.crossbow_draw() {
                         v["draw"] = json!(r3(t as f64));
                     }
+                    // v1.0 gap Track 7f: the villager's `unhappyCounter`
+                    // (synched data in Java) drives its head shake.
+                    if let Some(c) = m.villager.as_ref().map(|v| v.unhappy).filter(|&c| c > 0) {
+                        v["sad"] = json!(c);
+                    }
                     looked.insert(m.uid);
                     v
                 })
@@ -2106,6 +2111,10 @@ impl Game {
                     bee.rolling = m["roll"] == true;
                 }
                 mob.set_crossbow_draw(m["draw"].as_f64().map(|t| t as f32));
+                if let Some(v) = mob.villager.as_mut() {
+                    let c = m["sad"].as_u64().unwrap_or(0);
+                    v.unhappy = c.min(u64::from(voxelcraft::entity::villager::UNHAPPY_TICKS)) as u8;
+                }
                 mob.riding = m["r"].as_u64().and_then(|r| u32::try_from(r).ok());
                 mob.animate_replica(voxelcraft::simulation::TICK_SECONDS as f32);
                 mob.previous_pose = if known { before } else { mob.pose_values() };
