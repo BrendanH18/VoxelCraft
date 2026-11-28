@@ -452,8 +452,8 @@ release notes in `packaging/RELEASE-NOTES.md`. It is not tagged.
   sub-texel geometry; Java's slot icon orientation; the nautilus shell
   first; the right stick for bundles; the owner's play verifies rows.
 - **Waiting for the owner:** the looks merged overnight without approval
-  (gap Tracks 6c, 6d, 6e, 6f, 7d, 7e, 7f, 8c's and 8d's flames, final F3
-  and whichever final-wave tracks change looks); FE-05 (one running
+  (gap Tracks 6c, 6d, 6e, 6f, 7d, 7e, 7f, 8c's and 8d's flames, final F1's
+  off-hand, F3's block variants, fire and bells, and F10's models); FE-05 (one running
   dimension), proposed; the owner's play of the build, which verifies
   rows; then the merge, the `1.0` tag and the published release.
 - **Not run:** no frame-time runs (dropped by the owner, 2026-11-27);
