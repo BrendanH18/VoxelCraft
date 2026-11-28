@@ -627,3 +627,50 @@ mod scale_tests {
         assert_eq!(Ui::view_scale((200.0, 100.0), window, 0), 1.0);
     }
 }
+
+#[cfg(test)]
+mod item_view_tests {
+    use super::*;
+
+    /// The x (UI pixels) of the quads drawn with `layer`, by their vertices.
+    fn xs(ui: &Ui, layer: u16) -> Vec<f32> {
+        ui.verts.iter().filter(|v| v.layer == layer as f32).map(|v| (v.pos[0] + 1.0) / 2.0 * ui.width).collect()
+    }
+
+    /// v1.0 gap track 6c: a furnace's front (its item model's north face)
+    /// shows on the right of a slot and its east side on the left, as
+    /// Java's `block/block` GUI turn (30, 225, 0) places them; stairs show
+    /// their profile on the left (`block/stairs`' 135); a head its face on
+    /// the right (`item/template_skull`'s 45, the face south). The top is
+    /// lit fully, the left 0.65 and the right 0.4 (Java's GUI lights).
+    #[test]
+    fn slot_icons_take_javas_orientation_and_light() {
+        use crate::world::block::tex;
+        let mut ui = Ui::with_scale(64.0, 64.0, 1.0);
+        ui.block_icon(0.0, 0.0, 64.0, Block::FURNACE, false);
+        let front = xs(&ui, tex::FURNACE_FRONT);
+        assert!(!front.is_empty() && front.iter().all(|&x| x >= 32.0 - 1e-3), "{front:?}");
+        let shades: Vec<f32> = ui.verts.iter().map(|v| linear_to_srgb(v.color[0])).collect();
+        for expected in [1.0, 0.6505, 0.4] {
+            assert!(shades.iter().any(|s| (s - expected).abs() < 2e-3), "{expected} in {shades:?}");
+        }
+        let mut head = Ui::with_scale(64.0, 64.0, 1.0);
+        let skull = crate::world::skulls::item_block(crate::world::skulls::Kind::Zombie);
+        head.block_icon(0.0, 0.0, 64.0, skull, false);
+        let face = skull.info().tex[4];
+        let x = xs(&head, face);
+        assert!(!x.is_empty() && x.iter().all(|&x| x >= 32.0 - 1e-3), "{x:?}");
+    }
+
+    /// v1.0 gap track 6c: an enchanted 3D item glints in a slot: each face
+    /// is drawn again as the glint's texture-shaped sheen.
+    #[test]
+    fn enchanted_3d_items_glint_in_a_slot() {
+        let mut plain = Ui::with_scale(64.0, 64.0, 1.0);
+        plain.block_icon(0.0, 0.0, 64.0, Block::STONE, false);
+        let mut glinting = Ui::with_scale(64.0, 64.0, 1.0);
+        glinting.block_icon(0.0, 0.0, 64.0, Block::STONE, true);
+        assert!(glinting.verts.len() > plain.verts.len());
+        assert!(glinting.verts.iter().any(|v| v.color[3] < 0.0), "the sheen is drawn through the texture's shape");
+    }
+}

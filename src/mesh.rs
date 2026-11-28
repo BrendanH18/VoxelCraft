@@ -969,7 +969,10 @@ mod tests {
                     high[1] >> 21 & 15
                 };
                 assert_eq!((high[1] & 255) | high_bits << 8, layer);
-                let coord_extras = if detail { (1 << 5) | (1 << 11) | (1 << 17) | (1 << 30) } else { 0 };
+                // v1.0 gap track 6c: a cross also names its offset kind,
+                // which follows the block, not its layer.
+                let offset_kind = if pass == CROSS { 7 << 24 } else { 0 };
+                let coord_extras = if detail { (1 << 5) | (1 << 11) | (1 << 17) | (1 << 30) } else { offset_kind };
                 assert_eq!(high[0] & !coord_extras, low[0] & !coord_extras);
                 let layer_bits = 255 | if detail { 0 } else { 15 << 21 };
                 assert_eq!(high[1] & !layer_bits, low[1] & !layer_bits);
@@ -1398,6 +1401,89 @@ mod tests {
         // The planes are drawn only: the post is still all that collides.
         let shape = crate::world::shape::collision(BAMBOO_LARGE_LEAVES, |_| Block::AIR, Block::AIR);
         assert_eq!(shape.as_slice().len(), 1);
+    }
+
+    /// v1.0 gap track 6c: a fine quad's corners in its cell (sixteenths),
+    /// decoded as `chunk.wgsl` decodes them (before the offset), with its
+    /// real face and whether it is a leaf plane.
+    fn fine_corners(q: [u32; 3]) -> (u32, bool, [[f32; 3]; 4]) {
+        const CODES: [f32; 9] = [0.0, 0.8, 6.5, 7.0, 9.0, 9.5, 15.2, 16.0, 8.0];
+        assert_eq!(q[1] & DETAIL, DETAIL);
+        assert!(q[0] >> 18 & 7 >= 6, "not a fine quad");
+        let face = q[0] >> 21 & 7;
+        let d = (face / 2) as usize;
+        let (u, v) = ((d + 1) % 3, (d + 2) % 3);
+        let code = |shift: u32| CODES[(q[1] >> shift & 7) as usize];
+        let (lo, hi) = ([code(16), code(22)], [code(19), code(25)]);
+        let corners = std::array::from_fn(|c| {
+            let mut p = [0.0; 3];
+            p[d] = CODES[(q[0] >> 24 & 15) as usize];
+            p[u] = if c == 1 || c == 2 { hi[0] } else { lo[0] };
+            p[v] = if c >= 2 { hi[1] } else { lo[1] };
+            p
+        });
+        (face, q[0] >> 28 & 1 == 1, corners)
+    }
+
+    /// v1.0 gap track 6c: bamboo is Java's models in fine quads: the stalk
+    /// 3 texels across (6.5 to 9.5) at `age=1`, 2 (7 to 9) at `age=0`, and
+    /// the leaf planes through the middle from 0.8 to 15.2, both faces of
+    /// each, flagged to be lit flat and shaded as a face up.
+    #[test]
+    fn bamboo_draws_javas_stalk_widths_and_leaf_planes() {
+        use crate::world::overworld_blocks::{THIN_BAMBOO, THIN_BAMBOO_LARGE_LEAVES, bamboo};
+        for (b, (lo, hi), leaves) in [
+            (bamboo(1, 0), (6.5, 9.5), false),
+            (THIN_BAMBOO, (7.0, 9.0), false),
+            (bamboo(1, 2), (6.5, 9.5), true),
+            (THIN_BAMBOO_LARGE_LEAVES, (7.0, 9.0), true),
+        ] {
+            let m = mesh_blocks(&[([5, 5, 5], b)]);
+            let fine: Vec<_> = m.quads.iter().map(|&q| fine_corners(q)).collect();
+            let stalk: Vec<_> = fine.iter().filter(|f| !f.1).collect();
+            assert_eq!(stalk.len(), 6, "{}", b.name());
+            for (face, _, c) in &stalk {
+                let d = (face / 2) as usize;
+                for p in c {
+                    for axis in [0, 2] {
+                        let expect: &[f32] =
+                            if axis == d { if face % 2 == 0 { &[hi] } else { &[lo] } } else { &[lo, hi] };
+                        assert!(expect.iter().any(|&e| (p[axis] - e).abs() < 1e-6), "{} face {face}: {p:?}", b.name());
+                    }
+                }
+            }
+            let planes: Vec<_> = fine.iter().filter(|f| f.1).collect();
+            assert_eq!(planes.len(), if leaves { 4 } else { 0 }, "{}", b.name());
+            for (face, _, c) in planes {
+                let across = if face / 2 == 0 { 2 } else { 0 };
+                let (min, max) = c.iter().fold((f32::MAX, f32::MIN), |(a, b), p| (a.min(p[across]), b.max(p[across])));
+                assert_eq!((min, max), (0.8, 15.2));
+                assert!(c.iter().all(|p| p[2 - across] == 8.0));
+            }
+            if leaves {
+                assert_eq!(m.pass_quads(OPAQUE), 0, "leafy bamboo is cut out");
+            }
+        }
+    }
+
+    /// v1.0 gap track 6c: plants Java offsets name their offset kind in their
+    /// cross quads (bits 24-26); others, and crosses on their side, none.
+    #[test]
+    fn offset_plants_name_their_offset_kind() {
+        use crate::world::offset::Kind;
+        let kind = |b: Block| {
+            let m = mesh_blocks(&[([5, 5, 5], b)]);
+            let cross = m.quads_of(CROSS);
+            assert_eq!(cross.quads.len(), 2, "{}", b.name());
+            cross.quads[0][0] >> 24 & 7
+        };
+        assert_eq!(kind(Block::POPPY), Kind::Xz as u32);
+        assert_eq!(kind(Block::TALL_GRASS), Kind::Xyz as u32);
+        let tip =
+            crate::world::overworld_blocks::pointed_dripstone(false, crate::world::overworld_blocks::Thickness::Tip);
+        assert_eq!(kind(tip), Kind::XzSpeleothem as u32);
+        assert_eq!(kind(crate::world::overworld_blocks::BAMBOO_SAPLING), Kind::Xz as u32);
+        assert_eq!(kind(Block::DEAD_BUSH), 0);
     }
 
     #[test]

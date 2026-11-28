@@ -2516,8 +2516,10 @@ mod tests {
         }
         let flower = IVec3::new(0, y + 1, 0);
         assert!(world.set_block(flower, Block::POPPY));
-        // The crosshair selects the flower, not the dirt under it.
-        let eye = DVec3::new(0.5, y as f64 + 4.5, 0.5);
+        // The crosshair selects the flower, not the dirt under it (v1.0
+        // gap track 6c: its outline moved by Java's offset for the column).
+        let o = offset::offset(Block::POPPY, 0, 0);
+        let eye = DVec3::new(0.5 + o.x, y as f64 + 4.5, 0.5 + o.z);
         assert_eq!(world.raycast(eye, DVec3::NEG_Y, 10.0).unwrap().0, flower);
 
         // Removing the dirt pops the flower off as an item.

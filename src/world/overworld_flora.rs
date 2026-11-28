@@ -655,6 +655,52 @@ mod tests {
         assert_eq!(w.get_block(flower), Some(Block::AIR), "the lower half goes with the upper");
     }
 
+    /// v1.0 gap track 6c: bamboo grows by Java's `growBamboo`: a shoot
+    /// becomes a bare thin stalk under a thin one with small leaves, the
+    /// stalk is thin up to three tall and thick above, the top two carry
+    /// large leaves over one with small, the rest none, and a thin stalk follows the rules
+    /// of the thick one (it survives on its kind and drops bamboo).
+    #[test]
+    fn bamboo_grows_thin_then_thick_with_javas_leaves() {
+        let mut w = world();
+        let at = IVec3::new(6, 70, 6);
+        w.set_block(at - IVec3::Y, Block::GRASS);
+        w.set_block(at, ob::BAMBOO_SAPLING);
+        let stalk = |w: &World, dy: i32| w.get_block(at + IVec3::Y * dy).and_then(ob::bamboo_stalk);
+        w.grow_bamboo(at);
+        assert_eq!((stalk(&w, 0), stalk(&w, 1)), (Some((0, 0)), Some((0, 1))));
+        w.grow_bamboo(at + IVec3::Y);
+        assert_eq!(stalk(&w, 2), Some((0, 1)), "still thin: nothing two below the top");
+        w.grow_bamboo(at + IVec3::Y * 2);
+        assert_eq!(stalk(&w, 3), Some((1, 2)), "thick once three tall");
+        assert_eq!((stalk(&w, 2), stalk(&w, 1), stalk(&w, 0)), (Some((0, 1)), Some((0, 1)), Some((0, 0))));
+        w.grow_bamboo(at + IVec3::Y * 3);
+        let column: Vec<_> = (0..5).map(|dy| stalk(&w, dy).unwrap()).collect();
+        assert_eq!(column, [(0, 0), (0, 0), (0, 1), (1, 2), (1, 2)]);
+        w.grow_bamboo(at + IVec3::Y * 4);
+        let column: Vec<_> = (0..6).map(|dy| stalk(&w, dy).unwrap()).collect();
+        assert_eq!(column, [(0, 0), (0, 0), (0, 0), (1, 1), (1, 2), (1, 2)]);
+        // A thin stalk survives on the stalk below and breaks into bamboo
+        // when it loses its ground, as the thick one does.
+        w.set_block(at - IVec3::Y, Block::AIR);
+        assert_eq!(w.get_block(at), Some(Block::AIR));
+        assert!(w.drops.iter().any(|(_, s)| s.item == Item::from_block(ob::BAMBOO)));
+    }
+
+    /// v1.0 gap track 6c: `BambooStalkBlock.getStateForPlacement`.
+    #[test]
+    fn placed_bamboo_takes_its_neighbours_thickness() {
+        let air = Block::AIR;
+        assert_eq!(ob::bamboo_placed(Block::GRASS, air), ob::BAMBOO_SAPLING);
+        assert_eq!(ob::bamboo_placed(ob::BAMBOO_SAPLING, air), ob::THIN_BAMBOO);
+        assert_eq!(ob::bamboo_placed(ob::THIN_BAMBOO_SMALL_LEAVES, air), ob::THIN_BAMBOO);
+        assert_eq!(ob::bamboo_placed(ob::BAMBOO_LARGE_LEAVES, air), ob::BAMBOO);
+        assert_eq!(ob::bamboo_placed(Block::GRASS, ob::BAMBOO), ob::BAMBOO);
+        assert_eq!(ob::thick_bamboo(ob::THIN_BAMBOO_LARGE_LEAVES), ob::BAMBOO_LARGE_LEAVES);
+        assert_eq!(ob::THIN_BAMBOO.base(), ob::BAMBOO);
+        assert_eq!(ob::THIN_BAMBOO.name(), "bamboo");
+    }
+
     #[test]
     fn berries_ripen_and_are_picked() {
         let mut w = world();

@@ -733,12 +733,18 @@ mod tests {
         assert_eq!(models.len(), 2);
         assert_eq!((models[0].block, models[0].icon), (Block::STONE, None));
         assert!(models[1].icon.is_some(), "a stick draws as its sprite");
+        // v1.0 gap track 6c: placed by Java's `ShelfRenderer` chain and the
+        // `on_shelf` transform, a quarter of a block across, inside the cell
+        // and centred at half height.
+        let centre = |m: &BlockModel| m.transform.unwrap().transform_point3(Vec3::splat(0.5));
         for m in &models {
-            assert_eq!(m.size, 0.25);
-            let centre = m.min + DVec3::splat(0.125) - AT.as_dvec3();
-            assert!(centre.min_element() > 0.0 && centre.max_element() < 1.0, "{centre}");
+            let c = centre(m);
+            assert!(c.min_element() > 0.0 && c.max_element() < 1.0, "{c}");
+            assert!((c.y - 0.5).abs() < 1e-4, "{c}");
+            let across = m.transform.unwrap().transform_vector3(Vec3::X).length();
+            assert!((across - 0.25).abs() < 1e-4, "{across}");
         }
         // Left of the front as the player sees it (west, -x) for slot 0.
-        assert!(models[0].min.x < models[1].min.x);
+        assert!(centre(&models[0]).x < centre(&models[1]).x);
     }
 }
