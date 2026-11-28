@@ -153,11 +153,17 @@ mod tests {
         let none = |_| None;
         assert_eq!(blast_cause(None, none), (Cause::TNT, false));
         let (cause, credit) = blast_cause(Some(Owner::Player(PlayerId::HOST)), none);
-        assert_eq!((cause.kind, cause.text, cause.tnt, credit), (DamageType::PlayerExplosion, "was blown up by a player", true, true));
+        assert_eq!(
+            (cause.kind, cause.text, cause.tnt, credit),
+            (DamageType::PlayerExplosion, "was blown up by a player", true, true)
+        );
         assert_eq!(cause.by, Some(Owner::Player(PlayerId::HOST)));
         let skeleton = |uid| (uid == 7).then_some(MobKind::Skeleton);
         let (cause, credit) = blast_cause(Some(Owner::Mob(7)), skeleton);
-        assert_eq!((cause.kind, cause.text, cause.tnt, credit), (DamageType::PlayerExplosion, "was blown up by a skeleton", true, false));
+        assert_eq!(
+            (cause.kind, cause.text, cause.tnt, credit),
+            (DamageType::PlayerExplosion, "was blown up by a skeleton", true, false)
+        );
         // The owner is gone (a creeper is discarded after its blast).
         assert_eq!(blast_cause(Some(Owner::Mob(8)), skeleton), (Cause::TNT, false));
         assert_eq!(crate::entity::crystal::blown_up_by(MobKind::Enderman), "was blown up by an enderman");

@@ -28,7 +28,7 @@ Sprint can be set to Toggle there.
 | Hold / release right click with a bow | Draw / shoot an arrow (needs arrows in survival) |
 | Right click with an off-hand item | When the main hand does nothing with the click (an empty hand, a sword, a block with no place to go), the off-hand item is used: torches and blocks place, food is eaten, a shield is raised |
 | Hold right click with a shield | Raise it (blocks after 0.25 s; slows walking like eating) |
-| Right click with flint and steel | Start a fire, light an obsidian portal frame or prime TNT |
+| Right click with flint and steel | Start a fire, light an obsidian portal frame or prime TNT (a fire charge primes TNT too) |
 | Right click with a bucket | Scoop up a water or lava source / pour it out again |
 | Right click with a hoe | Till grass or dirt (with air above) into farmland |
 | Right click with seeds / bone meal | Sow wheat on farmland / make a crop, sapling or patch of grass grow |
@@ -294,7 +294,14 @@ compact counter.
   steel and it hops out of its block, flashing white and swelling for 4
   seconds before a blast stronger than a creeper's (power 4). TNT caught in
   a blast goes off within a second and a half, so stacks chain. Explosions
-  hurt through armor, knock you back and drop some of what they destroy
+  hurt through armor, knock you back and drop some of what they destroy.
+  As in Java, TNT remembers who lit it (with flint and steel, a fire charge
+  or a burning projectile, or by a blast they were behind): a death in its
+  blast reads "was blown up by" them, and the mobs it kills count as that
+  player's; TNT lit by fire, redstone or a dispenser "blew up"
+  ([gap Track 8e](verification/2026-11-28-v1.0-gap-track-08e-fire-tnt-credits.md)).
+  Flying projectiles and primed TNT are saved with the world, burning ones
+  still burning
 - Buckets (3 iron ingots in a V, stack to 16): right-click a water or lava
   source to fill one and right-click a block to pour it out next to it.
   Creative keeps its empty bucket. A lava bucket smelts for 1000 s and

@@ -6,10 +6,11 @@
 //! `Fire` (`remainingFireTicks`), so a burning snowball saved mid-flight
 //! reloads burning. VoxelCraft had saved only tridents (with their fire)
 //! and Wither skulls; arrows, thrown items, thrown potions, firework
-//! rockets, blaze and ghast fireballs and primed TNT (with its `owner`)
-//! now go into the level file too, each under its own key written only
-//! when there is one, so older saves resave unchanged. Like tridents,
-//! those stored in unloaded chunks are saved with the dimension.
+//! rockets, blaze and ghast fireballs, primed TNT (with its `owner`) and
+//! ender pearls now go into the level file too, each under its own key
+//! written only when there is one, so older saves resave unchanged. Like
+//! tridents, those stored in unloaded chunks are saved with the dimension.
+//! Pearls are saved with the dimension they fly in, not with their owner.
 
 use std::collections::BTreeMap;
 
@@ -20,7 +21,8 @@ use super::trident::Owner;
 use super::{Entities, PlayerId};
 
 /// The level file keys, in the order they are written.
-pub const KEYS: [&str; 6] = ["arrows", "thrown", "thrown_potions", "fireworks", "fireballs", "primed_tnt"];
+pub const KEYS: [&str; 7] =
+    ["arrows", "thrown", "thrown_potions", "fireworks", "fireballs", "primed_tnt", "ender_pearls"];
 
 pub(super) fn v3(v: DVec3) -> Value {
     json!([v.x, v.y, v.z])
@@ -76,13 +78,14 @@ impl Entities {
     /// Writes the [`KEYS`] that have entities, stored ones included.
     pub(super) fn save_projectiles(&self, props: &mut BTreeMap<String, String>) {
         let stored = self.storage.chunks();
-        let lists: [Vec<Value>; 6] = [
+        let lists: [Vec<Value>; 7] = [
             self.arrows.iter().chain(stored.iter().flat_map(|c| &c.arrows)).map(|a| a.save()).collect(),
             self.thrown.iter().chain(stored.iter().flat_map(|c| &c.thrown)).map(|t| t.save()).collect(),
             self.potions.iter().chain(stored.iter().flat_map(|c| &c.potions)).map(|p| p.save()).collect(),
             self.fireworks.iter().filter_map(|r| r.save()).collect(),
             self.fireballs.iter().chain(stored.iter().flat_map(|c| &c.fireballs)).map(|f| f.save()).collect(),
             self.tnt.iter().chain(stored.iter().flat_map(|c| &c.tnt)).map(|t| t.save()).collect(),
+            self.pearls.iter().map(|p| p.save()).collect(),
         ];
         for (key, list) in KEYS.iter().zip(lists) {
             if !list.is_empty() {
@@ -105,6 +108,7 @@ impl Entities {
         self.fireworks.extend(list("fireworks").iter().filter_map(super::firework::Rocket::load));
         self.fireballs.extend(list("fireballs").iter().filter_map(super::fireball::Fireball::load));
         self.tnt.extend(list("primed_tnt").iter().filter_map(super::tnt::PrimedTnt::load));
+        self.pearls.extend(list("ender_pearls").iter().filter_map(super::pearl::Pearl::load));
     }
 }
 
@@ -121,10 +125,12 @@ mod tests {
         assert!(KEYS.iter().all(|k| !none.contains_key(*k)), "nothing to save writes no key: {none:?}");
 
         let (eye, dir) = (DVec3::new(0.5, 70.0, 0.5), DVec3::X);
-        let mut snowball = thrown::Thrown::launch(thrown::Kind::Snowball, PlayerId::HOST, eye, dir, DVec3::ZERO, &mut e.rng);
+        let mut snowball =
+            thrown::Thrown::launch(thrown::Kind::Snowball, PlayerId::HOST, eye, dir, DVec3::ZERO, &mut e.rng);
         snowball.set_burning(true);
         e.thrown.push(snowball);
-        let mut splash = potion::ThrownPotion::thrown(crate::potion::Potion::AWKWARD, PlayerId::HOST, eye, dir, DVec3::ZERO);
+        let mut splash =
+            potion::ThrownPotion::thrown(crate::potion::Potion::AWKWARD, PlayerId::HOST, eye, dir, DVec3::ZERO);
         splash.set_burning(true);
         e.potions.push(splash);
         let mut arrow = Arrow::shot(eye, dir, 1.0, true);
@@ -137,6 +143,9 @@ mod tests {
         let mut ball = fireball::Fireball::large(eye, dir);
         ball.owner = Some(Owner::Mob(5));
         e.fireballs.push(ball);
+        let mut pearl = crate::entity::pearl::Pearl::thrown(PlayerId(3), eye, dir, DVec3::ZERO, &mut e.rng);
+        pearl.set_burning(true);
+        e.pearls.push(pearl);
         let mut primed = tnt::PrimedTnt::new(eye, DVec3::Y, 2.5);
         primed.owner = Some(Owner::Player(PlayerId::HOST));
         e.tnt.push(primed);
@@ -147,6 +156,7 @@ mod tests {
         let mut loaded = Entities::new(2);
         loaded.load_props(&props);
         assert!(loaded.thrown[0].burning() && loaded.potions[0].burning() && loaded.arrows[0].burning());
+        assert!(loaded.pearls[0].burning() && loaded.pearls[0].owner == PlayerId(3));
         assert_eq!(loaded.fireworks[0].fire, 37);
         assert_eq!(loaded.fireballs[0].owner, Some(Owner::Mob(5)));
         assert_eq!(loaded.tnt[0].owner, Some(Owner::Player(PlayerId::HOST)));

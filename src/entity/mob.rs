@@ -3717,7 +3717,12 @@ impl Mob {
                     let view = yaw_dir(self.yaw);
                     let from = DVec3::new(self.pos.x + view.x * 4.0, mid.y + 0.5, self.pos.z + view.z * 4.0);
                     let aim = DVec3::new(target.pos.x - from.x, target_mid.y - (0.5 + mid.y), target.pos.z - from.z);
-                    events.push(EntityEvent::Fireball { from, dir: aim.normalize_or(view), large: true, shooter: self.uid });
+                    events.push(EntityEvent::Fireball {
+                        from,
+                        dir: aim.normalize_or(view),
+                        large: true,
+                        shooter: self.uid,
+                    });
                     events.push(EntityEvent::Sound { sound: MobSound::Fireball, pos: mid });
                     c.charge = -40;
                 }

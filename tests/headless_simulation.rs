@@ -58,7 +58,7 @@ fn headless_world_runs_gameplay_without_render_meshes() {
 
     let mut entities = Entities::new(7);
     entities.scatter(Stack::new(Item::DIAMOND, 1), DVec3::new(10.5, 153.0, 10.5));
-    entities.prime_tnt(IVec3::new(28, 150, 28), false);
+    entities.prime_tnt(IVec3::new(28, 150, 28), false, None);
     let ctx = Ctx {
         spawn_light: voxelcraft::simulation::lighting::SpawnLight::DAY,
         players: vec![Target::new(PlayerId::HOST, at, false)],

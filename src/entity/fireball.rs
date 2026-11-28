@@ -354,7 +354,7 @@ mod tests {
     fn ghast_fireballs_explode_and_remember_a_deflection() {
         let world = Grid::flat(10);
         let mut f = Fireball::large(DVec3::new(0.5, 16.0, 0.5), DVec3::X);
-        f.deflect(DVec3::NEG_Y, super::PlayerId::HOST);
+        f.deflect(DVec3::NEG_Y, crate::entity::PlayerId::HOST);
         assert!(f.heading().y < 0.0);
         let mut events = Vec::new();
         while f.update(0.05, &world, &ctx(vec![]), &[], &[], &Default::default(), &mut events) {}
@@ -365,7 +365,7 @@ mod tests {
                 power: GHAST_POWER,
                 cause,
                 ..
-            } if *cause == crate::simulation::damage::Cause::GHAST_FIREBALL.by(Some(crate::entity::trident::Owner::Player(super::PlayerId::HOST)))
+            } if *cause == crate::simulation::damage::Cause::GHAST_FIREBALL.by(Some(crate::entity::trident::Owner::Player(crate::entity::PlayerId::HOST)))
         )), "the punched fireball is the player's (`deflect`): {events:?}");
         assert!(!events.iter().any(|e| matches!(e, EntityEvent::IgniteBlock { .. } | EntityEvent::PlayerHit { .. })));
     }

@@ -171,7 +171,7 @@ fn rendering_only_chunks_freeze_containers_mobs_items_fluids_fire_and_falling_bl
     entities.mobs[0].age = -24000;
     entities.scatter(Stack::new(Item::EMERALD, 1), sleeping.as_dvec3() + DVec3::Y);
     entities.spawn_xp(sleeping.as_dvec3() + DVec3::Y, 5);
-    entities.prime_tnt(sleeping + IVec3::Z * 10, false);
+    entities.prime_tnt(sleeping + IVec3::Z * 10, false, None);
     let items = entities.items_to_string();
     let orbs = entities.orbs_to_string();
     let tnt = entities.tnt[0].pos;

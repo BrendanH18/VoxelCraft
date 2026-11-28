@@ -548,7 +548,13 @@ impl Entities {
                     // v1.0 gap Track 8d: the block its flight hit.
                     let b = &mut self.bobbers[i];
                     if let Some(cell) = b.struck.take() {
-                        events.push(super::projectile::block_hit(cell, b.pos, b.burning(), false, Some(super::trident::Owner::Player(b.owner))));
+                        events.push(super::projectile::block_hit(
+                            cell,
+                            b.pos,
+                            b.burning(),
+                            false,
+                            Some(super::trident::Owner::Player(b.owner)),
+                        ));
                     }
                     i += 1;
                 } else {
