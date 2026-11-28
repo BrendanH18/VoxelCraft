@@ -21,6 +21,7 @@ mod dsp;
 mod events;
 mod export;
 mod flight;
+mod fox;
 mod illager;
 mod minecart;
 pub mod mixer;

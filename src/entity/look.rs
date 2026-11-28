@@ -64,6 +64,10 @@ impl Mob {
         if let Some(s) = &self.fox {
             v["fox"] = s.look();
         }
+        // v1.0 gap Track 2f: the goat's `LONG_JUMPING` pose.
+        if self.goat_long_jumping() {
+            v["goat_long_jumping"] = serde_json::json!(true);
+        }
         if let Some(s) = &self.ocelot {
             v["ocelot"] = serde_json::json!({"trusting":s.trusting,"crouching":s.crouching,"sprinting":s.sprinting});
         }
@@ -236,6 +240,11 @@ impl Mob {
         }
         if let Some(s) = &mut self.fox {
             s.apply_look(&v["fox"]);
+        }
+        if self.kind == MobKind::Goat
+            && let Some(a) = &mut self.animal
+        {
+            a.long_jumping = v["goat_long_jumping"] == true;
         }
         if let Some(s) = &mut self.ocelot {
             s.trusting = v["ocelot"]["trusting"].as_bool().unwrap_or(false);

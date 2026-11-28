@@ -1555,8 +1555,10 @@ fn sense<W: MobWorld + ?Sized>(
             if n.celebrate_at.distance_squared(pos) > slack * slack { Goal::Walk(n.celebrate_at) } else { Goal::None };
         return None;
     }
+    // v1.0 gap Track 2f: a brute strolls back to and around its `HOME` in
+    // its idle `RunOne` (`StrollToPoi`, `StrollAroundPoi`) instead.
     n.goal = match n.home {
-        Some(home) if home.distance_squared(pos) > HOME_RANGE * HOME_RANGE => Goal::Walk(home),
+        Some(home) if !brute && home.distance_squared(pos) > HOME_RANGE * HOME_RANGE => Goal::Walk(home),
         _ => Goal::None,
     };
     None

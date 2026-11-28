@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 fn hash(mut seed: u64) -> u64 {
     crate::world::noise::splitmix64(&mut seed)
 }
-use super::{Entities, EntityEvent, Mob, MobKind, MobWorld};
+use super::{Entities, Mob, MobKind, MobWorld};
 #[path = "villager_trades.rs"]
 pub mod trades;
 use trades::TradeDef;
@@ -214,8 +214,6 @@ pub struct Villager {
     pub meeting: Option<IVec3>,
     /// Java `lastGossipTime` (absolute ticks); gossip waits 1200 ticks.
     pub(super) last_gossip: Option<i64>,
-    /// Java `WorkAtPoi.lastCheck` (absolute ticks): a work check every 300.
-    pub(super) work_check: Option<i64>,
     seed: u64,
     /// Java `lastRestockCheckDay`: the day the last restock check saw.
     restock_day: i64,
@@ -291,7 +289,6 @@ impl Villager {
             gossip: Default::default(),
             meeting: None,
             last_gossip: None,
-            work_check: None,
             restock_day: 0,
             restocks: 0,
             last_restock: 0,
@@ -550,31 +547,6 @@ pub fn schedule_activity(tick: u32, baby: bool) -> Activity {
 
 /// `VillagerData.NEXT_LEVEL_XP_THRESHOLDS`: the XP that ends each level.
 pub const LEVEL_XP: [u16; 5] = [0, 10, 70, 150, 250];
-
-/// How close (blocks) a farmer must be to cut a crop.
-const HARVEST_REACH: f64 = 1.5;
-/// Farmers look for ripe crops this far from their job site.
-const HARVEST_RADIUS: i32 = 5;
-/// The ripe crop closest to `from` around a farmer's job site (wheat, carrots, potatoes and beetroot at their maximum age).
-fn ripe_crop<W: MobWorld + ?Sized>(world: &W, job: IVec3, from: DVec3) -> Option<IVec3> {
-    let mut best: Option<(f64, IVec3)> = None;
-    for dy in -1..=1 {
-        for dz in -HARVEST_RADIUS..=HARVEST_RADIUS {
-            for dx in -HARVEST_RADIUS..=HARVEST_RADIUS {
-                let cell = job + IVec3::new(dx, dy, dz);
-                let ripe =
-                    world.block(cell).is_some_and(|b| b.as_crop().is_some_and(|(crop, stage)| stage == crop.max_age()));
-                if ripe && world.block(cell - IVec3::Y).is_some_and(|b| b.is_farmland()) {
-                    let d = (cell.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)).distance_squared(from);
-                    if best.is_none_or(|(bd, _)| d < bd) {
-                        best = Some((d, cell));
-                    }
-                }
-            }
-        }
-    }
-    best.map(|(_, cell)| cell)
-}
 
 /// Where a sleeping villager lies: the head half's centre on top of the mattress, turned so
 /// the body stretches toward the foot (Java's `SLEEPING` pose; the renderer lays the head
@@ -926,9 +898,11 @@ impl Entities {
             } else if v.trading {
                 None
             } else {
+                // v1.0 gap Track 2f: the work package's own walks
+                // (`SetWalkTargetFromBlockMemory(JOB_SITE, 0.5, 9, ..)` and
+                // its `RunOne`) take a working villager to its job site.
                 match activity {
                     Activity::Rest => v.home.map(|p| p.as_dvec3() + DVec3::new(0.5, 0.6, 0.5)),
-                    Activity::Work if adult => v.job.map(|p| p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)),
                     // `SetWalkTargetFromBlockMemory(MEETING_POINT, .., 6, ..)`:
                     // walk until within six blocks of the bell.
                     Activity::Meet if adult => v
@@ -938,26 +912,6 @@ impl Entities {
                     _ => None,
                 }
             };
-            // Java's `HarvestFarmland`: farmers on shift cut ripe crops near their composter.
-            if v.profession == Profession::Farmer
-                && self.villager_griefing
-                && m.age >= 0
-                && !v.fleeing
-                && !v.trading
-                && v.bell_hide <= 0.0
-                && activity == Activity::Work
-                && let Some(job) = v.job
-                && let Some(cell) = ripe_crop(world, job, m.pos)
-            {
-                let at = cell.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
-                if ((at - m.pos) * DVec3::new(1.0, 0.0, 1.0)).length_squared() < HARVEST_REACH * HARVEST_REACH
-                    && (at.y - m.pos.y).abs() < 2.0
-                {
-                    self.pending_sounds.push(EntityEvent::VillagerHarvest { cell });
-                } else {
-                    v.goal = Some(at);
-                }
-            }
             if activity == Activity::Rest
                 && !v.fleeing
                 && v.bell_hide <= 0.0
@@ -977,24 +931,11 @@ impl Entities {
                     m.vel = DVec3::ZERO;
                 }
             }
-            // Java `WorkAtPoi`: while working, at most every 300 ticks and on a
-            // coin flip, a villager within 1.73 blocks of its job site's centre
-            // works it, which restocks when `shouldRestock` allows.
-            if activity == Activity::Work
-                && !v.fleeing
-                && !v.sleeping
-                && v.work_check.is_none_or(|t| now - t >= WORK_CHECK_COOLDOWN)
-                && hash(v.seed ^ now as u64).is_multiple_of(2)
-            {
-                v.work_check = Some(now);
-                if let Some(p) =
-                    v.job.filter(|p| m.pos.distance_squared(p.as_dvec3() + 0.5) < WORK_DISTANCE * WORK_DISTANCE)
-                {
-                    v.restock(now, self.village_day);
-                    // v1.0 gap Track 2d: `WorkAtPoi.start` looks at the job site
-                    // (`BlockPosTracker`, the block's centre).
-                    m.head.target = Some(super::mob::head::Tracked::Point(p.as_dvec3() + 0.5));
-                }
+            // Java `WorkAtPoi.start` (the work package's `RunOne` started it,
+            // v1.0 gap Track 2f): the villager restocks when `shouldRestock`
+            // allows.
+            if std::mem::take(&mut m.walking.work_due) && activity == Activity::Work && !v.fleeing && !v.sleeping {
+                v.restock(now, self.village_day);
             }
         }
         self.breed_villagers(world);
@@ -1454,49 +1395,21 @@ mod tests {
         assert!(!e.mobs[0].villager.as_ref().unwrap().sleeping);
     }
     #[test]
-    fn farmers_walk_to_ripe_crops_near_their_composter_and_harvest_them() {
-        let mut w = grid();
-        let job = IVec3::new(0, 1, 0);
-        w.blocks.insert(job, Block::COMPOSTER);
-        let ripe = IVec3::new(4, 1, 1);
-        let young = IVec3::new(-3, 1, 0);
-        for (cell, stage) in [(ripe, 7), (young, 3)] {
-            w.blocks.insert(cell - IVec3::Y, Block::FARMLAND);
-            w.blocks.insert(cell, Block::wheat(stage));
-        }
-        let mut e = Entities::new(1);
-        e.spawn(MobKind::Villager, DVec3::new(0.5, 1.0, 0.5));
-        e.village_time = 0.2;
-        let events = |e: &mut Entities| {
-            step(e, &w);
-            std::mem::take(&mut e.pending_sounds)
-        };
-        assert!(events(&mut e).is_empty(), "claims the composter first; the crop is out of reach");
-        let v = e.mobs[0].villager.as_ref().unwrap();
-        assert_eq!(v.profession, Profession::Farmer);
-        assert_eq!(v.goal, Some(ripe.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)), "heads for the ripe wheat only");
-        e.mobs[0].pos = DVec3::new(3.7, 1.0, 1.5);
-        assert!(matches!(events(&mut e)[..], [EntityEvent::VillagerHarvest { cell }] if cell == ripe));
-        // Off shift or with mobGriefing off, the crops are left alone.
-        e.village_time = 0.6;
-        assert!(events(&mut e).is_empty());
-        e.village_time = 0.2;
-        e.villager_griefing = false;
-        assert!(events(&mut e).is_empty());
-    }
-    #[test]
     fn farmers_recognize_beetroot_age_three_but_do_not_harvest_stems() {
         let mut w = grid();
-        let job = IVec3::new(0, 1, 0);
         let young = IVec3::new(1, 1, 0);
         let ripe = IVec3::new(3, 1, 0);
         w.blocks.insert(young - IVec3::Y, Block::FARMLAND);
         w.blocks.insert(young, Block::crop(crate::world::block::Crop::Beetroot, 2));
         w.blocks.insert(ripe - IVec3::Y, Block::FARMLAND);
         w.blocks.insert(ripe, Block::crop(crate::world::block::Crop::Beetroot, 3));
-        assert_eq!(ripe_crop(&w, job, job.as_dvec3()), Some(ripe));
+        // v1.0 gap Track 2f: `HarvestFarmland.validPos` (a `CropBlock` at its
+        // maximum age, or air over farmland).
+        use super::super::mob::brain_walk::harvestable;
+        assert!(harvestable(&w, ripe));
+        assert!(!harvestable(&w, young));
         w.blocks.insert(ripe, crate::world::crops::stem_block(crate::world::crops::Fruit::Melon, 7));
-        assert_eq!(ripe_crop(&w, job, job.as_dvec3()), None);
+        assert!(!harvestable(&w, ripe));
     }
     #[test]
     fn sleeping_villagers_lie_on_the_head_half_with_their_head_on_the_pillow() {

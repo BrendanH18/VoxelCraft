@@ -58,6 +58,15 @@ struct BedJump {
     cooldown: i32,
 }
 
+/// A running `HarvestFarmland`: `aboveFarmlandPos`, `timeWorkedSoFar` and
+/// the ticks before its 60-tick run times out.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Harvest {
+    cell: Option<IVec3>,
+    worked: i32,
+    left: i32,
+}
+
 /// The option a movement `RunOne` holds running.
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Hold {
@@ -66,6 +75,32 @@ enum Hold {
     JumpOnBed(BedJump),
     /// The sniffer's scent or sniff state it started.
     Sniffer,
+    /// Track 2f: `WorkAtPoi` (and `WorkAtComposter`): ticks left of its
+    /// 60-tick run.
+    Work(i32),
+    /// Track 2f: `HarvestFarmland`.
+    Harvest(Harvest),
+}
+
+/// Track 2f: the point of interest a stroll option reads: the villager's
+/// `JOB_SITE`, or the brute's `HOME` (where it spawned in its bastion).
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Poi {
+    Job,
+    BruteHome,
+}
+
+/// `BlockPos.closerToCenterThan(pos, d)`: within `d` of the block's centre.
+fn closer_to_centre(block: IVec3, pos: DVec3, d: f64) -> bool {
+    (block.as_dvec3() + 0.5).distance_squared(pos) < d * d
+}
+
+/// `HarvestFarmland.validPos`: a crop at its maximum age (`CropBlock`), or
+/// air over farmland.
+pub(crate) fn harvestable<W: MobWorld + ?Sized>(world: &W, cell: IVec3) -> bool {
+    let Some(b) = world.block(cell) else { return false };
+    b.as_crop().is_some_and(|(crop, age)| age == crop.max_age())
+        || b == Block::AIR && world.block(cell - IVec3::Y).is_some_and(|b| b.is_farmland())
 }
 
 /// The brain walking state of a mob (never saved).
@@ -91,8 +126,45 @@ pub(crate) struct Walking {
     pub(crate) toward_village: Option<DVec3>,
     /// `NEAREST_BED` (villager babies, `NearestBedSensor`).
     pub(crate) nearest_bed: Option<IVec3>,
-    /// `TradeWithVillager` holds a villager `INTERACTION_TARGET`: ticks left.
+    /// A running `TradeWithVillager`: ticks left (0: not running).
     pub(crate) trading_villager: i32,
+    /// Track 2f: `INTERACTION_TARGET` when it is a mob (a villager, or the
+    /// baby a playing baby chases): its uid. `InteractWith`,
+    /// `SocializeAtBell` and `PlayTagWithOtherKids` set it; the idle and
+    /// meet packages' trade gate erases it.
+    pub(crate) interaction: Option<u32>,
+    /// Track 2f: `BehaviorUtils.lockGazeAndWalkToEachOther` this tick: the
+    /// partner whose look and walk targets the sense pass points back here.
+    pub(crate) lock_with: Option<u32>,
+    /// Track 2f: the movement `RunOne` the running option belongs to.
+    hold_of: Option<Movement>,
+    /// Track 2f: the brain's clock (`gameTime` for its timers), one a tick.
+    pub(crate) now: u32,
+    /// Track 2f: `WorkAtPoi.lastCheck`.
+    work_last: Option<u32>,
+    /// Track 2f: `WorkAtPoi.start` ran; the village pass restocks
+    /// (`shouldRestock`, `restock`).
+    pub(crate) work_due: bool,
+    /// Track 2f: the `nextOkStartTime`s of `StrollToPoi`, `StrollAroundPoi`
+    /// and `StrollToPoiList` (the work package's, or the brute's on `HOME`).
+    poi_to_ok: u32,
+    poi_around_ok: u32,
+    poi_list_ok: u32,
+    /// Track 2f: `SECONDARY_JOB_SITE` (`SecondaryPoiSensor`, every 40
+    /// ticks: a farmer's farmland within 4 across and 2 up or down).
+    secondary: Vec<IVec3>,
+    /// Track 2f: `HarvestFarmland.nextOkStartTime` and
+    /// `validFarmlandAroundVillager`.
+    harvest_ok: u32,
+    harvest_valid: Vec<IVec3>,
+    /// Track 2f: a ripe crop `HarvestFarmland` breaks this tick (the mob's
+    /// update sends it as [`crate::entity::EntityEvent::VillagerHarvest`]).
+    pub(crate) harvest_now: Option<IVec3>,
+    /// Track 2f: `CANT_REACH_WALK_TARGET_SINCE` (brain clock).
+    pub(crate) cant_reach_since: Option<u32>,
+    /// Track 2f: the village sections within three of the mob, for a
+    /// playing baby's `level.isVillage` test (refreshed by the sense pass).
+    pub(crate) villages: Vec<IVec3>,
 }
 
 /// One option of a movement `RunOne`.
@@ -135,6 +207,34 @@ enum Opt {
     Scenting,
     Sniffing,
     Nothing(i32, i32),
+    /// Track 2f: `WorkAtPoi` (a farmer's `WorkAtComposter`).
+    WorkAtPoi,
+    /// Track 2f: `StrollToPoi.create(poi, speed, closeEnoughDist,
+    /// maxDistanceFromPoi)`.
+    StrollToPoi {
+        poi: Poi,
+        speed: f32,
+        close: i32,
+        max: f64,
+    },
+    /// Track 2f: `StrollAroundPoi.create(poi, speed, maxDistanceFromPoi)`.
+    StrollAroundPoi {
+        poi: Poi,
+        speed: f32,
+        max: f64,
+    },
+    /// Track 2f: `StrollToPoiList.create(SECONDARY_JOB_SITE, speed,
+    /// closeEnoughDist, maxDistanceFromPoi, JOB_SITE)`.
+    StrollToPoiList {
+        speed: f32,
+        close: i32,
+        max: f64,
+    },
+    /// Track 2f: `HarvestFarmland`.
+    Harvest,
+    /// Track 2f: `UseBonemeal`, which needs bone meal in the villager's
+    /// inventory; the game's villagers never pick any up, so it never starts.
+    UseBonemeal,
 }
 
 const VILLAGER_IDLE: &[(Opt, u8)] = &[
@@ -159,6 +259,34 @@ const VILLAGER_REST: &[(Opt, u8)] = &[
     (Opt::InsideBrownian(0.5), 4),
     (Opt::ToVillage(0.5, 4), 2),
     (Opt::Nothing(20, 40), 2),
+];
+/// Track 2f: the work package's `RunOne` (`VillagerGoalPackages.getWorkPackage`,
+/// speed 0.5), for every profession but the farmer.
+const VILLAGER_WORK: &[(Opt, u8)] = &[
+    (Opt::WorkAtPoi, 7),
+    (Opt::StrollAroundPoi { poi: Poi::Job, speed: 0.4, max: 4.0 }, 2),
+    (Opt::StrollToPoi { poi: Poi::Job, speed: 0.4, close: 1, max: 10.0 }, 5),
+    (Opt::StrollToPoiList { speed: 0.5, close: 1, max: 6.0 }, 5),
+    (Opt::Harvest, 5),
+    (Opt::UseBonemeal, 7),
+];
+/// The farmer's: `HarvestFarmland` 2 and `UseBonemeal` 4.
+const FARMER_WORK: &[(Opt, u8)] = &[
+    (Opt::WorkAtPoi, 7),
+    (Opt::StrollAroundPoi { poi: Poi::Job, speed: 0.4, max: 4.0 }, 2),
+    (Opt::StrollToPoi { poi: Poi::Job, speed: 0.4, close: 1, max: 10.0 }, 5),
+    (Opt::StrollToPoiList { speed: 0.5, close: 1, max: 6.0 }, 5),
+    (Opt::Harvest, 2),
+    (Opt::UseBonemeal, 4),
+];
+/// Track 2f: `PiglinBruteAi.createIdleMovementBehaviors`.
+const BRUTE_IDLE: &[(Opt, u8)] = &[
+    (Opt::Stroll { speed: 0.6, h: 10, v: 7 }, 2),
+    (Opt::Interact { kind: MobKind::Piglin, range: 8.0, speed: 0.6, close: 2, breed: false }, 2),
+    (Opt::Interact { kind: MobKind::PiglinBrute, range: 8.0, speed: 0.6, close: 2, breed: false }, 2),
+    (Opt::StrollToPoi { poi: Poi::BruteHome, speed: 0.6, close: 2, max: 100.0 }, 2),
+    (Opt::StrollAroundPoi { poi: Poi::BruteHome, speed: 0.6, max: 5.0 }, 2),
+    (Opt::Nothing(30, 60), 1),
 ];
 const PIGLIN_IDLE: &[(Opt, u8)] = &[
     (Opt::Stroll { speed: 0.6, h: 10, v: 7 }, 2),
@@ -188,7 +316,12 @@ pub(crate) enum Movement {
     VillagerMeet,
     /// The rest package's `RunOne` (`HOME` absent).
     VillagerHomeless,
+    /// Track 2f: the work package's `RunOne` (priority 5, after the look
+    /// `RunOne`).
+    VillagerWork,
     PiglinIdle,
+    /// Track 2f: the brute's idle movement `RunOne`.
+    BruteIdle,
     PiglinCelebrate,
     SnifferIdle,
 }
@@ -259,6 +392,9 @@ impl Mob {
                     return None;
                 }
                 if reached || !self.plan_walk(world, ctx, rng, cell, speed) {
+                    if reached {
+                        self.walking.cant_reach_since = None;
+                    }
                     self.walking.walk = None;
                     return None;
                 }
@@ -300,8 +436,13 @@ impl Mob {
         speed: f64,
     ) -> bool {
         if self.walk_to(world, cell, 0, speed, false) {
+            self.walking.cant_reach_since = None;
             return true;
         }
+        // Track 2f: `CANT_REACH_WALK_TARGET_SINCE`, from the first path that
+        // falls short (or none).
+        let now = self.walking.now;
+        self.walking.cant_reach_since.get_or_insert(now);
         if self.nav.path.is_some() {
             return true;
         }
@@ -315,15 +456,32 @@ impl Mob {
     /// The movement behaviours of a brain mob's activity this tick, in their
     /// place among its look behaviours (`head::brain_looks`).
     pub(crate) fn brain_movement<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx, rng: &mut Rng, m: Movement) {
+        // Track 2f: another activity's `RunOne` stops the running option.
+        if self.walking.hold_of != Some(m) {
+            self.stop_brain_movement();
+            self.walking.hold_of = Some(m);
+        }
         match m {
             Movement::VillagerMeet => self.meet_gate(world, ctx, rng),
             Movement::VillagerIdle => self.run_one(world, ctx, rng, VILLAGER_IDLE),
             Movement::VillagerPlay => self.run_one(world, ctx, rng, VILLAGER_PLAY),
             Movement::VillagerHomeless => self.run_one(world, ctx, rng, VILLAGER_REST),
+            Movement::VillagerWork => {
+                self.sense_secondary(world);
+                let farmer =
+                    self.villager.as_ref().is_some_and(|v| v.profession == crate::entity::villager::Profession::Farmer);
+                self.run_one(world, ctx, rng, if farmer { FARMER_WORK } else { VILLAGER_WORK })
+            }
+            Movement::BruteIdle => self.run_one(world, ctx, rng, BRUTE_IDLE),
             Movement::PiglinIdle => self.run_one(world, ctx, rng, PIGLIN_IDLE),
             Movement::PiglinCelebrate => self.run_one(world, ctx, rng, PIGLIN_CELEBRATE),
             Movement::SnifferIdle => self.run_one(world, ctx, rng, SNIFFER_IDLE),
         }
+    }
+
+    /// Whether `m`'s `RunOne` holds a running option.
+    pub(crate) fn running_option_of(&self, m: Movement) -> bool {
+        self.walking.hold.is_some() && self.walking.hold_of == Some(m)
     }
 
     /// Ends a running movement option when the activity changes.
@@ -334,15 +492,63 @@ impl Mob {
         {
             s.stop_early();
         }
+        if let Some(Hold::Harvest(_)) = self.walking.hold {
+            self.stop_harvest();
+        }
         self.walking.hold = None;
+    }
+
+    /// `HarvestFarmland.stop`: erases `LOOK_TARGET` and `WALK_TARGET`, and
+    /// waits 40 ticks before it starts again.
+    fn stop_harvest(&mut self) {
+        self.head.target = None;
+        self.walking.walk = None;
+        self.walking.harvest_ok = self.walking.now.wrapping_add(40);
+    }
+
+    /// Track 2f: `SecondaryPoiSensor` (every 40 ticks): the farmland within
+    /// 4 blocks across and 2 up or down of a farmer (the only profession
+    /// with a secondary point of interest).
+    fn sense_secondary<W: MobWorld + ?Sized>(&mut self, world: &W) {
+        if !self.walking.now.wrapping_add(self.uid).is_multiple_of(40) && self.walking.now > 1 {
+            return;
+        }
+        let farmer =
+            self.villager.as_ref().is_some_and(|v| v.profession == crate::entity::villager::Profession::Farmer);
+        self.walking.secondary.clear();
+        if !farmer {
+            return;
+        }
+        let here = self.pos.floor().as_ivec3();
+        for x in -4..=4 {
+            for y in -2..=2 {
+                for z in -4..=4 {
+                    let p = here + IVec3::new(x, y, z);
+                    if world.block(p).is_some_and(|b| b.is_farmland()) {
+                        self.walking.secondary.push(p);
+                    }
+                }
+            }
+        }
+    }
+
+    /// The block a stroll option's point of interest names.
+    fn poi(&self, poi: Poi) -> Option<IVec3> {
+        match poi {
+            Poi::Job => self.villager.as_ref()?.job,
+            Poi::BruteHome => self.nether.as_ref()?.home.map(|h| h.floor().as_ivec3()),
+        }
     }
 
     /// A `RunOne` of `options`: ticks its running option, else shuffles and
     /// starts the first that can.
     fn run_one<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx, rng: &mut Rng, options: &[(Opt, u8)]) {
         if let Some(hold) = self.walking.hold {
-            if self.tick_hold(world, hold) {
+            if self.tick_hold(world, rng, hold) {
                 return;
+            }
+            if let Hold::Harvest(_) = hold {
+                self.stop_harvest();
             }
             self.walking.hold = None;
             // The gate stops; it starts again on the next tick.
@@ -362,8 +568,54 @@ impl Mob {
     }
 
     /// Ticks a running option; `false` once it stops.
-    fn tick_hold<W: MobWorld + ?Sized>(&mut self, world: &W, hold: Hold) -> bool {
+    fn tick_hold<W: MobWorld + ?Sized>(&mut self, world: &W, rng: &mut Rng, hold: Hold) -> bool {
         match hold {
+            Hold::Work(left) => {
+                // `canStillUse`: still within 1.73 of the job site's centre.
+                let near = self
+                    .poi(Poi::Job)
+                    .is_some_and(|j| closer_to_centre(j, self.pos, crate::entity::villager::WORK_DISTANCE));
+                if left <= 0 || !near {
+                    return false;
+                }
+                self.walking.hold = Some(Hold::Work(left - 1));
+                true
+            }
+            Hold::Harvest(mut h) => {
+                // `canStillUse` (`timeWorkedSoFar < 200`) and the timeout.
+                if h.left <= 0 || h.worked >= 200 {
+                    return false;
+                }
+                h.left -= 1;
+                // `tick`: once within 1 of the cell's centre.
+                if h.cell.is_none_or(|c| closer_to_centre(c, self.pos, 1.0)) {
+                    let now = self.walking.now;
+                    if let Some(c) = h.cell
+                        && now > self.walking.harvest_ok
+                    {
+                        let b = world.block(c);
+                        if b.is_some_and(|b| b.as_crop().is_some_and(|(crop, age)| age == crop.max_age())) {
+                            // `destroyBlock`; the game's harvest also
+                            // replants (Java plants from the farmer's seeds).
+                            self.walking.harvest_now = Some(c);
+                        }
+                        if b.is_some_and(|b| b.as_crop().is_some_and(|(crop, age)| age < crop.max_age())) {
+                            self.walking.harvest_valid.retain(|&p| p != c);
+                            h.cell = (!self.walking.harvest_valid.is_empty()).then(|| {
+                                self.walking.harvest_valid
+                                    [rng.next_int(self.walking.harvest_valid.len() as u32) as usize]
+                            });
+                            if let Some(next) = h.cell {
+                                self.walking.harvest_ok = now.wrapping_add(20);
+                                self.harvest_walk(next);
+                            }
+                        }
+                    }
+                    h.worked += 1;
+                }
+                self.walking.hold = Some(Hold::Harvest(h));
+                true
+            }
             Hold::Nothing(left) => {
                 // `tickOrStop`: stops once past its end tick.
                 if left <= 0 {
@@ -449,14 +701,133 @@ impl Mob {
                     self.head.target = Some(Tracked::Mob(s.uid, s.eye));
                     self.head.fresh_target = true;
                     self.set_walk(Some(Walk { to: WalkTo::Mob(s.uid, s.pos), speed, close }));
-                    if self.kind == MobKind::Villager && kind == MobKind::Villager && !breed {
-                        // `INTERACTION_TARGET` (a villager): `TradeWithVillager`
-                        // runs its 60 ticks before it erases it.
-                        self.walking.trading_villager = 60;
+                    if self.kind == MobKind::Villager && !breed {
+                        // `INTERACTION_TARGET`: the trade gate runs
+                        // `TradeWithVillager` with a villager, and erases a cat.
+                        self.walking.interaction = Some(s.uid);
                     }
                 }
                 true
             }
+            Opt::WorkAtPoi => {
+                let Some(job) = self.poi(Poi::Job) else { return false };
+                // `checkExtraStartConditions`: every 300 ticks, on a coin
+                // flip, within 1.73 of the job site's centre.
+                let now = self.walking.now;
+                if self
+                    .walking
+                    .work_last
+                    .is_some_and(|t| i64::from(now.wrapping_sub(t)) < crate::entity::villager::WORK_CHECK_COOLDOWN)
+                {
+                    return false;
+                }
+                if rng.next_int(2) != 0 {
+                    return false;
+                }
+                self.walking.work_last = Some(now);
+                if !closer_to_centre(job, self.pos, crate::entity::villager::WORK_DISTANCE) {
+                    return false;
+                }
+                // `start`: looks at the job site (`BlockPosTracker`), uses it
+                // and restocks if it should (the village pass does that).
+                self.head.target = Some(Tracked::Point(job.as_dvec3() + 0.5));
+                self.walking.work_due = true;
+                self.walking.hold = Some(Hold::Work(60));
+                true
+            }
+            Opt::StrollToPoi { poi, speed, close, max } => {
+                let Some(p) = self.poi(poi) else { return false };
+                if !closer_to_centre(p, self.pos, max) {
+                    return false;
+                }
+                let now = self.walking.now;
+                if now > self.walking.poi_to_ok {
+                    self.set_walk(Some(Walk {
+                        to: WalkTo::Point(p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)),
+                        speed,
+                        close,
+                    }));
+                    self.walking.poi_to_ok = now.wrapping_add(80);
+                }
+                true
+            }
+            Opt::StrollAroundPoi { poi, speed, max } => {
+                let Some(p) = self.poi(poi) else { return false };
+                if !closer_to_centre(p, self.pos, max) {
+                    return false;
+                }
+                let now = self.walking.now;
+                if now > self.walking.poi_around_ok {
+                    // `LandRandomPos.getPos(body, 8, 6)`, `setOrErase`.
+                    let at = self.random_pos(world, ctx, rng, 8, 6, true);
+                    self.set_walk(at.map(|q| Walk {
+                        to: WalkTo::Point(q.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)),
+                        speed,
+                        close: 1,
+                    }));
+                    self.walking.poi_around_ok = now.wrapping_add(180);
+                }
+                true
+            }
+            Opt::StrollToPoiList { speed, close, max } => {
+                let Some(job) = self.poi(Poi::Job) else { return false };
+                if self.walking.secondary.is_empty() {
+                    return false;
+                }
+                let at = self.walking.secondary[rng.next_int(self.walking.secondary.len() as u32) as usize];
+                if !closer_to_centre(job, self.pos, max) {
+                    return false;
+                }
+                let now = self.walking.now;
+                if now > self.walking.poi_list_ok {
+                    self.set_walk(Some(Walk {
+                        to: WalkTo::Point(at.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)),
+                        speed,
+                        close,
+                    }));
+                    self.walking.poi_list_ok = now.wrapping_add(100);
+                }
+                true
+            }
+            Opt::Harvest => {
+                // `LOOK_TARGET` and `WALK_TARGET` absent, `SECONDARY_JOB_SITE`
+                // present, `mobGriefing`, a farmer.
+                let farmer =
+                    self.villager.as_ref().is_some_and(|v| v.profession == crate::entity::villager::Profession::Farmer);
+                if walking
+                    || self.head.target.is_some()
+                    || self.walking.secondary.is_empty()
+                    || !self.griefing
+                    || !farmer
+                {
+                    return false;
+                }
+                let mut valid = Vec::new();
+                for x in -1..=1 {
+                    for y in -1..=1 {
+                        for z in -1..=1 {
+                            let p =
+                                (self.pos + DVec3::new(f64::from(x), f64::from(y), f64::from(z))).floor().as_ivec3();
+                            if harvestable(world, p) {
+                                valid.push(p);
+                            }
+                        }
+                    }
+                }
+                if valid.is_empty() {
+                    self.walking.harvest_valid = valid;
+                    return false;
+                }
+                let cell = valid[rng.next_int(valid.len() as u32) as usize];
+                self.walking.harvest_valid = valid;
+                // `start`.
+                if self.walking.now > self.walking.harvest_ok {
+                    self.harvest_walk(cell);
+                }
+                self.walking.hold = Some(Hold::Harvest(Harvest { cell: Some(cell), worked: 0, left: 60 }));
+                true
+            }
+            Opt::UseBonemeal => false,
             Opt::VillageStroll(speed) => {
                 if walking {
                     return false;
@@ -623,6 +994,17 @@ impl Mob {
         }
     }
 
+    /// `HarvestFarmland`'s look and walk to a cell (`BlockPosTracker`, 0.5,
+    /// 1 block short).
+    fn harvest_walk(&mut self, cell: IVec3) {
+        self.head.target = Some(Tracked::Point(cell.as_dvec3() + 0.5));
+        self.set_walk(Some(Walk {
+            to: WalkTo::Point(cell.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)),
+            speed: 0.5,
+            close: 1,
+        }));
+    }
+
     /// The meet package's `TriggerGate.triggerOneShuffled` of
     /// `StrollAroundPoi(MEETING_POINT, 0.4, 40)` and `SocializeAtBell` (2
     /// each): both are tried in a shuffled order every tick.
@@ -643,7 +1025,7 @@ impl Mob {
                     self.walking.stroll_ok = self.walking.ticks + 180;
                 }
             } else if self.head.interaction.is_none()
-                && self.walking.trading_villager <= 0
+                && self.walking.interaction.is_none()
                 && rng.next_int(100) == 0
                 && centre.distance_squared(self.pos) < 16.0
                 && self.head.seen.iter().any(|s| s.kind == MobKind::Villager)
@@ -655,12 +1037,169 @@ impl Mob {
                     .copied()
             {
                 // `SocializeAtBell`.
-                self.walking.trading_villager = 60;
+                self.walking.interaction = Some(s.uid);
                 self.head.target = Some(Tracked::Mob(s.uid, s.eye));
                 self.head.fresh_target = true;
                 self.set_walk(Some(Walk { to: WalkTo::Mob(s.uid, s.pos), speed: 0.3, close: 1 }));
             }
         }
+    }
+
+    /// Track 2f: `SetWalkTargetFromBlockMemory.create(JOB_SITE, 0.5, 9, 100,
+    /// 1200)` (work package, priority 2): with no walk target, a working
+    /// villager more than 9 blocks (`distManhattan`) from its job site walks
+    /// back within 9 of it, more than 100 heads 15 blocks toward it, and
+    /// one unable to reach it for 1200 ticks gives it up.
+    pub(crate) fn walk_to_job<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx, rng: &mut Rng) {
+        if self.walking.walk.is_some() {
+            return;
+        }
+        let Some(job) = self.poi(Poi::Job) else { return };
+        let now = self.walking.now;
+        let here = self.pos.floor().as_ivec3();
+        let release = |m: &mut Mob| {
+            if let Some(v) = m.villager.as_mut() {
+                v.job = None;
+            }
+            m.walking.cant_reach_since = Some(now);
+        };
+        if self.walking.cant_reach_since.is_some_and(|t| now.wrapping_sub(t) > 1200) {
+            release(self);
+            return;
+        }
+        let d = manhattan(job, here);
+        if d > 100 {
+            let towards = job.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
+            let mut found = None;
+            for _ in 0..1000 {
+                if let Some(p) = self.pos_towards(world, ctx, rng, 15, 7, towards, std::f64::consts::FRAC_PI_2)
+                    && manhattan(p, here) <= 100
+                {
+                    found = Some(p);
+                    break;
+                }
+            }
+            match found {
+                Some(p) => self.set_walk(Some(Walk {
+                    to: WalkTo::Point(p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)),
+                    speed: 0.5,
+                    close: 9,
+                })),
+                None => release(self),
+            }
+        } else if d > 9 {
+            self.set_walk(Some(Walk {
+                to: WalkTo::Point(job.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)),
+                speed: 0.5,
+                close: 9,
+            }));
+        }
+    }
+
+    /// Track 2f: the idle and meet packages' trade gate (priority 3): a
+    /// `GateBehavior` that erases `INTERACTION_TARGET` once it stops, around
+    /// `TradeWithVillager`, which runs 60 ticks while that target is a
+    /// villager it sees, locking both villagers' gazes and walks on each
+    /// other (0.5, 2 short) when it starts and while they are within
+    /// `sqrt(5)`.
+    pub(crate) fn trade_gate(&mut self) {
+        let partner = self
+            .walking
+            .interaction
+            .and_then(|uid| self.head.seen.iter().find(|s| s.uid == uid && s.kind == MobKind::Villager).copied());
+        if self.walking.trading_villager <= 0 {
+            let Some(p) = partner else {
+                // The gate starts, nothing in it does, and it stops.
+                self.walking.interaction = None;
+                return;
+            };
+            // `start` (`Behavior`'s 60-tick run: it ticks from this tick to
+            // 60 later and stops the tick after): `lockGazeAndWalkToEachOther`.
+            self.walking.trading_villager = 62;
+            self.lock_gaze_and_walk(p);
+        }
+        // `tickOrStop`: `canStillUse` and the 60-tick timeout.
+        let left = self.walking.trading_villager - 1;
+        match partner {
+            Some(p) if left > 0 => {
+                if self.pos.distance_squared(p.pos) <= 5.0 {
+                    self.lock_gaze_and_walk(p);
+                }
+                self.walking.trading_villager = left;
+            }
+            _ => {
+                self.walking.trading_villager = 0;
+                self.walking.interaction = None;
+            }
+        }
+    }
+
+    /// `BehaviorUtils.lockGazeAndWalkToEachOther(.., 0.5, 2)`: this side,
+    /// and the partner's through the sense pass.
+    fn lock_gaze_and_walk(&mut self, p: super::head::Seen) {
+        self.head.target = Some(Tracked::Mob(p.uid, p.eye));
+        self.set_walk(Some(Walk { to: WalkTo::Mob(p.uid, p.pos), speed: 0.5, close: 2 }));
+        self.walking.lock_with = Some(p.uid);
+    }
+
+    /// Track 2f: `PlayTagWithOtherKids` (play package, priority 5, before
+    /// its `RunOne`): with other babies in sight and no walk target, one
+    /// tick in ten a baby chased by one of them runs off (a land spot in a
+    /// village within 20 and 8, ten tries, speed 0.6); otherwise it chases
+    /// the least-chased baby that one to five of them chase, or else the
+    /// closest one (0.6, 1 short), as its `INTERACTION_TARGET`. Returns
+    /// whether babies are in sight, which keeps the play `RunOne` off.
+    pub(crate) fn play_tag<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx, rng: &mut Rng) -> bool {
+        let babies: Vec<super::head::Seen> =
+            self.head.seen.iter().filter(|s| s.kind == MobKind::Villager && s.baby).copied().collect();
+        if babies.is_empty() {
+            return false;
+        }
+        if self.walking.walk.is_some() || rng.next_int(10) != 0 {
+            return true;
+        }
+        if babies.iter().any(|b| b.chasing == Some(self.uid)) {
+            for _ in 0..10 {
+                if let Some(p) = self.random_pos(world, ctx, rng, 20, 8, true)
+                    && self.in_village_snapshot(p)
+                {
+                    self.set_walk(Some(Walk {
+                        to: WalkTo::Point(p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)),
+                        speed: 0.6,
+                        close: 0,
+                    }));
+                    break;
+                }
+            }
+            return true;
+        }
+        // `checkHowManyChasersEachFriendHas`, in sight order.
+        let mut chased: Vec<(u32, i32)> = Vec::new();
+        for b in &babies {
+            if let Some(t) = b.chasing {
+                match chased.iter_mut().find(|(u, _)| *u == t) {
+                    Some((_, n)) => *n += 1,
+                    None => chased.push((t, 1)),
+                }
+            }
+        }
+        let least = chased.iter().filter(|&&(_, n)| (1..=5).contains(&n)).min_by_key(|&&(_, n)| n).map(|&(u, _)| u);
+        let kid = least.unwrap_or(babies[0].uid);
+        // `chaseKid`: `INTERACTION_TARGET`, `LOOK_TARGET` (its eyes) and
+        // `WALK_TARGET` (its feet, 0.6, 1 short); the sense pass follows it.
+        let (pos, eye) =
+            self.head.seen.iter().find(|s| s.uid == kid).map_or((self.pos, self.look_eye()), |s| (s.pos, s.eye));
+        self.walking.interaction = Some(kid);
+        self.head.target = Some(Tracked::Mob(kid, eye));
+        self.set_walk(Some(Walk { to: WalkTo::Mob(kid, pos), speed: 0.6, close: 1 }));
+        true
+    }
+
+    /// `ServerLevel.isVillage(p)` from the sections the sense pass noted
+    /// around the mob: a village section within one of `p`'s.
+    fn in_village_snapshot(&self, p: IVec3) -> bool {
+        let s = p.div_euclid(IVec3::splat(16));
+        self.walking.villages.iter().any(|v| (*v - s).abs().max_element() <= 1)
     }
 
     /// `AgeableMob.canBreed` for a villager: grown, fed enough and awake.

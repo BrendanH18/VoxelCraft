@@ -435,6 +435,11 @@ pub(crate) struct Seen {
     pub pos: DVec3,
     /// A villager that `AgeableMob.canBreed` (Track 2e's `InteractWith`).
     pub breedable: bool,
+    /// Track 2f: a baby (`VillagerBabiesSensor`).
+    pub baby: bool,
+    /// Track 2f: its `INTERACTION_TARGET` mob (who a playing baby chases),
+    /// refreshed every tick.
+    pub chasing: Option<u32>,
 }
 
 /// What a look goal or `LOOK_TARGET` follows.
@@ -1007,6 +1012,7 @@ impl Mob {
         // nextInt(max + 1 - min)` ticks, timed out once past them), then the
         // villager's trading sink, then the activity's writers (each needs
         // the memory absent).
+        self.walking.now = self.walking.now.wrapping_add(1);
         if self.head.sink.is_none() && self.head.target.is_some() && !std::mem::take(&mut self.head.fresh_target) {
             self.head.sink = Some(45 + rng.next_int(46) as i32 + 1);
         }
@@ -1030,11 +1036,13 @@ impl Mob {
         // looks; the play package's `RunOne` (5) after the look `RunOne`.
         let movement = self.villager_movement();
         if self.kind == MobKind::Villager {
-            self.walking.trading_villager = (self.walking.trading_villager - 1).max(0);
             match movement {
                 Some(m @ (super::brain_walk::Movement::VillagerIdle | super::brain_walk::Movement::VillagerMeet)) => {
                     self.brain_movement(world, ctx, rng, m)
                 }
+                // Track 2f: the work package's `SetWalkTargetFromBlockMemory`
+                // (priority 2).
+                Some(super::brain_walk::Movement::VillagerWork) => self.walk_to_job(world, ctx, rng),
                 Some(_) => {}
                 None => self.stop_brain_movement(),
             }
@@ -1042,6 +1050,13 @@ impl Mob {
         if package == Some(Package::Idle) {
             self.set_look_and_interact(world, ctx, 4.0);
             self.show_trades_start(ctx, rng);
+        }
+        // Track 2f: the idle and meet packages' trade gate (priority 3).
+        if matches!(
+            movement,
+            Some(super::brain_walk::Movement::VillagerIdle | super::brain_walk::Movement::VillagerMeet)
+        ) {
+            self.trade_gate();
         }
         let mut moved = false;
         for setter in self.brain_setters() {
@@ -1056,11 +1071,21 @@ impl Mob {
             moved |= matches!(setter, Setter::Move(_));
             self.run_setter(world, ctx, rng, *setter);
         }
-        if matches!(self.kind, MobKind::Piglin | MobKind::Sniffer) && !moved {
+        if matches!(self.kind, MobKind::Piglin | MobKind::PiglinBrute | MobKind::Sniffer) && !moved {
             self.stop_brain_movement();
         }
-        if movement == Some(super::brain_walk::Movement::VillagerPlay) {
+        // Track 2f: the play package's `PlayTagWithOtherKids`, then its
+        // `RunOne` (which needs no babies in sight); the work package's
+        // `RunOne`; both at 5, after the look `RunOne`.
+        if movement == Some(super::brain_walk::Movement::VillagerPlay)
+            && (!self.play_tag(world, ctx, rng) || self.running_option_of(super::brain_walk::Movement::VillagerPlay))
+        {
+            // (A running option keeps the gate running: its entry condition
+            // is checked only when it starts.)
             self.brain_movement(world, ctx, rng, super::brain_walk::Movement::VillagerPlay);
+        }
+        if movement == Some(super::brain_walk::Movement::VillagerWork) {
+            self.brain_movement(world, ctx, rng, super::brain_walk::Movement::VillagerWork);
         }
         if package == Some(Package::WorkOrMeet) {
             self.show_trades_start(ctx, rng);
@@ -1138,6 +1163,7 @@ impl Mob {
             Activity::Play => Some(Movement::VillagerPlay),
             Activity::Meet => Some(Movement::VillagerMeet),
             Activity::Rest if v.home.is_none() => Some(Movement::VillagerHomeless),
+            Activity::Work => Some(Movement::VillagerWork),
             _ => None,
         }
     }
@@ -1161,7 +1187,7 @@ impl Mob {
     fn set_look_and_interact<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx, range: f32) {
         // Track 2e: a villager `INTERACTION_TARGET` (`InteractWith`,
         // `SocializeAtBell`) holds it too, while `TradeWithVillager` runs.
-        if self.head.interaction.is_some() || self.walking.trading_villager > 0 {
+        if self.head.interaction.is_some() || self.walking.interaction.is_some() {
             return;
         }
         if let Some(t) = self.nearest_player(world, ctx, f64::from(range), true, |_| true) {
@@ -1291,7 +1317,11 @@ impl Mob {
             }
             K::Piglin => self.piglin_setters(),
             K::PiglinBrute => {
-                const IDLE: &[Setter] = &[Setter::RunOne { options: BRUTE_LOOKS, nothing: (1, 30, 60) }];
+                // Track 2f: the idle movement `RunOne` after the look `RunOne`.
+                const IDLE: &[Setter] = &[
+                    Setter::RunOne { options: BRUTE_LOOKS, nothing: (1, 30, 60) },
+                    Setter::Move(super::brain_walk::Movement::BruteIdle),
+                ];
                 if self.ai == Ai::Chase { &[] } else { IDLE }
             }
             K::Hoglin | K::Zoglin => {
@@ -1727,7 +1757,8 @@ impl crate::entity::Entities {
                         let breedable = b.kind == MobKind::Villager
                             && b.age == 0
                             && b.villager.as_ref().is_some_and(|v| !v.sleeping && v.food_points() >= 12);
-                        seen.push(Seen { uid: b.uid, kind: b.kind, eye: at, pos: b.pos, breedable });
+                        let (baby, chasing) = (b.is_baby(), b.walking.interaction);
+                        seen.push(Seen { uid: b.uid, kind: b.kind, eye: at, pos: b.pos, breedable, baby, chasing });
                     }
                 }
                 self.mobs[i].head.seen = seen;
@@ -1738,6 +1769,7 @@ impl crate::entity::Entities {
                     Some(&j) if self.mobs[j].alive() => {
                         s.eye = self.mobs[j].look_eye();
                         s.pos = self.mobs[j].pos;
+                        s.chasing = self.mobs[j].walking.interaction;
                         true
                     }
                     _ => false,
@@ -1788,9 +1820,50 @@ impl crate::entity::Entities {
                 let at = m.pos.floor().as_ivec3();
                 let in_village = self.raids.villages.is_village(at);
                 let toward = if in_village { None } else { self.raids.villages.toward_village(at) };
+                // Track 2f: a baby's `PlayTagWithOtherKids` tests its run-off
+                // spots (within 20) for a village: the village sections
+                // within three of its own.
+                let baby = m.is_baby();
+                let mut villages = std::mem::take(&mut self.mobs[i].walking.villages);
+                villages.clear();
+                if baby && self.raids.villages.close_to_village(at, 3) {
+                    let s = at.div_euclid(glam::IVec3::splat(16));
+                    for dx in -3..=3 {
+                        for dy in -3..=3 {
+                            for dz in -3..=3 {
+                                let c = s + glam::IVec3::new(dx, dy, dz);
+                                if self.raids.villages.has_section(c) {
+                                    villages.push(c);
+                                }
+                            }
+                        }
+                    }
+                }
                 let w = &mut self.mobs[i].walking;
                 w.in_village = in_village;
                 w.toward_village = toward;
+                w.villages = villages;
+            }
+        }
+        // Track 2f: `lockGazeAndWalkToEachOther`'s other half: the partner
+        // looks at and walks to the villager that locked it (0.5, 2 short).
+        let locks: Vec<(usize, u32, DVec3, DVec3)> = self
+            .mobs
+            .iter_mut()
+            .filter_map(|m| {
+                let uid = m.walking.lock_with.take()?;
+                Some((*by_uid.get(&uid)?, m.uid, m.pos, m.look_eye()))
+            })
+            .collect();
+        for (j, uid, pos, eye) in locks {
+            let b = &mut self.mobs[j];
+            if b.alive() && b.kind == MobKind::Villager {
+                b.head.target = Some(Tracked::Mob(uid, eye));
+                b.walking.walk = Some(super::brain_walk::Walk {
+                    to: super::brain_walk::WalkTo::Mob(uid, pos),
+                    speed: 0.5,
+                    close: 2,
+                });
             }
         }
     }

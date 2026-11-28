@@ -211,6 +211,9 @@ pub enum MobSound {
     /// v1.0 gap Track 3b: camels sitting, standing and dashing, and
     /// horses, donkeys, mules, zombie horses and llamas made mad.
     Mount(mounts::Cue),
+    /// v1.0 gap Track 2f: the fox's own sounds (aggro, bite, eat, screech,
+    /// sleep, sniff, spit).
+    Fox(fox::Cue),
 }
 
 /// Something an entity did that the game needs to react to.
@@ -460,6 +463,12 @@ pub enum EntityEvent {
     },
     /// The Ender Dragon flew through this block: remove it, without drops.
     BreakBlock {
+        cell: IVec3,
+    },
+    /// v1.0 gap Track 2f: level event 2001 (`addDestroyBlockEffect` and the
+    /// block's break sound) for the block at `cell`, which stays: a
+    /// faceplanted fox kicking up the snow it is in.
+    DestroyEffect {
         cell: IVec3,
     },
     /// v1.0 gap Track 8: a dragon's part broke blocks this tick
@@ -1338,6 +1347,11 @@ pub struct Entities {
     pub world_spawn: Option<IVec3>,
     /// The mobGriefing gamerule, shared by villager, piglin and allay item pickup.
     pub villager_griefing: bool,
+    /// v1.0 gap Track 2f: each player's `lastHurtByMob` (a mob's uid), the
+    /// hurt's number and its age in ticks, for the foxes'
+    /// `DefendTrustedTargetGoal`.
+    pub(crate) player_hurt_by: rustc_hash::FxHashMap<PlayerId, (u32, u32, u32)>,
+    pub(crate) player_hurts: u32,
     /// v0.15 Track D: the `max_entity_cramming` gamerule, which caps
     /// Oozing's slimes.
     pub max_entity_cramming: i32,
@@ -1481,6 +1495,8 @@ impl Entities {
             spawner_blocks: true,
             world_spawn: None,
             villager_griefing: true,
+            player_hurt_by: rustc_hash::FxHashMap::default(),
+            player_hurts: 0,
             max_entity_cramming: 24,
             effect_deaths: Vec::new(),
             gossip_timer: 5.0,

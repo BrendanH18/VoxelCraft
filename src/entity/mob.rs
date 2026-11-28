@@ -12,7 +12,7 @@ use crate::world::terrain::Dimension;
 
 use super::{Ctx, EntityEvent, MobSound, MobWorld, Rng, path};
 
-mod brain_walk;
+pub(crate) mod brain_walk;
 mod breeze;
 pub(crate) mod chase;
 mod creaking;
@@ -1908,11 +1908,20 @@ impl Mob {
             // v1.0 gap Track 3: `Camel.getDefaultDimensions` by pose and age.
             let (width, height) = super::mounts::camel::dimensions(self.baby || self.age < 0, s.camel_sitting);
             Shape::new(width / 2.0, height)
-        } else if self.baby || self.age < 0 {
-            baby_shape(self.kind)
         } else {
-            self.kind.shape()
+            let shape = if self.baby || self.age < 0 { baby_shape(self.kind) } else { self.kind.shape() };
+            // v1.0 gap Track 2f: `Goat.getDefaultDimensions` scales its box by
+            // `LONG_JUMPING_DIMENSION_SCALE_FACTOR` (0.7) in the
+            // `LONG_JUMPING` pose.
+            if self.goat_long_jumping() { Shape::new(shape.half_width * 0.7, shape.height * 0.7) } else { shape }
         }
+    }
+
+    /// v1.0 gap Track 2f: a goat in Java's `Pose.LONG_JUMPING`
+    /// (`LongJumpMidJump`: from its launch until it lands), for the box
+    /// and the model.
+    pub fn goat_long_jumping(&self) -> bool {
+        self.kind == MobKind::Goat && self.animal.as_ref().is_some_and(|a| a.long_jumping)
     }
 
     pub fn set_size(&mut self, size: u8) {
@@ -2294,6 +2303,8 @@ impl Mob {
             MobKind::Wolf => !attacked,
             MobKind::PolarBear => self.baby || !attacked,
             MobKind::Panda | MobKind::Armadillo => !attacked,
+            // v1.0 gap Track 2f: `FoxPanicGoal.shouldPanic`: not while defending.
+            MobKind::Fox => !self.fox.as_ref().is_some_and(|s| s.defending),
             k => !k.is_hostile(),
         };
         if scared {
@@ -2550,7 +2561,7 @@ impl Mob {
                 && self.kind != MobKind::Warden
                 && (self.bat.as_ref().is_none_or(|s| !s.resting) || rng.next_int(4) == 0)
             {
-                let sound = MobSound::Ambient(self.kind);
+                let sound = self.fox_ambient(ctx, rng).unwrap_or(MobSound::Ambient(self.kind));
                 events.push(EntityEvent::Sound { sound, pos: self.pos + DVec3::Y * (self.shape().height * 0.8) });
             }
         }
@@ -2667,6 +2678,10 @@ impl Mob {
         // after the mob's other goals took their flags.
         if self.dying.is_none() {
             self.head_goals(world, ctx, rng, wish.is_some());
+            // v1.0 gap Track 2f: `HarvestFarmland` breaking a ripe crop.
+            if let Some(cell) = self.walking.harvest_now.take() {
+                events.push(EntityEvent::VillagerHarvest { cell });
+            }
         }
 
         // Don't walk off tall drops; wanderers pick another direction.
@@ -3008,7 +3023,7 @@ impl Mob {
         // (`FoxMoveControl` holds it still while it can't move).
         if self.fox.is_some() {
             let full = self.goals.full(self.uid);
-            let wish = match self.fox_pre_think(world, full, events) {
+            let wish = match self.fox_pre_think(world, rng, full, events) {
                 Some(wish) => {
                     self.goals.ticks = self.goals.ticks.wrapping_add(1);
                     Some(wish)

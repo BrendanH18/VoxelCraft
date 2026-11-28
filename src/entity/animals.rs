@@ -47,6 +47,9 @@ pub struct State {
     pub ram_cooldown: f32,
     pub stationary: f32,
     pub jump_cooldown: f32,
+    /// v1.0 gap Track 2f: the goat's `Pose.LONG_JUMPING` (not saved:
+    /// Java's `Pose` is written only as entity data the client reads).
+    pub long_jumping: bool,
     pub horns: u8,
     pub horn_kind: u8,
     pub screaming: bool,
@@ -88,6 +91,7 @@ impl State {
             ram_cooldown: 30.0,
             stationary: 0.0,
             jump_cooldown: 30.0,
+            long_jumping: false,
             horns: 2,
             horn_kind: 0,
             screaming: false,
@@ -994,20 +998,47 @@ impl Entities {
             if m.kind == MobKind::Fox {
                 // v1.0 gap Track 2e: `SleepGoal` (`mob::fox`) puts it to sleep.
                 a.mouth_time += dt;
+                // v1.0 gap Track 2f: `canHoldItem`: an empty mouth, or food
+                // over something that isn't once it has held that a tick;
+                // what it held is spat out (`spitOutItem`, `FOX_SPIT`).
+                let food = |s: &Stack| s.item.food().is_some();
+                let held = a.mouth;
+                let holds =
+                    |s: &Stack| held.is_none() || a.mouth_time > 0.0 && food(s) && !held.is_some_and(|h| food(&h));
+                let at = m.pos + DVec3::Y * (m.kind.shape().height * 0.8);
                 if self.villager_griefing
-                    && a.mouth.is_none()
-                    && let Some(j) =
-                        self.items.iter().position(|it| it.pickup_delay <= 0.0 && it.pos.distance_squared(m.pos) < 2.25)
+                    && let Some(j) = self.items.iter().position(|it| {
+                        it.pickup_delay <= 0.0 && it.pos.distance_squared(m.pos) < 2.25 && holds(&it.stack)
+                    })
                 {
                     let s = self.items[j].stack;
+                    if let Some(old) = held {
+                        // At its look direction, a block up, 40 ticks before
+                        // it can be picked up.
+                        let ahead = crate::entity::mob::spear::view_vector(0.0, m.yaw.to_degrees() - 90.0);
+                        let spot = m.pos + DVec3::new(ahead.x, 1.0, ahead.z);
+                        // `ItemEntity`'s own toss: up to 0.1 a tick across, 0.2 up.
+                        let mut toss = || f64::from(self.rng.range(-0.1, 0.1)) * 20.0;
+                        let vel = DVec3::new(toss(), 4.0, toss());
+                        self.items.push(super::item::ItemEntity::new(old, spot, vel, 2.0, &mut self.rng));
+                        events.push(EntityEvent::Sound { sound: super::MobSound::Fox(super::fox::Cue::Spit), pos: at });
+                    }
                     a.mouth = Some(Stack { count: 1, ..s });
                     a.mouth_time = 0.0;
                     m.persistent = true;
                     self.items[j].stack.count -= 1;
                 }
-                if a.mouth_time >= 30.0 && a.mouth.is_some_and(|s| s.item.food().is_some()) {
+                // `canEat`: food, no target, on the ground and awake; past 28
+                // seconds it chews (`FOX_EAT`, one tick in ten), past 30 it
+                // eats.
+                let fox_target = m.fox.as_ref().is_some_and(|s| s.target.is_some());
+                let on_ground = m.on_ground;
+                let can_eat = a.mouth.is_some_and(|s| food(&s)) && !fox_target && on_ground && !a.sleeping;
+                if can_eat && a.mouth_time >= 30.0 {
                     a.mouth = None;
                     a.mouth_time = 0.0;
+                } else if can_eat && a.mouth_time > 28.0 && self.rng.chance(0.1) {
+                    events.push(EntityEvent::Sound { sound: super::MobSound::Fox(super::fox::Cue::Eat), pos: at });
                 }
             }
             if m.kind == MobKind::Parrot {

@@ -79,11 +79,18 @@ impl Entities {
             let Some(a) = m.animal.as_mut() else { continue };
             if m.kind == MobKind::Goat {
                 a.ram_cooldown = (a.ram_cooldown - dt).max(0.0);
+                // v1.0 gap Track 2f: `LongJumpMidJump.stop` on landing ends the
+                // `LONG_JUMPING` pose.
+                if a.long_jumping && (m.on_ground && m.vel.y <= 0.0 || m.in_water) {
+                    a.long_jumping = false;
+                }
                 a.jump_cooldown -= dt;
                 if a.jump_cooldown <= 0.0 {
                     a.jump_cooldown = self.rng.range(30.0, 60.0);
                     if m.on_ground && a.love == 0.0 {
                         m.vel.y = 18.0;
+                        // `LongJumpMidJump.start`: the pose for the flight.
+                        a.long_jumping = true;
                     }
                 }
                 if a.ramming > 0.0 {

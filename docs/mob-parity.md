@@ -356,5 +356,44 @@ has the Java sources, checks and remaining differences. Code:
   the offers the player's item pays for, cycling every 40 ticks, and keeps
   looking for 900 ticks.
 - **Foxes** hunt, sleep, perch and eat berries by Java's goals; see
-  [Animals](animals.md#foxes-v10-gap-track-2e-implemented-unverified).
+  [Animals](animals.md#foxes-v10-gap-tracks-2e-and-2f-implemented-unverified).
+
+## Work strolls, play tag, trading walks, the brute's idle, the fox's defence and the goat's long-jump pose (v1.0 gap Track 2f, implemented, unverified)
+
+The [Track 2f record](verification/2026-11-28-v1.0-gap-track-02f-behaviours.md)
+has the Java sources, checks and remaining differences. Code:
+`src/entity/mob/brain_walk.rs`, `src/entity/mob/head.rs`,
+`src/entity/villager.rs`, `src/entity/fox.rs`, `src/entity/mob/fox.rs`,
+`src/audio/fox.rs` and `src/entity/animals/lifecycle.rs`.
+
+- **Working villagers** no longer walk onto their job site and stand
+  there. `SetWalkTargetFromBlockMemory(JOB_SITE, 0.5, 9, 100, 1200)` walks
+  one more than 9 blocks (`distManhattan`) away back within 9, heads 15
+  blocks toward it from beyond 100 and gives up a job site it can't reach
+  for 1200 ticks; then the work package's `RunOne` picks `WorkAtPoi` (or
+  the farmer's `WorkAtComposter`: within 1.73 of the job site, every 300
+  ticks on a coin flip, it looks at it for 60 ticks and restocks),
+  `StrollAroundPoi` (within 4, every 180 ticks), `StrollToPoi` (within
+  10, every 80), `StrollToPoiList` (a farmer's farmland within 4 across
+  and 2 up or down, every 100), `HarvestFarmland` (a farmer breaks a ripe
+  crop within a block of it, with `mobGriefing`) and `UseBonemeal`, by
+  Java's weights.
+- **Playing babies** play tag (`PlayTagWithOtherKids`): with other babies
+  in sight they chase the least-chased one (or the closest), and a chased
+  one runs off to a spot in the village; the play `RunOne` waits while
+  babies are in sight.
+- **Trading villagers** walk to each other: `TradeWithVillager` locks both
+  villagers' looks and walks on each other (0.5, 2 short) when it starts
+  and while they're within `sqrt(5)`, for its 60 ticks, then the gate
+  erases the interaction target.
+- **Piglin brutes** run their idle movement `RunOne` (strolls,
+  `InteractWith` a piglin or a brute, `StrollToPoi` and `StrollAroundPoi`
+  on the bastion spot they spawned at, `DoNothing`) instead of wandering
+  and the 12-block walk home.
+- **Foxes** defend players they trust (`DefendTrustedTargetGoal`), stroll
+  through villages at night, wake and take cover in thunderstorms, have
+  their own sounds and kick up snow when faceplanted; see
+  [Animals](animals.md#foxes-v10-gap-tracks-2e-and-2f-implemented-unverified).
+- **Goats** take Java's `LONG_JUMPING` pose for the flight of their jump:
+  the box at 0.7 of its size (`Mob::goat_long_jumping`).
 

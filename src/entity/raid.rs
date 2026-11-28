@@ -674,6 +674,12 @@ impl VillageSections {
         7
     }
 
+    /// Track 2f: whether section `s` (section coordinates) holds an
+    /// occupied village POI.
+    pub fn has_section(&self, s: IVec3) -> bool {
+        self.sections.contains(&s)
+    }
+
     /// `ServerLevel.isCloseToVillage`.
     pub fn close_to_village(&self, pos: IVec3, sections: i32) -> bool {
         sections <= 6 && self.sections_to_village(pos) <= sections
