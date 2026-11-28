@@ -514,6 +514,13 @@ pub const TRIDENT_IN_HAND: Display = Display {
     ..GENERATED
 };
 
+/// v1.0 gap track 6e: `item/trident_throwing`'s display, which Java's
+/// trident item definition draws while the trident is used: the in-hand
+/// first-person transform, the third-person one turned point down behind
+/// the raised arm.
+pub const TRIDENT_THROWING: Display =
+    Display { third_person: t([0.0, 90.0, 180.0], [8.0, -17.0, 9.0], 1.0), ..TRIDENT_IN_HAND };
+
 /// v1.0 gap track 6d: `item/spyglass_in_hand`'s display: no parent, so the
 /// first-person hand takes no transform and the third-person one 2/16 down.
 pub const SPYGLASS_IN_HAND: Display = Display {

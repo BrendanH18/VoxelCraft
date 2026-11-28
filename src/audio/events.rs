@@ -160,6 +160,8 @@ impl Sound {
             Sound::SoulEscape => s("particle.soul_escape"),
             Sound::Bundle(c) => s(c.event()),
             Sound::Portal(c) => s(c.event()),
+            Sound::DripstoneDrip(false) => s("block.pointed_dripstone.drip_water"),
+            Sound::DripstoneDrip(true) => s("block.pointed_dripstone.drip_lava"),
         }
     }
 }

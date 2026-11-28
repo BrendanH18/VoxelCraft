@@ -276,6 +276,9 @@ pub enum Sound {
     /// v1.0 gap Track 8f: `entity.villager.no`, the villager's refusal with
     /// its head shake.
     VillagerNo,
+    /// v1.0 gap track 6e: a pointed dripstone's drop landing
+    /// (`DripstoneFallAndLandParticle.postMoveUpdate`): lava when true.
+    DripstoneDrip(bool),
 }
 
 /// v1.0 gap Track 5c: Java's `PORTAL_AMBIENT`, `PORTAL_TRIGGER` and
@@ -387,7 +390,8 @@ impl Sound {
     const PORTAL_END: usize = Self::MOUNT_END + PortalCue::ALL.len();
     const FOX_END: usize = Self::PORTAL_END + crate::entity::fox::Cue::ALL.len();
     const GOAT_END: usize = Self::FOX_END + voxelcraft::entity::animals::long_jump::Cue::ALL.len();
-    pub const COUNT: usize = Self::GOAT_END + 1;
+    const VILLAGER_NO_END: usize = Self::GOAT_END + 1;
+    pub const COUNT: usize = Self::VILLAGER_NO_END + 2;
 
     /// Dense index in `0..COUNT`.
     pub fn key(self) -> usize {
@@ -420,6 +424,7 @@ impl Sound {
             Sound::Fox(cue) => Self::PORTAL_END + cue as usize,
             Sound::Goat(cue) => Self::FOX_END + cue as usize,
             Sound::VillagerNo => Self::GOAT_END,
+            Sound::DripstoneDrip(lava) => Self::VILLAGER_NO_END + usize::from(lava),
             Sound::Note(i) => 3 * M + 27 + Voice::ALL.len() * CALLS + i as usize,
             Sound::Thunder => Self::BASE_COUNT - 1,
             Sound::Bell => Self::BASE_COUNT - 4,
@@ -558,6 +563,7 @@ impl Sound {
             .chain(crate::entity::fox::Cue::ALL.map(Sound::Fox))
             .chain(voxelcraft::entity::animals::long_jump::Cue::ALL.map(Sound::Goat))
             .chain([Sound::VillagerNo])
+            .chain([Sound::DripstoneDrip(false), Sound::DripstoneDrip(true)])
     }
 
     /// Stable sound name used when exporting or identifying samples.
@@ -589,6 +595,7 @@ impl Sound {
             Sound::Fox(c) => c.key().replace('.', "_"),
             Sound::Goat(c) => c.key().replace('.', "_"),
             Sound::VillagerNo => "entity_villager_no".into(),
+            Sound::DripstoneDrip(lava) => format!("pointed_dripstone_drip_{}", if lava { "lava" } else { "water" }),
             Sound::Thunder => "lightning_thunder".into(),
             Sound::HoneySlide => "honey_block_slide".into(),
             Sound::HoneyDrink => "honey_drink".into(),
@@ -744,7 +751,7 @@ impl Sound {
             // `animateTick` plays the whoosh as `BLOCKS`; the trigger and
             // travel sounds are `SimpleSoundInstance.forLocalAmbience`
             // (`AMBIENT`, not positioned).
-            Sound::Portal(PortalCue::Ambient) => SoundSource::Blocks,
+            Sound::Portal(PortalCue::Ambient) | Sound::DripstoneDrip(_) => SoundSource::Blocks,
             Sound::Portal(_) => SoundSource::Ambient,
             // `Fox.playSound`: the fox's own category (`NEUTRAL`).
             Sound::Fox(_) => SoundSource::Neutral,
@@ -782,6 +789,7 @@ impl Sound {
             Sound::Fox(_) => 2,
             Sound::Goat(_) => 2,
             Sound::VillagerNo => 2,
+            Sound::DripstoneDrip(_) => 3,
             Sound::Warden(_) | Sound::Sculk(_) => 2,
             Sound::Sniffer(_) | Sound::Weapon(_) => 2,
             Sound::Step(_) => 4,
@@ -847,6 +855,7 @@ impl Sound {
             Sound::Fox(c) => super::fox::render(c, &mut rng),
             Sound::Goat(c) => super::goat::render(c, &mut rng),
             Sound::VillagerNo => super::voices::villager_no(&mut rng),
+            Sound::DripstoneDrip(lava) => dripstone_drip(lava, &mut rng),
             Sound::Thunder => thunder(&mut rng),
             Sound::HoneySlide => honey_sound(&mut rng, 0.35),
             Sound::HoneyDrink => honey_sound(&mut rng, 0.22),
@@ -1661,6 +1670,26 @@ fn drip(rng: &mut Rng) -> Vec<f32> {
         let mut echo = dry.clone();
         Biquad::lowpass(fc, 0.7).run(&mut echo);
         mix_into(&mut out, &echo, gain, samples(delay));
+    }
+    dsp::finish(out, 0.3)
+}
+
+/// v1.0 gap track 6e: original drop landings for Java's
+/// `block.pointed_dripstone.drip_water` (a short bright plink without the
+/// cave echo) and `drip_lava` (a lower, thicker blip with a hiss).
+fn dripstone_drip(lava: bool, rng: &mut Rng) -> Vec<f32> {
+    let len = samples(0.4);
+    let mut out = vec![0.0; len];
+    if lava {
+        let f = rng.range(380.0, 520.0);
+        add_mode(&mut out, 0, Mode { freq: f, amp: 0.9, tau: 0.05, glide: 1.4, glide_tau: 0.02 });
+        let hiss = noise(rng, len, |t| (-(t / 0.08)).exp() * 0.25);
+        let mut hp = Biquad::highpass(2500.0, 0.7);
+        let hiss: Vec<f32> = hiss.iter().map(|&x| hp.process(x)).collect();
+        mix_into(&mut out, &hiss, 1.0, 0);
+    } else {
+        let f = rng.range(1100.0, 1600.0);
+        add_mode(&mut out, 0, Mode { freq: f, amp: 1.0, tau: 0.022, glide: 1.8, glide_tau: 0.01 });
     }
     dsp::finish(out, 0.3)
 }

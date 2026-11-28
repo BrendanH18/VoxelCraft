@@ -178,6 +178,10 @@ pub struct System {
     /// v1.0 gap Track 5c: where a Nether portal's `animateTick` played its
     /// whoosh since the game last asked (the block's centre).
     pub portal_sounds: Vec<DVec3>,
+    /// v1.0 gap track 6e: where a pointed dripstone's drop landed since the
+    /// game last asked, whether it was lava, and its volume (Java's random
+    /// 0.3 to 1 at pitch 1, `POINTED_DRIPSTONE_DRIP_WATER` or `_LAVA`).
+    pub drip_sounds: Vec<(DVec3, bool, f32)>,
 }
 
 impl System {
@@ -191,6 +195,7 @@ impl System {
             fireworks: VecDeque::with_capacity(64),
             gas_sounds: Vec::new(),
             portal_sounds: Vec::new(),
+            drip_sounds: Vec::new(),
         }
     }
 
@@ -282,6 +287,21 @@ impl System {
 
     pub fn tick(&mut self, world: &World, setting: Setting) {
         self.pool.tick(world);
+        // v1.0 gap track 6e: a dripstone drop landed: water leaves Java's
+        // `SPLASH` (no velocity given) where it fell, and both sound.
+        let landed = std::mem::take(&mut self.pool.landed);
+        for &(pos, lava) in &landed {
+            if !lava && self.accept(setting, false, false) {
+                let splash = self.make(Kind::Splash, pos, DVec3::ZERO);
+                self.pool.spawn(splash);
+            }
+            if self.drip_sounds.len() < 64 {
+                let volume = 0.3 + self.rng.next_f32() * 0.7;
+                self.drip_sounds.push((pos, lava, volume));
+            }
+        }
+        self.pool.landed = landed;
+        self.pool.landed.clear();
         self.tick_fireworks();
         let n = self.tracking.len();
         for _ in 0..n {
@@ -443,6 +463,7 @@ impl System {
                 p.color = if kind == Kind::WaterDrip { [0.2, 0.3, 1.0, 1.0] } else { [1.0, 1.0, 0.5, 1.0] };
                 p.size = 0.05;
                 p.collision_size = 0.01;
+                p.dripstone = kind == Kind::WaterDrip;
             }
             Kind::Splash | Kind::Rain => {
                 p.motion = Motion::Splash;

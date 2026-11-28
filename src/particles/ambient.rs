@@ -129,7 +129,13 @@ impl System {
                 // (its shape's bottom, 5/16, less a pixel).
                 let offset = crate::world::offset::offset_of(crate::world::offset::Kind::XzSpeleothem, cell.x, cell.z);
                 let pos = base + DVec3::new(0.5 + offset.x, 0.25, 0.5 + offset.z);
-                self.burst(Burst::new(if lava { Kind::LavaDrip } else { Kind::WaterDrip }, pos, 1), setting);
+                // v1.0 gap track 6e: both are dripstone drops, which sound
+                // as they land (`DripstoneLavaHangProvider` and the water's).
+                if self.accept(setting, false, false) {
+                    let mut drop = self.make(if lava { Kind::LavaDrip } else { Kind::WaterDrip }, pos, DVec3::ZERO);
+                    drop.dripstone = true;
+                    self.pool.spawn(drop);
+                }
             }
             return;
         }

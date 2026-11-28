@@ -50,6 +50,9 @@ pub struct Hand {
     pub mesh: Option<voxelcraft::inventory::Stack>,
     /// v1.0 gap track 6d: the held stack (its display transforms).
     pub stack: Option<voxelcraft::inventory::Stack>,
+    /// v1.0 gap track 6e: ticks a held trident has been charged
+    /// (`ItemUseAnimation.TRIDENT`), drawn thrown back.
+    pub trident_charge: Option<f32>,
 }
 
 /// Minecraft draws the hand with this field of view, whatever the setting.
@@ -390,6 +393,27 @@ pub(super) fn vertices(
         * rot_z((root * PI).sin() * -20.0)
         * rot_x((root * PI).sin() * -80.0)
         * rot_y(-45.0);
+
+    // v1.0 gap track 6e: a charging trident (`FirstPersonHandsAndItemsRenderer`'s
+    // `TRIDENT` use animation): no swing, the arm's placement, then raised
+    // and turned back, shaking once charged past a tenth, drawn back and
+    // stretched toward its full charge at 10 ticks.
+    let arm = match hand.trident_charge.filter(|_| item == voxelcraft::weapons::TRIDENT) {
+        Some(held) => {
+            let power = (held / 10.0).min(1.0);
+            let shake = if power > 0.1 { ((held - 0.1) * 1.3).sin() * (power - 0.1) } else { 0.0 };
+            bob * translate(0.56, -0.52 - hand.equip * 0.6, -0.72)
+                * translate(-0.5, 0.7, 0.1)
+                * rot_x(-55.0)
+                * rot_y(35.3)
+                * rot_z(-9.785)
+                * translate(0.0, shake * 0.004, 0.0)
+                * translate(0.0, 0.0, power * 0.2)
+                * Mat4::from_scale(Vec3::new(1.0, 1.0, 1.0 + power * 0.2))
+                * rot_y(-45.0)
+        }
+        None => arm,
+    };
 
     let start = b.out.len();
     // v1.0 gap track 6b: a 3D item mesh with Java's first-person transform.
