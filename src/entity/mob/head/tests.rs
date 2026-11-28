@@ -261,6 +261,7 @@ fn villagers_mostly_look_at_cats() {
             kind: MobKind::Cat,
             eye: cat.look_eye() + DVec3::X * 2.0,
             pos: DVec3::new(2.5, 64.0, 0.5),
+            breedable: false,
         }];
         let mut ticks = 0;
         while v.head.target.is_none() && ticks < 200 {
@@ -394,6 +395,54 @@ fn villagers_show_trades_to_players_close_by() {
     let mut v = mob(MobKind::Villager);
     v.head_goals(&w, &far, &mut rng, false);
     assert_eq!(v.head.interaction, None);
+}
+
+/// v1.0 gap Track 2e: `ShowTradesToPlayer` holds up the results of the
+/// offers the player's item pays for (`displayAsHeldItem`, never dropped),
+/// cycling every 40 ticks, keeps looking for 900, and clears the hand once
+/// the player's hand changes to something it doesn't take.
+#[test]
+fn villagers_hold_up_the_trades_a_players_item_pays_for() {
+    use crate::entity::equipment::{DEFAULT_DROP_CHANCE, Slot};
+    use crate::entity::villager::Offer;
+    use crate::inventory::Stack;
+    use crate::item::Item;
+    let w = Grid::flat(64);
+    let mut near = ctx(&[DVec3::new(2.5, 64.0, 0.5)]);
+    near.players[0].held_item = Some(Item::EMERALD);
+    let mut rng = Rng::new(6);
+    let mut v = mob(MobKind::Villager);
+    let offer = |output: Item| Offer {
+        cost: Stack::new(Item::EMERALD, 1),
+        second: None,
+        output: Stack::new(output, 1),
+        uses: 0,
+        max_uses: 12,
+        xp: 1,
+        demand: 0,
+        multiplier: 0.05,
+    };
+    let offers = &mut v.villager.as_mut().unwrap().offers;
+    offers[0] = Some(offer(Item::BREAD));
+    offers[1] = Some(offer(Item::APPLE));
+    v.head_goals(&w, &near, &mut rng, false);
+    assert_eq!(v.shown_trade_item().map(|s| s.item), Some(Item::BREAD));
+    assert_eq!(v.equipment.drop_chance(Slot::MainHand), 0.0);
+    let mut shown = vec![Item::BREAD];
+    for _ in 0..100 {
+        v.head_goals(&w, &near, &mut rng, false);
+        let item = v.shown_trade_item().unwrap().item;
+        if shown.last() != Some(&item) {
+            shown.push(item);
+        }
+    }
+    assert_eq!(shown, [Item::BREAD, Item::APPLE, Item::BREAD], "cycles every 40 ticks");
+    // Still looking well past 40 ticks: `lookTime` is 900.
+    assert_eq!(v.head.interaction, Some(PlayerId(1)));
+    near.players[0].held_item = Some(Item::BONE);
+    v.head_goals(&w, &near, &mut rng, false);
+    assert_eq!(v.shown_trade_item(), None);
+    assert_eq!(v.equipment.drop_chance(Slot::MainHand), DEFAULT_DROP_CHANCE);
 }
 
 /// v1.0 gap Track 2d: `ShulkerLookControl` turns the head in the shell's

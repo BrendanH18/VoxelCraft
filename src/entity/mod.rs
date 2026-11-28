@@ -44,6 +44,7 @@ pub mod equipment;
 pub mod eye;
 pub mod fireball;
 pub mod firework;
+pub mod fox;
 pub mod frog;
 pub mod golem;
 pub mod happy_ghast;
@@ -3349,7 +3350,8 @@ mod tests {
         assert_eq!(MobKind::Drowned.biome_chance(Biome::River), 1.0);
         assert_eq!(MobKind::Drowned.biome_chance(Biome::Desert), 0.0);
         assert!(MobKind::Zombie.biome_chance(Biome::Desert) < 0.5);
-        // About one in twenty zombies is a baby: half size, 50% faster.
+        // About one in twenty zombies is a baby: `Zombie.BABY_DIMENSIONS`
+        // (0.49 by 0.98, v1.0 gap Track 2e), 50% faster.
         let mut e = Entities::new(5);
         for _ in 0..2000 {
             e.spawn(MobKind::Zombie, DVec3::ZERO);
@@ -3357,7 +3359,7 @@ mod tests {
         let babies = e.mobs.iter().filter(|m| m.baby).count();
         assert!((60..140).contains(&babies), "{babies}");
         let baby = e.mobs.iter().find(|m| m.baby).unwrap();
-        assert_eq!(baby.shape().height, MobKind::Zombie.shape().height * 0.5);
+        assert_eq!(baby.shape().height, 0.98);
     }
 
     #[test]
@@ -4274,13 +4276,14 @@ mod tests {
         let world = Grid::flat(10);
         let mut e = Entities::new(3);
         e.spawn(MobKind::Chicken, DVec3::new(0.5, 10.0, 0.5));
-        let grown = e.mobs[0].shape().height;
         e.mobs[0].egg_timer = 0.01;
         e.update(0.05, &world, &ctx(DVec3::new(40.0, 10.0, 0.0)));
         assert!(e.items.iter().any(|item| item.stack.item == crate::item::Item::EGG));
         e.spawn_baby(MobKind::Chicken, DVec3::new(2.5, 10.0, 0.5));
         let chick = e.mobs.iter().find(|m| m.age < 0).unwrap();
-        assert!((chick.shape().height - grown * 0.5).abs() < 1e-4);
+        // `Chicken.BABY_DIMENSIONS` (0.3 by 0.4, v1.0 gap Track 2e), not
+        // half the adult's 0.7.
+        assert!((chick.shape().height - 0.4).abs() < 1e-4);
     }
 
     #[test]

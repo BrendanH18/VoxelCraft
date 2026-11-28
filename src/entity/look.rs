@@ -61,6 +61,9 @@ impl Mob {
         if let Some(s) = &self.copper_golem {
             v["copper_golem"] = s.look();
         }
+        if let Some(s) = &self.fox {
+            v["fox"] = s.look();
+        }
         if let Some(s) = &self.ocelot {
             v["ocelot"] = serde_json::json!({"trusting":s.trusting,"crouching":s.crouching,"sprinting":s.sprinting});
         }
@@ -227,6 +230,9 @@ impl Mob {
         }
         if let Some(s) = &mut self.copper_golem {
             s.load_look(&v["copper_golem"]);
+        }
+        if let Some(s) = &mut self.fox {
+            s.apply_look(&v["fox"]);
         }
         if let Some(s) = &mut self.ocelot {
             s.trusting = v["ocelot"]["trusting"].as_bool().unwrap_or(false);

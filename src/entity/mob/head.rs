@@ -264,7 +264,7 @@ fn goal_table(kind: MobKind) -> &'static [Entry] {
 /// Which entities a brain look behaviour picks from
 /// `NEAREST_VISIBLE_LIVING_ENTITIES`.
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum Sel {
+pub(crate) enum Sel {
     Player,
     Kind(MobKind),
     Category(MobCategory),
@@ -293,6 +293,9 @@ enum Setter {
     /// `INTERACTION_TARGET`, the nearest visible player within `range`
     /// becomes it and `LOOK_TARGET` (Track 2d).
     Interact { range: f32 },
+    /// A movement `RunOne` in its place among the looks (Track 2e,
+    /// `brain_walk`).
+    Move(super::brain_walk::Movement),
 }
 
 /// The villager packages whose interaction looks differ (Track 2d).
@@ -310,7 +313,6 @@ const BRUTE_LOOKS: &[(Sel, f32, u8)] = &[
     (Sel::Kind(MobKind::PiglinBrute), 8.0, 1),
     (Sel::Any, 8.0, 1),
 ];
-const CELEBRATE_LOOKS: &[(Sel, f32, u8)] = &[(Sel::Kind(MobKind::Piglin), 8.0, 1)];
 const VILLAGER_FULL: &[(Sel, f32, u8)] = &[
     (Sel::Kind(MobKind::Cat), 8.0, 8),
     (Sel::Kind(MobKind::Villager), 8.0, 2),
@@ -323,7 +325,6 @@ const VILLAGER_FULL: &[(Sel, f32, u8)] = &[
     (Sel::Category(MobCategory::Monster), 8.0, 1),
 ];
 const VILLAGER_MINIMAL: &[(Sel, f32, u8)] = &[(Sel::Kind(MobKind::Villager), 8.0, 2), (Sel::Player, 8.0, 2)];
-const SNIFFER_LOOKS: &[(Sel, f32, u8)] = &[(Sel::Player, 6.0, 1)];
 
 const PLAYER_SOMETIMES: Setter = Setter::Sometimes { sel: Sel::Player, range: 6.0, min: 30, max: 60 };
 const ANY_SOMETIMES: Setter = Setter::Sometimes { sel: Sel::Any, range: 8.0, min: 30, max: 60 };
@@ -432,6 +433,8 @@ pub(crate) struct Seen {
     pub eye: DVec3,
     /// Feet position at the scan.
     pub pos: DVec3,
+    /// A villager that `AgeableMob.canBreed` (Track 2e's `InteractWith`).
+    pub breedable: bool,
 }
 
 /// What a look goal or `LOOK_TARGET` follows.
@@ -475,7 +478,7 @@ pub(crate) struct Head {
     /// A running `ShowTradesToPlayer`: ticks before it times out, its
     /// `lookTime`, and the player's held item it last saw (`None` before
     /// its first tick).
-    show_trades: Option<(i32, i32, Option<Option<crate::item::Item>>)>,
+    show_trades: Option<ShowTrades>,
     /// `PandaLookAtPlayerGoal.lookAt` kept between `canUse` calls (its
     /// `setTarget`; Track 2d).
     preset: Option<PlayerId>,
@@ -493,6 +496,26 @@ pub(crate) struct Head {
     pub(crate) carrying_mob: bool,
     /// `NEAREST_VISIBLE_LIVING_ENTITIES` (mobs only; players are read live).
     pub(crate) seen: Vec<Seen>,
+    /// A movement behaviour set `LOOK_TARGET` this tick, after the core
+    /// `LookAtTargetSink` tried to start (it starts on the next tick).
+    pub(crate) fresh_target: bool,
+}
+
+/// A running `ShowTradesToPlayer` (Track 2d; its held item, Track 2e).
+#[derive(Clone, Debug)]
+struct ShowTrades {
+    /// Ticks before it times out.
+    left: i32,
+    /// `lookTime`.
+    look: i32,
+    /// `playerItemStack`: the player's main-hand item it last saw (`None`
+    /// before its first tick).
+    seen: Option<Option<crate::item::Item>>,
+    /// `displayItems`: the results of the offers the item pays for.
+    display: Vec<crate::inventory::Stack>,
+    /// `cycleCounter` and `displayIndex`.
+    cycle: i32,
+    index: usize,
 }
 
 impl Mob {
@@ -713,6 +736,16 @@ impl Mob {
     }
 
     /// `NearestVisibleLivingEntities.findClosest` for a brain selector.
+    pub(super) fn brain_find<W: MobWorld + ?Sized>(
+        &self,
+        world: &W,
+        ctx: &Ctx,
+        sel: Sel,
+        range: f32,
+    ) -> Option<Tracked> {
+        self.find_closest(world, ctx, sel, range)
+    }
+
     fn find_closest<W: MobWorld + ?Sized>(&self, world: &W, ctx: &Ctx, sel: Sel, range: f32) -> Option<Tracked> {
         let range = f64::from(range);
         let player = match sel {
@@ -959,9 +992,11 @@ impl Mob {
         }
     }
 
-    /// `FoxLookAtPlayerGoal`: not while faceplanted or interested.
-    fn fox_busy(&self) -> bool {
+    /// `FoxLookAtPlayerGoal`: not while faceplanted or interested (Track
+    /// 2e); a sleeping fox's look control rests.
+    pub(crate) fn fox_busy(&self) -> bool {
         self.animal.as_ref().is_some_and(|a| a.sleeping)
+            || self.fox.as_ref().is_some_and(|s| s.faceplanted || s.interested)
     }
 
     /// The brain's look behaviours this tick: the activity's `LOOK_TARGET`
@@ -972,9 +1007,10 @@ impl Mob {
         // nextInt(max + 1 - min)` ticks, timed out once past them), then the
         // villager's trading sink, then the activity's writers (each needs
         // the memory absent).
-        if self.head.sink.is_none() && self.head.target.is_some() {
+        if self.head.sink.is_none() && self.head.target.is_some() && !std::mem::take(&mut self.head.fresh_target) {
             self.head.sink = Some(45 + rng.next_int(46) as i32 + 1);
         }
+        self.head.fresh_target = false;
         self.head.gaze_cooldown = (self.head.gaze_cooldown - 1).max(0);
         if self.kind == MobKind::Villager {
             self.villager_trading_look(ctx);
@@ -989,25 +1025,51 @@ impl Mob {
             // `VillagerPanicTrigger` erases `INTERACTION_TARGET`.
             self.head.interaction = None;
         }
+        // Track 2e: the villager's movement behaviours at their priorities:
+        // idle's `RunOne` (2) and meet's gate (2) before the interaction
+        // looks; the play package's `RunOne` (5) after the look `RunOne`.
+        let movement = self.villager_movement();
+        if self.kind == MobKind::Villager {
+            self.walking.trading_villager = (self.walking.trading_villager - 1).max(0);
+            match movement {
+                Some(m @ (super::brain_walk::Movement::VillagerIdle | super::brain_walk::Movement::VillagerMeet)) => {
+                    self.brain_movement(world, ctx, rng, m)
+                }
+                Some(_) => {}
+                None => self.stop_brain_movement(),
+            }
+        }
         if package == Some(Package::Idle) {
             self.set_look_and_interact(world, ctx, 4.0);
             self.show_trades_start(ctx, rng);
         }
+        let mut moved = false;
         for setter in self.brain_setters() {
             // `SetEntityLookTarget`s need `LOOK_TARGET` absent; a `RunOne`
             // still starts and falls to its `DoNothing`, and
             // `SetLookAndInteract` only registers it.
-            if self.head.target.is_some() && !matches!(setter, Setter::RunOne { .. } | Setter::Interact { .. }) {
+            if self.head.target.is_some()
+                && !matches!(setter, Setter::RunOne { .. } | Setter::Interact { .. } | Setter::Move(_))
+            {
                 continue;
             }
+            moved |= matches!(setter, Setter::Move(_));
             self.run_setter(world, ctx, rng, *setter);
+        }
+        if matches!(self.kind, MobKind::Piglin | MobKind::Sniffer) && !moved {
+            self.stop_brain_movement();
+        }
+        if movement == Some(super::brain_walk::Movement::VillagerPlay) {
+            self.brain_movement(world, ctx, rng, super::brain_walk::Movement::VillagerPlay);
         }
         if package == Some(Package::WorkOrMeet) {
             self.show_trades_start(ctx, rng);
             self.set_look_and_interact(world, ctx, 4.0);
         }
-        if package.is_none() {
-            self.head.show_trades = None;
+        if package.is_none() && self.head.show_trades.take().is_some() {
+            // The activity's end stops the behaviour (`stop`).
+            self.head.interaction = None;
+            self.clear_shown_trade();
         }
         self.show_trades_tick(ctx);
         // Tick phase: `LookAtTargetSink.tickOrStop`.
@@ -1052,17 +1114,54 @@ impl Mob {
         if v.fleeing || v.bell_hide > 0.0 || raiding {
             return None;
         }
-        match v.activity {
+        match self.villager_activity() {
             Activity::Idle => Some(Package::Idle),
             Activity::Work | Activity::Meet => Some(Package::WorkOrMeet),
             Activity::Rest | Activity::Play => None,
         }
     }
 
+    /// Track 2e: the villager's movement behaviours this tick: idle's
+    /// `RunOne`, the babies' play `RunOne`, or the meet gate once within six
+    /// blocks of its bell (the game walks it there); none while it walks
+    /// a goal of its own, trades, sleeps, panics, hides or raids.
+    fn villager_movement(&self) -> Option<super::brain_walk::Movement> {
+        use super::brain_walk::Movement;
+        use crate::entity::villager::Activity;
+        let v = self.villager.as_ref().filter(|_| self.kind == MobKind::Villager)?;
+        let raiding = v.raid_activity != crate::entity::villager::RaidActivity::default();
+        if v.fleeing || v.bell_hide > 0.0 || raiding || v.trading || v.sleeping || v.goal.is_some() {
+            return None;
+        }
+        match self.villager_activity() {
+            Activity::Idle => Some(Movement::VillagerIdle),
+            Activity::Play => Some(Movement::VillagerPlay),
+            Activity::Meet => Some(Movement::VillagerMeet),
+            Activity::Rest if v.home.is_none() => Some(Movement::VillagerHomeless),
+            _ => None,
+        }
+    }
+
+    /// Track 2e: the villager's brain activity: its schedule's, except
+    /// that work needs a job site and meeting a bell (Java's activity
+    /// requirements), without which `setActiveActivityIfPossible` falls back
+    /// to idle (as for a nitwit at work time).
+    pub(crate) fn villager_activity(&self) -> crate::entity::villager::Activity {
+        use crate::entity::villager::Activity;
+        let Some(v) = &self.villager else { return Activity::Idle };
+        match v.activity {
+            Activity::Work if v.job.is_none() || self.age < 0 => Activity::Idle,
+            Activity::Meet if v.meeting.is_none() || self.age < 0 => Activity::Idle,
+            a => a,
+        }
+    }
+
     /// `SetLookAndInteract`: with no `INTERACTION_TARGET`, the closest
     /// visible player within `range` becomes it and `LOOK_TARGET`.
     fn set_look_and_interact<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx, range: f32) {
-        if self.head.interaction.is_some() {
+        // Track 2e: a villager `INTERACTION_TARGET` (`InteractWith`,
+        // `SocializeAtBell`) holds it too, while `TradeWithVillager` runs.
+        if self.head.interaction.is_some() || self.walking.trading_villager > 0 {
             return;
         }
         if let Some(t) = self.nearest_player(world, ctx, f64::from(range), true, |_| true) {
@@ -1082,40 +1181,94 @@ impl Mob {
     /// `ShowTradesToPlayer(400, 1600).tryStart`.
     fn show_trades_start(&mut self, ctx: &Ctx, rng: &mut Rng) {
         if self.head.show_trades.is_none() && self.show_trades_valid(ctx).is_some() {
-            // `start`: `lookAtTarget`, `lookTime = 40`.
+            // `start`: `lookAtTarget`, `cycleCounter = displayIndex = 0`,
+            // `lookTime = 40`.
             let left = 400 + rng.next_int(1201) as i32;
-            self.head.show_trades = Some((left, 40, None));
+            self.head.show_trades =
+                Some(ShowTrades { left, look: 40, seen: None, display: Vec::new(), cycle: 0, index: 0 });
             self.head.target = self.head.interaction.map(Tracked::Player);
         }
     }
 
     /// `ShowTradesToPlayer.tickOrStop`: it keeps `LOOK_TARGET` on the
-    /// player, for 900 ticks while the player holds the cost of an offer in
-    /// stock (40 otherwise), and erases `INTERACTION_TARGET` when it stops.
+    /// player; when the player's main-hand item changes to one that pays
+    /// for offers in stock, the villager holds up the first offer's result
+    /// (`displayAsHeldItem`, drop chance 0) for 900 ticks, cycling through
+    /// the others every 40 ticks; otherwise its hand is cleared and it
+    /// looks for at most 40 more. Stopping erases `INTERACTION_TARGET` and
+    /// clears the hand.
     fn show_trades_tick(&mut self, ctx: &Ctx) {
-        let Some((left, look, seen)) = self.head.show_trades else { return };
+        let Some(mut st) = self.head.show_trades.take() else { return };
         let held = self.show_trades_valid(ctx).map(|t| t.held_item);
-        let Some(held) = held.filter(|_| left > 0 && look > 0) else {
-            self.head.show_trades = None;
+        let Some(held) = held.filter(|_| st.left > 0 && st.look > 0) else {
             self.head.interaction = None;
+            self.clear_shown_trade();
             return;
         };
         self.head.target = self.head.interaction.map(Tracked::Player);
-        let mut look = look;
-        let matches = |item: crate::item::Item, v: &crate::entity::villager::Villager| {
-            v.offers
-                .iter()
-                .flatten()
-                .any(|o| o.uses < o.max_uses && (o.cost.item == item || o.second.is_some_and(|s| s.item == item)))
-        };
-        let displaying = held.zip(self.villager.as_ref()).is_some_and(|(item, v)| matches(item, v));
-        if seen != Some(held) && displaying {
-            look = 900;
+        // `findItemsToDisplay`.
+        if st.seen != Some(held) {
+            st.seen = Some(held);
+            st.display.clear();
+            if let (Some(item), Some(v)) = (held, self.villager.as_ref()) {
+                st.display = v
+                    .offers
+                    .iter()
+                    .flatten()
+                    .filter(|o| {
+                        o.uses < o.max_uses && (o.cost.item == item || o.second.is_some_and(|s| s.item == item))
+                    })
+                    .map(|o| o.output)
+                    .collect();
+                if let Some(first) = st.display.first().copied() {
+                    st.look = 900;
+                    self.show_trade_item(first);
+                }
+            }
         }
-        if !displaying {
-            look = look.min(40);
+        if st.display.is_empty() {
+            self.clear_shown_trade();
+            st.look = st.look.min(40);
+        } else if st.display.len() >= 2 {
+            // `displayCyclingItems`.
+            st.cycle += 1;
+            if st.cycle >= 40 {
+                st.index = (st.index + 1) % st.display.len();
+                st.cycle = 0;
+                self.show_trade_item(st.display[st.index]);
+            }
         }
-        self.head.show_trades = Some((left - 1, look - 1, Some(held)));
+        st.left -= 1;
+        st.look -= 1;
+        self.head.show_trades = Some(st);
+    }
+
+    /// `displayAsHeldItem`: the main hand holds `stack`, never dropped.
+    fn show_trade_item(&mut self, stack: crate::inventory::Stack) {
+        use crate::entity::equipment::Slot;
+        self.equipment.set(Slot::MainHand, Some(stack));
+        self.equipment.set_drop_chance(Slot::MainHand, 0.0);
+    }
+
+    /// `clearHeldItem`: an empty main hand with the default drop chance.
+    fn clear_shown_trade(&mut self) {
+        use crate::entity::equipment::Slot;
+        if self.kind != MobKind::Villager {
+            return;
+        }
+        self.equipment.set(Slot::MainHand, None);
+        self.equipment.set_drop_chance(Slot::MainHand, crate::entity::equipment::DEFAULT_DROP_CHANCE);
+    }
+
+    /// v1.0 gap Track 2e: the offer result a villager holds up to a player
+    /// (`ShowTradesToPlayer`'s `displayAsHeldItem`), for the model's
+    /// `CrossedArmsItemLayer` (Track 7d). It is the main-hand item, which
+    /// LAN clients receive with the equipment.
+    pub fn shown_trade_item(&self) -> Option<crate::inventory::Stack> {
+        if self.kind != MobKind::Villager {
+            return None;
+        }
+        self.equipment.main_hand().copied()
     }
 
     /// The `LOOK_TARGET` writers of the brain's current activity.
@@ -1131,7 +1284,7 @@ impl Mob {
                 if v.fleeing || v.bell_hide > 0.0 || raiding {
                     return MINIMAL;
                 }
-                match v.activity {
+                match self.villager_activity() {
                     Activity::Work | Activity::Rest => MINIMAL,
                     Activity::Idle | Activity::Meet | Activity::Play => FULL,
                 }
@@ -1159,7 +1312,17 @@ impl Mob {
             K::CopperGolem => &[Setter::Sometimes { sel: Sel::Player, range: 6.0, min: 40, max: 80 }],
             K::Armadillo => &[PLAYER_SOMETIMES, AROUND],
             K::Goat | K::Frog | K::Axolotl | K::Tadpole => &[PLAYER_SOMETIMES],
-            K::Sniffer => &[Setter::RunOne { options: SNIFFER_LOOKS, nothing: (7, 5, 20) }],
+            // Track 2e: the idle `RunOne`, with its look, walks, scent and
+            // sniff (not while it searches, digs or rises: `SNIFF`, `DIG`).
+            K::Sniffer => {
+                use crate::entity::sniffer::{DIGGING, RISING, SEARCHING};
+                const IDLE: &[Setter] = &[Setter::Move(super::brain_walk::Movement::SnifferIdle)];
+                if self.sniffer.as_ref().is_some_and(|s| matches!(s.pose, SEARCHING | DIGGING | RISING)) {
+                    &[]
+                } else {
+                    IDLE
+                }
+            }
             _ => &[],
         }
     }
@@ -1172,12 +1335,15 @@ impl Mob {
         const IDLE: &[Setter] = &[
             Setter::Direct { sel: Sel::LovedItemPlayer, range: 14.0 },
             Setter::RunOne { options: PIGLIN_LOOKS, nothing: (1, 30, 60) },
+            Setter::Move(super::brain_walk::Movement::PiglinIdle),
             Setter::Interact { range: 4.0 },
         ];
         const AVOID: &[Setter] = &[Setter::RunOne { options: PIGLIN_LOOKS, nothing: (1, 30, 60) }];
+        // Track 2e: the celebrate `RunOne` (a piglin look, a short stroll
+        // or `DoNothing(10, 20)`) is a movement `RunOne`.
         const CELEBRATE: &[Setter] = &[
             Setter::Direct { sel: Sel::LovedItemPlayer, range: 14.0 },
-            Setter::RunOne { options: CELEBRATE_LOOKS, nothing: (2, 10, 20) },
+            Setter::Move(super::brain_walk::Movement::PiglinCelebrate),
         ];
         const RIDE: &[Setter] = &[
             Setter::Direct { sel: Sel::LovedItemPlayer, range: 8.0 },
@@ -1248,6 +1414,7 @@ impl Mob {
                 }
             }
             Setter::Interact { range } => self.set_look_and_interact(world, ctx, range),
+            Setter::Move(m) => self.brain_movement(world, ctx, rng, m),
             Setter::Shuffled { options, nothing } => {
                 if self.riding.is_none() {
                     return;
@@ -1364,6 +1531,11 @@ impl Mob {
                 let keep_pitch = match self.kind {
                     MobKind::Frog => self.frog.as_ref().is_some_and(|f| f.tongue.is_some()),
                     MobKind::Bee => self.bee.is_some_and(|b| b.pollinating()),
+                    // `FoxLookControl.resetXRotOnTick` (Track 2e): not while
+                    // pouncing, crouching, interested or faceplanted.
+                    MobKind::Fox => {
+                        self.fox.as_ref().is_some_and(|s| s.pouncing || s.crouching || s.interested || s.faceplanted)
+                    }
                     _ => false,
                 };
                 if !keep_pitch {
@@ -1552,7 +1724,10 @@ impl crate::entity::Entities {
                     let b = &self.mobs[j];
                     let at = b.look_eye();
                     if line_of_sight(world, eye, at) {
-                        seen.push(Seen { uid: b.uid, kind: b.kind, eye: at, pos: b.pos });
+                        let breedable = b.kind == MobKind::Villager
+                            && b.age == 0
+                            && b.villager.as_ref().is_some_and(|v| !v.sleeping && v.food_points() >= 12);
+                        seen.push(Seen { uid: b.uid, kind: b.kind, eye: at, pos: b.pos, breedable });
                     }
                 }
                 self.mobs[i].head.seen = seen;
@@ -1591,6 +1766,32 @@ impl crate::entity::Entities {
             }
             h.target = target;
             h.running = running;
+            // Track 2e: a walk target on a mob follows its feet; a gone one
+            // is erased.
+            use super::brain_walk::WalkTo;
+            if let Some(w) = self.mobs[i].walking.walk
+                && let WalkTo::Mob(uid, _) = w.to
+            {
+                self.mobs[i].walking.walk = match by_uid.get(&uid) {
+                    Some(&j) if self.mobs[j].alive() => {
+                        let to = WalkTo::Mob(uid, self.mobs[j].pos);
+                        Some(super::brain_walk::Walk { to, ..w })
+                    }
+                    _ => None,
+                };
+            }
+            // `VillageBoundRandomStroll`'s village test, every sensor scan.
+            let m = &self.mobs[i];
+            if m.kind == MobKind::Villager
+                && (m.head.ticks.wrapping_add(m.uid).is_multiple_of(SENSE_RATE) || m.head.ticks == 0)
+            {
+                let at = m.pos.floor().as_ivec3();
+                let in_village = self.raids.villages.is_village(at);
+                let toward = if in_village { None } else { self.raids.villages.toward_village(at) };
+                let w = &mut self.mobs[i].walking;
+                w.in_village = in_village;
+                w.toward_village = toward;
+            }
         }
     }
 }

@@ -110,6 +110,17 @@ impl State {
         self.elapsed = 0;
         self.duration = duration;
     }
+    /// v1.0 gap Track 2e: the idle `RunOne` starts `Scenting` or
+    /// `Sniffing` (`transitionTo`) for `duration` ticks.
+    pub(crate) fn start(&mut self, pose: u8, duration: u16) {
+        self.switch(pose, duration);
+    }
+
+    /// A scent or sniff stopped before its time (`transitionTo(IDLING)`).
+    pub(crate) fn stop_early(&mut self) {
+        self.switch(IDLE, 100);
+    }
+
     pub(super) fn look(&self) -> Value {
         json!({"pose":self.pose,"elapsed":self.elapsed})
     }
@@ -314,13 +325,9 @@ impl Entities {
                     continue;
                 }
                 match s.pose {
-                    IDLE if s.cooldown == 0 => {
-                        if self.rng.next_int(2) == 0 {
-                            s.switch(SCENTING, 40 + self.rng.next_int(41) as u16);
-                        } else {
-                            s.switch(SNIFFING, 40 + self.rng.next_int(41) as u16);
-                        }
-                    }
+                    // v1.0 gap Track 2e: the brain's idle `RunOne`
+                    // (`mob::brain_walk`) starts the scent and the sniff.
+                    IDLE => {}
                     SCENTING => s.switch(IDLE, 100),
                     SNIFFING => {
                         // Sniffer.calculateDigPosition: five LandRandomPos attempts,

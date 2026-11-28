@@ -902,6 +902,18 @@ impl Entities {
                     v.set_profession(prof);
                 }
             }
+            // v1.0 gap Track 2e: `NearestBedSensor` (babies' `NEAREST_BED`
+            // for `JumpOnBed`): the closest bed within 48 blocks.
+            if m.age < 0 {
+                let mut best: Option<(f64, IVec3)> = None;
+                world.village_pois(&mut |p, b| {
+                    let d = m.pos.distance_squared(p.as_dvec3() + 0.5);
+                    if b.is_bed() && d <= 48.0 * 48.0 && best.is_none_or(|(e, _)| d < e) {
+                        best = Some((d, p));
+                    }
+                });
+                m.walking.nearest_bed = best.map(|(_, p)| p);
+            }
             let activity = schedule_activity(tick, m.age < 0);
             v.activity = activity;
             v.fleeing = threat.is_some();
