@@ -147,7 +147,6 @@ pub(super) fn mob(
     size: f32,
     offset_y: f32,
     mouse: (f32, f32),
-    time: f32,
 ) {
     use crate::entity::model::{EntityMesh, build};
     let (yaw, _, _, tilt) = angles(bounds, mouse);
@@ -158,7 +157,8 @@ pub(super) fn mob(
     // Vertices come relative to the mob's feet, in blocks.
     let mut mesh = EntityMesh::flat();
     let forward = glam::Vec3::new(m.yaw.cos(), 0.0, m.yaw.sin());
-    build(std::slice::from_ref(m), m.pos, forward, 64.0, time, 1.0, &mut mesh);
+    // v1.0 gap Track 7b: the mob animates on its own clock (`tickCount`).
+    build(std::slice::from_ref(m), m.pos, forward, 64.0, 1.0, &mut mesh);
     // Its front toward the viewer (+z), then the pointer's turn and tilt
     // about its middle.
     let face = glam::Quat::from_rotation_arc(forward, Vec3::Z);

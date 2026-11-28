@@ -2788,6 +2788,31 @@ mod tests {
         assert!(out.iter().all(|v| matches!(v.torch[1], 0 | PATTERN_MATERIAL)), "no armor on a pig");
     }
 
+    /// v1.0 gap Track 7b: humanoids hold their weapon in their own right
+    /// hand: the weapon arm (part 4, which `draw_held` grips) and the right
+    /// leg (part 2) are on -X, the mob's right, as Java's are.
+    #[test]
+    fn humanoids_hold_with_their_right_hands() {
+        for kind in [
+            MobKind::Zombie,
+            MobKind::Drowned,
+            MobKind::Skeleton,
+            MobKind::WitherSkeleton,
+            MobKind::Stray,
+            MobKind::Pillager,
+            MobKind::Vindicator,
+            MobKind::Piglin,
+            MobKind::PiglinBrute,
+            MobKind::ZombifiedPiglin,
+            MobKind::Enderman,
+        ] {
+            let m = Mob::new(kind, DVec3::ZERO, 0.0);
+            let p = pose(&m, 0.0, 1.0);
+            assert!(p[4].pivot.x < 0.0 && p[3].pivot.x > 0.0, "{kind:?} arms");
+            assert!(p[2].pivot.x < 0.0 && p[1].pivot.x > 0.0, "{kind:?} legs");
+        }
+    }
+
     #[test]
     fn models_face_their_yaw_and_stand_on_the_ground() {
         for kind in MobKind::ALL {
