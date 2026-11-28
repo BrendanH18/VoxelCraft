@@ -9398,6 +9398,64 @@
    "args": [
     "--still-mobs"
    ]
+  },
+  {
+   "name": "mobs-nautilus-swim",
+   "group": "mobs",
+   "description": "v1.0 gap Track 7d: seen from inside a glass-roofed stone tank at noon, three nautiluses and two zombie nautiluses swimming freely (not pinned, so they turn their sides to the camera; their places vary from run to run)",
+   "pose": [
+    0.5,
+    148.2,
+    12.5,
+    90,
+    -4
+   ],
+   "hud": false,
+   "wait": 4.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "fill": [
+    [
+     -8,
+     144,
+     10,
+     8,
+     150,
+     28,
+     "stone"
+    ],
+    [
+     -8,
+     151,
+     10,
+     8,
+     151,
+     28,
+     "glass"
+    ],
+    [
+     -7,
+     145,
+     11,
+     7,
+     150,
+     27,
+     "water"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "nautilus,-3,147,17",
+    "nautilus,0,147,19",
+    "nautilus,3,147,17",
+    "zombie_nautilus,-2,147,22",
+    "zombie_nautilus,2,147,22"
+   ],
+   "args": []
   }
  ]
 }
