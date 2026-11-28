@@ -1157,7 +1157,8 @@ mod tests {
     }
 
     /// v1.0 final track F3: full cubes with Java's random variants carry
-    /// their group in word 1 and still merge; their neighbours of another
+    /// their group in word 1 and still merge (a top face runs x along v);
+    /// their neighbours of another
     /// group (or none) don't merge with them.
     #[test]
     fn variant_groups_ride_on_normal_quads_and_keep_merging() {
@@ -1170,7 +1171,7 @@ mod tests {
             .quads
             .iter()
             .filter(|q| (q[0] >> 18) & 7 == 2)
-            .map(|q| (q[0] & 63, ((q[0] >> 21) & 31) + 1, (q[1] >> WORD_GROUP_SHIFT) & 3))
+            .map(|q| (q[0] & 63, ((q[0] >> 26) & 31) + 1, (q[1] >> WORD_GROUP_SHIFT) & 3))
             .collect();
         let mut tops = tops;
         tops.sort();
