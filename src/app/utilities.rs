@@ -86,6 +86,7 @@ impl Game {
                     return crate::render::BlockModel {
                         patterns: None,
                         lid: None,
+                        swing: None,
                         min: centre,
                         size: 0.5,
                         block: voxelcraft::world::block::Block::AIR,
@@ -119,6 +120,7 @@ impl Game {
                     return crate::render::BlockModel {
                         patterns: None,
                         lid: None,
+                        swing: None,
                         min: DVec3::ZERO,
                         size: 1.0,
                         block,
@@ -142,6 +144,7 @@ impl Game {
                 crate::render::BlockModel {
                     patterns: None,
                     lid: None,
+                    swing: None,
                     min: centre - DVec3::splat(size / 2.0),
                     size: size as f32,
                     block: voxelcraft::world::block::Block::AIR,

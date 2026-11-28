@@ -1172,6 +1172,12 @@ impl PlayerSession {
             && (held.is_none() || world.redstone_usable(pos))
             && world.use_redstone_by(pos, source)
         {
+            // v1.0 final track F3: the bell shakes from the face struck.
+            if world.get_block(pos).is_some_and(|b| b.base() == Block::BELL)
+                && let Some(face) = world.bell_hit_face(pos, self.player.eye(), self.player.forward().as_dvec3())
+            {
+                world.shake_bell(pos, face);
+            }
             return Ok(Some(Used::Redstone { cell: pos }));
         }
         world.touch_redstone_ore(pos);

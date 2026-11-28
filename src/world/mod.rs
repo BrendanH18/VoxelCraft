@@ -518,6 +518,8 @@ pub struct World {
     pub records_started: Vec<(IVec3, usize)>,
     compost_sequence: u64,
     bell_rings: Vec<IVec3>,
+    /// v1.0 final track F3: bells shaking after a ring (`world::bell`).
+    bell_shakes: rustc_hash::FxHashMap<IVec3, bell::Shake>,
     /// Whether it's raining (set by the game each frame).
     pub raining: bool,
     pub mesh_uploads: Vec<(IVec3, MeshData)>,
@@ -920,6 +922,7 @@ impl World {
             records_started: Vec::new(),
             compost_sequence: 0,
             bell_rings: Vec::new(),
+            bell_shakes: Default::default(),
             raining: false,
             mesh_uploads: Vec::new(),
             mesh_removals: Vec::new(),
@@ -1548,7 +1551,8 @@ impl World {
             sky: std::array::from_fn(|i| slots[i].and_then(|s| s.sky_light.clone())),
         };
         let foliage = cols[4].and_then(|c| c.foliage.clone()).unwrap_or_else(|| Box::new([0; CHUNK_SIZE * CHUNK_SIZE]));
-        let models = self.lidded_in_chunk(pos).into_iter().map(local_of).collect();
+        let models =
+            self.lidded_in_chunk(pos).into_iter().chain(self.shaking_bells_in_chunk(pos)).map(local_of).collect();
         Box::new(MeshInput {
             neighbors,
             light: Box::new([0; REGION_VOLUME]),

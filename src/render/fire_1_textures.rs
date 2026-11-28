@@ -50,7 +50,8 @@ pub(super) fn packed(index: u16, x: usize, y: usize) -> Rgba {
 /// A packed byte's colour (sRGB) as the shaders decode it: fire's or soul
 /// fire's, the same ramps as `fire_0` and `soul_fire_0`; `None` where
 /// see-through.
-pub(crate) fn color(byte: u8, soul: bool) -> Option<[u8; 3]> {
+#[cfg(test)]
+fn color(byte: u8, soul: bool) -> Option<[u8; 3]> {
     if byte < 128 {
         return None;
     }
@@ -102,8 +103,22 @@ mod tests {
         assert!((0..frames).all(|f| (0..SIZE).all(|x| heat(f, x, SIZE - 1).is_some())));
     }
 
+    /// Both shaders decode with the same threshold and ramps as [`color`].
     #[test]
     fn decoded_colours_follow_the_fire_ramps() {
+        for shader in [include_str!("shaders/chunk.wgsl"), include_str!("shaders/entity.wgsl")] {
+            for text in [
+                "if e < 127.5",
+                "(round(e) - 128.0) / 127.0",
+                "vec3<f32>(255.0, 75.0 + 180.0 * h, 15.0 + 105.0 * h * h)",
+            ] {
+                assert!(shader.contains(text), "{text}");
+            }
+        }
+        assert!(
+            include_str!("shaders/chunk.wgsl")
+                .contains("vec3<f32>(40.0 + 120.0 * h * h, 170.0 + 85.0 * h, 215.0 + 40.0 * h)")
+        );
         assert_eq!(color(0, false), None);
         assert_eq!(color(127, true), None);
         assert_eq!(color(128, false), Some([255, 75, 15]));

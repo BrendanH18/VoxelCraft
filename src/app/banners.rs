@@ -38,6 +38,7 @@ impl Game {
                     transform: None,
                     patterns: self.world.banner_entity(cell).and_then(|e| e.patterns),
                     lid: None,
+                    swing: None,
                 }
             })
             .collect()

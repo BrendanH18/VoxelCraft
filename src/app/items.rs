@@ -305,6 +305,7 @@ impl Game {
             out.push(BlockModel {
                 patterns: None,
                 lid: None,
+                swing: None,
                 min,
                 size: if mesh.is_some() { 1.0 } else { size as f32 },
                 block: block.unwrap_or(Block::AIR),
