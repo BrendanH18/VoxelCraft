@@ -90,6 +90,7 @@ impl Entities {
         self.armadillo_upkeep(dt, world, ctx, &mut events);
         self.ocelot_upkeep(dt, ctx);
         self.fox_upkeep(ctx);
+        self.fox_village_stroll(world, ctx);
         self.tick_allays(dt, world, ctx, &mut events);
         self.tick_animals(dt as f32, world, ctx, &mut events);
         self.tick_leashes(dt as f32, world, ctx);
@@ -618,6 +619,10 @@ impl Entities {
                 EntityEvent::OwnerHurt { player, attacker } => {
                     // Java's OwnerHurtByTargetGoal: wolves go for whatever hurt their owner.
                     self.animals_defend_owner(attacker, player);
+                    // v1.0 gap Track 2f: the player's `lastHurtByMob`, which
+                    // foxes that trust it defend against.
+                    self.player_hurts = self.player_hurts.wrapping_add(1);
+                    self.player_hurt_by.insert(player, (attacker, self.player_hurts, 0));
                 }
                 EntityEvent::DragonXp { pos, points } => {
                     if self.mob_loot {

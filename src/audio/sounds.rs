@@ -268,6 +268,9 @@ pub enum Sound {
     Mount(crate::entity::mounts::Cue),
     /// v1.0 gap Track 5c: the Nether portal's own sounds (`block.portal.*`).
     Portal(PortalCue),
+    /// v1.0 gap Track 2f: the fox's own sounds (`entity.fox.*` beyond its
+    /// ambient, hurt and death calls).
+    Fox(crate::entity::fox::Cue),
 }
 
 /// v1.0 gap Track 5c: Java's `PORTAL_AMBIENT`, `PORTAL_TRIGGER` and
@@ -376,7 +379,8 @@ impl Sound {
     const SOUL_ESCAPE_END: usize = Self::CONTAINER_END + 1;
     const BUNDLE_END: usize = Self::SOUL_ESCAPE_END + voxelcraft::content::bundle::Cue::ALL.len();
     const MOUNT_END: usize = Self::BUNDLE_END + crate::entity::mounts::Cue::ALL.len();
-    pub const COUNT: usize = Self::MOUNT_END + PortalCue::ALL.len();
+    const PORTAL_END: usize = Self::MOUNT_END + PortalCue::ALL.len();
+    pub const COUNT: usize = Self::PORTAL_END + crate::entity::fox::Cue::ALL.len();
 
     /// Dense index in `0..COUNT`.
     pub fn key(self) -> usize {
@@ -406,6 +410,7 @@ impl Sound {
             Sound::Bundle(cue) => Self::SOUL_ESCAPE_END + cue as usize,
             Sound::Mount(cue) => Self::BUNDLE_END + cue as usize,
             Sound::Portal(cue) => Self::MOUNT_END + cue as usize,
+            Sound::Fox(cue) => Self::PORTAL_END + cue as usize,
             Sound::Note(i) => 3 * M + 27 + Voice::ALL.len() * CALLS + i as usize,
             Sound::Thunder => Self::BASE_COUNT - 1,
             Sound::Bell => Self::BASE_COUNT - 4,
@@ -541,6 +546,7 @@ impl Sound {
             .chain(voxelcraft::content::bundle::Cue::ALL.map(Sound::Bundle))
             .chain(crate::entity::mounts::Cue::ALL.map(Sound::Mount))
             .chain(PortalCue::ALL.map(Sound::Portal))
+            .chain(crate::entity::fox::Cue::ALL.map(Sound::Fox))
     }
 
     /// Stable sound name used when exporting or identifying samples.
@@ -569,6 +575,7 @@ impl Sound {
             Sound::Bundle(c) => c.event().replace('.', "_"),
             Sound::Mount(c) => c.key().replace('.', "_"),
             Sound::Portal(c) => c.event().replace('.', "_"),
+            Sound::Fox(c) => c.key().replace('.', "_"),
             Sound::Thunder => "lightning_thunder".into(),
             Sound::HoneySlide => "honey_block_slide".into(),
             Sound::HoneyDrink => "honey_drink".into(),
@@ -726,6 +733,8 @@ impl Sound {
             // (`AMBIENT`, not positioned).
             Sound::Portal(PortalCue::Ambient) => SoundSource::Blocks,
             Sound::Portal(_) => SoundSource::Ambient,
+            // `Fox.playSound`: the fox's own category (`NEUTRAL`).
+            Sound::Fox(_) => SoundSource::Neutral,
             Sound::Mob(voice, _) => voice.source(),
         }
     }
@@ -753,6 +762,7 @@ impl Sound {
             Sound::Bundle(_) => 2,
             Sound::Mount(_) => 2,
             Sound::Portal(_) => 1,
+            Sound::Fox(_) => 2,
             Sound::Warden(_) | Sound::Sculk(_) => 2,
             Sound::Sniffer(_) | Sound::Weapon(_) => 2,
             Sound::Step(_) => 4,
@@ -815,6 +825,7 @@ impl Sound {
             Sound::Bundle(c) => super::bundle::render(c, &mut rng),
             Sound::Mount(c) => super::mounts::render(c, &mut rng),
             Sound::Portal(c) => portal(c, &mut rng),
+            Sound::Fox(c) => super::fox::render(c, &mut rng),
             Sound::Thunder => thunder(&mut rng),
             Sound::HoneySlide => honey_sound(&mut rng, 0.35),
             Sound::HoneyDrink => honey_sound(&mut rng, 0.22),

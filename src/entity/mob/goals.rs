@@ -711,8 +711,11 @@ impl Mob {
                     && self.panda_breed_allowed(world)
             }
             G::Tempt => self.find_tempter(ctx),
+            // v1.0 gap Track 2f: `FoxFollowParentGoal`: not while defending.
             G::FollowParent => {
-                self.age < 0 && self.goals.adult.is_some_and(|(_, at)| at.distance_squared(self.pos) >= 9.0)
+                self.age < 0
+                    && !self.fox.as_ref().is_some_and(|s| s.defending)
+                    && self.goals.adult.is_some_and(|(_, at)| at.distance_squared(self.pos) >= 9.0)
             }
             G::FollowAdult => {
                 self.age < 0
@@ -740,6 +743,7 @@ impl Mob {
             G::Tempt => self.find_tempter(ctx),
             G::FollowParent => {
                 self.age < 0
+                    && !self.fox.as_ref().is_some_and(|s| s.defending)
                     && self.goals.parent.is_some_and(|(_, at)| {
                         let d = at.distance_squared(self.pos);
                         (9.0..=256.0).contains(&d)
@@ -992,8 +996,10 @@ impl Mob {
             // `CatAvoidEntityGoal` and `WolfAvoidEntityGoal`: untamed only.
             (MobKind::Cat | MobKind::Wolf, _) => !tame,
             (MobKind::Ocelot, _) => !self.ocelot.as_ref().is_some_and(|s| s.trusting),
-            // Foxes asleep don't flee.
-            (MobKind::Fox, _) => !self.animal.as_ref().is_some_and(|s| s.sleeping),
+            // Foxes asleep don't flee; nor (v1.0 gap Track 2f) defending ones.
+            (MobKind::Fox, _) => {
+                !self.animal.as_ref().is_some_and(|s| s.sleeping) && !self.fox.as_ref().is_some_and(|s| s.defending)
+            }
             // `TradeWithPlayerGoal` shares priority 1 and was registered first.
             (MobKind::WanderingTrader, _) => !self.villager.as_ref().is_some_and(|v| v.trading || v.sleeping),
             _ => true,

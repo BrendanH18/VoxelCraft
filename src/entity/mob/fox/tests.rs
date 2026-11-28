@@ -62,7 +62,7 @@ fn a_pounce_landing_in_snow_faceplants_the_fox_for_forty_ticks() {
     let mut planted = 0;
     for tick in 0..60 {
         let full = tick % 2 == 0;
-        m.fox_pre_think(&w, full, &mut events);
+        m.fox_pre_think(&w, &mut Rng::new(tick), full, &mut events);
         if m.fox.as_ref().unwrap().faceplanted {
             planted += 1;
         }

@@ -46,7 +46,7 @@ may bring a gift after their owner sleeps through the night.
 Parrots imitate nearby hostile calls and perch on an owner's free shoulder;
 jumping or entering water releases them. Cookies kill parrots. Foxes sleep
 by day under cover, hunt, pick up ground items and eat carried food
-([below](#foxes-v10-gap-track-2e-implemented-unverified)); bred foxes trust
+([below](#foxes-v10-gap-tracks-2e-and-2f-implemented-unverified)); bred foxes trust
 the two players who fed their parents. Rabbits hop and drop rabbit meat/hide, with a
 10% rabbit-foot chance on a player kill. Goats jump, charge stationary players
 and lose one of their two horns when a ram hits stone, logs, packed ice, or
@@ -66,7 +66,7 @@ Sources: [Wolf](https://minecraft.wiki/w/Wolf), [Cat](https://minecraft.wiki/w/C
 [Parrot](https://minecraft.wiki/w/Parrot), [Fox](https://minecraft.wiki/w/Fox),
 [Rabbit](https://minecraft.wiki/w/Rabbit), [Goat](https://minecraft.wiki/w/Goat).
 
-## Foxes (v1.0 gap Track 2e, implemented, unverified)
+## Foxes (v1.0 gap Tracks 2e and 2f, implemented, unverified)
 
 Java 26.3's `Fox` goals, from the
 [Track 2e record](verification/2026-11-27-v1.0-gap-track-02e-behaviours.md)
@@ -85,6 +85,18 @@ berry bushes and glow berries within 12 blocks and, with `mobGriefing`,
 picks them, keeping one in its mouth. It doesn't look at players while
 faceplanted or interested, and keeps its head's pitch while crouching or
 pouncing. Sleeping, sitting and crouching are saved.
+
+Since [Track 2f](verification/2026-11-28-v1.0-gap-track-02f-behaviours.md):
+a fox goes for the mob that last hurt the first player it trusts who is in
+the world (`DefendTrustedTargetGoal`, before its prey), with an aggro call
+when it starts and now and then after; while defending it doesn't flee,
+panic or follow its parent. At night within six sections of a village it
+sometimes strolls toward the village (`FoxStrollThroughVillageGoal`).
+Thunder wakes it, and in a storm under open sky it looks for cover at once.
+It has its own bite, sniff (on the way to berries), spit (dropping what it
+held for food), chewing, sleeping and night screech sounds, and a
+faceplanted fox kicks up the snow it is in. The aggro, bite, eat, screech,
+sleep, sniff and spit sounds are original procedural stand-ins.
 
 ## Leads and name tags
 

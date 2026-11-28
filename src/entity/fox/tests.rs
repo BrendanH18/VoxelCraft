@@ -200,3 +200,124 @@ fn foxes_eat_sweet_berries_from_ripe_bushes() {
     assert!(picked, "the fox never picked the bush");
     assert_eq!(e.mobs[0].animal.as_ref().unwrap().mouth.map(|s| s.item), Some(Item::SWEET_BERRIES));
 }
+
+/// v1.0 gap Track 2f: `DefendTrustedTargetGoal` (target priority 3): a fox
+/// that trusts a player goes for the mob that hurt it (over prey), with the
+/// aggro call, defending (no fleeing or panicking), awake; a hurt it
+/// answered doesn't start it again, and losing the target ends the defence.
+#[test]
+fn foxes_defend_a_trusted_player_from_its_attacker() {
+    use crate::entity::{MobSound, PlayerId, Target};
+    let mut e = Entities::new(5);
+    let f = fox(&mut e, DVec3::new(0.5, 64.0, 0.5));
+    e.spawn(MobKind::Zombie, DVec3::new(6.5, 64.0, 0.5));
+    e.spawn(MobKind::Chicken, DVec3::new(3.5, 64.0, 0.5));
+    e.ensure_mob_ids();
+    let zombie = e.mobs[1].uid;
+    e.mobs[f].animal.as_mut().unwrap().trusted = [Some(PlayerId(1)), None];
+    e.mobs[f].animal.as_mut().unwrap().sleeping = true;
+    let mut c = ctx(0.0);
+    c.players.push(Target::new(PlayerId(1), DVec3::new(8.5, 64.0, 0.5), true));
+    e.player_hurt_by.insert(PlayerId(1), (zombie, 1, 0));
+    for _ in 0..60 {
+        e.fox_upkeep(&c);
+        e.mobs[f].goals.ticks = e.mobs[f].goals.ticks.wrapping_add(1);
+        if e.mobs[f].fox.as_ref().unwrap().defending {
+            break;
+        }
+    }
+    let s = e.mobs[f].fox.as_ref().unwrap();
+    let t = s.target.expect("the attacker is its target");
+    assert_eq!((t.uid, t.hunt, t.priority), (zombie, Hunt::Defend, 3));
+    assert!(s.defending && !e.mobs[f].animal.as_ref().unwrap().sleeping);
+    assert!(
+        e.pending_sounds
+            .iter()
+            .any(|ev| matches!(ev, crate::entity::EntityEvent::Sound { sound: MobSound::Fox(Cue::Aggro), .. }))
+    );
+    // The attacker gone, the defence ends; the same hurt doesn't restart it.
+    e.mobs[1].health = 0.0;
+    e.mobs[1].dying = Some(0.0);
+    for _ in 0..60 {
+        e.fox_upkeep(&c);
+        e.mobs[f].goals.ticks = e.mobs[f].goals.ticks.wrapping_add(1);
+    }
+    let s = e.mobs[f].fox.as_ref().unwrap();
+    assert!(!s.defending);
+    assert!(s.target.is_none_or(|t| t.hunt != Hunt::Defend));
+}
+
+/// v1.0 gap Track 2f: thunder wakes a fox (`Fox.tick`), and under open sky
+/// in a storm `SeekShelterGoal` looks for cover at once.
+#[test]
+fn thunder_wakes_foxes_and_sends_them_for_cover() {
+    let w = Field { grid: Grid::flat(64), open: false };
+    let mut e = Entities::new(5);
+    let f = fox(&mut e, DVec3::new(0.5, 64.0, 0.5));
+    e.mobs[f].animal.as_mut().unwrap().sleeping = true;
+    e.thundering = true;
+    e.fox_upkeep(&ctx(1.0));
+    let mut events = Vec::new();
+    let mut rng = crate::entity::Rng::new(1);
+    e.mobs[f].fox_pre_think(&w, &mut rng, true, &mut events);
+    assert!(!e.mobs[f].animal.as_ref().unwrap().sleeping);
+    assert!(e.mobs[f].fox.as_ref().unwrap().thundering);
+}
+
+/// v1.0 gap Track 2f: the fox's ambient calls: a sleeping fox's breathing;
+/// at night, with no player within 16, a screech one call in ten.
+#[test]
+fn foxes_breathe_asleep_and_screech_at_night() {
+    use crate::entity::{MobSound, PlayerId, Target};
+    let mut e = Entities::new(5);
+    let f = fox(&mut e, DVec3::new(0.5, 64.0, 0.5));
+    let mut rng = crate::entity::Rng::new(3);
+    let m = &mut e.mobs[f];
+    let night = ctx(0.0);
+    let screeches = (0..400).filter(|_| m.fox_ambient(&night, &mut rng) == Some(MobSound::Fox(Cue::Screech))).count();
+    assert!((15..=70).contains(&screeches), "{screeches}");
+    assert_eq!(m.fox_ambient(&ctx(1.0), &mut rng), None);
+    let mut near = ctx(0.0);
+    near.players.push(Target::new(PlayerId(1), DVec3::new(10.5, 64.0, 0.5), true));
+    assert!((0..200).all(|_| m.fox_ambient(&near, &mut rng).is_none()));
+    m.animal.as_mut().unwrap().sleeping = true;
+    assert_eq!(m.fox_ambient(&night, &mut rng), Some(MobSound::Fox(Cue::Sleep)));
+}
+
+/// v1.0 gap Track 2f: a faceplanted fox kicks up the block it is in (level
+/// event 2001) about one tick in five.
+#[test]
+fn faceplanted_foxes_kick_up_the_snow() {
+    let w = Field { grid: Grid::flat(64), open: true };
+    let mut e = Entities::new(5);
+    let f = fox(&mut e, DVec3::new(0.5, 64.0, 0.5));
+    let mut rng = crate::entity::Rng::new(5);
+    let mut kicks = 0;
+    for _ in 0..100 {
+        e.mobs[f].fox.as_mut().unwrap().faceplanted = true;
+        let mut events = Vec::new();
+        e.mobs[f].fox_pre_think(&w, &mut rng, false, &mut events);
+        kicks += events
+            .iter()
+            .filter(
+                |ev| matches!(ev, crate::entity::EntityEvent::DestroyEffect { cell } if *cell == IVec3::new(0, 64, 0)),
+            )
+            .count();
+    }
+    assert!((8..=35).contains(&kicks), "{kicks}");
+}
+
+/// v1.0 gap Track 2f: `Goat.getDefaultDimensions` in `Pose.LONG_JUMPING`:
+/// the box scaled by 0.7, adult or baby.
+#[test]
+fn long_jumping_goats_take_seven_tenths_of_their_box() {
+    let mut e = Entities::new(5);
+    e.spawn(MobKind::Goat, DVec3::new(0.5, 64.0, 0.5));
+    let g = &mut e.mobs[0];
+    let standing = g.shape();
+    g.animal.as_mut().unwrap().long_jumping = true;
+    assert!(g.goat_long_jumping());
+    let jumping = g.shape();
+    assert!((jumping.half_width - standing.half_width * 0.7).abs() < 1e-9);
+    assert!((jumping.height - standing.height * 0.7).abs() < 1e-9);
+}

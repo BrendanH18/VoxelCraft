@@ -262,6 +262,8 @@ fn villagers_mostly_look_at_cats() {
             eye: cat.look_eye() + DVec3::X * 2.0,
             pos: DVec3::new(2.5, 64.0, 0.5),
             breedable: false,
+            baby: false,
+            chasing: None,
         }];
         let mut ticks = 0;
         while v.head.target.is_none() && ticks < 200 {

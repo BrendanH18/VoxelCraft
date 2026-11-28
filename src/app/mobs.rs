@@ -732,6 +732,18 @@ impl Game {
                         MobSound::SulfurCube(cue) => (Sound::SulfurCube(cue), 0.8),
                         // v1.0 gap Track 3b: `makeSound` at volume 1.
                         MobSound::Mount(cue) => (Sound::Mount(cue), 1.0),
+                        // v1.0 gap Track 2f: the fox's own sounds; its night
+                        // screech plays at volume 2.
+                        MobSound::Fox(cue) => {
+                            use voxelcraft::entity::fox::Cue;
+                            let ambient = 0.7 * mob_volume(MobKind::Fox);
+                            let volume = match cue {
+                                Cue::Sleep => ambient,
+                                Cue::Screech => 2.0 * ambient,
+                                _ => 1.0,
+                            };
+                            (Sound::Fox(cue), volume)
+                        }
                         MobSound::CopperGolem(action, stage) => (Sound::CopperGolem(action, stage), 0.7),
                         MobSound::Hurt(MobKind::CopperGolem) => {
                             (Sound::CopperGolem(voxelcraft::entity::copper_golem::Sound::Hurt, 0), 0.9)
@@ -852,6 +864,13 @@ impl Game {
                 }
                 EntityEvent::BreakBlock { cell } => smashed.push(cell),
                 // Level event 2008 (`LevelEventHandler`): one explosion particle.
+                // v1.0 gap Track 2f: level event 2001 at a block that stays.
+                EntityEvent::DestroyEffect { cell } => {
+                    if let Some(block) = self.world.get_block(cell).filter(|&b| b != crate::world::block::Block::AIR) {
+                        self.world.particles.push(crate::particles::Request::Break { cell, block });
+                        self.audio.block_break(block, cell);
+                    }
+                }
                 EntityEvent::DragonSmashed { cell } => {
                     let pos = cell.as_dvec3() + DVec3::splat(0.5);
                     self.world.particles.push(crate::particles::Request::Explosion { pos, large: false });

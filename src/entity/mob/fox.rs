@@ -10,6 +10,11 @@
 use super::*;
 use crate::entity::fox::{Prey, Running};
 
+/// `BlockPos.closerToCenterThan(pos, d)`.
+fn closer_to_centre(block: IVec3, pos: DVec3, d: f64) -> bool {
+    (block.as_dvec3() + 0.5).distance_squared(pos) < d * d
+}
+
 /// `Mth.rotLerp`.
 fn rot_lerp(delta: f32, from: f32, to: f32) -> f32 {
     from + delta * super::head::wrap_degrees(to - from)
@@ -50,6 +55,31 @@ impl Mob {
         }
     }
 
+    /// v1.0 gap Track 2f: `Fox.getAmbientSound`'s own calls: a sleeping
+    /// fox's breathing (`FOX_SLEEP`), and at night, one call in ten with no
+    /// player within 16 blocks of its box, the screech (`FOX_SCREECH`,
+    /// played at volume 2). `None` is its usual `FOX_AMBIENT`.
+    pub(crate) fn fox_ambient(&self, ctx: &Ctx, rng: &mut Rng) -> Option<MobSound> {
+        use crate::entity::fox::Cue;
+        self.fox.as_ref()?;
+        if self.fox_asleep() {
+            return Some(MobSound::Fox(Cue::Sleep));
+        }
+        if ctx.daylight <= 0.5 && rng.next_f32() < 0.1 {
+            let (lo, hi) = self.aabb();
+            let (lo, hi) = (lo - DVec3::splat(16.0), hi + DVec3::splat(16.0));
+            let near = ctx.players.iter().any(|t| {
+                !t.spectator
+                    && t.pos.cmpge(lo - DVec3::new(0.3, 1.8, 0.3)).all()
+                    && t.pos.cmple(hi + DVec3::new(0.3, 0.0, 0.3)).all()
+            });
+            if !near {
+                return Some(MobSound::Fox(Cue::Screech));
+            }
+        }
+        None
+    }
+
     /// `Fox.clearStates`.
     pub(crate) fn fox_clear_states(&mut self) {
         if let Some(s) = &mut self.fox {
@@ -71,16 +101,28 @@ impl Mob {
 
     /// The fox's `tick`, `aiStep` and its goals that outrank the shared table
     /// (the faceplant and a running pounce), before the table runs.
-    pub(super) fn fox_pre_think<W: MobWorld + ?Sized>(
+    pub(crate) fn fox_pre_think<W: MobWorld + ?Sized>(
         &mut self,
         world: &W,
+        rng: &mut Rng,
         full: bool,
         events: &mut Vec<EntityEvent>,
     ) -> Option<(Option<DVec3>, f64)> {
         let in_water = self.in_water;
+        let at = self.pos + DVec3::Y * (self.shape().height * 0.8);
+        let cell = self.pos.floor().as_ivec3();
         let s = self.fox.as_mut()?;
         s.ticks = s.ticks.wrapping_add(1);
         s.animate();
+        // v1.0 gap Track 2f: `aiStep`: one tick in 20 a defending fox
+        // snarls; `tick`: a faceplanted one kicks up the block it is in
+        // (level event 2001) one tick in five.
+        if s.defending && rng.next_f32() < 0.05 {
+            events.push(EntityEvent::Sound { sound: MobSound::Fox(crate::entity::fox::Cue::Aggro), pos: at });
+        }
+        if s.faceplanted && rng.next_f32() < 0.2 {
+            events.push(EntityEvent::DestroyEffect { cell });
+        }
         // `aiStep`: no living target ends the crouch and the interest.
         if s.target.is_none() {
             s.crouching = false;
@@ -90,8 +132,9 @@ impl Mob {
         if in_water && s.running != Some(Running::Pounce) {
             s.clear();
         }
-        // `tick`: water or a target wakes it; water or sleep ends sitting.
-        let woken = in_water || s.target.is_some();
+        // `tick`: water, a target or thunder wakes it; water or sleep ends
+        // sitting.
+        let woken = in_water || s.target.is_some() || s.thundering;
         if woken {
             self.set_fox_asleep(false);
         }
@@ -243,15 +286,20 @@ impl Mob {
                     return None;
                 }
                 let s = self.fox.as_mut().unwrap();
-                let interval = s.shelter_interval.get_or_insert(selector::reduced(100));
-                if *interval > 0 {
-                    *interval -= 1;
-                    return None;
-                }
-                *interval = 100;
                 let here = self.pos.floor().as_ivec3();
-                if ctx.daylight <= 0.5 || !world.exposed(here) || s.in_village {
-                    return None;
+                // v1.0 gap Track 2f: under open sky in a thunderstorm it
+                // looks for shelter at once, without the interval.
+                let storm = s.thundering && world.exposed(here);
+                if !storm {
+                    let interval = s.shelter_interval.get_or_insert(selector::reduced(100));
+                    if *interval > 0 {
+                        *interval -= 1;
+                        return None;
+                    }
+                    *interval = 100;
+                    if ctx.daylight <= 0.5 || !world.exposed(here) || s.in_village {
+                        return None;
+                    }
                 }
                 // `FleeSunGoal.getHidePos`: ten tries for a dark spot under cover.
                 for _ in 0..10 {
@@ -289,6 +337,14 @@ impl Mob {
                     return None;
                 }
                 (self.fox_can_sleep(world, ctx, rng) || asleep).then_some(Running::Sleep)
+            }
+            Candidate::VillageStroll => {
+                // `StrollThroughVillageGoal.canUse` (its roll and spot from the
+                // entity pass) and `canFoxMove`.
+                let wanted = self.fox.as_mut().unwrap().village_stroll.take()?;
+                let s = self.fox.as_ref().unwrap();
+                (!asleep && !s.sitting && !s.defending && target.is_none() && self.riding.is_none())
+                    .then_some(Running::VillageStroll { wanted })
             }
             Candidate::Berries => {
                 if asleep {
@@ -382,6 +438,12 @@ impl Mob {
                 tries >= -stay && tries <= 1200 && world.block(block).is_some_and(ripe_berries)
             }
             Running::Perch { looks, .. } => looks > 0,
+            // Java's goal ends at its next update, but leaves the path it
+            // set walking; here it holds while that path lasts.
+            Running::VillageStroll { .. } => {
+                let s = self.fox.as_ref().unwrap();
+                !self.nav.is_done() && !self.fox_asleep() && !s.sitting && !s.defending && s.target.is_none()
+            }
             Running::Faceplant { .. } | Running::Pounce => true,
         }
     }
@@ -469,6 +531,11 @@ impl Mob {
                     self.walk_to(world, at.floor().as_ivec3(), 0, speed, false);
                 }
             }
+            Running::VillageStroll { wanted } => {
+                // `start`: `clearStates`; the first `tick` sets the path.
+                self.fox_clear_states();
+                self.village_stroll_tick(world, rng, wanted);
+            }
             Running::Perch { .. } => {
                 let rel = perch_look(rng);
                 let looks = 2 + rng.next_int(3) as i32;
@@ -516,7 +583,7 @@ impl Mob {
             Running::Melee { .. } | Running::Shelter | Running::Items | Running::Berries { .. } => {
                 self.stop_navigation()
             }
-            Running::Leap => {}
+            Running::Leap | Running::VillageStroll { .. } => {}
         }
     }
 
@@ -555,6 +622,13 @@ impl Mob {
                 }
                 (self.follow_path(world, speed, true), speed)
             }
+            Running::VillageStroll { .. } => {
+                let speed = self.goal_speed(1.0);
+                match self.follow_path(world, speed, false) {
+                    Some(dir) => (Some(dir), speed),
+                    None => (None, 0.0),
+                }
+            }
             Running::Shelter | Running::Items => {
                 let speed = self.goal_speed(if r == Running::Shelter { 1.25 } else { 1.2 });
                 if r == Running::Items
@@ -580,6 +654,9 @@ impl Mob {
                 let attack = (attack - 1).max(0);
                 let attack = if attack <= 0 && sees && self.fox_in_reach(t) {
                     self.fox_bite(t, events);
+                    // v1.0 gap Track 2f: `FOX_BITE`.
+                    let at = self.pos + DVec3::Y * (self.shape().height * 0.8);
+                    events.push(EntityEvent::Sound { sound: MobSound::Fox(crate::entity::fox::Cue::Bite), pos: at });
                     20
                 } else {
                     attack
@@ -604,6 +681,10 @@ impl Mob {
                     } else {
                         waited += 1;
                     }
+                } else if rng.next_f32() < 0.05 {
+                    // v1.0 gap Track 2f: `FOX_SNIFF` on the way.
+                    let at = self.pos + DVec3::Y * (self.shape().height * 0.8);
+                    events.push(EntityEvent::Sound { sound: MobSound::Fox(crate::entity::fox::Cue::Sniff), pos: at });
                 }
                 let tries = if reached { tries - 1 } else { tries + 1 };
                 if !reached && tries % 100 == 0 {
@@ -682,6 +763,31 @@ impl Mob {
             let s = self.fox.as_mut().unwrap();
             s.target = None;
             s.faceplanted = true;
+        }
+    }
+
+    /// v1.0 gap Track 2f: `StrollThroughVillageGoal.tick`: with no path and
+    /// `wantedPos` more than 10 away, a path at speed 1 to the surface 10
+    /// blocks toward a point 60% of the way there, else to a random surface
+    /// spot within 8 (`moveRandomly`).
+    fn village_stroll_tick<W: MobWorld + ?Sized>(&mut self, world: &W, rng: &mut Rng, wanted: IVec3) {
+        if !self.nav.is_done() || closer_to_centre(wanted, self.pos, 10.0) {
+            return;
+        }
+        let speed = self.goal_speed(1.0);
+        let far = wanted.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
+        let mid = (self.pos - far) * 0.4 + far;
+        let to = (mid - self.pos).normalize_or_zero() * 10.0 + self.pos;
+        let surface = |x: i32, z: i32| world.surface(x, z).map(|y| IVec3::new(x, y + 1, z));
+        let to = to.floor().as_ivec3();
+        let reaches =
+            surface(to.x, to.z).is_some_and(|p| self.walk_to(world, p, 0, speed, false) || self.nav.path.is_some());
+        if !reaches {
+            let here = self.pos.floor().as_ivec3();
+            let (dx, dz) = (rng.next_int(16) as i32 - 8, rng.next_int(16) as i32 - 8);
+            if let Some(p) = surface(here.x + dx, here.z + dz) {
+                self.walk_to(world, p, 0, speed, false);
+            }
         }
     }
 
@@ -786,6 +892,7 @@ enum Candidate {
     Shelter,
     Melee,
     Sleep,
+    VillageStroll,
     Berries,
     Leap,
     Items,
@@ -798,6 +905,7 @@ const CANDIDATES: &[(u8, Candidate)] = &[
     (6, Candidate::Shelter),
     (7, Candidate::Melee),
     (7, Candidate::Sleep),
+    (9, Candidate::VillageStroll),
     (10, Candidate::Berries),
     (10, Candidate::Leap),
     (11, Candidate::Items),

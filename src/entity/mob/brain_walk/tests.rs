@@ -23,7 +23,7 @@ fn mob(kind: MobKind) -> Mob {
 }
 
 fn seen(uid: u32, kind: MobKind, at: DVec3) -> Seen {
-    Seen { uid, kind, eye: at + DVec3::Y, pos: at, breedable: false }
+    Seen { uid, kind, eye: at + DVec3::Y, pos: at, breedable: false, baby: false, chasing: None }
 }
 
 /// The idle `RunOne` sends a villager to a villager it sees within 8
@@ -185,4 +185,254 @@ fn baby_villagers_jump_on_beds() {
         }
     }
     assert!(jumped);
+}
+
+fn worker(job: IVec3, profession: crate::entity::villager::Profession) -> Mob {
+    let mut v = mob(MobKind::Villager);
+    let s = v.villager.as_mut().unwrap();
+    s.activity = crate::entity::villager::Activity::Work;
+    s.job = Some(job);
+    s.set_profession(profession);
+    v
+}
+
+/// v1.0 gap Track 2f: the work package. Farther than 9 blocks
+/// (`distManhattan`) from its job site, `SetWalkTargetFromBlockMemory` walks
+/// a villager back (0.5, 9 short); within 10 its `RunOne` strolls to the
+/// job site (`StrollToPoi`, 0.4, 1 short) and within 4 around it
+/// (`StrollAroundPoi`, a land spot within 8 and 6), never the old wandering.
+#[test]
+fn working_villagers_stroll_to_and_around_their_job_site() {
+    use crate::entity::villager::Profession;
+    let w = Grid::flat(64);
+    let c = ctx(&[]);
+    let job = IVec3::new(0, 64, 3);
+    let mut v = worker(job, Profession::Librarian);
+    v.pos = DVec3::new(15.5, 64.0, 3.5);
+    let mut rng = Rng::new(3);
+    v.head_goals(&w, &c, &mut rng, false);
+    assert_eq!(v.walking.walk, Some(Walk { to: WalkTo::Point(DVec3::new(0.5, 64.0, 3.5)), speed: 0.5, close: 9 }));
+    let (mut to_job, mut around) = (0, 0);
+    for seed in 0..80 {
+        let mut rng = Rng::new(seed);
+        let mut v = worker(job, Profession::Librarian);
+        v.pos = DVec3::new(if seed % 2 == 0 { 2.5 } else { 6.5 }, 64.0, 3.5);
+        for _ in 0..5 {
+            v.head_goals(&w, &c, &mut rng, false);
+        }
+        match v.walking.walk {
+            Some(Walk { to: WalkTo::Point(p), speed, close }) if p == DVec3::new(0.5, 64.0, 3.5) => {
+                assert_eq!((speed, close), (0.4, 1));
+                to_job += 1;
+            }
+            Some(Walk { to: WalkTo::Point(p), speed, close }) => {
+                assert_eq!((speed, close), (0.4, 1), "{p}");
+                assert!(seed % 2 == 0, "StrollAroundPoi only within 4 of the job site");
+                around += 1;
+            }
+            Some(other) => panic!("{other:?}"),
+            None => {}
+        }
+        assert_ne!(v.ai, Ai::Wander);
+    }
+    assert!(to_job > 0 && around > 0, "to the job site {to_job}, around it {around}");
+}
+
+/// `WorkAtPoi`: within 1.73 of its job site's centre, every 300 ticks on a
+/// coin flip, a villager works it for 60 ticks: it looks at it and the
+/// village pass restocks.
+#[test]
+fn villagers_work_their_job_site_for_sixty_ticks() {
+    use crate::entity::villager::Profession;
+    let w = Grid::flat(64);
+    let c = ctx(&[]);
+    let job = IVec3::new(1, 64, 0);
+    let mut rng = Rng::new(11);
+    let mut v = worker(job, Profession::Librarian);
+    let mut ticks = 0;
+    while !matches!(v.walking.hold, Some(Hold::Work(_))) && ticks < 400 {
+        v.head_goals(&w, &c, &mut rng, false);
+        v.walking.walk = None;
+        ticks += 1;
+    }
+    assert!(matches!(v.walking.hold, Some(Hold::Work(60))), "{:?}", v.walking.hold);
+    assert!(std::mem::take(&mut v.walking.work_due));
+    assert_eq!(v.head.target, Some(Tracked::Point(job.as_dvec3() + 0.5)));
+    let mut held = 0;
+    while matches!(v.walking.hold, Some(Hold::Work(_))) && held < 100 {
+        v.head_goals(&w, &c, &mut rng, false);
+        v.walking.walk = None;
+        held += 1;
+    }
+    assert!((59..=62).contains(&held), "{held}");
+    // Moving off the job site stops it.
+    v.walking.hold = Some(Hold::Work(30));
+    v.pos.x = 5.5;
+    v.head_goals(&w, &c, &mut rng, false);
+    assert!(!matches!(v.walking.hold, Some(Hold::Work(_))));
+}
+
+/// `HarvestFarmland`: a farmer at work with farmland near it walks to a
+/// ripe crop or empty farmland within a block of it (0.5, 1 short) and
+/// breaks the ripe crop once within 1 of its centre; `mobGriefing` off,
+/// it doesn't start.
+#[test]
+fn farmers_harvest_the_ripe_crops_around_them() {
+    use crate::entity::villager::Profession;
+    let mut w = Grid::flat(64);
+    let job = IVec3::new(4, 64, 4);
+    w.set(job, Block::COMPOSTER);
+    let ripe = IVec3::new(1, 64, 0);
+    w.set(ripe - IVec3::Y, Block::FARMLAND);
+    w.set(ripe, Block::wheat(7));
+    let c = ctx(&[]);
+    let mut harvested = false;
+    for seed in 0..40 {
+        let mut rng = Rng::new(seed);
+        let mut v = worker(job, Profession::Farmer);
+        v.pos = DVec3::new(1.5, 64.0, 0.5);
+        for _ in 0..200 {
+            v.head_goals(&w, &c, &mut rng, false);
+            if let Some(cell) = v.walking.harvest_now.take() {
+                assert_eq!(cell, ripe);
+                harvested = true;
+            }
+            if let (Some(Hold::Harvest(_)), Some(walk)) = (v.walking.hold, v.walking.walk) {
+                assert_eq!((walk.speed, walk.close), (0.5, 1));
+            }
+            // A walk the sink would finish.
+            v.walking.walk = None;
+        }
+    }
+    assert!(harvested);
+    let mut rng = Rng::new(1);
+    let mut v = worker(job, Profession::Farmer);
+    v.pos = DVec3::new(1.5, 64.0, 0.5);
+    v.griefing = false;
+    for _ in 0..200 {
+        v.head_goals(&w, &c, &mut rng, false);
+        assert!(!matches!(v.walking.hold, Some(Hold::Harvest(_))));
+        v.walking.walk = None;
+    }
+}
+
+fn baby_seen(uid: u32, at: DVec3, chasing: Option<u32>) -> Seen {
+    Seen { baby: true, chasing, ..seen(uid, MobKind::Villager, at) }
+}
+
+/// `PlayTagWithOtherKids`: with babies in sight, one tick in ten a baby
+/// chases the least-chased one (or the closest), 0.6 and 1 short, as its
+/// `INTERACTION_TARGET`; chased itself, it runs off to a spot in the
+/// village. The play `RunOne` stays off while babies are in sight.
+#[test]
+fn playing_babies_chase_each_other_and_run_off() {
+    let w = Grid::flat(64);
+    let c = ctx(&[]);
+    let baby = |seen: Vec<Seen>| {
+        let mut v = mob(MobKind::Villager);
+        v.age = -24000;
+        v.baby = true;
+        v.uid = 5;
+        v.villager.as_mut().unwrap().activity = crate::entity::villager::Activity::Play;
+        v.head.seen = seen;
+        v
+    };
+    let mut rng = Rng::new(7);
+    // 81 is chased by 82; 83 by nobody: the chase picks 81.
+    let mut v = baby(vec![
+        baby_seen(83, DVec3::new(2.5, 64.0, 0.5), None),
+        baby_seen(81, DVec3::new(4.5, 64.0, 0.5), None),
+        baby_seen(82, DVec3::new(6.5, 64.0, 0.5), Some(81)),
+    ]);
+    let mut ticks = 0;
+    while v.walking.walk.is_none() && ticks < 200 {
+        v.head_goals(&w, &c, &mut rng, false);
+        assert!(v.walking.hold.is_none(), "the play RunOne waits while babies are seen");
+        ticks += 1;
+    }
+    assert!(matches!(v.walking.walk, Some(Walk { to: WalkTo::Mob(81, _), speed: 0.6, close: 1 })));
+    assert_eq!(v.walking.interaction, Some(81));
+    assert!(matches!(v.head.target, Some(Tracked::Mob(81, _))));
+    // Chased, it runs off within the village.
+    let mut v = baby(vec![baby_seen(83, DVec3::new(2.5, 64.0, 0.5), Some(5))]);
+    v.walking.villages = vec![IVec3::new(0, 4, 0)];
+    let mut ticks = 0;
+    while v.walking.walk.is_none() && ticks < 400 {
+        v.head_goals(&w, &c, &mut rng, false);
+        ticks += 1;
+    }
+    let Some(Walk { to: WalkTo::Point(p), speed, close }) = v.walking.walk else { panic!("{:?}", v.walking.walk) };
+    assert_eq!((speed, close), (0.6, 0));
+    assert!((p - v.pos).with_y(0.0).abs().max_element() <= 21.0);
+    assert_eq!(v.walking.interaction, None);
+}
+
+/// `TradeWithVillager`: a villager whose `INTERACTION_TARGET` is a villager
+/// it sees walks to it and looks at it (0.5, 2 short), asks the sense pass
+/// to turn the partner to it too, and after its 60 ticks the gate erases
+/// the target.
+#[test]
+fn trading_villagers_walk_to_each_other() {
+    let w = Grid::flat(64);
+    let mut e = crate::entity::Entities::new(9);
+    e.spawn(MobKind::Villager, DVec3::new(0.5, 64.0, 0.5));
+    e.spawn(MobKind::Villager, DVec3::new(6.5, 64.0, 0.5));
+    e.ensure_mob_ids();
+    let (a, b) = (e.mobs[0].uid, e.mobs[1].uid);
+    let partner = e.mobs[1].pos;
+    let m = &mut e.mobs[0];
+    m.head.seen = vec![seen(b, MobKind::Villager, partner)];
+    m.walking.interaction = Some(b);
+    m.trade_gate();
+    assert!(matches!(m.walking.walk, Some(Walk { to: WalkTo::Mob(u, _), speed: 0.5, close: 2 }) if u == b));
+    assert!(matches!(m.head.target, Some(Tracked::Mob(u, _)) if u == b));
+    assert_eq!(m.walking.lock_with, Some(b));
+    e.sense_looks(&w);
+    // (The sense pass rescans what it sees; this test keeps the partner seen.)
+    e.mobs[0].head.seen = vec![seen(b, MobKind::Villager, partner)];
+    let p = &e.mobs[1];
+    assert!(matches!(p.walking.walk, Some(Walk { to: WalkTo::Mob(u, _), speed: 0.5, close: 2 }) if u == a));
+    assert!(matches!(p.head.target, Some(Tracked::Mob(u, _)) if u == a));
+    let m = &mut e.mobs[0];
+    let mut ran = 1;
+    while m.walking.interaction.is_some() && ran < 100 {
+        m.trade_gate();
+        ran += 1;
+    }
+    assert_eq!(ran, 62, "61 ticks, then it stops");
+    assert_eq!(m.walking.trading_villager, 0);
+    // A target it doesn't see is erased at once.
+    m.walking.interaction = Some(b);
+    m.head.seen.clear();
+    m.trade_gate();
+    assert_eq!(m.walking.interaction, None);
+}
+
+/// v1.0 gap Track 2f: the brute's idle movement `RunOne`: within 100 of its
+/// `HOME` it strolls back to it (`StrollToPoi`, 0.6, 2 short) among its
+/// random strolls and waits, never the old wandering.
+#[test]
+fn brutes_stroll_back_to_their_bastion_home() {
+    let w = Grid::flat(64);
+    let c = ctx(&[]);
+    let mut homeward = 0;
+    for seed in 0..40 {
+        let mut rng = Rng::new(seed);
+        let mut b = mob(MobKind::PiglinBrute);
+        b.pos = DVec3::new(20.5, 64.0, 0.5);
+        b.nether.as_mut().unwrap().home = Some(DVec3::new(0.5, 64.0, 0.5));
+        for _ in 0..10 {
+            b.head_goals(&w, &c, &mut rng, false);
+            if let Some(Walk { to: WalkTo::Point(p), speed, close }) = b.walking.walk
+                && p == DVec3::new(0.5, 64.0, 0.5)
+            {
+                assert_eq!((speed, close), (0.6, 2));
+                homeward += 1;
+                break;
+            }
+            b.walking.walk = None;
+        }
+        assert_ne!(b.ai, Ai::Wander);
+    }
+    assert!(homeward > 0);
 }

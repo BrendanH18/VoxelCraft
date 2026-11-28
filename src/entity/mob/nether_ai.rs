@@ -112,7 +112,8 @@ impl Mob {
                 // v1.0 gap Track 2e: an idle or celebrating piglin walks its
                 // movement `RunOne`'s walk targets (`MoveToTargetSink`)
                 // instead of wandering.
-                if self.kind == MobKind::Piglin {
+                // v1.0 gap Track 2f: and an idle brute its own `RunOne`'s.
+                if matches!(self.kind, MobKind::Piglin | MobKind::PiglinBrute) {
                     return Some(self.walk_sink(world, ctx, rng, (150, 250)).unwrap_or((None, 0.0)));
                 }
                 None

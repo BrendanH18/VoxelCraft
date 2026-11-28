@@ -8,8 +8,8 @@
 //! variant's priorities) and what its goals sense from the mobs around it
 //! (`FoxBehaviorGoal.alertable`, the items `FoxSearchForItemsGoal` walks to).
 //! The goals themselves are in `mob::fox`.
-use super::{Entities, Mob, MobKind};
-use glam::DVec3;
+use super::{Entities, Mob, MobKind, MobWorld};
+use glam::{DVec3, IVec3};
 use serde_json::{Value, json};
 
 /// `Fox.MAX_CROUCH_AMOUNT`.
@@ -19,9 +19,50 @@ pub const FOLLOW_RANGE: f64 = 32.0;
 /// `FoxBehaviorGoal.alertableTargeting`: 12 blocks, the box inflated 12, 6, 12.
 const ALERT_RANGE: f64 = 12.0;
 
+/// v1.0 gap Track 2f: the fox's own sounds (`SoundEvents.FOX_*` beyond
+/// its ambient, hurt and death calls), in the established procedural style.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum Cue {
+    /// `DefendTrustedTargetGoal.start`, and one tick in 20 while defending.
+    Aggro,
+    /// `FoxMeleeAttackGoal.checkAndPerformAttack`.
+    Bite,
+    /// `playEatingSound`: chewing what it holds before it eats it.
+    Eat,
+    /// The night call (`getAmbientSound`: one in ten at night with no
+    /// player within 16 blocks), at volume 2.
+    Screech,
+    /// The ambient sound of a sleeping fox.
+    Sleep,
+    /// `FoxEatBerriesGoal.tick`, on the way to the berries.
+    Sniff,
+    /// `spitOutItem`, dropping what it held for a better item.
+    Spit,
+}
+
+impl Cue {
+    pub const ALL: [Cue; 7] = [Cue::Aggro, Cue::Bite, Cue::Eat, Cue::Screech, Cue::Sleep, Cue::Sniff, Cue::Spit];
+
+    /// The Java sound event.
+    pub fn key(self) -> &'static str {
+        match self {
+            Cue::Aggro => "entity.fox.aggro",
+            Cue::Bite => "entity.fox.bite",
+            Cue::Eat => "entity.fox.eat",
+            Cue::Screech => "entity.fox.screech",
+            Cue::Sleep => "entity.fox.sleep",
+            Cue::Sniff => "entity.fox.sniff",
+            Cue::Spit => "entity.fox.spit",
+        }
+    }
+}
+
 /// What a target goal hunts (`Fox.setTargetGoals`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Hunt {
+    /// v1.0 gap Track 2f: `DefendTrustedTargetGoal` (priority 3): the mob
+    /// that last hurt the fox's first trusted player.
+    Defend,
     /// `landTargetGoal`: chickens and rabbits.
     Land,
     /// `turtleEggTargetGoal`: baby turtles on land (`BABY_ON_LAND_SELECTOR`).
@@ -36,6 +77,7 @@ impl Hunt {
             Hunt::Land => matches!(m.kind, MobKind::Chicken | MobKind::Rabbit),
             Hunt::Turtle => m.kind == MobKind::Turtle && m.is_baby() && !m.in_water,
             Hunt::Fish => matches!(m.kind, MobKind::Cod | MobKind::Salmon | MobKind::TropicalFish),
+            Hunt::Defend => false,
         }
     }
 }
@@ -90,6 +132,8 @@ pub(crate) enum Running {
     Items,
     /// `PerchAndSearchGoal` (13): `relX`, `relZ`, `lookTime`, `looksRemaining`.
     Perch { rel: (f64, f64), look: i32, looks: i32 },
+    /// v1.0 gap Track 2f: `FoxStrollThroughVillageGoal` (9), `wantedPos`.
+    VillageStroll { wanted: glam::IVec3 },
 }
 
 impl Running {
@@ -99,6 +143,7 @@ impl Running {
             Running::Stalk => 5,
             Running::Pounce | Running::Shelter => 6,
             Running::Melee { .. } | Running::Sleep => 7,
+            Running::VillageStroll { .. } => 9,
             Running::Leap | Running::Berries { .. } => 10,
             Running::Items => 11,
             Running::Perch { .. } => 13,
@@ -124,6 +169,9 @@ pub struct State {
     pub pouncing: bool,
     /// `isFaceplanted`: a pounce into snow.
     pub faceplanted: bool,
+    /// v1.0 gap Track 2f: `isDefending` (`FLAG_DEFENDING`): it targets what
+    /// hurt a player it trusts, and doesn't flee or panic meanwhile.
+    pub defending: bool,
     /// `crouchAmount` and its last tick's value (0..=5, eased 0.2 a tick).
     pub crouch_amount: f32,
     pub crouch_amount_o: f32,
@@ -152,6 +200,14 @@ pub struct State {
     pub(crate) still: bool,
     /// The fox's own tick count (for the melee goal's 20-tick check).
     pub(crate) ticks: u32,
+    /// v1.0 gap Track 2f: `level.isThundering()`.
+    pub(crate) thundering: bool,
+    /// v1.0 gap Track 2f: `DefendTrustedTargetGoal.timestamp` (the trusted
+    /// player's hurt it last answered).
+    pub(crate) defend_stamp: Option<u32>,
+    /// v1.0 gap Track 2f: `FoxStrollThroughVillageGoal.canUse`'s roll and
+    /// spot, found by the entity pass: `wantedPos` near a village at night.
+    pub(crate) village_stroll: Option<glam::IVec3>,
 }
 
 impl State {
@@ -176,6 +232,7 @@ impl State {
         self.interested = false;
         self.crouching = false;
         self.sitting = false;
+        self.defending = false;
         self.faceplanted = false;
     }
 
@@ -226,6 +283,7 @@ impl State {
             "interested": self.interested,
             "pouncing": self.pouncing,
             "faceplanted": self.faceplanted,
+            "defending": self.defending,
             "crouch": self.crouch_amount,
             "interest": self.interested_angle,
         })
@@ -237,6 +295,7 @@ impl State {
         self.interested = v["interested"] == true;
         self.pouncing = v["pouncing"] == true;
         self.faceplanted = v["faceplanted"] == true;
+        self.defending = v["defending"] == true;
         let num = |k: &str, max: f32| {
             v[k].as_f64().filter(|n| n.is_finite()).unwrap_or(0.0).clamp(0.0, f64::from(max)) as f32
         };
@@ -265,6 +324,12 @@ impl Entities {
     /// nearest match to its eyes (no sight needed); `alertable` and the items
     /// within 8 blocks.
     pub(super) fn fox_upkeep(&mut self, ctx: &super::Ctx) {
+        // v1.0 gap Track 2f: `LivingEntity.baseTick` forgets a player's
+        // `lastHurtByMob` 100 ticks after the hurt.
+        self.player_hurt_by.retain(|_, (_, _, age)| {
+            *age += 1;
+            *age <= 100
+        });
         if !self.mobs.iter().any(|m| m.fox.is_some()) {
             return;
         }
@@ -303,6 +368,26 @@ impl Entities {
                     .then(|| prey(j, p.hunt, p.priority))
             });
             let mut target = kept;
+            // v1.0 gap Track 2f: `DefendTrustedTargetGoal` (priority 3, one
+            // time in `reducedTickDelay(10)`): the first trusted player in
+            // the world, hurt by a mob since the hurt it last answered, and
+            // that mob within the follow range.
+            let mut defended = None;
+            if full && target.is_none_or(|t| t.priority > 3) && self.rng.next_int(5) == 0 {
+                let trusted = m.animal.as_ref().map(|a| a.trusted).unwrap_or_default();
+                let stamp = m.fox.as_ref().unwrap().defend_stamp;
+                if let Some(p) = trusted.iter().flatten().find(|id| ctx.players.iter().any(|t| t.id == **id))
+                    && let Some(&(attacker, seq, _)) = self.player_hurt_by.get(p)
+                    && Some(seq) != stamp
+                    && let Some(&j) = by_uid.get(&attacker)
+                    && attacker != uid
+                    && self.mobs[j].alive()
+                    && self.mobs[j].pos.distance_squared(pos) <= FOLLOW_RANGE * FOLLOW_RANGE
+                {
+                    target = Some(prey(j, Hunt::Defend, 3));
+                    defended = Some(seq);
+                }
+            }
             if full {
                 for (priority, hunt) in hunts(variant) {
                     // A target goal starts only over a worse running one.
@@ -358,11 +443,69 @@ impl Entities {
                 .find(|it| it.pickup_delay <= 0.0 && (it.pos - pos).abs().max_element() <= 8.0 + 0.5)
                 .map(|it| it.pos);
             let in_village = self.raids.villages.is_village(pos.floor().as_ivec3());
-            let s = self.mobs[i].fox.as_mut().unwrap();
+            let thundering = self.thundering;
+            let m = &mut self.mobs[i];
+            let s = m.fox.as_mut().unwrap();
             s.target = target;
             s.alertable = alertable;
             s.item_near = item_near;
             s.in_village = in_village;
+            s.thundering = thundering;
+            if target.is_none() {
+                // `Fox.setTarget(null)` ends the defence.
+                s.defending = false;
+            }
+            if let Some(seq) = defended {
+                // `start`: the aggro call, defending, awake.
+                s.defend_stamp = Some(seq);
+                s.defending = true;
+                if let Some(a) = m.animal.as_mut() {
+                    a.sleeping = false;
+                }
+                let at = m.pos + DVec3::Y * (m.shape().height * 0.8);
+                self.pending_sounds
+                    .push(super::EntityEvent::Sound { sound: super::MobSound::Fox(Cue::Aggro), pos: at });
+            }
+        }
+    }
+
+    /// v1.0 gap Track 2f: `FoxStrollThroughVillageGoal.canUse`'s roll for
+    /// each fox on its full updates: at night, one time in
+    /// `reducedTickDelay(200)`, within six sections of a village, the best
+    /// of `LandRandomPos.getPos(15, 7)`'s spots by `-sectionsToVillage`
+    /// becomes its `wantedPos` (its goal at priority 9 takes it).
+    pub(super) fn fox_village_stroll<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &super::Ctx) {
+        if ctx.daylight > 0.5 || !self.mobs.iter().any(|m| m.fox.is_some()) {
+            for m in &mut self.mobs {
+                if let Some(s) = m.fox.as_mut() {
+                    s.village_stroll = None;
+                }
+            }
+            return;
+        }
+        self.refresh_villages(world, false);
+        for i in 0..self.mobs.len() {
+            let m = &self.mobs[i];
+            if m.fox.is_none() || !m.alive() || !m.simulation_active || !m.goals.full(m.uid) {
+                continue;
+            }
+            let here = m.pos.floor().as_ivec3();
+            let mut wanted = None;
+            if self.rng.next_int(100) == 0 && self.raids.villages.close_to_village(here, 6) {
+                // `RandomPos.generateRandomPos` with the scorer: the best of
+                // the spots by section distance to a village.
+                let mut best: Option<(i32, IVec3)> = None;
+                for _ in 0..10 {
+                    if let Some(p) = m.random_pos(world, ctx, &mut self.rng, 15, 7, true) {
+                        let d = self.raids.villages.sections_to_village(p);
+                        if best.is_none_or(|(b, _)| d < b) {
+                            best = Some((d, p));
+                        }
+                    }
+                }
+                wanted = best.map(|(_, p)| p);
+            }
+            self.mobs[i].fox.as_mut().unwrap().village_stroll = wanted;
         }
     }
 }
