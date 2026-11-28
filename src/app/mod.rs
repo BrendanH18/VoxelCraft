@@ -1784,9 +1784,10 @@ impl Game {
             self.audio.play(sound, Some(pos), gain, pitch);
         }
         // Playing records: original tunes through the note voices
-        // (`SoundSource::Records`), heard like any positioned sound.
+        // (`SoundSource::Records`). v1.0 final Track F4: as Java's
+        // `forJukeboxSong` (volume 4, linear attenuation), heard to 64 blocks.
         for note in std::mem::take(&mut self.world.records) {
-            let sound = crate::audio::sounds::Sound::Note(crate::world::gadgets::Instrument::from_u8(note.instrument));
+            let sound = crate::audio::sounds::Sound::Disc(crate::world::gadgets::Instrument::from_u8(note.instrument));
             let hz = crate::world::gadgets::pitch_hz(note.pitch);
             self.audio.play(sound, Some(note.pos.as_dvec3() + glam::DVec3::splat(0.5)), note.gain, (hz, hz));
         }

@@ -279,6 +279,17 @@ pub enum Sound {
     /// v1.0 gap track 6e: a pointed dripstone's drop landing
     /// (`DripstoneFallAndLandParticle.postMoveUpdate`): lava when true.
     DripstoneDrip(bool),
+    /// v1.0 final Track F4: a goat horn's call, by Java instrument
+    /// (`item.goat_horn.sound.<n>`, `RECORDS`), heard to its 256-block range.
+    Horn(u8),
+    /// v1.0 final Track F4: a note of a music disc's tune, played from a
+    /// jukebox (`SimpleSoundInstance.forJukeboxSong`: volume 4, linear
+    /// attenuation to 64 blocks). It shares the note block's buffers.
+    Disc(Instrument),
+    /// v1.0 final Track F4: brushing a block (`item.brush.brushing.*`).
+    Brush(super::horns::BrushCue),
+    /// v1.0 final Track F4: a mob's own footstep (`playStepSound`).
+    MobStep(super::creatures::StepCue),
 }
 
 /// v1.0 gap Track 5c: Java's `PORTAL_AMBIENT`, `PORTAL_TRIGGER` and
@@ -391,7 +402,11 @@ impl Sound {
     const FOX_END: usize = Self::PORTAL_END + crate::entity::fox::Cue::ALL.len();
     const GOAT_END: usize = Self::FOX_END + voxelcraft::entity::animals::long_jump::Cue::ALL.len();
     const VILLAGER_NO_END: usize = Self::GOAT_END + 1;
-    pub const COUNT: usize = Self::VILLAGER_NO_END + 2;
+    const DRIPSTONE_END: usize = Self::VILLAGER_NO_END + 2;
+    const HORN_END: usize = Self::DRIPSTONE_END + 8;
+    const DISC_END: usize = Self::HORN_END + Instrument::ALL.len();
+    const BRUSH_END: usize = Self::DISC_END + super::horns::BrushCue::ALL.len();
+    pub const COUNT: usize = Self::BRUSH_END + super::creatures::StepCue::ALL.len();
 
     /// Dense index in `0..COUNT`.
     pub fn key(self) -> usize {
@@ -425,6 +440,10 @@ impl Sound {
             Sound::Goat(cue) => Self::FOX_END + cue as usize,
             Sound::VillagerNo => Self::GOAT_END,
             Sound::DripstoneDrip(lava) => Self::VILLAGER_NO_END + usize::from(lava),
+            Sound::Horn(kind) => Self::DRIPSTONE_END + usize::from(kind.min(7)),
+            Sound::Disc(i) => Self::HORN_END + i as usize,
+            Sound::Brush(c) => Self::DISC_END + c as usize,
+            Sound::MobStep(c) => Self::BRUSH_END + c as usize,
             Sound::Note(i) => 3 * M + 27 + Voice::ALL.len() * CALLS + i as usize,
             Sound::Thunder => Self::BASE_COUNT - 1,
             Sound::Bell => Self::BASE_COUNT - 4,
@@ -564,6 +583,23 @@ impl Sound {
             .chain(voxelcraft::entity::animals::long_jump::Cue::ALL.map(Sound::Goat))
             .chain([Sound::VillagerNo])
             .chain([Sound::DripstoneDrip(false), Sound::DripstoneDrip(true)])
+            .chain((0..8).map(Sound::Horn))
+            .chain(Instrument::ALL.map(Sound::Disc))
+            .chain(super::horns::BrushCue::ALL.map(Sound::Brush))
+            .chain(super::creatures::StepCue::ALL.map(Sound::MobStep))
+    }
+
+    /// v1.0 final Track F4: how far Java hears this sound, where it isn't
+    /// the mixer's usual falloff ([`super::mixer::attenuation`]): Java's
+    /// linear attenuation to `16 * max(volume, 1)` blocks
+    /// (`SoundEvent.getRange`). A goat horn plays at `range / 16` = 16
+    /// (256 blocks), a jukebox's song at 4 (64 blocks).
+    pub fn java_range(self) -> Option<f32> {
+        match self {
+            Sound::Horn(_) => Some(256.0),
+            Sound::Disc(_) => Some(64.0),
+            _ => None,
+        }
     }
 
     /// Stable sound name used when exporting or identifying samples.
@@ -596,6 +632,10 @@ impl Sound {
             Sound::Goat(c) => c.key().replace('.', "_"),
             Sound::VillagerNo => "entity_villager_no".into(),
             Sound::DripstoneDrip(lava) => format!("pointed_dripstone_drip_{}", if lava { "lava" } else { "water" }),
+            Sound::Horn(kind) => format!("goat_horn_{}", super::horns::INSTRUMENTS[usize::from(kind.min(7))]),
+            Sound::Disc(i) => format!("disc_{i:?}").to_ascii_lowercase(),
+            Sound::Brush(c) => c.event().replace('.', "_"),
+            Sound::MobStep(c) => c.event().replace('.', "_"),
             Sound::Thunder => "lightning_thunder".into(),
             Sound::HoneySlide => "honey_block_slide".into(),
             Sound::HoneyDrink => "honey_drink".into(),
@@ -759,6 +799,15 @@ impl Sound {
             Sound::Goat(_) => SoundSource::Neutral,
             // The villager's own category (`NEUTRAL`).
             Sound::VillagerNo => SoundSource::Neutral,
+            // `InstrumentItem.play` and `forJukeboxSong`: `RECORDS`.
+            Sound::Horn(_) | Sound::Disc(_) => SoundSource::Records,
+            // `BrushItem.onUseTick` plays in `BLOCKS`, level event 3008 in `PLAYERS`.
+            Sound::Brush(super::horns::BrushCue::SandComplete | super::horns::BrushCue::GravelComplete) => {
+                SoundSource::Players
+            }
+            Sound::Brush(_) => SoundSource::Blocks,
+            Sound::MobStep(super::creatures::StepCue::Silverfish) => SoundSource::Hostile,
+            Sound::MobStep(_) => SoundSource::Neutral,
             Sound::Mob(voice, _) => voice.source(),
         }
     }
@@ -790,6 +839,9 @@ impl Sound {
             Sound::Goat(_) => 2,
             Sound::VillagerNo => 2,
             Sound::DripstoneDrip(_) => 3,
+            Sound::Horn(_) | Sound::Disc(_) => 1,
+            Sound::Brush(_) => 2,
+            Sound::MobStep(_) => 3,
             Sound::Warden(_) | Sound::Sculk(_) => 2,
             Sound::Sniffer(_) | Sound::Weapon(_) => 2,
             Sound::Step(_) => 4,
@@ -856,6 +908,11 @@ impl Sound {
             Sound::Goat(c) => super::goat::render(c, &mut rng),
             Sound::VillagerNo => super::voices::villager_no(&mut rng),
             Sound::DripstoneDrip(lava) => dripstone_drip(lava, &mut rng),
+            Sound::Horn(kind) => super::horns::render_horn(kind, &mut rng),
+            // Shares the note's buffers ([`super::block_sounds::shares`]).
+            Sound::Disc(i) => note_sound(i, &mut rng),
+            Sound::Brush(c) => super::horns::render_brush(c, &mut rng),
+            Sound::MobStep(c) => super::creatures::render_step(c, &mut rng),
             Sound::Thunder => thunder(&mut rng),
             Sound::HoneySlide => honey_sound(&mut rng, 0.35),
             Sound::HoneyDrink => honey_sound(&mut rng, 0.22),

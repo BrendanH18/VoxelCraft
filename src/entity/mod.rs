@@ -63,6 +63,7 @@ mod mob;
 pub mod mob_anim;
 pub mod mob_combat;
 mod mob_index;
+pub mod mob_steps;
 pub mod model;
 mod monster_spawns;
 pub mod mooshroom;
@@ -212,6 +213,11 @@ pub enum MobSound {
     /// v1.0 gap Track 3b: camels sitting, standing and dashing, and
     /// horses, donkeys, mules, zombie horses and llamas made mad.
     Mount(mounts::Cue),
+    /// v1.0 final Track F4: a mob's own footstep (`playStepSound`).
+    Step(mob_steps::StepCue),
+    /// v1.0 final Track F4: a baby turtle's hurt (false) or death (true)
+    /// cry (`entity.turtle.hurt_baby`, `death_baby`).
+    BabyTurtle(bool),
     /// v1.0 gap Track 2f: the fox's own sounds (aggro, bite, eat, screech,
     /// sleep, sniff, spit).
     Fox(fox::Cue),

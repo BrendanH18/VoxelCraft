@@ -250,6 +250,42 @@ impl World {
             Some((*p, stack_from_str(&b.item).flatten()?, face))
         })
     }
+    /// v1.0 final Track F4: the rewards rising out of partly brushed blocks
+    /// within `radius` of `at`, for LAN guests (`BrushableBlockEntity`'s
+    /// item and hit direction, which Java syncs to clients in
+    /// `getUpdateTag`): `[x, y, z, face x, face y, face z, stack]`.
+    pub fn emerging_near(&self, at: glam::DVec3, radius: f64) -> Vec<serde_json::Value> {
+        self.emerging_items()
+            .filter(|(p, ..)| (p.as_dvec3() + glam::DVec3::splat(0.5)).distance_squared(at) <= radius * radius)
+            .take(128)
+            .map(|(p, stack, face)| {
+                serde_json::json!([p.x, p.y, p.z, face.x, face.y, face.z, stack_to_string(Some(stack))])
+            })
+            .collect()
+    }
+
+    /// v1.0 final Track F4: applies [`World::emerging_near`] on a LAN guest,
+    /// whose own archaeology state never resolves a reward, so the find it
+    /// draws is the host's.
+    pub fn apply_emerging(&mut self, list: &serde_json::Value) {
+        let Some(list) = list.as_array() else { return };
+        self.archaeology.retain(|_, b| b.face.is_none() && b.item.is_empty());
+        for v in list {
+            let Some(a) = v.as_array() else { continue };
+            let n = |i: usize| a.get(i).and_then(serde_json::Value::as_i64).map(|n| n as i32);
+            let (Some(x), Some(y), Some(z), Some(fx), Some(fy), Some(fz)) = (n(0), n(1), n(2), n(3), n(4), n(5)) else {
+                continue;
+            };
+            let Some(item) = a.get(6).and_then(serde_json::Value::as_str) else { continue };
+            if stack_from_str(item).flatten().is_none() {
+                continue;
+            }
+            let b = self.archaeology.entry(IVec3::new(x, y, z)).or_default();
+            b.item = item.to_string();
+            b.face = Some([fx, fy, fz]);
+        }
+    }
+
     /// Scripted scenes (`--brush`): `strokes` accepted strokes from `face`,
     /// as if ten ticks apart. A block without loot gets its ocean-ruin table.
     /// The dust stage is held (no 40-tick reset) so a capture taken after

@@ -80,6 +80,18 @@ pub enum Voice {
     /// v0.16 Track D: `entity.sulfur_cube.hurt`/`death` (and the small
     /// cube's, pitched up). It has no ambient call.
     SulfurCube,
+    /// v1.0 final Track F4: the mobs that borrowed another's voice get
+    /// their own (`entity.iron_golem.*`, `entity.llama.*`, `entity.camel.*`,
+    /// `entity.snow_golem.*`, `entity.phantom.*`, `entity.silverfish.*`,
+    /// `entity.turtle.*` and the hatchling's `entity.turtle.*_baby`).
+    IronGolem,
+    Llama,
+    Camel,
+    SnowGolem,
+    Phantom,
+    Silverfish,
+    Turtle,
+    BabyTurtle,
 }
 
 /// What kind of sound a voice makes.
@@ -92,7 +104,7 @@ pub enum Call {
 }
 
 impl Voice {
-    pub const ALL: [Voice; 55] = [
+    pub const ALL: [Voice; 63] = [
         Voice::Pig,
         Voice::Cow,
         Voice::Sheep,
@@ -148,6 +160,14 @@ impl Voice {
         Voice::Wither,
         Voice::Shulker,
         Voice::SulfurCube,
+        Voice::IronGolem,
+        Voice::Llama,
+        Voice::Camel,
+        Voice::SnowGolem,
+        Voice::Phantom,
+        Voice::Silverfish,
+        Voice::Turtle,
+        Voice::BabyTurtle,
     ];
 
     /// The category the creature plays in: `Monster`, `Ghast`, `Hoglin` and
@@ -178,7 +198,10 @@ impl Voice {
             | Voice::Piglin
             | Voice::Hoglin
             | Voice::Guardian
-            | Voice::Pillager => SoundSource::Hostile,
+            | Voice::Pillager
+            // `Phantom.getSoundSource` is HOSTILE; the silverfish is a `Monster`.
+            | Voice::Phantom
+            | Voice::Silverfish => SoundSource::Hostile,
             Voice::Sniffer
             | Voice::Allay
             | Voice::Bat
@@ -212,7 +235,14 @@ impl Voice {
             | Voice::HappyGhast
             | Voice::Nautilus
             | Voice::ZombieNautilus
-            | Voice::CamelHusk => SoundSource::Neutral,
+            | Voice::CamelHusk
+            // Golems and the animals keep the default NEUTRAL.
+            | Voice::IronGolem
+            | Voice::Llama
+            | Voice::Camel
+            | Voice::SnowGolem
+            | Voice::Turtle
+            | Voice::BabyTurtle => SoundSource::Neutral,
         }
     }
 
@@ -273,6 +303,14 @@ impl Voice {
             Voice::Bee => "bee",
             Voice::Rabbit => "rabbit",
             Voice::Goat => "goat",
+            Voice::IronGolem => "iron_golem",
+            Voice::Llama => "llama",
+            Voice::Camel => "camel",
+            Voice::SnowGolem => "snow_golem",
+            Voice::Phantom => "phantom",
+            Voice::Silverfish => "silverfish",
+            Voice::Turtle => "turtle",
+            Voice::BabyTurtle => "baby_turtle",
         }
     }
 }
@@ -395,6 +433,14 @@ pub fn render(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
         Voice::Hoglin => hoglin(call, rng),
         Voice::Strider => strider(call, rng),
         Voice::Pillager => villager(call, rng),
+        Voice::IronGolem => super::creatures::iron_golem(call, rng),
+        Voice::Llama => super::creatures::llama(call, rng),
+        Voice::Camel => super::creatures::camel(call, rng),
+        Voice::SnowGolem => super::creatures::snow_golem(call, rng),
+        Voice::Phantom => super::creatures::phantom(call, rng),
+        Voice::Silverfish => super::creatures::silverfish(call, rng),
+        Voice::Turtle => super::creatures::turtle(call, rng, false),
+        Voice::BabyTurtle => super::creatures::turtle(call, rng, true),
         Voice::Wolf | Voice::Fox | Voice::Parrot | Voice::Rabbit | Voice::Goat => animal_voice(voice, call, rng),
         Voice::Fish | Voice::Squid | Voice::Dolphin | Voice::Axolotl | Voice::Guardian | Voice::Cat => {
             aquatic(voice, call, rng)

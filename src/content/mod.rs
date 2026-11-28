@@ -13,6 +13,7 @@ pub mod consumption;
 pub mod farm_variant;
 pub mod fishing;
 pub mod fuel;
+pub mod goat_horn;
 pub mod harness;
 pub mod interaction;
 pub mod item_display;

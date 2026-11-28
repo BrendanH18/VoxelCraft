@@ -1422,6 +1422,11 @@ pub struct Mob {
     /// babies, interpolated) and `walkAnimationSpeed` (at most 1).
     pub limb_phase: f32,
     pub limb_amp: f32,
+    /// v1.0 final Track F4: Java's `moveDist` and `nextStep`, for the mobs
+    /// with their own footsteps ([`super::mob_steps`]). Not saved (Java
+    /// doesn't save them either).
+    pub(crate) move_dist: f32,
+    pub(crate) next_step: f32,
     /// Seconds left of the arm swing after an attack.
     pub attack_anim: f32,
     /// v1.0 gap Track 7: Java's `SwingState`, started when an attack sets
@@ -1703,6 +1708,8 @@ impl Mob {
             burning: false,
             limb_phase: 0.0,
             limb_amp: 0.0,
+            move_dist: 0.0,
+            next_step: 0.0,
             attack_anim: 0.0,
             swing: Default::default(),
             swing_seen: 0.0,
@@ -2552,15 +2559,30 @@ impl Mob {
             if matches!(sound, MobSound::Hurt(_)) {
                 self.ambient_timer = self.ambient_timer.max(4.0);
             }
+            // v1.0 final Track F4: a hatchling turtle's own cries.
+            let sound = match sound {
+                MobSound::Hurt(MobKind::Turtle) if self.is_baby() => MobSound::BabyTurtle(false),
+                MobSound::Death(MobKind::Turtle) if self.is_baby() => MobSound::BabyTurtle(true),
+                sound => sound,
+            };
             events.push(EntityEvent::Sound { sound, pos: self.pos + DVec3::Y * (self.shape().height * 0.8) });
         }
         self.ambient_timer -= dtf;
         if self.ambient_timer <= 0.0 {
-            self.ambient_timer =
-                if self.kind == MobKind::Ocelot { rng.range(45.0, 56.0) } else { rng.range(7.0, 18.0) };
+            // `Turtle.getAmbientSoundInterval` is 200 ticks.
+            self.ambient_timer = match self.kind {
+                MobKind::Ocelot => rng.range(45.0, 56.0),
+                MobKind::Turtle => rng.range(10.0, 30.0),
+                _ => rng.range(7.0, 18.0),
+            };
             if self.alive()
                 && self.armadillo.as_ref().is_none_or(|s| !s.scared())
                 && self.kind != MobKind::CopperGolem
+                // v1.0 final Track F4: Java's iron golem has no ambient call,
+                // and a turtle calls only as an adult on land
+                // (`Turtle.getAmbientSound`).
+                && self.kind != MobKind::IronGolem
+                && (self.kind != MobKind::Turtle || (!self.is_baby() && self.on_ground && !self.in_water))
                 && self
                     .sniffer
                     .as_ref()
@@ -2845,6 +2867,24 @@ impl Mob {
             self.advance_walk(DVec3::ZERO);
         }
         self.advance_walk(self.pos - tick_start);
+        // v1.0 final Track F4: `Entity.move`'s step sound, for the mobs
+        // whose `playStepSound` is their own (on a block, not in water).
+        if self.alive() && self.on_ground && !self.in_water && self.riding.is_none() {
+            let moved = self.pos - tick_start;
+            let below = (self.pos - DVec3::Y * 0.2).floor().as_ivec3();
+            let block = world.block(below).unwrap_or(crate::world::block::Block::AIR);
+            let sand = super::mob_steps::camel_sand(block);
+            if let Some(cue) = super::mob_steps::StepCue::of(self.kind, self.is_baby(), sand)
+                && block != crate::world::block::Block::AIR
+                && super::mob_steps::advance(
+                    &mut self.move_dist,
+                    &mut self.next_step,
+                    moved.with_y(0.0).length() as f32,
+                )
+            {
+                events.push(EntityEvent::Sound { sound: MobSound::Step(cue), pos: self.pos });
+            }
+        }
 
         // v1.0 gap Track 3b: a camel's body follows its head within 30
         // degrees, and holds still while it sits or changes pose.

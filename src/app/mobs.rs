@@ -834,6 +834,17 @@ impl Game {
                             self.audio.play_in(SoundSource::Neutral, Sound::VillagerNo, Some(pos), 1.0, pitch);
                             continue;
                         }
+                        // v1.0 final Track F4: mobs' own footsteps at their
+                        // `playStepSound` volume and pitch 1.
+                        MobSound::Step(cue) => {
+                            let sound = Sound::MobStep(cue);
+                            self.audio.play_in(sound.source(), sound, Some(pos), cue.volume(), (1.0, 1.0));
+                            continue;
+                        }
+                        MobSound::BabyTurtle(death) => {
+                            let call = if death { Call::Death } else { Call::Hurt };
+                            (Sound::Mob(Voice::BabyTurtle, call), 0.9)
+                        }
                         MobSound::Ambient(kind) => (Sound::Mob(voice(kind), Call::Ambient), 0.7 * mob_volume(kind)),
                         MobSound::Hurt(kind) => (Sound::Mob(voice(kind), Call::Hurt), 0.9 * mob_volume(kind)),
                         MobSound::Death(kind) => (Sound::Mob(voice(kind), Call::Death), 0.9 * mob_volume(kind)),
@@ -1048,10 +1059,6 @@ fn mob_sound_source(sound: MobSound) -> Option<SoundSource> {
         // Skeletons and pillagers shoot as hostile mobs, not as the player.
         MobSound::Bow => Some(SoundSource::Hostile),
         MobSound::Shulker(_) => Some(SoundSource::Hostile),
-        // The snow golem borrows the slime's voice but is a friendly mob.
-        MobSound::Ambient(MobKind::SnowGolem)
-        | MobSound::Hurt(MobKind::SnowGolem)
-        | MobSound::Death(MobKind::SnowGolem) => Some(SoundSource::Neutral),
         _ => None,
     }
 }
@@ -1124,29 +1131,31 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Sheep => Voice::Sheep,
         MobKind::Chicken => Voice::Chicken,
         MobKind::Zombie | MobKind::Husk | MobKind::Drowned | MobKind::ZombieVillager => Voice::Zombie,
-        MobKind::Phantom | MobKind::Skeleton | MobKind::Stray | MobKind::Bogged | MobKind::WitherSkeleton => {
-            Voice::Skeleton
-        }
+        MobKind::Phantom => Voice::Phantom,
+        MobKind::Skeleton | MobKind::Stray | MobKind::Bogged | MobKind::WitherSkeleton => Voice::Skeleton,
         MobKind::Creeper => Voice::Creeper,
         MobKind::Spider | MobKind::CaveSpider => Voice::Spider,
         MobKind::ZombifiedPiglin => Voice::Zombie,
         MobKind::Enderman => Voice::Enderman,
         MobKind::Blaze => Voice::Blaze,
-        MobKind::Silverfish => Voice::Spider,
+        MobKind::Silverfish => Voice::Silverfish,
         MobKind::Slime | MobKind::MagmaCube => Voice::Slime,
         MobKind::Ghast => Voice::Ghast,
         MobKind::Witch => Voice::Witch,
         MobKind::Villager | MobKind::WanderingTrader => Voice::Villager,
-        MobKind::TraderLlama | MobKind::Llama | MobKind::Camel => Voice::Cow,
+        // `TraderLlama` extends `Llama`.
+        MobKind::TraderLlama | MobKind::Llama => Voice::Llama,
+        MobKind::Camel => Voice::Camel,
         MobKind::SkeletonHorse | MobKind::ZombieHorse | MobKind::Horse | MobKind::Donkey | MobKind::Mule => {
             Voice::Horse
         }
-        MobKind::IronGolem => Voice::Cow,
-        MobKind::SnowGolem => Voice::Slime,
+        MobKind::IronGolem => Voice::IronGolem,
+        MobKind::SnowGolem => Voice::SnowGolem,
         MobKind::Piglin | MobKind::PiglinBrute => Voice::Piglin,
         MobKind::Hoglin | MobKind::Zoglin => Voice::Hoglin,
         MobKind::Strider => Voice::Strider,
-        MobKind::Cod | MobKind::Salmon | MobKind::TropicalFish | MobKind::Pufferfish | MobKind::Turtle => Voice::Fish,
+        MobKind::Cod | MobKind::Salmon | MobKind::TropicalFish | MobKind::Pufferfish => Voice::Fish,
+        MobKind::Turtle => Voice::Turtle,
         MobKind::Squid | MobKind::GlowSquid => Voice::Squid,
         MobKind::Dolphin => Voice::Dolphin,
         MobKind::Axolotl => Voice::Axolotl,

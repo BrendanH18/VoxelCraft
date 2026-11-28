@@ -360,13 +360,16 @@ impl Game {
                     hud.vitals.wind_charge_cooldown / (voxelcraft::entity::wind::COOLDOWN_TICKS as f32 * 0.05)
                 } else if stack.item == voxelcraft::content::chorus::CHORUS_FRUIT {
                     hud.vitals.chorus_cooldown / voxelcraft::content::chorus::COOLDOWN
+                } else if voxelcraft::content::goat_horn::instrument(stack.item).is_some() {
+                    hud.vitals.horn_cooldown / voxelcraft::content::goat_horn::cooldown_seconds()
                 } else {
                     hud.vitals.pearl_cooldown / crate::entity::pearl::COOLDOWN
                 };
-                if matches!(
+                if (matches!(
                     stack.item,
                     Item::ENDER_PEARL | crate::world::trial::WIND_CHARGE | voxelcraft::content::chorus::CHORUS_FRUIT
-                ) && cooling > 0.0
+                ) || voxelcraft::content::goat_horn::instrument(stack.item).is_some())
+                    && cooling > 0.0
                 {
                     let h = (16.0 * cooling).ceil();
                     ui.rect(sx + 2.0, y0 + 3.0 + 16.0 - h, 16.0, h, [1.0, 1.0, 1.0, 0.5]);

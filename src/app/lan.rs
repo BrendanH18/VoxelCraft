@@ -1669,6 +1669,8 @@ impl Game {
             snapshot["shulker_lids"] = json!(self.world.shulker_lids_near(here, 160.0));
             // v0.18 Track 9: chest lids and barrel tops in use or moving.
             snapshot["lids"] = json!(self.world.lids_near(here, 160.0));
+            // v1.0 final Track F4: brushed finds rising out of their blocks.
+            snapshot["emerging"] = json!(self.world.emerging_near(here, crate::render::signs::RANGE));
             if let Some((open, serial)) = &peer.book_open
                 && (open["lectern"].is_array()
                     || open["slot"].as_u64().is_some_and(|slot| peer.inventory.held_matches(slot as usize, inventory)))
@@ -1964,6 +1966,7 @@ impl Game {
         }
         self.world.apply_shulker_lids(&snapshot["shulker_lids"]);
         self.world.apply_lids(&snapshot["lids"]);
+        self.world.apply_emerging(&snapshot["emerging"]);
         let edit = &snapshot["sign_edit"];
         if let (Some(serial), Some(p)) = (edit["serial"].as_u64(), vector(&edit["pos"]))
             && serial as u32 != self.lan.sign_serial
@@ -2814,7 +2817,9 @@ fn peer_sounds(
         if movement && pos.distance_squared(me) < 1.0 {
             return None;
         }
-        (pos.distance_squared(me) < 64.0 * 64.0)
+        // v1.0 final Track F4: horns and discs reach their Java range.
+        let range = sound.java_range().unwrap_or(64.0).max(64.0) as f64;
+        (pos.distance_squared(me) < range * range)
             .then(|| json!([sound.key(), pos.x, pos.y, pos.z, gain, lo, hi, source.index()]))
     });
     own.chain(heard).take(96).collect()
