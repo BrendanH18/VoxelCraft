@@ -11,6 +11,7 @@ mod books;
 mod bow;
 mod bucket;
 mod bundles;
+mod clicks;
 mod conduit;
 mod console;
 mod containers;
@@ -191,6 +192,9 @@ struct Game {
     /// bundle wheel's own part-notches (`BundleMouseActions`).
     bundle_selection: Option<(hud::SlotRef, usize)>,
     bundle_scroll: f64,
+    /// v1.0 final track F1: the mouse's drag, double-click and last
+    /// shift-click on container screens (`AbstractContainerScreen`).
+    screen_mouse: clicks::ScreenMouse,
     frame_limit: frame_limit::FrameLimit,
     /// Nausea and portal warp (Distortion Effects).
     distortion: distortion::Distortion,
@@ -692,6 +696,7 @@ impl ApplicationHandler for App {
                     game.death_cursor_moved();
                 }
                 game.creative_drag();
+                game.screen_drag_moved();
             }
             WindowEvent::Focused(true) => game.had_focus = true,
             WindowEvent::ModifiersChanged(m) => game.modifiers = m.state(),
@@ -783,12 +788,20 @@ impl ApplicationHandler for App {
                     // even when it's a mouse button.
                     if pressed && game.settings.keys.is(keys::Action::Inventory, input) {
                         game.toggle_inventory();
-                    } else if pressed && button == MouseButton::Middle && game.shows_palette() {
+                    } else if pressed && game.begin_screen_drag(button) {
+                    } else if pressed
+                        && button == MouseButton::Middle
+                        && (game.shows_palette() || game.session.mode.is_creative())
+                    {
                         game.creative_clone();
                     } else if pressed {
+                        game.note_screen_click(button);
                         game.inventory_click(button == MouseButton::Right);
-                    } else if button == MouseButton::Left {
-                        game.creative.dragging = false;
+                    } else {
+                        game.screen_release(button);
+                        if button == MouseButton::Left {
+                            game.creative.dragging = false;
+                        }
                     }
                     return;
                 }
@@ -1009,7 +1022,7 @@ impl Game {
         if let Some(slot) = action.hotbar() {
             // v0.17 Track D2: over a slot of an open screen, number keys
             // swap that slot with the hotbar slot instead.
-            if self.inventory_open && self.lan.client.is_none() && !dead && self.swap_under_cursor(slot) {
+            if self.inventory_open && !dead && self.swap_under_cursor(slot) {
                 return;
             }
             // v0.18 Track 4: `Minecraft.handleKeybinds` for a player with
@@ -1033,6 +1046,9 @@ impl Game {
             A::PickBlock => self.pick_block(),
             A::Inventory => self.toggle_inventory(),
             A::Drop => self.drop_selected(self.modifiers.control_key()),
+            // v1.0 final track F1: over a slot of an open screen the
+            // swap-hands key swaps it with the off-hand (`SWAP`, button 40).
+            A::SwapHands if self.inventory_open && !dead => self.swap_slot_under_cursor(None),
             A::SwapHands if playing => {
                 if self.lan.client.is_some() {
                     self.lan_command("swap");
@@ -1651,6 +1667,8 @@ impl Game {
     }
 
     fn quick_move(&mut self, slot: hud::SlotRef) {
+        // `lastQuickMoved`, for a shift double-click.
+        self.screen_mouse.last_quick_moved = self.slot_stack(slot);
         self.with_screen(|s| s.quick_move(slot));
     }
 
@@ -1667,13 +1685,10 @@ impl Game {
         if self.lan.client.is_some() {
             return;
         }
-        let stack = match self.slot_under_cursor() {
-            Some(hud::SlotRef::Palette(s)) => Some(s),
-            Some(hud::SlotRef::Inventory(i)) => self.session.inventory.get(i),
-            Some(hud::SlotRef::Armor(p)) => self.session.inventory.armor[p as usize],
-            Some(hud::SlotRef::Offhand) => self.session.inventory.offhand,
-            _ => None,
-        };
+        // `CLONE` takes any slot's stack for a player with infinite
+        // materials (v1.0 final track F1: every screen, not only the
+        // creative one).
+        let stack = self.slot_under_cursor().and_then(|slot| self.slot_stack(slot));
         voxelcraft::creative::clone(&mut self.session.inventory.cursor, stack);
     }
 
@@ -2307,6 +2322,8 @@ impl Game {
         let now = Instant::now();
         self.poll_lan();
         self.poll_agents();
+        // v1.0 final track F1: the drag's preview for this frame's slots.
+        self.screen_mouse.preview = if self.inventory_open { self.drag_preview() } else { None };
         // v1.0 gap Track 8d: only a pause screen pauses (`isPauseScreen`):
         // not the sign editor, a lectern's book or the console (Java's
         // `ChatScreen`). Track 8e: nor the End credits (`WinScreen` with

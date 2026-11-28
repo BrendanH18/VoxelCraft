@@ -329,7 +329,10 @@ impl Agent {
                     return Err("action cooling down".into());
                 }
                 self.session.cancel_brushing();
-                let Some(shot) = self.session.start_draw(self.selected, world, entities) else {
+                // v1.0 final track F1: or the off-hand's, when the main hand passes.
+                let shot = self.session.start_draw(self.selected, world, entities);
+                let shot = shot.or_else(|| self.session.start_offhand_draw(self.selected, world, entities));
+                let Some(shot) = shot else {
                     return Err("hold a bow or crossbow with an arrow, away from a block that takes use".into());
                 };
                 self.emit(Event::Shot(shot));

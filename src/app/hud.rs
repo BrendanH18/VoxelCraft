@@ -1270,7 +1270,13 @@ impl Game {
                 style::big_slot(ui, x, y);
             }
             style::slot(ui, x, y);
-            let stack = self.slot_stack(r);
+            // v1.0 final track F1: a dragged slot shows what it will hold
+            // over Java's white highlight (`renderSlot` while quick crafting).
+            let dragged = self.screen_mouse.preview.as_ref().and_then(|(p, _)| p.iter().find(|(s, _)| *s == r));
+            if dragged.is_some() {
+                ui.rect(x + 1.0, y + 1.0, 16.0, 16.0, [1.0, 1.0, 1.0, 0.5]);
+            }
+            let stack = dragged.map(|(_, s)| *s).or_else(|| self.slot_stack(r));
             // Faint outline of what goes in an empty armor or lapis slot.
             let outline = match (r, stack) {
                 // v1.0 gap Track 3b: a mount's saddle and body slots
@@ -1397,7 +1403,12 @@ impl Game {
             }
         }
         // The held stack follows the mouse.
-        if let Some(stack) = self.session.inventory.cursor {
+        // v1.0 final track F1: during a drag it shows what will be left.
+        let cursor = match &self.screen_mouse.preview {
+            Some((_, left)) => self.session.inventory.cursor.and_then(|c| (*left > 0).then_some(Stack { count: *left, ..c })),
+            None => self.session.inventory.cursor,
+        };
+        if let Some(stack) = cursor {
             let scale = ui.scale;
             self.stack_ui(ui, self.cursor_px.0 / scale - 9.0, self.cursor_px.1 / scale - 9.0, stack);
         }

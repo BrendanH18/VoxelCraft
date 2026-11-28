@@ -191,7 +191,7 @@ impl StorageScreen<'_> {
 
     /// Writes `slot` (`Container.setItem`), waking comparators; a new
     /// furnace input restarts its cook as in `AbstractFurnaceBlockEntity.setItem`.
-    fn set(&mut self, slot: StorageSlot, stack: Option<Stack>) {
+    pub fn set(&mut self, slot: StorageSlot, stack: Option<Stack>) {
         match (slot, self.storage) {
             (StorageSlot::Inventory(i), _) => self.session.inventory.slots[i] = stack,
             (StorageSlot::Container(i), Storage::Block(p)) => {

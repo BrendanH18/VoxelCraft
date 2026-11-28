@@ -293,6 +293,7 @@ impl Game {
             scroll: 0.0,
             bundle_selection: None,
             bundle_scroll: 0.0,
+            screen_mouse: Default::default(),
             frame_limit: Default::default(),
             distortion: Default::default(),
             modifiers: Default::default(),
