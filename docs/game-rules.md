@@ -82,7 +82,7 @@ enforced.
 | `mob_griefing` | `mobGriefing` | boolean | `true` | Partial | - | Gates creeper and ghast block damage, fireball fires, the dragon's smashing, and villager, piglin and allay item pickup. Enderman block carrying, zombie door breaking, silverfish, mob farmland and turtle-egg trampling and snow golem trails are not modelled. |
 | `natural_health_regeneration` | `naturalRegeneration` | boolean | `true` | Implemented | - | Gates food regeneration and Peaceful regeneration (health, saturation and food). |
 | `player_movement_check` | `disablePlayerMovementCheck` | boolean | `true` | Not applicable | n/a | Server-side movement validation of remote players. |
-| `players_nether_portal_creative_delay` | `playersNetherPortalCreativeDelay` | integer 0..2147483647 | `0` | Implemented | - | Ticks in a portal for invulnerable players (Creative and Spectator). |
+| `players_nether_portal_creative_delay` | `playersNetherPortalCreativeDelay` | integer 0..2147483647 | `0` | Implemented | - | Ticks in a Nether portal for invulnerable players (Creative; spectators pass through portals). |
 | `players_nether_portal_default_delay` | `playersNetherPortalDefaultDelay` | integer 0..2147483647 | `80` | Implemented | - | Ticks in a portal for survival and Adventure players (80 = 4 s). |
 | `players_sleeping_percentage` | `playersSleepingPercentage` | integer 0..2147483647 | `100` | Implemented | - | Share of players who must sleep, rounded up and at least one. |
 | `projectiles_can_break_blocks` | `projectilesCanBreakBlocks` | boolean | `true` | Missing | v0.12 | Governs arrows and similar hitting chorus flowers, pointed dripstone and decorated pots (v0.12, v0.16). |
