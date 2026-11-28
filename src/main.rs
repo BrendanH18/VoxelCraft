@@ -125,6 +125,10 @@ pub struct Args {
     pub spawn_held: Vec<(usize, item::Item)>,
     /// `--spawn kind,x,y,z,baby`: spawned mobs that are babies (by index).
     pub spawn_baby: Vec<usize>,
+    /// v1.0 gap Track 7e, `--spawn villager,x,y,z,type[:profession[:level]]`:
+    /// a spawned villager's or zombie villager's type, job and level (by
+    /// index), for the capture scenes' outfits.
+    pub spawn_villager: Vec<(usize, String)>,
     /// Seconds to keep running after loading before `--screenshot`.
     pub wait: f64,
     /// `--animation-time`: hold the animation clock here, so captures can be compared.
@@ -269,7 +273,9 @@ voxelcraft [options]
                     (leather, chainmail, iron, gold, diamond, netherite) and
                     glint equip a zombie or skeleton; allay,x,y,z,item gives
                     an allay an item to hold, and any other mob that item in
-                    its main hand; kind,x,y,z,baby spawns a baby
+                    its main hand; kind,x,y,z,baby spawns a baby; villager,x,y,z,type[:job[:level]]
+                    dresses a villager or zombie villager (with baby, armor
+                    or an item in the other field)
   --wait <secs>     with --screenshot: keep simulating this long first
   --animation-time <secs>  hold the animation clock (idle animations, clouds, water) at this time, for comparable captures
   --still-mobs      landed mobs stop moving and face the starting camera, for comparable captures
@@ -381,6 +387,7 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
         spawn: Vec::new(),
         spawn_held: Vec::new(),
         spawn_baby: Vec::new(),
+        spawn_villager: Vec::new(),
         wait: 0.0,
         animation_time: None,
         still_mobs: false,
@@ -685,7 +692,27 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
                     .iter()
                     .map(|s| if *s == "~" { Ok(i32::MIN) } else { s.parse().map_err(|_| bad()) })
                     .collect::<Result<_, _>>()?;
-                let armor = if parts.len() == 5 && parts[4] == "baby" {
+                const TYPES: [&str; 7] = ["desert", "jungle", "plains", "savanna", "snow", "swamp", "taiga"];
+                let dressed = |p: &str| TYPES.contains(&p.split(':').next().unwrap_or(""));
+                let villager = matches!(kind, entity::MobKind::Villager | entity::MobKind::ZombieVillager);
+                let armor = if villager && parts[4..].iter().any(|p| dressed(p)) {
+                    // v1.0 gap Track 7e: a villager's type (with `baby`, a
+                    // zombie villager's armor material or a held item).
+                    let mut armor = None;
+                    for &p in &parts[4..] {
+                        if dressed(p) {
+                            args.spawn_villager.push((args.spawn.len(), p.to_owned()));
+                        } else if p == "baby" {
+                            args.spawn_baby.push(args.spawn.len());
+                        } else if let Some(material) = entity::armor::ArmorKind::from_name(p) {
+                            armor = Some(entity::armor::Equipped { kind: material, glint: false });
+                        } else {
+                            let held = item::Item::from_name(p).ok_or_else(|| format!("--spawn: unknown item {p}"))?;
+                            args.spawn_held.push((args.spawn.len(), held));
+                        }
+                    }
+                    armor
+                } else if parts.len() == 5 && parts[4] == "baby" {
                     args.spawn_baby.push(args.spawn.len());
                     None
                 } else if parts.len() == 5
@@ -874,6 +901,7 @@ impl Args {
         self.spawn.clear();
         self.spawn_held.clear();
         self.spawn_baby.clear();
+        self.spawn_villager.clear();
         self.still_mobs = false;
         self.pose = None;
         self.health = None;
