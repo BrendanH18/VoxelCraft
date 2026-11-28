@@ -103,7 +103,7 @@
       "layers": 772,
       "new_layers": 1,
       "cpu_cache_bytes": 819200,
-      "block_array_bytes": 5573304,
+      "block_array_bytes": 5576032,
       "runtime": "Built once on first use, before the block texture array uploads; see docs/verification/2026-11-23-v0.18-materials.md for the measured time"
     }
   }

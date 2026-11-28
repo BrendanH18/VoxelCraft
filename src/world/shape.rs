@@ -688,12 +688,17 @@ pub fn redstone_shape(block: Block, neighbour: impl Fn(glam::IVec3) -> Block) ->
             out.push(directional_box(b([6, 6, 0], [10, 10, 12]), facing));
         }
         Some(Component::Moving) => out.push(b([0, 0, 0], [16, 16, 16])),
+        // v1.0 gap track 6f: Java `HopperBlock`'s shapes: the 16-wide top
+        // from 10 less its 12-wide inside from 11 (the plate and four rims),
+        // the 8-wide funnel from 4 to 10 and the 4-long spout down or to the
+        // side (`Block.box(6, 4, 0, 10, 8, 4)` facing north), as its model.
         Some(Component::Hopper { facing, .. }) => {
             for bx in [
-                b([0, 10, 0], [16, 16, 2]),
-                b([0, 10, 14], [16, 16, 16]),
-                b([0, 10, 2], [2, 16, 14]),
-                b([14, 10, 2], [16, 16, 14]),
+                b([0, 10, 0], [16, 11, 16]),
+                b([0, 11, 0], [16, 16, 2]),
+                b([0, 11, 14], [16, 16, 16]),
+                b([0, 11, 2], [2, 16, 14]),
+                b([14, 11, 2], [16, 16, 14]),
                 b([4, 4, 4], [12, 10, 12]),
             ] {
                 out.push(bx);
@@ -701,7 +706,7 @@ pub fn redstone_shape(block: Block, neighbour: impl Fn(glam::IVec3) -> Block) ->
             out.push(if facing == 4 {
                 b([6, 0, 6], [10, 4, 10])
             } else {
-                b([6, 4, 8], [10, 8, 16]).turned(Facing::ALL[facing as usize])
+                b([6, 4, 12], [10, 8, 16]).turned(Facing::ALL[facing as usize])
             });
         }
         Some(Component::Wire(_)) => {

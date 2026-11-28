@@ -211,13 +211,18 @@ fn model_vertices(
             }
         };
         // v1.0 gap track 6d: Java's face UVs, as `chunk.wgsl` maps them.
-        let mut quad = |corners: [Vec3; 4], layer: u16, shade: f32, face: usize| {
+        // v1.0 gap track 6f: a box face (its box in sixteenths) takes the
+        // jar's item UVs where the item model has them (trapdoors' rims).
+        let mut quad = |corners: [Vec3; 4], layer: u16, shade: f32, face: usize, bx: Option<([u8; 3], [u8; 3])>| {
+            let mut uvs = corners.map(|c| crate::mesh::face_uv(face, c.to_array()));
+            if let Some((lo, hi)) = bx {
+                uvs = crate::mesh::item_face_uvs(m.block, face, lo, hi, uvs);
+            }
             for i in [0, 1, 2, 2, 3, 0] {
                 let c = corners[i];
-                let uv = crate::mesh::face_uv(face, c.to_array());
                 out.push(BlockVertex {
                     pos: place(c).to_array(),
-                    uv,
+                    uv: uvs[i],
                     layer: layer as u32,
                     light: [m.sky_light, shade, m.block_light],
                     tint: m.tint,
@@ -257,8 +262,8 @@ fn model_vertices(
             // Both diagonal planes run 0 -> 1 in z, so z works as u (a west
             // face's mapping).
             let v = |x: f32, y: f32, z: f32| Vec3::new(x, y, z);
-            quad([v(0., 0., 0.), v(1., 0., 1.), v(1., 1., 1.), v(0., 1., 0.)], tex[0], 0.9, 1);
-            quad([v(1., 0., 0.), v(0., 0., 1.), v(0., 1., 1.), v(1., 1., 0.)], tex[0], 0.9, 1);
+            quad([v(0., 0., 0.), v(1., 0., 1.), v(1., 1., 1.), v(0., 1., 0.)], tex[0], 0.9, 1, None);
+            quad([v(1., 0., 0.), v(0., 0., 1.), v(0., 1., 1.), v(1., 1., 0.)], tex[0], 0.9, 1, None);
             return;
         }
         // Falling blocks and every item model share the item's boxes.
@@ -287,7 +292,7 @@ fn model_vertices(
                 } else {
                     [corner(false, false), corner(false, true), corner(true, true), corner(true, false)]
                 };
-                quad(c, layer, shade, face);
+                quad(c, layer, shade, face, Some((bx.min, bx.max)));
             }
         }
     }

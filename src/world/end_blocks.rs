@@ -54,6 +54,9 @@ const T_PILLAR_SIDE: u16 = TEX + 1;
 const T_PILLAR_TOP: u16 = TEX + 2;
 const T_ROD: u16 = TEX + 3;
 const T_ROD_BASE: u16 = TEX + 4;
+/// v1.0 gap track 6f: the end rod's one texture, drawn in Java's
+/// `end_rod` layout (every face of the model samples it).
+pub const ROD_LAYER: u16 = T_ROD;
 const T_CHORUS_PLANT: u16 = TEX + 5;
 const T_FLOWER_SIDE: u16 = TEX + 6;
 const T_FLOWER_TOP: u16 = TEX + 7;
@@ -206,7 +209,9 @@ pub const fn registry(id: u16) -> (&'static str, RenderKind, [u16; 6]) {
         return ("purpur slab", kind, P);
     }
     if id >= END_ROD_FIRST && id < END_ROD_FIRST + 6 {
-        return ("end rod", RenderKind::Shaped, [T_ROD, T_ROD, T_ROD, T_ROD_BASE, T_ROD, T_ROD]);
+        // v1.0 gap track 6f: Java's `end_rod` model maps every face, the
+        // base's underside included, from its one texture.
+        return ("end rod", RenderKind::Shaped, [T_ROD; 6]);
     }
     if id >= CHORUS_FLOWER.0 && id <= CHORUS_FLOWER.0 + DEAD_AGE as u16 {
         let (side, top) = if id == CHORUS_FLOWER.0 + DEAD_AGE as u16 {
@@ -452,8 +457,22 @@ pub fn pixel(layer: u16, x: usize, y: usize) -> [u8; 4] {
     let (xi, yi) = (x as i32, y as i32);
     match layer {
         T_ROD => {
+            // v1.0 gap track 6f: Java's `end_rod` layout. The rod's sides
+            // down columns 0-1 (rows 0-14), its glowing cap at (2, 0), the
+            // base's top and underside at (2, 2) to (5, 5) and the base's
+            // rim along row 6 (columns 2-5). The rest is unused.
             let glow = 236 + n.abs();
-            shade([glow, glow - 6, glow + 2], 0)
+            match (xi, yi) {
+                (0, 0..=14) => shade([glow + 6, glow, glow + 8], 0),
+                (1, 0..=14) => shade([glow - 10, glow - 16, glow - 6], 0),
+                (2..=3, 0..=1) => shade([252, 248, 255], 0),
+                (2..=5, 2..=5) => {
+                    let edge = xi == 2 || xi == 5 || yi == 2 || yi == 5;
+                    shade(if edge { [170, 146, 180] } else { [204, 182, 212] }, n / 2)
+                }
+                (2..=5, 6) => shade([150, 126, 162], n / 2),
+                _ => shade([glow, glow - 6, glow + 2], 0),
+            }
         }
         T_ROD_BASE => shade([196, 172, 204], n),
         T_CHORUS_PLANT => {

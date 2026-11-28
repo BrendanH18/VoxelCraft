@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Extract the explicit face UVs of Java's door, trapdoor, glass pane and
-glazed terracotta models (v1.0 gap track 6e).
+glazed terracotta models (v1.0 gap track 6e), and the whole element layout
+of the bars, hopper, end rod and lantern models (track 6f).
 
 Reads an unpacked Java client jar (its `assets/minecraft/models/block` and
 `blockstates`), emulates `FaceBakery`'s vertex order and UV assignment for
@@ -10,6 +11,12 @@ each blockstate variant (the model turned by its `x` and `y` without
 - `src/mesh/java_uv_tables.rs`: per state and world-space face rectangle,
   the face's UV *op*: which of the square's eight symmetries and which texel
   offset turn the game's planar default UVs into Java's (`src/mesh/java_uv.rs`);
+- in the same file, `BARS`, `HOPPERS`, `END_RODS` and `LANTERNS`: every
+  face of the bars' multipart model for each set of connections and of the
+  hopper's, end rod's and lantern's models for each state (a lantern's
+  turned handle left out), with its UV symmetry and texel
+  offset, texture, cullface and whether it is inset
+  (Java's planes at 0.001 and 15.999 facing into the cell);
 - `tests/fixtures/java/26.3/block_model_uvs.json`: every face's world
   rectangle and each vertex's position and Java UV, for the mesh test.
 
@@ -105,10 +112,15 @@ def game_uv(face, p):
     return [(-z, -y), (z, -y), (x, z), (x, -z), (x, -y), (-x, -y)][face]
 
 
-def quads(jar, model, xr, yr):
-    """Each face of the turned model: game face, rect, vertices and Java UVs."""
+def quads(jar, model, xr, yr, extra=False):
+    """Each face of the turned model: game face, rect, vertices and Java UVs
+    (and with `extra`, its texture variable and turned cullface). With
+    `extra`, elements turned by their own `rotation` (a lantern's handle)
+    are left out: the game's quads can't draw them."""
     out = []
     for e in jar.elements(model):
+        if extra and e.get("rotation", {}).get("angle", 0):
+            continue
         lo, hi = e["from"], e["to"]
         for face, fd in e["faces"].items():
             uv = fd.get("uv") or default_uv(face, lo, hi)
@@ -122,13 +134,56 @@ def quads(jar, model, xr, yr):
             gf = GAME_FACE[turn(NORMAL[face], xr, yr, 0)]
             rlo = [min(v[a] for v in verts) for a in range(3)]
             rhi = [max(v[a] for v in verts) for a in range(3)]
-            out.append((gf, rlo, rhi, verts, uvs))
+            if extra:
+                cull = fd.get("cullface")
+                cull = GAME_FACE[turn(NORMAL[cull], xr, yr, 0)] if cull else 6
+                out.append((gf, rlo, rhi, verts, uvs, fd["texture"].lstrip("#"), cull))
+            else:
+                out.append((gf, rlo, rhi, verts, uvs))
     return out
 
 
-def op_of(gf, lo, hi, verts, uvs):
-    """The face's op (bits 0-2 symmetry, 3-5 offset, 6 on the cell's edge),
-    or None for the default UVs; raises if the game can't store it."""
+def model_rows(jar, family, applied_per_row, textures, lines, fixture, name):
+    """v1.0 gap track 6f: a `[&[ModelFace]; N]` table of whole models, one
+    row per (label, [(model, x, y)]), each face with its UV symmetry and
+    texel offset, texture slot (index in `textures`), turned cullface (6 for
+    none) and whether it is one of Java's planes just inside the cell's edge
+    facing into it."""
+    lines.append(f"pub(super) const {name}: [&[ModelFace]; {len(applied_per_row)}] = [")
+    for label, applied in applied_per_row:
+        faces = []
+        for model, xr, yr in applied:
+            faces.extend(quads(jar, model, xr, yr, extra=True))
+        fixture.setdefault(family, {})[label] = [
+            [gf, lo, hi, [[list(p), list(t)] for p, t in zip(verts, uvs)]] for gf, lo, hi, verts, uvs, _, _ in faces
+        ]
+        entries = []
+        for gf, lo, hi, verts, uvs, tex, cull in faces:
+            axis, positive = gf // 2, gf % 2 == 0
+            depth = (hi if positive else lo)[axis]
+            rlo = [int(round(x)) for x in lo]
+            rhi = [int(round(x)) for x in hi]
+            if any(abs(a - b) > 0.01 for a, b in zip(lo + hi, rlo + rhi)):
+                raise ValueError(f"{family} face {gf} {lo}-{hi} off the grid")
+            # A plane just inside the cell's edge facing out is drawn on
+            # the edge; facing in, at its inset (depth codes 17 and 18).
+            inset = depth != round(depth) and round(depth) != (16 if positive else 0)
+            m, (du, dv) = transform(gf, rlo, rhi, verts, uvs)
+            if m not in SYMMETRIES:
+                raise ValueError(f"{family} face {gf} {lo}-{hi}: {m} isn't a symmetry")
+            entry = (gf, rlo, rhi, SYMMETRIES.index(m), du, dv, textures.index(tex), cull, inset)
+            if entry not in entries:
+                entries.append(entry)
+        body = ", ".join(
+            f"mf({f}, {lo}, {hi}, {m}, [{du}, {dv}], {t}, {c}, {str(i).lower()})"
+            for f, lo, hi, m, du, dv, t, c, i in entries
+        )
+        lines.append(f"    // {label}\n    &[{body}],")
+    lines.append("];")
+
+
+def transform(gf, lo, hi, verts, uvs):
+    """The 2 x 2 map and texel offset taking the game's planar UVs to Java's."""
     g = [game_uv(gf, p) for p in verts]
     d1 = (g[1][0] - g[0][0], g[1][1] - g[0][1])
     d3 = (g[3][0] - g[0][0], g[3][1] - g[0][1])
@@ -146,6 +201,13 @@ def op_of(gf, lo, hi, verts, uvs):
         int(round(uvs[0][0] - a * g[0][0] - b * g[0][1])) % 16,
         int(round(uvs[0][1] - c * g[0][0] - d * g[0][1])) % 16,
     )
+    return m, off
+
+
+def op_of(gf, lo, hi, verts, uvs):
+    """The face's op (bits 0-2 symmetry, 3-5 offset, 6 on the cell's edge),
+    or None for the default UVs; raises if the game can't store it."""
+    m, off = transform(gf, lo, hi, verts, uvs)
     if m == (1, 0, 0, 1) and off == (0, 0):
         return None
     axis = gf // 2
@@ -231,15 +293,57 @@ def main():
     for (f, lo, hi), o in sorted(pane.items()):
         lines.append(f"    op({f}, {list(lo)}, {list(hi)}, {o}),")
     lines.append("];")
+    # v1.0 gap track 6f: bars, every face of every applied part, row =
+    # north | east << 1 | south << 2 | west << 3 (copper bars' blockstates
+    # are iron bars' with their own textures).
+    parts = jar.blockstate("iron_bars")["multipart"]
+    rows = []
+    for bits in range(16):
+        sides = {"north": bits & 1, "east": bits >> 1 & 1, "south": bits >> 2 & 1, "west": bits >> 3 & 1}
+        label = "".join(k[0] for k in ("north", "east", "south", "west") if sides[k]) or "-"
+        applied = []
+        for part in parts:
+            when = part.get("when")
+            if when and not all(str(bool(sides[k])).lower() == want for k, want in when.items()):
+                continue
+            for v in part["apply"] if isinstance(part["apply"], list) else [part["apply"]]:
+                applied.append((v["model"], v.get("x", 0), v.get("y", 0)))
+        rows.append((label, applied))
+    model_rows(jar, "bars", rows, ["bars", "edge"], lines, fixture, "BARS")
+    # Hoppers: row = down, north, south, east, west.
+    variants = jar.blockstate("hopper")["variants"]
+    rows = []
+    for fac in ("down", "north", "south", "east", "west"):
+        v = variants[f"facing={fac}"]
+        rows.append((f"facing={fac}", [(v["model"], v.get("x", 0), v.get("y", 0))]))
+    model_rows(jar, "hoppers", rows, ["side", "top", "inside"], lines, fixture, "HOPPERS")
+    # End rods: row = Java's `Direction` order (down, up, north, south,
+    # west, east).
+    variants = jar.blockstate("end_rod")["variants"]
+    rows = []
+    for fac in ("down", "up", "north", "south", "west", "east"):
+        v = variants[f"facing={fac}"]
+        rows.append((f"facing={fac}", [(v["model"], v.get("x", 0), v.get("y", 0))]))
+    model_rows(jar, "end_rods", rows, ["end_rod"], lines, fixture, "END_RODS")
+    # Lanterns (and soul and copper lanterns, the same templates): row =
+    # standing, hanging; the handle's turned planes are left out.
+    variants = jar.blockstate("lantern")["variants"]
+    rows = []
+    for hanging in ("false", "true"):
+        v = variants[f"hanging={hanging}"]
+        rows.append((f"hanging={hanging}", [(v["model"], v.get("x", 0), v.get("y", 0))]))
+    model_rows(jar, "lanterns", rows, ["lantern"], lines, fixture, "LANTERNS")
     # Glazed terracotta: the fixture only (the game turns its layers).
     for label, v in jar.blockstate("white_glazed_terracotta")["variants"].items():
         state_ops("glazed", label, v)
 
     header = [
         "// Generated by tools/extract_java_model_uvs.py from the Java 26.3 client jar's",
-        "// block models and blockstates (v1.0 gap track 6e). Do not edit by hand.",
+        "// block models and blockstates (v1.0 gap tracks 6e and 6f). Do not edit by hand.",
         "// Each entry: a face (0 +X .. 5 -Z), its rect in sixteenths, and its UV op",
-        "// (bits 0-2 the transform, 3-5 the offset, bit 6 on the cell's edge).",
+        "// (bits 0-2 the transform, 3-5 the offset, bit 6 on the cell's edge);",
+        "// a model face has its symmetry, texel offset, texture slot, cullface (6 none) and whether",
+        "// it is a plane inset from the cell's edge.",
         "",
     ]
     with open(sys.argv[2], "w") as f:

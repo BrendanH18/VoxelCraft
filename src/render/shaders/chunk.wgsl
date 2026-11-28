@@ -149,6 +149,19 @@ fn detail_coord(value:u32)->f32 {
     return select(f32(value),1.5,value==31u)/16.0;
 }
 
+// v1.0 gap track 6f: a model face's depth code (plane code 29, its AO
+// bits 0-4): 0-16 sixteenths, 17 Java's inset plane at 0.001 and 18 at
+// 15.999.
+fn model_depth(code: u32) -> f32 {
+    if code == 17u {
+        return 0.001 / 16.0;
+    }
+    if code == 18u {
+        return 15.999 / 16.0;
+    }
+    return f32(code) / 16.0;
+}
+
 // v1.0 gap track 6c: a fine quad's coordinate codes (bamboo): bounds 0-7
 // and, for the plane, 8 more (8/16), in sixteenths.
 fn fine_coord(code: u32) -> f32 {
@@ -233,8 +246,8 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>, @loca
         order = array<u32, 4>(0u, 3u, 2u, 1u);
     }
     let c = order[((vi & 3u) + (w0 >> 31u)) & 3u];
-    let ao = (w1 >> (8u + 2u * c)) & 3u;
-    let light = (w2 >> (8u * c)) & 255u;
+    var ao = (w1 >> (8u + 2u * c)) & 3u;
+    var light = (w2 >> (8u * c)) & 255u;
     let coord_mask = select(63u, 31u, detail);
     let base = vec3<u32>(w0 & coord_mask, (w0 >> 6u) & coord_mask, (w0 >> 12u) & coord_mask);
     let column = vec2<i32>(origin.x + i32(base.x), origin.y + i32(base.z));
@@ -243,6 +256,10 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>, @loca
     var uv: vec2<f32>;
     var uv_m = 0u;
     var uv_offset = 0u;
+    // v1.0 gap track 6f: a model face (plane code 29) is lit flat, its one
+    // light in w2's low byte and its UV offset in texels in bits 8-15.
+    var model_face = false;
+    var model_shift = vec2<f32>(0.0);
     if fine {
         // Fine quad: bounds and plane as codes ([`fine_coord`]), moved by
         // the stalk's offset. A leaf plane stretches its whole texture over
@@ -318,11 +335,18 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>, @loca
             // v1.0 gap track 6e: plane codes 17-24 put the face on the
             // cell's edge with Java's UV symmetry (code - 17), 25-28 are a
             // rail sloping at 1/16; the bounds' three spare bits hold the
-            // edge face's offset or another face's symmetry.
+            // edge face's offset or another face's symmetry (and a model
+            // face's, code 29).
             let code = (w1 >> 26u) & 31u;
             let spare = ((w0 >> 25u) & 1u) | (((w1 >> 20u) & 1u) << 1u) | (((w1 >> 25u) & 1u) << 2u);
             let edge_op = code >= 17u && code <= 24u;
             let slope = code >= 25u && code <= 28u;
+            // v1.0 gap track 6f: plane code 29 is a face of a Java model
+            // drawn without ambient occlusion (bars, hoppers, end rods): its
+            // AO bits hold the depth code, the spare bits its symmetry and
+            // w2 its light and texel offset.
+            let model = code == 29u;
+            let model_bits = (w1 >> 8u) & 31u;
             let tag = code - 8u;
             uv_m = select(spare, code - 17u, edge_op);
             uv_offset = select(0u, spare, edge_op);
@@ -331,6 +355,12 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>, @loca
                 depth = select(0.0, 1.0, (face & 1u) == 0u);
             } else if slope {
                 depth = 1.0 / 16.0;
+            } else if model {
+                depth = model_depth(model_bits);
+                ao = 3u;
+                light = w2 & 255u;
+                model_face = true;
+                model_shift = vec2<f32>(f32((w2 >> 8u) & 15u), f32((w2 >> 12u) & 15u)) / 16.0;
             }
             var p = vec3<f32>(base);
             p[d] += depth;
@@ -369,7 +399,7 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>, @loca
         }
 
         // Planar UVs from the chunk-local position: merged quads tile the texture.
-        uv = java_uv(face_uv(face, local), uv_m, uv_offset);
+        uv = java_uv(face_uv(face, local), uv_m, uv_offset) + model_shift;
     }
 
     var face_shade = array<f32, 8>(0.8, 0.8, 1.0, 0.55, 0.68, 0.68, 0.9, 0.9);
@@ -397,7 +427,7 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>, @loca
     out.normal = normals[shade_face];
     out.light = vec2<f32>(f32(light & 15u), f32(light >> 4u)) / 15.0;
     // Four equal corner bytes: the light is constant across the quad.
-    let uniform_light = w2 == (w2 & 255u) * 0x01010101u;
+    let uniform_light = model_face || w2 == (w2 & 255u) * 0x01010101u;
     out.lightmap = vec4<f32>(0.0);
     out.sun_tint = vec3<f32>(1.0);
     if uniform_light && g.ambient.w <= 0.0 {

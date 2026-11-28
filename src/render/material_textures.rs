@@ -1690,15 +1690,19 @@ fn fixture(kind: u16, palette: &[[u8; 3]], flame: [u8; 3]) -> Canvas {
             }
         }
         ct::BARS => {
+            // v1.0 gap track 6f: the bars sit on columns 3-4, 7-8 and 11-12
+            // with half bars on the edges, so Java's `template_bars_post`
+            // (columns 7-8 on its crossed planes) and the arms' edge strips
+            // show a bar, and a row of bars joins into whole ones.
             for (y, row) in g.iter_mut().enumerate() {
                 for (x, v) in row.iter_mut().enumerate() {
-                    let bar = x % 4 == 1 || x % 4 == 2;
+                    let bar = x % 4 == 3 || x % 4 == 0;
                     let rail = (1..=2).contains(&y) || (13..=14).contains(&y);
                     *v = if !bar && !rail {
                         HOLE
                     } else if rail {
                         if y == 1 || y == 13 { 5 } else { 1 }
-                    } else if x % 4 == 1 {
+                    } else if x % 4 == 3 {
                         4
                     } else {
                         2
@@ -1722,25 +1726,34 @@ fn fixture(kind: u16, palette: &[[u8; 3]], flame: [u8; 3]) -> Canvas {
             }
         }
         ct::LANTERN => {
+            // v1.0 gap track 6f: Java's lantern layout, which the models'
+            // UVs read: the body's sides at (0, 2) to (5, 8), a cage frame
+            // round the flame; its top and bottom at (0, 9) to (5, 14),
+            // the cap's top inside it at (1, 10) to (4, 13); the cap's
+            // sides at (1, 0) to (4, 1); the handle's strips at (11, 1) and
+            // (11, 10) (the handle itself isn't drawn). The rest is metal.
             let glow = ramp(flame, [840, 1000, 1120]);
             let (dim, mid, hot) = (c.ink(glow[0]), c.ink(glow[1]), c.ink(glow[2]));
             for (y, row) in c.g.iter_mut().enumerate() {
                 for (x, v) in row.iter_mut().enumerate() {
-                    let caged = x % 3 == 2 || y % 7 == 0 || y % 7 == 6 || matches!(x, 5 | 10);
-                    *v = if caged {
-                        if y % 7 == 0 {
-                            5
-                        } else if y % 7 == 6 {
-                            1
-                        } else {
-                            3
-                        }
-                    } else if (6..=9).contains(&x) && (9..=12).contains(&y) {
-                        hot
-                    } else if (y % 7) == 1 {
-                        dim
-                    } else {
-                        mid
+                    *v = match (x, y) {
+                        // Body sides: the frame's posts and rims, the flame.
+                        (0 | 5, 2..=8) => 3,
+                        (_, 2) if x <= 5 => 5,
+                        (_, 8) if x <= 5 => 1,
+                        (2..=3, 4..=6) => hot,
+                        (1..=4, 3) => dim,
+                        (1..=4, 4..=7) => mid,
+                        // Body top and bottom, with the cap's top inside.
+                        (1 | 4, 10..=13) | (1..=4, 10 | 13) => 5,
+                        (2..=3, 11..=12) => 3,
+                        (0..=5, 9..=14) => 1,
+                        // Cap sides: a lit top row over a darker band.
+                        (1..=4, 0) => 5,
+                        (1..=4, 1) => 3,
+                        // The handle's strips, and unused metal.
+                        (11..=13, 1..=4 | 6..=11) => 3,
+                        _ => 1,
                     };
                 }
             }
@@ -3401,9 +3414,9 @@ mod tests {
         (2136, 0xc7038ba18dc61238),
         (2137, 0x9b7269cb74a9d34c),
         (2138, 0x3de6c3f2026fe1b5),
-        (2139, 0x408a20b0c8a2bbe5),
+        (2139, 0x731fa3347d9e79e5),
         (2140, 0xa5b70fafce98fc44),
-        (2141, 0x0d9864941b064aad),
+        (2141, 0x1d086ba51f617a3d),
         (2142, 0x0585c1a9cbc9b318),
         (2143, 0x0eca70ea55bf8b79),
         (2144, 0x11fbc63c4957ad39),
@@ -3411,9 +3424,9 @@ mod tests {
         (2154, 0xf18dd877a0257f85),
         (2155, 0x6a1239340cfcd52e),
         (2156, 0x0b24b2ebd91b181c),
-        (2157, 0xfcc45b2d10a817d7),
+        (2157, 0xd42568255e176f5d),
         (2158, 0xf3fbd78218c42e30),
-        (2159, 0x74d2362c7ac37faf),
+        (2159, 0x4a9b8fd800e025b7),
         (2160, 0xab0d76f65230b8af),
         (2161, 0x682007550aa1ccca),
         (2162, 0x3674961bb031d758),
@@ -3421,9 +3434,9 @@ mod tests {
         (2172, 0xade15fc802f2d1cc),
         (2173, 0x784d57a71fa85d11),
         (2174, 0x011fa15042acdf5c),
-        (2175, 0x5ff0fbf728d3bac7),
+        (2175, 0xe8e266f9ae4a06cb),
         (2176, 0x5b18a88f59c7b610),
-        (2177, 0xc9551836aeea5c9d),
+        (2177, 0x16ff0d8e969863f7),
         (2178, 0xc9e08ec1fe2fad42),
         (2179, 0xb72573ee3c015027),
         (2180, 0x90306aa6713f5adc),
@@ -3431,17 +3444,17 @@ mod tests {
         (2190, 0xd7601d28e7e1b6f5),
         (2191, 0xccf08e396293e053),
         (2192, 0xbaa328890bcbe2fe),
-        (2193, 0x0877f21f1ac96265),
+        (2193, 0x46127e43b1699de5),
         (2194, 0xc7eb76088effe6e7),
-        (2195, 0x15c89c5471aff84d),
+        (2195, 0x1f23075385d48f55),
         (2196, 0xcbc26c27e346c191),
         (2197, 0xab23d4829b77d117),
         (2198, 0x568ec4fe1a5a80bb),
         (2199, 0x6c4b739df1090887),
-        (161, 0x265245cd5bb4b025),
+        (161, 0x23d69bd266a9a8e5),
         (256, 0x6c60f59f1b09b064),
-        (1761, 0x9e752158d0194dbd),
-        (1762, 0xf72b67b84a615215),
+        (1761, 0x6bfe6103d8ab8ce1),
+        (1762, 0x3077177eb138eab1),
         (1123, 0x2a1dc190ced09380),
         (1311, 0x79c389f18a2ca92d),
         (1312, 0x5ef781220cbddd83),

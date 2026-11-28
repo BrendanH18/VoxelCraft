@@ -122,7 +122,8 @@ fn the_mirror_follows_the_shader() {
         "return max(g.ambient.rgb, vec3<f32>(NIGHT_VISION_COLOR * g.effects.x));",
         "return brightness(raw - vec3<f32>(g.effects.z));",
         "return mix(tint * (0.62 + 0.38 * diffuse), vec3<f32>(0.85), g.params.w);",
-        "let uniform_light = w2 == (w2 & 255u) * 0x01010101u;",
+        // v1.0 gap track 6f: a model face's one light is uniform too.
+        "let uniform_light = model_face || w2 == (w2 & 255u) * 0x01010101u;",
         "let o = overworld_parts(out.light.x, out.light.y, out.normal);",
         "return in.lightmap.rgb * in.shade * in.sun_tint;",
         "if f >= 1.0 { return g.fog_color.rgb; }",
