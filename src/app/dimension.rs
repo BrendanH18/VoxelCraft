@@ -523,7 +523,7 @@ impl Game {
         // v1.0 gap Track 5b, `getExitPortal`: a spectator with no portal to
         // arrive in doesn't travel (`getPortalDestination` gives no
         // transition) and no portal is built. They try again on stepping in.
-        if self.session.mode == crate::rules::GameMode::Spectator
+        if self.session.mode == voxelcraft::rules::GameMode::Spectator
             && self.lan.client.is_none()
             && !saved_portal_near(&self.storage, to, target)
         {
@@ -597,7 +597,7 @@ impl Game {
                             Some(at) => Some(self.world.portal_rect(at)),
                             // `travel` checked that a spectator has a portal
                             // to arrive in: Java never builds them one.
-                            None if self.session.mode == crate::rules::GameMode::Spectator => None,
+                            None if self.session.mode == voxelcraft::rules::GameMode::Spectator => None,
                             None => self.world.create_portal(trip.target, trip.along_x).map(|r| (r, trip.along_x)),
                         }
                     }

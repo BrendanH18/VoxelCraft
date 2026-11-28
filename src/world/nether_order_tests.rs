@@ -498,7 +498,7 @@ fn ancient_debris_is_javas_scattered_ore() {
         }
         let before = pocket.0.clone();
         scattered_debris(&mut pocket, &mut Rng(seed), IVec3::ZERO, 3);
-        for (p, _) in pocket.0.iter().filter(|(p, b)| **b == Block::ANCIENT_DEBRIS) {
+        for (p, _) in pocket.0.iter().filter(|(_, b)| **b == Block::ANCIENT_DEBRIS) {
             assert!(!before.contains_key(p));
             for d in [IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y, IVec3::Z, IVec3::NEG_Z] {
                 assert_ne!(pocket.block(*p + d), Block::AIR, "debris at {p} beside air");
