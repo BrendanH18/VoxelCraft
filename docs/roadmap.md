@@ -64,6 +64,15 @@ v0.16 to v0.18 were tagged, the owner chose to close their gaps first. No
 the proposed [gap-closing build](#v10-gap-plan-2026-11-27) is below the
 v1.0 plan.
 
+**1.0 prepared (2026-11-28), awaiting the owner.** The gap-closing build
+and a final wave of tracks closed every Partial row but BLD-05c (block
+models still being drawn to Java's layouts); the version is 1.0.0, the
+release notes and the [delivery record](delivery-records.md#39-v10-delivery-record--2026-11-28-prepared-awaiting-the-owner)
+are written, and [#128](https://github.com/BrendanH18/VoxelCraft/pull/128)
+carries it with CI. Before the tag: the owner's look approvals for the
+overnight merges, a decision on [FE-05](#14-what-can-follow-10) (one
+running dimension), and the owner's play, which verifies rows.
+
 **Play (owner, 2026-11-27): v1.0 plays really well.** The owner played
 the v1.0 build on `main` and reported that it plays really well. That is
 the owner's play the v1.0 rows were waiting for; no row has moved to
@@ -356,6 +365,17 @@ then north to south (GEN-04b,
 [v1.0 gap Track 4b](verification/2026-11-27-v1.0-gap-track-04b-end-leftovers.md);
 140 of the 148 such test chunks match Java's run, the rest of the 2,312 all
 do).
+
+**Fidelity exception FE-05 — one running dimension (proposed
+2026-11-28, awaiting the owner).** VoxelCraft runs only the dimension the
+player (or the LAN host) is in. Java runs every loaded dimension at once.
+So anything sent to another dimension (an entity through a portal, an
+ender pearl) waits there, unchanged, until the player next goes there,
+where Java's keeps moving (v1.0 final F2, v1.0 gap Track 8f). Arrivals
+are placed where Java would have put them at the moment they left.
+Player impact: no farms or mobs run in a dimension you aren't in. Running
+every dimension is an engine change the 1.0 build didn't make; the owner
+decides whether 1.0 ships with this exception.
 
 The End's islands are not covered by FE-01: the owner chose on 2026-11-27
 to port Java's `EndIslandFunction` for new worlds
@@ -707,7 +727,7 @@ optional for 1.0 unless the owner records a deferral or fidelity exception.
 | v0.16 | The End and the Wither | Close M3; M5 | End cities and ships (the last GEN-05 structures, then the M3 exit checks), shulkers and shulker boxes, elytra and fireworks, dragon respawn; Wither summoning, Nether stars and beacons; the no-cheat progression playthrough. Added by the 2026-11-09 audit ([list](#content-assigned-by-the-2026-11-09-audit)): poplar, cinnabar and sulfur with their terrain and the sulfur cube, abandoned camps, mob heads, infested blocks, nether gold ore, conduits, and the reassessment of dungeons, mineshafts, strongholds, shipwrecks and monuments | Released (owner, 2026-11-23): played by the owner, tagged `v0.16` at `0848508` ([#113](https://github.com/BrendanH18/VoxelCraft/pull/113)) and published as the latest release, without its offscreen frame-time run (owner exception above). Rows stay Implemented, unverified. Implemented (2026-11-21): scope approved by the owner, eight tracks in two waves, all merged and integrated: wave 1 (Outer End, flight and storage, Wither and beacons, generation 5 Overworld) on 2026-11-20, wave 2 (classic and ocean structures, dragon respawn and the M5 audit, wave 1 leftovers, the M3 exit audit) on 2026-11-21. The offscreen frame-time run remains. See the [v0.16 scope](#v016-scope-the-end-and-the-wither) |
 | v0.17 | Redstone and automation | M6 | Java update order, pistons with entity push and slime/honey, the crafter, remaining sensors and workstations; reference farms, clocks and sorters across save/reload. Added by the 2026-11-09 audit: the furnace minecart | Released (owner, 2026-11-23): played by the owner, tagged `v0.17` at `d5c1fee` after [#116](https://github.com/BrendanH18/VoxelCraft/pull/116) and [#117](https://github.com/BrendanH18/VoxelCraft/pull/117) and published as the latest release, without its offscreen frame-time run (owner exception above). Rows stay Implemented, unverified. Implemented (2026-11-23): scope approved by the owner; all ten tracks merged and integrated ([#115](https://github.com/BrendanH18/VoxelCraft/pull/115)), and every reference contraption matches Java. The offscreen frame-time run remains. See the [v0.17 scope](#v017-scope-redstone-and-automation) |
 | v0.18 | Polish and performance | M7: UX, §6 | Typography/contrast, material and mob art, inventory/recipe navigation, HUD/workstations, title/world identity, atmosphere and accessibility ([scope](#v020-scope-presentation-and-performance)); subtitles, asset and sound review in play (including the v0.12 blocks' own sounds), and menu fixes found since v0.11; the 120 FPS gate in every scene, including v0.8's streaming budget (PERF-03), and the performance check for the v0.8 and v0.9 rows, v0.11's menu and title frame-time run and v0.12's `materials` runs, which moved here unverified ([v0.12 profile](verification/2026-10-29-v0.12-finish.md#frame-time)). The per-frame entity model rebuild that profile found was removed on 2026-11-09 ([record](verification/2026-11-09-entity-frame-time.md)); the streaming route's main-thread terrain column rebuilds from mob biome queries were addressed in the [streaming follow-up](verification/2026-11-09-streaming-biomes-and-gen07.md); the remaining tick work and per-frame sign text are still owed, and the gate was to be measured again here (v0.14 passed it on 2026-11-16, [record](verification/2026-11-16-tag-gate-run.md)). The performance runs in this scope moved to v1.0 and were dropped by the owner on 2026-11-27 | Played by the owner (2026-11-25); to be tagged and released without its frame-time runs (owner exception above), which moved to v1.0 with v0.18's unmet exit and were dropped on 2026-11-27. The tag and the published release follow this record's merge. Rows stay Implemented, unverified or Partial. Implemented, unverified (2026-11-24): the owner approved an eleven-track plan ([v0.18 plan](#v018-plan-2026-11-23)); all eleven tracks are merged and integrated, every art round's look approved by the owner and the code reviewed; the owner's play and the frame-time runs remain. Presentation scope expanded by the owner on 2026-11-05. Each release then recorded its own frame-time run ([§6.1](#61-reference-configuration-and-frame-time-gate)), so what stayed here was the final gate (dropped with all release runs on 2026-11-27) |
-| v1.0 | Acceptance | M7 exit, §8 | Every mandatory row Verified; fresh-world and long-session playthroughs; save-compatibility policy; installer and update checks; current stable Java scope reconciled | In progress (2026-11-25): the owner approved a ten-track acceptance build ([v1.0 plan](#v10-plan-2026-11-25)); Java 26.3 is still the current stable release. Implemented, unverified (2026-11-26): all ten tracks and five follow-ups merged and integrated. Played by the owner (2026-11-27), who reported that it plays really well; the frame-time runs were dropped by the owner the same day. The inventory refresh, the §8 record and the owner's decision on the remaining Partial rows come before the tag |
+| v1.0 | Acceptance | M7 exit, §8 | Every mandatory row Verified; fresh-world and long-session playthroughs; save-compatibility policy; installer and update checks; current stable Java scope reconciled | In progress (2026-11-25): the owner approved a ten-track acceptance build ([v1.0 plan](#v10-plan-2026-11-25)); Java 26.3 is still the current stable release. Implemented, unverified (2026-11-26): all ten tracks and five follow-ups merged and integrated. Played by the owner (2026-11-27), who reported that it plays really well; the frame-time runs were dropped by the owner the same day. The owner chose to close the Partial rows first (2026-11-27); the gap-closing tracks and the final wave (2026-11-27 to 2026-11-28) closed them but BLD-05c, the version is 1.0.0 and the release notes are written ([gap plan](#v10-gap-plan-2026-11-27)). Before the tag: the owner's look approvals for the overnight merges, a decision on FE-05, and the owner's play, which verifies rows |
 
 Notes:
 
@@ -2503,20 +2523,20 @@ notes.
 
 ## 8. Final acceptance record for 1.0
 
-- [ ] Current stable Java reference and exact core scope recorded. (2026-11-25: Java 26.3 is still the current stable release, with 26.4 at its first pre-release; the scope is unchanged, see the [v1.0 plan](#v10-plan-2026-11-25).)
-- [ ] Every mandatory core feature individually Verified with evidence.
-- [ ] Side-feature deferrals resolved (boundary approved 2026-10-19, §1.4); fidelity exceptions explicit.
-- [ ] Fresh-world survival progression and continued post-boss play passed.
+- [x] Current stable Java reference and exact core scope recorded. (2026-11-25: Java 26.3 is still the current stable release, with 26.4 at its first pre-release; the scope is unchanged, see the [v1.0 plan](#v10-plan-2026-11-25).)
+- [ ] Every mandatory core feature individually Verified with evidence. (2026-11-28: every core row is Implemented, unverified except BLD-05c, Partial while the last block models are drawn; the owner's play of the 1.0 build verifies rows by the [§2 rule](#2-status-and-tracking-rules).)
+- [ ] Side-feature deferrals resolved (boundary approved 2026-10-19, §1.4); fidelity exceptions explicit. (2026-11-28: FE-01 to FE-04 approved; FE-05, one running dimension, proposed and awaiting the owner.)
+- [ ] Fresh-world survival progression and continued post-boss play passed. (The owner's play; `tests/progression_paths.rs` checks every acquisition path.)
 - [ ] Building, exploration, farming, animals, villagers, travel and automation scenarios passed.
 - [ ] Player-facing interfaces, controls, feedback and original assets reviewed in play.
-- [ ] Save/restart/unload, migration, interruption and long-session stability passed.
+- [x] Save/restart/unload, migration, interruption and long-session stability passed. (Automated: save fixtures from v0.8 to v0.18 load and resave in `save_compat`, interrupted saves recover, and the 4-hour region-storage soak stays bounded; [Track 1](verification/2026-11-25-v1.0-track-01-saves.md), [Track 3b](verification/2026-11-26-v1.0-track-03b-region-storage.md).)
 - Dropped by the owner on 2026-11-27, with frame-time runs for releases ([current plan](#current-plan--updated-2026-11-13)); performance problems come in as GitHub issues:
   - ~~M5 1080p/256-block 120 FPS gate (game's own frames) passed in every required scene, with no windowed stall.~~ (PERF-02 and PERF-03 passed on the [2026-11-16 tag gate run](verification/2026-11-16-tag-gate-run.md).)
   - ~~Streaming/hitch budgets passed; native-resolution and scaling results reported.~~
   - ~~The frame-time runs moved here by the 2026-11-25 exception passed: the offscreen and windowed suites for v0.16, v0.17 and v0.18, PERF-03's streaming budget, v0.11's menu and title run and v0.12's `materials` runs (including the render-distance slowdown the owner first reported for v0.18).~~
-- [ ] Existing supported-platform checks and installer/update smoke passed.
-- [ ] Existing controller/agent/multiplayer shared-code regressions addressed.
-- [ ] Release documentation accurately states delivered scope and remaining limitations.
+- [ ] Existing supported-platform checks and installer/update smoke passed. (CI's tests pass on Linux, macOS and Windows; the package and installer smoke tests run in the `1.0` tag build.)
+- [x] Existing controller/agent/multiplayer shared-code regressions addressed. (The controller, agent and LAN adapter tests pass in CI on the 1.0 build.)
+- [x] Release documentation accurately states delivered scope and remaining limitations. (2026-11-28: the 1.0.0 release notes, rebuilt from the tracks' records and an audit of 0.18's known limitations.)
 
 Multiplayer and additional side features receive their own roadmap after
 this single-player acceptance milestone. They are not prerequisites for 1.0.

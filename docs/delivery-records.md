@@ -429,6 +429,36 @@ test, and uploaded both artifacts ([#101](https://github.com/BrendanH18/VoxelCra
   track records listed in the
   [v0.18 scope](roadmap.md#v020-scope-presentation-and-performance).
 
+### 3.9 v1.0 delivery record — 2026-11-28 (prepared, awaiting the owner)
+
+The 1.0 build is prepared on `t3/prep-release-1-0`
+([#128](https://github.com/BrendanH18/VoxelCraft/pull/128)): the v1.0
+acceptance build ([#124](https://github.com/BrendanH18/VoxelCraft/pull/124)),
+the LAN and thumbnail fixes
+([#126](https://github.com/BrendanH18/VoxelCraft/pull/126)), and the
+gap-closing build the owner chose on 2026-11-27 instead of tagging with 22
+Partial rows ([plan](roadmap.md#v10-gap-plan-2026-11-27)): tracks 1 to 8
+and their follow-ups, and a final wave (F1 to F10) for the Java
+differences an audit of 0.18's known limitations found. Version 1.0.0;
+release notes in `packaging/RELEASE-NOTES.md`. It is not tagged.
+
+- **Evidence:** every track's verification record under
+  `verification/2026-11-2[78]-v1.0-*.md`; a Boat check (clippy for both
+  feature sets, every library and game test, the integration files each
+  track used) after each merge; CI's full suite on the pull request.
+- **Owner decisions taken (2026-11-27):** close the Partial rows; FE-03 (no
+  Force Unicode Font); FE-04 (decoration overlaps, extended to the End);
+  port Java's End islands; spectators can't use portals; bamboo's
+  sub-texel geometry; Java's slot icon orientation; the nautilus shell
+  first; the right stick for bundles; the owner's play verifies rows.
+- **Waiting for the owner:** the looks merged overnight without approval
+  (gap Tracks 6c, 6d, 6e, 6f, 7d, 7e, 7f, 8c's and 8d's flames, final F3
+  and whichever final-wave tracks change looks); FE-05 (one running
+  dimension), proposed; the owner's play of the build, which verifies
+  rows; then the merge, the `1.0` tag and the published release.
+- **Not run:** no frame-time runs (dropped by the owner, 2026-11-27);
+  nobody has played the build since the gap-closing work began.
+
 ## Assessment follow-ups, 2026-10-13 to 2026-10-16
 
 These paragraphs opened the roadmap's §4 "Core requirement catalogue".
