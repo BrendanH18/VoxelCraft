@@ -57,6 +57,22 @@ const CATALYST_CORE: f32 = 0.22;
 /// one in eleven is a shrieker (`SculkBlock.getRandomGrowthState`).
 const GROWTH: f32 = 0.012;
 
+/// Java's `OverworldBiomeBuilder` dryness thresholds, the overworld
+/// `aquifers.exclusion` (`min(-0.225 - erosion, max(depth - 0.9, 0))`):
+/// erosion below -0.225 at a depth parameter above 0.9.
+pub const DRY_EROSION: f32 = -0.225;
+/// Blocks under the surface for Java's depth 0.9: the deep dark's depth
+/// (1.1, [`MIN_DEPTH`] here) less 0.2 at Java's 128 blocks per unit.
+pub const DRY_DEPTH: i32 = MIN_DEPTH - 26;
+
+/// v1.0 final F5 (generation 7): whether an aquifer cell centred at
+/// height `y`, under a surface at `height` with this climate, lies in
+/// Java's deep-dark dryness region, where `NoiseBasedAquifer` keeps it dry,
+/// so caves round the deep dark and its ancient cities hold no water.
+pub fn aquifer_excluded(climate: &Climate, height: i32, y: i32) -> bool {
+    climate.erosion < DRY_EROSION && height - y > DRY_DEPTH
+}
+
 /// Whether a cell at height `y`, under a column of this climate whose
 /// surface is at `height`, is deep dark.
 pub fn under(climate: &Climate, height: i32, y: i32) -> bool {

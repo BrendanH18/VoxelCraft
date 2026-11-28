@@ -488,7 +488,15 @@ impl Generator {
         let relief = columns.relief.as_deref().expect("generation 2 columns");
         let field = self.caves.field(base);
         let ravines = self.caves.ravines(base);
-        let mut aquifer = Aquifer::new(&self.caves, |x, z| self.aquifer_surface_v2(x, z));
+        let exclusion = |centre: IVec3, top: i32| {
+            super::super::deep_dark::aquifer_excluded(&self.climate.sample(centre.x, centre.z), top, centre.y)
+        };
+        let surface = |x, z| self.aquifer_surface_v2(x, z);
+        let mut aquifer = if self.generation >= Generation::V7 {
+            Aquifer::with_exclusion(&self.caves, surface, &exclusion)
+        } else {
+            Aquifer::new(&self.caves, surface)
+        };
         let y0 = base.y - MASK_BELOW;
         // Open, dry air beside a block (fluids must not spill into it).
         let dry_air = |x: i32, y: i32, z: i32| {

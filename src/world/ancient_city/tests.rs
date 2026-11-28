@@ -139,3 +139,61 @@ fn processors_follow_the_java_lists() {
     assert!(near(slabs_gone, 0.05 + 0.3), "{slabs_gone}");
     assert_eq!(CityPalette.role("shrieker"), Some(cb::sculk_shrieker(false, true, false)));
 }
+
+/// v1.0 final F5: Java's aquifers are dry in the deep-dark region (the
+/// overworld `aquifers.exclusion`), so no cave water borders a generation 7
+/// city. Counts the water in and round the city's start piece and the
+/// pieces next to it, leaving out spring sources; generation 6, without
+/// the exclusion, is printed for the record.
+#[test]
+fn generation_7_cities_hold_no_aquifer_water() {
+    let water = |generation: Generation| {
+        let g = Generator::with_generation(SEED, Dimension::Overworld, generation);
+        let city = city(&g);
+        let near = Bounds { min: city.at - IVec3::new(48, 40, 48), max: city.at + IVec3::new(48, 20, 48) };
+        let lo = near.min.div_euclid(IVec3::splat(CHUNK_SIZE_I));
+        let hi = near.max.div_euclid(IVec3::splat(CHUNK_SIZE_I));
+        let mut count = 0;
+        for cy in lo.y..=hi.y {
+            for cz in lo.z..=hi.z {
+                for cx in lo.x..=hi.x {
+                    let cpos = IVec3::new(cx, cy, cz);
+                    let base = cpos * CHUNK_SIZE_I;
+                    let data = g.generate(cpos);
+                    // Springs (`spring_water`, after the city as Java's
+                    // fluid_springs step) are set into any wall, as in Java.
+                    let springs = crate::world::underground::spring_ticks(&g, cpos, &data);
+                    for y in 0..CHUNK_SIZE_I {
+                        for z in 0..CHUNK_SIZE_I {
+                            for x in 0..CHUNK_SIZE_I {
+                                let p = base + IVec3::new(x, y, z);
+                                let inside = city.bounds.contains(p) || near.contains(p) && p.y < START_Y;
+                                if inside
+                                    && data.get(x as usize, y as usize, z as usize).is_water()
+                                    && !springs.contains(&p)
+                                {
+                                    if count < 8 && generation >= Generation::V7 {
+                                        let c = g.column(p.x, p.z);
+                                        eprintln!(
+                                            "water at {p} (city {:?}, height {}, erosion {}, biome {:?})",
+                                            city.bounds.contains(p),
+                                            c.height,
+                                            c.climate.erosion,
+                                            g.biome_at(p)
+                                        );
+                                    }
+                                    count += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        count
+    };
+    let old = water(Generation::V6);
+    let new = water(Generation::V7);
+    eprintln!("water round the city: generation 6 {old}, generation 7 {new}");
+    assert_eq!(new, 0, "generation 7 water round the city");
+}

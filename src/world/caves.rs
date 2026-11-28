@@ -246,7 +246,7 @@ impl Caves {
         );
         let top = surface(centre.x, centre.z);
         let (x, y, z) = (centre.x as f32, centre.y as f32, centre.z as f32);
-        let status = if centre.y > top - 10 {
+        let status = if centre.y > top - SURFACE_CELL {
             Status::Global
         } else {
             let flood =
@@ -266,6 +266,9 @@ impl Caves {
         (centre, status)
     }
 }
+
+/// Aquifer cells centred less than this far under the surface hold the sea.
+const SURFACE_CELL: i32 = 10;
 
 /// What an aquifer cell holds.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -301,19 +304,39 @@ impl Status {
 pub struct Aquifer<'a, F: FnMut(i32, i32) -> i32> {
     caves: &'a Caves,
     surface: F,
+    /// Java's `aquifers.exclusion` (generation 7): whether an aquifer cell
+    /// centred here, under a surface at the given height, is kept dry.
+    exclusion: Option<&'a dyn Fn(IVec3, i32) -> bool>,
     cells: FxHashMap<IVec3, (IVec3, Status)>,
 }
 
 impl<'a, F: FnMut(i32, i32) -> i32> Aquifer<'a, F> {
     pub fn new(caves: &'a Caves, surface: F) -> Self {
-        Self { caves, surface, cells: FxHashMap::default() }
+        Self { caves, surface, exclusion: None, cells: FxHashMap::default() }
+    }
+
+    /// [`Aquifer::new`] with Java's exclusion: `NoiseBasedAquifer
+    /// .computeSurfaceLevel` gives an aquifer cell whose centre samples a
+    /// positive `exclusion` no fluid level of its own (both floodedness
+    /// values -1), so it holds no water; the lava sea below
+    /// [`LAVA_LEVEL`] still fills it.
+    pub fn with_exclusion(caves: &'a Caves, surface: F, exclusion: &'a dyn Fn(IVec3, i32) -> bool) -> Self {
+        Self { caves, surface, exclusion: Some(exclusion), cells: FxHashMap::default() }
     }
 
     fn cell(&mut self, c: IVec3) -> (IVec3, Status) {
         if let Some(&found) = self.cells.get(&c) {
             return found;
         }
-        let found = self.caves.status(c, &mut self.surface);
+        let mut found = self.caves.status(c, &mut self.surface);
+        if let Some(excluded) = self.exclusion {
+            // Cells reaching the surface keep the sea (`computeFluid`
+            // returns the global fluid before the exclusion is sampled).
+            let top = (self.surface)(found.0.x, found.0.z);
+            if found.0.y <= top - SURFACE_CELL && excluded(found.0, top) {
+                found.1 = Status::Dry;
+            }
+        }
         self.cells.insert(c, found);
         found
     }
@@ -428,6 +451,31 @@ mod tests {
             }
         }
         assert!(agree as f32 / total as f32 > 0.99, "{agree} of {total}");
+    }
+
+    /// v1.0 final F5: an excluded aquifer cell holds no water or lava of
+    /// its own; the lava sea still fills the bottom of the world.
+    #[test]
+    fn excluded_aquifer_cells_are_dry() {
+        let caves = Caves::new(5);
+        let all = |_: IVec3, _: i32| true;
+        let mut plain = Aquifer::new(&caves, |_, _| 70);
+        let mut dry = Aquifer::with_exclusion(&caves, |_, _| 70, &all);
+        let mut fluid = 0;
+        for x in (-400..400).step_by(7) {
+            for z in (-400..400).step_by(7) {
+                for y in (-50..40).step_by(3) {
+                    let p = IVec3::new(x, y, z);
+                    let excluded = dry.fill(p);
+                    assert!(excluded.is_none_or(|b| b == Block::AIR), "{p}: {excluded:?}");
+                    if plain.fill(p).is_some_and(|b| b != Block::AIR) {
+                        fluid += 1;
+                    }
+                }
+                assert_eq!(dry.fill(IVec3::new(x, LAVA_LEVEL - 1, z)), Some(Block::LAVA));
+            }
+        }
+        assert!(fluid > 0, "the scan should cross some aquifer fluid");
     }
 
     #[test]
