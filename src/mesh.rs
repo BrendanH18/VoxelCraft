@@ -1247,7 +1247,7 @@ mod tests {
                 let face = cs[0].face as usize;
                 faces[face] += 1;
                 assert_eq!(face / 2, thin);
-                let depth = 5.0 + if face % 2 == 0 { 10.0 } else { 6.0 } / 16.0;
+                let depth = 5.0 + if face.is_multiple_of(2) { 10.0 / 16.0 } else { 6.0 / 16.0 };
                 for c in cs {
                     assert!((c.pos[thin] - depth).abs() < 1e-6, "{c:?}");
                     assert_eq!((c.ao, c.block, c.sky), (3, 11, cs[0].sky), "{c:?}");
