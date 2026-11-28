@@ -417,6 +417,7 @@ impl Game {
                             scene.alpha,
                             self.session.inventory.armor,
                             self.session.inventory.get(self.body.actions.selected),
+                            self.session.inventory.offhand,
                         ),
                     ),
                     self.lan.profile.as_str(),
@@ -439,6 +440,7 @@ impl Game {
                                 scene.alpha,
                                 b.agent.session.inventory.armor,
                                 b.agent.session.inventory.get(b.agent.selected),
+                                b.agent.session.inventory.offhand,
                             ),
                         ),
                         other.as_str(),
@@ -483,6 +485,7 @@ impl Game {
                                 scene.alpha,
                                 a.inventory.armor,
                                 a.inventory.get(bot.agent.selected),
+                                a.inventory.offhand,
                             ),
                         )
                     },

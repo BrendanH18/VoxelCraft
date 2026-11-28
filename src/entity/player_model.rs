@@ -113,6 +113,9 @@ pub struct PlayerAppearance {
     /// v1.0 gap track 6c: the whole held stack, when known (its glint,
     /// banner patterns and 3D model); `None` draws `held` as a plain stack.
     pub held_stack: Option<crate::inventory::Stack>,
+    /// v1.0 final track F1: the off-hand stack, held in the left hand
+    /// (`ItemInHandLayer` with `HumanoidArm.LEFT`).
+    pub off_stack: Option<crate::inventory::Stack>,
     pub aim: Aim,
     /// v0.15 Track D: under Glowing, outlined through walls.
     pub glowing: bool,
@@ -487,6 +490,32 @@ pub fn build_player(
                     .matrix(&crate::content::item_display::TRIDENT_THROWING);
         }
         out.push_held(model);
+    }
+    if let Some(stack) = appearance.off_stack {
+        // v1.0 final track F1: the left arm's grip, Java's offset of
+        // (-1, 2, -10) sixteenths, and the left hand's display transform:
+        // the right one's mirror (`ItemTransform.apply` with `leftHand`).
+        let arm = parts[3];
+        let hand = third_person_hand(arm.pivot, arm.rot, origin, body, PLAYER_SCALE, false)
+            * Mat4::from_translation(Vec3::new(-2.0, 0.0, 0.0) / 16.0);
+        let display = crate::content::item_display::held(&stack);
+        let mirror = Mat4::from_scale(Vec3::new(-1.0, 1.0, 1.0));
+        let transform = hand
+            * mirror
+            * display.transform(crate::content::item_display::Context::ThirdPersonRightHand).matrix()
+            * mirror
+            * Mat4::from_translation(Vec3::splat(-0.5));
+        let block = crate::world::copper_golem_statue::item_model(stack);
+        let tint = crate::inventory::components::dye_tint(&stack);
+        out.push_held(super::model::HeldItemModel {
+            stack,
+            transform,
+            sky_light: lighting.0,
+            block_light: lighting.1,
+            block,
+            icon: None,
+            tint,
+        });
     }
 }
 

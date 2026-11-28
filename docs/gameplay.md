@@ -82,9 +82,11 @@ matching stack of that part of the screen across. Over a slot, a number
 key swaps it with that hotbar slot, F with the off-hand and Q throws one
 (Ctrl+Q the stack), on every screen, with nothing held. The middle button
 clones a slot's stack in creative on any screen. LAN guests do all of
-these; a controller player double-presses A to gather or Y to move every
-matching stack. A bow or crossbow in the off-hand draws when the main
-hand's item doesn't use the click.
+these; a controller player holds A (shared evenly) or X (one each) with
+a stack held and moves the cursor to drag, and double-presses A to gather
+or Y to move every matching stack. A bow or crossbow in the off-hand draws when the main
+hand's item doesn't use the click, and the off-hand item is drawn in your
+left hand, in first and third person.
 
 The world autosaves every two minutes and on exit. Switching away from
 the window also pauses offline play. See [save backups and version compatibility](releases.md#player-data-and-old-saves)

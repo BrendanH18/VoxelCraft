@@ -2501,6 +2501,7 @@ impl Game {
                             alpha,
                             b.agent.session.inventory.armor,
                             b.agent.session.inventory.get(b.agent.selected),
+                            b.agent.session.inventory.offhand,
                         ),
                     ),
                     name.as_str(),
@@ -2537,6 +2538,7 @@ impl Game {
                     alpha,
                     self.session.inventory.armor,
                     self.session.inventory.get(self.body.actions.selected),
+                    self.session.inventory.offhand,
                 ),
             );
             let look = crate::entity::model::PlayerAppearance { view: forward, ..look };

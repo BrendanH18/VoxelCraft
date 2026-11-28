@@ -580,6 +580,25 @@ impl Game {
         hand.off_map = image(session.inventory.offhand);
         hand.map_small = session.inventory.offhand.is_some();
         hand.invisible = session.vitals.effects.has(effects::Effect::Invisibility);
+        // v1.0 final track F1: the off-hand's stack, drawn on the left
+        // (`ItemInHandRenderer.renderHandsWithItems`), raised.
+        hand.off = session.inventory.offhand.filter(|_| hand.off_map.is_none()).map(|off| {
+            Box::new(crate::render::hand::Hand {
+                item: Some(off.item),
+                block: voxelcraft::world::copper_golem_statue::item_model(off),
+                sky_light: hand.sky_light,
+                block_light: hand.block_light,
+                tint: Some(voxelcraft::entity::wolf_armor::item_tint_bytes(off)),
+                glint: off.has_foil(),
+                translucent: crate::item::translucent(&off),
+                mesh: Some(off).filter(|s| {
+                    voxelcraft::content::item_models::has_mesh(s.item)
+                        || voxelcraft::content::item_models::has_in_hand_mesh(s.item)
+                }),
+                stack: Some(off),
+                ..Default::default()
+            })
+        });
         hand
     }
 
