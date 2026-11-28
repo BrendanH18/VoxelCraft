@@ -1411,6 +1411,13 @@ pub struct Mob {
     pub swing: super::motion::Swing,
     /// [`Self::attack_anim`] as the last tick left it, to see a new attack.
     swing_seen: f32,
+    /// v1.0 gap Track 7b: Java's `tickCount`, the ticks this mob has lived
+    /// since it was spawned or loaded, which its model's idle animations
+    /// read as `ageInTicks` ([`Self::age_in_ticks`]). Not saved, as in Java.
+    pub tick_count: u32,
+    /// v1.0 gap Track 7b: Java's client-side animation state
+    /// ([`super::mob_anim`]). Not saved.
+    pub anim: super::mob_anim::Anim,
     /// Sky light estimate at the mob, 0..1 (refreshed a few times a second).
     pub sky_light: f32,
     /// Torch light where it stands, 0..1.
@@ -1666,6 +1673,8 @@ impl Mob {
             attack_anim: 0.0,
             swing: Default::default(),
             swing_seen: 0.0,
+            tick_count: 0,
+            anim: Default::default(),
             sky_light: 1.0,
             block_light: 0.0,
             ai: Ai::Idle,
@@ -2306,6 +2315,14 @@ impl Mob {
         ]
     }
 
+    /// v1.0 gap Track 7b: Java's `ageInTicks`, `tickCount` plus the
+    /// partial tick, the clock this mob's idle animations run on (each mob
+    /// on its own, not in step with the others).
+    pub fn age_in_ticks(&self, alpha: f32) -> f32 {
+        // A float, as Java's is.
+        self.tick_count as f32 + alpha
+    }
+
     /// v1.0 gap Track 7: `deathTime` with the partial tick, as
     /// `LivingEntityRenderer.extractRenderState` reads it (0 alive, and in
     /// the tick the mob died).
@@ -2321,6 +2338,10 @@ impl Mob {
     /// or riding.
     pub(crate) fn advance_walk(&mut self, moved: DVec3) {
         use super::motion;
+        // v1.0 gap Track 7b: `tickCount` counts every tick, alive or not,
+        // and the client animations follow the tick.
+        self.tick_count = self.tick_count.wrapping_add(1);
+        self.tick_anim(moved);
         if !self.alive() || self.riding.is_some() {
             (self.limb_phase, self.limb_amp) = (0.0, 0.0);
             return;

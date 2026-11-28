@@ -19,8 +19,11 @@ pub(super) struct Mobs {
     /// until it's released.
     /// `--spawn` requests, applied once the world has loaded.
     pending: Vec<(MobKind, IVec3, Option<crate::entity::armor::Equipped>)>,
-    /// `--spawn allay,x,y,z,item`: liked items by index into `pending`.
+    /// `--spawn allay,x,y,z,item`: liked items by index into `pending`
+    /// (main-hand items for other mobs).
     held: Vec<(usize, crate::item::Item)>,
+    /// `--spawn kind,x,y,z,baby`: babies by index into `pending`.
+    babies: Vec<usize>,
     /// `--wait`: seconds to keep simulating before a `--screenshot`.
     wait: f64,
     wait_start: Option<Instant>,
@@ -36,6 +39,7 @@ impl Mobs {
             entities: Entities::new(seed),
             pending: spawn,
             held: Vec::new(),
+            babies: Vec::new(),
             wait,
             wait_start: None,
             sign_text: Default::default(),
@@ -45,6 +49,10 @@ impl Mobs {
 
     pub fn holding(self, held: Vec<(usize, crate::item::Item)>) -> Self {
         Self { held, ..self }
+    }
+
+    pub fn babies(self, babies: Vec<usize>) -> Self {
+        Self { babies, ..self }
     }
 
     pub fn still(self, still: bool) -> Self {
@@ -114,6 +122,7 @@ impl Game {
             self.mobs.entities.still = Some(self.session.player.eye());
         }
         let held = std::mem::take(&mut self.mobs.held);
+        let babies = std::mem::take(&mut self.mobs.babies);
         for (i, (kind, mut pos, armor)) in std::mem::take(&mut self.mobs.pending).into_iter().enumerate() {
             if pos.y == i32::MIN {
                 pos.y = self.world.generator.column(pos.x, pos.z).height + 1;
@@ -133,9 +142,20 @@ impl Game {
                 mob.equipment.wear_set(equipped.kind, equipped.glint);
             }
             if let Some(&(_, item)) = held.iter().find(|(at, _)| *at == i)
-                && let Some(allay) = self.mobs.entities.mobs.last_mut().and_then(|m| m.allay.as_mut())
+                && let Some(mob) = self.mobs.entities.mobs.last_mut()
             {
-                allay.liked = Some(crate::inventory::Stack::new(item, 1));
+                let stack = crate::inventory::Stack::new(item, 1);
+                match mob.allay.as_mut() {
+                    Some(allay) => allay.liked = Some(stack),
+                    None => mob.equipment.set(crate::entity::equipment::Slot::MainHand, Some(stack)),
+                }
+            }
+            // v1.0 gap Track 7b: a baby for the capture scenes' baby models.
+            if babies.contains(&i)
+                && let Some(mob) = self.mobs.entities.mobs.last_mut()
+            {
+                // Animals take their baby age from this on their first tick.
+                mob.baby = true;
             }
         }
     }

@@ -23,6 +23,9 @@ pub struct State {
     pub buzz: u16,
     pub enter: bool,
     pub boost: bool,
+    /// v1.0 gap Track 7b: `Bee.isRolling`, an angry bee within two blocks
+    /// of its target (it tumbles as it stings). Not saved.
+    pub rolling: bool,
 }
 pub fn flower(b: Block) -> bool {
     if let Some((lower, true)) = crate::world::overworld_blocks::double_of(b) {
@@ -109,6 +112,7 @@ impl State {
             buzz: small(14),
             enter: false,
             boost: false,
+            rolling: false,
         }
     }
 }
@@ -306,8 +310,11 @@ pub(crate) fn steer<W: MobWorld + ?Sized>(
     let mut s = m.bee.unwrap_or_default();
     let ticks = (dt * 20.).round().max(1.) as u16;
     let mut goal = None;
+    s.rolling = false;
     if s.anger > 0 && !s.stung {
         if let Some(t) = ctx.players.iter().find(|t| Some(t.id.0) == s.target && t.targetable) {
+            // `customServerAiStep`'s `shouldRoll`.
+            s.rolling = m.pos.distance_squared(t.pos) < 4.0;
             goal = Some(t.pos + DVec3::Y);
             if m.pos.distance(t.pos + DVec3::Y) < 1.0 && super::mob::line_of_sight(world, m.pos, t.pos + DVec3::Y) {
                 let poison = match m.difficulty {

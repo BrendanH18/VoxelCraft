@@ -17,11 +17,16 @@ const WING: &[Cuboid] = &[
     cube([7., -0.5, -6.], [18., 0.5, 1.], [58, 71, 108], 38),
     cube([0., 0.5, 1.], [16., 1., 2.], [93, 111, 143], 16),
 ];
-pub(super) fn pose(time: f32) -> Parts {
-    let flap = (time * 7.).sin() * 0.45;
+/// v1.0 gap Track 7b: `PhantomModel.setupAnim`: both wings beat together,
+/// `cos(flapTime * 7.448 degrees) * 16 degrees`, where `flapTime` is
+/// `ageInTicks` plus the phantom's own offset (`getUniqueFlapTickOffset`,
+/// three ticks per entity id; here its uid, kept small for the float).
+pub(super) fn pose(m: &Mob, time: f32) -> Parts {
+    let flap_time = (m.uid % 4096) as f32 * 3.0 + age_ticks(time);
+    let flap = ((flap_time * 7.448_451).to_radians()).cos() * 16f32.to_radians();
     parts![
         part(BODY, [0.; 3], Quat::IDENTITY),
-        part(WING, [3., 3., 0.], Quat::from_rotation_z(flap)),
+        part(WING, [3., 3., 0.], Quat::from_rotation_z(-flap)),
         part(WING, [-3., 3., 0.], Quat::from_rotation_y(PI) * Quat::from_rotation_z(-flap))
     ]
 }

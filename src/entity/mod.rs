@@ -59,6 +59,7 @@ mod look;
 mod m3_restart_tests;
 pub mod minecart;
 mod mob;
+pub mod mob_anim;
 pub mod mob_combat;
 mod mob_index;
 pub mod model;
@@ -2346,7 +2347,7 @@ impl Entities {
             self.poses.push(m.pose_values());
             m.set_pose_values(m.render_pose(alpha as f32));
         }
-        self.rendered = model::build(&self.mobs, camera, forward, view, time, alpha, &mut self.mesh);
+        self.rendered = model::build(&self.mobs, camera, forward, view, alpha, &mut self.mesh);
         for (m, &pose) in self.mobs.iter_mut().zip(&self.poses) {
             m.set_pose_values(pose);
         }

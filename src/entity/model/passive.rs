@@ -196,11 +196,16 @@ const BAT_WING: &[Cuboid] = &[
     cube([5.0, -5.0, -0.3], [10.0, 0.0, 0.3], [95, 61, 51], 30),
     cube([5.0, 0.0, -0.5], [10.0, 0.5, 0.5], [134, 91, 69], 18),
 ];
-pub(super) fn bat(m: &Mob, time: f32) -> Parts {
+/// v1.0 gap Track 7b: the bat's wings beat round `BatAnimation.BAT_FLYING`'s
+/// half-second loop, run from the tick it took off (`Bat.setupAnimationStates`
+/// starts each loop as the bat takes off or hangs up); this game's own
+/// drawn beat on that clock.
+pub(super) fn bat(m: &Mob, alpha: f32) -> Parts {
     let resting = m.bat.as_ref().is_some_and(|s| s.resting);
     let flip = if resting { Quat::from_rotation_z(PI) } else { Quat::IDENTITY };
     let body_y = if resting { 14.4 } else { 0.0 };
-    let flap = if resting { 1.3 } else { (time * std::f32::consts::TAU * 2.0).sin() * 0.8 };
+    let beat = m.loop_time(m.anim.bat_start, 0.5, alpha).unwrap_or(0.0);
+    let flap = if resting { 1.3 } else { (beat * std::f32::consts::TAU).sin() * 0.8 };
     let mut p = parts![part(BAT_BODY, [0.0, body_y, 0.0], flip)];
     for side in [-1.0, 1.0] {
         let pivot = Vec3::new(side * 2.0, 9.0, 0.0);

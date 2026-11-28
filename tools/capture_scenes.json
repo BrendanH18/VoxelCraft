@@ -9092,6 +9092,105 @@
     "--effect",
     "night_vision,600"
    ]
+  },
+  {
+   "name": "mobs-still-held-hands",
+   "group": "mobs",
+   "description": "v1.0 gap Track 7b: humanoids holding their weapons at noon, pinned with --still-mobs and facing the camera, so each holds it in its own right hand (the viewer's left): zombie with an iron sword, husk with an iron shovel, drowned with a trident, skeleton with its bow, stray with an iron sword, pillager with its crossbow, piglin, zombified piglin and wither skeleton with their own weapons",
+   "pose": [
+    0.5,
+    154.0,
+    14.5,
+    90,
+    -12
+   ],
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "fill": [
+    [
+     -11,
+     150,
+     13,
+     11,
+     150,
+     30,
+     "grass"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "zombie,-8,151,21,iron_sword",
+    "husk,-6,151,21,iron_shovel",
+    "drowned,-4,151,21,trident",
+    "skeleton,-2,151,21",
+    "stray,0,151,21,iron_sword",
+    "pillager,2,151,21",
+    "piglin,4,151,21",
+    "zombified_piglin,6,151,21",
+    "wither_skeleton,8,151,21"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
+  },
+  {
+   "name": "mobs-still-babies",
+   "group": "mobs",
+   "description": "v1.0 gap Track 7b: babies at noon, pinned with --still-mobs and facing the camera; front row chicken, pig, cow, sheep, wolf, cat, fox and rabbit, back row villager, zombie, piglin, hoglin, horse, llama, panda and polar bear",
+   "pose": [
+    0.5,
+    153.2,
+    15.0,
+    90,
+    -14
+   ],
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "fill": [
+    [
+     -11,
+     150,
+     13,
+     11,
+     150,
+     30,
+     "grass"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "chicken,-7,151,19,baby",
+    "pig,-5,151,19,baby",
+    "cow,-3,151,19,baby",
+    "sheep,-1,151,19,baby",
+    "wolf,1,151,19,baby",
+    "cat,3,151,19,baby",
+    "fox,5,151,19,baby",
+    "rabbit,7,151,19,baby",
+    "villager,-9,151,22,baby",
+    "zombie,-7,151,22,baby",
+    "piglin,-5,151,22,baby",
+    "hoglin,-3,151,22,baby",
+    "horse,0,151,22,baby",
+    "llama,3,151,22,baby",
+    "panda,6,151,22,baby",
+    "polar_bear,9,151,22,baby"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
   }
  ]
 }

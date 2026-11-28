@@ -1228,16 +1228,7 @@ impl Game {
             ui.rect(px + 25.0, top_py + 17.0, 54.0, 54.0, style::srgb(token::OUTLINE));
             ui.rect(px + 26.0, top_py + 18.0, 52.0, 52.0, style::srgb(0x000000));
             if let Some(m) = self.mobs.entities.mount(id) {
-                let time = self.started.elapsed().as_secs_f32();
-                super::preview::mob(
-                    ui,
-                    m,
-                    (px + 26.0, top_py + 18.0, px + 78.0, top_py + 70.0),
-                    17.0,
-                    0.25,
-                    mouse,
-                    time,
-                );
+                super::preview::mob(ui, m, (px + 26.0, top_py + 18.0, px + 78.0, top_py + 70.0), 17.0, 0.25, mouse);
             }
         }
         self.slots_ui(ui, px, top_py);

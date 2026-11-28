@@ -951,6 +951,20 @@ fn part(boxes: &'static [Cuboid], pivot: [f32; 3], rot: Quat) -> Part {
     Part { boxes, pivot: Vec3::from_array(pivot), rot }
 }
 
+impl Part {
+    /// v1.0 gap Track 7b: the part moved from the old mapping of Java's
+    /// model space (turned through the origin, which kept every rotation's
+    /// sign but put Java's right on this model's +X, the mob's own left)
+    /// to the true one, a half turn about X: Java's right goes to -X, the
+    /// mob's own right, and every y and z turn changes sign. A part whose
+    /// boxes are symmetric about its pivot looks the same, only mirrored
+    /// across the body.
+    fn on_java_side(self) -> Self {
+        let r = self.rot;
+        Self { pivot: self.pivot * Vec3::new(-1.0, 1.0, 1.0), rot: Quat::from_xyzw(r.x, -r.y, -r.z, r.w), ..self }
+    }
+}
+
 // Fixed-capacity poses keep every mob, including villagers, allocation-free per frame.
 struct Parts {
     data: [Part; 16],
@@ -963,6 +977,29 @@ impl Parts {
     fn push(&mut self, p: Part) {
         self.data[self.len] = p;
         self.len += 1;
+    }
+
+    /// v1.0 gap Track 7b: [`Part::on_java_side`] for the parts in `range`
+    /// (a humanoid's body, legs and arms; never its head, whose turn
+    /// follows the world).
+    fn java_side(&mut self, range: std::ops::Range<usize>) {
+        for p in &mut self.data[range] {
+            *p = p.on_java_side();
+        }
+    }
+
+    /// v1.0 gap Track 7b: the whole model turned by `rot` about `centre`
+    /// (pixels), as a renderer's `setupRotations` turns it, baked into
+    /// every part so worn armor and held items follow.
+    fn turn_about(&mut self, centre: Vec3, rot: Quat) {
+        self.transform(centre - rot * centre, rot);
+    }
+
+    /// Every part moved by `p -> offset + rot * p`.
+    fn transform(&mut self, offset: Vec3, rot: Quat) {
+        for p in &mut self.data[..self.len] {
+            (p.pivot, p.rot) = (offset + rot * p.pivot, rot * p.rot);
+        }
     }
 }
 impl FromIterator<Part> for Parts {
@@ -985,6 +1022,7 @@ macro_rules! parts {($($p:expr),* $(,)?) => {{let mut out=Parts::new();$(out.pus
 mod allay;
 mod animals;
 mod aquatic;
+mod babies;
 mod bee;
 mod breeze;
 mod camel_anim;
@@ -1028,7 +1066,8 @@ pub(super) fn walk_cos(m: &Mob) -> f32 {
     (m.limb_phase * motion::WALK_FREQ).cos() * m.limb_amp
 }
 
-/// Java's `ageInTicks` for the idle animations.
+/// Java's `ageInTicks` for the idle animations, from the mob's own clock
+/// in seconds (v1.0 gap Track 7b: [`Mob::age_in_ticks`]).
 pub(super) fn age_ticks(time: f32) -> f32 {
     time * 20.0
 }
@@ -1090,6 +1129,16 @@ impl Humanoid {
     }
 }
 
+/// v1.0 gap Track 7b: `ChickenModel`'s and `ParrotModel`'s wing angle,
+/// `(sin(flap) + 1) * flapSpeed`, each lerped with the partial tick.
+pub(super) fn flap_angle(m: &Mob, alpha: f32) -> f32 {
+    use super::mob_anim::lerp;
+    let a = &m.anim;
+    (lerp(alpha, a.o_flap, a.flap).sin() + 1.0) * lerp(alpha, a.o_flap_speed, a.flap_speed)
+}
+
+use super::mob_anim::lerp as mob_anim_lerp;
+
 /// Java's `head.xRot` (positive looks down) for this mob's pitch.
 pub(super) fn head_x(m: &Mob) -> f32 {
     -m.head_pitch
@@ -1098,15 +1147,43 @@ pub(super) fn head_x(m: &Mob) -> f32 {
 /// `ZombieModel` and `ZombifiedPiglinModel`: a humanoid's walk and arm
 /// swing, then `AnimationUtils.animateZombieArms` (arms raised unless a
 /// baby holds something; higher while chasing) and the idle bob.
+/// v1.0 gap Track 7b: an aggressive drowned holding its trident raises it
+/// overhead (`ArmPose.THROW_TRIDENT`: the walk's swing halved, less pi),
+/// and `animateZombieArms` leaves that arm be.
 pub(super) fn zombie_limbs(m: &Mob, time: f32, empty_hand: bool) -> Humanoid {
     let mut h = Humanoid::walk(m, 1.0);
+    let trident = m.ai == Ai::Chase && m.holds_trident();
+    if trident {
+        h.right_arm = Limb { x: h.right_arm.x * 0.5 - PI, ..Limb::default() };
+    }
     h.attack(m.swing.anim, head_x(m));
     let raised = !m.is_baby() || empty_hand;
     let (x, y) = motion::zombie_arms(m.ai == Ai::Chase, raised, m.swing.anim);
-    h.right_arm = Limb { x, y: if raised { -y } else { y }, z: 0.0 };
+    if !trident {
+        h.right_arm = Limb { x, y: if raised { -y } else { y }, z: 0.0 };
+    }
     h.left_arm = Limb { x, y: if raised { y } else { -y }, z: 0.0 };
     h.bob(age_ticks(time));
     h
+}
+
+/// `Mth.rotLerpRad`: `from` toward `to` the short way round.
+fn rot_lerp(a: f32, from: f32, to: f32) -> f32 {
+    from + a * ((to - from + PI).rem_euclid(TAU) - PI)
+}
+
+/// v1.0 gap Track 7b: `DrownedModel.setupSwimAnimation` by `swim`
+/// (`swimAmount`): both arms reach forward over the head (-144 degrees),
+/// out 0.15 and stroking on `sin(0.1 * ageInTicks)`, the legs kicking
+/// against them.
+pub(super) fn drowned_swim(h: &mut Humanoid, swim: f32, age: f32) {
+    let stroke = swim * (0.1 * age).sin();
+    h.right_arm.x = rot_lerp(swim, h.right_arm.x, -PI * 4.0 / 5.0) + stroke * 0.35;
+    h.left_arm.x = rot_lerp(swim, h.left_arm.x, -PI * 4.0 / 5.0) - stroke * 0.35;
+    h.right_arm.z = rot_lerp(swim, h.right_arm.z, -0.15);
+    h.left_arm.z = rot_lerp(swim, h.left_arm.z, 0.15);
+    h.left_leg -= stroke * 0.55;
+    h.right_leg += stroke * 0.55;
 }
 
 /// Animated parts for a mob, in model space (pixels).
@@ -1116,12 +1193,18 @@ fn pose(m: &Mob, time: f32, alpha: f32) -> Parts {
     // (right hind and right leg; the others alternate).
     let swing = walk_cos(m) * motion::LEG_SWING;
     let head = Quat::from_rotation_y(-m.head_yaw) * Quat::from_rotation_x(-m.head_pitch);
+    // v1.0 gap Track 7b: Java 26.3's own baby models.
+    if m.is_baby()
+        && let Some(parts) = babies::pose(m, time, alpha, head)
+    {
+        return parts;
+    }
     let rx = Quat::from_rotation_x;
     match m.kind {
-        MobKind::Bee => bee::pose(m, time),
-        MobKind::Phantom => phantom::pose(time),
+        MobKind::Bee => bee::pose(m, time, alpha),
+        MobKind::Phantom => phantom::pose(m, time),
         MobKind::SkeletonHorse | MobKind::ZombieHorse | MobKind::Horse | MobKind::Donkey | MobKind::Mule => {
-            mounts::pose(m)
+            mounts::pose(m, time, alpha)
         }
         MobKind::Llama => mounts::llama(m),
         MobKind::Camel | MobKind::CamelHusk => mounts::camel(m),
@@ -1140,11 +1223,15 @@ fn pose(m: &Mob, time: f32, alpha: f32) -> Parts {
         | MobKind::Guardian
         | MobKind::ElderGuardian
         | MobKind::Cat
-        | MobKind::Turtle => aquatic::pose(m, time),
-        MobKind::Pillager | MobKind::Vindicator | MobKind::Evoker | MobKind::Illusioner => illager::pose(m, head, time),
+        | MobKind::Turtle => aquatic::pose(m, time, alpha),
+        MobKind::Pillager | MobKind::Vindicator | MobKind::Evoker | MobKind::Illusioner => {
+            illager::pose(m, head, time, alpha)
+        }
         MobKind::Vex => illager::vex(m, head, time),
         MobKind::Ravager => illager::ravager(m, head, alpha),
-        MobKind::Wolf | MobKind::Fox | MobKind::Parrot | MobKind::Rabbit | MobKind::Goat => animals::pose(m, time),
+        MobKind::Wolf | MobKind::Fox | MobKind::Parrot | MobKind::Rabbit | MobKind::Goat => {
+            animals::pose(m, time, alpha)
+        }
         MobKind::Pig => parts![
             part(PIG_BODY, [0.0; 3], Quat::IDENTITY),
             part(PIG_LEG_BOX, [-3.0, 6.0, 5.0], rx(swing)),
@@ -1154,7 +1241,7 @@ fn pose(m: &Mob, time: f32, alpha: f32) -> Parts {
             part(PIG_HEAD, [0.0, 12.0, 8.0], head),
         ],
         MobKind::Mooshroom => passive::mooshroom(m),
-        MobKind::Bat => passive::bat(m, time),
+        MobKind::Bat => passive::bat(m, alpha),
         MobKind::Frog => passive::frog(m),
         MobKind::PolarBear => passive::polar_bear(m),
         MobKind::Panda => passive::panda(m, time),
@@ -1164,8 +1251,8 @@ fn pose(m: &Mob, time: f32, alpha: f32) -> Parts {
         MobKind::Sniffer => sniffer::pose(m, time),
         MobKind::Warden => warden::pose(m, time),
         MobKind::Creaking => creaking::pose(m, time),
-        MobKind::Allay => allay::pose(m, time),
-        MobKind::Breeze => breeze::pose(m, time),
+        MobKind::Allay => allay::pose(m, time, alpha),
+        MobKind::Breeze => breeze::pose(m, time, alpha),
         MobKind::Endermite => hostiles::endermite(time),
         MobKind::Shulker => shulker::pose(m, time),
         MobKind::Tadpole => passive::tadpole(m, time),
@@ -1186,13 +1273,15 @@ fn pose(m: &Mob, time: f32, alpha: f32) -> Parts {
             part(if m.sheared { SHEARED_HEAD } else { SHEEP_HEAD }, [0.0, 16.0, 7.0], head),
         ],
         MobKind::Chicken => {
-            // Wings flap while airborne.
-            let flap = if m.on_ground { 0.0 } else { ((time * 22.0).sin() * 0.5 + 0.5) * 1.2 };
+            // v1.0 gap Track 7b: `ChickenModel`: the wings open by
+            // `(sin(flap) + 1) * flapSpeed` (`Chicken.aiStep`'s state), the
+            // right leg (on -X) on the walk's cosine.
+            let flap = flap_angle(m, alpha);
             let rz = Quat::from_rotation_z;
             parts![
                 part(CHICKEN_BODY, [0.0; 3], Quat::IDENTITY),
-                part(CHICKEN_LEG, [-1.5, 4.0, 0.0], rx(-swing)),
-                part(CHICKEN_LEG, [1.5, 4.0, 0.0], rx(swing)),
+                part(CHICKEN_LEG, [-1.5, 4.0, 0.0], rx(swing)),
+                part(CHICKEN_LEG, [1.5, 4.0, 0.0], rx(-swing)),
                 part(CHICKEN_WING_L, [-3.0, 8.5, 0.0], rz(-flap)),
                 part(CHICKEN_WING_R, [3.0, 8.5, 0.0], rz(flap)),
                 part(CHICKEN_HEAD, [0.0, 8.0, 2.0], head),
@@ -1201,26 +1290,30 @@ fn pose(m: &Mob, time: f32, alpha: f32) -> Parts {
         MobKind::Stray | MobKind::Bogged | MobKind::Parched => hostiles::pose(m, time, head),
         MobKind::Skeleton => {
             let h = hostiles::skeleton_limbs(m, time, false);
-            parts![
+            let mut parts = parts![
                 part(SKELETON_BODY, [0.0; 3], Quat::IDENTITY),
                 part(SKELETON_LEG, [-2.0, 12.0, 0.0], rx(h.left_leg)),
                 part(SKELETON_LEG, [2.0, 12.0, 0.0], rx(h.right_leg)),
                 part(SKELETON_ARM, [-5.0, 22.0, 0.0], h.left_arm.quat()),
                 part(SKELETON_BOW_ARM, [5.0, 22.0, 0.0], h.right_arm.quat()),
                 part(SKELETON_HEAD, [0.0, 24.0, 0.0], head),
-            ]
+            ];
+            parts.java_side(0..5);
+            parts
         }
         MobKind::WitherSkeleton => {
             // `SkeletonModel` with a sword: raised and swung while hunting.
             let h = hostiles::skeleton_limbs(m, time, true);
-            parts![
+            let mut parts = parts![
                 part(WITHER_BODY, [0.0; 3], Quat::IDENTITY),
                 part(WITHER_LIMB, [-2.0, 12.0, 0.0], rx(h.left_leg)),
                 part(WITHER_LIMB, [2.0, 12.0, 0.0], rx(h.right_leg)),
                 part(WITHER_LIMB, [-5.0, 22.0, 0.0], h.left_arm.quat()),
                 part(WITHER_SWORD_ARM, [5.0, 22.0, 0.0], h.right_arm.quat()),
                 part(WITHER_HEAD, [0.0, 24.0, 0.0], head),
-            ]
+            ];
+            parts.java_side(0..5);
+            parts
         }
         MobKind::Villager | MobKind::WanderingTrader => {
             let profession = m.villager.as_ref().map_or(super::villager::Profession::None, |v| v.profession);
@@ -1236,6 +1329,7 @@ fn pose(m: &Mob, time: f32, alpha: f32) -> Parts {
                 part(VILLAGER_HEAD, [0.0, 24.0, 0.0], head),
                 part(&VILLAGER_APRONS[profession as usize], [0.0; 3], Quat::IDENTITY)
             ];
+            parts.java_side(1..3);
             if m.kind == MobKind::WanderingTrader {
                 parts.push(part(trader_model::HOOD, [0.0, 24.0, 0.0], head));
             }
@@ -1255,6 +1349,7 @@ fn pose(m: &Mob, time: f32, alpha: f32) -> Parts {
                 part(ZOMBIE_VILLAGER_HEAD, [shake, 24.0, 0.0], head),
                 part(&VILLAGER_APRONS[profession as usize], [shake, 0.0, 0.0], Quat::IDENTITY)
             ];
+            parts.java_side(1..3);
             if profession == super::villager::Profession::Farmer {
                 parts.push(part(FARMER_HAT, [shake, 24.0, 0.0], head));
             }
@@ -1298,6 +1393,7 @@ fn pose(m: &Mob, time: f32, alpha: f32) -> Parts {
                 part(IRON_ARM, [11.0, 28.0, 0.0], rx(right_arm)),
                 part(IRON_HEAD, [0.0, 32.0, 2.0], head),
             ];
+            parts.java_side(1..5);
             for i in 0..cracks {
                 let y = 16.0 - i as f32 * 4.0;
                 parts.push(part(IRON_CRACK, [0.0, y, 0.0], Quat::IDENTITY));
@@ -1311,13 +1407,17 @@ fn pose(m: &Mob, time: f32, alpha: f32) -> Parts {
             part(SNOW_STICK, [-6.0, 16.0, 0.0], rx(0.6)),
             part(SNOW_STICK, [6.0, 16.0, 0.0], rx(0.6)),
         ],
-        MobKind::Witch => parts![
-            part(WITCH_BODY, [0.0; 3], Quat::IDENTITY),
-            // `WitchModel`: half the usual stride.
-            part(WITCH_LEG, [-2.0, 8.0, 0.0], rx(-swing * 0.5)),
-            part(WITCH_LEG, [2.0, 8.0, 0.0], rx(swing * 0.5)),
-            part(WITCH_HEAD, [0.0, 19.0, 0.0], head),
-        ],
+        MobKind::Witch => {
+            let mut parts = parts![
+                part(WITCH_BODY, [0.0; 3], Quat::IDENTITY),
+                // `WitchModel`: half the usual stride.
+                part(WITCH_LEG, [-2.0, 8.0, 0.0], rx(-swing * 0.5)),
+                part(WITCH_LEG, [2.0, 8.0, 0.0], rx(swing * 0.5)),
+                part(WITCH_HEAD, [0.0, 19.0, 0.0], head),
+            ];
+            parts.java_side(1..3);
+            parts
+        }
         MobKind::Creeper => parts![
             part(CREEPER_BODY, [0.0; 3], Quat::IDENTITY),
             part(CREEPER_LEG, [-2.0, 6.0, 4.0], rx(swing)),
@@ -1331,12 +1431,14 @@ fn pose(m: &Mob, time: f32, alpha: f32) -> Parts {
         }
         MobKind::Ghast => {
             // Nine-tenths of the body is the cube; eight tentacles hang to
-            // the feet and twist around their own axis so they stay on the ground.
+            // the feet. v1.0 gap Track 7b: `GhastModel.animateTentacles`:
+            // each trails back by `0.2 * sin(ageInTicks * 0.3 + i) + 0.4`.
+            let age = age_ticks(time);
             let mut parts = parts![part(GHAST_BODY, [0.0; 3], Quat::IDENTITY)];
             for i in 0..8 {
                 let a = i as f32 * FRAC_PI_2 * 0.5;
-                let twist = (time * 1.4 + i as f32 * 0.7).sin() * 0.45;
-                parts.push(part(GHAST_TENTACLE, [a.cos() * 12.0, 24.0, a.sin() * 12.0], Quat::from_rotation_y(twist)));
+                let trail = 0.2 * (age * 0.3 + i as f32).sin() + 0.4;
+                parts.push(part(GHAST_TENTACLE, [a.cos() * 12.0, 24.0, a.sin() * 12.0], rx(trail)));
             }
             parts
         }
@@ -1380,19 +1482,24 @@ fn pose(m: &Mob, time: f32, alpha: f32) -> Parts {
                 Weapon::GoldenSpear => PIGLIN_SPEAR_ARM,
                 Weapon::None => PIGLIN_ARM,
             };
-            parts![
+            let mut parts = parts![
                 part(PIGLIN_BODY, [0.0; 3], h.body()),
                 part(PIGLIN_LEG, [-2.0, 12.0, 0.0], rx(h.left_leg)),
                 part(PIGLIN_LEG, [2.0, 12.0, 0.0], rx(h.right_leg)),
                 part(PIGLIN_ARM, h.arm_at([-6.0, 22.0, 0.0]), h.left_arm.quat()),
                 part(right, h.arm_at([6.0, 22.0, 0.0]), h.right_arm.quat()),
                 part(PIGLIN_HEAD, [0.0, 24.0, 0.0], head),
-            ]
+            ];
+            parts.java_side(0..5);
+            parts
         }
         MobKind::Silverfish => {
-            // Segments head to tail, wiggling side to side like Java's.
+            // Segments head to tail. v1.0 gap Track 7b: `SilverfishModel`:
+            // segment i turns `cos(ageInTicks * 0.9 + i * 0.15 pi) * pi *
+            // 0.05 * (1 + |i - 2|)` and shifts `sin(..) * pi * 0.2 * |i -
+            // 2|` pixels sideways (Java's turn on this model's sides).
             let mut z = SILVERFISH_DEPTHS.iter().sum::<f32>() / 2.0;
-            let t = time * 14.0 + m.limb_phase;
+            let age = age_ticks(time);
             SILVERFISH_SEGMENTS
                 .iter()
                 .zip(SILVERFISH_DEPTHS)
@@ -1400,27 +1507,37 @@ fn pose(m: &Mob, time: f32, alpha: f32) -> Parts {
                 .map(|(i, (&boxes, d))| {
                     z -= d / 2.0;
                     let k = (i as f32 - 2.0).abs();
-                    let sway = (t + i as f32 * 0.47).sin();
-                    let at = [sway * 0.6 * k * 0.5, 0.0, z];
+                    let phase = age * 0.9 + i as f32 * 0.15 * PI;
+                    let at = [phase.sin() * PI * 0.2 * k, 0.0, z];
                     z -= d / 2.0;
-                    part(boxes, at, Quat::from_rotation_y(sway * 0.16 * (1.0 + k)))
+                    part(boxes, at, Quat::from_rotation_y(-phase.cos() * PI * 0.05 * (1.0 + k)))
                 })
                 .collect()
         }
         MobKind::Blaze => {
-            // Java's three rings of four rods: the top two turn one way,
-            // the bottom the other, each bobbing on its own phase.
+            // v1.0 gap Track 7b: `BlazeModel.setupAnim`'s three rings of
+            // four rods. Rod i's top sits at Java's y (pixels down from
+            // 1.5 blocks up) `-2`, `2` or `11` plus `cos((i * 2 + age) *
+            // 0.25)` (the bottom ring `cos((i * 1.5 + age) * 0.5)`), 9, 7
+            // or 5 pixels out, at angles starting `age * pi * -0.1`, `pi /
+            // 4 + age * pi * 0.03` and `0.471 + age * pi * -0.05`, a
+            // radian apart (Java's z on this model's front).
+            let age = age_ticks(time);
             let mut parts = parts![part(BLAZE_HEAD, [0.0, 20.0, 0.0], head)];
-            let t = time * 2.0 + m.limb_phase * 0.1;
-            for (ring, (radius, y, speed)) in
-                [(9.0, 15.0, 1.0f32), (7.0, 8.0, 1.0), (5.0, 2.0, -1.0)].into_iter().enumerate()
-            {
-                for i in 0..4 {
-                    let a = t * speed + i as f32 * FRAC_PI_2 + ring as f32 * 0.4;
-                    let bob = (t * 1.5 + i as f32 + ring as f32 * 2.0).cos() * 1.5;
+            let rings = [
+                (9.0, age * PI * -0.1, -2.0f32, 2.0f32, 0.25f32),
+                (7.0, FRAC_PI_2 * 0.5 + age * PI * 0.03, 2.0, 2.0, 0.25),
+                (5.0, 0.471_238_94 + age * PI * -0.05, 11.0, 1.5, 0.5),
+            ];
+            for (ring, (radius, start, y, step, rate)) in rings.into_iter().enumerate() {
+                for j in 0..4 {
+                    let i = (ring * 4 + j) as f32;
+                    let a = start + j as f32;
+                    let top = y + ((i * step + age) * rate).cos();
+                    // The rod box is centred: its middle is 4 below its top.
                     parts.push(part(
                         BLAZE_ROD_BOX,
-                        [a.cos() * radius, y + 4.0 + bob, a.sin() * radius],
+                        [a.cos() * radius, 24.0 - top - 4.0, -a.sin() * radius],
                         Quat::IDENTITY,
                     ));
                 }
@@ -1449,6 +1566,7 @@ fn pose(m: &Mob, time: f32, alpha: f32) -> Parts {
                 part(ENDERMAN_HEAD, [0.0, 40.0 + lift, 0.0], head),
                 part(ENDERMAN_EYES, [0.0, 40.0 + lift, 0.0], head),
             ];
+            parts.java_side(0..5);
             if angry {
                 parts.push(part(ENDERMAN_JAW, [0.0, 40.0, 0.0], head));
             }
@@ -1466,15 +1584,32 @@ fn pose(m: &Mob, time: f32, alpha: f32) -> Parts {
             // `ZombieModel`: a humanoid's walk, its arms raised by
             // `animateZombieArms` (higher while chasing) and swung down to
             // strike, and the idle bob.
-            let h = zombie_limbs(m, time, m.equipment.get(super::equipment::Slot::MainHand).is_none());
-            parts![
+            let mut h = zombie_limbs(m, time, m.equipment.get(super::equipment::Slot::MainHand).is_none());
+            let swim = mob_anim_lerp(alpha, m.anim.o_swim, m.anim.swim);
+            let head = if swim > 0.0 {
+                // Swimming, the head looks round but not up or down.
+                drowned_swim(&mut h, swim, age_ticks(time));
+                Quat::from_rotation_y(-m.head_yaw)
+            } else {
+                head
+            };
+            let mut parts = parts![
                 part(body, [0.0; 3], h.body()),
                 part(leg, [-2.0, 12.0, 0.0], rx(h.left_leg)),
                 part(leg, [2.0, 12.0, 0.0], rx(h.right_leg)),
                 part(arm_box, h.arm_at([-6.0, 22.0, 0.0]), h.left_arm.quat()),
                 part(arm_box, h.arm_at([6.0, 22.0, 0.0]), h.right_arm.quat()),
                 part(head_box, [0.0, 24.0, 0.0], head),
-            ]
+            ];
+            parts.java_side(0..5);
+            if swim > 0.0 {
+                // `DrownedRenderer.setupRotations`: the body tips forward
+                // by `swim * (-10 - pitch)` degrees about its middle.
+                let tip = swim * (-10.0 - head_x(m).to_degrees());
+                let centre = Vec3::new(0.0, m.shape().height as f32 * 8.0, 0.0);
+                parts.turn_about(centre, rx(-tip.to_radians()));
+            }
+            parts
         }
     }
 }
@@ -1488,7 +1623,6 @@ pub fn build(
     camera: DVec3,
     forward: Vec3,
     view: impl Into<super::draw_distance::DrawDistance>,
-    time: f32,
     alpha: f64,
     out: &mut EntityMesh,
 ) -> usize {
@@ -1517,6 +1651,9 @@ pub fn build(
         }
         drawn += 1;
         let glow = out.glow_start();
+        // v1.0 gap Track 7b: the clock this mob's animations run on is its
+        // own `ageInTicks` (in seconds), not the shared one.
+        let time = m.age_in_ticks(alpha as f32) * motion::TICK;
 
         // v1.0 gap Track 7: death topples the mob over about its feet onto
         // its left side (spiders, silverfish and endermites onto their
@@ -1554,7 +1691,10 @@ pub fn build(
             } else if m.kind == MobKind::Pufferfish {
                 0.8 + m.aquatic.as_ref().map_or(0.0, |a| a.puff as f32 * 0.4)
             } else if m.baby || m.age < 0 {
-                if super::undead_mounts::undead(m.kind) {
+                if babies::has_model(m.kind) {
+                    // v1.0 gap Track 7b: drawn at full scale.
+                    1.0
+                } else if super::undead_mounts::undead(m.kind) {
                     0.7
                 } else if m.kind == MobKind::Armadillo {
                     0.6
@@ -1698,12 +1838,32 @@ pub fn build(
             || m.kind.is_bow_skeleton()
             || m.kind == MobKind::Piglin
         {
-            let limbs = humanoid_armor(&posed);
             let worn = m.equipment.worn();
-            super::player_model::draw_armor(out, &limbs, &worn, origin, body, scale, (light, torch));
+            if m.is_baby() && babies::has_model(m.kind) {
+                // v1.0 gap Track 7b: the baby's armor at Java's baby scales.
+                let (head, rest) = babies::armor(&posed);
+                let draw = |out: &mut EntityMesh,
+                            limbs: &[super::player_model::Limb; 6],
+                            worn: &[Option<super::armor::Worn>; 4],
+                            k: f32| {
+                    super::player_model::draw_armor(out, limbs, worn, origin, body, scale * k, (light, torch));
+                };
+                draw(out, &head, &[worn[0], None, None, None], babies::HEAD_ARMOR);
+                draw(out, &rest, &[None, worn[1], worn[2], worn[3]], babies::BODY_ARMOR);
+            } else {
+                let limbs = humanoid_armor(&posed);
+                super::player_model::draw_armor(out, &limbs, &worn, origin, body, scale, (light, torch));
+            }
         }
         if let Some(stack) = held_stack(m) {
-            draw_held(out, &posed[4], stack.item, origin, body, scale, (light, torch));
+            if m.is_baby() && babies::has_model(m.kind) {
+                // A baby's hand holds the item at Java's baby scale.
+                let k = babies::BODY_ARMOR;
+                let arm = Part { pivot: posed[4].pivot / k, ..posed[4] };
+                draw_held(out, &arm, stack.item, origin, body, scale * k, (light, torch));
+            } else {
+                draw_held(out, &posed[4], stack.item, origin, body, scale, (light, torch));
+            }
         }
         if m.kind == MobKind::SulfurCube {
             new_mobs::sulfur_block(m, origin, body, scale, (light, torch), out);
@@ -2072,10 +2232,11 @@ fn humanoid_armor(parts: &[Part]) -> [super::player_model::Limb; 6] {
     [
         box_at(&parts[5], [-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], [0.0, 0.0]),
         box_at(&parts[0], [-4.0, 12.0, -2.0], [4.0, 24.0, 2.0], [16.0, 16.0]),
-        arm(&parts[3], [40.0, 16.0]),
-        arm(&parts[4], [32.0, 48.0]),
-        leg(&parts[1], [0.0, 16.0]),
-        leg(&parts[2], [16.0, 48.0]),
+        // v1.0 gap Track 7b: parts 4 and 2 are the right arm and leg.
+        arm(&parts[4], [40.0, 16.0]),
+        arm(&parts[3], [32.0, 48.0]),
+        leg(&parts[2], [0.0, 16.0]),
+        leg(&parts[1], [16.0, 48.0]),
     ]
 }
 
@@ -2446,9 +2607,9 @@ mod tests {
                     4 => mob.dying = Some(0.3),
                     _ => {}
                 }
-                let time = 3.7 + variant as f32;
+                mob.tick_count = 74 + 20 * variant as u32;
                 let (flat, drawn) = both_ways(|out| {
-                    build(std::slice::from_ref(&mob), DVec3::new(0.0, 65.0, 0.0), Vec3::X, 256.0, time, 0.4, out);
+                    build(std::slice::from_ref(&mob), DVec3::new(0.0, 65.0, 0.0), Vec3::X, 256.0, 0.4, out);
                 });
                 assert_same_picture(&flat, &drawn, &format!("{kind:?} variant {variant}"));
                 // Nothing translucent may be instanced: the boxes draw first, unblended.
@@ -2478,7 +2639,7 @@ mod tests {
         let mut mesh = EntityMesh::default();
         let rebuild = |mobs: &[Mob], mesh: &mut EntityMesh| {
             mesh.clear();
-            build(mobs, camera, Vec3::X, 100.0, 0.0, 1.0, mesh);
+            build(mobs, camera, Vec3::X, 100.0, 1.0, mesh);
             (mesh.boxes().to_vec(), mesh.to_vec())
         };
         let before = rebuild(&mobs, &mut mesh);
@@ -2553,8 +2714,8 @@ mod tests {
         let mut halfway = EntityMesh::flat();
         let mut current = EntityMesh::flat();
         let camera = DVec3::new(0.0, 64.0, 0.0);
-        build(std::slice::from_ref(&mob), camera, Vec3::X, 100.0, 0.0, 0.5, &mut halfway);
-        build(std::slice::from_ref(&mob), camera, Vec3::X, 100.0, 0.0, 1.0, &mut current);
+        build(std::slice::from_ref(&mob), camera, Vec3::X, 100.0, 0.5, &mut halfway);
+        build(std::slice::from_ref(&mob), camera, Vec3::X, 100.0, 1.0, &mut current);
         assert!(!current.is_empty());
         assert_eq!(halfway.len(), current.len());
         for (a, b) in halfway.iter().zip(current.iter()) {
@@ -2570,7 +2731,7 @@ mod tests {
         let build_one = |kind| {
             let mob = Mob::new(kind, DVec3::new(3.0, 0.0, 0.0), 0.0);
             let mut out = EntityMesh::flat();
-            build(std::slice::from_ref(&mob), DVec3::ZERO, Vec3::X, 100.0, 0.0, 1.0, &mut out);
+            build(std::slice::from_ref(&mob), DVec3::ZERO, Vec3::X, 100.0, 1.0, &mut out);
             out
         };
         let slime = build_one(MobKind::Slime);
@@ -2598,7 +2759,7 @@ mod tests {
             let mut mob = Mob::new(MobKind::Axolotl, DVec3::new(3.0, 0.0, 0.0), 0.0);
             mob.aquatic.as_mut().unwrap().variant = variant;
             let mut out = EntityMesh::default();
-            build(std::slice::from_ref(&mob), DVec3::ZERO, Vec3::X, 100.0, 0.0, 1.0, &mut out);
+            build(std::slice::from_ref(&mob), DVec3::ZERO, Vec3::X, 100.0, 1.0, &mut out);
             let colours: Vec<[u8; 3]> = out.boxes().iter().map(|b| [b.color[0], b.color[1], b.color[2]]).collect();
             let (body, gills) = (aquatic::AXOLOTL_BODIES[variant as usize], aquatic::AXOLOTL_GILLS[variant as usize]);
             assert_eq!(
@@ -2618,41 +2779,80 @@ mod tests {
         let mut zombie = Mob::new(MobKind::Zombie, DVec3::new(3.0, 0.0, 0.0), 0.0);
         zombie.equipment.wear_set(crate::entity::armor::ArmorKind::Chain, false);
         let mut out = EntityMesh::flat();
-        build(std::slice::from_ref(&zombie), DVec3::ZERO, Vec3::X, 100.0, 0.0, 1.0, &mut out);
+        build(std::slice::from_ref(&zombie), DVec3::ZERO, Vec3::X, 100.0, 1.0, &mut out);
         assert!(out.iter().any(|v| v.torch[1] == 3));
         let mut pig = Mob::new(MobKind::Pig, DVec3::new(3.0, 0.0, 0.0), 0.0);
         pig.equipment = zombie.equipment.clone();
         out.clear();
-        build(std::slice::from_ref(&pig), DVec3::ZERO, Vec3::X, 100.0, 0.0, 1.0, &mut out);
+        build(std::slice::from_ref(&pig), DVec3::ZERO, Vec3::X, 100.0, 1.0, &mut out);
         assert!(out.iter().all(|v| matches!(v.torch[1], 0 | PATTERN_MATERIAL)), "no armor on a pig");
+    }
+
+    /// v1.0 gap Track 7b: humanoids hold their weapon in their own right
+    /// hand: the weapon arm (part 4, which `draw_held` grips) and the right
+    /// leg (part 2) are on -X, the mob's right, as Java's are.
+    #[test]
+    fn humanoids_hold_with_their_right_hands() {
+        for kind in [
+            MobKind::Zombie,
+            MobKind::Drowned,
+            MobKind::Skeleton,
+            MobKind::WitherSkeleton,
+            MobKind::Stray,
+            MobKind::Pillager,
+            MobKind::Vindicator,
+            MobKind::Piglin,
+            MobKind::PiglinBrute,
+            MobKind::ZombifiedPiglin,
+            MobKind::Enderman,
+        ] {
+            let m = Mob::new(kind, DVec3::ZERO, 0.0);
+            let p = pose(&m, 0.0, 1.0);
+            assert!(p[4].pivot.x < 0.0 && p[3].pivot.x > 0.0, "{kind:?} arms");
+            assert!(p[2].pivot.x < 0.0 && p[1].pivot.x > 0.0, "{kind:?} legs");
+        }
     }
 
     #[test]
     fn models_face_their_yaw_and_stand_on_the_ground() {
         for kind in MobKind::ALL {
             // Facing +X (yaw 0): the head is the part furthest along +X.
-            let mob = Mob::new(kind, DVec3::new(10.0, 64.0, 0.0), 0.0);
+            let mut mob = Mob::new(kind, DVec3::new(10.0, 64.0, 0.0), 0.0);
+            // Track 7b: out of water a fish lies on its side, as Java's do.
+            mob.in_water = kind.is_aquatic();
+            // Standing, not in flight (a flying parrot tucks its legs up).
+            mob.on_ground = true;
             let mut out = EntityMesh::flat();
-            assert_eq!(
-                build(std::slice::from_ref(&mob), DVec3::new(0.0, 64.0, 0.0), Vec3::X, 100.0, 0.0, 1.0, &mut out),
-                1
-            );
+            // At `ageInTicks` 0 (Track 7b: each mob's own clock).
+            assert_eq!(build(std::slice::from_ref(&mob), DVec3::new(0.0, 64.0, 0.0), Vec3::X, 100.0, 0.0, &mut out), 1);
             let (lo, hi) = out.iter().fold((Vec3::splat(f32::MAX), Vec3::splat(f32::MIN)), |(lo, hi), v| {
                 let p = Vec3::from_array(v.pos);
                 (lo.min(p), hi.max(p))
             });
             // Swimming bodies and animated tentacles need not rest on a floor.
-            let floats = matches!(kind, MobKind::Blaze | MobKind::Bat) || kind.is_aquatic();
+            // (Track 7b: the phantom's wings beat below its body, the allay
+            // bobs and the vex leans.)
+            let floats =
+                matches!(kind, MobKind::Blaze | MobKind::Bat | MobKind::Phantom | MobKind::Allay | MobKind::Vex)
+                    || kind.is_aquatic();
             // The Wither's tail ends about 0.65 above the floor, as in Java's
             // `WitherBossModel` drawn at twice its pixels.
-            let hovers = kind == MobKind::Wither && (0.0..1.0).contains(&lo.y);
+            let hovers = kind == MobKind::Wither && (0.0..1.0).contains(&lo.y)
+                // v1.0 gap Track 7b: `BlazeModel`'s bottom rods end 4 to 6
+                // pixels above the feet.
+                || kind == MobKind::Blaze && (0.24..0.38).contains(&lo.y)
+                // and the ghast's tentacles trail back, lifting their tips.
+                || kind == MobKind::Ghast && (0.0..0.1).contains(&lo.y);
             assert!(lo.y.abs() < 1e-4 || floats && lo.y.abs() < 0.25 || hovers, "{kind:?} feet at {}", lo.y);
             // The mooshroom cap layer extends above its cow collision box.
             let h = kind.shape().height as f32 + if kind == MobKind::Mooshroom { 0.4 } else { 0.0 };
             assert!((hi.y - h).abs() < 0.15, "{kind:?} top {} vs box {h}", hi.y);
             assert!(
-                // A sulfur cube is a plain cube with no head to lead.
-                hi.x > if kind.is_aquatic() || matches!(kind, MobKind::Bat | MobKind::Allay | MobKind::SulfurCube) {
+                // A sulfur cube is a plain cube with no head to lead; the vex's
+                // arms hang at its sides (Track 7b).
+                hi.x > if kind.is_aquatic()
+                    || matches!(kind, MobKind::Bat | MobKind::Allay | MobKind::SulfurCube | MobKind::Vex)
+                {
                     10.05
                 } else {
                     10.25
@@ -2662,7 +2862,7 @@ mod tests {
             // Behind the camera: culled.
             out.clear();
             assert_eq!(
-                build(std::slice::from_ref(&mob), DVec3::new(0.0, 64.0, 0.0), Vec3::NEG_X, 100.0, 0.0, 1.0, &mut out),
+                build(std::slice::from_ref(&mob), DVec3::new(0.0, 64.0, 0.0), Vec3::NEG_X, 100.0, 1.0, &mut out),
                 0
             );
         }

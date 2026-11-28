@@ -220,7 +220,50 @@ the shared code is `src/entity/motion.rs`.
   removed as `deathTime` reaches 20.
 - **Hurt flash.** The red overlay is on, not fading, for the 10 ticks of
   `hurtTime` and from death on, mixed as Java's `OverlayTexture` does: 70 %
-  of the shaded texel and 30 % red, in sRGB, under the light.
+  of the shaded texel and 30 % red, in sRGB, under the light (Track 7b:
+  the red under the light map's colour alone, unshaded, as in Java's
+  `entity.fsh`).
 
 **Cost.** `cargo run --profile ci --example entity_submission_bench`
 times the per-frame entity build headless; see the record for numbers.
+
+## Mob animations beyond the walk (v1.0 gap Track 7b)
+
+Checked against the Java 26.3 client
+([record](verification/2026-11-27-v1.0-gap-track-07b-mob-animations.md)).
+The client-side state Java keeps on its entities is in
+`src/entity/mob_anim.rs`, ticked with the walk and read with the
+partial tick; the models are in `src/entity/model*`.
+
+- **Sides.** Java's model space maps onto this game's by a half turn
+  about X: Java's right is this model's -X, the mob's own right, and
+  every y and z turn changes sign (`Part::on_java_side`). Humanoids,
+  illagers, the vex, villagers, witches and the iron golem now hold
+  weapons and items in their right hands, with their limb phases and
+  swings on the matching sides; armor's left and right pieces follow.
+- **Each mob's own clock.** Idle animations read the mob's own
+  `ageInTicks` (`Mob::tick_count` plus the partial tick, counted from its
+  spawn or load), so mobs no longer bob in step.
+- **Flight and swimming.** The chicken and parrot flap on Java's `flap`
+  and `flapSpeed` (and the parrot's poses: dancing, sitting, flying,
+  standing); bees beat, bob and tumble (`rollAmount`); the allay's wings,
+  lean, idle bob, arms and dance spin; the vex's arms and wings; the
+  phantom's wings, both beating together; fish sway and swing their tails
+  and flop on land; squid open their tentacles and turn their bodies
+  (`tentacleAngle`, `xBodyRot`, `zBodyRot`); dolphins pitch and rock;
+  guardians swing their tails and draw in their spikes while swimming.
+- **Rods, segments and tentacles.** The blaze's twelve rods on
+  `BlazeModel`'s rings; silverfish and endermite segments on their
+  models' sway; ghast tentacles trailing on `0.2 * sin(age * 0.3 + i) +
+  0.4`; the shulker's lid (Java's full rise, bob and twist); the breeze on
+  its `IDLE` loop; the bat's wings and the rabbit's hop and head tilt on
+  their `AnimationState` clocks.
+- **Poses.** The pillager draws its crossbow back over its charge time;
+  an aggressive drowned raises its trident overhead and swims, arms
+  forward and body tipped (`swimAmount`); horses swish their tails
+  (`tailCounter`) and rear (`standAnim`) when hit, when they throw a
+  rider and now and then at rest.
+- **Babies.** Chickens, pigs, cows, sheep, wolves, villagers, zombies,
+  husks and drowned draw Java 26.3's own baby proportions (large heads,
+  short legs) at full scale, with this game's own art; other babies are
+  still their adults halved.

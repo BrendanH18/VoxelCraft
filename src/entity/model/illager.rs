@@ -67,12 +67,13 @@ fn body_of(kind: MobKind) -> &'static [Cuboid] {
 /// legs at half the usual stride, or the riding pose on a ravager; then
 /// the arm pose (an armed attacker swings its weapon down, an unarmed one
 /// raises its arms like a zombie).
-pub(super) fn pose(m: &Mob, head_rot: Quat, time: f32) -> Parts {
+pub(super) fn pose(m: &Mob, head_rot: Quat, time: f32, alpha: f32) -> Parts {
     let rx = Quat::from_rotation_x;
     let s = m.illager.as_deref();
     let arm_pose = s.map_or(ArmPose::Crossed, |s| s.arm_pose(m.kind, m.main_hand().map(|h| h.item)));
     let age = age_ticks(time);
-    let (hx, hy) = (head_x(m), -m.head_yaw);
+    // Java's `head.yRot` (Track 7b: on Java's sides, see `Part::on_java_side`).
+    let (hx, hy) = (head_x(m), m.head_yaw);
     let riding = m.riding.is_some();
     let mut h = Humanoid::walk(m, 0.5);
     let (mut right_leg, mut left_leg) =
@@ -112,9 +113,20 @@ pub(super) fn pose(m: &Mob, head_rot: Quat, time: f32) -> Parts {
             h.left_arm = Limb { x: -1.5 + hx, y: 0.6 + hy, z: h.left_arm.z };
         }
         ArmPose::CrossbowCharge => {
-            // The pull starts here; this game keeps no use timer to draw it back.
+            // v1.0 gap Track 7b: `AnimationUtils.animateCrossbowCharge`:
+            // the pulling arm draws back from 0.4 to 0.85 and up to level
+            // over the charge (`ticksUsingItem` over the crossbow's charge
+            // duration, the goal's use timer with the partial tick).
+            let quick =
+                m.main_hand().map_or(0, |c| c.active_enchants().level(crate::enchant::Enchantment::QuickCharge));
+            let max = crate::entity::illager::charge_ticks(quick).max(1) as f32;
+            let used = s.map_or(0.0, |s| s.use_ticks as f32 + alpha).clamp(0.0, max) / max;
             h.right_arm = Limb { x: -0.970_796_35, y: -0.8, z: h.right_arm.z };
-            h.left_arm = Limb { x: -0.970_796_35, y: 0.4, z: h.left_arm.z };
+            h.left_arm = Limb {
+                x: -0.970_796_35 + (-FRAC_PI_2 + 0.970_796_35) * used,
+                y: 0.4 + (0.85 - 0.4) * used,
+                z: h.left_arm.z,
+            };
         }
         ArmPose::Celebrating => {
             let wave = (age * 0.6662).cos() * 0.05;
@@ -139,6 +151,10 @@ pub(super) fn pose(m: &Mob, head_rot: Quat, time: f32) -> Parts {
         out.push(part(SLEEVE, [-5.0, 22.0, 0.0], left));
         out.push(part(SLEEVE, [5.0, 22.0, 0.0], right));
     }
+    // v1.0 gap Track 7b: everything but the head on Java's sides.
+    out.java_side(0..5);
+    let len = out.len();
+    out.java_side(6..len);
     out
 }
 
@@ -175,24 +191,44 @@ const VEX_ARM: &[Cuboid] = &[cube([-0.75, -5.0, -0.75], [0.75, 0.0, 0.75], VEX_S
 const VEX_WING_L: &[Cuboid] = &[cube([0.0, -3.0, -0.1], [5.0, 2.0, 0.1], [226, 236, 244], 6)];
 const VEX_WING_R: &[Cuboid] = &[cube([-5.0, -3.0, -0.1], [0.0, 2.0, 0.1], [226, 236, 244], 6)];
 
-/// The vex: arms down, or both raised toward its target while charging,
-/// wings beating fast.
+/// v1.0 gap Track 7b: `VexModel.setupAnim`. The arms hang 36 degrees out,
+/// swaying on `cos(ageInTicks * 5.5 degrees) * 0.1`, the body leaning 9
+/// degrees; charging, the body straightens and the arms reach forward
+/// (70 degrees), or the armed one thrusts up and over (210 degrees). The
+/// wings beat on `cos(ageInTicks * 45.84 degrees) * 16.2 degrees` (round
+/// this model's own rest angle). The sword hand is the right, on -X.
 pub(super) fn vex(m: &Mob, head_rot: Quat, time: f32) -> Parts {
     let rx = Quat::from_rotation_x;
+    let age = age_ticks(time);
     let charging = m.illager.as_deref().is_some_and(|s| s.charging);
-    let flap = (time * 20.0 * 0.8).cos() * 0.6;
-    // Arms reach forward, raised high while charging.
-    let arm = if charging { rx(-2.2) } else { rx(-1.1) };
-    parts![
-        part(VEX_BODY, [0.0; 3], if charging { rx(0.5) } else { Quat::IDENTITY }),
+    let armed = m.main_hand().is_some();
+    let bob = (age * 5.5f32.to_radians()).cos() * 0.1;
+    let flap = (age * 45.836_624f32.to_radians()).cos() * 16.2f32.to_radians();
+    let mut right = Limb { z: PI / 5.0 + bob, ..Limb::default() };
+    let mut left = Limb { z: -(PI / 5.0 + bob), ..Limb::default() };
+    if charging {
+        let reach = |x: f32, y: f32, z: f32| Limb { x, y, z };
+        if armed {
+            right = reach(PI * 7.0 / 6.0, PI / 12.0, -0.471_238_88 - bob);
+        } else {
+            right = reach(-1.221_730_5, PI / 12.0, -0.471_238_88 - bob);
+            left = reach(-1.221_730_5, -PI / 12.0, 0.471_238_88 + bob);
+        }
+    }
+    // The limbs as Java's turned through the origin (left on -X), then
+    // moved onto Java's sides like the humanoids'.
+    let mut p = parts![
+        part(VEX_BODY, [0.0; 3], if charging { Quat::IDENTITY } else { rx(PI / 20.0) }),
         part(&[], [0.0; 3], Quat::IDENTITY),
         part(&[], [0.0; 3], Quat::IDENTITY),
-        part(VEX_ARM, [-2.0, 7.0, 0.0], arm),
-        part(VEX_ARM, [2.0, 7.0, 0.0], arm),
+        part(VEX_ARM, [-2.0, 7.0, 0.0], left.quat()),
+        part(VEX_ARM, [2.0, 7.0, 0.0], right.quat()),
         part(VEX_HEAD, [0.0, 7.5, 0.0], head_rot),
         part(VEX_WING_L, [0.5, 6.5, -1.0], Quat::from_rotation_y(0.5 + flap)),
         part(VEX_WING_R, [-0.5, 6.5, -1.0], Quat::from_rotation_y(-0.5 - flap)),
-    ]
+    ];
+    p.java_side(3..5);
+    p
 }
 
 const HIDE: Rgb = [86, 80, 74];

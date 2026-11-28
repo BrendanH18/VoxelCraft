@@ -125,10 +125,10 @@ const GUARDIAN: &[Cuboid] = &[
     cube([-6.05, 2.0, -6.05], [6.05, 2.5, 6.05], [70, 96, 90], 0),
     cube([-4.0, 9.0, 6.0], [4.0, 9.6, 6.25], [214, 150, 80], 0),
 ];
-const GUARD_TAIL: &[Cuboid] = &[
-    cube([-1.5, -1.5, -8.0], [1.5, 1.5, 0.0], [95, 126, 113], 25),
-    cube([-0.5, -4.0, -9.0], [0.5, 4.0, -7.0], [215, 161, 64], 16),
-];
+const GUARD_TAIL: &[Cuboid] = &[cube([-1.5, -1.5, -8.0], [1.5, 1.5, 0.0], [95, 126, 113], 25)];
+/// v1.0 gap Track 7b: the tail's fin on its own joint at the tail's end
+/// (the same box, in the same place at rest).
+const GUARD_FIN: &[Cuboid] = &[cube([-0.5, -4.0, -1.0], [0.5, 4.0, 1.0], [215, 161, 64], 16)];
 const CAT: &[Cuboid] = &[
     cube([-2.5, 3.0, -6.0], [2.5, 7.0, 5.0], [30, 29, 31], 18),
     cube([-3.0, 5.0, 4.0], [3.0, 10.0, 9.0], [27, 27, 29], 15),
@@ -169,57 +169,119 @@ const TURTLE_HEAD: &[Cuboid] = &[
 const TURTLE_FLIPPER: &[Cuboid] = &[cube([-1.0, -1.0, -2.0], [1.0, 1.0, 2.0], [102, 168, 96], 14)];
 const TURTLE_SIDE_FLIPPER: &[Cuboid] = &[cube([0.0, -0.5, -2.0], [6.0, 0.5, 2.0], [102, 168, 96], 14)];
 
-pub(super) fn pose(m: &Mob, time: f32) -> Parts {
+pub(super) fn pose(m: &Mob, time: f32, alpha: f32) -> Parts {
+    use crate::entity::mob_anim::lerp;
     let tail = Quat::from_rotation_y((time * 5.0 + m.limb_phase * motion::WALK_FREQ).sin() * 0.3);
+    let age = age_ticks(time);
+    let (rx, ry, rz) = (Quat::from_rotation_x, Quat::from_rotation_y, Quat::from_rotation_z);
     match m.kind {
-        MobKind::Cod | MobKind::Salmon | MobKind::TropicalFish => parts![
-            part(
-                match m.kind {
-                    MobKind::Salmon => SALMON,
-                    MobKind::TropicalFish => TROPICAL,
-                    _ => FISH,
-                },
-                [0.0; 3],
-                Quat::IDENTITY
-            ),
-            part(FISH_TAIL, [0.0, 3.0, if m.kind == MobKind::Salmon { -7.0 } else { -4.5 }], tail)
-        ],
+        MobKind::Cod | MobKind::Salmon | MobKind::TropicalFish => {
+            // v1.0 gap Track 7b: `CodModel`, `SalmonModel` and the tropical
+            // fish models swing the tail (the salmon's back half) on
+            // `sin(0.6 * ageInTicks)`, harder out of water; their renderers
+            // sway the body 4.3 degrees on the same wave and, out of water,
+            // lay it on its side, lifted a little (Java's y turns and
+            // offsets on this model's sides).
+            let salmon = m.kind == MobKind::Salmon;
+            let (amp, freq) = match (salmon, m.in_water) {
+                (true, false) => (1.3, 1.7),
+                (false, false) => (1.5, 1.0),
+                _ => (1.0, 1.0),
+            };
+            let wave = (freq * 0.6 * age).sin();
+            let fin = if salmon { 0.25 * amp * wave } else { 0.45 * amp * wave };
+            let body_amp = if salmon { amp } else { 1.0 };
+            let mut p = parts![
+                part(
+                    match m.kind {
+                        MobKind::Salmon => SALMON,
+                        MobKind::TropicalFish => TROPICAL,
+                        _ => FISH,
+                    },
+                    [0.0; 3],
+                    Quat::IDENTITY
+                ),
+                part(FISH_TAIL, [0.0, 3.0, if salmon { -7.0 } else { -4.5 }], ry(fin))
+            ];
+            let sway = ry((body_amp * 4.3 * wave).to_radians());
+            if m.in_water {
+                p.transform(Vec3::ZERO, sway);
+            } else {
+                let lift = if m.kind == MobKind::Cod { Vec3::new(-1.6, 1.6, 1.6) } else { Vec3::new(-3.2, 1.6, 0.0) };
+                p.transform(sway * lift, sway * rz(-FRAC_PI_2));
+            }
+            p
+        }
         MobKind::Pufferfish => {
-            let mut p = parts![part(PUFFER, [0.0; 3], Quat::IDENTITY)];
+            // `PufferfishRenderer` bobs it `cos(ageInTicks * 0.05) * 0.08`
+            // blocks.
+            let bob = (age * 0.05).cos() * 0.08 * 16.0;
+            let mut p = parts![part(PUFFER, [0.0, bob, 0.0], Quat::IDENTITY)];
             if m.aquatic.as_ref().is_some_and(|a| a.puff > 0) {
                 for i in 0..8 {
                     let a = i as f32 * PI * 0.25;
-                    p.push(part(SPIKE, [a.sin() * 3.0, 3.0, a.cos() * 3.0], Quat::from_rotation_y(a)));
+                    p.push(part(SPIKE, [a.sin() * 3.0, 3.0 + bob, a.cos() * 3.0], Quat::from_rotation_y(a)));
                 }
             }
             p
         }
         MobKind::Squid | MobKind::GlowSquid => {
+            // `SquidModel`: every tentacle opens outward by
+            // `tentacleAngle`; `SquidRenderer` turns the body about its
+            // middle, half a block up, by `xBodyRot` then `zBodyRot`
+            // (`Squid.aiStep`'s state).
+            let a = &m.anim;
+            let open = lerp(alpha, a.o_tentacle_angle, a.tentacle_angle);
             let mut p = parts![part(SQUID, [0.0; 3], Quat::IDENTITY)];
             for i in 0..8 {
                 let a = i as f32 * PI * 0.25;
-                p.push(part(
-                    TENTACLE,
-                    [a.sin() * 3.0, 6.0, a.cos() * 3.0],
-                    Quat::from_rotation_y(a) * Quat::from_rotation_x(0.4 + (time * 2.0).sin() * 0.3),
-                ));
+                p.push(part(TENTACLE, [a.sin() * 3.0, 6.0, a.cos() * 3.0], ry(a) * rx(-open)));
             }
+            let (x, z) = (lerp(alpha, a.o_x_body_rot, a.x_body_rot), lerp(alpha, a.o_z_body_rot, a.z_body_rot));
+            p.turn_about(Vec3::new(0.0, 8.0, 0.0), rx(-x.to_radians()) * ry(z.to_radians()));
             p
         }
-        MobKind::Dolphin if m.baby || m.age < 0 => parts![
-            part(BABY_DOLPHIN, [0.0; 3], Quat::IDENTITY),
-            part(BABY_FLUKE, [0.0, 2.5, -11.0], Quat::from_rotation_x((time * 5.0).sin() * 0.3))
-        ],
-        MobKind::Dolphin => parts![
-            part(DOLPHIN, [0.0; 3], Quat::IDENTITY),
-            part(FLUKE, [0.0, 3.0, -9.0], Quat::from_rotation_x((time * 4.0).sin() * 0.25))
-        ],
+        MobKind::Dolphin => {
+            // `DolphinModel`: the body pitches with the dolphin and turns
+            // with its head; swimming, it rocks on `cos(ageInTicks * 0.3)`
+            // and the tail and fluke beat (`isMoving`: it is moving, here
+            // its walk speed, which follows the distance moved a tick).
+            let moving = m.limb_amp > 1e-3;
+            let wave = (age * 0.3).cos();
+            let (rock, fluke) = if moving { (-0.05 - 0.05 * wave, -0.3 * wave) } else { (0.0, 0.0) };
+            // Track 3's baby dolphin swims the same way.
+            let baby = m.is_baby();
+            let (body, tail, tail_at, centre) = if baby {
+                (BABY_DOLPHIN, BABY_FLUKE, [0.0, 2.5, -11.0], 2.5)
+            } else {
+                (DOLPHIN, FLUKE, [0.0, 3.0, -9.0], 4.0)
+            };
+            let mut p = parts![part(body, [0.0; 3], Quat::IDENTITY), part(tail, tail_at, rx(fluke))];
+            let pitch = m.move_ctl.pitch.to_radians() + rock;
+            p.turn_about(Vec3::new(0.0, centre, 0.0), ry(-m.head_yaw) * rx(pitch));
+            p
+        }
         MobKind::Axolotl => parts![part(AXOLOTL, [0.0; 3], Quat::IDENTITY), part(AXO_TAIL, [0.0, 1.0, -5.0], tail)],
         MobKind::Guardian | MobKind::ElderGuardian => {
-            let mut p = parts![part(GUARDIAN, [0.0; 3], Quat::IDENTITY), part(GUARD_TAIL, [0.0, 5.0, -6.0], tail)];
+            // `GuardianModel`: the tail's three joints swing `sin(tail) *
+            // pi` times 0.05, 0.1 and 0.15 (here the tail takes the first
+            // two, its fin the third); the spikes stand out by `1 +
+            // cos(ageInTicks * 1.5 + i) / 100` less the withdrawal `(1 -
+            // spikes) * 0.55` (`Guardian.aiStep`'s client state: drawn in
+            // while it swims, flickering out of water).
+            let a = &m.anim;
+            let swim = lerp(alpha, a.o_tail, a.tail).sin() * PI;
+            let withdrawal = (1.0 - lerp(alpha, a.o_spikes, a.spikes)) * 0.55;
+            let base = ry(-swim * 0.15);
+            let fin_at = Vec3::new(0.0, 5.0, -6.0) + base * Vec3::new(0.0, 0.0, -8.0);
+            let mut p = parts![
+                part(GUARDIAN, [0.0; 3], Quat::IDENTITY),
+                part(GUARD_TAIL, [0.0, 5.0, -6.0], base),
+                part(GUARD_FIN, fin_at.to_array(), base * ry(-swim * 0.15))
+            ];
             for i in 0..8 {
                 let a = i as f32 * PI * 0.25;
-                let extent = if m.aquatic.as_ref().is_some_and(|a| a.beam.is_some()) { 4.0 } else { 6.0 };
+                let extent = 6.0 * (1.0 + (age * 1.5 + i as f32).cos() * 0.01 - withdrawal);
                 p.push(part(SPIKE, [a.sin() * extent, 6.0, a.cos() * extent], Quat::from_rotation_y(a)));
             }
             p

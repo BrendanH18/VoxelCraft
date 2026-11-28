@@ -1,7 +1,7 @@
 //! Procedural Java-like equine proportions, coats, markings and equipment.
-use super::{Cuboid, Mob, MobKind, Parts, cube, motion, part, walk_cos};
+use super::{Cuboid, Mob, MobKind, Parts, age_ticks, cube, motion, part, walk_cos};
 use glam::{Quat, Vec3};
-use std::f32::consts::PI;
+use std::f32::consts::{FRAC_PI_4, PI};
 const COLORS: [[u8; 3]; 9] = [
     [236, 232, 218],
     [208, 177, 126],
@@ -13,20 +13,25 @@ const COLORS: [[u8; 3]; 9] = [
     [222, 218, 200],
     [94, 124, 68],
 ];
-const fn bodies() -> [[Cuboid; 3]; 9] {
-    let mut out = [[cube([0.; 3], [0.; 3], [0; 3], 0); 3]; 9];
+const fn bodies() -> [[Cuboid; 2]; 9] {
+    let mut out = [[cube([0.; 3], [0.; 3], [0; 3], 0); 2]; 9];
     let mut i = 0;
     while i < 9 {
         out[i] = [
             cube([-5., 11., -10.], [5., 21., 9.], COLORS[i], 22),
-            cube([-1.5, 14., -16.], [1.5, 21., -9.], [48, 38, 28], 20),
             cube([-1., 20., -9.], [1., 22., 10.], [44, 36, 26], 20),
         ];
         i += 1;
     }
     out
 }
-const BODIES: [[Cuboid; 3]; 9] = bodies();
+const BODIES: [[Cuboid; 2]; 9] = bodies();
+/// v1.0 gap Track 7b: the tail on its own joint at the top of the rump
+/// (the same box, in the same place at rest).
+const TAIL_AT: [f32; 3] = [0., 21., -9.];
+const TAIL: &[Cuboid] = &[cube([-1.5, -7., -7.], [1.5, 0., 0.], [48, 38, 28], 20)];
+const SKELETON_TAIL_AT: [f32; 3] = [0., 20., -9.];
+const SKELETON_TAIL: &[Cuboid] = &[cube([-1., -6., -7.], [1., 0., 0.], [222, 218, 200], 12)];
 const fn heads() -> [[Cuboid; 7]; 9] {
     let mut out = [[cube([0.; 3], [0.; 3], [0; 3], 0); 7]; 9];
     let mut i = 0;
@@ -105,7 +110,11 @@ const fn armors() -> [[Cuboid; 3]; 6] {
     out
 }
 const ARMOR: [[Cuboid; 3]; 6] = armors();
-pub(super) fn pose(m: &Mob) -> Parts {
+/// `AbstractEquineModel`'s body pivot (Java's (0, 11, 5)), which rearing
+/// turns the body about.
+const REAR_PIVOT: Vec3 = Vec3::new(0., 13., -5.);
+
+pub(super) fn pose(m: &Mob, time: f32, alpha: f32) -> Parts {
     let s = m.mount.as_ref().unwrap();
     let color = match m.kind {
         MobKind::SkeletonHorse => 7,
@@ -125,18 +134,45 @@ pub(super) fn pose(m: &Mob) -> Parts {
         MobKind::Mule => 14.,
         _ => 15.,
     };
-    let head = Quat::from_rotation_y(-m.head_yaw) * Quat::from_rotation_x(-0.35 - m.head_pitch + nod);
+    // v1.0 gap Track 7b: rearing (`standAnim`, Track 3b's
+    // `mounts::State::stand_anim`) turns the body up 45 degrees about its pivot, carrying the
+    // head, which lifts 15 degrees less, and the front legs, which paw on
+    // `cos(ageInTicks * 0.6 + pi)` from 60 degrees forward, while the hind
+    // legs plant at 15 degrees; the walk fades out as it rises.
+    let age = age_ticks(time);
+    let stand = s.stand_anim(alpha);
+    let walk = 1.0 - stand;
+    let rear = Quat::from_rotation_x(-FRAC_PI_4 * stand);
+    let paw = (age * 0.6 + PI).cos();
+    let head = Quat::from_rotation_x(PI / 6.0 * stand)
+        * Quat::from_rotation_y(-m.head_yaw)
+        * Quat::from_rotation_x(-0.35 - m.head_pitch + nod * walk);
     let mut p = Parts::new();
     p.push(part(
         if m.kind == MobKind::SkeletonHorse { SKELETON_BODY } else { &BODIES[color] },
         [0.; 3],
         Quat::IDENTITY,
     ));
-    for (x, z, phase) in [(-3.5, 7., leg * 0.8), (3.5, 7., -leg * 0.8), (-3.5, -8., -leg * 0.5), (3.5, -8., leg * 0.5)]
-    {
-        p.push(part(&LEGS[color], [x, 12., z], Quat::from_rotation_x(phase)));
+    // The front legs turn with the body; their pawing angle is absolute,
+    // so the body's turn comes back off it.
+    for (x, phase, sign) in [(-3.5, leg * 0.8, 1.0), (3.5, -leg * 0.8, -1.0)] {
+        let lift = (-PI / 3.0 + sign * paw) * stand + phase * walk;
+        p.push(part(&LEGS[color], [x, 12., 7.], Quat::from_rotation_x(FRAC_PI_4 * stand + lift)));
     }
     p.push(part(&HEADS[color], [0., head_y, 6.], head));
+    // `tail.xRot` gains `0.75 * speed` and the tail sits lower and further
+    // back with the walk; while `tailCounter` runs (8 ticks, one tick in
+    // 200) it swishes `cos(ageInTicks * 0.7)` (Java's `yRot` on this
+    // model's sides).
+    let swish = if m.anim.tail_counter > 0 { -(age * 0.7).cos() } else { 0.0 };
+    let (tail, tail_at) =
+        if m.kind == MobKind::SkeletonHorse { (SKELETON_TAIL, SKELETON_TAIL_AT) } else { (TAIL, TAIL_AT) };
+    let scale = if m.is_baby() { 0.5 } else { 1.0 };
+    p.push(part(
+        tail,
+        [tail_at[0], tail_at[1] - speed * scale, tail_at[2] - 2.0 * speed * scale],
+        Quat::from_rotation_y(swish) * Quat::from_rotation_x(0.75 * speed),
+    ));
     if matches!(m.kind, MobKind::Donkey | MobKind::Mule) {
         p.push(part(EARS, [0., head_y, 6.], head));
     }
@@ -147,6 +183,13 @@ pub(super) fn pose(m: &Mob) -> Parts {
         p.push(part(CHESTS, [0.; 3], Quat::IDENTITY));
     }
     equipment(m, &mut p);
+    if stand > 0.0 {
+        p.turn_about(REAR_PIVOT, rear);
+    }
+    // The hind legs stay planted, angled back a little while rearing.
+    for (x, phase) in [(-3.5, -leg * 0.5), (3.5, leg * 0.5)] {
+        p.push(part(&LEGS[color], [x, 12., -8.], Quat::from_rotation_x(PI / 12.0 * stand + phase * walk)));
+    }
     p
 }
 pub(super) fn equipment(m: &Mob, p: &mut Parts) {
@@ -367,7 +410,6 @@ const SKELETON_BODY: &[Cuboid] = &[
     cube([-4., 12., 2.], [-3., 20., 3.], [222, 218, 200], 12),
     cube([3., 12., 2.], [4., 20., 3.], [222, 218, 200], 12),
     cube([-4., 12., 7.], [4., 14., 8.], [222, 218, 200], 12),
-    cube([-1., 14., -16.], [1., 20., -9.], [222, 218, 200], 12),
 ];
 
 #[cfg(test)]
@@ -393,7 +435,7 @@ mod tests {
             mob.mount = Some(
                 crate::entity::mounts::State::load(MobKind::Horse, &mob.mount.as_ref().unwrap().save()).unwrap().into(),
             );
-            let parts = pose(&mob);
+            let parts = pose(&mob, 0.0, 1.0);
             assert!(parts.iter().any(|p| p.boxes.iter().any(|c| c.color == LEATHER_HORSE)));
             for source in ARMOR[0] {
                 let mut emitted = source;
