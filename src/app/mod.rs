@@ -950,9 +950,13 @@ impl Game {
     /// A key or mouse button let go during play.
     fn on_release(&mut self, input: keys::Input) {
         let bindings = self.settings.keys;
+        // Java's `KeyboardHandler.keyPress`: with the debug modifier and
+        // the overlay on one key, the overlay toggles when it is let go,
+        // unless a debug key was used while it was held.
         if !self.menu.is_open()
             && !self.console.open
-            && bindings.actions(input).any(|a| a == keys::Action::DebugOverlay)
+            && self.debug_keys_shared()
+            && bindings.actions(input).any(|a| a == keys::Action::DebugModifier)
         {
             if !self.debug_key_used {
                 self.show_debug = !self.show_debug;
@@ -1065,12 +1069,18 @@ impl Game {
             // Java's default binds the debug modifier and the overlay to
             // the same key: the overlay toggles when it is let go, unless a
             // debug key was used while it was held (`usedDebugKeyAsModifier`).
-            A::DebugOverlay => self.debug_key_used = false,
+            // v1.0 gap track 6c: bound apart, the overlay key toggles it
+            // when pressed.
+            A::DebugOverlay if !self.debug_keys_shared() => self.show_debug = !self.show_debug,
+            A::DebugOverlay => {}
+            A::DebugModifier => self.debug_key_used = false,
             // v1.0 gap track 6b: F3+H, `KeyboardHandler.handleDebugKeys`.
-            A::AdvancedTooltips if self.held(A::DebugOverlay) => {
+            A::AdvancedTooltips if self.held(A::DebugModifier) => {
                 self.debug_key_used = true;
                 self.settings.advanced_tooltips = !self.settings.advanced_tooltips;
-                self.show_popup(if self.settings.advanced_tooltips {
+                // v1.0 gap track 6c: in chat, as `debugFeedbackTranslated`
+                // puts it (`showDebugChat`).
+                self.chat_line(if self.settings.advanced_tooltips {
                     "[Debug]: Advanced tooltips: shown"
                 } else {
                     "[Debug]: Advanced tooltips: hidden"
@@ -1106,6 +1116,12 @@ impl Game {
 
     /// Whether an action's key is down: held, or toggled on for Sneak and
     /// Sprint in Toggle mode. A table lookup per call.
+    /// Java's `modifierAndOverlayIsSame`: the debug modifier and overlay
+    /// keys are bound to the same key (as by default).
+    fn debug_keys_shared(&self) -> bool {
+        self.settings.keys.get(keys::Action::DebugModifier) == self.settings.keys.get(keys::Action::DebugOverlay)
+    }
+
     fn held(&self, action: keys::Action) -> bool {
         match action {
             keys::Action::Sneak if self.settings.toggle_sneak => self.sneak_toggled,

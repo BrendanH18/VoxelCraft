@@ -514,6 +514,7 @@ impl Game {
         self.lan_send(Packet::Click { slot, right, shift, revision, grid_size, selected });
     }
     pub(super) fn chat_line(&mut self, message: &str) {
+        self.console.last_line = Some(std::time::Instant::now());
         self.console.lines.push_back(message.into());
         while self.console.lines.len() > 64 {
             self.console.lines.pop_front();
@@ -2371,9 +2372,10 @@ fn decode_slot(slot: u16, container: Container, mode: GameMode, grid_size: usize
 impl Game {
     pub(super) fn lan_ui(&self, ui: &mut crate::render::ui::Ui) {
         if self.lan.host.is_none() && self.lan.client.is_none() {
+            self.chat_ui(ui);
             return;
         }
-        let (sw, sh) = ui.size();
+        let (sw, _) = ui.size();
         if self.held(super::keys::Action::PlayerList) && !self.console.open {
             let mut names = vec![self.lan.profile.as_str()];
             names.extend(self.agents.players.iter().filter(|(_, b)| b.active).map(|(n, _)| n.as_str()));
@@ -2383,7 +2385,17 @@ impl Game {
                 ui.text((sw - width) / 2.0 + 8.0, 20.0 + i as f32 * 12.0, name, crate::render::ui::WHITE);
             }
         }
-        if !self.console.open && !self.menu.is_open() && !self.inventory_open {
+        self.chat_ui(ui);
+    }
+
+    /// The last four chat lines over the hotbar: always in a LAN game, and
+    /// for 10 seconds after a line in a single-player one (v1.0 gap track
+    /// 6c: debug feedback, Java's `showDebugChat`).
+    pub(super) fn chat_ui(&self, ui: &mut crate::render::ui::Ui) {
+        let lan = self.lan.host.is_some() || self.lan.client.is_some();
+        let recent = self.console.last_line.is_some_and(|t| t.elapsed().as_secs_f32() < 10.0);
+        let (_, sh) = ui.size();
+        if (lan || recent) && !self.console.open && !self.menu.is_open() && !self.inventory_open {
             for (i, line) in self.console.lines.iter().rev().filter(|s| !s.is_empty()).take(4).enumerate() {
                 ui.rect(
                     4.0,
