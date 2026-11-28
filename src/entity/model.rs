@@ -11,7 +11,7 @@ mod trader_model;
 
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
-use glam::{DVec3, Quat, Vec3};
+use glam::{DVec3, Mat3, Quat, Vec3};
 
 use super::mob::{Ai, FUSE_TIME, Mob, MobKind};
 use super::motion;
@@ -945,10 +945,15 @@ struct Part {
     boxes: &'static [Cuboid],
     pivot: Vec3,
     rot: Quat,
+    /// v1.0 gap Track 7d: the part's boxes stretched before its turn, as
+    /// Java's `ModelPart` scales them (`xScale`, `yScale`, `zScale`, and
+    /// its parents' scales carried through their turns): identity for
+    /// every part but a [`rig::Rig`]'s scaled ones.
+    stretch: Mat3,
 }
 
 fn part(boxes: &'static [Cuboid], pivot: [f32; 3], rot: Quat) -> Part {
-    Part { boxes, pivot: Vec3::from_array(pivot), rot }
+    Part { boxes, pivot: Vec3::from_array(pivot), rot, stretch: Mat3::IDENTITY }
 }
 
 impl Part {
@@ -961,7 +966,13 @@ impl Part {
     /// across the body.
     fn on_java_side(self) -> Self {
         let r = self.rot;
-        Self { pivot: self.pivot * Vec3::new(-1.0, 1.0, 1.0), rot: Quat::from_xyzw(r.x, -r.y, -r.z, r.w), ..self }
+        let mirror = Mat3::from_diagonal(Vec3::new(-1.0, 1.0, 1.0));
+        Self {
+            pivot: self.pivot * Vec3::new(-1.0, 1.0, 1.0),
+            rot: Quat::from_xyzw(r.x, -r.y, -r.z, r.w),
+            stretch: mirror * self.stretch * mirror,
+            ..self
+        }
     }
 }
 
@@ -972,7 +983,7 @@ struct Parts {
 }
 impl Parts {
     fn new() -> Self {
-        Self { data: [Part { boxes: &[], pivot: Vec3::ZERO, rot: Quat::IDENTITY }; 24], len: 0 }
+        Self { data: [part(&[], [0.0; 3], Quat::IDENTITY); 24], len: 0 }
     }
     fn push(&mut self, p: Part) {
         self.data[self.len] = p;
@@ -1752,7 +1763,7 @@ pub fn build(
         let model_scale = animals::model_scale(m);
         for (pi, p) in posed.iter().enumerate() {
             let rot = body * p.rot;
-            let xf = |v: Vec3| origin + body * ((p.pivot + p.rot * v) * model_scale) * scale / 16.0;
+            let xf = |v: Vec3| origin + body * ((p.pivot + p.rot * (p.stretch * v)) * model_scale) * scale / 16.0;
             // v0.18 Track 6: the part's map and shades, once for all its boxes.
             let frame = (!out.flat).then(|| BoxFrame::new(&xf, rot));
             // Endermen eyes and blazes glow at full brightness.
@@ -1834,13 +1845,27 @@ pub fn build(
                 }
             }
         }
-        // Zombie villagers use the villager mesh, which is not the six-limb armor rig.
+        // Zombie villagers use the villager mesh, which is not the six-limb armor rig
+        // (v1.0 gap Track 7d: the cub's is, and wears its armor).
+        let villager_cub = m.kind == MobKind::ZombieVillager && m.is_baby();
         if (m.kind.is_zombie() && m.kind != MobKind::ZombieVillager)
             || m.kind.is_bow_skeleton()
             || m.kind == MobKind::Piglin
+            || villager_cub
         {
             let worn = m.equipment.worn();
-            if m.is_baby() && babies::has_model(m.kind) {
+            if villager_cub {
+                use baby_rigs::zombie_villager as z;
+                let (head, rest) = z::armor(&posed);
+                let draw = |out: &mut EntityMesh,
+                            limbs: &[super::player_model::Limb; 6],
+                            worn: &[Option<super::armor::Worn>; 4],
+                            k: f32| {
+                    super::player_model::draw_armor(out, limbs, worn, origin, body, scale * k, (light, torch));
+                };
+                draw(out, &head, &[worn[0], None, None, None], z::HEAD_ARMOR);
+                draw(out, &rest, &[None, worn[1], worn[2], worn[3]], z::BODY_ARMOR);
+            } else if m.is_baby() && babies::has_model(m.kind) {
                 // v1.0 gap Track 7b: the baby's armor at Java's baby scales.
                 let (head, rest) = babies::armor(&posed);
                 let draw = |out: &mut EntityMesh,
@@ -2847,7 +2872,10 @@ mod tests {
                 || kind == MobKind::Phantom && (-0.4..0.0).contains(&lo.y)
                 // and Java's rabbit's front paws dip a fraction of a pixel
                 // below its feet.
-                || kind == MobKind::Rabbit && (-0.01..0.0).contains(&lo.y);
+                || kind == MobKind::Rabbit && (-0.01..0.0).contains(&lo.y)
+                // and (Track 7d) Java's adult nautilus's lower mouth, a
+                // hundredth of a pixel.
+                || matches!(kind, MobKind::Nautilus | MobKind::ZombieNautilus) && (-0.01..0.0).contains(&lo.y);
             assert!(lo.y.abs() < 1e-4 || floats && lo.y.abs() < 0.25 || hovers, "{kind:?} feet at {}", lo.y);
             // The mooshroom cap layer extends above its cow collision box.
             // (v1.0 gap Track 7c: Java's adult rabbit's ears stand about a
@@ -2856,6 +2884,9 @@ mod tests {
                 + match kind {
                     MobKind::Mooshroom => 0.4,
                     MobKind::Rabbit => 0.55,
+                    // v1.0 gap Track 7d: Java's nautilus shell stands 18
+                    // pixels, its rider's seat, above its 0.95 box.
+                    MobKind::Nautilus | MobKind::ZombieNautilus => 0.175,
                     _ => 0.0,
                 };
             assert!((hi.y - h).abs() < 0.15, "{kind:?} top {} vs box {h}", hi.y);
