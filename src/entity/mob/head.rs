@@ -105,6 +105,12 @@ pub(crate) struct JavaLook {
 }
 
 impl JavaLook {
+    /// Whether the mob has been ticked since it was made or loaded (until
+    /// then its body is its heading).
+    pub(crate) fn ready(&self) -> bool {
+        self.ready
+    }
+
     /// `LookControl.isLookingAtTarget`.
     #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn looking(&self) -> bool {
@@ -176,7 +182,6 @@ const SNOW_GOLEM: &[Entry] = &[player(3, 6.0), random(4)];
 const TURTLE: &[Entry] = &[player(8, 8.0)];
 const RABBIT: &[Entry] = &[player(11, 10.0)];
 const PANDA: &[Entry] = &[player(9, 6.0), random(10)];
-const DOLPHIN: &[Entry] = &[random(4), player(5, 6.0)];
 const PARROT: &[Entry] = &[player(1, 8.0)];
 const WITHER: &[Entry] = &[player(6, 8.0), random(7)];
 const CAT: &[Entry] = &[player(12, 10.0)];
@@ -215,7 +220,6 @@ fn goal_table(kind: MobKind) -> &'static [Entry] {
         K::Turtle => TURTLE,
         K::Rabbit => RABBIT,
         K::Panda => PANDA,
-        K::Dolphin => DOLPHIN,
         K::Parrot => PARROT,
         K::Wither => WITHER,
         K::Cat => CAT,
@@ -461,9 +465,19 @@ impl Mob {
     fn look_ready(&mut self) {
         if !self.look.ready {
             self.look.ready = true;
+            self.body_yaw = self.yaw;
             self.look.head = self.yrot() + self.head_yaw.to_degrees();
             self.look.pitch = -self.head_pitch.to_degrees();
         }
+    }
+
+    /// Java's `yBodyRot` in degrees.
+    pub(crate) fn body_yrot(&self) -> f32 {
+        self.body_yaw.to_degrees() - 90.0
+    }
+
+    fn set_body_yrot(&mut self, r: f32) {
+        self.body_yaw = super::wrap((r + 90.0).to_radians());
     }
 
     fn request(&mut self, at: DVec3, y_max: f32, x_max: f32) {
@@ -479,6 +493,12 @@ impl Mob {
     /// behaviour that holds the `LOOK` flag this tick.
     pub(crate) fn set_look_at(&mut self, at: DVec3, y_max: f32, x_max: f32) {
         self.request(at, y_max, x_max);
+        self.head.requested = true;
+    }
+
+    /// A goal holds `LOOK` this tick without asking the look control (the
+    /// Wither's `WitherDoNothingGoal`).
+    pub(crate) fn hold_look(&mut self) {
         self.head.requested = true;
     }
 
@@ -1025,6 +1045,7 @@ impl Mob {
         // A rider steering by hand sets the head to the body
         // (`tickRidden`: `yHeadRot = yBodyRot = yRot`).
         if self.mount.as_ref().is_some_and(|s| s.controlled()) {
+            self.body_yaw = self.yaw;
             self.look.head = self.yrot();
             self.look.pitch = 0.0;
             self.look.cooldown = 0;
@@ -1040,7 +1061,7 @@ impl Mob {
         if skip {
             return;
         }
-        let body = self.yrot();
+        let body = self.body_yrot();
         let eye = self.look_eye();
         let navigating = !self.nav.is_done();
         let mut l = self.look;
@@ -1086,9 +1107,9 @@ impl Mob {
                 }
                 let off = wrap_degrees(l.head - body);
                 if off < -max_from_center {
-                    self.set_yrot(body - 4.0);
+                    self.set_body_yrot(body - 4.0);
                 } else if off > max_from_center {
-                    self.set_yrot(body + 4.0);
+                    self.set_body_yrot(body + 4.0);
                 }
             }
         }
@@ -1100,21 +1121,26 @@ impl Mob {
     /// moved, then the drawn head. `moved` is this tick's horizontal move.
     pub(super) fn body_tick(&mut self, moved: DVec3) {
         if own_head(self.kind) {
+            // Their own code turns the one yaw they draw.
+            self.body_yaw = self.yaw;
             return;
         }
+        self.look_ready();
         if self.dying.is_none() {
             let frozen = match self.kind {
                 MobKind::Armadillo => self.armadillo.as_ref().is_some_and(|s| s.scared()),
                 MobKind::Creaking => self.creaking.as_ref().is_some_and(|s| !s.can_move),
                 _ => false,
             };
-            if crate::entity::mounts::camel_like(self.kind) {
-                // `CamelBodyRotationControl` (Track 3b).
-            } else if !frozen && !self.mount.as_ref().is_some_and(|s| s.controlled()) {
+            if crate::entity::mounts::camel_like(self.kind) || self.mount.as_ref().is_some_and(|s| s.controlled()) {
+                // `CamelBodyRotationControl` (Track 3b) turns the camel's
+                // heading; a steered mount's body is its rider's heading.
+                self.body_yaw = self.yaw;
+            } else if !frozen {
                 self.body_rotation(moved);
             }
         }
-        let body = self.yrot();
+        let body = self.body_yrot();
         self.head_yaw = super::wrap(wrap_degrees(self.look.head - body).to_radians());
         self.head_pitch = -self.look.pitch.to_radians();
     }
@@ -1123,7 +1149,8 @@ impl Mob {
         let max = self.max_head_y_rot();
         let head = self.look.head;
         if moved.x * moved.x + moved.z * moved.z > f64::from(2.500_000_3e-7_f32) {
-            // `yBodyRot = yRot`: the body is the travel heading already.
+            // `yBodyRot = yRot`, the head within its limit of it.
+            self.body_yaw = self.yaw;
             self.look.head = rotate_if_necessary(head, self.yrot(), max);
             self.head.last_stable = self.look.head;
             self.head.stable = 0;
@@ -1131,14 +1158,14 @@ impl Mob {
             if wrap_degrees(head - self.head.last_stable).abs() > 15.0 {
                 self.head.stable = 0;
                 self.head.last_stable = head;
-                let body = rotate_if_necessary(self.yrot(), head, max);
-                self.set_yrot(body);
+                let body = rotate_if_necessary(self.body_yrot(), head, max);
+                self.set_body_yrot(body);
             } else {
                 self.head.stable += 1;
                 if self.head.stable > 10 {
                     let fraction = ((self.head.stable - 10) as f32 / 10.0).clamp(0.0, 1.0);
-                    let body = rotate_if_necessary(self.yrot(), head, max * (1.0 - fraction));
-                    self.set_yrot(body);
+                    let body = rotate_if_necessary(self.body_yrot(), head, max * (1.0 - fraction));
+                    self.set_body_yrot(body);
                 }
             }
         }

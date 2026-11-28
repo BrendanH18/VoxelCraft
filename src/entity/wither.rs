@@ -509,6 +509,17 @@ impl Entities {
             }
         }
         self.wither_navigate(i, world, path_to);
+        // v1.0 gap Track 2c: `RangedAttackGoal.tick`'s `setLookAt(target,
+        // 30, 30)` for the main head; `WitherDoNothingGoal` holds LOOK while
+        // it charges up, so its idle looks wait.
+        let ranged = self.mobs[i].wither.as_ref().is_some_and(|s| s.ranged);
+        let charging = self.mobs[i].wither.as_ref().is_some_and(|s| s.invul > 0);
+        if let Some((p, eye_h)) = main_at.filter(|_| ranged) {
+            let look = super::mob::head::ATTACK_LOOK;
+            self.mobs[i].set_look_at(p + DVec3::Y * eye_h, look, look);
+        } else if charging {
+            self.mobs[i].hold_look();
+        }
         // The side heads.
         for h in 1..3usize {
             let s = self.mobs[i].wither.as_mut().unwrap();

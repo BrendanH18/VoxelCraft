@@ -283,6 +283,9 @@ pub(super) fn upkeep<W: MobWorld + ?Sized>(
                 }
                 a.charge = -1.0;
             }
+            // v1.0 gap Track 2c: `GuardianAttackGoal.tick`'s
+            // `setLookAt(target, 90, 90)`.
+            m.set_look_at(to, 90.0, 90.0);
             m.stop_navigation();
             return true;
         }

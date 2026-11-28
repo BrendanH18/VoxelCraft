@@ -59,6 +59,19 @@ pub fn view_vector(x_rot: f32, y_rot: f32) -> DVec3 {
 pub(crate) enum Stabbed {
     Player(PlayerId),
     Mob(u32),
+    /// v1.0 gap Track 2c: a minecart or boat, a decoration (by its
+    /// position to a sixteenth; decorations have no ids) and an End crystal.
+    Cart(u32),
+    Decor([i32; 3]),
+    Crystal(u32),
+}
+
+/// v1.0 gap Track 2c: a non-living entity a mob's stab hurt.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Other {
+    Cart(u32),
+    Decor(usize),
+    Crystal(u32),
 }
 
 /// `SpearAttack.SpearStatus`, the piglin's `SPEAR_STATUS` memory.
@@ -218,6 +231,7 @@ impl Entities {
             let (origin, yaw, uid, cause) = (m.pos, m.yrot(), m.uid, m.melee_attack().1);
             let mut affected = false;
             let mut knocked = 0;
+            let mut others: Vec<(Other, f32)> = Vec::new();
             let fresh = |charge: &mut super::chase::SpearCharge, key: Stabbed| {
                 // `wasRecentlyStabbed`, then `rememberStabbedEntity`.
                 if charge.stabbed.iter().any(|&(k, at)| k == key && used - at < kinetic.contact_cooldown) {
@@ -230,12 +244,8 @@ impl Entities {
             if end >= range.min {
                 let from = eye + head * range.min;
                 let span = head * (end - range.min);
-                let grow = DVec3::splat(range.margin);
-                let crosses = |min: DVec3, max: DVec3| {
-                    let (min, max) = (min - grow, max + grow);
-                    (from.cmpge(min).all() && from.cmple(max).all())
-                        || crate::physics::ray_aabb(from, span, min, max).is_some_and(|t| t <= 1.0)
-                };
+                // v1.0 gap Track 2c: the margin's block check.
+                let crosses = |min: DVec3, max: DVec3| spear::stab_hits(world, from, span, min, max, range.margin);
                 // Players (`canHitEntity`: alive and not spectating).
                 for t in ctx.players.iter().filter(|t| t.alive && !t.spectator) {
                     let half = DVec3::new(t.shape.half_width, 0.0, t.shape.half_width);
@@ -280,7 +290,7 @@ impl Entities {
                 }
                 // Mobs, nearest first, but never the spear's own mount or
                 // its fellow passengers (`isPassengerOfSameVehicle`).
-                let targets = self.spear_targets(eye, head, range, forward, block, Some(uid));
+                let targets = self.spear_targets(world, eye, head, range, forward, block, Some(uid));
                 for j in targets {
                     let v = views[j];
                     if v.root == me.root || !fresh(&mut charge, Stabbed::Mob(v.uid)) {
@@ -304,7 +314,52 @@ impl Entities {
                         dismount: contact.dismount && v.riding,
                     }));
                 }
+                // v1.0 gap Track 2c: the entities that aren't living but are
+                // pickable (`PiercingWeapon.canHitEntity`): vehicles,
+                // decorations and End crystals. `stabAttack` only hurts them
+                // (knockback and `hurtEnemy` are for living targets); the
+                // mob's own cart is its vehicle (`isPassengerOfSameVehicle`).
+                let own_cart = self.mobs[i].riding.filter(|v| v & crate::entity::mounts::MOB_VEHICLE == 0);
+                for c in &self.minecarts {
+                    let (min, max) = c.aabb();
+                    if Some(c.id) == own_cart || !crosses(min, max) || !fresh(&mut charge, Stabbed::Cart(c.id)) {
+                        continue;
+                    }
+                    // Carts keep blocks a tick; mob speeds here are a second's.
+                    let motion = c.vel * TICK_RATE;
+                    let Some(contact) = kinetic.contact(used, along, body.dot(motion), base, false) else {
+                        continue;
+                    };
+                    affected |= contact.damage || contact.knockback;
+                    if contact.damage {
+                        others.push((Other::Cart(c.id), contact.amount + sharpness));
+                    }
+                }
+                for (k, d) in self.decor.iter().enumerate() {
+                    let (min, max) = d.aabb();
+                    let key = Stabbed::Decor((d.pos * 16.0).floor().as_ivec3().to_array());
+                    if !crosses(min, max) || !fresh(&mut charge, key) {
+                        continue;
+                    }
+                    let Some(contact) = kinetic.contact(used, along, 0.0, base, false) else { continue };
+                    affected |= contact.damage || contact.knockback;
+                    if contact.damage {
+                        others.push((Other::Decor(k), contact.amount + sharpness));
+                    }
+                }
+                for c in &self.crystals.list {
+                    let (min, max) = c.aabb();
+                    if !crosses(min, max) || !fresh(&mut charge, Stabbed::Crystal(c.id)) {
+                        continue;
+                    }
+                    let Some(contact) = kinetic.contact(used, along, 0.0, base, false) else { continue };
+                    affected |= contact.damage || contact.knockback;
+                    if contact.damage {
+                        others.push((Other::Crystal(c.id), contact.amount + sharpness));
+                    }
+                }
             }
+            self.stab_others(uid, std::mem::take(&mut others));
             let m = &mut self.mobs[i];
             // `causeExtraKnockback` slows the attacker for each push it makes.
             for _ in 0..knocked {
@@ -333,6 +388,36 @@ impl Entities {
         }
         if stab.dismount {
             self.mobs[i].riding = None;
+        }
+    }
+
+    /// v1.0 gap Track 2c: `hurtServer` on the non-living entities mob
+    /// `attacker`'s stab damaged: a vehicle (`VehicleEntity.hurtServer`, ten
+    /// times the damage, breaking past 40), a decoration
+    /// (`Entities::mob_hurt_decor`) and an End crystal (any blow but the
+    /// dragon's sets it off).
+    fn stab_others(&mut self, attacker: u32, hits: Vec<(Other, f32)>) {
+        let source = crate::world::vibration::EventSource::mob(attacker);
+        let mut decor: Vec<usize> = Vec::new();
+        for (hit, damage) in hits {
+            match hit {
+                Other::Cart(id) => {
+                    if let Some(at) = self.cart(id).map(|c| c.pos) {
+                        self.sculk.post(at, crate::world::vibration::GameEvent::EntityDamage, source, None);
+                    }
+                    self.shoot_cart(id, damage, false, false, false, DVec3::ZERO);
+                }
+                Other::Decor(k) => decor.push(k),
+                Other::Crystal(id) => {
+                    self.crystals.hit(id, crate::entity::crystal::Blow::Other);
+                }
+            }
+        }
+        // Highest index first, so a removal never moves one still to come.
+        decor.sort_unstable_by(|a, b| b.cmp(a));
+        decor.dedup();
+        for k in decor {
+            self.mob_hurt_decor(k, source);
         }
     }
 }

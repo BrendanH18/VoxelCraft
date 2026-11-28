@@ -1534,7 +1534,7 @@ impl Game {
                 .map(|m| {
                     // Compact pose: uid, kind, position, yaws/pitch, health, hurt, dying (-1 alive), size, baby.
                     let kind = m.kind.lan_index();
-                    let mut v = json!({"m":[m.uid, kind, r3(m.pos.x), r3(m.pos.y), r3(m.pos.z), r3(m.yaw as f64),
+                    let mut v = json!({"m":[m.uid, kind, r3(m.pos.x), r3(m.pos.y), r3(m.pos.z), r3(m.pose_values()[0] as f64),
                         r3(m.head_yaw as f64), r3(m.head_pitch as f64), r3(m.health as f64), r3(m.hurt as f64),
                         m.dying.map_or(-1.0, |d| r3(d as f64)), m.size, u8::from(m.baby)]});
                     if refresh || !peer.looked.contains(&m.uid) {

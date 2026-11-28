@@ -86,7 +86,7 @@ impl Entities {
             let count = std::mem::take(&mut self.mobs[i].infested);
             if count > 0 {
                 let m = &self.mobs[i];
-                let look = look_vector(m.yaw + m.head_yaw, m.head_pitch);
+                let look = look_vector(m.pose_values()[0] + m.head_yaw, m.head_pitch);
                 let at = m.pos + DVec3::Y * (m.shape().height / 2.0);
                 self.spawn_infested_silverfish(at, look, count);
             }

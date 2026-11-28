@@ -1375,7 +1375,14 @@ pub struct Mob {
     pub previous_pose: Pose,
     pub vel: DVec3,
     /// Body facing, same convention as the player: forward = (cos, 0, sin).
+    /// v1.0 gap Track 2c: this is Java's `yRot`, the heading the move
+    /// control turns and movement follows; the drawn body is [`Self::body_yaw`].
     pub yaw: f32,
+    /// v1.0 gap Track 2c: Java's `yBodyRot`, which `BodyRotationControl`
+    /// turns (the travel heading while moving, after the head while still);
+    /// [`Self::pose_values`] hands it to the models as their body yaw. Not
+    /// saved: it starts at [`Self::yaw`].
+    pub body_yaw: f32,
     /// Head yaw relative to the body, and pitch (positive looks up).
     pub head_yaw: f32,
     pub head_pitch: f32,
@@ -1652,6 +1659,7 @@ impl Mob {
             previous_pose: [yaw, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
             vel: DVec3::ZERO,
             yaw,
+            body_yaw: yaw,
             head_yaw: 0.0,
             head_pitch: 0.0,
             health,
@@ -2265,12 +2273,13 @@ impl Mob {
     /// yaw and pitch, walk position and speed, and (v1.0 gap Track 7) the
     /// arm swing and the attack countdown.
     pub fn pose_values(&self) -> Pose {
-        [self.yaw, self.head_yaw, self.head_pitch, self.limb_phase, self.limb_amp, self.swing.anim, self.attack_anim]
+        let body = if self.look.ready() { self.body_yaw } else { self.yaw };
+        [body, self.head_yaw, self.head_pitch, self.limb_phase, self.limb_amp, self.swing.anim, self.attack_anim]
     }
 
     pub fn set_pose_values(&mut self, [yaw, head_yaw, head_pitch, limb_phase, limb_amp, swing, attack]: Pose) {
-        (self.yaw, self.head_yaw, self.head_pitch, self.limb_phase, self.limb_amp) =
-            (yaw, head_yaw, head_pitch, limb_phase, limb_amp);
+        (self.yaw, self.body_yaw, self.head_yaw, self.head_pitch, self.limb_phase, self.limb_amp) =
+            (yaw, yaw, head_yaw, head_pitch, limb_phase, limb_amp);
         (self.swing.anim, self.attack_anim) = (swing, attack);
     }
 
@@ -2399,6 +2408,12 @@ impl Mob {
             self.hop_delay = rng.range(0.5, 1.5);
         }
         if let Some(sound) = self.cry.take() {
+            // v1.0 gap Track 2c: `Mob.playHurtSound` resets the ambient
+            // sound time to `-getAmbientSoundInterval()` (80 ticks), so no
+            // idle call follows a hurt cry within four seconds.
+            if matches!(sound, MobSound::Hurt(_)) {
+                self.ambient_timer = self.ambient_timer.max(4.0);
+            }
             events.push(EntityEvent::Sound { sound, pos: self.pos + DVec3::Y * (self.shape().height * 0.8) });
         }
         self.ambient_timer -= dtf;

@@ -16,9 +16,10 @@
 //! | 8 | `FollowPlayerRiddenEntityGoal` (boats) | none |
 //! | 9 | `AvoidEntityGoal` (guardians, 8 blocks, 1.0) | move |
 //!
-//! The look goals only turn the head (a dolphin's head turns one degree),
-//! so only their hold on the flags is modelled: while one runs, the goals
-//! it outranks or ties can't start. `TryFindLiquidGoal` (0, no flags) sets
+//! The look goals hold their flags (while one runs, the goals it outranks
+//! or ties can't start) and, since v1.0 gap Track 2c, ask the
+//! `SmoothSwimmingLookControl` (`mob::head`), which swings the drawn body
+//! 4° a tick toward a head more than 10° off it. `TryFindLiquidGoal` (0, no flags) sets
 //! the move control's wanted position, which `SmoothSwimmingMoveControl`
 //! ignores once navigation is done and navigation overwrites while a path
 //! runs, so it has no effect and is left out. `FollowPlayerRiddenEntityGoal`
@@ -103,6 +104,8 @@ pub(crate) struct Goals {
     treasure_stuck: bool,
     swim_with: Option<PlayerId>,
     random_look: i32,
+    /// v1.0 gap Track 2c: `RandomLookAroundGoal.relX` and `relZ`.
+    random_rel: (f64, f64),
     look_at: Option<PlayerId>,
     look_time: i32,
     breached: bool,
@@ -368,7 +371,8 @@ impl<W: MobWorld + ?Sized> Host for Dolphin<'_, W> {
                 self.m.nav.move_to(self.w, path, &mover);
             }
             LOOK_AROUND => {
-                self.rng.next_f32();
+                let a = std::f64::consts::TAU * f64::from(self.rng.next_f32());
+                self.g.random_rel = (a.cos(), a.sin());
                 self.g.random_look = 20 + self.rng.next_int(20) as i32;
             }
             LOOK_AT => self.g.look_time = reduced(40 + self.rng.next_int(40) as i32),
@@ -456,8 +460,21 @@ impl<W: MobWorld + ?Sized> Host for Dolphin<'_, W> {
                     });
                 }
             }
-            LOOK_AROUND => self.g.random_look -= 1,
-            LOOK_AT => self.g.look_time -= 1,
+            // v1.0 gap Track 2c: the look goals ask the look control
+            // (`SmoothSwimmingLookControl`), at the dolphin's own speeds.
+            LOOK_AROUND => {
+                self.g.random_look -= 1;
+                let (x, z) = self.g.random_rel;
+                let eye = self.m.look_eye();
+                self.m.look_toward(DVec3::new(self.m.pos.x + x, eye.y, self.m.pos.z + z));
+            }
+            LOOK_AT => {
+                self.g.look_time -= 1;
+                if let Some(t) = self.player(self.g.look_at) {
+                    let at = t.pos + DVec3::Y * super::head::player_eye(t);
+                    self.m.look_toward(at);
+                }
+            }
             LEAP => self.leap_tick(),
             MELEE => self.melee_tick(),
             FETCH => {

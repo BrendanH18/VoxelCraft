@@ -25,7 +25,7 @@ fn mob(kind: MobKind) -> Mob {
 
 /// The head relative to the body, degrees.
 fn rel(m: &Mob) -> f32 {
-    wrap_degrees(m.look.head - m.yrot())
+    wrap_degrees(m.look.head - m.body_yrot())
 }
 
 /// `LookControl.tick`: a request turns the head by its speed for two ticks,
@@ -73,35 +73,39 @@ fn the_look_control_turns_by_its_limits_then_back_to_the_body() {
 fn the_body_follows_a_still_head_and_holds_it_while_moving() {
     let mut m = mob(MobKind::Zombie);
     m.look_ready();
-    let body = m.yrot();
+    let body = m.body_yrot();
+    let heading = m.yaw;
     m.head.last_stable = m.look.head;
     m.look.head = body + 100.0;
     m.body_tick(DVec3::ZERO);
-    assert!((wrap_degrees(m.yrot() - body) - 25.0).abs() < 1e-3, "pulled within 75°: {}", m.yrot() - body);
+    let turned = |m: &Mob| wrap_degrees(m.body_yrot() - body);
+    assert!((turned(&m) - 25.0).abs() < 1e-3, "pulled within 75°: {}", turned(&m));
     for _ in 0..10 {
         m.body_tick(DVec3::ZERO);
     }
-    assert!((wrap_degrees(m.yrot() - body) - 25.0).abs() < 1e-3, "settling: {}", m.yrot() - body);
+    assert!((turned(&m) - 25.0).abs() < 1e-3, "settling: {}", turned(&m));
     for _ in 0..10 {
         m.body_tick(DVec3::ZERO);
     }
     assert!(rel(&m).abs() < 1e-2, "faces the head: {}", rel(&m));
-    // The drawn head follows.
+    // The drawn head follows; the heading movement follows (`yRot`) stays.
     assert!(m.head_yaw.abs() < 1e-3);
-    // Moving: the head is held within 75° of the body.
+    assert_eq!(m.yaw, heading);
+    assert_eq!(m.pose_values()[0], m.body_yaw);
+    // Moving: the body takes the heading, the head within 75° of it.
     m.look.head = m.yrot() - 120.0;
     m.body_tick(DVec3::X * 0.2);
     assert!((rel(&m) + 75.0).abs() < 1e-3, "{}", rel(&m));
     // Carrying a mob passenger, a still body doesn't turn.
     let mut s = mob(MobKind::Strider);
     s.look_ready();
-    let sb = s.yrot();
+    let sb = s.body_yaw;
     s.head.carrying_mob = true;
-    s.look.head = sb + 100.0;
+    s.look.head = s.body_yrot() + 100.0;
     for _ in 0..30 {
         s.body_tick(DVec3::ZERO);
     }
-    assert_eq!(s.yrot(), sb);
+    assert_eq!(s.body_yaw, sb);
 }
 
 /// `LookAtPlayerGoal(Player, 6)` at the default 0.02 chance per full
@@ -129,7 +133,7 @@ fn a_cow_looks_at_a_nearby_player_for_javas_time() {
         assert!(m.look.looking(), "it asks the look control");
         let yaw = yaw_toward(DVec3::new(0.0, 0.0, 5.0)).unwrap();
         m.look_tick();
-        assert!(wrap_degrees(m.look.head - yaw).abs() < wrap_degrees(m.yrot() - yaw).abs());
+        assert!(wrap_degrees(m.look.head - yaw).abs() < wrap_degrees(m.body_yrot() - yaw).abs());
         let mut held = 0;
         while matches!(m.head.running, Some((_, Running::LookAt { .. }))) {
             m.head_goals(&w, &near, &mut rng, true);
@@ -276,8 +280,10 @@ fn villagers_mostly_look_at_cats() {
 fn a_smooth_swimmer_swings_its_body_toward_its_head() {
     let mut d = mob(MobKind::Dolphin);
     d.look_ready();
-    let body = d.yrot();
+    let body = d.body_yrot();
     d.look.head = body + 30.0;
     d.look_tick();
-    assert!((wrap_degrees(d.yrot() - body) - 4.0).abs() < 1e-3, "{}", d.yrot() - body);
+    assert!((wrap_degrees(d.body_yrot() - body) - 4.0).abs() < 1e-3, "{}", d.body_yrot() - body);
+    // Its heading (`yRot`) isn't turned by the look.
+    assert_eq!(d.yrot(), body);
 }

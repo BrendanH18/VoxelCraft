@@ -520,7 +520,7 @@ impl PlayerSession {
         let range = crate::weapons::spear::player_range(self.mode.is_creative());
         let along = look.dot(self.player.vel / knockback::TICK_RATE);
         let block = self.spear_block_distance(world, eye, look, range.max + along.max(0.0));
-        let targets = entities.spear_targets(eye, look, range, along, block, None);
+        let targets = entities.spear_targets(world, eye, look, range, along, block, None);
         // `getAttributeValue(ATTACK_DAMAGE)` scaled by the charge, as an attack
         // with the hand not in use.
         let base = (mining::attack_damage(Some(stack.item)) + self.vitals.effects.attack_bonus()).max(0.0)

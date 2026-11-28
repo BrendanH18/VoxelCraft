@@ -60,8 +60,10 @@ impl Entities {
     /// look * min` to `eye + look * (max + movement along the look)`, and
     /// nearer than `block` (the first block the ray from the eye hits), by
     /// distance from the eye.
-    pub fn spear_targets(
+    #[allow(clippy::too_many_arguments)]
+    pub fn spear_targets<W: crate::physics::BlockSource + ?Sized>(
         &self,
+        world: &W,
         eye: DVec3,
         look: DVec3,
         range: crate::weapons::spear::Range,
@@ -83,11 +85,11 @@ impl Entities {
             .enumerate()
             .filter(|(_, m)| m.alive() && Some(m.uid) != except)
             .filter_map(|(i, m)| {
+                // v1.0 gap Track 2c: the margin's block check
+                // (`getManyEntityHitResult`).
                 let (min, max) = m.aabb();
-                let grow = DVec3::splat(range.margin);
-                let inside = from.cmpge(min - grow).all() && from.cmple(max + grow).all();
-                let t = if inside { Some(0.0) } else { crate::physics::ray_aabb(from, span, min - grow, max + grow) };
-                t.filter(|t| *t <= 1.0).map(|_| (i, m.pos.distance_squared(eye)))
+                crate::weapons::spear::stab_hits(world, from, span, min, max, range.margin)
+                    .then(|| (i, m.pos.distance_squared(eye)))
             })
             .collect();
         hits.sort_by(|a, b| a.1.total_cmp(&b.1));
