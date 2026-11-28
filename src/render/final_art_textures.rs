@@ -2000,8 +2000,9 @@ mod tests {
         // Only gap Track 7 (its potted bamboo leaf, 4066), gap track 6b
         // (the item models' plant layers, 4080-4083) and gap track 6d (the
         // in-hand models' layers, 4084-4085) and gap track 6f (the
-        // hopper's top and inside, 4086-4087) have grown the array since.
-        assert_eq!(tex::COUNT, 4088, "the block array grew");
+        // hopper's top and inside, 4086-4087) and final F10 (the repeater's and
+        // comparator's tops, 4092-4095) have grown the array since.
+        assert_eq!(tex::COUNT, 4096, "the block array grew");
         for &l in &layers {
             tile(l);
         }

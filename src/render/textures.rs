@@ -117,6 +117,9 @@ pub fn mob_pattern_pixel(layer: u16, x: usize, y: usize) -> Rgba {
 
 pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
     // v1.0 gap track 6b: the item models' plant layers.
+    if (voxelcraft::content::item_models::DIODE_TEX..voxelcraft::content::item_models::DIODE_TEX_END).contains(&layer) {
+        return voxelcraft::content::item_models::diode_pixel(layer, x, y);
+    }
     if (voxelcraft::content::item_models::TEX..voxelcraft::content::item_models::TEX_END).contains(&layer) {
         return voxelcraft::content::item_models::pixel(layer, x, y);
     }

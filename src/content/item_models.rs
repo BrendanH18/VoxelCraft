@@ -403,6 +403,48 @@ pub const HOPPER_TOP: u16 = TEX + 6;
 pub const HOPPER_INSIDE: u16 = TEX + 7;
 pub const TEX_END: u16 = TEX + 8;
 
+/// v1.0 final F10: the tops of Java's repeater and comparator models
+/// (`repeater`, `repeater_on`, `comparator`, `comparator_on`), original
+/// art in Java's layout: the up face maps the whole texture with the
+/// output end at row 0. The integrator's spare layers 4092-4095.
+pub const DIODE_TEX: u16 = 4092;
+pub const REPEATER_TOP: u16 = DIODE_TEX;
+pub const REPEATER_TOP_ON: u16 = DIODE_TEX + 1;
+pub const COMPARATOR_TOP: u16 = DIODE_TEX + 2;
+pub const COMPARATOR_TOP_ON: u16 = DIODE_TEX + 3;
+pub const DIODE_TEX_END: u16 = DIODE_TEX + 4;
+
+/// Original 16 x 16 art for [`DIODE_TEX`]'s layers: a smooth stone plate
+/// with a bevelled rim, the redstone dust's grooves (dark, or bright when
+/// powered) joining the torches' sockets: a repeater's line down the
+/// middle with the output's arrow at the top, a comparator's front torch
+/// joined to its two back ones.
+pub fn diode_pixel(layer: u16, x: usize, y: usize) -> [u8; 4] {
+    let on = matches!(layer, REPEATER_TOP_ON | COMPARATOR_TOP_ON);
+    let grain = crate::world::noise::hash_f(x as i32, y as i32, layer as i32, 0x6C) * 0.1 + 0.95;
+    let rim = x == 0 || y == 0 || x == 15 || y == 15;
+    let mid = (7..=8).contains(&x);
+    let dust = if matches!(layer, REPEATER_TOP | REPEATER_TOP_ON) {
+        // The line, and an arrow head pointing out at rows 1-3.
+        (mid && (2..=14).contains(&y)) || ((1..=3).contains(&y) && x + y >= 8 && x <= 7 + y && (6..=9).contains(&x))
+    } else {
+        // The front torch's socket down to a bar at row 8 joining the back
+        // torches' columns (4-5 and 10-11) down to their sockets at 11-12.
+        (mid && (2..=8).contains(&y))
+            || ((4..=11).contains(&x) && (7..=8).contains(&y))
+            || ((x == 4 || x == 5 || x == 10 || x == 11) && (7..=13).contains(&y))
+    };
+    let c = if dust {
+        if on { [235, 40, 20] } else { [96, 22, 14] }
+    } else if rim {
+        [128, 128, 128]
+    } else {
+        [168, 168, 168]
+    };
+    let c = c.map(|v| (f32::from(v) * grain).clamp(0.0, 255.0) as u8);
+    [c[0], c[1], c[2], 255]
+}
+
 /// Original 16 × 16 art for [`TEX`]'s layers: light from the top left as
 /// the game's plants are.
 pub fn pixel(layer: u16, x: usize, y: usize) -> [u8; 4] {
@@ -574,6 +616,15 @@ mod tests {
             assert!(mesh.lowest(Context::Ground).abs() < 0.5, "{item:?}");
         }
         assert!(mesh(&Stack::new(Item::STICK, 1)).is_none());
+    }
+
+    #[test]
+    fn diode_tops_are_drawn() {
+        for layer in DIODE_TEX..DIODE_TEX_END {
+            let dust = (0..256).filter(|&i| diode_pixel(layer, i % 16, i / 16)[0] > 200).count();
+            assert!(dust > 0 || !matches!(layer, REPEATER_TOP_ON | COMPARATOR_TOP_ON), "{layer}");
+            assert!((0..256).all(|i| diode_pixel(layer, i % 16, i / 16)[3] == 255), "{layer}");
+        }
     }
 
     #[test]
