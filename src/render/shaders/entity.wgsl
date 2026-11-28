@@ -278,8 +278,8 @@ fn overworld_light_map(sky_level: f32, block_level: f32) -> vec3<f32> {
     let p = (2.0 * block_level - 1.0) * (2.0 * block_level - 1.0);
     let hue = mix(vec3<f32>(1.0, 0.847, 0.549), vec3<f32>(1.0), 0.9 * p);
     let block = hue * (block_level / (4.0 - 3.0 * block_level)) * 1.4;
-    let raw = g.ambient.rgb + sky + block;
-    return from_srgb(night_vision(clamp(raw, vec3<f32>(0.0), vec3<f32>(1.0)), raw));
+    let raw = ambient_light() + sky + block;
+    return from_srgb(lightmap(raw));
 }
 
 // Java 26.3 adds the environment ambient colour to sky and block light.
