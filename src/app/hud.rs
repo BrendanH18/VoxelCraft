@@ -142,10 +142,14 @@ impl Game {
         if self.camera.first_person() && self.session.scoping() {
             spyglass_overlay(&mut ui, sw, sh, self.session.scoping_ticks());
         }
-        if self.portal_time > 0.0 {
-            // The portal's purple swims in as it takes hold.
-            let k = (self.portal_time / self.portal_needed()).min(1.0);
-            ui.rect(0.0, 0.0, sw, sh, [0.45, 0.1, 0.75, 0.15 + 0.55 * k]);
+        let portal = self.distortion.portal(1.0);
+        if portal > 0.0 {
+            // The portal's purple swims in as it takes hold: the client's
+            // own intensity (v1.0 gap Track 8b), through
+            // `Hud.extractPortalOverlay`'s curve (`a⁴ × 0.8 + 0.2` below
+            // full), as a flat tint for the portal texture.
+            let alpha = if portal < 1.0 { portal.powi(4) * 0.8 + 0.2 } else { 1.0 };
+            ui.rect(0.0, 0.0, sw, sh, [0.45, 0.1, 0.75, 0.7 * alpha]);
         } else {
             // Java's green nausea overlay, which takes over from the warp as
             // Distortion Effects goes down (a flat tint: no nausea texture).

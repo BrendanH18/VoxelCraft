@@ -26,12 +26,13 @@ impl Game {
             crate::world::WorldRules { difficulty: self.difficulty.id(), ..self.gamerules.world_rules() };
         let dt = crate::simulation::TICK_SECONDS;
         self.session.settle_wake(&self.world);
-        let arriving = self.update_arrival();
+        // v1.0 gap Track 8b: `handlePortal` comes before the player moves,
+        // and a trip it sets off holds them until they arrive.
+        let arriving = self.update_arrival() || self.process_portal();
         let input = self.movement_input(arriving);
         self.jump_pressed = false;
         self.previous_eye = self.session.player.eye();
         let before = self.session.player.pos;
-        let portal_before = self.portal_time;
         if !arriving {
             let on_cushion = self
                 .session
@@ -74,7 +75,7 @@ impl Game {
                     self.session.mode == GameMode::Spectator,
                     self.session.mode.is_creative(),
                 );
-                self.update_portal(dt);
+                self.update_portal();
             } else {
                 self.session.player.vel = DVec3::ZERO;
                 self.session.player.on_ground = true;
@@ -82,7 +83,8 @@ impl Game {
             }
         }
         let nausea = self.session.vitals.effects.get(voxelcraft::simulation::effects::Effect::Nausea).map(|e| e.ticks);
-        self.distortion.tick(nausea, self.portal_time > portal_before);
+        let in_portal = self.portal_effect();
+        self.distortion.tick(nausea, in_portal);
         // Damage, death and armor changes as game events.
         self.world.player_vitals(
             self.session.id,

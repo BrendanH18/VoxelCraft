@@ -337,13 +337,18 @@ struct Game {
     overworld_props: std::collections::BTreeMap<String, String>,
     /// Travelling: where the player goes once the ground there has loaded.
     arrival: Option<dimension::Arrival>,
-    /// Seconds spent standing in a portal.
-    portal_time: f32,
-    /// Just came out of a portal: stepping out of it rearms it.
+    /// v1.0 gap Track 8b: the server's Nether portal countdown (Java's
+    /// `PortalProcessor`), which carries on across a trip as Java's does.
+    portal: crate::world::portal::PortalProcessor,
+    /// v1.0 gap Track 8b: the client's own `insidePortalThisTick`, set as the
+    /// player moves through a Nether portal and used up by the portal look
+    /// (`LocalPlayer.handlePortalTransitionEffect`) the same tick.
+    portal_seen: bool,
+    /// A trip refused because the save failed: stepping out rearms it.
     portal_locked: bool,
-    /// v1.0 gap Track 4: Java's `portalCooldown` after a gateway trip, in
-    /// seconds (`Player.getDimensionChangingDelay`, 10 ticks); touching a
-    /// gateway meanwhile restarts it rather than using the gateway.
+    /// Java's `portalCooldown` after a portal or gateway trip, in seconds
+    /// (`Player.getDimensionChangingDelay`, 10 ticks); touching a portal or
+    /// gateway meanwhile restarts it rather than using it.
     portal_cooldown: f64,
 }
 
@@ -1307,6 +1312,11 @@ impl Game {
         self.sneak_toggled = false;
         self.sprint_toggled = false;
         self.distortion.reset();
+        // v1.0 gap Track 8b: the respawned player is a new `ServerPlayer`,
+        // with no portal count or cooldown.
+        self.portal = Default::default();
+        self.portal_seen = false;
+        self.portal_cooldown = 0.0;
         self.body.left_held = false;
         self.body.right_held = false;
         self.jump_pressed = false;
