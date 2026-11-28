@@ -269,6 +269,8 @@ impl Game {
     pub(super) fn update_mobs(&mut self, dt: f64) {
         // Entities leave the level with their chunk and return when it loads.
         self.mobs.entities.sync_chunk_entities(&mut self.world);
+        // v1.0 final Track F2: entities through portals, before they move.
+        self.entity_portals();
         // Return gateways generated since: new block entities, age 0.
         for g in std::mem::take(&mut self.world.generated_gateways) {
             if let Some(fight) = &mut self.mobs.entities.fight {

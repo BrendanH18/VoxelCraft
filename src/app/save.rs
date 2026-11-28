@@ -91,6 +91,15 @@ impl Game {
         if !self.owed_portals.is_empty() {
             props.insert(dimension::OWED_PORTALS_KEY.to_string(), dimension::owed_portals_text(&self.owed_portals));
         }
+        // v1.0 final Track F2: travellers waiting for other dimensions, and
+        // a vehicle on its way with the host.
+        let arrivals = self.saved_portal_arrivals();
+        if !arrivals.is_empty() {
+            props.insert(
+                super::portal_travel::PORTAL_ARRIVALS_KEY.to_string(),
+                super::portal_travel::arrivals_text(&arrivals),
+            );
+        }
         if let Some(b) = self.session.spawn_bed {
             props.insert("bed".to_string(), format!("{},{},{}", b.x, b.y, b.z));
         }

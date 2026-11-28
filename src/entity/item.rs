@@ -40,6 +40,9 @@ pub struct ItemEntity {
     /// v1.0 final F7: Java's `fallDistance` (`Entity.checkFallDamage`),
     /// which powder snow reads; not saved.
     pub fall_distance: f64,
+    /// v1.0 final Track F2: ticks until it can use a portal again
+    /// (`Entity.portalCooldown`; not saved).
+    pub portal_cooldown: u16,
 }
 
 /// Health of a fresh dropped item (`ItemEntity.health`).
@@ -49,6 +52,7 @@ impl ItemEntity {
     /// Create a fresh dropped stack with pickup delay in seconds and coincident interpolation positions.
     pub fn new(stack: Stack, pos: DVec3, vel: DVec3, pickup_delay: f32, rng: &mut Rng) -> Self {
         Self {
+            portal_cooldown: 0,
             stack,
             pos,
             previous_pos: pos,

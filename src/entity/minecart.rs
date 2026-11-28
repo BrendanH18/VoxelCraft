@@ -257,11 +257,15 @@ pub struct Minecart {
     pub(crate) leash_wait: u16,
     /// `LeashData.angularMomentum`; never saved.
     pub(crate) leash_spin: f64,
+    /// v1.0 final Track F2: ticks until it can use a portal again
+    /// (`Entity.portalCooldown`; not saved).
+    pub portal_cooldown: u16,
 }
 
 impl Minecart {
     pub fn new(id: u32, kind: CartKind, pos: DVec3) -> Self {
         Self {
+            portal_cooldown: 0,
             id,
             kind,
             pos,

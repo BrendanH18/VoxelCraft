@@ -41,6 +41,9 @@ pub struct XpOrb {
     pub phase: f32,
     /// Java's `ExperienceOrb.health`: explosions take it, and at 0 the orb is gone.
     pub health: i32,
+    /// v1.0 final Track F2: ticks until it can use a portal again
+    /// (`Entity.portalCooldown`; not saved).
+    pub portal_cooldown: u16,
 }
 
 /// Health of a fresh orb (`ExperienceOrb.health`).
@@ -51,7 +54,7 @@ impl XpOrb {
     pub fn new(value: u32, pos: DVec3, rng: &mut Rng) -> Self {
         let vel = DVec3::new(rng.range(-4.0, 4.0) as f64, rng.range(0.0, 8.0) as f64, rng.range(-4.0, 4.0) as f64);
         let phase = rng.range(0.0, std::f32::consts::TAU);
-        Self { value, count: 1, pos, previous_pos: pos, vel, age: 0.0, phase, health: HEALTH }
+        Self { portal_cooldown: 0, value, count: 1, pos, previous_pos: pos, vel, age: 0.0, phase, health: HEALTH }
     }
 
     /// `ExperienceOrb(level, pos, roughly, value)`: a fresh orb whose random

@@ -42,6 +42,9 @@ pub struct ThrownPotion {
     /// v1.0 gap Track 8d: `remainingFireTicks` (it applies block effects,
     /// `ThrowableProjectile.tick`). Saved (v1.0 gap Track 8e), as Java's `Fire`.
     fire: u16,
+    /// v1.0 final Track F2: ticks until it can use a portal again
+    /// (`Entity.portalCooldown`; not saved).
+    pub portal_cooldown: u16,
 }
 
 /// Aims `dir` twenty degrees higher, Java's throw offset for potions.
@@ -71,6 +74,7 @@ impl ThrownPotion {
         use super::saved_projectiles as s;
         let pos = s::read_v3(&v["pos"])?;
         Some(Self {
+            portal_cooldown: 0,
             potion: Potion::from_id(v["potion"].as_str()?)?,
             lingering: v["lingering"].as_bool().unwrap_or(false),
             owner: v["owner"].as_u64().and_then(|u| u32::try_from(u).ok()).map(PlayerId),
@@ -96,6 +100,7 @@ impl ThrownPotion {
     /// A LAN client's copy: drawn only, never simulated.
     pub(super) fn replica(potion: Potion, pos: DVec3, previous_pos: DVec3) -> Self {
         Self {
+            portal_cooldown: 0,
             potion,
             lingering: false,
             owner: None,
@@ -109,7 +114,7 @@ impl ThrownPotion {
     }
 
     pub fn new(potion: Potion, owner: Option<PlayerId>, pos: DVec3, vel: DVec3) -> Self {
-        Self { potion, lingering: false, owner, thrower: None, pos, previous_pos: pos, vel, age: 0.0, fire: 0 }
+        Self { portal_cooldown: 0, potion, lingering: false, owner, thrower: None, pos, previous_pos: pos, vel, age: 0.0, fire: 0 }
     }
 
     /// A player's throw from `eye` along their look direction `dir`, adding

@@ -191,7 +191,7 @@ pub struct Thrown {
     pub shooter: Option<u32>,
     pub pos: DVec3,
     pub previous_pos: DVec3,
-    vel: DVec3,
+    pub(crate) vel: DVec3,
     age: f32,
     origin: DVec3,
     /// v1.0 gap Track 8b: who llama spit already hit on its way through
@@ -205,6 +205,9 @@ pub struct Thrown {
     /// flame and lights what its block hit lights. Saved (v1.0 gap Track
     /// 8e), as Java's `Fire`.
     fire: u16,
+    /// v1.0 final Track F2: ticks until it can use a portal again
+    /// (`Entity.portalCooldown`; not saved).
+    pub portal_cooldown: u16,
 }
 
 impl Thrown {
@@ -227,6 +230,7 @@ impl Thrown {
         use super::saved_projectiles as s;
         let pos = s::read_v3(&v["pos"])?;
         Some(Self {
+            portal_cooldown: 0,
             kind: Kind::from_id(v["kind"].as_u64()?)?,
             owner: s::player_of(s::read_owner(&v["owner"])),
             shooter: v["shooter"].as_u64().and_then(|u| u32::try_from(u).ok()),
@@ -243,6 +247,7 @@ impl Thrown {
     /// A LAN client's copy: drawn only, never simulated.
     pub(super) fn replica(kind: Kind, pos: DVec3, previous_pos: DVec3) -> Self {
         Self {
+            portal_cooldown: 0,
             kind,
             owner: None,
             shooter: None,
@@ -264,6 +269,7 @@ impl Thrown {
         let mut wobble = || rng.range(-0.0172, 0.0172) as f64 * 10.0 * 0.5;
         let dir = aim.normalize_or(DVec3::X) + DVec3::new(wobble(), wobble(), wobble()) * 0.1;
         Self {
+            portal_cooldown: 0,
             kind: Kind::LlamaSpit,
             owner: None,
             shooter: Some(shooter),
@@ -289,6 +295,7 @@ impl Thrown {
         let d = dir.normalize_or(DVec3::X);
         let aim = d + DVec3::new(gauss(), gauss(), gauss()) * 0.0075 * inaccuracy;
         Self {
+            portal_cooldown: 0,
             kind: Kind::BreezeWindCharge,
             owner: None,
             shooter: Some(shooter),
@@ -311,6 +318,7 @@ impl Thrown {
             let vel = shot_movement(heading, BOTTLE_POWER, BOTTLE_UNCERTAINTY, rng) * 20.0 + carry;
             let pos = eye - DVec3::Y * 0.1;
             return Self {
+                portal_cooldown: 0,
                 kind,
                 owner: Some(owner),
                 shooter: None,
@@ -327,6 +335,7 @@ impl Thrown {
         let aim = dir.normalize_or(DVec3::X) + DVec3::new(wobble(), wobble(), wobble());
         let pos = eye - DVec3::Y * 0.1;
         Self {
+            portal_cooldown: 0,
             kind,
             owner: Some(owner),
             shooter: None,
@@ -345,6 +354,7 @@ impl Thrown {
     pub fn dispensed(kind: Kind, pos: DVec3, step: DVec3, power: f64, uncertainty: f64, rng: &mut Rng) -> Self {
         let vel = shot_movement(step, power, uncertainty, rng) * 20.0;
         Self {
+            portal_cooldown: 0,
             kind,
             owner: None,
             shooter: None,
