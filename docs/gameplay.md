@@ -558,6 +558,24 @@ portal stands (Java's `axis`), and breaking the frame along that way (or
 above or below) puts the portal out; portals from saves made before
 remember it from their frames when their chunk loads.
 
+Mobs, dropped items, experience orbs, arrows, tridents, snowballs, eggs,
+thrown potions, minecarts and boats go through Nether portals, End portals
+and End gateways too, as in Java
+([final Track F2](verification/2026-11-28-v1.0-final-f2-portals.md)): on
+the tick after they touch one (no 4-second wait), taking any mob riding
+them along, and then they can't use a portal for 15 seconds, a wait that
+standing in a portal keeps restarting, so they don't bounce straight back.
+The Wither, the Ender Dragon, a heart-bound creaking, a sleeping
+villager and anything being ridden by another mob stay; a leash comes off
+(no lead drops). Riding a minecart, boat, horse or other mount, you go with
+it, at once, through a Nether portal: the vehicle comes out where it stood
+in the portal, with you aboard. Only the dimension you're in runs, so an
+entity sent to another dimension waits, out of the world, until you next
+go there; it then arrives where Java would have put it at the moment it
+left, in the exit portal the game finds or builds then (the same one, as
+nothing there has changed), or on the End's platform, or on top of the
+world spawn coming out of the End. Nothing happens to it in the meantime.
+
 The Nether is a cavern world between a bedrock floor and roof: netherrack
 cliffs and islands over a lava sea at y = 31, soul sand shores that drag
 at your feet, gravel by the lava, quartz ore in the rock and glowstone

@@ -235,6 +235,9 @@ impl Game {
         if self.lan.client.is_some() || self.arrival.is_some() || self.credits.is_some() {
             return;
         }
+        if self.portal_arrivals.iter().any(|a| a.to == self.dimension) {
+            self.resolve_portal_arrivals(false);
+        }
         let nether_allowed = self.gamerules.portal_allows_trip_from(self.dimension);
         let in_end = self.dimension == Dimension::End;
         let mut fight = self.mobs.entities.fight.take();
@@ -353,11 +356,25 @@ impl Game {
     }
 
     /// Arriving in a dimension, the travellers waiting for it come first,
-    /// oldest first, each once the ground around its arrival has loaded
-    /// (the host waits, held there so it streams in, behind the arrival
-    /// screen). Returns whether one is still waiting.
-    pub(super) fn resolve_portal_arrival(&mut self) -> bool {
-        let Some(i) = self.portal_arrivals.iter().position(|a| a.to == self.dimension) else { return false };
+    /// oldest first, each once the ground around its arrival has loaded.
+    /// With `hold` the host waits, held there so it streams in, behind the
+    /// arrival screen; without it (a world opened in the dimension they
+    /// wait for) they arrive as their ground loads. Returns whether one is
+    /// still waiting.
+    pub(super) fn resolve_portal_arrivals(&mut self, hold: bool) -> bool {
+        loop {
+            match self.resolve_portal_arrival(hold) {
+                Some(true) => continue,
+                Some(false) => return true,
+                None => return false,
+            }
+        }
+    }
+
+    /// The first traveller waiting for this dimension: `Some(true)` if it
+    /// arrived, `Some(false)` if it waits for its ground, `None` if none waits.
+    fn resolve_portal_arrival(&mut self, hold: bool) -> Option<bool> {
+        let i = self.portal_arrivals.iter().position(|a| a.to == self.dimension)?;
         let a = self.portal_arrivals[i].clone();
         let (target, r) = match a.route {
             Route::Nether(trip) => (trip.target, 16),
@@ -370,9 +387,11 @@ impl Game {
             .iter()
             .all(|&(dx, dz)| self.world.column_loaded(target.x + dx, target.z + dz));
         if !ready {
-            self.session.player.pos = target.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
-            self.session.player.vel = DVec3::ZERO;
-            return true;
+            if hold {
+                self.session.player.pos = target.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
+                self.session.player.vel = DVec3::ZERO;
+            }
+            return Some(false);
         }
         let (pos, vel, turn) = match a.route {
             Route::Nether(trip) | Route::NetherAt(_, trip) => {
@@ -387,7 +406,7 @@ impl Game {
                         match self.world.find_portal(trip.target, radius) {
                             Some(at) if !self.world.column_loaded(at.x, at.z) => {
                                 self.portal_arrivals[i].route = Route::NetherAt(at, trip);
-                                return true;
+                                return Some(false);
                             }
                             Some(at) => Some(self.world.portal_rect(at)),
                             None => self.world.create_portal(trip.target, trip.along_x).map(|r| (r, trip.along_x)),
@@ -405,7 +424,7 @@ impl Game {
         };
         self.portal_arrivals.remove(i);
         self.mobs.entities.arrive(&a.batch, pos, Some(vel), turn, false);
-        true
+        Some(true)
     }
 
     /// `createDimensionTransition` out of `exit` (the exit portal's

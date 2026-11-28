@@ -694,7 +694,7 @@ impl Game {
             return true;
         }
         // v1.0 final Track F2: entities that came through portals first.
-        if self.lan.client.is_none() && self.resolve_portal_arrival() {
+        if self.lan.client.is_none() && self.resolve_portal_arrivals(true) {
             return true;
         }
         let target = match arrival {
@@ -898,7 +898,12 @@ impl Game {
         // portals and the End portal into the End play `PORTAL_TRAVEL`, a
         // local `AMBIENT` sound at volume 0.25, pitch 0.8 to 1.2; leaving
         // the End, respawning and gateways play none of it.
-        if matches!(arrival, Arrival::Portal(_) | Arrival::PortalAt(..) | Arrival::EndSpawn { .. }) {
+        // v1.0 final Track F2: a vehicle's End portal trip out of the End plays
+        // it for its riders (the passengers' transitions are the vehicle's).
+        if matches!(
+            arrival,
+            Arrival::Portal(_) | Arrival::PortalAt(..) | Arrival::EndSpawn { .. } | Arrival::SpawnTop { .. }
+        ) {
             self.audio.play(Sound::Portal(PortalCue::Travel), None, 0.25, (0.8, 1.2));
         }
         false

@@ -126,6 +126,23 @@ before the level file's entities load, so nothing loaded or spawned
 afterwards takes one.
 The session's own saves then number past every region file's.
 
+**Entities between dimensions** (v1.0 final Track F2,
+[record](verification/2026-11-28-v1.0-final-f2-portals.md)). Only the
+host's dimension is loaded, so a mob, item, projectile, cart or boat that
+goes through a portal into another dimension waits in the root level
+file's `portal_arrivals` key, written only while one waits: a JSON list,
+each entry the destination (`to`), the route Java's portal gave it
+(`nether` with the trip's `target`, `along_x`, `offset`, `vel` and, once
+the search has found an exit portal outside the loaded area, `at`;
+`end_spawn`; `world_spawn`; `at` with a `pos`), the root entity's `width`,
+`height` and `yaw`, and the entity with its passengers as a `batch` of
+the level file's entity keys and texts, as a region record's entity batch
+holds them. When that dimension next loads, each one arrives where its
+route leads and joins the level there (and its chunk's record when the
+chunk unloads); its mob uids, cart ids and merchant ids are the
+destination's next ones. A vehicle carrying the host while the host waits
+to arrive is saved the same way. Saves without the key load as before.
+
 A scripted run (screenshots, benchmarks) reads region files but never
 writes them, and a LAN client has none.
 

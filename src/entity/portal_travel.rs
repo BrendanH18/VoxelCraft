@@ -541,7 +541,7 @@ mod tests {
         let portal = IVec3::new(4, 65, 4);
         w.set_block(portal, Block::NETHER_PORTAL);
         let mut e = Entities::new(1);
-        e.spawn(MobKind::Zombie, DVec3::new(4.5, 65.0, 4.5));
+        e.spawn(MobKind::Cow, DVec3::new(4.5, 65.0, 4.5));
         e.drop_from_block(Stack::new(Item::DIAMOND, 1), portal);
         e.items[0].pos = DVec3::new(4.5, 65.0, 4.5);
         e.ensure_mob_ids();
@@ -571,5 +571,28 @@ mod tests {
         let b = (DVec3::new(0.2, 66.0, 0.2), DVec3::new(0.8, 67.0, 0.8));
         assert_eq!(step(&w, b, true, &mut cd, &mut |_| true), None);
         assert_eq!(cd, 4);
+    }
+
+    #[test]
+    fn the_hosts_mount_keeps_its_rider_only_with_the_host() {
+        let mut e = Entities::new(1);
+        e.spawn(MobKind::Horse, DVec3::new(0.5, 70.0, 0.5));
+        e.ensure_mob_ids();
+        let s = e.mobs[0].mount.as_mut().unwrap();
+        s.tame = true;
+        s.rider = Some(PlayerId::HOST);
+        let id = MOB_VEHICLE | e.mobs[0].uid;
+        let v = e.take_vehicle(id).expect("the horse");
+        assert!(e.mobs.is_empty());
+        assert!(v.width > 1.0 && v.height > 1.0, "the horse's size: {} x {}", v.width, v.height);
+        let mut to = Entities::new(2);
+        let at = DVec3::new(10.5, 64.0, 10.5);
+        let new_id = to.arrive(&v.batch, at, Some(DVec3::ZERO), 0.0, true).expect("a mount");
+        assert_eq!(to.mount_for_player(PlayerId::HOST), Some(new_id), "the host rides it again");
+        assert_eq!(to.mobs[0].pos, at);
+        // Arriving on its own, nobody rides it.
+        let mut alone = Entities::new(3);
+        alone.arrive(&v.batch, at, None, 0.0, false);
+        assert_eq!(alone.mount_for_player(PlayerId::HOST), None);
     }
 }
