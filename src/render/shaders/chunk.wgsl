@@ -398,9 +398,28 @@ fn fs_cutout(in: VsOut) -> @location(0) vec4<f32> {
     return vec4<f32>(apply_fog(tex.rgb * select(lighting(in), vec3<f32>(1.0), fire), in.dist), 1.0);
 }
 
+// v1.0 gap Track 5c: the Nether portal's animated texture. Java's
+// `nether_portal.png` runs 32 frames of one tick each (its `.mcmeta` sets no
+// frame time); the game's single original layer moves on the same clock as
+// two copies scrolled diagonally opposite ways, a texel every second frame,
+// so the swirl churns and repeats every 32 ticks. The layer is on the first
+// texture page with or without paging, so the second copy samples it there.
+const PORTAL_LAYER: u32 = 81u;
+fn portal_step() -> f32 {
+    return f32((u32(g.sun.w * 20.0) % 32u) / 2u) / 16.0;
+}
+
 @fragment
 fn fs_translucent(in: VsOut) -> @location(0) vec4<f32> {
-    let tex = sample_block(in.uv, in.layer);
+    let portal = in.layer == PORTAL_LAYER;
+    let step = portal_step();
+    let dx = dpdx(in.uv);
+    let dy = dpdy(in.uv);
+    var tex = sample_block(in.uv + select(vec2<f32>(0.0), vec2<f32>(step, step), portal), in.layer);
+    if portal {
+        let other = textureSampleGrad(blocks, blocks_sampler, in.uv + vec2<f32>(-step, step), PORTAL_LAYER, dx, dy);
+        tex = (tex + other) * 0.5;
+    }
     var color = tex.rgb * lighting(in);
     var alpha = tex.a;
     if g.environment.y > 0.5 && in.layer == 5u && in.normal.y > 0.5 && in.rel.y < 0.0 {

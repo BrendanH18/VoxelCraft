@@ -13,6 +13,7 @@ use glam::{DVec3, IVec3};
 use super::World;
 use super::block::Block;
 use super::chunk::{CHUNK_SIZE, CHUNK_SIZE_I, CHUNK_VOLUME, ChunkData, chunk_of};
+use super::shape::Box16;
 
 /// Java's `nether_portal[axis=x]` and `[axis=z]` (`HORIZONTAL_AXIS`),
 /// states 14022 and 14023 from Track 5's reservation. [`Block::NETHER_PORTAL`]
@@ -46,6 +47,24 @@ pub const fn axis(b: Block) -> Option<bool> {
         LAST => Some(false),
         _ => None,
     }
+}
+
+/// Java's `NetherPortalBlock.SHAPES` (`Block.column(4, 16, 0, 16)` turned
+/// by `Shapes.rotateHorizontalAxis`), and the box of its `nether_portal_ns`
+/// (along X) and `nether_portal_ew` (along Z) models: a plane 4/16 thick
+/// through the middle of the cell, standing along the portal's axis (v1.0
+/// gap Track 5c). It is the outline the crosshair meets; the portal has no
+/// collision, and an entity is in it anywhere in the cell
+/// (`getEntityInsideCollisionShape` is the full block).
+pub const fn plane(along_x: bool) -> Box16 {
+    if along_x { Box16 { min: [0, 0, 6], max: [16, 16, 10] } } else { Box16 { min: [6, 0, 0], max: [10, 16, 16] } }
+}
+
+/// Whether portal block `b` stands along X, read from its state, or for an
+/// axis-less portal from an older save from the blocks east and west of it
+/// ([`inferred_axis`]).
+pub fn along_x(b: Block, east: Block, west: Block) -> bool {
+    axis(b).unwrap_or_else(|| inferred_axis(IVec3::ZERO, |q| Some(if q.x > 0 { east } else { west })))
 }
 
 /// How the game stood an axis-less portal block before the state: along
@@ -742,6 +761,45 @@ mod tests {
         assert_eq!(Block::from_name("nether_portal"), Some(AXIS_X));
         assert!([Block::NETHER_PORTAL, AXIS_X, AXIS_Z].iter().all(|b| b.is_nether_portal()));
         assert_eq!((AXIS_X.base(), AXIS_Z.base(), AXIS_Z.emission()), (Block::NETHER_PORTAL, Block::NETHER_PORTAL, 11));
+    }
+
+    /// v1.0 gap Track 5c: Java's `NetherPortalBlock.SHAPES`, the outline the
+    /// crosshair meets: a 4/16 plane through the middle along the axis; an
+    /// older save's portal reads its axis from its neighbours. Nothing
+    /// collides with it.
+    #[test]
+    fn portals_are_met_at_javas_thin_plane() {
+        use super::super::shape::{self, Box16};
+        let x = Box16 { min: [0, 0, 6], max: [16, 16, 10] };
+        let z = Box16 { min: [6, 0, 0], max: [10, 16, 16] };
+        let outline = |b: Block, east: Block, west: Block| {
+            let side = move |f: super::super::block::Facing| match f {
+                super::super::block::Facing::East => east,
+                super::super::block::Facing::West => west,
+                _ => Block::AIR,
+            };
+            shape::outline(b, side, Block::OBSIDIAN).as_slice().to_vec()
+        };
+        assert_eq!(outline(AXIS_X, Block::AIR, Block::AIR), [x]);
+        assert_eq!(outline(AXIS_Z, AXIS_X, AXIS_X), [z]);
+        assert_eq!(outline(Block::NETHER_PORTAL, Block::OBSIDIAN, AXIS_X), [x]);
+        assert_eq!(outline(Block::NETHER_PORTAL, Block::AIR, Block::OBSIDIAN), [z]);
+        for b in [AXIS_X, AXIS_Z, Block::NETHER_PORTAL] {
+            assert!(b.is_targetable() && !b.is_solid() && !b.is_replaceable());
+            assert!(shape::collision(b, |_| Block::AIR, Block::AIR).is_empty());
+        }
+        // The crosshair stops at the plane, not the cell's edge.
+        let mut world = world();
+        let at = IVec3::new(4, 220, 4);
+        frame_along(&mut world, at, 2, 3, IVec3::X);
+        assert!(world.light_portal(at));
+        let cell = at + IVec3::Y;
+        assert_eq!(world.get_block(cell), Some(AXIS_X));
+        let eye = cell.as_dvec3() + DVec3::new(0.5, 0.5, -2.0);
+        let hit = world.raycast_hit(eye, DVec3::Z, 5.0).unwrap();
+        assert_eq!((hit.cell, hit.normal), (cell, IVec3::NEG_Z));
+        assert!((hit.point.z - (f64::from(cell.z) + 6.0 / 16.0)).abs() < 1e-9, "{:?}", hit.point);
+        assert_eq!(world.outline(cell), ([0.0, 0.0, 6.0 / 16.0], [1.0, 1.0, 10.0 / 16.0]));
     }
 
     /// Portal blocks from saves before the `axis` state (state 104) get the

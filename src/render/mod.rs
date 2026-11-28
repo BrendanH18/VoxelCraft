@@ -2124,6 +2124,16 @@ mod tests {
         }
     }
 
+    /// v1.0 gap Track 5c: the translucent shader animates the portal's own
+    /// layer, which sits on the first texture page however the layers are
+    /// paged.
+    #[test]
+    fn the_portal_animation_names_the_portal_layer() {
+        let layer = crate::world::block::tex::PORTAL;
+        assert!(include_str!("shaders/chunk.wgsl").contains(&format!("const PORTAL_LAYER: u32 = {layer}u;")));
+        assert!(layer < 256, "the portal's second sample reads the first page");
+    }
+
     fn runs(offsets: &[u32], mask: u8) -> Vec<(u32, u32)> {
         let mut out = Vec::new();
         face_runs(offsets, mask, |a, b| out.push((a, b)));

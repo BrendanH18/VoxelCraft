@@ -13,7 +13,7 @@ use std::sync::Arc;
 use glam::{DVec3, IVec3};
 
 use crate::audio::SoundSource;
-use crate::audio::sounds::{Material, Sound};
+use crate::audio::sounds::{PortalCue, Sound};
 use crate::world::World;
 use crate::world::block::Block;
 use crate::world::portal::{BORDER, PortalTrip};
@@ -712,9 +712,13 @@ impl Game {
         self.session.player.flying = self.session.player.flying && self.session.mode.can_fly();
         self.session.vitals.reset_fall();
         self.arrival = None;
-        let sound = Sound::Place(Material::Glass);
-        // Java's portal travel and trigger sounds are local `AMBIENT`.
-        self.audio.play_in(SoundSource::Ambient, sound, None, 0.8, (0.5, 0.6));
+        // `TeleportTransition.PLAY_PORTAL_SOUND` (level event 1032): Nether
+        // portals and the End portal into the End play `PORTAL_TRAVEL`, a
+        // local `AMBIENT` sound at volume 0.25, pitch 0.8 to 1.2; leaving
+        // the End, respawning and gateways play none of it.
+        if matches!(arrival, Arrival::Portal(_) | Arrival::PortalAt(..) | Arrival::EndSpawn) {
+            self.audio.play(Sound::Portal(PortalCue::Travel), None, 0.25, (0.8, 1.2));
+        }
         false
     }
 
@@ -824,8 +828,11 @@ impl Game {
         }
         let before = self.portal_time;
         self.portal_time += dt as f32;
+        // `LocalPlayer.handlePortalTransitionEffect`: `PORTAL_TRIGGER` as the
+        // portal's effect starts from nothing, a local `AMBIENT` sound at
+        // volume 0.25, pitch 0.8 to 1.2.
         if before == 0.0 {
-            self.audio.play_in(SoundSource::Ambient, Sound::Fuse, None, 0.4, (0.4, 0.5));
+            self.audio.play(Sound::Portal(PortalCue::Trigger), None, 0.25, (0.8, 1.2));
         }
         // `ServerLevel.isAllowedToEnterPortal`: only the Nether is gated.
         let allowed = self.gamerules.portal_allows_trip_from(self.dimension);

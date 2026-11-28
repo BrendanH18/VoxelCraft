@@ -2759,10 +2759,12 @@ impl Block {
         (84..=90).contains(&self.0).then(|| (self.0 - 84) as u8)
     }
 
-    /// Whether the crosshair can select this block (anything visible but fluids).
+    /// Whether the crosshair can select this block (anything visible but
+    /// fluids). A Nether portal is met at its thin plane (Java's
+    /// `NetherPortalBlock.getShape`, v1.0 gap Track 5c).
     #[inline(always)]
     pub fn is_targetable(self) -> bool {
-        self.kind() != RenderKind::Invisible && !self.is_fluid() && !self.is_nether_portal()
+        self.kind() != RenderKind::Invisible && !self.is_fluid()
     }
 
     /// Sand, gravel and the dragon egg fall when nothing holds them up.
