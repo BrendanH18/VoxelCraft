@@ -154,9 +154,10 @@ pub fn lerp(alpha: f32, old: f32, new: f32) -> f32 {
 
 /// A stable value in 0..1 for the client's random rolls (Java's client
 /// `RandomSource`, which isn't reproducible anyway): this mob's own, a new
-/// one each tick and `salt`.
-fn roll(uid: u32, tick: u32, salt: u32) -> f32 {
-    let mut x = (u64::from(uid) << 32 | u64::from(tick)) ^ (u64::from(salt) * 0x9e37_79b9_7f4a_7c15);
+/// one each tick and `stream` (which roll this is). A mixing hash, not
+/// cryptography.
+fn roll(uid: u32, tick: u32, stream: u32) -> f32 {
+    let mut x = (u64::from(uid) << 32 | u64::from(tick)) ^ (u64::from(stream) * 0x9e37_79b9_7f4a_7c15);
     x ^= x >> 33;
     x = x.wrapping_mul(0xff51_afd7_ed55_8ccd);
     x ^= x >> 33;
