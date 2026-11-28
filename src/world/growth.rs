@@ -19,6 +19,54 @@ const TICKS_PER_SECTION: f64 = 60.0;
 /// Leaves farther than this (in steps through leaves) from a log decay.
 const LEAF_REACH: i32 = 6;
 
+/// v1.0 gap Track 2h: where `BoneMealItem.addGrowthParticles` (level event
+/// 1505) puts its happy-villager particles, by the block there after the
+/// bone meal: `BonemealableBlock.getType` and `getParticlePos`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BoneMealKind {
+    /// `NEIGHBOR_SPREADER` (grass, nylium, netherrack, moss and pale moss):
+    /// spread over the blocks above.
+    Spreader,
+    /// The water block (seagrass grows from it), spread from it.
+    Water,
+    /// `GROWER`: within its own cell.
+    Grower,
+    /// `GROWER` with its particles in the cell below (rooted dirt,
+    /// mangrove leaves).
+    GrowerBelow,
+}
+
+/// v1.0 gap Track 2h: the [`BoneMealKind`] of `b`, or none when Java's
+/// block isn't a `BonemealableBlock` (no particles): air, full blocks such
+/// as the logs a sapling became, the torchflower a crop grew into, and the
+/// double plants (`DoublePlantBlock`: tall grass, large fern, tall
+/// seagrass) short grass and seagrass become. Other plants and shaped
+/// growers count as growers: the game reads the block's render kind
+/// (crossed planes or a shape) in place of Java's class.
+pub fn bone_meal_kind(b: Block) -> Option<BoneMealKind> {
+    use super::block::RenderKind;
+    use super::overworld_blocks as ob;
+    if b == Block::GRASS
+        || super::nether_biome_blocks::is_nylium(b)
+        || b == Block::NETHERRACK
+        || b == ob::MOSS_BLOCK
+        || b == ob::PALE_MOSS_BLOCK
+    {
+        return Some(BoneMealKind::Spreader);
+    }
+    if b.is_water() && !super::bubble::is_column(b) {
+        return Some(BoneMealKind::Water);
+    }
+    if b == ob::ROOTED_DIRT || b.base() == ob::MANGROVE_LEAVES {
+        return Some(BoneMealKind::GrowerBelow);
+    }
+    let double_plant = (2049..=2052).contains(&b.0) || b == ob::TALL_SEAGRASS || b == ob::TALL_SEAGRASS_TOP;
+    if b == Block::AIR || double_plant || b == super::sniffer_plants::TORCHFLOWER {
+        return None;
+    }
+    matches!(b.kind(), RenderKind::Cross | RenderKind::Shaped).then_some(BoneMealKind::Grower)
+}
+
 /// One in this many random ticks ages nether wart (Java's rate).
 const WART_GROWTH: u64 = 10;
 /// One in this many random ticks grows a sapling into a tree.
@@ -726,6 +774,27 @@ impl World {
     /// Bone meal on the block at `p`: crops grow 2-5 stages, saplings have a
     /// 45% chance to grow, and grass sprouts tall grass and flowers around.
     /// Returns whether the bone meal was used.
+    /// v1.0 gap Track 2h: bone meal used at `p` by anyone (a player, a
+    /// dispenser, a farmer's `UseBonemeal`): [`World::apply_bone_meal`],
+    /// then level event 1505 when it grew something: the happy-villager
+    /// particles and the bone meal sound (queued for the game).
+    pub fn use_bone_meal(&mut self, p: IVec3) -> bool {
+        if !self.apply_bone_meal(p) {
+            return false;
+        }
+        self.particles.push(crate::particles::Request::Growth { cell: p, count: 15, bone_meal: true });
+        if self.bone_meal_sounds.len() < 256 {
+            self.bone_meal_sounds.push(p);
+        }
+        true
+    }
+
+    /// v1.0 gap Track 2h: where bone meal was used since the last call
+    /// (level event 1505's `BONE_MEAL_USE`).
+    pub fn take_bone_meal_sounds(&mut self) -> Vec<IVec3> {
+        std::mem::take(&mut self.bone_meal_sounds)
+    }
+
     pub fn apply_bone_meal(&mut self, p: IVec3) -> bool {
         let Some(b) = self.get_block(p) else { return false };
         if let Some(used) = self.sniffer_bone_meal(p, b) {

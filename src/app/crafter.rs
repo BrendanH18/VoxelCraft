@@ -65,6 +65,21 @@ impl Game {
         }
     }
 
+    /// v1.0 gap Track 2h: the composters' sounds (`BLOCKS`, volume and
+    /// pitch 1) and level event 1505's `BONE_MEAL_USE` (the game's stand-in,
+    /// the grass placing sound, as the player's bone meal always played it).
+    pub(super) fn play_composter_events(&mut self) {
+        for (cell, cue) in self.world.take_composter_cues() {
+            let at = cell.as_dvec3() + DVec3::splat(0.5);
+            self.audio.play(Sound::Composter(cue), Some(at), 1.0, (1.0, 1.0));
+        }
+        for cell in self.world.take_bone_meal_sounds() {
+            let at = cell.as_dvec3() + DVec3::splat(0.5);
+            let grass = Sound::Place(crate::audio::sounds::Material::Grass);
+            self.audio.play(grass, Some(at), 0.8, (1.2, 1.4));
+        }
+    }
+
     /// The crafter screen's own parts, over the shared chest slots: disabled
     /// slot covers, the indicator and the result preview. `px`, `py` are the
     /// panel's slot origin.

@@ -390,6 +390,8 @@ fn farmers_bake_bread_and_compost_their_spare_seeds() {
                 {
                     assert_eq!((cell, from), (job, if emptied { 8 } else { 0 }));
                     assert!((1..=7).contains(&to));
+                    // Track 2h: `WorkAtPoi.start` played the farmer's work sound.
+                    assert!(acts.iter().any(|a| matches!(a, FarmAct::WorkSound(Profession::Farmer))));
                     let bone_meal =
                         acts.iter().any(|a| matches!(a, FarmAct::Item(s, _, _) if s.item == Item::BONE_MEAL));
                     assert_eq!(bone_meal, emptied);
@@ -460,6 +462,83 @@ fn farmers_use_bone_meal_on_growing_crops() {
         assert!(!v.using_bone_meal());
         v.walking.walk = None;
     }
+}
+
+/// Track 2h: `WorkAtPoi.start` plays the profession's work sound
+/// (`playWorkSound`) each time it starts; a farmer with nothing to compost
+/// still ends `compostItems` with the composter's fill effect (level event
+/// 1500 with no layer added).
+#[test]
+fn villagers_play_their_work_sound_and_farmers_always_fill() {
+    use crate::entity::villager::Profession;
+    let mut w = Grid::flat(64);
+    let job = IVec3::new(0, 64, 0);
+    let c = ctx(&[]);
+    for job_kind in [Profession::Librarian, Profession::Farmer] {
+        w.set(job, if job_kind == Profession::Farmer { crate::world::composter::state(3) } else { Block::STONE });
+        let mut sounds = 0;
+        for seed in 0..20 {
+            let mut rng = Rng::new(seed);
+            let mut v = worker(job, job_kind);
+            v.pos = DVec3::new(0.5, 64.0, 1.5);
+            for _ in 0..400 {
+                v.head_goals(&w, &c, &mut rng, false);
+                let acts = std::mem::take(&mut v.walking.farm_acts);
+                if acts.iter().any(|a| matches!(a, FarmAct::WorkSound(j) if *j == job_kind)) {
+                    sounds += 1;
+                    let fill = acts.iter().find(|a| matches!(a, FarmAct::Compost { .. })).copied();
+                    if job_kind == Profession::Farmer {
+                        assert!(matches!(fill, Some(FarmAct::Compost { from: 3, to: 3, .. })), "{fill:?}");
+                    } else {
+                        assert!(fill.is_none());
+                    }
+                }
+                v.walking.walk = None;
+            }
+        }
+        assert!(sounds > 0, "{job_kind:?}");
+    }
+    assert_eq!(Profession::Nitwit.work_sound(), None);
+    assert_eq!(Profession::Cleric.work_sound(), Some("entity.villager.work_cleric"));
+}
+
+/// Track 2h: torchflower crops are `CropBlock`s that never reach their
+/// maximum age (2 is the torchflower): `UseBonemeal` picks them and
+/// `HarvestFarmland` never breaks them.
+#[test]
+fn farmers_bone_meal_torchflower_crops_but_never_harvest_them() {
+    use crate::entity::villager::Profession;
+    use crate::world::sniffer_plants::TORCH_CROP;
+    let mut w = Grid::flat(64);
+    let job = IVec3::new(4, 64, 4);
+    w.set(job, Block::COMPOSTER);
+    let crop = IVec3::new(1, 64, 0);
+    w.set(crop - IVec3::Y, Block::FARMLAND);
+    for age in 0..2 {
+        let b = Block(TORCH_CROP.0 + age);
+        w.set(crop, b);
+        assert!(growing(b) && !harvestable(&w, crop));
+    }
+    assert!(!growing(crate::world::sniffer_plants::TORCHFLOWER));
+    let c = ctx(&[]);
+    let mut used = 0;
+    for seed in 0..40 {
+        let mut rng = Rng::new(seed);
+        let mut v = worker(job, Profession::Farmer);
+        v.pos = DVec3::new(1.5, 64.0, 0.5);
+        v.villager.as_mut().unwrap().accept_food(Stack::new(Item::BONE_MEAL, 4));
+        for _ in 0..400 {
+            v.head_goals(&w, &c, &mut rng, false);
+            for act in std::mem::take(&mut v.walking.farm_acts) {
+                assert!(!matches!(act, FarmAct::Harvest(_)), "{act:?}");
+                if act == FarmAct::Bonemeal(crop) {
+                    used += 1;
+                }
+            }
+            v.walking.walk = None;
+        }
+    }
+    assert!(used > 0);
 }
 
 /// Track 2g: `TradeWithVillager`'s throws while the partner is within

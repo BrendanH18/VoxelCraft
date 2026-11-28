@@ -978,6 +978,9 @@ pub(super) fn crossed_arms_item(
 /// whatever a wandering trader has in its main hand.
 pub(super) fn crossed_arms_stack(m: &Mob) -> Option<crate::inventory::Stack> {
     match m.kind {
+        // v1.0 gap Track 2h: `UseBonemeal.start` puts bone meal in the main
+        // hand (`stop` empties it), which `CrossedArmsItemLayer` draws.
+        MobKind::Villager if m.using_bone_meal() => Some(crate::inventory::Stack::new(crate::item::Item::BONE_MEAL, 1)),
         MobKind::Villager => m.shown_trade_item(),
         MobKind::WanderingTrader => m.main_hand(),
         _ => None,

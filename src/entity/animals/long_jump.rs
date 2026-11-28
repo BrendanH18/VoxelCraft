@@ -226,8 +226,14 @@ impl Mob {
             jump.prepared += 1;
             if jump.prepared >= PREPARE {
                 // The launch, in blocks a second; `LongJumpMidJump` takes
-                // over (`LONG_JUMPING`).
-                self.vel = vector * 20.0;
+                // over (`LONG_JUMPING`). Track 2h: the heading snaps to the
+                // body's (`setYRot(yBodyRot)`), and Jump Boost lengthens the
+                // jump by its `getJumpBoostPower` (0.1 a level).
+                self.yaw = self.body_yaw;
+                let length = vector.length();
+                let boost = 0.1 * f64::from(self.effects.jump_boost());
+                let scale = if length > 0.0 { (length + boost) / length } else { 1.0 };
+                self.vel = vector * scale * 20.0;
                 let a = self.animal.as_mut().unwrap();
                 a.long_jumping = true;
                 a.mid_jump_left = MID_JUMP_TIMEOUT;
@@ -348,6 +354,8 @@ mod tests {
             let mut m = Mob::new(MobKind::Goat, DVec3::new(0.5, 64.0, 0.5), 0.0);
             m.on_ground = true;
             m.animal.as_mut().unwrap().jump_cooldown = 0.0;
+            // Track 2h: the body faces elsewhere than the heading.
+            m.body_yaw = 1.25;
             let mut ticks = 0;
             while ticks < 200 {
                 ticks += 1;
@@ -361,6 +369,8 @@ mod tests {
             launched += 1;
             assert!(ticks > PREPARE, "{ticks}");
             assert!(m.vel.y > 0.0 && m.vel.length() <= MAX_VELOCITY * 20.0 + 1e-9);
+            // `setYRot(yBodyRot)` at the launch.
+            assert_eq!(m.yaw, 1.25);
             // In flight it keeps jumping; on the ground it lands.
             m.on_ground = false;
             assert_eq!(m.goat_long_jump(&w, &mut rng, true), Jumped::None);

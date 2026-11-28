@@ -220,6 +220,12 @@ pub enum MobSound {
     /// v1.0 gap Track 8f: `Villager.setUnhappy`'s `entity.villager.no`
     /// with the head shake; true for a child (`getVoicePitch` 0.5 higher).
     VillagerNo(bool),
+    /// v1.0 gap Track 2h: a panda eating what it holds
+    /// (`Panda.addEatingParticles`' `PANDA_EAT`).
+    PandaEat,
+    /// v1.0 gap Track 2h: a villager starting work at its job site
+    /// (`WorkAtPoi.start`'s `playWorkSound`).
+    VillagerWork(villager::Profession),
 }
 
 /// Something an entity did that the game needs to react to.

@@ -327,6 +327,16 @@ impl Game {
                         let sound = crate::audio::sounds::Sound::Step(crate::audio::sounds::Material::Snow);
                         self.audio.play(sound, Some(bot.agent.session.player.eye()), 0.7, (1.4, 1.7));
                     }
+                    // v1.0 gap Track 2h: the eating particles of a CLI
+                    // player (`spawnItemParticles`).
+                    Event::EatParticles(item, count) => {
+                        let player = &bot.agent.session.player;
+                        let (eye, forward) = (player.eye(), player.forward().as_dvec3());
+                        let seed = eye.x.to_bits() ^ eye.z.to_bits().rotate_left(17) ^ u64::from(count);
+                        for p in voxelcraft::particles::living_item_particles(item, eye, forward, count, seed) {
+                            self.world.particles.push(p);
+                        }
+                    }
                     Event::Shot(shot) => super::items::shot_sound(&mut self.audio, shot.ranged),
                     Event::Xp(chime) => {
                         super::items::xp_sounds(&mut self.audio, Some(bot.agent.session.player.eye()), chime)

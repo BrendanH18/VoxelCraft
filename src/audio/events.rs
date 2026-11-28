@@ -124,6 +124,8 @@ impl Sound {
             Sound::Fox(c) => s(c.key()),
             Sound::Goat(c) => s(c.key()),
             Sound::VillagerNo => s("entity.villager.no"),
+            Sound::Composter(c) => s(c.key()),
+            Sound::VillagerWork(j) => j.work_sound().map(str::to_owned),
             Sound::Minecart(c) => {
                 use crate::entity::minecart::Cue as C;
                 s(match c {

@@ -279,6 +279,13 @@ pub enum Sound {
     /// v1.0 gap track 6e: a pointed dripstone's drop landing
     /// (`DripstoneFallAndLandParticle.postMoveUpdate`): lava when true.
     DripstoneDrip(bool),
+    /// v1.0 gap Track 2h: the composter's fill, empty and ready sounds.
+    Composter(voxelcraft::world::composter::Cue),
+    /// v1.0 gap Track 2h: a villager's work sound
+    /// (`VillagerProfession.workSound`), one of [`Profession::WORKERS`].
+    ///
+    /// [`Profession::WORKERS`]: voxelcraft::entity::villager::Profession::WORKERS
+    VillagerWork(voxelcraft::entity::villager::Profession),
 }
 
 /// v1.0 gap Track 5c: Java's `PORTAL_AMBIENT`, `PORTAL_TRIGGER` and
@@ -391,7 +398,9 @@ impl Sound {
     const FOX_END: usize = Self::PORTAL_END + crate::entity::fox::Cue::ALL.len();
     const GOAT_END: usize = Self::FOX_END + voxelcraft::entity::animals::long_jump::Cue::ALL.len();
     const VILLAGER_NO_END: usize = Self::GOAT_END + 1;
-    pub const COUNT: usize = Self::VILLAGER_NO_END + 2;
+    const DRIP_END: usize = Self::VILLAGER_NO_END + 2;
+    const COMPOSTER_END: usize = Self::DRIP_END + voxelcraft::world::composter::Cue::ALL.len();
+    pub const COUNT: usize = Self::COMPOSTER_END + voxelcraft::entity::villager::Profession::WORKERS.len();
 
     /// Dense index in `0..COUNT`.
     pub fn key(self) -> usize {
@@ -425,6 +434,11 @@ impl Sound {
             Sound::Goat(cue) => Self::FOX_END + cue as usize,
             Sound::VillagerNo => Self::GOAT_END,
             Sound::DripstoneDrip(lava) => Self::VILLAGER_NO_END + usize::from(lava),
+            Sound::Composter(cue) => Self::DRIP_END + cue as usize,
+            Sound::VillagerWork(job) => {
+                Self::COMPOSTER_END
+                    + voxelcraft::entity::villager::Profession::WORKERS.iter().position(|&j| j == job).unwrap_or(0)
+            }
             Sound::Note(i) => 3 * M + 27 + Voice::ALL.len() * CALLS + i as usize,
             Sound::Thunder => Self::BASE_COUNT - 1,
             Sound::Bell => Self::BASE_COUNT - 4,
@@ -564,6 +578,8 @@ impl Sound {
             .chain(voxelcraft::entity::animals::long_jump::Cue::ALL.map(Sound::Goat))
             .chain([Sound::VillagerNo])
             .chain([Sound::DripstoneDrip(false), Sound::DripstoneDrip(true)])
+            .chain(voxelcraft::world::composter::Cue::ALL.map(Sound::Composter))
+            .chain(voxelcraft::entity::villager::Profession::WORKERS.map(Sound::VillagerWork))
     }
 
     /// Stable sound name used when exporting or identifying samples.
@@ -596,6 +612,8 @@ impl Sound {
             Sound::Goat(c) => c.key().replace('.', "_"),
             Sound::VillagerNo => "entity_villager_no".into(),
             Sound::DripstoneDrip(lava) => format!("pointed_dripstone_drip_{}", if lava { "lava" } else { "water" }),
+            Sound::Composter(c) => c.key().replace('.', "_"),
+            Sound::VillagerWork(j) => j.work_sound().unwrap_or("entity.villager.work").replace('.', "_"),
             Sound::Thunder => "lightning_thunder".into(),
             Sound::HoneySlide => "honey_block_slide".into(),
             Sound::HoneyDrink => "honey_drink".into(),
@@ -759,6 +777,10 @@ impl Sound {
             Sound::Goat(_) => SoundSource::Neutral,
             // The villager's own category (`NEUTRAL`).
             Sound::VillagerNo => SoundSource::Neutral,
+            Sound::Composter(_) => SoundSource::Blocks,
+            // `Villager.playWorkSound` (`makeSound`): the villager's own
+            // category, `NEUTRAL`.
+            Sound::VillagerWork(_) => SoundSource::Neutral,
             Sound::Mob(voice, _) => voice.source(),
         }
     }
@@ -790,6 +812,7 @@ impl Sound {
             Sound::Goat(_) => 2,
             Sound::VillagerNo => 2,
             Sound::DripstoneDrip(_) => 3,
+            Sound::Composter(_) | Sound::VillagerWork(_) => 2,
             Sound::Warden(_) | Sound::Sculk(_) => 2,
             Sound::Sniffer(_) | Sound::Weapon(_) => 2,
             Sound::Step(_) => 4,
@@ -856,6 +879,8 @@ impl Sound {
             Sound::Goat(c) => super::goat::render(c, &mut rng),
             Sound::VillagerNo => super::voices::villager_no(&mut rng),
             Sound::DripstoneDrip(lava) => dripstone_drip(lava, &mut rng),
+            Sound::Composter(c) => super::work::composter(c, &mut rng),
+            Sound::VillagerWork(j) => super::work::work(j, &mut rng),
             Sound::Thunder => thunder(&mut rng),
             Sound::HoneySlide => honey_sound(&mut rng, 0.35),
             Sound::HoneyDrink => honey_sound(&mut rng, 0.22),
