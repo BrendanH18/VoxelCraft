@@ -72,6 +72,24 @@ pub struct Anim {
     /// `Breeze.idle`: when the idle loop started.
     pub idle_start: Option<u32>,
     was_on_ground: bool,
+    /// v1.0 gap Track 7c: the axolotl's one running animation
+    /// (`Axolotl.setupAnimationStates`' `soloAnimation`) and its start
+    /// tick.
+    pub axolotl: AxolotlAnim,
+    pub axolotl_start: Option<u32>,
+}
+
+/// v1.0 gap Track 7c: which of the axolotl's `AnimationState`s runs.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum AxolotlAnim {
+    PlayDead,
+    Swim,
+    Walk,
+    WalkUnderWater,
+    IdleUnderWater,
+    IdleFloorUnderWater,
+    #[default]
+    IdleFloor,
 }
 
 impl Default for Anim {
@@ -114,6 +132,8 @@ impl Default for Anim {
             o_spin: 0.0,
             idle_start: None,
             was_on_ground: true,
+            axolotl: AxolotlAnim::IdleFloor,
+            axolotl_start: None,
         }
     }
 }
@@ -289,6 +309,30 @@ impl Mob {
             }
             MobKind::Breeze => {
                 a.idle_start.get_or_insert(tick);
+            }
+            MobKind::Axolotl => {
+                // v1.0 gap Track 7c: `Axolotl.setupAnimationStates`; a new
+                // state starts its animation, the others stop.
+                use AxolotlAnim::*;
+                let moving = self.limb_amp > 1e-5;
+                let now = if self.aquatic.as_ref().is_some_and(|s| s.play_dead > 0.0) {
+                    PlayDead
+                } else if moving {
+                    match (in_water, on_ground) {
+                        (true, false) => Swim,
+                        (false, true) => Walk,
+                        _ => WalkUnderWater,
+                    }
+                } else {
+                    match (in_water, on_ground) {
+                        (true, false) => IdleUnderWater,
+                        (true, true) => IdleFloorUnderWater,
+                        _ => IdleFloor,
+                    }
+                };
+                if a.axolotl_start.is_none() || now != a.axolotl {
+                    (a.axolotl, a.axolotl_start) = (now, Some(tick));
+                }
             }
             _ => {}
         }

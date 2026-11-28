@@ -11,20 +11,55 @@
 
 use super::*;
 
-/// The kinds Java 26.3 gives a baby model of its own that this game
-/// draws (the rest still draw their adult halved).
+/// The kinds Java 26.3 gives a baby model of its own (every baby layer in
+/// `LayerDefinitions`), drawn at full scale. v1.0 gap Track 7c added the
+/// other kinds' ([`super::baby_rigs`]). The ghastling is Java's adult happy
+/// ghast scaled by 0.2375 (`HappyGhastModel.BABY_TRANSFORMER`), as this
+/// game draws it; other babies (none in Java 26.3) draw their adult halved.
 pub(super) fn has_model(kind: MobKind) -> bool {
+    use MobKind::*;
     matches!(
         kind,
-        MobKind::Chicken
-            | MobKind::Pig
-            | MobKind::Cow
-            | MobKind::Sheep
-            | MobKind::Wolf
-            | MobKind::Villager
-            | MobKind::Zombie
-            | MobKind::Husk
-            | MobKind::Drowned
+        Chicken
+            | Pig
+            | Cow
+            | Mooshroom
+            | Sheep
+            | Wolf
+            | Villager
+            | Zombie
+            | Husk
+            | Drowned
+            | Armadillo
+            | Axolotl
+            | Bee
+            | Camel
+            | Cat
+            | Ocelot
+            | Dolphin
+            | Donkey
+            | Mule
+            | Horse
+            | SkeletonHorse
+            | ZombieHorse
+            | Fox
+            | Goat
+            | Llama
+            | TraderLlama
+            | Panda
+            | PolarBear
+            | Rabbit
+            | Squid
+            | GlowSquid
+            | Turtle
+            | Hoglin
+            | Zoglin
+            | Piglin
+            | ZombifiedPiglin
+            | Strider
+            | ZombieVillager
+            | Sniffer
+            | Nautilus
     )
 }
 
@@ -256,7 +291,32 @@ pub(super) fn pose(m: &Mob, time: f32, alpha: f32, head: Quat) -> Option<Parts> 
     let rz = Quat::from_rotation_z;
     // `QuadrupedModel` and the humanoids: `cos(pos * 0.6662) * 1.4 * speed`.
     let swing = walk_cos(m) * motion::LEG_SWING;
+    use super::baby_rigs as b;
     Some(match m.kind {
+        // v1.0 gap Track 7c.
+        MobKind::Hoglin | MobKind::Zoglin => b::hoglin::pose(m),
+        MobKind::Goat => b::goat::pose(m),
+        MobKind::PolarBear => b::polar_bear::pose(m),
+        MobKind::Panda => b::panda::pose(m, time),
+        MobKind::Llama | MobKind::TraderLlama => b::llama::pose(m),
+        MobKind::Camel => b::camel::pose(m, alpha),
+        MobKind::Fox => b::fox::pose(m, time),
+        MobKind::Cat | MobKind::Ocelot => b::feline::pose(m),
+        MobKind::Rabbit => b::rabbit::pose(m, alpha),
+        MobKind::Horse | MobKind::SkeletonHorse | MobKind::ZombieHorse | MobKind::Donkey | MobKind::Mule => {
+            b::equine::pose(m, time, alpha)
+        }
+        MobKind::Turtle => b::turtle::pose(m),
+        MobKind::Axolotl => b::axolotl::pose(m, alpha),
+        MobKind::Bee => b::bee::pose(m, time, alpha),
+        MobKind::Squid | MobKind::GlowSquid => b::squid::pose(m, alpha),
+        MobKind::Dolphin => b::dolphin::pose(m, time),
+        MobKind::Armadillo => b::armadillo::pose(m),
+        MobKind::Piglin | MobKind::ZombifiedPiglin => b::piglin::pose(m, time),
+        MobKind::Strider => b::strider::pose(m, time),
+        MobKind::ZombieVillager => b::zombie_villager::pose(m, time),
+        MobKind::Sniffer => b::snifflet::pose(m, time),
+        MobKind::Nautilus => b::nautilus::pose(m, time),
         MobKind::Chicken => {
             // `ChickenModel.setupAnim`; the baby's head is its body, which
             // doesn't turn to look. Its wings (Java's right one on +X)
@@ -280,7 +340,9 @@ pub(super) fn pose(m: &Mob, time: f32, alpha: f32, head: Quat) -> Option<Parts> 
             [2.5, 2.0, 3.0, -4.0],
             swing,
         ),
-        MobKind::Cow => {
+        // `MushroomCowRenderer` draws the calf model (no mushrooms on a
+        // baby); `passive::colour` paints its hide.
+        MobKind::Cow | MobKind::Mooshroom => {
             quadruped(CALF_BODY, [0.0; 3], CALF_HEAD, [0.0, 10.5, 5.0], head, CALF_LEG, [2.5, 6.0, 3.5, -3.5], swing)
         }
         MobKind::Sheep => quadruped(

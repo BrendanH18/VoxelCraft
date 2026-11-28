@@ -328,6 +328,10 @@ pub(super) fn colour(m: &Mob, c: &mut Cuboid) {
 }
 
 pub(super) fn model_scale(m: &Mob) -> Vec3 {
+    // v1.0 gap Track 7c: Java's baby models are drawn as they are.
+    if m.is_baby() && super::babies::has_model(m.kind) {
+        return Vec3::ONE;
+    }
     Vec3::new(
         1.0,
         match m.kind {

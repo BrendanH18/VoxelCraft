@@ -967,12 +967,12 @@ impl Part {
 
 // Fixed-capacity poses keep every mob, including villagers, allocation-free per frame.
 struct Parts {
-    data: [Part; 16],
+    data: [Part; 24],
     len: usize,
 }
 impl Parts {
     fn new() -> Self {
-        Self { data: [Part { boxes: &[], pivot: Vec3::ZERO, rot: Quat::IDENTITY }; 16], len: 0 }
+        Self { data: [Part { boxes: &[], pivot: Vec3::ZERO, rot: Quat::IDENTITY }; 24], len: 0 }
     }
     fn push(&mut self, p: Part) {
         self.data[self.len] = p;
@@ -1023,6 +1023,7 @@ mod allay;
 mod animals;
 mod aquatic;
 mod babies;
+mod baby_rigs;
 mod bee;
 mod breeze;
 mod camel_anim;
@@ -1031,10 +1032,12 @@ mod copper_golem;
 mod creaking;
 mod hostiles;
 mod illager;
+mod keyframes;
 mod mounts;
 mod new_mobs;
 mod passive;
 mod phantom;
+mod rig;
 mod shulker;
 mod sniffer;
 mod warden;
@@ -1692,18 +1695,11 @@ pub fn build(
                 0.8 + m.aquatic.as_ref().map_or(0.0, |a| a.puff as f32 * 0.4)
             } else if m.baby || m.age < 0 {
                 if babies::has_model(m.kind) {
-                    // v1.0 gap Track 7b: drawn at full scale.
+                    // v1.0 gap Tracks 7b and 7c: Java's baby models, drawn at
+                    // full scale.
                     1.0
-                } else if super::undead_mounts::undead(m.kind) {
-                    0.7
-                } else if m.kind == MobKind::Armadillo {
-                    0.6
                 } else if m.kind == MobKind::HappyGhast {
                     super::happy_ghast::BABY_SCALE as f32
-                } else if m.kind == MobKind::Dolphin {
-                    // v1.0 gap Track 3: `DolphinRenderer` draws babies with
-                    // their own smaller model (`BabyDolphinModel`) at full scale.
-                    1.0
                 } else {
                     0.5
                 }
@@ -1766,6 +1762,9 @@ pub fn build(
                 let mut cuboid = *c;
                 animals::colour(m, &mut cuboid);
                 mounts::colour(m, &mut cuboid);
+                if m.is_baby() {
+                    baby_rigs::colour(m, &mut cuboid);
+                }
                 if matches!(m.kind, MobKind::Stray | MobKind::Bogged) {
                     hostiles::colour(m, &mut cuboid);
                 }
