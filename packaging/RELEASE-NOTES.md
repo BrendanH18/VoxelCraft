@@ -110,8 +110,8 @@ Choose your download:
 
 - Stone, grass, sand, dirt, netherrack and the rest turn and mirror at
   random as Java's do; flowers, grass and bamboo sit at Java's small
-  offsets; doors, trapdoors, panes, bars, hoppers, lanterns and glazed
-  terracotta use Java's models.
+  offsets; doors, trapdoors, panes, bars, hoppers, lanterns, repeaters,
+  comparators, cocoa, cauldrons and glazed terracotta use Java's models.
 - Fire has two textures, bells swing when rung, and pointed dripstone
   drips, splashes and has collision.
 - Pistons push arrows, falling blocks, End crystals, armor stands and
