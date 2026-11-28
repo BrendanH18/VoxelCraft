@@ -60,6 +60,7 @@ pub fn emerging_items(world: &World, camera: DVec3, range: f64, out: &mut Vec<Bl
             tint: crate::inventory::components::dye_tint_bytes(stack),
             glint: stack.has_foil(),
             translucent: crate::item::translucent(&stack),
+            mesh: None,
         });
     }
 }

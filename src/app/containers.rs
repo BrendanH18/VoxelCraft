@@ -75,6 +75,7 @@ impl Game {
                 tint: [255; 4],
                 glint: false,
                 translucent: false,
+                mesh: None,
                 patterns: None,
                 lid: Some(lid.at(alpha as f32)),
             })

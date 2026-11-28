@@ -46,6 +46,9 @@ pub struct Hand {
     pub glint: bool,
     /// v1.0 gap track 6b: the held stack draws blended (stained glass).
     pub translucent: bool,
+    /// v1.0 gap track 6b: the held stack, when it is drawn with a 3D item
+    /// mesh (`content::item_models`: beds, banners, the shield, two plants).
+    pub mesh: Option<voxelcraft::inventory::Stack>,
 }
 
 /// Minecraft draws the hand with this field of view, whatever the setting.
@@ -392,6 +395,18 @@ pub(super) fn vertices(
         * rot_y(-45.0);
 
     let start = b.out.len();
+    // v1.0 gap track 6b: a 3D item mesh with Java's first-person transform.
+    if let Some(mesh) = hand.mesh.filter(|s| s.item == item).and_then(|s| voxelcraft::content::item_models::mesh(&s)) {
+        let m = arm * voxelcraft::content::item_models::Context::FirstPersonRightHand.matrix(&mesh.display);
+        for q in &mesh.quads {
+            b.tint = q.tint.unwrap_or([255; 4]);
+            b.quad(q.corners.map(|c| m.transform_point3(c)), q.uv, q.layer);
+        }
+        if hand.glint {
+            b.out[start..].iter_mut().for_each(|v| v.layer |= super::block_model::GLINT);
+        }
+        return out;
+    }
     let block = hand.block.or_else(|| item.block()).filter(|b| !b.flat_icon());
     match block {
         Some(block) => {

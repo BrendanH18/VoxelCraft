@@ -46,6 +46,11 @@ pub struct BlockModel {
     /// its panes, tinted glass, ice, slime and honey blocks), blended
     /// instead of cut out.
     pub translucent: bool,
+    /// v1.0 gap track 6b: an item drawn with its 3D mesh
+    /// (`content::item_models`) in this display context: placed at `min`
+    /// (the item's origin, not a corner), turned by `orient` or `yaw` and
+    /// scaled by `size`.
+    pub mesh: Option<(voxelcraft::inventory::Stack, voxelcraft::content::item_models::Context)>,
 }
 
 /// v1.0 gap track 6b: a vertex flag in [`BlockVertex::layer`]'s top bit:
@@ -102,6 +107,21 @@ fn model_vertices(
     ticks: f64,
     masks: &mut super::hand::SpriteMasks,
 ) {
+    if let Some((stack, context)) = m.mesh {
+        let Some(mesh) = voxelcraft::content::item_models::mesh(&stack) else { return };
+        let anchor = (m.min - camera).as_vec3();
+        let (sin, cos) = m.yaw.sin_cos();
+        let turn = |p: Vec3| match m.orient {
+            Some(q) => q * p,
+            None => Vec3::new(p.x * cos - p.z * sin, p.y, p.x * sin + p.z * cos),
+        };
+        for q in mesh.placed(context) {
+            let q =
+                crate::world::colour_blocks::banner::Quad { corners: q.corners.map(turn), normal: turn(q.normal), ..q };
+            push_quad(out, m, anchor, q);
+        }
+        return;
+    }
     {
         let min = (m.min - camera).as_vec3();
         let s = m.size;
@@ -454,6 +474,7 @@ mod tests {
             tint: [255; 4],
             glint: false,
             translucent: false,
+            mesh: None,
         };
         let icon = BlockModel { icon: Some(crate::world::block::tex::ITEM_BASE), yaw: 1.0, ..at(Block::AIR) };
         let mut masks = super::super::hand::SpriteMasks::default();

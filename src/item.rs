@@ -2397,7 +2397,16 @@ impl Item {
 /// in its pose), or `None` when it is drawn as a flat sprite: its item
 /// icon, or the block's own sprite for a flat block item.
 pub fn model_block(stack: &crate::inventory::Stack) -> Option<crate::world::block::Block> {
+    if crate::content::item_models::has_mesh(stack.item) {
+        return None;
+    }
     crate::world::copper_golem_statue::item_model(*stack).or_else(|| stack.item.block()).filter(|b| !b.flat_icon())
+}
+
+/// v1.0 gap track 6b: whether a stack is drawn in 3D (a block model or an
+/// item mesh, `content::item_models`) rather than as a flat sprite.
+pub fn drawn_3d(stack: &crate::inventory::Stack) -> bool {
+    model_block(stack).is_some() || crate::content::item_models::has_mesh(stack.item)
 }
 
 /// Layer of a status effect's icon: in the item icon array, after every

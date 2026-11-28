@@ -546,6 +546,7 @@ impl Game {
         hand.block = held.and_then(voxelcraft::world::copper_golem_statue::item_model);
         hand.glint = held.is_some_and(|s| s.has_foil());
         hand.translucent = held.as_ref().is_some_and(crate::item::translucent);
+        hand.mesh = held.filter(|s| voxelcraft::content::item_models::has_mesh(s.item));
         let image = |stack: Option<Stack>| {
             let stack = stack.filter(|s| s.item.is_map() && s.item != Item::MAP)?;
             let mut map = self.world.maps.maps.get(&stack.map_id?)?.clone();
@@ -784,7 +785,9 @@ pub(super) fn draw_stack(ui: &mut Ui, x: f32, y: f32, stack: Stack, counts: bool
 /// the glint and banner patterns.
 pub(super) fn draw_model(ui: &mut Ui, x: f32, y: f32, stack: Stack, dial: crate::item::Dial) {
     draw_model_sized(ui, x, y, 16.0, stack, dial);
-    super::patterns::draw_icon_patterns(ui, x, y, &stack);
+    if !voxelcraft::content::item_models::has_mesh(stack.item) {
+        super::patterns::draw_icon_patterns(ui, x, y, &stack);
+    }
 }
 
 /// [`draw_model`] `size` pixels across (16 in a slot), without the banner
@@ -792,6 +795,11 @@ pub(super) fn draw_model(ui: &mut Ui, x: f32, y: f32, stack: Stack, dial: crate:
 pub(super) fn draw_model_sized(ui: &mut Ui, x: f32, y: f32, size: f32, stack: Stack, dial: crate::item::Dial) {
     let layer = stack.item.dial_layer(dial.for_stack(&stack)).or_else(|| stack.item.flat_layer());
     let px = size / 16.0;
+    // v1.0 gap track 6b: beds, banners, the shield and two plants in 3D.
+    if let Some(mesh) = voxelcraft::content::item_models::mesh(&stack) {
+        ui.item_mesh(x + px, y + px, size, &mesh);
+        return;
+    }
     match (crate::item::model_block(&stack), layer) {
         (Some(block), _) => ui.block_icon(x + 2.0 * px, y + 2.0 * px, 14.0 * px, block),
         (None, Some(layer)) => {

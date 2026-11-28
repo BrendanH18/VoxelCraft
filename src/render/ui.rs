@@ -291,6 +291,33 @@ impl Ui {
         }
     }
 
+    /// v1.0 gap track 6b: an item mesh (`content::item_models`) in a
+    /// `size`-pixel slot area at (x, y), placed with its GUI display
+    /// transform: far quads first, back faces dropped, each lit by how it is
+    /// turned (Java's `gui_light`: from the side and above for block models,
+    /// from the front for the banner and shield). The view is mirrored
+    /// left to right like the game's block icons, so a model's north face
+    /// shows on the left as theirs does.
+    pub fn item_mesh(&mut self, x: f32, y: f32, size: f32, mesh: &voxelcraft::content::item_models::Mesh) {
+        use voxelcraft::content::item_models::Context;
+        let (cx, cy) = (x + size / 2.0, y + size / 2.0);
+        let mut quads: Vec<_> = mesh.placed(Context::Gui).filter(|q| q.normal.z > 1e-4).collect();
+        let depth = |q: &voxelcraft::world::colour_blocks::banner::Quad| q.corners.iter().map(|c| c.z).sum::<f32>();
+        quads.sort_by(|a, b| depth(a).total_cmp(&depth(b)));
+        for q in quads {
+            let n = glam::Vec3::new(-q.normal.x, q.normal.y, q.normal.z);
+            let shade = if mesh.display.front_light {
+                0.55 + 0.45 * n.z + 0.1 * n.y
+            } else {
+                0.794 + 0.127 * n.x + 0.238 * n.y
+            }
+            .clamp(0.4, 1.0);
+            let [r, g, b] = q.tint.map_or([1.0; 3], |t| [t[0], t[1], t[2]].map(|v| f32::from(v) / 255.0));
+            let p = q.corners.map(|c| [cx - c.x * size, cy - c.y * size]);
+            self.quad(p, q.uv, q.layer as f32, [r * shade, g * shade, b * shade, 1.0]);
+        }
+    }
+
     /// Width of the ink of `s` in UI pixels: the advances less the last
     /// gap ([`font::ink_width`]). Every text measurement goes through the
     /// font, so layout, drawing, carets and clipping agree.

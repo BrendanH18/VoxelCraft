@@ -14,6 +14,7 @@ pub mod fishing;
 pub mod fuel;
 pub mod harness;
 pub mod interaction;
+pub mod item_models;
 pub mod mining;
 pub mod placement;
 pub mod spawn_egg;

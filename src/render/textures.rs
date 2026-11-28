@@ -109,6 +109,10 @@ fn points(layer: u16, n: usize) -> Vec<(f32, f32)> {
 const STONE: [u8; 3] = [125, 125, 125];
 
 pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
+    // v1.0 gap track 6b: the item models' plant layers.
+    if (voxelcraft::content::item_models::TEX..voxelcraft::content::item_models::TEX_END).contains(&layer) {
+        return voxelcraft::content::item_models::pixel(layer, x, y);
+    }
     // v0.18 Track 3: the materials, workstations and fixtures it redrew.
     // Stone (layer 0) stays the authored asset; nothing here draws it.
     if let Some(pixel) = material::pixel(layer, x, y) {
