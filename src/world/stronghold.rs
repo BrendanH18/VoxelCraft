@@ -675,9 +675,16 @@ fn ring_positions(seed: u64) -> Vec<IVec2> {
 /// the world seed): the first angle, each position's distance and its
 /// biome-search fork, the next ring's turn, and `spread = min(spread,
 /// count - i)`. Java then moves each position to a random
-/// `#stronghold_biased_to` biome within 112 blocks; VoxelCraft keeps the
-/// ring position (its biomes are its own, see the Track E record).
+/// `#stronghold_biased_to` biome within 112 blocks: generations 5 and 6
+/// keep the ring position (see the Track E record); generation 7 searches
+/// as Java does ([`biome_search`]).
 fn java_ring_positions(seed: u64) -> Vec<IVec2> {
+    java_rings(seed).into_iter().map(|(corner, _)| corner).collect()
+}
+
+/// [`java_ring_positions`] with each position's `random.fork()` seed, the
+/// seed of its biome search's `LegacyRandomSource`.
+fn java_rings(seed: u64) -> Vec<(IVec2, i64)> {
     use super::java_pieces::{next_double, next_long};
     let mut rng = crate::enchant::JavaRandom::new(seed as i64);
     let mut angle = next_double(&mut rng) * std::f64::consts::TAU;
@@ -689,8 +696,8 @@ fn java_ring_positions(seed: u64) -> Vec<IVec2> {
             + (next_double(&mut rng) - 0.5) * (RING_DISTANCE * 2.5);
         let chunk = IVec2::new((angle.cos() * dist).round() as i32, (angle.sin() * dist).round() as i32);
         // `random.fork()` for the biome search.
-        let _ = next_long(&mut rng);
-        out.push(chunk * 16 + IVec2::splat(2));
+        let fork = next_long(&mut rng);
+        out.push((chunk * 16 + IVec2::splat(2), fork));
         angle += std::f64::consts::TAU / f64::from(spread);
         in_circle += 1;
         if in_circle == spread {
@@ -704,12 +711,104 @@ fn java_ring_positions(seed: u64) -> Vec<IVec2> {
     out
 }
 
+/// Java 26.3's `#minecraft:stronghold_biased_to` biome tag.
+pub const BIASED_TO: [&str; 38] = [
+    "plains",
+    "sunflower_plains",
+    "snowy_plains",
+    "ice_spikes",
+    "desert",
+    "forest",
+    "flower_forest",
+    "birch_forest",
+    "dark_forest",
+    "pale_garden",
+    "old_growth_birch_forest",
+    "old_growth_pine_taiga",
+    "old_growth_spruce_taiga",
+    "taiga",
+    "snowy_taiga",
+    "savanna",
+    "savanna_plateau",
+    "windswept_hills",
+    "windswept_gravelly_hills",
+    "windswept_forest",
+    "windswept_savanna",
+    "jungle",
+    "sparse_jungle",
+    "bamboo_jungle",
+    "badlands",
+    "eroded_badlands",
+    "wooded_badlands",
+    "meadow",
+    "cherry_grove",
+    "grove",
+    "snowy_slopes",
+    "frozen_peaks",
+    "jagged_peaks",
+    "stony_peaks",
+    "mushroom_fields",
+    "dripstone_caves",
+    "lush_caves",
+    "sulfur_caves",
+];
+
+/// The biomes a stronghold's ring position is moved towards.
+pub trait RingBiomes {
+    /// Whether the biome at block `(x, 0, z)` is in
+    /// `#stronghold_biased_to` (Java samples the noise biome at y 0).
+    fn stronghold_biased(&self, x: i32, z: i32) -> bool;
+}
+
+impl RingBiomes for super::terrain::Generator {
+    fn stronghold_biased(&self, x: i32, z: i32) -> bool {
+        BIASED_TO.contains(&self.biome_at(IVec3::new(x, 0, z)).name())
+    }
+}
+
+/// Java's biome search radius for a ring position, in blocks.
+const SEARCH_RADIUS: i32 = 112;
+
+/// v1.0 final F5 (generation 7): `ChunkGeneratorStructureState
+/// .generateRingPositions`' move of a ring position (start corner
+/// `corner`) by `BiomeSource.findBiomeHorizontal(chunk centre, y 0, 112,
+/// #stronghold_biased_to, fork)`: every quart cell of the 57 × 57 square
+/// round the chunk's centre, z then x, keeping each matching cell with
+/// probability `1 / (matches so far + 1)` (`nextInt(found + 1) == 0`, the
+/// first match taken without a draw). The stronghold starts in the chunk of
+/// the cell kept, or stays put where none matches.
+fn biome_search(biomes: &dyn RingBiomes, corner: IVec2, fork: i64) -> IVec2 {
+    let chunk = corner.div_euclid(IVec2::splat(16));
+    let centre = chunk * 16 + IVec2::splat(8);
+    let (qx, qz, radius) = (centre.x >> 2, centre.y >> 2, SEARCH_RADIUS >> 2);
+    let mut random = crate::enchant::JavaRandom::new(fork);
+    let mut kept = None;
+    let mut found = 0;
+    for z in -radius..=radius {
+        for x in -radius..=radius {
+            let (bx, bz) = ((qx + x) << 2, (qz + z) << 2);
+            if biomes.stronghold_biased(bx, bz) {
+                if kept.is_none() || random.next_bounded(found + 1) == 0 {
+                    kept = Some(IVec2::new(bx, bz));
+                }
+                found += 1;
+            }
+        }
+    }
+    kept.map_or(corner, |p| (p >> 4) * 16 + IVec2::splat(2))
+}
+
 /// Every stronghold of one overworld, with cached layouts.
 pub struct Strongholds {
     seed: u64,
     /// Generation 5 places and lays out strongholds by Java's random sequence.
     generation: super::terrain::Generation,
     starts: OnceLock<Vec<IVec2>>,
+    /// Each ring position's biome-search fork seed (generation 5 on).
+    forks: OnceLock<Vec<i64>>,
+    /// Generation 7's start corners after the biome search, worked out
+    /// when a stronghold is first needed.
+    moved: Vec<OnceLock<IVec2>>,
     cache: Mutex<FxHashMap<usize, Arc<Stronghold>>>,
 }
 
@@ -719,23 +818,55 @@ impl Strongholds {
     }
 
     pub fn with_generation(seed: u64, generation: super::terrain::Generation) -> Self {
-        Self { seed, generation, starts: OnceLock::new(), cache: Mutex::new(FxHashMap::default()) }
+        Self {
+            seed,
+            generation,
+            starts: OnceLock::new(),
+            forks: OnceLock::new(),
+            moved: (0..COUNT).map(|_| OnceLock::new()).collect(),
+            cache: Mutex::new(FxHashMap::default()),
+        }
     }
 
     fn java(&self) -> bool {
         self.generation >= super::terrain::Generation::V5
     }
 
-    /// Start corners of all 128 strongholds.
+    /// The ring positions (start corners before generation 7's biome
+    /// search) of all 128 strongholds.
     pub fn starts(&self) -> &[IVec2] {
         self.starts.get_or_init(|| if self.java() { java_ring_positions(self.seed) } else { ring_positions(self.seed) })
     }
 
-    fn get(&self, i: usize) -> Arc<Stronghold> {
+    /// Whether ring positions move to a nearby `#stronghold_biased_to`
+    /// biome (generation 7).
+    fn searches(&self) -> bool {
+        self.generation >= super::terrain::Generation::V7
+    }
+
+    /// How far a stronghold's start can lie from its ring position.
+    fn moved_by(&self) -> i32 {
+        if self.searches() { SEARCH_RADIUS + 16 } else { 0 }
+    }
+
+    /// The start corner of stronghold `i`: its ring position, moved by the
+    /// biome search in generation 7.
+    pub fn start(&self, biomes: &dyn RingBiomes, i: usize) -> IVec2 {
+        let ring = self.starts()[i];
+        if !self.searches() {
+            return ring;
+        }
+        *self.moved[i].get_or_init(|| {
+            let forks = self.forks.get_or_init(|| java_rings(self.seed).into_iter().map(|(_, f)| f).collect());
+            biome_search(biomes, ring, forks[i])
+        })
+    }
+
+    fn get(&self, biomes: &dyn RingBiomes, i: usize) -> Arc<Stronghold> {
         if let Some(s) = self.cache.lock().unwrap().get(&i) {
             return s.clone();
         }
-        let start = self.starts()[i];
+        let start = self.start(biomes, i);
         let stronghold = Arc::new(if self.java() {
             Stronghold::generate_java(self.seed, start.div_euclid(IVec2::splat(16)))
         } else {
@@ -746,13 +877,18 @@ impl Strongholds {
     }
 
     /// Strongholds with blocks in the columns from `min` to `max`.
-    pub fn near(&self, min: IVec2, max: IVec2) -> Vec<Arc<Stronghold>> {
+    pub fn near(&self, biomes: &dyn RingBiomes, min: IVec2, max: IVec2) -> Vec<Arc<Stronghold>> {
         let mut out = Vec::new();
+        let reach = EXTENT + self.moved_by();
         for (i, &s) in self.starts().iter().enumerate() {
+            if (s - reach).cmpgt(max).any() || (s + reach).cmplt(min).any() {
+                continue;
+            }
+            let s = self.start(biomes, i);
             if (s - EXTENT).cmpgt(max).any() || (s + EXTENT).cmplt(min).any() {
                 continue;
             }
-            let sh = self.get(i);
+            let sh = self.get(biomes, i);
             let b = sh.bounds;
             if b.min.x <= max.x && b.max.x >= min.x && b.min.z <= max.y && b.max.z >= min.y {
                 out.push(sh);
@@ -763,19 +899,25 @@ impl Strongholds {
 
     /// Where an eye of ender leads from `p`: the nearest stronghold's
     /// start (its spiral staircase), like Java's.
-    pub fn nearest(&self, p: IVec3) -> Option<IVec3> {
+    pub fn nearest(&self, biomes: &dyn RingBiomes, p: IVec3) -> Option<IVec3> {
         let here = IVec2::new(p.x, p.z);
-        let i = (0..self.starts().len()).min_by_key(|&i| (self.starts()[i] - here).as_i64vec2().length_squared())?;
-        let s = self.starts()[i];
-        Some(IVec3::new(s.x + 2, self.get(i).pieces[0].bounds.min.y, s.y + 2))
+        let ring = |i: usize| (self.starts()[i] - here).as_vec2().length();
+        let closest_ring = (0..self.starts().len()).map(ring).reduce(f32::min)?;
+        // Only ring positions that could still be nearest once moved.
+        let slack = 2.0 * std::f32::consts::SQRT_2 * self.moved_by() as f32;
+        let i = (0..self.starts().len())
+            .filter(|&i| ring(i) <= closest_ring + slack)
+            .min_by_key(|&i| (self.start(biomes, i) - here).as_i64vec2().length_squared())?;
+        let s = self.start(biomes, i);
+        Some(IVec3::new(s.x + 2, self.get(biomes, i).pieces[0].bounds.min.y, s.y + 2))
     }
 
     /// Paints the stronghold pieces touching the chunk at `base`.
-    pub fn paint(&self, blocks: &mut [Block; CHUNK_VOLUME], base: IVec3) {
+    pub fn paint(&self, biomes: &dyn RingBiomes, blocks: &mut [Block; CHUNK_VOLUME], base: IVec3) {
         let top = base + IVec3::splat(CHUNK_SIZE_I - 1);
         let chunk = Bounds { min: base, max: top };
         let solid = |_: i32, _: i32, _: i32, _: i32| false;
-        for sh in self.near(IVec2::new(base.x, base.z), IVec2::new(top.x, top.z)) {
+        for sh in self.near(biomes, IVec2::new(base.x, base.z), IVec2::new(top.x, top.z)) {
             for piece in sh.pieces.iter().filter(|p| p.bounds.intersects(&chunk)) {
                 Paint { blocks: &mut *blocks, base, top, piece, open: &solid, pillar: Block::STONE_BRICKS }.piece();
             }
@@ -783,12 +925,12 @@ impl Strongholds {
     }
 
     /// Chests and the silverfish spawner strongholds put in a chunk.
-    pub fn features(&self, cpos: IVec3) -> Vec<(IVec3, Feature)> {
+    pub fn features(&self, biomes: &dyn RingBiomes, cpos: IVec3) -> Vec<(IVec3, Feature)> {
         let base = cpos * CHUNK_SIZE_I;
         let top = base + IVec3::splat(CHUNK_SIZE_I - 1);
         let chunk = Bounds { min: base, max: top };
         let mut out = Vec::new();
-        for sh in self.near(IVec2::new(base.x, base.z), IVec2::new(top.x, top.z)) {
+        for sh in self.near(biomes, IVec2::new(base.x, base.z), IVec2::new(top.x, top.z)) {
             for p in sh.pieces.iter().filter(|p| p.bounds.intersects(&chunk)) {
                 let found: &[(IVec3, Feature)] = &match p.kind {
                     Kind::ChestCorridor => {
@@ -1241,6 +1383,87 @@ impl Paint<'_, Piece> {
 mod tests {
     use super::*;
 
+    /// No biome is `#stronghold_biased_to`: ring positions stay put.
+    struct Nowhere;
+
+    impl RingBiomes for Nowhere {
+        fn stronghold_biased(&self, _: i32, _: i32) -> bool {
+            false
+        }
+    }
+
+    /// Biomes from a closure of the block position.
+    struct Biased<F: Fn(i32, i32) -> bool>(F);
+
+    impl<F: Fn(i32, i32) -> bool> RingBiomes for Biased<F> {
+        fn stronghold_biased(&self, x: i32, z: i32) -> bool {
+            (self.0)(x, z)
+        }
+    }
+
+    /// `findBiomeHorizontal(…, 112, …, false)`: the chunk centre's 57 × 57
+    /// quart square, z then x, reservoir-sampled with `nextInt(found + 1)`.
+    #[test]
+    fn ring_biome_search_follows_find_biome_horizontal() {
+        let corner = IVec2::new(-20 * 16 + 2, 100 * 16 + 2);
+        // Centre block (-312, 1608): quart (-78, 402).
+        // Nothing matches: the position stays.
+        assert_eq!(biome_search(&Nowhere, corner, 5), corner);
+        // One matching cell: taken without a draw.
+        let one = Biased(|x, z| (x, z) == ((-78 + 28) << 2, (402 - 28) << 2));
+        assert_eq!(biome_search(&one, corner, 5), IVec2::new(((-50 << 2) >> 4) * 16 + 2, ((374 << 2) >> 4) * 16 + 2));
+        // Cells outside the square are never sampled.
+        let outside = Biased(|x, z| x == (-78 - 29) << 2 || z == (402 + 29) << 2);
+        assert_eq!(biome_search(&outside, corner, 5), corner);
+        // Every cell matching: Java's reservoir over the 3249 cells in order.
+        let mut random = crate::enchant::JavaRandom::new(77);
+        let mut kept = None;
+        let mut found = 0;
+        for z in -28..=28 {
+            for x in -28..=28 {
+                if kept.is_none() || random.next_bounded(found + 1) == 0 {
+                    kept = Some(IVec2::new((-78 + x) << 2, (402 + z) << 2));
+                }
+                found += 1;
+            }
+        }
+        let expected = (kept.unwrap() >> 4) * 16 + IVec2::splat(2);
+        assert_eq!(biome_search(&Biased(|_, _| true), corner, 77), expected);
+    }
+
+    /// Generation 7 moves each ring position into a `#stronghold_biased_to`
+    /// biome within 112 blocks of its chunk's centre where one is found;
+    /// generation 6 keeps Java's ring positions.
+    #[test]
+    fn generation_7_strongholds_start_in_a_biased_biome_near_their_ring() {
+        use crate::world::terrain::{Dimension, Generation, Generator};
+        let g = Generator::with_generation(11, Dimension::Overworld, Generation::V7);
+        let old = Generator::with_generation(11, Dimension::Overworld, Generation::V6);
+        let started = std::time::Instant::now();
+        let mut moved = 0;
+        for i in 0..6 {
+            let ring = g.strongholds.starts()[i];
+            assert_eq!(old.strongholds.start(&old, i), ring);
+            assert_eq!(old.strongholds.starts()[i], ring);
+            let s = g.strongholds.start(&g, i);
+            let centre = ring.div_euclid(IVec2::splat(16)) * 16 + IVec2::splat(8);
+            let d = (s - IVec2::splat(2)) - (centre - IVec2::splat(8));
+            assert!(d.abs().max_element() <= 112 + 16, "stronghold {i} moved {d} from its ring");
+            if s != ring {
+                moved += 1;
+            }
+            let chunk = s.div_euclid(IVec2::splat(16));
+            let biased = (chunk.x * 16..chunk.x * 16 + 16)
+                .step_by(4)
+                .any(|x| (chunk.y * 16..chunk.y * 16 + 16).step_by(4).any(|z| g.stronghold_biased(x, z)));
+            assert!(biased || s == ring, "stronghold {i} moved to a chunk with no biased biome");
+            let eye = g.strongholds.nearest(&g, IVec3::new(s.x + 5, 70, s.y - 5)).unwrap();
+            assert_eq!((eye.x, eye.z), (s.x + 2, s.y + 2), "eyes lead to the moved start");
+        }
+        assert!(moved > 0, "no ring position moved");
+        eprintln!("six generation 7 ring searches took {:?}", started.elapsed());
+    }
+
     /// `chests/stronghold_corridor.json` lists a golden apple (weight 1 of 101); the
     /// crossing and library tables have none.
     #[test]
@@ -1287,7 +1510,7 @@ mod tests {
     fn layouts_reach_a_portal_room_without_overlaps() {
         let s = Strongholds::new(11);
         for i in 0..6 {
-            let sh = s.get(i);
+            let sh = s.get(&Nowhere, i);
             let n = |k: Kind| sh.pieces.iter().filter(|p| p.kind == k).count();
             assert_eq!(n(Kind::PortalRoom), 1);
             assert!(n(Kind::Library) <= 2 && n(Kind::FiveCrossing) <= 5 && n(Kind::RoomCrossing) <= 6);
@@ -1307,7 +1530,7 @@ mod tests {
             assert!(sh.bounds.max.y < crate::world::terrain::SEA_LEVEL, "under the sea: {:?}", sh.bounds);
             // Eyes lead to the start.
             let start = s.starts()[i];
-            let to = s.nearest(IVec3::new(start.x + 5, 70, start.y - 5)).unwrap();
+            let to = s.nearest(&Nowhere, IVec3::new(start.x + 5, 70, start.y - 5)).unwrap();
             assert_eq!((to.x, to.z), (start.x + 2, start.y + 2));
         }
     }
@@ -1320,7 +1543,7 @@ mod tests {
         let s = Strongholds::new(5);
         let mut seen = [0u32; 4];
         for i in 0..8 {
-            let sh = s.get(i);
+            let sh = s.get(&Nowhere, i);
             for piece in &sh.pieces {
                 if piece.kind == Kind::PortalRoom {
                     continue; // Java fixes its entry as grates

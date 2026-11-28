@@ -369,10 +369,10 @@ fn locate(family: &str, g: &Generator) -> Found {
             Found::new(at, Some(chunk), around_bounds(at, 4, rows(Dimension::Overworld)))
         }
         "stronghold" => {
-            let at = g.strongholds.nearest(IVec3::ZERO).expect("a stronghold");
+            let at = g.strongholds.nearest(g, IVec3::ZERO).expect("a stronghold");
             let sh = g
                 .strongholds
-                .near(IVec2::new(at.x, at.z), IVec2::new(at.x, at.z))
+                .near(g, IVec2::new(at.x, at.z), IVec2::new(at.x, at.z))
                 .into_iter()
                 .next()
                 .expect("the located stronghold");

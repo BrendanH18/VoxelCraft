@@ -288,9 +288,11 @@ impl Game {
                         .generator
                         .villages
                         .nearest(&self.world.generator, self.session.player.pos.floor().as_ivec3()),
-                    "stronghold" => {
-                        self.world.generator.strongholds.nearest(self.session.player.pos.floor().as_ivec3())
-                    }
+                    "stronghold" => self
+                        .world
+                        .generator
+                        .strongholds
+                        .nearest(&*self.world.generator, self.session.player.pos.floor().as_ivec3()),
                     "fortress" | "nether_fortress" => self.world.generator.nearest_fortress(IVec2::new(
                         self.session.player.pos.x.floor() as i32,
                         self.session.player.pos.z.floor() as i32,

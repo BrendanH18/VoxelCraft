@@ -818,7 +818,7 @@ impl Generator {
         let mut features = match (&self.nether, self.dimension) {
             (Some(n), _) => n.fortresses.features(cpos),
             (None, Dimension::Overworld) => {
-                let mut features = self.strongholds.features(cpos);
+                let mut features = self.strongholds.features(self, cpos);
                 features.extend(self.dungeons.features(self, cpos));
                 features.extend(self.mineshafts.features(self, cpos));
                 features.extend(self.villages.features(self, cpos));
@@ -1027,7 +1027,7 @@ impl Generator {
             self.freeze(&mut blocks, base, &columns);
         }
         if base.y < SEA_LEVEL {
-            self.strongholds.paint(&mut blocks, base);
+            self.strongholds.paint(self, &mut blocks, base);
         }
         self.dungeons.paint(self, &mut blocks, base);
         self.mineshafts.paint(self, &mut blocks, base);
@@ -2275,7 +2275,7 @@ mod tests {
                         ("ancient city", g.ancient_cities.nearest(&g, IVec2::ZERO, 3000), 2),
                         ("trial chamber", g.trial_chambers.nearest(&g, IVec2::ZERO, 3000), 2),
                         ("mansion", g.temples.nearest(&g, Kind::Mansion, IVec2::ZERO, 12000), 2),
-                        ("stronghold", g.strongholds.nearest(IVec3::ZERO), 2),
+                        ("stronghold", g.strongholds.nearest(&g, IVec3::ZERO), 2),
                         ("mineshaft", g.mineshafts.nearest(&g, IVec3::ZERO), 1),
                     ],
                     Dimension::Nether => vec![
