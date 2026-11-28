@@ -367,7 +367,7 @@ fn says(template: &str, text: &str) -> bool {
 const WORDING: &[(&str, &str)] = &[
     ("was fireballed by a ghast", "Java names the blast's owner: death.attack.explosion.player"),
     ("was spat on by a llama", "spit uses death.attack.mob"),
-    ("was blasted by a wind charge", "a player's wind charge uses death.attack.mob"),
+    ("was blasted by a wind charge", "an ownerless wind charge names itself: death.attack.mob"),
     ("was pricked by a guardian", "guardian spikes are thorns damage: death.attack.thorns"),
     ("was stung by a bee", "death.attack.sting says 'was stung to death by'"),
     ("was stung by a pufferfish", "pufferfish contact is mob_attack: death.attack.mob"),

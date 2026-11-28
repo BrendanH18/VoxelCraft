@@ -593,6 +593,9 @@ impl Cause {
     pub const PLAYER_TRIDENT: Cause = Cause::new(DamageType::Trident, "was impaled by a player");
     pub const BREEZE_WIND_CHARGE: Cause = Cause::new(DamageType::WindCharge, "was slain by a breeze");
     pub const WIND_CHARGE: Cause = Cause::new(DamageType::WindCharge, "was blasted by a wind charge");
+    /// v1.0 gap Track 8f: a player's wind charge (`windCharge(charge,
+    /// owner)`, message id `mob`): "was slain by" its thrower.
+    pub const PLAYER_WIND_CHARGE: Cause = Cause::new(DamageType::WindCharge, "was slain by a player");
     pub const LLAMA_SPIT: Cause = Cause::new(DamageType::Spit, "was spat on by a llama");
     /// A small fireball's direct hit (`fireball(fireball, blaze)`).
     pub const BLAZE_FIREBALL: Cause = Cause::new(DamageType::Fireball, "was fireballed by a blaze");
@@ -685,6 +688,7 @@ impl Cause {
         Cause::PLAYER_TRIDENT,
         Cause::BREEZE_WIND_CHARGE,
         Cause::WIND_CHARGE,
+        Cause::PLAYER_WIND_CHARGE,
         Cause::LLAMA_SPIT,
         Cause::BLAZE_FIREBALL,
         Cause::CREEPER,

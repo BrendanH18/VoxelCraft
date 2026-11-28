@@ -479,9 +479,13 @@ impl Game {
             }
         }
         self.agents.players = players;
-        for line in lines {
-            log::info!("{line}");
-            self.broadcast_chat(&line);
+        // A LAN guest's copies of the others aren't where deaths happen; the
+        // host's messages reach its chat.
+        if self.lan.client.is_none() {
+            for line in lines {
+                log::info!("{line}");
+                self.broadcast_chat(&line);
+            }
         }
     }
     /// This initial host keeps agents in the host's active dimension, retaining inventory across travel.
