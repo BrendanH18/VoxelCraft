@@ -17,6 +17,36 @@ states, so the door buttons face world north and south whatever the piece's
 orientation and may float, as in Java. Covered by
 `entry_doors_include_iron_doors_with_buttons`.
 
+## Generation 7 (v1.0 final F5)
+
+New worlds since the v1.0 final structure track (generation 7) follow
+four more Java 26.3 rules, checked against the 26.3 server jar
+([record](verification/2026-11-28-v1.0-final-f5-structures.md)):
+
+- **Mineshaft chest minecarts.** Where a corridor rolls a chest
+  (`MineShaftCorridor.createChest`, one in a hundred at each support's two
+  sides), it lays a rail of a random axis (north-south or east-west) and
+  a chest minecart spawns on it, filled from `abandoned_mineshaft`. The
+  cart is an ordinary saved entity; its cell joins the saved generation
+  receipts, so it never spawns twice. Earlier generations keep plain
+  chests. The cart's contents are rolled when it spawns rather than when
+  it is first opened.
+- **Stronghold biome search.** Each of the 128 ring positions moves, as
+  `ChunkGeneratorStructureState.generateRingPositions` does, to a random
+  `#stronghold_biased_to` biome (sampled at y 0) in the 57 × 57 quart
+  square round its chunk's centre (112 blocks), drawn by the position's
+  own `random.fork()`; it stays where no cell matches. VoxelCraft's biomes
+  are its own (FE-01), so the moved chunks differ from Java's for the same
+  seed. Each search runs when its stronghold is first needed. Eyes of
+  ender and `/locate` lead to the moved start.
+- **Dry deep dark.** Java's overworld `aquifers.exclusion` (erosion below
+  -0.225 at a depth parameter above 0.9) keeps aquifer cells round the
+  deep dark dry, so no cave water pours into an ancient city there; the
+  lava sea below y -54 is unchanged.
+- **Surface jigsaws on steep ground.** Villages, outposts and camps use
+  Java's projection and `beard_thin` alone, without dropping pieces (see
+  [villages](villages.md#generation-7-javas-terrain-adaptation)).
+
 ## Placement and generation
 
 Placement uses Java's 48-bit random source, region seeding constants,
