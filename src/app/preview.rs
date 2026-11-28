@@ -167,7 +167,7 @@ pub(super) fn mob(
     let turn_x = |p: Vec3, a: f32| Vec3::new(p.x, p.y * a.cos() + p.z * a.sin(), -p.y * a.sin() + p.z * a.cos());
     let place = |p: [f32; 3]| turn_x(turn_y(face * Vec3::from(p), yaw) - middle, tilt) + middle;
     let mut tris: Vec<(f32, [Vec3; 3], [f32; 4])> = Vec::with_capacity(mesh.len() / 3);
-    for t in mesh.chunks_exact(3) {
+    for t in mesh.as_chunks::<3>().0 {
         // Every triangle, far to near: the boxes are convex, so the nearer
         // faces cover the far ones.
         let c = [place(t[0].pos), place(t[1].pos), place(t[2].pos)];

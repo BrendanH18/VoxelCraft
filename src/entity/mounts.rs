@@ -1649,7 +1649,7 @@ impl Entities {
                 let name = m.kind.name();
                 let mut out = String::with_capacity(name.len());
                 let mut up = true;
-                for ch in name.chars() {
+                for ch in name.chars().map(|c| if c == '_' { ' ' } else { c }) {
                     out.extend(if up { ch.to_uppercase().collect::<Vec<_>>() } else { vec![ch] });
                     up = ch == ' ';
                 }

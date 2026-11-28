@@ -988,4 +988,65 @@ mod tests {
         // (0.7 v + 0.01) * 0.98 settles at 0.0098 / 0.314.
         assert!((m.vel.y / 20.0 - 0.0098 / 0.314).abs() < 1e-3, "{}", m.vel.y / 20.0);
     }
+
+    /// v1.0 gap Track 3b: a land mob's current builds up as Java's does:
+    /// it moves by the motion the current built so far plus this tick's
+    /// push (0.014), and keeps 0.8 of that, toward 5 × 0.014 a tick.
+    #[test]
+    fn currents_start_up_tick_by_tick_for_land_mobs() {
+        let w = channel(false);
+        let mut m = Mob::new(MobKind::Zombie, DVec3::new(-1.5, 0.0, 0.5), 0.0);
+        m.on_ground = true;
+        let (p, drag) = (0.014, f64::from(0.8_f32));
+        let mut c = 0.0;
+        for tick in 0..4 {
+            let x = m.pos.x;
+            m.physics_step(TICK, &w, None, 0.0);
+            assert!((m.pos.x - x - (c + p)).abs() < 1e-6, "tick {tick}: {} vs {}", m.pos.x - x, c + p);
+            c = (c + p) * drag;
+        }
+        // Lava pushes 0.0023 a tick (0.007 in the Nether) under its 0.5
+        // drag: a steady 2 × push. `CurrentAccumulator.applyTo` raises a
+        // push under 0.0045 to 0.0045 while the mob is nearly still (both
+        // horizontal motions under 0.003), as the Overworld's is at first.
+        let mut w = Grid::flat(0);
+        for (x, b) in [(-4, Block::LAVA), (-3, Block(38)), (-2, Block(39)), (-1, Block(40))] {
+            for z in -3..=3 {
+                w.set(IVec3::new(x, 0, z), b);
+            }
+        }
+        for (fast, first, second) in [(false, 0.0045, 0.0045 * 1.5), (true, 0.007, 0.007 * 1.5)] {
+            let mut m = Mob::new(MobKind::Zombie, DVec3::new(-2.5, 0.0, 0.5), 0.0);
+            m.on_ground = true;
+            m.fast_lava = fast;
+            let x = m.pos.x;
+            m.physics_step(TICK, &w, None, 0.0);
+            assert!((m.pos.x - x - first).abs() < 1e-6, "{fast}: {}", m.pos.x - x);
+            let x = m.pos.x;
+            m.physics_step(TICK, &w, None, 0.0);
+            assert!((m.pos.x - x - second).abs() < 1e-6, "{fast}: {}", m.pos.x - x);
+        }
+    }
+
+    /// v1.0 gap Track 3b: `AbstractHorse.onClimbable` is false: a horse
+    /// in twisting vines against a wall doesn't climb them; a pig does.
+    #[test]
+    fn horses_never_climb() {
+        let mut w = Grid::flat(0);
+        w.set(IVec3::new(0, 0, 0), crate::world::nether_biome_blocks::TWISTING_VINES_PLANT);
+        for y in 0..4 {
+            w.set(IVec3::new(1, y, 0), Block::STONE);
+        }
+        for (kind, x, climbs) in [(MobKind::Pig, 0.5, true), (MobKind::Horse, 0.3, false)] {
+            let mut m = Mob::new(kind, DVec3::new(x, 0.0, 0.5), 0.0);
+            m.on_ground = true;
+            // `handleOnClimbable`'s 0.2 a tick up (4 blocks a second).
+            let mut lift: f64 = 0.0;
+            for _ in 0..20 {
+                m.physics_step(TICK, &w, Some(DVec3::X), 2.0);
+                lift = lift.max(m.vel.y);
+            }
+            assert_eq!(lift >= 4.0, climbs, "{kind:?}: {lift}");
+        }
+    }
 }

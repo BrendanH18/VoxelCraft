@@ -1531,4 +1531,61 @@ mod tests {
             "mob_movement_cost: swimmers {swim:.3} ms/tick, ghasts and blazes {fly:.3} ms/tick, dolphins and turtles {coastal:.3} ms/tick"
         );
     }
+
+    /// v1.0 gap Track 3b: `GuardianAttackGoal.tick` hits a mob twice:
+    /// `indirectMagic` whole with the push, then `doHurtTarget` for what it
+    /// adds over that inside the invulnerability window, unpushed.
+    #[test]
+    fn a_guardian_beam_hits_a_mob_with_magic_then_the_rest_of_its_attack() {
+        let w = water();
+        let c = Ctx { players: vec![], ..ctx(DVec3::ZERO) };
+        for (kind, magic, physical) in [(MobKind::Guardian, 1.0, 6.0), (MobKind::ElderGuardian, 3.0, 8.0)] {
+            let mut m = Mob::new(kind, DVec3::ZERO, 0.0);
+            m.uid = 1;
+            let mut rng = Rng::new(5);
+            let mut e = vec![];
+            for _ in 0..400 {
+                m.aquatic.as_mut().unwrap().prey = Some((2, DVec3::new(6.0, 0.0, 0.0)));
+                upkeep(&mut m, 0.05, &w, &c, &mut rng, &mut e);
+                if e.iter().any(|e| matches!(e, EntityEvent::MobHit { .. })) {
+                    break;
+                }
+            }
+            let hits: Vec<_> = e
+                .iter()
+                .filter_map(|e| match *e {
+                    EntityEvent::MobHit { target: 2, damage, knockback, melee, .. } => Some((damage, knockback, melee)),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(hits.len(), 2, "{kind:?}: {hits:?}");
+            assert_eq!((hits[0].0, hits[0].2), (magic, false), "{kind:?}");
+            assert!(hits[0].1.x > 0.0, "pushed away");
+            assert_eq!((hits[1].0, hits[1].1, hits[1].2), (physical - magic, DVec3::ZERO, true), "{kind:?}");
+        }
+    }
+
+    /// v1.0 gap Track 3b: a dolphin breathes at its eyes, 0.3 up, a calf's
+    /// at 0.09375 (`updateFluidOnEyes`, 0.11111111 below them).
+    #[test]
+    fn a_calf_breathes_at_its_own_eye_height() {
+        let mut w = Grid::flat(-64);
+        for x in -3..=3 {
+            for y in -3..=8 {
+                for z in -3..=3 {
+                    w.set(IVec3::new(x, y, z), Block::WATER);
+                }
+            }
+        }
+        // Feet at 8.85: the adult's eyes (8.85 + 0.3 - 0.111) are out of the
+        // water; the calf's (8.85 + 0.094 - 0.111) still in it.
+        for (baby, under) in [(false, false), (true, true)] {
+            let mut m = Mob::new(MobKind::Dolphin, DVec3::new(0.5, 8.85, 0.5), 0.0);
+            m.baby = baby;
+            m.age = if baby { -24000 } else { 0 };
+            environment(&mut m, 1.0, &w);
+            let air = m.aquatic.as_ref().unwrap().air;
+            assert_eq!(air < 240.0, under, "baby {baby}: {air}");
+        }
+    }
 }

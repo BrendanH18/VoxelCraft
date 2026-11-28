@@ -75,6 +75,19 @@ starts at nothing on the press tick as Java's client does. Saddles, armor,
 stats, temper, owner, riders and storage survive saves; equipment and cargo
 spill when the animal dies.
 
+Since v1.0 gap Track 3b horses, donkeys, mules and undead horses rear as
+Java's `AbstractHorse` does
+([record](verification/2026-11-27-v1.0-gap-track-03b-mounts-water.md)):
+for a second after one hit in three, now and then while idle
+(`RandomStandGoal`, with their call), whenever the rider lets go of jump,
+and when made mad: a failed taming throws the rider off, and any item
+that isn't food offered to an untamed horse, donkey, mule, zombie horse or
+llama makes it angry (its angry sound; llamas don't rear). A rearing horse
+stands still, holds its rider's input on the ground and lifts them back.
+Mounts never climb ladders or vines (Java's `onClimbable` is false for
+them), and flowing lava pushes them as flowing water does. The rearing
+pose itself is drawn by the model animations' track (7b).
+
 Breeding uses the shared animal pipeline (`docs/animals.md`): tamed adult
 horses and donkeys breed on golden carrots and apples, a horse and a donkey
 make a mule, and mules are sterile. Foals inherit health, speed and jump with
@@ -129,8 +142,34 @@ Since v1.0 gap Track 3 camels and camel husks ride on Java 26.3's own
 - **Seats.** Java's `getPassengerAttachmentPoint`: a lone rider sits half a
   block forward of the middle; with two, the driver half a block forward
   and the other 0.7 back (an animal 0.2 further forward). The seat height
-  follows the body through both transitions, and the model's body sinks
-  and rises with it.
+  follows the body through both transitions.
+
+Since v1.0 gap Track 3b
+([record](verification/2026-11-27-v1.0-gap-track-03b-mounts-water.md)):
+
+- **Animations and sounds.** The model plays Java's sit (front knees
+  first), seated pose, stand-up (hind legs first, head thrown forward) and
+  galloping dash keyframes, and tips its head down while the dash recharges.
+  Sitting, standing, dashing and the dash coming back each have a sound
+  (procedural, camel husks their own). Letting go of jump in the air
+  doesn't dash but still spends the dash, as in Java.
+- **Looking and walking.** A camel looks at a player within 6 blocks now
+  and then for two to four seconds, and its idle wandering sometimes walks
+  toward that player. Its head turns at most 30 degrees from its body; past
+  that the body turns after it, and while it sits the body stays put.
+- **Leads.** A lead pulled taut stands a seated camel up.
+
+## Mount screens
+
+Since v1.0 gap Track 3b every mount's inventory screen has Java's layout
+([record](verification/2026-11-27-v1.0-gap-track-03b-mounts-water.md)):
+the mount's name on top, its saddle slot and body slot down the left (no
+saddle slot for llamas; a body slot for horse armor, a llama's carpet or
+nautilus armor), the chest's columns to the right (five for donkeys and
+mules, three slots per strength point for llamas), the mount itself in a
+dark box turning toward the pointer, and the inventory below. Empty saddle
+and body slots show a faint outline of what goes there; the controller's
+menu shows the same outlines.
 
 ## Nautiluses
 
@@ -160,10 +199,9 @@ Natural zombie horsemen carry an iron spear (v1.0 Track 7), though no mob
 uses a spear's charge yet; trap riders' bows and helmets are enchanted.
 
 Current parity gaps:
-horse coats/armor and sounds are procedural approximations;
-camels' sit, stand and dash sounds aren't played; horse herds now share the first
+horse coats/armor and sounds are procedural approximations (camels' pose
+and dash sounds and the angry calls too, since v1.0 gap Track 3b); horse herds now share the first
 member's coat while keeping independent markings, as Java 26.3
 `Horse.finalizeSpawn`/`HorseGroupData` do. Saved coat/marking IDs are unchanged. Boat currents, bubble columns and
 Java's boat statuses are followed since v1.0 Track 7; boat leashes remain future work. Offhand controls
-await a player offhand system. Horse armor dyeing and Java's dedicated horse
-inventory layout are not yet implemented.
+await a player offhand system. Horse armor dyeing is not yet implemented.

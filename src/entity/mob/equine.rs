@@ -656,4 +656,159 @@ mod tests {
         // Up onto the one-block wall at x = 2 without a jump, and off it.
         assert!(m.pos.x > 3.0 && top >= 65.0, "{:?} peak {top}", m.pos);
     }
+
+    /// v1.0 gap Track 3b: `AbstractHorse`'s rearing: 20 ticks of
+    /// `FLAG_STANDING`, `standAnim` rising by `(1 - a) × 0.4 + 0.05` a tick,
+    /// and a rider's input held on the ground while it rears.
+    #[test]
+    fn horses_rear_for_twenty_ticks_and_hold_their_rider() {
+        let w = Grid::flat(64);
+        let mut rng = Rng::new(1);
+        let mut m = ridden(0.7, 0.3);
+        let s = m.mount.as_mut().unwrap();
+        s.stand_if_possible(MobKind::Horse);
+        s.rear_tick(MobKind::Horse, false, &mut rng);
+        assert!((s.stand_anim - 0.45).abs() < 1e-6, "{}", s.stand_anim);
+        s.rear_tick(MobKind::Horse, false, &mut rng);
+        assert!((s.stand_anim - (0.45 + 0.55 * 0.4 + 0.05)).abs() < 1e-6, "{}", s.stand_anim);
+        s.yaw = std::f32::consts::FRAC_PI_2;
+        // Settle onto the floor first: the hold is on the ground only.
+        for _ in 0..2 {
+            m.equine_ridden_tick(&w);
+        }
+        assert!(m.on_ground);
+        m.mount.as_mut().unwrap().forward = 1.0;
+        let z = m.pos.z;
+        for _ in 0..5 {
+            m.equine_ridden_tick(&w);
+        }
+        assert!((m.pos.z - z).abs() < 1e-9, "a rearing horse holds still: {}", m.pos.z - z);
+        let s = m.mount.as_mut().unwrap();
+        for _ in 0..18 {
+            assert!(s.standing());
+            s.rear_tick(MobKind::Horse, false, &mut rng);
+        }
+        assert!(!s.standing());
+        m.equine_ridden_tick(&w);
+        assert!(m.pos.z > z, "walks once down");
+        // Camels and llamas never rear; a llama made mad still sounds angry.
+        for kind in [MobKind::Camel, MobKind::CamelHusk, MobKind::Llama] {
+            let mut s = mounts::State::new(kind, &mut rng);
+            s.make_mad(kind);
+            assert!(!s.standing(), "{kind:?}");
+            assert_eq!(s.take_events(), [mounts::Event::Angry]);
+        }
+        // `RandomStandGoal`: `nextStand` from -80, then a `nextStand`-in-1000
+        // roll, and one time in ten a rear with the ambient call.
+        let mut s = mounts::State::new(MobKind::Horse, &mut rng);
+        let mut ticks = 0;
+        while !s.standing() {
+            let ai = !s.standing();
+            s.rear_tick(MobKind::Horse, ai, &mut rng);
+            ticks += 1;
+            assert!(ticks < 100_000);
+        }
+        assert!(ticks > 80, "{ticks}");
+        assert_eq!(s.take_events(), [mounts::Event::Ambient]);
+    }
+
+    /// v1.0 gap Track 3b: `CamelBodyRotationControl` and `MAX_HEAD_Y_ROT`.
+    #[test]
+    fn a_camel_turns_its_body_after_its_head_within_30_degrees() {
+        let deg = |d: f32| d.to_radians();
+        let mut m = Mob::new(MobKind::Camel, DVec3::new(0.5, 64.0, 0.5), 0.0);
+        m.head_yaw = deg(60.0);
+        m.head_target.0 = m.head_yaw;
+        // Standing still, a head turned more than 15 degrees pulls the body
+        // round to within 30 degrees of it.
+        m.camel_turn(m.yaw, DVec3::ZERO);
+        assert!((m.yaw - deg(30.0)).abs() < 1e-5 && (m.head_yaw - deg(30.0)).abs() < 1e-5, "{}", m.yaw);
+        // Ten ticks later the body turns to face it over ten more.
+        for _ in 0..10 {
+            m.camel_turn(m.yaw, DVec3::ZERO);
+        }
+        assert!((m.yaw - deg(30.0)).abs() < 1e-5, "{}", m.yaw.to_degrees());
+        for _ in 0..10 {
+            m.camel_turn(m.yaw, DVec3::ZERO);
+        }
+        assert!((m.yaw - deg(60.0)).abs() < 1e-4 && m.head_yaw.abs() < 1e-4, "{}", m.yaw.to_degrees());
+        // Walking, the head stays within 30 degrees of the body.
+        m.head_yaw = deg(50.0);
+        m.camel_turn(m.yaw, DVec3::X * 0.1);
+        assert!((m.head_yaw - deg(30.0)).abs() < 1e-5 && (m.yaw - deg(60.0)).abs() < 1e-4);
+        // Sitting (`refuseToMove`) the body holds still.
+        m.mount.as_mut().unwrap().sit_down();
+        let body = m.yaw;
+        m.yaw += 1.0;
+        m.head_yaw = 1.2;
+        m.camel_turn(body, DVec3::ZERO);
+        assert_eq!(m.yaw, body);
+        assert!(m.head_yaw <= deg(30.0) + 1e-6, "{}", m.head_yaw.to_degrees());
+    }
+
+    /// v1.0 gap Track 3b: `SetEntityLookTargetSometimes(PLAYER, 6, 30..=60)`
+    /// and `LookAtTargetSink(45, 90)`.
+    #[test]
+    fn camels_look_at_a_player_within_six_blocks_for_45_to_90_ticks() {
+        let w = Grid::flat(64);
+        let ctx = |x: f64| Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::DAY,
+            players: vec![crate::entity::Target::new(PlayerId(4), DVec3::new(x, 64.0, 0.5), false)],
+            daylight: 1.0,
+            spawning: false,
+            raining: false,
+            dimension: crate::world::terrain::Dimension::Overworld,
+        };
+        for seed in 0..20 {
+            let mut rng = Rng::new(seed);
+            let mut m = Mob::new(MobKind::Camel, DVec3::new(0.5, 64.0, 0.5), 0.0);
+            // Seven blocks away: never.
+            for _ in 0..200 {
+                m.camel_look(&w, &ctx(7.5), &mut rng);
+            }
+            assert!(m.mount.as_ref().unwrap().look_target.is_none());
+            let near = ctx(4.5);
+            let mut ticks = 0;
+            while m.mount.as_ref().unwrap().look_target.is_none() {
+                m.camel_look(&w, &near, &mut rng);
+                ticks += 1;
+                assert!(ticks <= 60, "seed {seed}");
+            }
+            assert!(ticks >= 30, "seed {seed}: {ticks}");
+            // The head turns toward it (straight ahead, along +x).
+            assert!(m.head_target.0.abs() < 1e-3);
+            let mut held = 0;
+            while m.mount.as_ref().unwrap().look_target.is_some() {
+                m.camel_look(&w, &near, &mut rng);
+                held += 1;
+            }
+            assert!((45..=90).contains(&held), "seed {seed}: {held}");
+        }
+    }
+
+    /// v1.0 gap Track 3b: flowing lava pushes a ridden mount (0.0023 a
+    /// tick, the Nether's 0.007).
+    #[test]
+    fn lava_currents_carry_a_ridden_horse() {
+        let mut w = Grid::flat(64);
+        for (x, b) in [(-4, Block::LAVA), (-3, Block(38)), (-2, Block(39)), (-1, Block(40))] {
+            for z in -3..=3 {
+                w.set(glam::IVec3::new(x, 64, z), b);
+            }
+        }
+        let drift = |fast: bool| {
+            let mut m = ridden(0.7, 0.3);
+            m.pos = DVec3::new(-2.5, 64.0, 0.5);
+            m.fast_lava = fast;
+            for _ in 0..3 {
+                m.equine_ridden_tick(&w);
+            }
+            m.pos.x + 2.5
+        };
+        let (slow, fast) = (drift(false), drift(true));
+        // A nearly still mount's push is at least 0.0045 a tick
+        // (`CurrentAccumulator.applyTo`), so the Nether's 0.007 shows less
+        // than its threefold.
+        assert!(slow > 0.0 && fast > slow * 1.5, "{slow} {fast}");
+    }
 }

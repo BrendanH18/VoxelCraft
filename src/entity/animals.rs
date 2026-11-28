@@ -230,7 +230,7 @@ impl Mob {
             self.grow -= ticks as f32;
             for _ in 0..ticks {
                 if self.forced_age_timer > 0 {
-                    if self.forced_age_timer % 4 == 0 {
+                    if self.forced_age_timer.is_multiple_of(4) {
                         self.forced_sparkles = self.forced_sparkles.saturating_add(1);
                     }
                     self.forced_age_timer -= 1;
@@ -1686,5 +1686,35 @@ mod tests {
                 assert_eq!((i64::from(ours.1), i64::from(ours.2)), count, "{kind:?} {id}");
             }
         }
+    }
+
+    /// v1.0 gap Track 3b: `AgeableMob.ageUp(seconds, forced)` and
+    /// `forcedAge`: a fed calf keeps the time it was forced through (and
+    /// saves it); coming of age through `ageUp` makes that its age; 40
+    /// ticks of particles, one every fourth.
+    #[test]
+    fn forced_growth_is_kept_saved_and_given_back_on_coming_of_age() {
+        let mut m = Mob::new(MobKind::Dolphin, DVec3::ZERO, 0.0);
+        m.baby = true;
+        m.age = -24000;
+        m.age_up(speed_up_seconds(24000), true);
+        assert_eq!((m.age, m.forced_age, m.forced_age_timer), (-21600, 2400, 40));
+        // A feeding is a tenth of the time left, so it never reaches 0
+        // itself; a bigger, unforced `ageUp` does, and gives the forced age.
+        let saved = super::super::nether::save_mob(&m);
+        assert_eq!(saved["forced_age"], 2400);
+        let loaded = super::super::nether::load_mob(&saved).unwrap();
+        assert_eq!((loaded.forced_age, loaded.age), (2400, -21600));
+        m.age_up(1200, false);
+        assert_eq!(m.age, 2400);
+        assert!(!m.baby);
+        for _ in 0..40 {
+            m.advance_animal_age(0.05);
+        }
+        assert_eq!(m.forced_sparkles, 10);
+        assert_eq!(m.age, 2360, "an adult's positive age counts down");
+        // Unforced, untouched mobs still save as before.
+        let plain = Mob::new(MobKind::Dolphin, DVec3::ZERO, 0.0);
+        assert!(super::super::nether::save_mob(&plain).get("forced_age").is_none());
     }
 }
