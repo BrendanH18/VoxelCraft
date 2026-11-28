@@ -175,6 +175,10 @@ pub enum MobSound {
     /// A thrown eye of ender dropping or shattering.
     EyeDeath,
     DragonFlap,
+    /// The dragon's growl as Java's client plays it (`playLocalSound` at
+    /// the dragon, volume 2.5, pitch 0.8 to 1.1): now and then in flight,
+    /// and every tick of the sitting roar.
+    DragonRoar,
     DragonGrowl,
     /// The dragon spitting a fireball or breathing fire.
     DragonShoot,

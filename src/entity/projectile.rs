@@ -333,7 +333,9 @@ impl Arrow {
                         if boss.strike(hit, damage, by, self.from_player) {
                             return false;
                         }
-                        // Bounced off a perched dragon's scales.
+                        // Refused (a perched dragon's scales, or a dying
+                        // dragon, which nothing hurts): `deflect(REVERSE,
+                        // .., 0.2)` sends it back at a tenth of its speed.
                         self.vel = -self.vel * 0.1;
                         return true;
                     }

@@ -103,13 +103,16 @@ pub(super) enum Arrival {
     /// Through an End gateway at `from` to the one at `exit`, which is
     /// built (after the `EndIslandFeature` island at `island`, if any) and
     /// linked back if it's new. The traveller keeps `vel` (Java's
-    /// `Relative.DELTA`).
+    /// `Relative.DELTA`). An `exact` exit (a generation 7 return gateway's,
+    /// `end_gateway_return`) is a spot, not a gateway: the traveller
+    /// arrives at its bottom centre and nothing is built.
     Gateway {
         exit: IVec3,
         from: IVec3,
         island: Option<IVec3>,
         link: bool,
         vel: DVec3,
+        exact: bool,
     },
 }
 
@@ -587,17 +590,29 @@ impl Game {
                 }
             }
             Arrival::EndSpawn => {
+                // `EndPortalBlock.getPortalDestination`:
+                // `EndPlatformFeature.createEndPlatform(.., true)` replaces
+                // every block of the platform that isn't obsidian (its
+                // floor) or air (the three layers above) with
+                // `destroyBlock(pos, true)`, dropping what was there. The
+                // player faces west (`Direction.WEST.toYRot()`) and keeps
+                // their pitch (`Relative.X_ROT`).
                 let spawn = crate::world::end::SPAWN;
                 for z in -2..=2 {
                     for x in -2..=2 {
-                        self.world.set_block(spawn + IVec3::new(x, -1, z), Block::OBSIDIAN);
-                        for y in 0..3 {
-                            self.world.set_block(spawn + IVec3::new(x, y, z), Block::AIR);
+                        for y in -1..3 {
+                            let cell = spawn + IVec3::new(x, y, z);
+                            let want = if y == -1 { Block::OBSIDIAN } else { Block::AIR };
+                            let Some(was) = self.world.get_block(cell).filter(|&b| b != want) else { continue };
+                            if was != Block::AIR {
+                                self.world.spill_block(cell, was);
+                                self.world.particles.push(crate::particles::Request::Break { cell, block: was });
+                            }
+                            self.world.set_block(cell, want);
                         }
                     }
                 }
                 self.session.player.yaw = std::f32::consts::PI;
-                self.session.player.pitch = 0.0;
                 spawn.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)
             }
             Arrival::Respawn => {
@@ -625,6 +640,11 @@ impl Game {
                     return false;
                 }
             },
+            Arrival::Gateway { exit, exact: true, .. } => {
+                self.audio.play_in(SoundSource::Ambient, Sound::Teleport, None, 0.8, (0.9, 1.0));
+                self.portal_cooldown = PORTAL_COOLDOWN;
+                exit.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)
+            }
             Arrival::Gateway { exit, from, island, link, .. } => {
                 if let Some(origin) = island {
                     self.world.build_end_island(origin);
@@ -673,11 +693,14 @@ impl Game {
         // `EndGatewayBlock.getPortalDestination`: players keep their motion
         // and facing (`Relative.DELTA`, `ROTATION`).
         let vel = self.session.player.vel;
-        let arrival = match fight.gateway_exit(cell) {
-            Some(exit) => Arrival::Gateway { exit, from: cell, island: None, link: false, vel },
-            None => {
+        let arrival = match (fight.gateway_exit(cell), self.world.return_gateway_exit(cell)) {
+            (Some(exit), _) => Arrival::Gateway { exit, from: cell, island: None, link: false, vel, exact: false },
+            // A return gateway's exact exit (`getPortalPosition` with
+            // `exactTeleport`).
+            (None, Some(exit)) => Arrival::Gateway { exit, from: cell, island: None, link: false, vel, exact: true },
+            (None, None) => {
                 let Some(found) = self.world.find_gateway_exit(cell) else { return };
-                Arrival::Gateway { exit: found.exit, from: cell, island: found.island, link: true, vel }
+                Arrival::Gateway { exit: found.exit, from: cell, island: found.island, link: true, vel, exact: false }
             }
         };
         self.audio.play_in(SoundSource::Ambient, Sound::Teleport, None, 0.8, (0.7, 0.8));

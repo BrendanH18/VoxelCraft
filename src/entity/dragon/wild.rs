@@ -111,7 +111,6 @@ impl Wild {
                 podium: IVec3::ZERO,
                 fireballs,
                 clouds,
-                ceiling: top as f64 + 16.0,
                 top,
                 floor,
             };
@@ -121,11 +120,12 @@ impl Wild {
         self.clouds.retain_mut(|c| c.tick(ctx, events));
     }
 
-    /// The dragon part a ray hits within `max_dist`.
+    /// The dragon part a ray hits within `max_dist`. A dying dragon's
+    /// parts are still there to hit (they can't be hurt; see
+    /// [`super::Fight::raycast`]).
     pub fn raycast(&self, origin: DVec3, dir: DVec3, max_dist: f64) -> Option<(Hit, f64)> {
         self.dragons
             .iter()
-            .filter(|w| w.dragon.phase != Phase::Dying)
             .flat_map(|w| {
                 w.dragon.parts.iter().filter_map(move |&(part, min, max)| {
                     physics::ray_aabb(origin, dir, min, max).map(|t| (Hit::Wild(w.id, part), t))

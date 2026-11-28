@@ -4,7 +4,7 @@ use glam::{IVec2, IVec3};
 
 /// 26.3 uses an explicit block tag, not collision or light opacity. Resolve
 /// the reference names once and use bounded state lookups on sampled columns.
-fn motion_blocking(b: Block) -> bool {
+pub(crate) fn motion_blocking(b: Block) -> bool {
     static STATES: std::sync::OnceLock<[bool; super::block::STATE_CAPACITY]> = std::sync::OnceLock::new();
     let states = STATES.get_or_init(|| {
         let data: serde_json::Value =
