@@ -56,7 +56,7 @@ pub struct Arrow {
     /// v1.0 gap Track 8: ticks of fire besides Flame's (`remainingFireTicks`),
     /// from a perched dragon's scales (`AbstractDragonSittingPhase.onHurt`)
     /// and (Track 8b) fire and lava it passes; water and rain put it out.
-    /// Not saved, like the arrow's flight.
+    /// Saved with the arrow (v1.0 gap Track 8e), as Java's `Fire`.
     fire: u16,
     /// v1.0 gap Track 8b: water or rain put out its fire, Flame's too
     /// (Java's Flame is `igniteForSeconds(100)` at the shot, which
@@ -143,6 +143,81 @@ impl Arrow {
             pierced_other: Vec::new(),
             java_base: None,
         }
+    }
+
+    /// v1.0 gap Track 8e: the level file's copy (`AbstractArrow`'s save:
+    /// `inGround`, `pickup`, `crit`, the potion contents and enchantments,
+    /// with `Fire`). The pierced list and a breeze's deflection aren't
+    /// saved, as in Java.
+    pub(super) fn save(&self) -> serde_json::Value {
+        use super::saved_projectiles::v3;
+        serde_json::json!({
+            "pos": v3(self.pos),
+            "motion": v3(self.vel),
+            "dir": [self.dir.x, self.dir.y, self.dir.z],
+            "rot": self.rot.map(|(y, x)| [y, x]),
+            "age": self.age,
+            "stuck": self.stuck,
+            "tipped": self.tipped,
+            "potion": self.potion.map(|p| p.info().id),
+            "effect": self.custom_effect.map(|(e, amp, ticks)| serde_json::json!([e.id(), amp, ticks])),
+            "spectral": self.spectral,
+            "from_player": self.from_player,
+            "owner": self.owner.map(|p| p.0),
+            "shooter": self.shooter,
+            "pvp": self.pvp,
+            "cause": self.cause.text,
+            "pickup": self.pickup,
+            "critical": self.critical,
+            "enchants": self.enchants.0.to_string(),
+            "fire": self.fire,
+            "doused": self.doused,
+            "java_base": self.java_base,
+        })
+    }
+
+    pub(super) fn load(v: &serde_json::Value) -> Option<Self> {
+        use super::saved_projectiles as s;
+        use crate::simulation::damage::Cause;
+        let pos = s::read_v3(&v["pos"])?;
+        let vel = s::read_v3(&v["motion"]).unwrap_or(DVec3::ZERO);
+        let dir = s::read_v3(&v["dir"]).map_or(vel.normalize_or(DVec3::X), |d| d.normalize_or(DVec3::X));
+        let num = |key: &str| v[key].as_u64().and_then(|n| u32::try_from(n).ok());
+        let custom_effect = v["effect"].as_array().and_then(|e| {
+            let effect = crate::simulation::effects::Effect::from_id(e.first()?.as_str()?)?;
+            Some((effect, u8::try_from(e.get(1)?.as_u64()?).ok()?, u32::try_from(e.get(2)?.as_u64()?).ok()?))
+        });
+        let rot = v["rot"].as_array().and_then(|r| {
+            let (y, x) = (r.first()?.as_f64()? as f32, r.get(1)?.as_f64()? as f32);
+            (y.is_finite() && x.is_finite()).then_some((y, x))
+        });
+        Some(Self {
+            tipped: v["tipped"].as_bool().unwrap_or(false),
+            potion: v["potion"].as_str().and_then(crate::potion::Potion::from_id),
+            custom_effect,
+            spectral: v["spectral"].as_bool().unwrap_or(false),
+            pos,
+            previous_pos: pos,
+            vel,
+            dir: dir.as_vec3(),
+            age: s::read_f32(v, "age", 0.0).max(0.0),
+            stuck: v["stuck"].as_bool().unwrap_or(false),
+            from_player: v["from_player"].as_bool().unwrap_or(false),
+            owner: num("owner").map(PlayerId),
+            shooter: num("shooter"),
+            deflector: None,
+            pvp: v["pvp"].as_bool().unwrap_or(false),
+            cause: v["cause"].as_str().and_then(Cause::saved).unwrap_or(Cause::ARROW),
+            pickup: v["pickup"].as_bool().unwrap_or(false),
+            critical: v["critical"].as_bool().unwrap_or(false),
+            enchants: crate::enchant::Enchants(v["enchants"].as_str().and_then(|e| e.parse().ok()).unwrap_or(0)),
+            fire: s::read_fire(v),
+            doused: v["doused"].as_bool().unwrap_or(false),
+            rot,
+            pierced: Vec::new(),
+            pierced_other: Vec::new(),
+            java_base: v["java_base"].as_f64().filter(|b| b.is_finite()),
+        })
     }
 
     /// An arrow loosed by the player from `eye` along `dir` with bow

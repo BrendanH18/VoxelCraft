@@ -1615,6 +1615,12 @@ mod tests {
         assert!(restored.is_dead());
         let restored = Vitals::restore(7.5, 99.0, None);
         assert_eq!((restored.health, restored.air), (7.5, MAX_AIR));
+        // v1.0 gap Track 8e: an old save's TNT death comes back in Java's
+        // words; a mob's stays as it was.
+        let restored = Vitals::restore(0.0, 3.0, Some("was blown up by TNT".into()));
+        assert_eq!(restored.death.as_deref(), Some("blew up"));
+        let restored = Vitals::restore(0.0, 3.0, Some("was slain by a zombie".into()));
+        assert_eq!(restored.death.as_deref(), Some("was slain by a zombie"));
     }
 }
 

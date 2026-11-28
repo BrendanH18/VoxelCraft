@@ -85,6 +85,7 @@ pub mod potion;
 mod projectile;
 pub mod raid;
 mod replica;
+mod saved_projectiles;
 pub mod sculk_events;
 pub mod shadow;
 pub mod shulker;
@@ -2277,6 +2278,8 @@ impl Entities {
         if !self.wild_dragons.dragons.is_empty() {
             props.insert("ender_dragons".to_string(), self.wild_dragons.serialize());
         }
+        // v1.0 gap Track 8e: projectiles with their fire, and primed TNT.
+        self.save_projectiles(props);
     }
 
     /// Restores [`Entities::save_props`]. Every entity starts in the level;
@@ -2320,6 +2323,7 @@ impl Entities {
             self.crystals.load(c);
         }
         self.wild_dragons = props.get("ender_dragons").map(|d| dragon::Wild::load(d)).unwrap_or_default();
+        self.load_projectiles(props);
     }
 
     pub fn load_items(&mut self, text: &str) {

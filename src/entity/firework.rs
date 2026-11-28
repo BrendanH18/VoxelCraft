@@ -81,11 +81,52 @@ pub struct Rocket {
     /// which it never hits (`Projectile.canHitEntity` skips the owner).
     pub shooter: Option<u32>,
     /// v1.0 gap Track 8d: `remainingFireTicks` (it applies block effects,
-    /// `FireworkRocketEntity.tick`). Not saved.
+    /// `FireworkRocketEntity.tick`). Saved (v1.0 gap Track 8e), as Java's `Fire`.
     pub(crate) fire: u16,
 }
 
 impl Rocket {
+    /// v1.0 gap Track 8e: the level file's copy (`FireworkRocketEntity`'s
+    /// `Life`, `LifeTime`, `FireworksItem` and `ShotAtAngle`, with `Fire`).
+    /// A rocket a glider holds is saved loose: Java doesn't save
+    /// `attachedToEntity` either.
+    pub(super) fn save(&self) -> Option<serde_json::Value> {
+        use super::saved_projectiles::{owner_json, v3};
+        let stack = Stack { payload: self.fireworks, ..Stack::new(fw::FIREWORK_ROCKET, 1) };
+        Some(serde_json::json!({
+            "item": crate::inventory::stack_to_string(Some(stack)),
+            "pos": v3(self.pos),
+            "motion": v3(self.vel),
+            "life": self.life,
+            "lifetime": self.lifetime,
+            "owner": owner_json(super::projectile::owner_of(self.owner, self.shooter)),
+            "shot_at_angle": self.shot_at_angle,
+            "fire": self.fire,
+        }))
+    }
+
+    pub(super) fn load(v: &serde_json::Value) -> Option<Self> {
+        use super::saved_projectiles as s;
+        let stack = crate::inventory::stack_from_str(v["item"].as_str()?).flatten()?;
+        let pos = s::read_v3(&v["pos"])?;
+        let owner = s::read_owner(&v["owner"]);
+        let small = |key: &str| v[key].as_u64().and_then(|n| u32::try_from(n).ok());
+        Some(Self {
+            pos,
+            previous_pos: pos,
+            vel: s::read_v3(&v["motion"]).unwrap_or(DVec3::ZERO),
+            life: small("life").unwrap_or(0),
+            lifetime: small("lifetime").unwrap_or(0),
+            fireworks: stack.payload.filter(|p| matches!(p.get(), Payload::Fireworks(_))),
+            owner: s::player_of(owner),
+            attached: None,
+            shot_at_angle: v["shot_at_angle"].as_bool().unwrap_or(false),
+            horizontal_collision: false,
+            shooter: s::mob_of(owner),
+            fire: s::read_fire(v),
+        })
+    }
+
     /// v1.0 gap Track 8d: on fire (`isOnFire`).
     pub fn burning(&self) -> bool {
         self.fire > 0

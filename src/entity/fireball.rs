@@ -42,6 +42,36 @@ pub struct Fireball {
 }
 
 impl Fireball {
+    /// v1.0 gap Track 8e: the level file's copy. A fireball is always on
+    /// fire (`shouldBurn`), so its `Fire` is not kept.
+    pub(super) fn save(&self) -> serde_json::Value {
+        use super::saved_projectiles::{owner_json, v3};
+        serde_json::json!({
+            "pos": v3(self.pos),
+            "motion": v3(self.vel),
+            "dir": v3(self.dir),
+            "age": self.age,
+            "large": self.large,
+            "deflected": self.deflected,
+            "owner": owner_json(self.owner),
+        })
+    }
+
+    pub(super) fn load(v: &serde_json::Value) -> Option<Self> {
+        use super::saved_projectiles as s;
+        let pos = s::read_v3(&v["pos"])?;
+        Some(Self {
+            pos,
+            previous_pos: pos,
+            vel: s::read_v3(&v["motion"]).unwrap_or(DVec3::ZERO),
+            dir: s::read_v3(&v["dir"]).unwrap_or(DVec3::X).normalize_or(DVec3::X),
+            age: s::read_f32(v, "age", 0.0).clamp(0.0, LIFETIME),
+            large: v["large"].as_bool().unwrap_or(false),
+            deflected: v["deflected"].as_bool().unwrap_or(false),
+            owner: s::read_owner(&v["owner"]),
+        })
+    }
+
     /// A LAN client's copy: drawn only, never simulated.
     pub(super) fn replica(pos: DVec3, previous_pos: DVec3, large: bool) -> Self {
         Self { previous_pos, large, ..Self::new(pos, DVec3::X) }

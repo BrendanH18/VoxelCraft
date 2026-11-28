@@ -42,6 +42,33 @@ impl PrimedTnt {
         Self { pos, previous_pos: pos, vel, fuse, power: POWER, owner: None }
     }
 
+    /// v1.0 gap Track 8e: the level file's copy (`PrimedTnt`'s `fuse`,
+    /// `explosion_power` and `owner`).
+    pub(super) fn save(&self) -> serde_json::Value {
+        use super::saved_projectiles::{owner_json, v3};
+        serde_json::json!({
+            "pos": v3(self.pos),
+            "motion": v3(self.vel),
+            "fuse": self.fuse,
+            "power": self.power,
+            "owner": owner_json(self.owner),
+        })
+    }
+
+    pub(super) fn load(v: &serde_json::Value) -> Option<Self> {
+        use super::saved_projectiles as s;
+        let pos = s::read_v3(&v["pos"])?;
+        Some(Self {
+            pos,
+            previous_pos: pos,
+            vel: s::read_v3(&v["motion"]).unwrap_or(DVec3::ZERO),
+            fuse: s::read_f32(v, "fuse", FUSE).clamp(0.0, 3276.7),
+            // `Mth.clamp(explosion_power, 0, 128)`.
+            power: s::read_f32(v, "power", POWER).clamp(0.0, 128.0),
+            owner: s::read_owner(&v["owner"]),
+        })
+    }
+
     /// Already detonating TNT cart; reuse the normal explosion event path.
     pub fn with_power(pos: DVec3, power: f32) -> Self {
         Self { power, ..Self::new(pos, DVec3::ZERO, 0.0) }
