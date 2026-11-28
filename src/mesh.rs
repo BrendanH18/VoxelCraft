@@ -533,6 +533,10 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE], origin: glam
     // their boxes, collected during the +X sweep.
     let mut cross_cells = Vec::new();
     let mut shaped_cells: Vec<(usize, Boxes)> = Vec::new();
+    // v1.0 gap track 6f: each shaped cell's Java model faces, if the game
+    // draws its whole model from the jar, found once (on the +X pass, when
+    // the cells are all collected) for the six passes.
+    let mut model_cells: Vec<Option<&'static [java_uv::ModelFace]>> = Vec::new();
 
     for face in 0..6 {
         for (starts, quads) in face_start.iter_mut().zip(&out) {
@@ -715,7 +719,22 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE], origin: glam
 
         // Shaped blocks: each box face pointing this way, unless it's hidden
         // by another box or lies against an opaque neighbour.
-        for (i, boxes) in &shaped_cells {
+        if face == 0 {
+            model_cells = shaped_cells
+                .iter()
+                .map(|&(i, _)| {
+                    let joined = |f: Facing| {
+                        let o = f.offset();
+                        let n =
+                            (i as isize + o.x as isize + o.y as isize * (D * D) as isize + o.z as isize * D as isize)
+                                as usize;
+                        shape::pane_connects_on(blocks[n].canonical(), f)
+                    };
+                    java_uv::model_faces(blocks[i].canonical(), joined)
+                })
+                .collect();
+        }
+        for (k, (i, boxes)) in shaped_cells.iter().enumerate() {
             // A waterlogged block draws as its dry original.
             let (i, b) = (*i, blocks[*i].canonical());
             // See-through textures need the alpha test.
@@ -825,13 +844,7 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE], origin: glam
             // end rods): each face as the jar's model has it, lit flat (Java
             // draws them without ambient occlusion: the cell's own light, or
             // the neighbour's for a face on the cell's edge), in plane code 29.
-            let joined = |f: Facing| {
-                let o = f.offset();
-                let n =
-                    (i as isize + o.x as isize + o.y as isize * (D * D) as isize + o.z as isize * D as isize) as usize;
-                shape::pane_connects_on(blocks[n].canonical(), f)
-            };
-            if let Some(faces) = java_uv::model_faces(b, joined) {
+            if let Some(faces) = model_cells[k] {
                 for mf in faces.iter().filter(|m| usize::from(m.face) == face) {
                     let depth = if positive { mf.hi[d] } else { mf.lo[d] };
                     let r = [mf.lo[u], mf.hi[u], mf.lo[v], mf.hi[v]].map(u32::from);
