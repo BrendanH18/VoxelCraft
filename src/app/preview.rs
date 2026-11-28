@@ -134,6 +134,56 @@ pub(super) fn player(ui: &mut Ui, bounds: (f32, f32, f32, f32), size: f32, offse
     }
 }
 
+/// v1.0 gap Track 3b: `extractEntityInInventoryFollowsMouse` for a mob
+/// (the mount screens' `size` 17 and `offsetY` 0.25): the mob's model as
+/// the world draws it (`entity::model::build`, its boxes and equipment),
+/// turned to face the viewer, then by the pointer as the player is,
+/// flat-shaded by face. Textures, lighting and the face noise aren't drawn.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn mob(
+    ui: &mut Ui,
+    m: &crate::entity::Mob,
+    bounds: (f32, f32, f32, f32),
+    size: f32,
+    offset_y: f32,
+    mouse: (f32, f32),
+    time: f32,
+) {
+    use crate::entity::model::{EntityMesh, build};
+    let (yaw, _, _, tilt) = angles(bounds, mouse);
+    let (x0, y0, x1, y1) = bounds;
+    let height = m.shape().height as f32;
+    let centre_x = (x0 + x1) / 2.0;
+    let feet_y = (y0 + y1) / 2.0 + (height / 2.0 + offset_y) * size;
+    // Vertices come relative to the mob's feet, in blocks.
+    let mut mesh = EntityMesh::flat();
+    let forward = glam::Vec3::new(m.yaw.cos(), 0.0, m.yaw.sin());
+    build(std::slice::from_ref(m), m.pos, forward, 64.0, time, 1.0, &mut mesh);
+    // Its front toward the viewer (+z), then the pointer's turn and tilt
+    // about its middle.
+    let face = glam::Quat::from_rotation_arc(forward, Vec3::Z);
+    let middle = Vec3::Y * (height / 2.0);
+    let turn_y = |p: Vec3, a: f32| Vec3::new(p.x * a.cos() - p.z * a.sin(), p.y, p.x * a.sin() + p.z * a.cos());
+    let turn_x = |p: Vec3, a: f32| Vec3::new(p.x, p.y * a.cos() + p.z * a.sin(), -p.y * a.sin() + p.z * a.cos());
+    let place = |p: [f32; 3]| turn_x(turn_y(face * Vec3::from(p), yaw) - middle, tilt) + middle;
+    let mut tris: Vec<(f32, [Vec3; 3], [f32; 4])> = Vec::with_capacity(mesh.len() / 3);
+    for t in mesh.chunks_exact(3) {
+        // Every triangle, far to near: the boxes are convex, so the nearer
+        // faces cover the far ones.
+        let c = [place(t[0].pos), place(t[1].pos), place(t[2].pos)];
+        let shade = f32::from(t[0].light[1]) / 255.0;
+        let [r, g, b, _] = t[0].color;
+        let colour = [f32::from(r) / 255.0 * shade, f32::from(g) / 255.0 * shade, f32::from(b) / 255.0 * shade, 1.0];
+        tris.push(((c[0].z + c[1].z + c[2].z) / 3.0, c, colour));
+    }
+    tris.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let screen = |p: Vec3| [centre_x + p.x * size, feet_y - p.y * size];
+    for (_, c, colour) in tris {
+        let [a, b, c] = c.map(screen);
+        ui.quad([a, b, c, c], [[0.0; 2]; 4], SOLID, colour);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

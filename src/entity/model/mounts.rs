@@ -1,6 +1,6 @@
 //! Procedural Java-like equine proportions, coats, markings and equipment.
 use super::{Cuboid, Mob, MobKind, Parts, cube, motion, part, walk_cos};
-use glam::Quat;
+use glam::{Quat, Vec3};
 use std::f32::consts::PI;
 const COLORS: [[u8; 3]; 9] = [
     [236, 232, 218],
@@ -220,14 +220,22 @@ pub(super) fn llama(m: &Mob) -> Parts {
 }
 
 const SAND: [u8; 3] = [219, 169, 95];
-const CAMEL_BODY: &[Cuboid] = &[
-    cube([-7.5, 20., -13.], [7.5, 30., 13.], SAND, 18),
-    cube([-4.5, 30., -6.], [4.5, 35., 4.], [205, 152, 80], 18),
-    cube([-1., 22., -14.], [1., 28., -13.], [160, 115, 60], 10),
-];
+/// v1.0 gap Track 3b: the camel's parts follow Java's `AdultCamelModel`
+/// hierarchy so its keyframes can move them: the body pivots where Java's
+/// does (20 pixels up, 9.5 back) and carries the head, the tail and the
+/// saddle; the legs pivot 23 pixels up, as Java's. The boxes are where they
+/// were (the look Track 7 approved), given from those pivots.
+const CAMEL_BODY_PIVOT: Vec3 = Vec3::new(0.0, 20.0, -9.5);
+const CAMEL_BODY: &[Cuboid] =
+    &[cube([-7.5, 0., -3.5], [7.5, 10., 22.5], SAND, 18), cube([-4.5, 10., 3.5], [4.5, 15., 13.5], [205, 152, 80], 18)];
+/// The tail, from its root on the body's back.
+const CAMEL_TAIL: &[Cuboid] = &[cube([-1., -6., -0.5], [1., 0., 0.5], [160, 115, 60], 10)];
+const CAMEL_TAIL_ROOT: Vec3 = Vec3::new(0.0, 8.0, -4.0);
+/// The head's pivot on the body (23 pixels up, 12 forward, at rest).
+const CAMEL_HEAD_ROOT: Vec3 = Vec3::new(0.0, 3.0, 21.5);
 const CAMEL_LEG: &[Cuboid] = &[
-    cube([-1.5, -20., -1.5], [1.5, 0., 1.5], SAND, 16),
-    cube([-1.8, -21., -1.8], [1.8, -18., 1.8], [130, 95, 55], 10),
+    cube([-1.5, -22., -1.5], [1.5, -2., 1.5], SAND, 16),
+    cube([-1.8, -23., -1.8], [1.8, -20., 1.8], [130, 95, 55], 10),
 ];
 const CAMEL_HEAD: &[Cuboid] = &[
     cube([-3., -2., -2.], [3., 13., 4.], SAND, 16),
@@ -242,36 +250,87 @@ const CAMEL_HEAD: &[Cuboid] = &[
     cube([-3.55, 13.2, 5.5], [3.55, 13.8, 7.6], [176, 126, 66], 0),
 ];
 const CAMEL_SADDLE: &[Cuboid] = &[
-    cube([-5., 35., -7.], [5., 36.2, 5.], [132, 72, 36], 16),
-    cube([-7.7, 24., -2.], [-7.5, 35., 1.], [160, 146, 130], 8),
-    cube([7.5, 24., -2.], [7.7, 35., 1.], [160, 146, 130], 8),
+    cube([-5., 15., 2.5], [5., 16.2, 14.5], [132, 72, 36], 16),
+    cube([-7.7, 4., 7.5], [-7.5, 15., 10.5], [160, 146, 130], 8),
+    cube([7.5, 4., 7.5], [7.7, 15., 10.5], [160, 146, 130], 8),
 ];
+
+/// A Java part rotation in degrees (`xRot`, `yRot`, `zRot`, applied
+/// `rotationZYX`) in the model's axes (+Y up, +Z forward): x keeps its
+/// sense, y and z turn the other way.
+fn java_rot([x, y, z]: [f32; 3]) -> Quat {
+    Quat::from_rotation_z(-z.to_radians())
+        * Quat::from_rotation_y(-y.to_radians())
+        * Quat::from_rotation_x(x.to_radians())
+}
+
+/// A keyframe position (`posVec`, pixels, y up) in the model's axes.
+fn java_pos([x, y, z]: [f32; 3]) -> Vec3 {
+    Vec3::new(x, y, -z)
+}
+
 pub(super) fn camel(m: &Mob) -> Parts {
+    use super::camel_anim::{self as anim, Bone};
     let s = m.mount.as_ref();
-    // v1.0 gap Track 3: the body sinks and rises with Java's seat anchor
-    // through the 40-tick sit and the 52-tick stand.
-    let sink = s.map_or(0.0, |s| crate::entity::mounts::camel::sit_fraction(s, m.baby));
-    let sitting = sink > 0.5;
+    // v1.0 gap Track 3b: `Camel.setupAnimationStates` and `CamelModel`:
+    // sitting down plays `CAMEL_SIT` for its 40 ticks, then holds
+    // `CAMEL_SIT_POSE`; standing up plays `CAMEL_STANDUP` for its 52; a
+    // dash loops `CAMEL_DASH` while `DASH` is on.
+    let mut off = anim::Offsets::default();
+    let mut walking = true;
+    if let Some(s) = s {
+        let t = s.pose_time as f32;
+        if s.camel_sitting {
+            walking = false;
+            if s.pose_time < crate::entity::mounts::camel::SITDOWN_TICKS {
+                anim::SIT.apply(t, &mut off);
+            } else {
+                anim::SIT_POSE.apply(t, &mut off);
+            }
+        } else {
+            if s.dashing {
+                // `updateWalkAnimation`: no walk while the dash plays.
+                walking = false;
+                anim::DASH.apply(f32::from(s.dash_ticks), &mut off);
+            }
+            if s.in_pose_transition() {
+                anim::STAND_UP.apply(t, &mut off);
+            }
+        }
+    }
     // `CamelModel` plays a keyframe walk; these legs keep its loop and
     // strength (v1.0 gap Track 7).
     let (phase, scale) = motion::keyframe_phase(m.limb_phase, m.limb_amp, motion::CAMEL_WALK);
-    let swing = phase.sin() * 0.7 * scale;
-    let rx = Quat::from_rotation_x;
-    let head = Quat::from_rotation_y(-m.head_yaw) * rx(-m.head_pitch);
-    // Sitting: the body rests on folded legs.
-    let drop = -15. * sink;
+    let swing = if walking { phase.sin() * 0.7 * scale } else { 0.0 };
+    // `applyHeadRotation`: yaw within 30 degrees, pitch -25 to 45 (Java's
+    // down is positive), tipped down after a dash by 45 × cooldown / 55.
+    let mut pitch = (-m.head_pitch.to_degrees()).clamp(-25.0, 45.0);
+    if let Some(cooldown) = s.map(|s| s.dash_cooldown).filter(|&c| c > 0) {
+        pitch = (pitch + 45.0 * f32::from(cooldown) / 55.0).clamp(-25.0, 70.0);
+    }
+    let yaw = m.head_yaw.to_degrees().clamp(-30.0, 30.0);
+    let head_anim = off.rot(Bone::Head);
+    let body_rot = java_rot(off.rot(Bone::Body));
+    let body_pivot = CAMEL_BODY_PIVOT + java_pos(off.pos(Bone::Body));
+    let on_body = |at: Vec3| (body_pivot + body_rot * at).to_array();
+    let head = body_rot * java_rot([pitch + head_anim[0], yaw + head_anim[1], head_anim[2]]);
     let mut p = Parts::new();
-    p.push(part(CAMEL_BODY, [0., drop, 0.], Quat::IDENTITY));
-    p.push(part(CAMEL_HEAD, [0., 23. + drop, 12.], head));
-    for (x, z, phase) in [(-4.5, 9., swing), (4.5, 9., -swing), (-4.5, -9., -swing), (4.5, -9., swing)] {
-        if sitting {
-            p.push(part(CAMEL_LEG, [x, 2., z + 9.], rx(std::f32::consts::FRAC_PI_2)));
-        } else {
-            p.push(part(CAMEL_LEG, [x, 21., z], rx(phase)));
-        }
+    p.push(part(CAMEL_BODY, body_pivot.to_array(), body_rot));
+    p.push(part(CAMEL_HEAD, on_body(CAMEL_HEAD_ROOT), head));
+    p.push(part(CAMEL_TAIL, on_body(CAMEL_TAIL_ROOT), body_rot * java_rot(off.rot(Bone::Tail))));
+    for (bone, x, z, phase) in [
+        (Bone::RightFrontLeg, -4.5, 9., swing),
+        (Bone::LeftFrontLeg, 4.5, 9., -swing),
+        (Bone::RightHindLeg, -4.5, -9., -swing),
+        (Bone::LeftHindLeg, 4.5, -9., swing),
+    ] {
+        let [rx, ry, rz] = off.rot(bone);
+        let pivot = Vec3::new(x, 23., z) + java_pos(off.pos(bone));
+        let rot = java_rot([rx + phase.to_degrees(), ry, rz]);
+        p.push(part(CAMEL_LEG, pivot.to_array(), rot));
     }
     if s.is_some_and(|s| s.saddled()) {
-        p.push(part(CAMEL_SADDLE, [0., drop, 0.], Quat::IDENTITY));
+        p.push(part(CAMEL_SADDLE, body_pivot.to_array(), body_rot));
     }
     p
 }

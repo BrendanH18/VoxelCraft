@@ -66,6 +66,47 @@ pub fn max_temper(kind: MobKind) -> u8 {
 pub fn is_carpet(item: Item) -> bool {
     item.block().is_some_and(|b| b.carpet_color().is_some())
 }
+/// v1.0 gap Track 3b: what Java's mount inventory screen shows
+/// (`AbstractMountInventoryScreen` with `HorseInventoryMenu` or
+/// `NautilusInventoryMenu`): the saddle slot at (8, 18), the body slot at
+/// (8, 36) with its sprite, and `columns` columns of three chest slots from
+/// (80, 18). The vehicle's slots keep their order: 0 the saddle, 1 the body,
+/// then the chest.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MountScreen {
+    pub saddle: bool,
+    pub armor: Option<MountArmor>,
+    pub columns: usize,
+}
+
+/// The body slot's empty sprite: `container/slot/horse_armor`,
+/// `llama_armor` or `nautilus_armor_inventory`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MountArmor {
+    Horse,
+    Llama,
+    Nautilus,
+}
+
+impl MountScreen {
+    /// Java's slot corners (screen pixels from the panel's top left) for
+    /// each of the vehicle's slots the screen shows, by slot index.
+    pub fn slots(&self) -> Vec<(usize, f32, f32)> {
+        let mut out = Vec::with_capacity(2 + self.columns * 3);
+        if self.saddle {
+            out.push((0, 8.0, 18.0));
+        }
+        if self.armor.is_some() {
+            out.push((1, 8.0, 36.0));
+        }
+        for i in 0..self.columns * 3 {
+            let (x, y) = (i % self.columns, i / self.columns);
+            out.push((2 + i, 80.0 + 18.0 * x as f32, 18.0 + 18.0 * y as f32));
+        }
+        out
+    }
+}
+
 /// v1.0 gap Track 3b: Java's `AbstractHorse.canPerformRearing`: every horse,
 /// donkey, mule and undead horse rears; llamas, trader llamas and camels
 /// (and camel husks) don't.
@@ -1569,6 +1610,53 @@ impl Entities {
             }
         }
         Some(stack)
+    }
+    /// v1.0 gap Track 3b: the layout of Java's mount inventory screen for
+    /// mob vehicle `id` (`HorseInventoryMenu`, `NautilusInventoryMenu`), or
+    /// `None` for carts, boats and mobs without one.
+    pub fn mount_screen(&self, id: u32) -> Option<MountScreen> {
+        let m = self.mount(id)?;
+        let s = m.mount.as_ref()?;
+        if !equine(m.kind) && !super::nautilus::is_nautilus(m.kind) {
+            return None;
+        }
+        // `inventoryColumns`: a donkey's or mule's chest is 5 wide, a
+        // llama's 3 slots a strength point.
+        let columns = match m.kind {
+            MobKind::Llama if s.chest => usize::from(s.strength),
+            _ if s.chest => 5,
+            _ => 0,
+        };
+        Some(MountScreen {
+            // `#can_equip_saddle` (not llamas) and `canUseSlot(SADDLE)`.
+            saddle: m.kind != MobKind::Llama,
+            // `#can_wear_horse_armor` or a llama, or a nautilus's body slot.
+            armor: match m.kind {
+                MobKind::Horse | MobKind::ZombieHorse => Some(MountArmor::Horse),
+                MobKind::Llama => Some(MountArmor::Llama),
+                k if super::nautilus::is_nautilus(k) => Some(MountArmor::Nautilus),
+                _ => None,
+            },
+            columns,
+        })
+    }
+    /// v1.0 gap Track 3b: the mount screen's title, Java's
+    /// `getDisplayName`: the custom name, else the kind's.
+    pub fn mount_name(&self, id: u32) -> Option<String> {
+        let m = self.mount(id)?;
+        Some(m.name.as_str().map_or_else(
+            || {
+                let name = m.kind.name();
+                let mut out = String::with_capacity(name.len());
+                let mut up = true;
+                for ch in name.chars() {
+                    out.extend(if up { ch.to_uppercase().collect::<Vec<_>>() } else { vec![ch] });
+                    up = ch == ' ';
+                }
+                out
+            },
+            str::to_string,
+        ))
     }
     pub fn vehicle_title(&self, id: u32) -> &'static str {
         if let Some(m) = self.mount(id) {
