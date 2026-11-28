@@ -172,7 +172,13 @@ fn java_conditional_collision_above_inside_descending_and_fall_threshold() {
             g,
             DVec3::new(0.2, -0.1, 0.2),
             DVec3::new(0.8, 1.2, 0.8),
-            Some(CollisionContext { feet_y: feet, descending: desc, fall_distance: fall, leather_boots: boots }),
+            Some(CollisionContext {
+                feet_y: feet,
+                descending: desc,
+                fall_distance: fall,
+                leather_boots: boots,
+                falling_block: false,
+            }),
             &mut out,
         );
         out

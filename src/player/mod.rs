@@ -175,6 +175,7 @@ impl Player {
             descending: self.sneaking,
             fall_distance: self.motion.fall_distance,
             leather_boots: self.leather_boots,
+            falling_block: false,
         }
     }
     pub fn new(pos: DVec3) -> Self {

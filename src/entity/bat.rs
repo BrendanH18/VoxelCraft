@@ -116,7 +116,10 @@ impl Mob {
         if water || lava {
             dm += DVec3::new(self.yaw.cos() as f64, 0.0, self.yaw.sin() as f64) * (0.02 * forward);
             let delta = dm;
-            let hit = physics::move_box(world, &mut self.pos, &mut dm, delta, shape);
+            let hit = {
+                let context = Some(self.collision_context());
+                physics::move_box_context(world, &mut self.pos, &mut dm, delta, shape, context)
+            };
             self.on_ground = hit.on_ground;
             self.blocked = hit.horizontal;
             dm *= if water { 0.8 } else { 0.5 };

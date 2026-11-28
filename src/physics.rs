@@ -118,17 +118,37 @@ fn cell_boxes<W: BlockSource + ?Sized>(world: &W, p: IVec3, f: impl FnMut(DVec3,
     cell_boxes_context(world, p, None, f);
 }
 
-/// Minimal Java `EntityCollisionContext` for the player path. `descending`
-/// is the sneak key, not negative velocity. Above checks use the entity's
-/// original feet position, even when querying a swept/step-up box.
+/// Minimal Java `EntityCollisionContext` (`CollisionContext.of(entity)`),
+/// which Java 26.3's `Entity.collide` builds for every entity, mobs and
+/// items included. `descending` is the sneak key (`isShiftKeyDown`, only
+/// ever set for players), not negative velocity. Above checks use the
+/// entity's original feet position, even when querying a swept/step-up box.
+/// `None` stands for Java's `CollisionContext.empty()`, for queries no
+/// entity makes.
 #[derive(Clone, Copy, Debug)]
 pub struct CollisionContext {
     pub feet_y: f64,
     pub descending: bool,
     pub fall_distance: f64,
+    /// `PowderSnowBlock.canEntityWalkOnPowderSnow`: leather boots in the
+    /// feet slot, or the `powder_snow_walkable_mobs` tag (rabbits,
+    /// endermites, silverfish and foxes).
     pub leather_boots: bool,
+    /// A `FallingBlockEntity`, which powder snow always holds up.
+    pub falling_block: bool,
 }
 impl CollisionContext {
+    /// v1.0 final F7: the context of a mob, item or other non-player entity
+    /// standing with its feet at `feet_y` (`isDescending` is false).
+    pub const fn entity(feet_y: f64, fall_distance: f64, walks_on_powder_snow: bool) -> Self {
+        CollisionContext {
+            feet_y,
+            descending: false,
+            fall_distance,
+            leather_boots: walks_on_powder_snow,
+            falling_block: false,
+        }
+    }
     fn above(self, p: IVec3, top: f64) -> bool {
         self.feet_y > p.y as f64 + top - f64::from(1.0e-5_f32)
     }
@@ -161,7 +181,7 @@ pub(crate) fn cell_boxes_context<W: BlockSource + ?Sized>(
             if let Some(c) = context {
                 let height = if c.fall_distance > 2.5 {
                     Some(f64::from(0.9_f32))
-                } else if c.leather_boots && c.above(p, 1.0) && !c.descending {
+                } else if c.falling_block || c.leather_boots && c.above(p, 1.0) && !c.descending {
                     Some(1.0)
                 } else {
                     None
@@ -237,13 +257,22 @@ pub fn collision_top<W: BlockSource + ?Sized>(world: &W, p: IVec3) -> Option<f64
 /// Calls `f` with every solid box that could touch the box (min, max):
 /// those in the cells it covers, and in the row below (fences reach up
 /// into the next cell).
-fn boxes_near<W: BlockSource + ?Sized>(world: &W, min: DVec3, max: DVec3, mut f: impl FnMut(DVec3, DVec3)) {
+fn boxes_near<W: BlockSource + ?Sized>(world: &W, min: DVec3, max: DVec3, f: impl FnMut(DVec3, DVec3)) {
+    boxes_near_context(world, min, max, None, f);
+}
+fn boxes_near_context<W: BlockSource + ?Sized>(
+    world: &W,
+    min: DVec3,
+    max: DVec3,
+    context: Option<CollisionContext>,
+    mut f: impl FnMut(DVec3, DVec3),
+) {
     let lo = (min + DVec3::splat(EPS)).floor().as_ivec3();
     let hi = (max - DVec3::splat(EPS)).floor().as_ivec3();
     for y in lo.y - 1..=hi.y {
         for z in lo.z..=hi.z {
             for x in lo.x..=hi.x {
-                cell_boxes(world, IVec3::new(x, y, z), |bmin, bmax| {
+                cell_boxes_context(world, IVec3::new(x, y, z), context, |bmin, bmax| {
                     if bmin.cmplt(max - DVec3::splat(EPS)).all() && bmax.cmpgt(min + DVec3::splat(EPS)).all() {
                         f(bmin, bmax);
                     }
@@ -268,9 +297,18 @@ pub fn full_collision<W: BlockSource + ?Sized>(world: &W, p: IVec3) -> bool {
 
 /// Whether the box at `pos` overlaps any solid (or unloaded) block.
 pub fn overlaps_solid<W: BlockSource + ?Sized>(world: &W, pos: DVec3, shape: Shape) -> bool {
+    overlaps_solid_context(world, pos, shape, None)
+}
+/// [`overlaps_solid`] with an entity's collision context.
+pub fn overlaps_solid_context<W: BlockSource + ?Sized>(
+    world: &W,
+    pos: DVec3,
+    shape: Shape,
+    context: Option<CollisionContext>,
+) -> bool {
     let (min, max) = shape.aabb(pos);
     let mut hit = false;
-    boxes_near(world, min, max, |_, _| hit = true);
+    boxes_near_context(world, min, max, context, |_, _| hit = true);
     hit
 }
 
@@ -308,9 +346,20 @@ pub fn sweep_clear<W: BlockSource + ?Sized>(world: &W, pos: DVec3, shape: Shape,
 /// If the box at `pos` overlaps solid blocks, returns `pos` pushed back
 /// against them along `axis` (the direction of travel is the sign of `dir`).
 pub fn collide<W: BlockSource + ?Sized>(world: &W, pos: DVec3, shape: Shape, axis: usize, dir: f64) -> Option<DVec3> {
+    collide_context(world, pos, shape, axis, dir, None)
+}
+/// [`collide`] with an entity's collision context.
+pub fn collide_context<W: BlockSource + ?Sized>(
+    world: &W,
+    pos: DVec3,
+    shape: Shape,
+    axis: usize,
+    dir: f64,
+    context: Option<CollisionContext>,
+) -> Option<DVec3> {
     let (min, max) = shape.aabb(pos);
     let mut hit: Option<f64> = None;
-    boxes_near(world, min, max, |bmin, bmax| {
+    boxes_near_context(world, min, max, context, |bmin, bmax| {
         let edge = if dir > 0.0 { bmin[axis] } else { bmax[axis] };
         hit = Some(match hit {
             Some(h) if dir > 0.0 => h.min(edge),
@@ -338,6 +387,20 @@ pub fn move_box<W: BlockSource + ?Sized>(
     delta: DVec3,
     shape: Shape,
 ) -> Collision {
+    move_box_context(world, pos, vel, delta, shape, None)
+}
+
+/// [`move_box`] with an entity's collision context (v1.0 final F7: Java's
+/// `Entity.collide` passes `CollisionContext.of(entity)`, so scaffolding
+/// and powder snow treat mobs and items as they treat players).
+pub fn move_box_context<W: BlockSource + ?Sized>(
+    world: &W,
+    pos: &mut DVec3,
+    vel: &mut DVec3,
+    delta: DVec3,
+    shape: Shape,
+    context: Option<CollisionContext>,
+) -> Collision {
     let mut out = Collision::default();
     for axis in [1usize, 0, 2] {
         if delta[axis] == 0.0 {
@@ -345,7 +408,7 @@ pub fn move_box<W: BlockSource + ?Sized>(
         }
         let mut next = *pos;
         next[axis] += delta[axis];
-        if let Some(resolved) = collide(world, next, shape, axis, delta[axis]) {
+        if let Some(resolved) = collide_context(world, next, shape, axis, delta[axis], context) {
             match axis {
                 1 if delta[axis] < 0.0 => out.on_ground = true,
                 1 => out.ceiling = true,
@@ -371,17 +434,32 @@ pub fn move_box_stepping<W: BlockSource + ?Sized>(
     shape: Shape,
     step: f64,
 ) -> Collision {
+    move_box_stepping_context(world, pos, vel, delta, shape, step, None)
+}
+
+/// [`move_box_stepping`] with an entity's collision context, taken at the
+/// start of the move (Java's above checks read the entity's feet before it
+/// moves).
+pub fn move_box_stepping_context<W: BlockSource + ?Sized>(
+    world: &W,
+    pos: &mut DVec3,
+    vel: &mut DVec3,
+    delta: DVec3,
+    shape: Shape,
+    step: f64,
+    context: Option<CollisionContext>,
+) -> Collision {
     let (start, start_vel) = (*pos, *vel);
-    let out = move_box(world, pos, vel, delta, shape);
+    let out = move_box_context(world, pos, vel, delta, shape, context);
     if !out.horizontal || delta.y > 0.0 {
         return out;
     }
     // Retry: rise, move across, then settle back down onto whatever is there.
     let (mut p, mut v) = (start, start_vel);
-    move_box(world, &mut p, &mut v, DVec3::new(0.0, step, 0.0), shape);
-    let across = move_box(world, &mut p, &mut v, DVec3::new(delta.x, 0.0, delta.z), shape);
+    move_box_context(world, &mut p, &mut v, DVec3::new(0.0, step, 0.0), shape, context);
+    let across = move_box_context(world, &mut p, &mut v, DVec3::new(delta.x, 0.0, delta.z), shape, context);
     let fall = DVec3::new(0.0, start.y - p.y + delta.y.min(0.0), 0.0);
-    let down = move_box(world, &mut p, &mut v, fall, shape);
+    let down = move_box_context(world, &mut p, &mut v, fall, shape, context);
     let gained = |q: DVec3| (q.x - start.x).powi(2) + (q.z - start.z).powi(2);
     if !down.on_ground || p.y <= start.y + EPS || gained(p) <= gained(*pos) + 1e-9 {
         return out;

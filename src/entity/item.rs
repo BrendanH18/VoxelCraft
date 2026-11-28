@@ -37,6 +37,9 @@ pub struct ItemEntity {
     pub phase: f32,
     /// Java's `ItemEntity.health`: explosions take it, and at 0 the item is gone.
     pub health: i32,
+    /// v1.0 final F7: Java's `fallDistance` (`Entity.checkFallDamage`),
+    /// which powder snow reads; not saved.
+    pub fall_distance: f64,
 }
 
 /// Health of a fresh dropped item (`ItemEntity.health`).
@@ -54,7 +57,15 @@ impl ItemEntity {
             pickup_delay,
             phase: rng.range(0.0, std::f32::consts::TAU),
             health: HEALTH,
+            fall_distance: 0.0,
         }
+    }
+
+    /// v1.0 final F7: `CollisionContext.of(item)`: scaffolding holds an
+    /// item up only from above, powder snow only once it has fallen more
+    /// than 2.5 blocks.
+    pub fn collision_context(&self) -> physics::CollisionContext {
+        physics::CollisionContext::entity(self.pos.y, self.fall_distance, false)
     }
 
     /// The item's box, for explosions' line of sight.
@@ -104,14 +115,25 @@ impl ItemEntity {
         }
         // Items that end up inside a block (a block placed on them, sand
         // landing) are pushed up out of it, like Minecraft.
-        if physics::overlaps_solid(world, self.pos, SHAPE) {
+        // v1.0 final F7: `noCollision(this, box)` takes the item's own
+        // context, so scaffolding it is inside doesn't push it out.
+        let context = Some(self.collision_context());
+        if physics::overlaps_solid_context(world, self.pos, SHAPE, context) {
             self.pos.y = self.pos.y.floor() + 1.0;
             self.vel = DVec3::ZERO;
+            self.fall_distance = 0.0;
             return true;
         }
         let delta = self.vel * dt;
         let falling = self.vel.y;
-        let hit = physics::move_box(world, &mut self.pos, &mut self.vel, delta, SHAPE);
+        let start_y = self.pos.y;
+        let hit = physics::move_box_context(world, &mut self.pos, &mut self.vel, delta, SHAPE, context);
+        // `Entity.checkFallDamage`: falling adds up, landing resets it.
+        if hit.on_ground {
+            self.fall_distance = 0.0;
+        } else if self.pos.y < start_y {
+            self.fall_distance += start_y - self.pos.y;
+        }
         if hit.on_ground {
             let below = world.block(below_pos(self.pos));
             // `Entity.restituteMovementAfterCollisions`: slime blocks and beds

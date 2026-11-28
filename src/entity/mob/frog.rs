@@ -210,7 +210,10 @@ impl Mob {
         }
         let mut dm = self.vel * 0.05;
         let delta = dm;
-        let hit = physics::move_box(w, &mut self.pos, &mut dm, delta, self.kind.shape());
+        let hit = {
+            let context = Some(self.collision_context());
+            physics::move_box_context(w, &mut self.pos, &mut dm, delta, self.kind.shape(), context)
+        };
         self.on_ground = hit.on_ground;
         self.blocked = hit.horizontal;
         dm.y -= 0.08;
