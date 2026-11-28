@@ -22,6 +22,7 @@ mod events;
 mod export;
 mod flight;
 mod fox;
+mod goat;
 mod illager;
 mod minecart;
 pub mod mixer;

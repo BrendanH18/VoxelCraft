@@ -729,6 +729,51 @@ mod tests {
         World::new_headless(std::sync::Arc::new(crate::world::terrain::Generator::new(42)), Default::default(), 2)
     }
 
+    /// v1.0 gap Track 2g: `BreakingItemParticle`: an item's sprite from the
+    /// item icon array, a quarter of it, gravity 1, half size, white, its
+    /// motion a tenth of the base plus the given velocity; a block item
+    /// shows its block; Minimal drops them.
+    #[test]
+    fn item_particles_take_a_quarter_of_the_sprite() {
+        let world = world();
+        let mut system = System::new(3);
+        let vel = DVec3::new(0.0, 0.2, 0.0);
+        for _ in 0..20 {
+            system.request(
+                Request::Item { pos: DVec3::new(0.0, 150.0, 0.0), vel, item: crate::item::Item::SNOWBALL },
+                Setting::All,
+                &world,
+            );
+        }
+        let layer = crate::item::Item::SNOWBALL.icon_layer().unwrap() - crate::world::block::tex::ITEM_BASE;
+        let mut n = 0;
+        for p in system.pool.iter() {
+            assert!(matches!(p.texture, Texture::Item(l) if l == layer));
+            assert_eq!((p.gravity, p.color), (1.0, [1.0; 4]));
+            assert!((0.05..=0.1).contains(&p.size));
+            assert!((p.uv[0] - p.uv[2] - 0.25).abs() < 1e-6 && (p.uv[3] - p.uv[1] - 0.25).abs() < 1e-6);
+            assert!(p.uv[2] >= 0.0 && p.uv[0] <= 1.0);
+            // A tenth of at most 0.06 across plus 0.1 up, and the given 0.2.
+            assert!((p.velocity - vel).length() <= 0.03, "{}", p.velocity);
+            n += 1;
+        }
+        assert_eq!(n, 20);
+        let mut system = System::new(3);
+        system.request(
+            Request::Item { pos: DVec3::new(0.0, 150.0, 0.0), vel, item: crate::item::Item::from(Block::STONE) },
+            Setting::All,
+            &world,
+        );
+        assert!(system.pool.iter().all(|p| matches!(p.texture, Texture::Block(Block::STONE))));
+        let mut system = System::new(3);
+        system.request(
+            Request::Item { pos: DVec3::ZERO, vel, item: crate::item::Item::SNOWBALL },
+            Setting::Minimal,
+            &world,
+        );
+        assert_eq!(system.pool.iter().count(), 0);
+    }
+
     #[test]
     fn full_cube_break_has_64_quarter_texture_crumbs() {
         let mut system = System::new(1);

@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use super::{Ctx, Entities, EntityEvent, Mob, MobKind, MobWorld, PlayerId, Rng};
 use crate::{color::DyeColor, inventory::Stack, item::Item, particles};
 mod lifecycle;
-pub(crate) mod long_jump;
+pub mod long_jump;
 
 pub const BABY_AGE: i32 = -24000;
 pub const BREEDING_COOLDOWN: i32 = 6000;

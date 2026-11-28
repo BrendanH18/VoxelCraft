@@ -214,6 +214,8 @@ pub enum MobSound {
     /// v1.0 gap Track 2f: the fox's own sounds (aggro, bite, eat, screech,
     /// sleep, sniff, spit).
     Fox(fox::Cue),
+    /// v1.0 gap Track 2g: the goat's long jump and landing.
+    Goat(animals::long_jump::Cue),
 }
 
 /// Something an entity did that the game needs to react to.

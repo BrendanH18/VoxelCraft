@@ -777,6 +777,12 @@ impl Game {
                             };
                             (Sound::Fox(cue), volume)
                         }
+                        // v1.0 gap Track 2g: the launch at volume 1, the
+                        // landing's step at 2.
+                        MobSound::Goat(cue) => {
+                            let landing = cue == voxelcraft::entity::animals::long_jump::Cue::Step;
+                            (Sound::Goat(cue), if landing { 2.0 } else { 1.0 })
+                        }
                         MobSound::CopperGolem(action, stage) => (Sound::CopperGolem(action, stage), 0.7),
                         MobSound::Hurt(MobKind::CopperGolem) => {
                             (Sound::CopperGolem(voxelcraft::entity::copper_golem::Sound::Hurt, 0), 0.9)

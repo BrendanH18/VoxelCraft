@@ -88,11 +88,16 @@ impl Entities {
                     && a.ramming == 0.0
                     && m.goals.running.is_none()
                     && m.ai != crate::entity::mob::Ai::Panic;
-                let was_jumping = a.long_jumping;
-                let jumped = m.goat_long_jump(w, &mut self.rng, allowed);
-                // `GOAT_LONG_JUMP` and the landing `GOAT_STEP` have no sounds
-                // in the game yet.
-                let _ = (jumped, was_jumping);
+                let screaming = a.screaming;
+                let cue = match m.goat_long_jump(w, &mut self.rng, allowed) {
+                    super::long_jump::Jumped::Launched if screaming => Some(super::long_jump::Cue::ScreamingLongJump),
+                    super::long_jump::Jumped::Launched => Some(super::long_jump::Cue::LongJump),
+                    super::long_jump::Jumped::Landed => Some(super::long_jump::Cue::Step),
+                    super::long_jump::Jumped::None => None,
+                };
+                if let Some(cue) = cue {
+                    events.push(EntityEvent::Sound { sound: super::super::MobSound::Goat(cue), pos: m.pos });
+                }
                 let Some(a) = m.animal.as_mut() else { continue };
                 if a.ramming > 0.0 {
                     a.ramming = (a.ramming - dt).max(0.0);

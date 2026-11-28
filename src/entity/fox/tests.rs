@@ -247,6 +247,42 @@ fn foxes_defend_a_trusted_player_from_its_attacker() {
     assert!(s.target.is_none_or(|t| t.hunt != Hunt::Defend));
 }
 
+/// v1.0 gap Track 2g: a PvP hit on the player a fox trusts makes the
+/// attacking player its target (`lastHurtByMob` is any living attacker),
+/// unless the fox trusts the attacker too; it ends when the player is out
+/// of reach of `canAttack` (creative).
+#[test]
+fn foxes_defend_a_trusted_player_from_another_player() {
+    use crate::entity::{PlayerId, Target};
+    for trusts_both in [false, true] {
+        let mut e = Entities::new(5);
+        let f = fox(&mut e, DVec3::new(0.5, 64.0, 0.5));
+        e.ensure_mob_ids();
+        let trusted = if trusts_both { [Some(PlayerId(1)), Some(PlayerId(2))] } else { [Some(PlayerId(1)), None] };
+        e.mobs[f].animal.as_mut().unwrap().trusted = trusted;
+        let mut c = ctx(0.0);
+        c.players.push(Target::new(PlayerId(1), DVec3::new(8.5, 64.0, 0.5), true));
+        c.players.push(Target::new(PlayerId(2), DVec3::new(6.5, 64.0, 2.5), true));
+        e.note_player_hurt_by_player(PlayerId(1), PlayerId(2));
+        for _ in 0..60 {
+            e.fox_upkeep(&c);
+            e.mobs[f].goals.ticks = e.mobs[f].goals.ticks.wrapping_add(1);
+        }
+        let s = e.mobs[f].fox.as_ref().unwrap();
+        if trusts_both {
+            assert!(!s.defending && s.target.is_none_or(|t| t.player.is_none()));
+            continue;
+        }
+        let t = s.target.expect("the attacking player is its target");
+        assert_eq!((t.player, t.hunt, t.priority), (Some(PlayerId(2)), Hunt::Defend, 3));
+        assert!(s.defending);
+        // A creative attacker can't be attacked: the target goes.
+        c.players[1].targetable = false;
+        e.fox_upkeep(&c);
+        assert!(e.mobs[f].fox.as_ref().unwrap().target.is_none_or(|t| t.player.is_none()));
+    }
+}
+
 /// v1.0 gap Track 2f: thunder wakes a fox (`Fox.tick`), and under open sky
 /// in a storm `SeekShelterGoal` looks for cover at once.
 #[test]

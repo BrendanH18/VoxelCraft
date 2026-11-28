@@ -49,6 +49,30 @@ pub(crate) struct LongJump {
     left: i32,
 }
 
+/// The goat's long-jump sounds (`NEUTRAL`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Cue {
+    /// `GOAT_LONG_JUMP`: the launch.
+    LongJump,
+    /// `GOAT_SCREAMING_LONG_JUMP`: a screaming goat's launch.
+    ScreamingLongJump,
+    /// `GOAT_STEP` at volume 2: `LongJumpMidJump.stop` on the ground.
+    Step,
+}
+
+impl Cue {
+    pub const ALL: [Cue; 3] = [Cue::LongJump, Cue::ScreamingLongJump, Cue::Step];
+
+    /// The Java sound event.
+    pub fn key(self) -> &'static str {
+        match self {
+            Cue::LongJump => "entity.goat.long_jump",
+            Cue::ScreamingLongJump => "entity.goat.screaming.long_jump",
+            Cue::Step => "entity.goat.step",
+        }
+    }
+}
+
 /// What a tick of the long jump did, for the caller's sounds.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Jumped {
@@ -263,10 +287,10 @@ impl Mob {
         }
     }
 
-    /// Track 2g: whether the goat is getting ready for or flying a long jump
-    /// (it stands still meanwhile).
+    /// Track 2g: whether the goat is in its `LONG_JUMP` activity, looking for,
+    /// readying or flying a long jump (it doesn't walk meanwhile).
     pub(crate) fn goat_jump_busy(&self) -> bool {
-        self.animal.as_ref().is_some_and(|a| a.long_jumping || a.long_jump.as_ref().is_some_and(|j| j.chosen.is_some()))
+        self.animal.as_ref().is_some_and(|a| a.long_jumping || a.long_jump.is_some())
     }
 }
 
