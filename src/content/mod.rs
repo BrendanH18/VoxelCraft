@@ -2,6 +2,7 @@
 //! Start with planks and furnace fuels; other integrations migrate with fixtures.
 use crate::{item::Item, world::block::Block};
 
+pub mod advanced_tooltip;
 pub mod banner_patterns;
 pub mod block_item_sprites;
 pub mod books;

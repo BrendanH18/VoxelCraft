@@ -15,7 +15,7 @@ use crate::simulation::{self, TICK_SECONDS};
 use crate::world::{World, block::Block};
 use command::CartographyAction;
 
-pub const HELP: &str = "observe [0..2] | catalog [query] (catalog tabs lists the creative tabs; catalog tab:<id> [query] one tab in Java's order) | hotbar save|load 1..9 (creative: the saved hotbars, as C/X + a number key) | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink, or hold a brush for 200 ticks) | draw [ticks] (hold use with a bow or crossbow: a bow shoots at that draw, a crossbow loads after 25 ticks; a charged crossbow fires at once) | sleep | place (throws a selected ender pearl, splash potion or eye of ender, puts the eye in a targeted End portal frame, or launches a firework rocket, which boosts a glide; a fresh jump in mid-air with elytra worn glides) | attack | select 1..9 | fly on/off | craft item | recipe id [max] (the recipe book's click on an unlocked recipe: fills the 2x2 grid, or an aimed crafting table's 3x3, from the inventory, one set or every set with max, and takes the results) | recipes [all|craftable] [query] (the unlocked recipes the book shows, craftable and new marked) | chest take/put slot (an aimed ender chest holds your own items) | crafter toggle 0..8 (turn an empty slot of an aimed crafter off or on; observe shows its slots, result and power) | sign x y z front|back [\"line\", ...] (write one side of a sign within reach) | furnace take/put input/fuel/output | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | grindstone [1..9] (disenchant or combine held gear) | trade [1..10] (inspect or buy a targeted villager offer) | smithing (upgrade held diamond gear using a template and ingot) | stonecut item (cut the held stack at an aimed stonecutter) | loom pattern dye (weave onto the held banner at an aimed loom) | cartography copy|zoom|lock (the held map at an aimed cartography table) | book write [offhand] [\"page\", ...] | book sign [offhand] \"title\" [\"page\", ...] (the book and quill in the selected slot, or the off-hand) | lectern x y z page n|take | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp|teleport [@s] x y z, tp @s x y z yaw pitch|facing x y z|facing entity @s [eyes|feet], rotate @s yaw pitch|facing x y z|facing entity @s [eyes|feet] (Java degrees: yaw 0 south, 90 west; pitch -90 up; ~ is relative), spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
+pub const HELP: &str = "observe [0..2] | catalog [query] (catalog tabs lists the creative tabs; catalog tab:<id> [query] one tab in Java's order) | hotbar save|load 1..9 (creative: the saved hotbars, as C/X + a number key) | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink, or hold a brush for 200 ticks) | draw [ticks] (hold use with a bow or crossbow: a bow shoots at that draw, a crossbow loads after 25 ticks; a charged crossbow fires at once) | sleep | place (throws a selected ender pearl, splash potion or eye of ender, puts the eye in a targeted End portal frame, or launches a firework rocket, which boosts a glide; a fresh jump in mid-air with elytra worn glides) | attack | select 1..9 | fly on/off | craft item | recipe id [max] (the recipe book's click on an unlocked recipe: fills the 2x2 grid, or an aimed crafting table's 3x3, from the inventory, one set or every set with max, and takes the results) | recipes [all|craftable] [query] (the unlocked recipes the book shows, craftable and new marked) | chest take/put slot (an aimed ender chest holds your own items) | bundle slot [stack] (take a stack out of the bundle in inventory slot 0..35, the front one or tooltip cell 0..11 as the wheel picks it) | crafter toggle 0..8 (turn an empty slot of an aimed crafter off or on; observe shows its slots, result and power) | sign x y z front|back [\"line\", ...] (write one side of a sign within reach) | furnace take/put input/fuel/output | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | grindstone [1..9] (disenchant or combine held gear) | trade [1..10] (inspect or buy a targeted villager offer) | smithing (upgrade held diamond gear using a template and ingot) | stonecut item (cut the held stack at an aimed stonecutter) | loom pattern dye (weave onto the held banner at an aimed loom) | cartography copy|zoom|lock (the held map at an aimed cartography table) | book write [offhand] [\"page\", ...] | book sign [offhand] \"title\" [\"page\", ...] (the book and quill in the selected slot, or the off-hand) | lectern x y z page n|take | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp|teleport [@s] x y z, tp @s x y z yaw pitch|facing x y z|facing entity @s [eyes|feet], rotate @s yaw pitch|facing x y z|facing entity @s [eyes|feet] (Java degrees: yaw 0 south, 90 west; pitch -90 up; ~ is relative), spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
 
 /// Something an agent did that players nearby should hear.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -520,6 +520,7 @@ impl Agent {
                 }
             }
             Command::Craft(item) => self.craft(item, world, entities)?,
+            Command::Bundle(slot, pick) => self.bundle_take(slot, pick, entities)?,
             Command::Recipe(id, max) => self.craft_recipe(id, max, world, entities)?,
             Command::Furnace(take, slot) => self.furnace_transfer(take, slot, world, entities)?,
             Command::Chest(take, slot) => {
@@ -1707,6 +1708,39 @@ impl Agent {
     }
 }
 
+impl Agent {
+    /// v1.0 gap track 6b: `bundle <slot> [stack]`, the agent's
+    /// `BundleMouseActions` pick and right click: the picked stack (a cell
+    /// of the contents tooltip, `shown_count` of them; the front stack
+    /// without a pick) comes out of the bundle onto the cursor, and from
+    /// there into the inventory (what doesn't fit is dropped).
+    fn bundle_take(&mut self, slot: usize, pick: Option<usize>, entities: &mut Entities) -> Result<(), String> {
+        use crate::content::bundle;
+        let inv = &mut self.session.inventory;
+        let mut cell = inv.get(slot).filter(|s| bundle::is_bundle(s.item));
+        let Some(stack) = cell else { return Err("no bundle in that slot".into()) };
+        let shown = bundle::shown_count(stack.bundle_contents().len());
+        if stack.bundle_contents().is_empty() {
+            return Err("the bundle is empty".into());
+        }
+        if pick.is_some_and(|p| p >= shown) {
+            return Err(format!("the bundle shows {shown} stacks"));
+        }
+        let mut cursor = None;
+        let ((), _) = bundle::clicking(pick, || {
+            bundle::click(&mut cell, &mut cursor, true);
+        });
+        inv.slots[slot] = cell;
+        if let Some(out) = cursor {
+            let left = inv.add_stack(out);
+            if left > 0 {
+                crate::session::storage::toss(&self.session, entities, crate::inventory::Stack { count: left, ..out });
+            }
+        }
+        Ok(())
+    }
+}
+
 /// `chest take` or `chest put` on one container slot: the slot's stack
 /// into the inventory, or as much of the selected stack as the slot takes.
 fn chest_transfer(
@@ -2599,6 +2633,34 @@ mod tests {
         let lost = b.inventory.get(0).unwrap();
         assert_eq!(lost.lodestone.map(|l| l.target), Some(None));
         assert_eq!(stack_from_str(&stack_to_string(Some(lost))), Some(Some(lost)));
+    }
+
+    #[test]
+    fn the_bundle_command_takes_the_picked_stack_out() {
+        use crate::content::bundle;
+        use crate::inventory::components::Payload;
+        let mut world = world();
+        let mut entities = Entities::new(1);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        let held = vec![Stack::new(Item::DIAMOND, 3), Stack::new(Item::STICK, 5), Stack::new(Item::APPLE, 2)];
+        a.inventory.slots[4] = Some(Stack::new(bundle::BUNDLE, 1).with_payload(Payload::Bundle(held.clone())));
+        assert!(matches!(Command::parse("bundle 4 1"), Ok(Command::Bundle(4, Some(1)))));
+        assert!(matches!(Command::parse("bundle 4"), Ok(Command::Bundle(4, None))));
+        assert!(Command::parse("bundle 36").is_err() && Command::parse("bundle 4 12").is_err());
+        // The picked cell (1, the stack after the front) comes out first...
+        a.execute(Command::Bundle(4, Some(1)), &mut world, &mut entities, &[]).unwrap();
+        assert_eq!(a.inventory.get(4).unwrap().bundle_contents(), [held[0], held[2]]);
+        assert_eq!(a.inventory.slots[0], Some(held[1]));
+        // ...then with no pick, the front one.
+        a.execute(Command::Bundle(4, None), &mut world, &mut entities, &[]).unwrap();
+        assert_eq!(a.inventory.get(4).unwrap().bundle_contents(), [held[2]]);
+        assert_eq!(a.inventory.slots[1], Some(held[0]));
+        // A pick past what the tooltip shows, an empty bundle or no bundle
+        // is refused.
+        assert!(a.execute(Command::Bundle(4, Some(1)), &mut world, &mut entities, &[]).is_err());
+        a.execute(Command::Bundle(4, None), &mut world, &mut entities, &[]).unwrap();
+        assert!(a.execute(Command::Bundle(4, None), &mut world, &mut entities, &[]).is_err());
+        assert!(a.execute(Command::Bundle(0, None), &mut world, &mut entities, &[]).is_err());
     }
 
     #[test]

@@ -314,7 +314,6 @@ impl Menu {
     }
 
     /// The slot under the cursor, if any.
-    #[cfg(test)]
     pub fn slot(&self, lists: Lists) -> Option<Slot> {
         match *self {
             Menu::Items { tab, col, row } if rows(tab, lists) > 0 => {
@@ -639,6 +638,27 @@ impl Game {
 
     /// Closing a screen returns the stack on the cursor to the inventory,
     /// throwing whatever doesn't fit.
+    /// v1.0 gap track 6b: the stack in `slot` of controller player
+    /// `name`'s screen on `tab`, where a bundle can be picked from: their
+    /// inventory, the open chest, vehicle or ender chest, or the palette.
+    pub(super) fn pad_slot_stack(&self, name: &str, tab: Tab, slot: Slot) -> Option<Stack> {
+        let bot = self.agents.players.get(name)?;
+        match slot {
+            Slot::Ref(SlotRef::Inventory(i)) => bot.agent.session.inventory.slots.get(i).copied().flatten(),
+            Slot::Ref(SlotRef::Chest(i)) => match tab {
+                Tab::Vehicle(id) => self.mobs.entities.vehicle_slots(id).and_then(|s| s.get(i).copied().flatten()),
+                Tab::Chest(pos) => self.world.chest_slot(pos, i),
+                Tab::EnderChest(_) => bot.agent.session.ender.slots.get(i).copied().flatten(),
+                _ => None,
+            },
+            Slot::Palette(i) => match tab {
+                Tab::Palette(t) => palette(t, &self.hotbars).get(i).copied().flatten(),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
     pub(super) fn close_pad_menu(&mut self, name: &str) {
         let work = self.take_pad_work(name);
         let Some(bot) = self.agents.players.get_mut(name) else { return };
@@ -1063,8 +1083,18 @@ impl Game {
             self.pad_trade_details(ui, id, i, px, py + ph + 18.0);
         }
         if let Some((stack, x, y)) = hovered {
+            // v1.0 gap track 6b: a bundle's contents tooltip, with this
+            // player's pick (the right stick), as the desktop shows it; Java
+            // shows it even while a stack is held.
+            if let Some(stack) = stack.filter(|s| voxelcraft::content::bundle::is_bundle(s.item)) {
+                let selected = self.pad_bundle_pick(name);
+                let colour = if stack.enchants.is_empty() { WHITE } else { [0.33, 1.0, 1.0, 1.0] };
+                self.bundle_tooltip_at(ui, stack, selected, colour, (x + 18.0, y + 6.0), dial);
+            }
             if let Some(held) = inv.cursor {
                 draw_stack(ui, x + 6.0, y + 6.0, held, true, dial);
+            } else if stack.is_some_and(|s| voxelcraft::content::bundle::is_bundle(s.item)) {
+                // Its tooltip above names it.
             } else if let Some((e, level)) = clue {
                 let text = format!("{} . . . ?", e.describe(level));
                 let tx = (x + 9.0 - Ui::text_width(&text) / 2.0).clamp(0.0, (sw - Ui::text_width(&text)).max(0.0));

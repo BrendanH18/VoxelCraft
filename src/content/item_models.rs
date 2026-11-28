@@ -238,13 +238,14 @@ fn bed(colour: DyeColor) -> Vec<Quad> {
 }
 
 /// The shield (`ShieldModel` with the item's `(1, -1, -1)` scale): a
-/// 12 × 22 × 1 plate of dark oak planks with an iron rim, and a 2 × 6 × 6
-/// grip behind it. A patterned shield shows its base colour's cloth inside
+/// 12 × 22 × 1 plate of planks with an iron rim, and a 2 × 6 × 6 grip
+/// behind it (the game's oak planks: Java's own shield texture is a
+/// mid-brown wood, lighter than the dark oak its particle names). A patterned shield shows its base colour's cloth inside
 /// the rim with the pattern layers over it, as `ShieldSpecialRenderer`
 /// draws `BannerRenderer.submitPatterns` on the plate.
 fn shield(stack: &Stack) -> Vec<Quad> {
     let px = |x: f32, y: f32, z: f32| Vec3::new(x, -y, -z) / 16.0;
-    let planks = tex::DARK_OAK_PLANKS;
+    let planks = tex::PLANKS;
     let iron = tex::IRON_BLOCK;
     let mut out = Vec::new();
     // Java's boxes, flipped: the plate (-6, -11, -2)..(6, 11, -1) and the

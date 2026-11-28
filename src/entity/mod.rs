@@ -1998,12 +1998,13 @@ impl Entities {
     }
 
     /// v1.0 gap track 6: `Item.onDestroyed` for an item entity that burnt or
-    /// was blown up: a bundle's contents come out where it was
-    /// (`BundleItem.onDestroyed`, `ItemUtils.onContainerDestroyed`), each as
-    /// a fresh item entity with `ItemEntity`'s own random start, 0.2 up and
-    /// up to 0.1 sideways a tick, and no pickup delay.
+    /// was blown up: a bundle's contents (and since track 6b a shulker box's,
+    /// `BlockItem.onDestroyed`) come out where it was
+    /// (`ItemUtils.onContainerDestroyed`), each as a fresh item entity with
+    /// `ItemEntity`'s own random start, 0.2 up and up to 0.1 sideways a tick,
+    /// and no pickup delay.
     pub(crate) fn spill_destroyed(&mut self, item: &item::ItemEntity) {
-        for &stack in crate::content::bundle::destroyed_contents(&item.stack) {
+        for stack in crate::content::bundle::destroyed_contents(&item.stack) {
             let mut side = || f64::from(self.rng.next_f32()) * 0.2 - 0.1;
             let vel = DVec3::new(side(), 0.2, side()) * 20.0;
             self.items.push(item::ItemEntity::new(stack, item.pos, vel, 0.0, &mut self.rng));
@@ -5411,6 +5412,17 @@ mod tests {
         let mut e = Entities::new(9);
         e.spill_destroyed(&ItemEntity::new(held[0], at, DVec3::ZERO, 0.0, &mut rng));
         assert!(e.items.is_empty());
+        // v1.0 gap track 6b: a shulker box spills its `container` in slot
+        // order, empty slots skipped (`BlockItem.onDestroyed`).
+        let slots = vec![None, Some(held[1]), None, Some(held[0])];
+        let shulker = crate::content::shulker_box::item(None);
+        let filled = Stack::new(shulker, 1).with_payload(Payload::Container(slots));
+        let mut e = Entities::new(9);
+        e.items.push(ItemEntity::new(filled, at, DVec3::ZERO, 0.0, &mut rng));
+        e.explode(&world, DVec3::new(0.5, 10.5, 0.5), 4.0);
+        let stacks: Vec<Stack> = e.items.iter().map(|i| i.stack).collect();
+        assert_eq!(stacks, [held[1], held[0]]);
+        assert!(e.items.iter().all(|i| i.pos == at && i.pickup_delay == 0.0));
     }
 
     #[test]

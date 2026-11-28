@@ -513,6 +513,7 @@ mod tests {
             tint: [255; 4],
             glint,
             translucent,
+            mesh: None,
         };
         let mut masks = super::super::hand::SpriteMasks::default();
         let v = vertices(&[item(false, true), item(true, false)], DVec3::ZERO, 0.0, &mut masks);

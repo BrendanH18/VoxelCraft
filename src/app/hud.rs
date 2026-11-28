@@ -1296,7 +1296,13 @@ impl Game {
             self.tooltip(ui, "Click to disable slot");
         } else if let Some(SlotRef::EnchantOffer(i)) = hovered {
             self.offer_tooltip(ui, i);
-        } else if let Some(stack) = hovered_stack {
+        } else if let Some(stack) = hovered_stack.filter(|s| {
+            // v1.0 gap track 6b: `AbstractContainerScreen.extractTooltip`
+            // shows a hovered stack's tooltip only with nothing held, or
+            // when its tooltip image asks to (`showTooltipWithItemInHand`:
+            // only the bundle's does).
+            self.session.inventory.cursor.is_none() || voxelcraft::content::bundle::is_bundle(s.item)
+        }) {
             match stack
                 .item
                 .as_potion()
@@ -1304,7 +1310,7 @@ impl Game {
                 .or(stack.lingering_contents())
                 .or(stack.arrow_potion())
             {
-                Some(potion) => self.potion_tooltip(ui, stack.display_name(), potion),
+                Some(potion) => self.potion_tooltip(ui, stack, potion),
                 // v1.0 gap track 6: a bundle's contents (`ClientBundleTooltip`).
                 None if voxelcraft::content::bundle::is_bundle(stack.item) => {
                     let selected = hovered.and_then(|h| self.bundle_selected_at(h));
@@ -1327,12 +1333,10 @@ impl Game {
                 }
                 None if !stack.enchants.is_empty() => self.enchant_tooltip(ui, stack),
                 // Java's `Rarity.RARE` names are aqua.
-                None if stack.item.is_rare() => self.tooltip_coloured(ui, stack.display_name(), [0.33, 1.0, 1.0, 1.0]),
+                None if stack.item.is_rare() => self.item_tooltip(ui, stack, [0.33, 1.0, 1.0, 1.0]),
                 // `Rarity.UNCOMMON` names are yellow.
-                None if stack.item.is_uncommon() => {
-                    self.tooltip_coloured(ui, stack.display_name(), [1.0, 1.0, 0.33, 1.0])
-                }
-                None => self.tooltip(ui, stack.display_name()),
+                None if stack.item.is_uncommon() => self.item_tooltip(ui, stack, [1.0, 1.0, 0.33, 1.0]),
+                None => self.item_tooltip(ui, stack, WHITE),
             }
         }
         // The held stack follows the mouse.
@@ -1407,6 +1411,45 @@ impl Game {
 
     pub(super) fn tooltip(&self, ui: &mut Ui, text: &str) {
         self.tooltip_coloured(ui, text, WHITE);
+    }
+
+    /// v1.0 gap track 6b: the lines Java's advanced tooltips (F3+H) end a
+    /// stack's tooltip with, when they are on (`content::advanced_tooltip`).
+    pub(super) fn advanced_lines(&self, stack: &Stack) -> Vec<(String, Color)> {
+        if !self.settings.advanced_tooltips {
+            return Vec::new();
+        }
+        voxelcraft::content::advanced_tooltip::lines(stack)
+            .into_iter()
+            .map(|(line, c)| {
+                let [r, g, b] = c.rgb().map(|v| f32::from(v) / 255.0);
+                (line, [r, g, b, 1.0])
+            })
+            .collect()
+    }
+
+    /// A stack's name in `colour` (its rarity's), with the advanced lines
+    /// under it when they are on.
+    fn item_tooltip(&self, ui: &mut Ui, stack: Stack, colour: Color) {
+        let lines = self.advanced_lines(&stack);
+        if lines.is_empty() {
+            return self.tooltip_coloured(ui, stack.display_name(), colour);
+        }
+        self.lines_tooltip(ui, &capitalize(stack.display_name()), colour, &lines);
+    }
+
+    /// A title over lines of text, each in its own colour.
+    fn lines_tooltip(&self, ui: &mut Ui, title: &str, colour: Color, lines: &[(String, Color)]) {
+        let w = lines.iter().map(|(l, _)| Ui::text_width(l)).fold(Ui::text_width(title), f32::max);
+        let h = 14.0 + 11.0 * lines.len() as f32;
+        let (sw, sh) = ui.size();
+        let x = (self.cursor_px.0 / ui.scale + 10.0).min(sw - w - 6.0).max(3.0);
+        let y = (self.cursor_px.1 / ui.scale - 12.0).clamp(3.0, (sh - h + 3.0).max(3.0));
+        style::tooltip_box(ui, x.floor(), y.floor(), w, h - 6.0);
+        ui.text(x, y, title, colour);
+        for (i, (line, c)) in lines.iter().enumerate() {
+            ui.text(x, y + 11.0 * (i + 1) as f32, line, *c);
+        }
     }
 
     /// [`Self::tooltip`] with the name in `colour` (an item's rarity colour).
@@ -1533,19 +1576,15 @@ impl Game {
     /// grey line per enchantment, curses in red, like Java.
     pub(super) fn enchant_tooltip(&self, ui: &mut Ui, stack: Stack) {
         let title = capitalize(stack.display_name());
-        let lines = stack.enchants.lines();
-        let w = lines.iter().map(|(l, _)| Ui::text_width(l)).fold(Ui::text_width(&title), f32::max);
-        let h = 14.0 + 11.0 * lines.len() as f32;
-        let (sw, sh) = ui.size();
-        let x = (self.cursor_px.0 / ui.scale + 10.0).min(sw - w - 6.0).max(3.0);
-        let y = (self.cursor_px.1 / ui.scale - 12.0).clamp(3.0, (sh - h + 3.0).max(3.0));
-        style::tooltip_box(ui, x.floor(), y.floor(), w, h - 6.0);
+        let mut lines: Vec<(String, Color)> = stack
+            .enchants
+            .lines()
+            .into_iter()
+            .map(|(line, curse)| (line, if curse { [1.0, 0.33, 0.33, 1.0] } else { [0.67, 0.67, 0.67, 1.0] }))
+            .collect();
+        lines.extend(self.advanced_lines(&stack));
         let colour = if stack.item == Item::ENCHANTED_BOOK { [1.0, 1.0, 0.33, 1.0] } else { [0.33, 1.0, 1.0, 1.0] };
-        ui.text(x, y, &title, colour);
-        for (i, (line, curse)) in lines.iter().enumerate() {
-            let c = if *curse { [1.0, 0.33, 0.33, 1.0] } else { [0.67, 0.67, 0.67, 1.0] };
-            ui.text(x, y + 11.0 * (i + 1) as f32, line, c);
-        }
+        self.lines_tooltip(ui, &title, colour, &lines);
     }
 
     /// v0.15 Track D: a trimmed piece of armor (`ArmorTrim.addToTooltip`:
@@ -1565,6 +1604,7 @@ impl Game {
         for (line, curse) in stack.enchants.lines() {
             lines.push((line, if curse { [1.0, 0.33, 0.33, 1.0] } else { [0.67, 0.67, 0.67, 1.0] }));
         }
+        lines.extend(self.advanced_lines(&stack));
         let w = lines.iter().map(|(l, _)| Ui::text_width(l)).fold(Ui::text_width(&title), f32::max);
         let h = 14.0 + 11.0 * lines.len() as f32;
         let (sw, sh) = ui.size();
@@ -1598,6 +1638,7 @@ impl Game {
         for (line, curse) in stack.enchants.lines() {
             lines.push((line, if curse { [1.0, 0.33, 0.33, 1.0] } else { grey }));
         }
+        lines.extend(self.advanced_lines(&stack));
         let w = lines.iter().map(|(l, _)| Ui::text_width(l)).fold(Ui::text_width(&title), f32::max);
         let h = 14.0 + 11.0 * lines.len() as f32;
         let (sw, sh) = ui.size();
@@ -1612,12 +1653,18 @@ impl Game {
 
     /// A potion's name with Java's effect line under it: blue for good
     /// effects, red for harmful, grey for none.
-    fn potion_tooltip(&self, ui: &mut Ui, name: &str, potion: voxelcraft::potion::Potion) {
-        let title = capitalize(name);
+    fn potion_tooltip(&self, ui: &mut Ui, stack: Stack, potion: voxelcraft::potion::Potion) {
+        let title = capitalize(stack.display_name());
         let details = potion.describe_lines();
         let effects: Vec<_> = potion.effects().collect();
-        let w = details.iter().map(|s| Ui::text_width(s)).fold(Ui::text_width(&title), f32::max);
-        let h = 11.0 * (details.len() + 1) as f32 + 3.0;
+        // v1.0 gap track 6b: the advanced lines (F3+H) after the effects.
+        let extra = self.advanced_lines(&stack);
+        let w = details
+            .iter()
+            .map(|s| Ui::text_width(s))
+            .chain(extra.iter().map(|(l, _)| Ui::text_width(l)))
+            .fold(Ui::text_width(&title), f32::max);
+        let h = 11.0 * (details.len() + extra.len() + 1) as f32 + 3.0;
         let (sw, sh) = ui.size();
         let x = (self.cursor_px.0 / ui.scale + 10.0).min(sw - w - 6.0).max(3.0);
         let y = (self.cursor_px.1 / ui.scale - 12.0).clamp(3.0, (sh - h).max(3.0));
@@ -1630,6 +1677,9 @@ impl Game {
                 Some(_) => [0.33, 0.33, 1.0, 1.0],
             };
             ui.text(x, y + 11.0 * (i + 1) as f32, detail, colour);
+        }
+        for (i, (line, c)) in extra.iter().enumerate() {
+            ui.text(x, y + 11.0 * (details.len() + i + 1) as f32, line, *c);
         }
     }
 

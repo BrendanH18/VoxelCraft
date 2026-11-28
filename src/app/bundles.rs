@@ -93,21 +93,42 @@ impl Game {
     /// `ClientBundleTooltip` under the bundle's name, as our tooltips draw a
     /// name: the box fits the wider of the name and the 96-pixel grid.
     pub(super) fn bundle_tooltip(&self, ui: &mut Ui, stack: Stack, selected: Option<usize>, title_colour: [f32; 4]) {
+        let at = (self.cursor_px.0 / ui.scale, self.cursor_px.1 / ui.scale);
+        self.bundle_tooltip_at(ui, stack, selected, title_colour, at, self.dial_of(&self.session.player));
+    }
+
+    /// [`Game::bundle_tooltip`] beside `at` (UI pixels: the mouse, or a
+    /// controller screen's cursor, v1.0 gap track 6b).
+    pub(super) fn bundle_tooltip_at(
+        &self,
+        ui: &mut Ui,
+        stack: Stack,
+        selected: Option<usize>,
+        title_colour: [f32; 4],
+        at: (f32, f32),
+        dial: crate::item::Dial,
+    ) {
         let title = super::capitalize(stack.display_name());
         let contents = stack.bundle_contents();
         let lines = if contents.is_empty() { wrap(EMPTY_DESCRIPTION, GRID_W) } else { Vec::new() };
         let image_h = image_height(contents.len(), lines.len());
-        let w = Ui::text_width(&title).max(GRID_W);
+        // v1.0 gap track 6b: the advanced lines (F3+H) follow the image, as
+        // Java puts a tooltip image right after the name.
+        let extra = self.advanced_lines(&stack);
+        let w = extra.iter().map(|(l, _)| Ui::text_width(l)).fold(Ui::text_width(&title).max(GRID_W), f32::max);
         // The name, a 2-pixel gap, then the image (`ClientTooltipComponent`
         // heights: 10 for a line of text).
-        let h = 12.0 + image_h;
+        let h = 12.0 + image_h + 10.0 * extra.len() as f32;
         let (sw, sh) = ui.size();
-        let x = (self.cursor_px.0 / ui.scale + 10.0).min(sw - w - 6.0).max(4.0).floor();
-        let y = (self.cursor_px.1 / ui.scale - 12.0).clamp(4.0, (sh - h).max(4.0)).floor();
+        let x = (at.0 + 10.0).min(sw - w - 6.0).max(4.0).floor();
+        let y = (at.1 - 12.0).clamp(4.0, (sh - h).max(4.0)).floor();
         style::tooltip_box(ui, x, y, w, h - 2.0);
         ui.text(x, y, &title, title_colour);
         let left = x + ((w - GRID_W) / 2.0).floor();
         let top = y + 12.0;
+        for (k, (line, c)) in extra.iter().enumerate() {
+            ui.text(x, top + image_h + 10.0 * k as f32, line, *c);
+        }
         if contents.is_empty() {
             for (k, line) in lines.iter().enumerate() {
                 ui.text(left, top + 9.0 * k as f32, line, DESCRIPTION_GREY);
@@ -119,7 +140,6 @@ impl Game {
         let overflowing = contents.len() > bundle::SHOWN_MAX;
         let rows = contents.len().min(bundle::SHOWN_MAX).div_ceil(bundle::SHOWN_COLUMNS);
         let mut cell = 1;
-        let dial = self.dial_of(&self.session.player);
         for row in 1..=rows {
             for column in 1..=bundle::SHOWN_COLUMNS {
                 let cx = left + GRID_W - column as f32 * CELL;

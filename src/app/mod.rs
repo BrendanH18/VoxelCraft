@@ -262,6 +262,9 @@ struct Game {
     fps: f64,
     cpu_ms: f64,
     show_debug: bool,
+    /// A debug key combination was used while the debug key was held
+    /// (v1.0 gap track 6b), so letting it go doesn't toggle the overlay.
+    debug_key_used: bool,
     /// Short message above the hotbar (item names, mode changes).
     popup: (String, Instant),
     /// Why the last save failed, until it succeeds again.
@@ -946,10 +949,19 @@ impl Game {
 
     /// A key or mouse button let go during play.
     fn on_release(&mut self, input: keys::Input) {
+        let bindings = self.settings.keys;
+        if !self.menu.is_open()
+            && !self.console.open
+            && bindings.actions(input).any(|a| a == keys::Action::DebugOverlay)
+        {
+            if !self.debug_key_used {
+                self.show_debug = !self.show_debug;
+            }
+            self.debug_key_used = false;
+        }
         if self.menu.is_open() || self.console.open || self.inventory_open || !self.mouse_grabbed {
             return;
         }
-        let bindings = self.settings.keys;
         for action in bindings.actions(input) {
             match action {
                 // A toggled button ignores the release (`ToggleKeyMapping.setDown`).
@@ -1050,7 +1062,22 @@ impl Game {
                 self.show_popup(if muted { "Sound off" } else { "Sound on" });
             }
             A::ToggleGui => self.show_hud = !self.show_hud,
-            A::DebugOverlay => self.show_debug = !self.show_debug,
+            // Java's default binds the debug modifier and the overlay to
+            // the same key: the overlay toggles when it is let go, unless a
+            // debug key was used while it was held (`usedDebugKeyAsModifier`).
+            A::DebugOverlay => self.debug_key_used = false,
+            // v1.0 gap track 6b: F3+H, `KeyboardHandler.handleDebugKeys`.
+            A::AdvancedTooltips if self.held(A::DebugOverlay) => {
+                self.debug_key_used = true;
+                self.settings.advanced_tooltips = !self.settings.advanced_tooltips;
+                self.show_popup(if self.settings.advanced_tooltips {
+                    "[Debug]: Advanced tooltips: shown"
+                } else {
+                    "[Debug]: Advanced tooltips: hidden"
+                });
+                let _ = self.save_settings();
+            }
+            A::AdvancedTooltips => {}
             A::TogglePerspective => self.camera.cycle(),
             A::Fullscreen => {
                 // Leaves whatever fullscreen the window is in, or enters the

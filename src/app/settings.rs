@@ -65,6 +65,9 @@ pub struct Settings {
     pub discrete_scroll: bool,
     /// v0.18 Track 9: Java's Closed Captions (`showSubtitles`, off).
     pub show_subtitles: bool,
+    /// v1.0 gap track 6b: Java's `advancedItemTooltips` (F3+H, off): item
+    /// tooltips add the durability, the item's id and its component count.
+    pub advanced_tooltips: bool,
     /// Text Background Opacity (`textBackgroundOpacity`, 0..1, 0.5): the
     /// text backing where Text Background is Everywhere.
     pub text_background_opacity: f32,
@@ -189,6 +192,7 @@ impl Default for Settings {
             scroll_sensitivity: 1.0,
             discrete_scroll: false,
             show_subtitles: false,
+            advanced_tooltips: false,
             text_background_opacity: 0.5,
             background_for_chat_only: true,
             mipmap_levels: MIPMAP_LEVELS.1,
@@ -326,6 +330,7 @@ impl Settings {
             "mouseWheelSensitivity" => self.scroll_sensitivity = num().unwrap_or(self.scroll_sensitivity),
             "discrete_mouse_scroll" => flag(&mut self.discrete_scroll),
             "showSubtitles" => flag(&mut self.show_subtitles),
+            "advancedItemTooltips" => flag(&mut self.advanced_tooltips),
             "textBackgroundOpacity" => {
                 self.text_background_opacity = num().map_or(self.text_background_opacity, |v| v as f32)
             }
@@ -384,6 +389,7 @@ impl Settings {
             self.attack_indicator.id(),
             self.view_bobbing,
         ));
+        out.push_str(&format!("advancedItemTooltips={}\n", self.advanced_tooltips));
         self.keys.serialize(out);
     }
 
