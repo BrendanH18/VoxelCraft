@@ -65,8 +65,9 @@ pub struct BlockModel {
 /// the stack is, with the glint and translucency of dropped items.
 pub fn held_model(h: &crate::entity::model::HeldItemModel) -> BlockModel {
     let stack = h.stack;
-    let mesh = voxelcraft::content::item_models::has_mesh(stack.item)
-        .then_some((stack, voxelcraft::content::item_models::Context::ThirdPersonRightHand));
+    let mesh = (voxelcraft::content::item_models::has_mesh(stack.item)
+        || voxelcraft::content::item_models::has_in_hand_mesh(stack.item))
+    .then_some((stack, voxelcraft::content::item_models::Context::ThirdPersonRightHand));
     let block = if mesh.is_some() { None } else { h.block.or_else(|| crate::item::model_block(&stack)) };
     let icon = match (mesh, block) {
         (None, None) => h.icon.or_else(|| stack.item.flat_layer()),
@@ -316,7 +317,12 @@ fn transformed_vertices(
             });
         }
     };
-    if let Some(mesh) = m.mesh.and_then(|(stack, _)| voxelcraft::content::item_models::mesh(&stack)) {
+    // v1.0 gap track 6d: a hand holds the trident's and spyglass's in-hand models.
+    let hand = |c| c == voxelcraft::content::item_models::Context::ThirdPersonRightHand;
+    if let Some(mesh) = m.mesh.and_then(|(stack, context)| {
+        voxelcraft::content::item_models::mesh(&stack)
+            .or_else(|| hand(context).then(|| voxelcraft::content::item_models::in_hand_mesh(&stack)).flatten())
+    }) {
         for q in &mesh.quads {
             push(q.corners, q.normal, q.uv, q.layer, q.tint.unwrap_or(m.tint));
         }

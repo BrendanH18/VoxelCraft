@@ -133,7 +133,9 @@ impl Particle {
                 self.lifetime = self.successor_lifetime;
                 self.gravity = 1.5;
                 self.friction = 0.98;
-                self.color = [1.0, 0.2857143, 0.083333336, 1.0];
+                if self.style == Kind::LavaDrip {
+                    self.color = [1.0, 0.2857143, 0.083333336, 1.0];
+                }
             } else {
                 return false;
             }
@@ -148,7 +150,10 @@ impl Particle {
         match self.motion {
             Motion::Stationary => return true,
             Motion::DripHang => {
-                self.color = [1.0, 16.0 / (self.age as f32 + 16.0), 4.0 / (self.age as f32 + 8.0), 1.0];
+                // `CoolingDripHangParticle`: lava cools from yellow to red.
+                if self.style == Kind::LavaDrip {
+                    self.color = [1.0, 16.0 / (self.age as f32 + 16.0), 4.0 / (self.age as f32 + 8.0), 1.0];
+                }
                 self.velocity.y -= 0.0012;
             }
             Motion::Portal => {
@@ -194,6 +199,21 @@ impl Particle {
                             self.age = 0;
                             self.lifetime = self.landing_lifetime;
                         }
+                        // v1.0 gap track 6d: a falling dripstone water drop
+                        // lands as a splash (`DripstoneFallAndLandParticle`
+                        // spawns `SPLASH` where it lands).
+                        if self.style == Kind::WaterDrip && self.motion == Motion::Normal {
+                            self.style = Kind::Splash;
+                            self.motion = Motion::Splash;
+                            self.gravity = 0.04;
+                            self.velocity = DVec3::new(0.0, 0.2, 0.0);
+                            self.color = [0.45, 0.65, 1.0, 1.0];
+                            self.age = 0;
+                            self.lifetime = self.landing_lifetime;
+                            self.stopped = false;
+                            self.on_ground = false;
+                            break;
+                        }
                         if self.motion == Motion::Splash {
                             self.random_state =
                                 self.random_state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
@@ -232,6 +252,10 @@ impl Particle {
             self.velocity *= self.friction;
         }
         if self.style == Kind::LavaDrip && world.block(self.pos.floor().as_ivec3()).is_some_and(Block::is_lava) {
+            return false;
+        }
+        // `DripParticle.preMoveUpdate`: a water drop meeting water is gone.
+        if self.style == Kind::WaterDrip && world.block(self.pos.floor().as_ivec3()).is_some_and(Block::holds_water) {
             return false;
         }
         if self.motion == Motion::Bubble && !world.block(self.pos.floor().as_ivec3()).is_some_and(Block::holds_water) {

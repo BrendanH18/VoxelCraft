@@ -393,7 +393,9 @@ pub(super) fn vertices(
 
     let start = b.out.len();
     // v1.0 gap track 6b: a 3D item mesh with Java's first-person transform.
-    if let Some(mesh) = hand.mesh.filter(|s| s.item == item).and_then(|s| voxelcraft::content::item_models::mesh(&s)) {
+    if let Some(mesh) = hand.mesh.filter(|s| s.item == item).and_then(|s| {
+        voxelcraft::content::item_models::mesh(&s).or_else(|| voxelcraft::content::item_models::in_hand_mesh(&s))
+    }) {
         let m = arm * voxelcraft::content::item_models::Context::FirstPersonRightHand.matrix(&mesh.display);
         for q in &mesh.quads {
             b.tint = q.tint.unwrap_or([255; 4]);

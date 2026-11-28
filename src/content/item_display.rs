@@ -506,6 +506,34 @@ pub const STRAW_BED: Display = Display {
     front_light: false,
 };
 
+/// v1.0 gap track 6d: `item/trident_in_hand`'s display (the hands; the
+/// other contexts keep `item/trident`'s, which Java draws there).
+pub const TRIDENT_IN_HAND: Display = Display {
+    first_person: t([0.0, -90.0, 25.0], [-3.0, 17.0, 1.0], 1.0),
+    third_person: t([0.0, 60.0, 0.0], [11.0, 17.0, -2.0], 1.0),
+    ..GENERATED
+};
+
+/// v1.0 gap track 6d: `item/spyglass_in_hand`'s display: no parent, so the
+/// first-person hand takes no transform and the third-person one 2/16 down.
+pub const SPYGLASS_IN_HAND: Display = Display {
+    first_person: t([0.0, 0.0, 0.0], [0.0, 0.0, 0.0], 1.0),
+    third_person: t([0.0, 0.0, 0.0], [0.0, -2.0, 0.0], 1.0),
+    ..GENERATED
+};
+
+/// v1.0 gap track 6d: the display a hand holds `stack` with: its in-hand
+/// model's ([`TRIDENT_IN_HAND`], [`SPYGLASS_IN_HAND`]), else [`drawn`].
+pub fn held(stack: &Stack) -> Display {
+    if stack.item == crate::weapons::TRIDENT {
+        TRIDENT_IN_HAND
+    } else if stack.item == Item::SPYGLASS {
+        SPYGLASS_IN_HAND
+    } else {
+        drawn(stack)
+    }
+}
+
 /// The display transforms `stack` is drawn with: its item model's parent
 /// chain in Java 26.3, chosen by the item (Java's model names follow the
 /// item ids, as the game's item names do).

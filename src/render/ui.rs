@@ -489,8 +489,7 @@ pub fn block_item_quads(block: Block) -> Vec<voxelcraft::world::colour_blocks::b
 /// model leaves out), faces +X, -X, +Y, -Y, +Z, -Z: two posts at z 0-4 and
 /// 12-16, and two bars from z -2 to 18 in three pieces each, reaching 2/16
 /// beyond the block.
-type Element = ([f32; 3], [f32; 3], [Option<[f32; 4]>; 6]);
-const FENCE_INVENTORY: [Element; 8] = {
+const FENCE_INVENTORY: [voxelcraft::content::item_models::Element; 8] = {
     const fn f(u0: f32, v0: f32, u1: f32, v1: f32) -> Option<[f32; 4]> {
         Some([u0, v0, u1, v1])
     }
@@ -570,49 +569,9 @@ const FENCE_INVENTORY: [Element; 8] = {
     ]
 };
 
-/// [`FENCE_INVENTORY`]'s quads with the fence's face layers: each face's
-/// explicit UV rectangle laid over it as `FaceBakery` lays one (the
-/// rectangle's first corner where the face's default UV is lowest).
+/// [`FENCE_INVENTORY`]'s quads with the fence's face layers.
 fn fence_inventory_quads(tex: [u16; 6]) -> Vec<voxelcraft::world::colour_blocks::banner::Quad> {
-    use glam::Vec3;
-    let mut out = Vec::new();
-    for (from, to, faces) in FENCE_INVENTORY {
-        let (lo, hi) = (Vec3::from_array(from) / 16.0, Vec3::from_array(to) / 16.0);
-        for (face, rect) in faces.iter().enumerate() {
-            let Some([u0, v0, u1, v1]) = *rect else { continue };
-            let (d, positive) = (face / 2, face % 2 == 0);
-            let (u, v) = ((d + 1) % 3, (d + 2) % 3);
-            let corner = |a: bool, b: bool| {
-                let mut p = [0.0f32; 3];
-                p[d] = if positive { hi[d] } else { lo[d] };
-                p[u] = if a { hi[u] } else { lo[u] };
-                p[v] = if b { hi[v] } else { lo[v] };
-                Vec3::from_array(p)
-            };
-            let c = if positive {
-                [corner(false, false), corner(true, false), corner(true, true), corner(false, true)]
-            } else {
-                [corner(false, false), corner(false, true), corner(true, true), corner(true, false)]
-            };
-            let default = c.map(|p| voxelcraft::mesh::face_uv(face, p.to_array()));
-            let min = |i: usize| default.iter().map(|q| q[i]).fold(f32::MAX, f32::min);
-            let max = |i: usize| default.iter().map(|q| q[i]).fold(f32::MIN, f32::max);
-            let (lu, hu, lv, hv) = (min(0), max(0), min(1), max(1));
-            let uv = default.map(|q| {
-                [(u0 + (q[0] - lu) / (hu - lu) * (u1 - u0)) / 16.0, (v0 + (q[1] - lv) / (hv - lv) * (v1 - v0)) / 16.0]
-            });
-            let mut normal = Vec3::ZERO;
-            normal[d] = if positive { 1.0 } else { -1.0 };
-            out.push(voxelcraft::world::colour_blocks::banner::Quad {
-                corners: c,
-                uv,
-                layer: tex[face],
-                normal,
-                tint: None,
-            });
-        }
-    }
-    out
+    voxelcraft::content::item_models::element_quads(&FENCE_INVENTORY, tex)
 }
 
 #[cfg(test)]

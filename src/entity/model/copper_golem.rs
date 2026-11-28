@@ -65,58 +65,36 @@ pub(super) fn colour(m: &Mob, c: &mut Cuboid) {
         c.color = [[150, 84, 50], [126, 96, 62], [66, 116, 92], [44, 122, 104]][s.stage as usize];
     }
 }
-pub(super) fn cargo(m: &Mob, origin: Vec3, body: Quat, light: ([u8; 4], u8), out: &mut Vec<EntityVertex>) {
+/// v1.0 gap track 6d: the cargo in the copper golem's right hand, as
+/// Java's `ItemInHandLayer` holds it: `CopperGolemModel.translateToHand`
+/// (the body, the right arm, then, idle, a quarter turn about y and 2/16
+/// forward in Java's frame) on this model's right arm, then the item's own
+/// model (a statue's pose) through its `thirdperson_righthand` transform,
+/// drawn by the item model pass with the glint and translucency. It was a
+/// box in the entity pass. The game's golem has no interaction states, so
+/// it always holds as Java's idle one does.
+pub(super) fn cargo(
+    m: &Mob,
+    posed: &Parts,
+    origin: Vec3,
+    body: Quat,
+    scale: Vec3,
+    light: (f32, f32),
+    out: &mut EntityMesh,
+) {
     let Some(stack) = m.copper_golem.as_ref().and_then(|s| s.cargo) else { return };
-    if let Some(block) = crate::world::copper_golem_statue::item_model(stack) {
-        let statue = crate::world::copper_golem_statue::decode(block).unwrap();
-        for bounds in crate::world::copper_golem_statue::mesh(statue).as_slice() {
-            let held = super::super::player_model::Limb {
-                pivot: Vec3::new(0., 6.5, 5.),
-                min: bounds.min.map(|v| (v as f32 - 8.0) * 0.35),
-                max: bounds.max.map(|v| (v as f32 - 8.0) * 0.35),
-                uv: [0.; 2],
-                rot: Quat::IDENTITY,
-            };
-            super::super::player_model::textured_box(
-                out,
-                &held,
-                0.,
-                origin,
-                body,
-                light,
-                2,
-                block.info().tex[0],
-                1.,
-                [255; 4],
-            );
-            let start = out.len() - 36;
-            for (i, face) in out[start..].as_chunks_mut::<6>().0.iter_mut().enumerate() {
-                let tex = block.info().tex[i ^ 1];
-                for vertex in face {
-                    vertex.torch[2] = tex as u8;
-                    vertex.torch[3] = (tex >> 8) as u8;
-                }
-            }
-        }
-        return;
-    }
-    let block = stack.item.block().filter(|b| !b.flat_icon());
-    let layer = match block {
-        Some(b) => b.info().tex[0],
-        None => stack.item.flat_layer().unwrap_or(crate::world::block::tex::ITEM_BASE),
-    };
-    let held = super::super::player_model::Limb {
-        pivot: Vec3::new(0., 6.5, 5.),
-        min: if block.is_some() { [-2.3; 3] } else { [-3., -3., -0.3] },
-        max: if block.is_some() { [2.3; 3] } else { [3., 3., 0.3] },
-        uv: [0.; 2],
-        rot: Quat::IDENTITY,
-    };
-    let tint = crate::inventory::components::dye_tint_bytes(stack);
-    // v1.0 gap track 6: a block keeps its item shape (a slab, a fence).
-    if let Some(b) = block {
-        super::super::player_model::held_block(out, &held, origin, body, light, b, 2.3, 1., tint);
-    } else {
-        super::super::player_model::textured_box(out, &held, 0., origin, body, light, 2, layer, 1., tint);
-    }
+    let Some(arm) = posed.get(4) else { return };
+    // Java's -90 degrees about y and (0, 0, 2) pixels, in this model's frame
+    // (Java's turned half about x): +90 degrees and (0, 0, -2).
+    let hand = glam::Mat4::from_translation(origin)
+        * glam::Mat4::from_quat(body)
+        * glam::Mat4::from_scale(scale / 16.0)
+        * glam::Mat4::from_translation(arm.pivot)
+        * glam::Mat4::from_quat(arm.rot)
+        * glam::Mat4::from_rotation_y(std::f32::consts::FRAC_PI_2)
+        * glam::Mat4::from_translation(Vec3::new(0.0, 0.0, -2.0));
+    let hand = super::super::player_model::item_in_hand_layer(hand);
+    let statue = crate::world::copper_golem_statue::item_model(stack);
+    let tint = crate::inventory::components::dye_tint(&stack);
+    out.push_held(super::super::player_model::held_item(stack, hand, light, statue, None, tint));
 }

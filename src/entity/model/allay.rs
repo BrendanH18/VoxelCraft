@@ -63,22 +63,44 @@ pub(super) fn pose(m: &Mob, time: f32, alpha: f32) -> Parts {
     p.transform(Vec3::new(0.0, -idle_speed.cos() * 0.25 * idle, 0.0), Quat::IDENTITY);
     p
 }
-pub(super) fn held(m: &Mob, origin: Vec3, body: Quat, light: ([u8; 4], u8), out: &mut Vec<EntityVertex>) {
+/// v1.0 gap track 6d: the liked item in the allay's hands, as Java's
+/// `ItemInHandLayer` holds it: `AllayModel.translateToHand` (the body, then
+/// 1/16 down and 3/16 back in Java's frame, the right arm's x turn, 0.7 of
+/// the size and 1/16 to the side) on this model's body at its Java pivot
+/// 4.5 pixels up, then the item's own model through its
+/// `thirdperson_righthand` transform, drawn by the item model pass (glint
+/// and translucency included). It was a small box in the entity pass.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn held(
+    m: &Mob,
+    posed: &Parts,
+    origin: Vec3,
+    body: Quat,
+    scale: Vec3,
+    alpha: f32,
+    light: (f32, f32),
+    out: &mut EntityMesh,
+) {
+    use crate::entity::mob_anim::lerp;
     let Some(stack) = m.allay.as_ref().and_then(|s| s.liked) else { return };
-    let block = stack.item.block().filter(|b| !b.flat_icon());
-    // A flat-icon block (a flower) has no item icon: draw its block texture flat.
-    let layer = stack.item.flat_layer().unwrap_or(crate::world::block::tex::ITEM_BASE);
-    let limb = super::super::player_model::Limb {
-        pivot: Vec3::new(0., 2.7, 2.4),
-        min: if block.is_some() { [-1.2; 3] } else { [-1.7, -1.7, -0.15] },
-        max: if block.is_some() { [1.2; 3] } else { [1.7, 1.7, 0.15] },
-        uv: [0.; 2],
-        rot: Quat::IDENTITY,
-    };
-    let tint = crate::inventory::components::dye_tint_bytes(stack);
-    // v1.0 gap track 6: a block keeps its item shape and face textures.
-    match block {
-        Some(b) => super::super::player_model::held_block(out, &limb, origin, body, light, b, 1.2, 1., tint),
-        None => super::super::player_model::textured_box(out, &limb, 0., origin, body, light, 2, layer, 1., tint),
-    }
+    let Some(torso) = posed.first() else { return };
+    let a = &m.anim;
+    let holding = lerp(alpha, a.o_hold, a.hold) / 5.0;
+    let flying = (m.limb_amp / 0.3).min(1.0);
+    let arm_x = holding * lerp(flying, -PI / 3.0, -1.134_464);
+    // Java's frame is this one turned half about x: its (0, 1, 3) is (0, -1, -3).
+    let pivot = torso.pivot + torso.rot * Vec3::new(0.0, 4.5, 0.0);
+    let hand = glam::Mat4::from_translation(origin)
+        * glam::Mat4::from_quat(body)
+        * glam::Mat4::from_scale(scale / 16.0)
+        * glam::Mat4::from_translation(pivot)
+        * glam::Mat4::from_quat(torso.rot)
+        * glam::Mat4::from_translation(Vec3::new(0.0, -1.0, -3.0))
+        * glam::Mat4::from_rotation_x(arm_x)
+        * glam::Mat4::from_scale(Vec3::splat(0.7))
+        * glam::Mat4::from_translation(Vec3::new(1.0, 0.0, 0.0));
+    let hand = super::super::player_model::item_in_hand_layer(hand);
+    let statue = crate::world::copper_golem_statue::item_model(stack);
+    let tint = crate::inventory::components::dye_tint(&stack);
+    out.push_held(super::super::player_model::held_item(stack, hand, light, statue, None, tint));
 }
