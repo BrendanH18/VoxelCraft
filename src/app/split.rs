@@ -74,6 +74,9 @@ pub(super) struct Atmosphere {
     /// `visual/sky_light_factor` and `visual/sky_light_color`.
     pub sky_light: (f32, [f32; 3]),
     pub cloud_color: [f32; 4],
+    /// The lightmap's night-vision strength (`Effects::lightmap_vision`):
+    /// Night Vision's scale, or Conduit Power's underwater vision.
+    pub night_vision: f32,
 }
 
 impl Atmosphere {
@@ -277,7 +280,7 @@ impl Game {
             fire_resistance: effects.has(Effect::FireResistance),
             blindness: effects.get(Effect::Blindness).map(|e| e.ticks),
             darkness,
-            night_vision: if darkness.is_some() { 0.0 } else { effects.night_vision(scene.time) },
+            night_vision: if darkness.is_some() { 0.0 } else { effects.night_vision(scene.alpha as f32) },
             water_vision: if medium == Medium::Water { atm::water_vision(state.water_ticks as u32) } else { 0.0 },
         };
         state.rain.update(&eye, scene.ticks);
@@ -285,6 +288,7 @@ impl Game {
             fog: atm::fog(&eye, state.rain),
             sky_light: atm::sky_light(&eye),
             cloud_color: atm::cloud_color(&eye),
+            night_vision: effects.lightmap_vision(scene.alpha as f32, eye.water_vision),
         }
     }
 
@@ -556,7 +560,7 @@ impl Game {
                     },
                 ),
                 rain: scene.rain,
-                night_vision: a.vitals.effects.vision(scene.time, a.player.head_in_water(&self.world)),
+                night_vision: atmosphere.night_vision,
                 darkness: crate::render::Darkness::of(&a.vitals.effects, scene.alpha as f32),
                 ui,
                 // Controller players' screens are in-game panels: no blur.

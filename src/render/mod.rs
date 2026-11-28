@@ -168,7 +168,8 @@ pub struct FrameParams {
     /// Rain strength 0..1: hides the sun, moon and stars and thickens the
     /// clouds.
     pub rain: f32,
-    /// Night vision strength 0..1 (see `Effects::night_vision`).
+    /// The lightmap's night-vision strength 0..1 (Java's
+    /// `nightVisionEffectIntensity`; see `Effects::lightmap_vision`).
     pub night_vision: f32,
     /// Darkness (`LightmapRenderStateExtractor`): its blend factor, which
     /// lowers the Brightness option by as much, and its pulsing scale, which
