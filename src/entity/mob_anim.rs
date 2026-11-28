@@ -69,7 +69,9 @@ pub struct Anim {
     dance_ticks: f32,
     pub spin: f32,
     pub o_spin: f32,
-    /// `Breeze.idle`: when the idle loop started.
+    /// `Breeze.idle`: when the idle loop started (v1.0 gap Track 7d: and
+    /// the camel's `idleAnimationState`, restarted when its own
+    /// `idle_timeout` runs out).
     pub idle_start: Option<u32>,
     was_on_ground: bool,
     /// v1.0 gap Track 7c: the axolotl's one running animation
@@ -251,6 +253,16 @@ impl Mob {
                     a.tail_counter += 1;
                     if a.tail_counter > 8 {
                         a.tail_counter = 0;
+                    }
+                }
+                // v1.0 gap Track 7d: `Camel.setupAnimationStates` restarts
+                // the idle animation (ears and tail) every 80 to 119 ticks.
+                if k == MobKind::Camel {
+                    if a.idle_start.is_none() || a.idle_timeout <= 0 {
+                        a.idle_timeout = 80 + (roll(uid, tick, 4) * 40.0) as i32;
+                        a.idle_start = Some(tick);
+                    } else {
+                        a.idle_timeout -= 1;
                     }
                 }
             }

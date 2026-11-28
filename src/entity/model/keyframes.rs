@@ -18,8 +18,7 @@ use super::rig::Rig;
 pub(super) enum Target {
     Rot,
     Pos,
-    /// `SCALE`: a rig can't scale its boxes, so these channels are left
-    /// out (their animations are listed in the record).
+    /// `SCALE` (v1.0 gap Track 7d: the rig scales its parts).
     Scale,
 }
 pub(super) use Target::{Pos, Rot, Scale};
@@ -100,7 +99,13 @@ impl Anim {
                     p[1] -= v[1] * scale;
                     p[2] += v[2] * scale;
                 }
-                Scale => {}
+                // `scaleVec` stores each factor less one, which
+                // `offsetScale` adds to the part's scale.
+                Scale => {
+                    for (s, d) in rig.scale[ch.bone].iter_mut().zip(v) {
+                        *s += (d - 1.0) * scale;
+                    }
+                }
             }
         }
     }
@@ -149,5 +154,22 @@ mod tests {
         SWING.apply_walk(&mut r, 10.0, 0.25, 1.0, 2.0);
         // 500 ms in is the 90-degree keyframe, at strength min(0.25 * 2, 1).
         assert!((r.rot[0][0] - 45f32.to_radians()).abs() < 1e-5, "strength min(speed * amp, 1)");
+    }
+
+    /// v1.0 gap Track 7d: a `SCALE` channel adds its factor less one,
+    /// times the strength, to the part's scale.
+    #[test]
+    fn scale_keys_stretch_the_part() {
+        const GROW: Anim = Anim {
+            length: 1.0,
+            looping: false,
+            channels: &[ch(0, Scale, &[l(0.0, [1.0, 1.0, 1.0]), l(1.0, [1.0, 3.0, 0.5])])],
+        };
+        let mut r = Rig::new(BONES);
+        GROW.apply(&mut r, 10.0);
+        assert_eq!(r.scale[0], [1.0, 2.0, 0.75]);
+        let mut r = Rig::new(BONES);
+        GROW.at_millis(&mut r, 1000, 0.5);
+        assert_eq!(r.scale[0], [1.0, 2.0, 0.75]);
     }
 }

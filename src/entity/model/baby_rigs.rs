@@ -436,13 +436,30 @@ pub(super) mod llama {
         ),
     ];
 
+    const BODY: usize = 5;
+    /// v1.0 gap Track 7d: the trader cria's blanket, `LlamaDecorLayer`'s
+    /// `trader_llama_baby` equipment on the decor mesh (the cria's boxes
+    /// grown by 0.2): the adult trader llama's blue blanket and gold
+    /// panels, this game's own, over the body.
+    const TRADER_BLANKET: &[Cuboid] = &[
+        jboxg([-4.0, -3.0, -8.5], [8.0, 1.2, 13.0], 0.2, [40, 76, 158], 10),
+        jboxg([-4.0, -1.2, -5.5], [0.0, 3.0, 7.0], 0.2, [205, 155, 45], 10),
+        jboxg([4.0, -1.2, -5.5], [0.0, 3.0, 7.0], 0.2, [205, 155, 45], 10),
+    ];
+
     /// `LlamaModel`: the head looks; the legs as a quadruped's. Crias carry
-    /// no chests or carpets (`hasChest` and the decor layer are adults').
+    /// no chests or carpets (`hasChest` and the decor layer's equipment are
+    /// adults'); a trader cria wears its blanket (v1.0 gap Track 7d).
     pub fn pose(m: &Mob) -> Parts {
         let mut r = Rig::new(BONES);
         r.look(HEAD, m);
         r.quadruped_walk(m, [1, 2, 3, 4], motion::LEG_SWING);
-        r.parts()
+        let mut p = r.parts();
+        if m.kind == MobKind::TraderLlama {
+            let body = p[BODY];
+            p.push(Part { boxes: TRADER_BLANKET, ..body });
+        }
+        p
     }
 }
 
@@ -518,8 +535,11 @@ pub(super) mod camel {
     /// `CamelModel` with `BabyCamelModel`'s keyframes (`CamelBabyAnimation`):
     /// the head turns within 30 degrees and pitches from -25 to 45
     /// (`applyHeadRotation`), the walk keyframes run on the walk
-    /// (`applyWalk(pos, speed, 2, 2.5)`), and sitting, standing up and the
-    /// dash play on the pose clock Track 3 keeps.
+    /// (`applyWalk(pos, speed, 2, 2.5)`), sitting, standing up and the
+    /// dash play on the pose clock Track 3 keeps, and (v1.0 gap Track 7d)
+    /// the idle animation flicks the ears and swings the tail from its
+    /// `idleAnimationState`, which the camel restarts every 80 to 119 ticks
+    /// (`Mob::tick_anim`). Each animation adds to the pose, as Java's do.
     pub fn pose(m: &Mob, alpha: f32) -> Parts {
         let mut r = Rig::new(BONES);
         let s = m.mount.as_ref();
@@ -529,28 +549,26 @@ pub(super) mod camel {
         }
         r.x_rot(HEAD, pitch.to_radians());
         r.y_rot(HEAD, m.head_yaw.to_degrees().clamp(-30.0, 30.0).to_radians());
-        let mut walking = true;
+        CAMEL_BABY_WALK.apply_walk(&mut r, m.limb_phase, m.limb_amp, 2.0, 2.5);
         if let Some(s) = s {
             let t = s.pose_time as f32 + alpha;
             if s.camel_sitting {
-                walking = false;
                 if s.pose_time < crate::entity::mounts::camel::SITDOWN_TICKS {
                     CAMEL_BABY_SIT.apply(&mut r, t);
                 } else {
                     CAMEL_BABY_SIT_POSE.apply(&mut r, t);
                 }
             } else {
-                if s.dashing {
-                    walking = false;
-                    CAMEL_BABY_DASH.apply(&mut r, f32::from(s.dash_ticks) + alpha);
-                }
                 if s.in_pose_transition() {
                     CAMEL_BABY_STANDUP.apply(&mut r, t);
                 }
+                if s.dashing {
+                    CAMEL_BABY_DASH.apply(&mut r, f32::from(s.dash_ticks) + alpha);
+                }
             }
         }
-        if walking {
-            CAMEL_BABY_WALK.apply_walk(&mut r, m.limb_phase, m.limb_amp, 2.0, 2.5);
+        if let Some(t) = since(m, m.anim.idle_start, alpha) {
+            CAMEL_BABY_IDLE.apply(&mut r, t);
         }
         r.parts()
     }
@@ -1093,8 +1111,35 @@ pub(super) mod equine {
         if e.donkey {
             r.x_rot(e.head_parts, head_rot(-30f32.to_radians()));
         }
-        r.parts()
+        let mut p = r.parts();
+        // v1.0 gap Track 7d: `HorseMarkingLayer` paints a horse foal's
+        // markings too (Java's `*_baby` marking textures), here on its body
+        // as on the adult's.
+        if let Some(k) = s.filter(|s| m.kind == MobKind::Horse && s.marking > 0).map(|s| s.marking as usize - 1) {
+            let body = p[0];
+            p.push(Part { boxes: &MARKINGS[k.min(MARKINGS.len() - 1)], ..body });
+        }
+        p
     }
+
+    const WHITE: Rgb = [240, 236, 224];
+    const DARK: Rgb = [36, 30, 24];
+    /// The adult's four markings (white, white field, white dots, black
+    /// dots) on the foal's flanks, in its proportions; this game's own.
+    const fn flanks(color: Rgb, noise: u8, near: [f32; 4], far: [f32; 4]) -> [Cuboid; 2] {
+        // Each flank patch as [y from, y to, z from, z to] on the body's
+        // sides (x -4 and 4), in this game's axes about the body's pivot.
+        [
+            cube([-4.1, near[0], near[2]], [-4.0, near[1], near[3]], color, noise),
+            cube([4.0, far[0], far[2]], [4.1, far[1], far[3]], color, noise),
+        ]
+    }
+    static MARKINGS: [[Cuboid; 2]; 4] = [
+        flanks(WHITE, 6, [-2.1, 3.5, -3.7, 3.7], [-2.1, 3.5, -3.7, 3.7]),
+        flanks(WHITE, 12, [0.0, 3.5, -7.0, 7.0], [0.0, 3.5, -7.0, 7.0]),
+        flanks(WHITE, 30, [0.0, 2.1, -3.7, -0.7], [-2.8, -0.7, 2.2, 5.9]),
+        flanks(DARK, 30, [0.0, 2.1, -3.7, -0.7], [-2.8, -0.7, 2.2, 5.9]),
+    ];
 }
 
 // ---------------------------------------------------------------- turtle
@@ -1533,19 +1578,47 @@ pub(super) mod armadillo {
 
     /// `ArmadilloModel` on `BabyArmadilloModel`'s parts: walking, the head
     /// looks (yaw within 32.5 degrees, pitch -22.5 to 25) and the baby walk
-    /// keyframes run (`applyWalk(pos, speed, 16.5, 2.5)`); rolled up, only
-    /// the ball (`cube`) shows, as this game's adult does.
-    pub fn pose(m: &Mob) -> Parts {
+    /// keyframes run (`applyWalk(pos, speed, 16.5, 2.5)`). v1.0 gap Track
+    /// 7d: hidden in its shell (`ArmadilloState.shouldHideInShell`: rolling
+    /// after 5 ticks, scared, unrolling for its first 26) the ball (`cube`)
+    /// shows, the body's own boxes, the hind legs and the tail don't, and the
+    /// head and front legs stay drawn where the keyframes tuck them: the
+    /// roll-up while it rolls, the roll-out while it unrolls and, scared,
+    /// the peek, which a peek restarts and which otherwise holds its last
+    /// frame (`Armadillo.setupAnimationStates` fast-forwards it to its end).
+    pub fn pose(m: &Mob, alpha: f32) -> Parts {
+        use crate::entity::armadillo as a;
         let mut r = Rig::new(BONES);
-        let hidden = m.armadillo.as_ref().is_some_and(|s| s.hide());
-        for shown in &mut r.shown[..CUBE] {
-            *shown = !hidden;
-        }
+        let s = m.armadillo.as_ref();
+        let (state, ticks) = s.map_or((a::IDLE, 0), |s| (s.pose, s.pose_ticks));
+        let hidden = match state {
+            a::ROLLING => ticks > 5,
+            a::SCARED => true,
+            a::UNROLLING => ticks < 26,
+            _ => false,
+        };
+        r.skip[BODY] = hidden;
+        r.shown[LEFT_HIND_LEG] = !hidden;
+        r.shown[RIGHT_HIND_LEG] = !hidden;
+        r.shown[TAIL] = !hidden;
         r.shown[CUBE] = hidden;
         if !hidden {
             r.x_rot(HEAD, (-m.head_pitch.to_degrees()).clamp(-22.5, 25.0).to_radians());
             r.y_rot(HEAD, m.head_yaw.to_degrees().clamp(-32.5, 32.5).to_radians());
             ARMADILLO_BABY_WALK.apply_walk(&mut r, m.limb_phase, m.limb_amp, 16.5, 2.5);
+        }
+        let t = f32::from(ticks) + alpha;
+        match state {
+            a::ROLLING => ARMADILLO_BABY_ROLL_UP.apply(&mut r, t),
+            a::UNROLLING => ARMADILLO_BABY_ROLL_OUT.apply(&mut r, t),
+            a::SCARED => {
+                // `peeking` counts a peek's 50 ticks down; between peeks the
+                // animation rests on its last keyframe.
+                let peek = s.map_or(0, |s| s.peeking);
+                let t = if peek > 0 { f32::from(50 - peek.min(50)) + alpha } else { 50.0 };
+                ARMADILLO_BABY_PEEK.apply(&mut r, t);
+            }
+            _ => {}
         }
         r.parts()
     }
@@ -1785,6 +1858,7 @@ pub(super) mod strider {
 
 pub(super) mod zombie_villager {
     use super::*;
+    use crate::entity::player_model::Limb;
 
     const BODY: usize = 0;
     const LEFT_LEG: usize = 1;
@@ -1849,6 +1923,42 @@ pub(super) mod zombie_villager {
         }
         p
     }
+
+    /// v1.0 gap Track 7d: the scale the cub's head armor and the rest of
+    /// its armor are drawn at.
+    pub const HEAD_ARMOR: f32 = 0.9;
+    pub const BODY_ARMOR: f32 = 0.5;
+
+    /// v1.0 gap Track 7d: `HumanoidArmorLayer` on the cub
+    /// (`ZOMBIE_VILLAGER_BABY_ARMOR`, `HumanoidModel.createBabyArmorMeshSet`
+    /// with the baby deformations): this game's armor pieces, in their
+    /// texture layout, on the cub's own pivots and sized to Java's baby
+    /// armor: a helmet about 9 pixels across standing half a pixel proud of
+    /// the head, a chestplate a little wider than the body, arms and legs
+    /// as long as the cub's. The parts are [`pose`]'s, in the humanoid
+    /// order (body, left and right leg, left and right arm, head).
+    pub fn armor(parts: &[Part]) -> ([Limb; 6], [Limb; 6]) {
+        let at = |p: &Part, k: f32, min: [f32; 3], max: [f32; 3], uv: [f32; 2]| Limb {
+            pivot: p.pivot / k,
+            rot: p.rot,
+            min,
+            max,
+            uv,
+        };
+        let arm = |p: &Part, uv| at(p, BODY_ARMOR, [-2.0, -10.0, -2.0], [2.0, 0.0, 2.0], uv);
+        let leg = |p: &Part, uv| at(p, BODY_ARMOR, [-2.0, -4.5, -2.0], [2.0, 1.0, 2.0], uv);
+        let body = [
+            at(&parts[HEAD], BODY_ARMOR, [-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], [0.0, 0.0]),
+            at(&parts[BODY], BODY_ARMOR, [-4.0, -4.0, -2.4], [4.0, 5.0, 2.4], [16.0, 16.0]),
+            arm(&parts[RIGHT_ARM], [40.0, 16.0]),
+            arm(&parts[LEFT_ARM], [32.0, 48.0]),
+            leg(&parts[RIGHT_LEG], [0.0, 16.0]),
+            leg(&parts[LEFT_LEG], [16.0, 48.0]),
+        ];
+        let mut head = body;
+        head[0] = at(&parts[HEAD], HEAD_ARMOR, [-4.0, 0.5, -4.0], [4.0, 8.5, 4.0], [0.0, 0.0]);
+        (head, body)
+    }
 }
 
 // ---------------------------------------------------------------- snifflet
@@ -1856,14 +1966,23 @@ pub(super) mod zombie_villager {
 pub(super) mod snifflet {
     use super::*;
 
+    const BODY: usize = 1;
     const HEAD: usize = 2;
+    const LEFT_EAR: usize = 3;
+    const RIGHT_EAR: usize = 4;
+    const NOSE: usize = 5;
+    const RIGHT_FRONT_LEG: usize = 7;
+    const RIGHT_MID_LEG: usize = 8;
+    const RIGHT_HIND_LEG: usize = 9;
+    const LEFT_FRONT_LEG: usize = 10;
+    const LEFT_MID_LEG: usize = 11;
+    const LEFT_HIND_LEG: usize = 12;
+
+    include!("keyframe_defs/sniffer.rs");
 
     const HIDE: Rgb = [124, 63, 43];
     const MOSS: Rgb = [70, 108, 42];
     const LEG: &[Cuboid] = &[jbox([-2.0, -1.0, -2.0], [4.0, 5.0, 4.0], [75, 49, 34], 20)];
-    /// `SnifferAnimation.BABY_TRANSFORM`'s 1.2 head scale, baked into the
-    /// head's boxes and its children's offsets.
-    const K: f32 = 1.2;
     static BONES: &[Bone] = &[
         bone(&[], ROOT, [0.0, 24.0, 0.0], [0.0; 3]),
         bone(
@@ -1879,42 +1998,37 @@ pub(super) mod snifflet {
         ),
         bone(
             &[
-                jbox([-5.0 * K, -4.25 * K, -7.5 * K], [10.0 * K, 9.0 * K, 9.0 * K], [133, 72, 48], 30),
-                jbox([-5.1 * K, -2.0 * K, -5.5 * K], [0.1, 1.2 * K, 1.4 * K], EYE, 0),
-                jbox([5.0 * K, -2.0 * K, -5.5 * K], [0.1, 1.2 * K, 1.4 * K], EYE, 0),
-                jbox([-5.15 * K, -1.9 * K, -5.4 * K], [0.05, 0.4, 0.4], GLINT, 0),
-                jbox([5.1 * K, -1.9 * K, -5.4 * K], [0.05, 0.4, 0.4], GLINT, 0),
+                jbox([-5.0, -4.25, -7.5], [10.0, 9.0, 9.0], [133, 72, 48], 30),
+                jbox([-5.1, -2.0, -5.5], [0.1, 1.2, 1.4], EYE, 0),
+                jbox([5.0, -2.0, -5.5], [0.1, 1.2, 1.4], EYE, 0),
+                jbox([-5.15, -1.9, -5.4], [0.05, 0.4, 0.4], GLINT, 0),
+                jbox([5.1, -1.9, -5.4], [0.05, 0.4, 0.4], GLINT, 0),
             ],
             1,
             [-6.0, -4.75, 0.0],
             [0.0; 3],
         ),
+        bone(&[jbox([0.0, 0.0, -2.0], [1.0, 11.0, 3.0], [133, 72, 48], 26)], HEAD as u8, [5.0, -4.25, -1.5], [0.0; 3]),
         bone(
-            &[jbox([0.0, 0.0, -2.0 * K], [1.0 * K, 11.0 * K, 3.0 * K], [133, 72, 48], 26)],
+            &[jbox([-1.0, 0.0, -2.0], [1.0, 11.0, 3.0], [133, 72, 48], 26)],
             HEAD as u8,
-            [5.0 * K, -4.25 * K, -1.5 * K],
-            [0.0; 3],
-        ),
-        bone(
-            &[jbox([-K, 0.0, -2.0 * K], [1.0 * K, 11.0 * K, 3.0 * K], [133, 72, 48], 26)],
-            HEAD as u8,
-            [-5.0 * K, -4.25 * K, -1.5 * K],
+            [-5.0, -4.25, -1.5],
             [0.0; 3],
         ),
         bone(
             &[
-                jbox([-5.0 * K, -3.0 * K, -2.0 * K], [10.0 * K, 3.0 * K, 4.0 * K], [204, 171, 75], 30),
-                face([-4.0 * K, -1.5 * K], [-2.2 * K, -K], -2.0 * K, 0.1, [65, 49, 33]),
-                face([1.5 * K, 4.0 * K], [-2.2 * K, -K], -2.0 * K, 0.1, [65, 49, 33]),
+                jbox([-5.0, -3.0, -2.0], [10.0, 3.0, 4.0], [204, 171, 75], 30),
+                face([-4.0, -1.5], [-2.2, -1.0], -2.0, 0.1, [65, 49, 33]),
+                face([1.5, 4.0], [-2.2, -1.0], -2.0, 0.1, [65, 49, 33]),
             ],
             HEAD as u8,
-            [0.0, -1.25 * K, -9.5 * K],
+            [0.0, -1.25, -9.5],
             [0.0; 3],
         ),
         bone(
-            &[jbox([-5.0 * K, -2.5 * K, -2.0 * K], [10.0 * K, 5.0 * K, 4.0 * K], [190, 156, 66], 30)],
+            &[jbox([-5.0, -2.5, -2.0], [10.0, 5.0, 4.0], [190, 156, 66], 30)],
             HEAD as u8,
-            [0.0, 1.25 * K, -9.5 * K],
+            [0.0, 1.25, -9.5],
             [0.0; 3],
         ),
         bone(LEG, 0, [-4.0, -4.0, -7.0], [0.0; 3]),
@@ -1925,39 +2039,30 @@ pub(super) mod snifflet {
         bone(LEG, 0, [4.0, -4.0, 7.0], [0.0; 3]),
     ];
 
-    /// `SnifferModel` on `SniffletModel`'s parts with `BABY_TRANSFORM` (the
-    /// head 1.2 times larger, a pixel up and a pixel back): the head looks;
-    /// the walk and the digging, sniffing and rising poses move it as this
-    /// game's adult sniffer does (its keyframe animations aren't on these
-    /// parts yet).
-    pub fn pose(m: &Mob, time: f32) -> Parts {
+    /// `SnifferModel` on `SniffletModel`'s parts, as `SnifferRenderer`
+    /// draws a snifflet (v1.0 gap Track 7d: with `SnifferModel` itself, so
+    /// `SniffletModel`'s `BABY_TRANSFORM`, which Track 7c applied, never
+    /// runs in 26.3): the head looks; the walk keyframes run on the walk,
+    /// the searching walk while it searches (`applyWalk(pos, speed, 9,
+    /// 100)`), and the digging, long sniff, standing up, happy and scenting
+    /// keyframes from the time in its state, each added to the pose.
+    pub fn pose(m: &Mob, alpha: f32) -> Parts {
         use crate::entity::sniffer as s;
         let mut r = Rig::new(BONES);
-        r.at[HEAD][1] -= 1.0;
-        r.at[HEAD][2] += 1.0;
-        let state = m.sniffer.as_ref().map_or(0, |s| s.pose);
-        let (phase, scale) = motion::keyframe_phase(m.limb_phase, m.limb_amp, motion::SNIFFER_WALK);
-        let swing = phase.sin() * 0.6 * scale;
-        for (i, k) in [1.0, -1.0, 1.0, -1.0, 1.0, -1.0].into_iter().enumerate() {
-            r.x_rot(7 + i, swing * if i % 3 == 1 { -k } else { k });
-        }
-        let lower = match state {
-            s::DIGGING => 3.0,
-            s::RISING => 3.0 * (1.0 - m.sniffer.as_ref().map_or(40.0, |s| s.elapsed as f32) / 40.0).clamp(0.0, 1.0),
-            _ => 0.0,
-        };
-        r.at[1][1] += lower;
+        r.x_rot(HEAD, head_x(m));
         r.y_rot(HEAD, m.head_yaw);
-        r.x_rot(
-            HEAD,
-            match state {
-                s::DIGGING => 0.4 + (time * 9.0).sin() * 0.1,
-                s::SNIFFING => 0.25 + (time * 5.0).sin() * 0.08,
-                s::SCENTING => -0.3,
-                s::HAPPY => (time * 4.0).sin() * 0.15,
-                _ => head_x(m),
-            },
-        );
+        let (state, elapsed) = m.sniffer.as_ref().map_or((s::IDLE, 0), |s| (s.pose, s.elapsed));
+        let walk = if state == s::SEARCHING { &SNIFFER_SNIFF_SEARCH } else { &SNIFFER_WALK };
+        walk.apply_walk(&mut r, m.limb_phase, m.limb_amp, 9.0, 100.0);
+        let t = f32::from(elapsed) + alpha;
+        match state {
+            s::DIGGING => SNIFFER_DIG.apply(&mut r, t),
+            s::SNIFFING => SNIFFER_LONGSNIFF.apply(&mut r, t),
+            s::RISING => SNIFFER_STAND_UP.apply(&mut r, t),
+            s::HAPPY => SNIFFER_HAPPY.apply(&mut r, t),
+            s::SCENTING => SNIFFER_SNIFFSNIFF.apply(&mut r, t),
+            _ => {}
+        }
         r.parts()
     }
 }

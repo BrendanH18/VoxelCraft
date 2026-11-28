@@ -9351,6 +9351,111 @@
    "args": [
     "--still-mobs"
    ]
+  },
+  {
+   "name": "mobs-still-model-details",
+   "group": "mobs",
+   "description": "v1.0 gap Track 7d: from above at noon, pinned with --still-mobs and facing the camera: front row an adult nautilus, a zombie nautilus and a baby nautilus (shell first, the body and mouth trailing behind); back row a llama cria, a camel calf, an armadillo pup, a snifflet, two horse foals (their markings random) and a trader llama cria in its blanket",
+   "pose": [
+    0.5,
+    158.0,
+    11.0,
+    90,
+    -45
+   ],
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "fill": [
+    [
+     -11,
+     150,
+     12,
+     11,
+     150,
+     28,
+     "grass"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "nautilus,-3,151,16",
+    "zombie_nautilus,0,151,16",
+    "nautilus,3,151,16,baby",
+    "llama,-7,151,20,baby",
+    "camel,-4,151,20,baby",
+    "armadillo,-2,151,20,baby",
+    "sniffer,0,151,20,baby",
+    "horse,3,151,20,baby",
+    "horse,5,151,20,baby",
+    "trader_llama,7,151,20,baby"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
+  },
+  {
+   "name": "mobs-nautilus-swim",
+   "group": "mobs",
+   "description": "v1.0 gap Track 7d: seen from inside a glass-roofed stone tank at noon, three nautiluses and two zombie nautiluses swimming freely (not pinned, so they turn their sides to the camera; their places vary from run to run)",
+   "pose": [
+    0.5,
+    148.2,
+    12.5,
+    90,
+    -4
+   ],
+   "hud": false,
+   "wait": 4.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "fill": [
+    [
+     -8,
+     144,
+     10,
+     8,
+     150,
+     28,
+     "stone"
+    ],
+    [
+     -8,
+     151,
+     10,
+     8,
+     151,
+     28,
+     "glass"
+    ],
+    [
+     -7,
+     145,
+     11,
+     7,
+     150,
+     27,
+     "water"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "nautilus,-3,147,17",
+    "nautilus,0,147,19",
+    "nautilus,3,147,17",
+    "zombie_nautilus,-2,147,22",
+    "zombie_nautilus,2,147,22"
+   ],
+   "args": []
   }
  ]
 }
