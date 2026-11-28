@@ -293,7 +293,9 @@ table, the biome source and the Nether structure sets against
 
 Worlds made from the v1.0 gap-closing build on (generation 7,
 `worldgen=7`) keep generation 6's noise, biomes and placed features and
-change two things ([record](verification/2026-11-27-v1.0-gap-track-05-nether-portals.md)).
+change two things ([record](verification/2026-11-27-v1.0-gap-track-05-nether-portals.md);
+structures and ancient debris in their steps:
+[Track 5b's record](verification/2026-11-27-v1.0-gap-track-05b-nether-structures-portals.md)).
 
 **Surfaces** follow 26.3's `worldgen/material_rule/nether.json`
 (`world::nether_surface`), applied as `MaterialSystem.buildSurface` does to
@@ -338,16 +340,42 @@ reads the cell's region as the earlier ones left it. So glowstone spreads
 from glowstone of either glowstone feature, ores replace only the
 netherrack the blobs left, fire needs the floor deltas left, twisting vines
 skip spots the warped vegetation took (they are rarer than in generation
-6), and huge fungi grow among the vines that came before them. Ancient
-debris keeps its own pass and structures still paint after the features.
+6), and huge fungi grow among the vines that came before them.
+
+**Structures** go in their own steps (v1.0 gap Track 5b), before that
+step's features, as `applyBiomeDecoration` places them: bastions and the
+Nether's ruined portals in step 4 (`surface_structures`, before deltas and
+columns), fortresses and Nether fossils in step 7 (`underground_decoration`,
+before the blobs, fire, glowstone and ores), each step's in the structure
+registry's order (sorted by id). Each structure's pieces are clipped to
+the cell being decorated (`getWritableArea`: its 16 × 16 columns from y 1);
+a ruined portal goes whole into the cell holding its middle
+(`RuinedPortalPiece.postProcess`), its processors, netherrack spread and
+drips reading that cell's region. Structures read the region as earlier
+steps left it (fortress pillars stop on what is under them then) and later
+features read them: glowstone hangs from bastion blackstone, fire lies on
+a portal's netherrack, ores and blobs pass the bricks by. Where two cells'
+regions overlap, a block a structure changed wins over the other cell's
+change there, Java's result when the structure's chunk was decorated
+after the other (its pieces replace what they cover).
+
+**Ancient debris** is the step 7 `scattered_ore` it is in Java
+(`ore_ancient_debris_large`, then `ore_debris_small`, after the other
+ores): 0 to 3 (or 2) tries, each up to `min(i, 7)` blocks from the
+origin on every axis, replacing netherrack, basalt or blackstone
+(`#base_stone_nether`) with no air beside it as the cell's region stands
+then, so it can sit in basalt and blackstone blobs and in bastion walls,
+and never beside a fortress corridor placed before it.
 
 Each cell is decorated once into a bounded cache of what it changed (at
 most 4 million blocks, 32 MB; a basalt delta cell changes about 17,000,
-others a few hundred to 2,000), and a 32³ chunk takes the changes of the
-sixteen cells whose regions reach it. Where two regions overlap, Java's
-result depends on which chunk the server decorated first (the later one
-sees the earlier one's blocks); here neither sees the other's, and the
-cell first by z, then x, keeps its block.
+others a few hundred to 2,000, plus what its structures change), and a
+32³ chunk takes the changes of the sixteen cells whose regions reach it:
+first those structures made, then the rest. Where two regions overlap,
+Java's result depends on which chunk the server decorated first (the
+later one sees the earlier one's blocks); here neither sees the other's,
+and the cell first by z, then x, keeps its block (a structure's block
+first, as above).
 
 Generation 7 costs about 0.45 ms more per Nether chunk than generation 6
 (`nether_patch_bench`, 100 chunks a patch on Boat: wastes 0.45 → 0.90 ms,
@@ -366,10 +394,10 @@ generation threads.
   border and the spawn-list border can differ by a few blocks.
 - Generations 1 to 6: features see only undecorated terrain, so later
   features don't react to earlier ones as in Java (painting order keeps
-  fungi and vines whole). Generation 7 places them in Java's order on
-  decorated terrain; where two Java chunks' regions overlap, neither sees
-  the other's features (Java's outcome there depends on load order), and
-  structures still paint after the features.
+  fungi and vines whole), and structures paint after them. Generation 7
+  places features and structures in Java's order on decorated terrain;
+  where two Java chunks' regions overlap, neither sees the other's
+  features or structures (Java's outcome there depends on load order).
 - Fossils are procedural skeletons, not Java's fourteen templates.
   Generations 1 to 5 lack lava springs, fire patches in the wastes and
   deltas and the soul sand/gravel/blackstone/magma ore blobs (generation 6
