@@ -8,6 +8,9 @@
 use super::*;
 use crate::entity::raid;
 
+/// A goal's movement this tick (`think`'s direction and speed).
+type Wish = (Option<DVec3>, f64);
+
 impl Mob {
     /// The raid and patrol movement goals for a raider without a target.
     /// `None` leaves it to its other goals.
@@ -16,6 +19,20 @@ impl Mob {
         world: &W,
         rng: &mut Rng,
     ) -> Option<(Option<DVec3>, f64)> {
+        // v1.0 gap Track 2d: each goal holds `MOVE` at its priority; a
+        // running idle look goal holding `MOVE` at that priority or better
+        // (the witch's `RandomLookAroundGoal`, 3) keeps it from starting, so
+        // it isn't run at all (`GoalSelector` checks flags before `canUse`).
+        let (wish, priority) = self.raider_goal(world, rng)?;
+        let Some(wish) = wish else {
+            self.stop_navigation();
+            return None;
+        };
+        self.head.move_priority = Some(priority);
+        Some(wish)
+    }
+
+    fn raider_goal<W: MobWorld + ?Sized>(&mut self, world: &W, rng: &mut Rng) -> Option<(Option<Wish>, u8)> {
         if !crate::entity::illager::is_raider(self.kind) || self.riding.is_some() {
             return None;
         }
@@ -23,20 +40,29 @@ impl Mob {
         let r = &s.raider;
         // `ObtainRaidLeaderBannerGoal`, at 1.15.
         if let Some(banner) = r.banner_target {
+            if !self.idle_look_allows(1, false) {
+                return Some((None, 1));
+            }
             let speed = self.goal_speed(raid::BANNER_WALK_SPEED);
-            return Some((self.pursue(world, banner, speed, true, false, rng), speed));
+            return Some((Some((self.pursue(world, banner, speed, true, false, rng), speed)), 1));
         }
         // `PathfindToRaidGoal`: outside the village, a random spot up to 15
         // blocks toward the centre, at 1.0.
         if let Some(center) = r.raid_center {
             if !r.in_village {
+                if !self.idle_look_allows(3, false) {
+                    return Some((None, 3));
+                }
                 let goal = self.raid_step_toward(world, center, rng);
                 let speed = self.goal_speed(1.0);
-                return Some((self.pursue(world, goal, speed, true, false, rng), speed));
+                return Some((Some((self.pursue(world, goal, speed, true, false, rng), speed)), 3));
             }
             // `RaiderMoveThroughVillageGoal(1.05, 1)`: walk to a home, then
             // remember it among the last three.
             if let Some(home) = r.village_target {
+                if !self.idle_look_allows(4, false) {
+                    return Some((None, 4));
+                }
                 let at = home.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
                 let reach = self.shape().half_width * 2.0 + 1.0;
                 if (at - self.pos).with_y(0.0).length() < reach {
@@ -52,11 +78,14 @@ impl Mob {
                 // `start`: `setNoActionTime(0)`.
                 self.idle = 0.0;
                 let speed = self.goal_speed(raid::VILLAGE_WALK_SPEED);
-                return Some((self.pursue(world, at, speed, true, false, rng), speed));
+                return Some((Some((self.pursue(world, at, speed, true, false, rng), speed)), 4));
             }
             return None;
         }
-        self.patrol_goal(world, rng)
+        if !self.idle_look_allows(4, false) {
+            return Some((None, 4));
+        }
+        self.patrol_goal(world, rng).map(|w| (Some(w), 4))
     }
 
     /// `DefaultRandomPos.getPosTowards(mob, 15, 4, centre, PI / 2)`: a spot

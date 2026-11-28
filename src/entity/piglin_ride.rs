@@ -23,8 +23,6 @@
 //! Seats: a baby hoglin carries its rider at 0.875 (an adult at 1.49375), a
 //! baby piglin at its height 0.98, and a baby piglin rides 0.1875 above
 //! its feet (its `VEHICLE` attachment).
-use glam::DVec3;
-
 use super::mounts::MOB_VEHICLE;
 use super::{Ctx, Entities, MobKind, MobWorld};
 
@@ -96,13 +94,13 @@ impl Entities {
             // `PiglinSpecificSensor`.
             if ride.scan_in == 0 {
                 ride.scan_in = SENSE_TICKS;
-                let eye = m.pos + DVec3::Y * (m.shape().height * 0.85);
+                let eye = m.look_eye();
                 ride.seen = self
                     .mobs
                     .iter()
                     .filter(|h| h.kind == MobKind::Hoglin && h.baby && h.alive())
                     .filter(|h| h.pos.distance_squared(m.pos) <= SENSE_RANGE * SENSE_RANGE)
-                    .filter(|h| super::mob::line_of_sight(world, eye, h.pos + DVec3::Y * (h.shape().height * 0.85)))
+                    .filter(|h| super::mob::line_of_sight(world, eye, h.look_eye()))
                     .min_by(|a, b| a.pos.distance_squared(m.pos).total_cmp(&b.pos.distance_squared(m.pos)))
                     .map(|h| h.uid);
             }
@@ -202,6 +200,7 @@ mod tests {
     use crate::physics::test_util::Grid;
     use crate::simulation::lighting::SpawnLight;
     use crate::world::terrain::Dimension;
+    use glam::DVec3;
 
     fn ctx() -> Ctx {
         Ctx {
@@ -233,7 +232,19 @@ mod tests {
     /// rides it until the 200–600-tick memory runs out, then gets off.
     #[test]
     fn baby_piglins_ride_baby_hoglins_for_a_while() {
-        let world = Grid::flat(0);
+        // A pen (two blocks high) keeps the pair within `MAX_RIDE_DISTANCE`:
+        // a baby hoglin strolling more than 8 blocks off ends the ride target
+        // in Java too, and where its strolls end follows the random stream.
+        let mut world = Grid::flat(0);
+        for x in -3..=7 {
+            for z in -3..=4 {
+                if x == -3 || x == 7 || z == -3 || z == 4 {
+                    for y in 0..2 {
+                        world.set(glam::IVec3::new(x, y, z), crate::world::block::Block::STONE);
+                    }
+                }
+            }
+        }
         let mut e = Entities::new(21);
         let hoglin = baby(&mut e, MobKind::Hoglin, DVec3::new(3.5, 0.0, 0.5));
         let piglin = baby(&mut e, MobKind::Piglin, DVec3::new(0.5, 0.0, 0.5));

@@ -1024,6 +1024,21 @@ pub struct Target {
 }
 
 impl Target {
+    /// `getEyeHeight` for the player's pose: 1.62 standing, 1.27 crouching,
+    /// 0.4 swimming, gliding or crawling (Track 2d: the eye mobs look at).
+    pub fn eye_height(&self) -> f64 {
+        match self.shape.height {
+            h if h < 1.0 => 0.4,
+            h if h < 1.6 => 1.27,
+            _ => crate::player::EYE_HEIGHT,
+        }
+    }
+
+    /// The player's eye position.
+    pub fn eye(&self) -> DVec3 {
+        self.pos + DVec3::Y * self.eye_height()
+    }
+
     /// Whether the target has `effect` active.
     pub fn has_effect(&self, effect: crate::simulation::effects::Effect) -> bool {
         self.effects & (1u64 << effect as u32) != 0
@@ -1695,7 +1710,7 @@ impl Entities {
             let Some((damage, knockback)) = explosion_damage(power, m.pos.distance(center), exposure) else {
                 continue;
             };
-            let eye = m.pos + DVec3::Y * (m.shape().height * 0.85);
+            let eye = m.look_eye();
             let push = (eye - center).normalize_or_zero() * knockback;
             if credit_player {
                 m.player_hit();
@@ -2532,6 +2547,16 @@ impl Entities {
         match &mut self.fight {
             Some(fight) => fight.settle_destroyed(ctx, &mut self.crystals, events),
             None => self.crystals.destroyed.clear(),
+        }
+    }
+
+    /// v1.0 gap Track 2d: `blow` on a dragon part (fight or wild), as
+    /// `EnderDragonPart.hurtServer`; returns whether it landed.
+    pub fn strike_blow(&mut self, hit: dragon::Hit, blow: dragon::Blow) -> bool {
+        match hit {
+            dragon::Hit::Crystal(_) => false,
+            dragon::Hit::Dragon(_) => self.fight.as_mut().is_some_and(|f| f.strike(hit, blow)),
+            dragon::Hit::Wild(id, part) => self.wild_dragons.strike(id, part, blow),
         }
     }
 

@@ -226,11 +226,27 @@ impl Mob {
         let flat = DVec3::new(to.x, 0.0, to.z);
         let hdist = flat.length();
         let dir = if hdist > 1e-6 { flat / hdist } else { DVec3::X };
-        // `MeleeAttack` and `CrossbowAttack`: `LOOK_TARGET` on the target,
-        // followed at the mob's own speeds.
-        self.look_toward(at + DVec3::Y * if matches!(foe, Foe::Player(_)) { crate::player::EYE_HEIGHT } else { 1.2 });
+        // `MeleeAttack`, `CrossbowAttack` and
+        // `SetWalkTargetFromAttackTargetIfTargetOutOfReach`: `LOOK_TARGET` on
+        // the target's eyes, which `LookAtTargetSink` follows at the mob's
+        // own speeds (Track 2d: through the sink, as Java does).
+        let foe_eye = match foe {
+            Foe::Player(id) => {
+                ctx.players.iter().find(|t| t.id == id).map_or(crate::player::EYE_HEIGHT, |t| t.eye_height())
+            }
+            Foe::Mob(_) => self.nether.as_ref().map_or(1.2, |n| n.foe_eye),
+        };
+        if super::head::brain(self.kind) {
+            self.set_look_target(match foe {
+                Foe::Player(id) => super::head::Tracked::Player(id),
+                Foe::Mob(uid) => super::head::Tracked::Mob(uid, at + DVec3::Y * foe_eye),
+            });
+        } else {
+            // Goal mobs (a zombified piglin or strider rider) ask the look control.
+            self.look_toward(at + DVec3::Y * foe_eye);
+        }
         let weapon = self.nether.as_ref().map_or(Weapon::None, |n| n.weapon);
-        let eye = self.pos + DVec3::Y * (self.shape().height * 0.9);
+        let eye = self.look_eye();
         let aim = at + DVec3::Y * 1.2;
         if weapon == Weapon::Crossbow {
             let sees = hdist <= CROSSBOW_RANGE && line_of_sight(world, eye, aim);
@@ -349,9 +365,7 @@ impl Mob {
     ) -> (Option<DVec3>, f64) {
         // `EntityTracker(target, true)`: the target's eyes.
         let eye = match foe {
-            Foe::Player(id) => {
-                ctx.players.iter().find(|t| t.id == id).map(|t| t.pos + DVec3::Y * (t.shape.height * 0.9))
-            }
+            Foe::Player(id) => ctx.players.iter().find(|t| t.id == id).map(|t| t.eye()),
             Foe::Mob(_) => None,
         }
         .unwrap_or(at + DVec3::Y * 1.2);
@@ -364,7 +378,7 @@ impl Mob {
         if (at - self.pos).with_y(0.0).length() <= ATTACK_RANGE {
             return (None, 0.0);
         }
-        let sees = line_of_sight(world, self.pos + DVec3::Y * (self.shape().height * 0.9), eye);
+        let sees = line_of_sight(world, self.look_eye(), eye);
         (self.pursue(world, at, speed, sees, true, rng), speed)
     }
 

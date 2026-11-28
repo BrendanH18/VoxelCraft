@@ -96,6 +96,39 @@ impl Entities {
         hits.into_iter().map(|(i, _)| i).collect()
     }
 
+    /// v1.0 gap Track 2d: the dragon parts a spear reaches, as
+    /// [`Entities::spear_targets`] does for mobs: each `EnderDragonPart` is
+    /// pickable (the dragon itself isn't), nearest the eye first.
+    #[allow(clippy::too_many_arguments)]
+    pub fn spear_dragon_parts<W: crate::physics::BlockSource + ?Sized>(
+        &self,
+        world: &W,
+        eye: DVec3,
+        look: DVec3,
+        range: crate::weapons::spear::Range,
+        along: f64,
+        block: Option<f64>,
+    ) -> Vec<super::dragon::Hit> {
+        let boxes = super::dragon::Boxes::new(self.fight.as_ref(), &self.wild_dragons, &self.crystals);
+        let look = look.normalize_or_zero();
+        let reach = range.max + along.max(0.0);
+        let end = block.map_or(reach, |b| b.min(reach));
+        if end < range.min || boxes.is_empty() {
+            return Vec::new();
+        }
+        let from = eye + look * range.min;
+        let span = look * (end - range.min);
+        let mut hits: Vec<(super::dragon::Hit, f64)> = boxes
+            .list
+            .iter()
+            .filter(|(hit, ..)| hit.is_dragon())
+            .filter(|&&(_, min, max)| crate::weapons::spear::stab_hits(world, from, span, min, max, range.margin))
+            .map(|&(hit, min, max)| (hit, ((min + max) * 0.5).distance_squared(eye)))
+            .collect();
+        hits.sort_by(|a, b| a.1.total_cmp(&b.1));
+        hits.into_iter().map(|(h, _)| h).collect()
+    }
+
     /// `Player.stabAttack` on mob `index`: the damage (with the weapon's
     /// enchantment bonus scaled by `strength`) and `hurtServer`'s push, then
     /// the 0.4 extra knockback and the Knockback enchantment's, then a
@@ -191,7 +224,7 @@ impl Entities {
     pub fn wind_burst_mobs(&mut self, center: DVec3, multiplier: f32, exposure: impl Fn(DVec3, DVec3) -> f32) {
         for m in self.mobs.iter_mut().filter(|m| m.alive()) {
             let (min, max) = m.aabb();
-            let eye = m.pos + DVec3::Y * (m.shape().height * 0.85);
+            let eye = m.look_eye();
             let seen = exposure(min, max);
             if let Some(push) =
                 crate::weapons::mace::wind_burst_push(center, m.pos, eye, seen, multiplier, m.knockback_resistance())

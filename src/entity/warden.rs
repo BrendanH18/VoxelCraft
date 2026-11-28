@@ -520,6 +520,8 @@ struct Foe {
     pos: DVec3,
     half_width: f64,
     height: f64,
+    /// `getEyeHeight` (Track 2d).
+    eye: f64,
     valid: bool,
 }
 
@@ -531,13 +533,6 @@ impl Mob {
         if s.digging_or_emerging() || s.action.is_some() {
             self.stop_navigation();
             return (None, 0.0);
-        }
-        if let Some(look) = s.look {
-            let to = look - self.pos;
-            if to.with_y(0.0).length_squared() > 1e-6 {
-                let yaw = (to.z as f32).atan2(to.x as f32);
-                self.yaw = super::mob::turn_toward(self.yaw, yaw, 0.6);
-            }
         }
         let Some((goal, modifier)) = s.walk else {
             self.stop_navigation();
@@ -587,6 +582,7 @@ impl Entities {
                 pos: p.pos,
                 half_width: p.shape.half_width,
                 height: p.shape.height,
+                eye: p.eye_height(),
                 valid: p.targetable && p.alive && !p.spectator,
             }),
             EntityRef::Mob(uid) => self.mobs.iter().find(|m| m.uid == uid).map(|m| {
@@ -595,6 +591,7 @@ impl Entities {
                     pos: m.pos,
                     half_width: shape.half_width,
                     height: shape.height,
+                    eye: m.eye_height(),
                     valid: m.alive() && m.kind != MobKind::Warden,
                 }
             }),
@@ -720,6 +717,13 @@ impl Entities {
                 self.mobs.swap_remove(i);
                 continue;
             }
+            // v1.0 gap Track 2d: what the warden's behaviours set as
+            // `LOOK_TARGET` this update (`SetWardenLookTarget`, `Roar`, the
+            // fight's walk target, a disturbance) goes to its brain's
+            // `LookAtTargetSink`, which turns its head (and its body after it).
+            if let Some(at) = s.look.take() {
+                self.mobs[i].head.target = Some(super::mob::head::Tracked::Point(at));
+            }
             self.mobs[i].warden = Some(s);
         }
     }
@@ -727,6 +731,7 @@ impl Entities {
     /// `VibrationSystem.Listener.handleGameEvent` for posted events.
     fn warden_hear(&self, i: usize, s: &mut State, w: &World, ctx: &Ctx, posted: &[Posted]) {
         let m = &self.mobs[i];
+        // The state is out of the mob while it ticks: its own pose here.
         let eye = m.pos + DVec3::Y * if s.digging_or_emerging() { 0.85 } else { EYE };
         let eye_cell = eye.floor().as_ivec3();
         for e in posted {
@@ -936,6 +941,11 @@ impl Entities {
         if let Some(elapsed) = &mut s.sonic {
             *elapsed += 1;
             let elapsed = *elapsed;
+            // v1.0 gap Track 2d: `SonicBoom.tick` asks the look control for the
+            // attack target's feet (`setLookAt(target.position())`).
+            if let Some(foe) = s.attack_target.and_then(|t| self.foe(ctx, t)) {
+                self.mobs[i].look_toward(foe.pos);
+            }
             if elapsed == SONIC_SOUND_AT {
                 self.warden_sonic_boom(i, s, w, ctx);
             }
@@ -986,7 +996,7 @@ impl Entities {
                 {
                     s.walk = None;
                     if let Some(f) = self.foe(ctx, t) {
-                        s.look = Some(f.pos + DVec3::Y * f.height * 0.85);
+                        s.look = Some(f.pos + DVec3::Y * f.eye);
                     }
                     s.pose = ROARING;
                     s.action = Some((Action::Roar, 0));
@@ -1088,7 +1098,7 @@ impl Entities {
         let m = &self.mobs[i];
         let shape = m.shape();
         let eye = m.pos + DVec3::Y * EYE;
-        let target_eye = foe.pos + DVec3::Y * foe.height * 0.85;
+        let target_eye = foe.pos + DVec3::Y * foe.eye;
         s.look = Some(target_eye);
         let sees = super::mob::line_of_sight(w, eye, target_eye);
         let reach = in_melee(m.pos, shape.half_width, shape.height, &foe);
@@ -1144,7 +1154,7 @@ impl Entities {
         }
         // `EntityAttachment.WARDEN_CHEST` at 1.6.
         let source = m.pos + DVec3::Y * 1.6;
-        let target_eye = foe.pos + DVec3::Y * foe.height * 0.85;
+        let target_eye = foe.pos + DVec3::Y * foe.eye;
         let delta = target_eye - source;
         let dir = delta.normalize_or_zero();
         let steps = delta.length().floor() as i32 + 7;

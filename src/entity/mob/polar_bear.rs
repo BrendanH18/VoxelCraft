@@ -52,16 +52,8 @@ impl Mob {
         let flat = delta.with_y(0.0);
         let dir = flat.normalize_or(DVec3::X);
         // `MeleeAttackGoal.tick`: `setLookAt(target, 30, 30)`.
-        self.set_look_at(
-            target.pos + DVec3::Y * (target.shape.height * 0.85),
-            super::head::ATTACK_LOOK,
-            super::head::ATTACK_LOOK,
-        );
-        let sees = line_of_sight(
-            w,
-            self.pos + DVec3::Y * self.shape().height * 0.85,
-            target.pos + DVec3::Y * target.shape.height * 0.85,
-        );
+        self.set_look_at(target.pos + DVec3::Y * target.eye, super::head::ATTACK_LOOK, super::head::ATTACK_LOOK);
+        let sees = line_of_sight(w, self.look_eye(), target.pos + DVec3::Y * target.eye);
         let can_attack = polar_melee(self.pos, self.shape(), target.pos, target.shape) && sees;
         let s = self.polar_bear.as_mut().unwrap();
         if can_attack && self.attack_cooldown <= 0.0 {
@@ -200,6 +192,7 @@ mod tests {
             foe: Foe::Player(crate::entity::PlayerId::HOST),
             pos: DVec3::new(3.5, 1.0, 0.5),
             shape: crate::player::SHAPE,
+            eye: crate::player::EYE_HEIGHT,
         });
         m.attack_cooldown = 0.5;
         let mut rng = Rng::new(2);

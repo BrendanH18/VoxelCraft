@@ -221,7 +221,7 @@ impl Mob {
         pushed: bool,
     ) -> crate::player::fluid::FluidContact {
         let (min, max) = self.aabb();
-        let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
+        let eye = self.look_eye();
         crate::player::fluid::contact(world, min, max, eye, pushed)
     }
 
@@ -276,7 +276,7 @@ impl Mob {
         let drag = if contact.in_water() {
             let slow = self.water_slow_down();
             DVec3::new(slow, f64::from(0.8_f32), slow)
-        } else if contact.lava_height <= if self.shape().height * 0.85 < 0.4 { 0.0 } else { 0.4 } {
+        } else if contact.lava_height <= if self.eye_height() < 0.4 { 0.0 } else { 0.4 } {
             // `isInShallowFluid`: up to `getFluidJumpThreshold`.
             DVec3::new(0.5, f64::from(0.8_f32), 0.5)
         } else {
@@ -442,7 +442,7 @@ impl Mob {
 
     /// `FishMoveControl.tick` and `AbstractFish.travelInWater`.
     fn fish_tick<W: MobWorld + ?Sized>(&mut self, world: &W, dm: &mut DVec3, in_water: bool, alive: bool) {
-        let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
+        let eye = self.look_eye();
         if world.block(eye.floor().as_ivec3()).is_some_and(Block::holds_water) {
             dm.y += 0.005;
         }

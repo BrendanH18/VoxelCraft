@@ -224,7 +224,9 @@ fn a_hurt_llama_spits_once_and_the_spit_hits() {
             })
             .count()
     };
-    let first = run(&mut e, &c, 30);
+    // v1.0 gap Track 2d: `RangedAttackGoal`'s `attackTime` spits 40 ticks
+    // after the llama starts aiming.
+    let first = run(&mut e, &c, 60);
     assert_eq!(hits(&first), 1, "one spit lands");
     assert_eq!(hits(&run(&mut e, &c, 100)), 0, "a llama spits once per provocation");
 }
@@ -237,9 +239,18 @@ fn llamas_spit_at_wild_wolves_which_keep_away() {
         m.baby = false;
         m.age = 0;
     }
-    let health = e.mobs[1].health;
-    run(&mut e, &ctx(), 30);
-    assert!(e.mobs[1].health < health, "spit hurts the wolf");
+    // v1.0 gap Track 2d: `RangedAttackGoal` aims for 40 ticks before the
+    // first spit; the wolf, fleeing the llama at 1.5 meanwhile, has left the
+    // spot the spit is aimed at (Java's `Llama.spit` doesn't lead), so the
+    // test checks the spit rather than a hit.
+    let mut spat = None;
+    for t in 0..60 {
+        run(&mut e, &ctx(), 1);
+        if spat.is_none() && !e.thrown.is_empty() {
+            spat = Some(t);
+        }
+    }
+    assert!(spat.is_some_and(|t| t >= 39), "it spits at the wolf after aiming: {spat:?}");
     assert!(e.mobs[1].pos.x > 5.5, "the wolf runs from the llama");
 }
 #[test]

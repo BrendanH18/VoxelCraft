@@ -1889,14 +1889,14 @@ impl Entities {
             let Some(v) = &m.villager else { continue };
             let raided = self.raids.raid_at(m.pos.floor().as_ivec3()).is_some();
             let busy = v.sleeping || v.trading || v.fleeing || v.bell_hide > 0.0 || raided;
-            let eye = m.pos + DVec3::Y * (m.shape().height * 0.85);
+            let eye = m.look_eye();
             // `NEAREST_VISIBLE_PLAYER`: the nearest player within 16 in
             // sight, if it is a hero.
             let nearest = ctx
                 .players
                 .iter()
                 .filter(|t| !t.spectator && t.pos.distance_squared(m.pos) < GIFT_SIGHT * GIFT_SIGHT)
-                .filter(|t| super::mob::line_of_sight(world, eye, t.pos + DVec3::Y * crate::player::EYE_HEIGHT))
+                .filter(|t| super::mob::line_of_sight(world, eye, t.eye()))
                 .min_by(|a, b| a.pos.distance_squared(m.pos).total_cmp(&b.pos.distance_squared(m.pos)));
             let hero = nearest.and_then(|t| heroes.iter().find(|h| h.0 == t.id)).copied();
             let id = v.id;
@@ -1933,7 +1933,7 @@ impl Entities {
             let m = &self.mobs[i];
             let Some(v) = &m.villager else { continue };
             let table = gift_table(gift_table_name(v.profession, m.baby));
-            let from = m.pos + DVec3::Y * (m.shape().height * 0.85 - 0.3);
+            let from = m.look_eye() - DVec3::Y * 0.3;
             let dir = (at - m.pos).normalize_or_zero() * (0.3 * 20.0);
             if let Some(stack) = roll_gift(table, &mut self.rng) {
                 self.items.push(super::ItemEntity::new(stack, from, dir, 0.5, &mut self.rng));
@@ -2015,6 +2015,7 @@ impl Entities {
                 v.bell_hide = 1.0;
                 v.sleeping = false;
                 v.trading = false;
+                v.customer = None;
                 if v.goal.is_none() {
                     v.goal = v.home.map(|p| p.as_dvec3() + DVec3::new(0.5, 0.6, 0.5));
                 }
@@ -2044,6 +2045,7 @@ impl Entities {
             && (meeting - cell).as_dvec3().length_squared() > 4.0
         {
             v.trading = false;
+            v.customer = None;
             v.goal = Some(meeting.as_dvec3() + DVec3::new(0.5, 0.0, 0.5));
         }
     }
@@ -2130,7 +2132,7 @@ impl Entities {
             let raider = |b: &super::Mob| {
                 b.alive() && b.uid != uid && b.kind != MobKind::Witch && super::illager::is_raider(b.kind)
             };
-            let mut target = target.and_then(|(t, _)| {
+            let mut target = target.and_then(|(t, ..)| {
                 self.mobs.iter().find(|b| b.uid == t && raider(b) && b.pos.distance_squared(m.pos) <= reach)
             });
             let mut cooldown_next = cooldown;
@@ -2146,28 +2148,28 @@ impl Entities {
                     .filter(|b| {
                         raider(b)
                             && b.pos.distance_squared(m.pos) <= reach
-                            && super::mob::line_of_sight(world, eye, b.pos + DVec3::Y * (b.shape().height * 0.85))
+                            && super::mob::line_of_sight(world, eye, b.look_eye())
                     })
                     .min_by(|a, b| a.pos.distance_squared(m.pos).total_cmp(&b.pos.distance_squared(m.pos)));
                 if target.is_some() {
                     cooldown_next = WITCH_HEAL_COOLDOWN;
                 }
             }
-            let target = target.map(|b| (b.uid, b.pos, b.vel, b.health, b.shape().height));
-            let mut keep = target.map(|(t, p, ..)| (t, p));
+            let target = target.map(|b| (b.uid, b.pos, b.vel, b.health, b.eye_height()));
+            let mut keep = target.map(|(t, p, _, _, h)| (t, p, h));
             if let Some((_, at, vel, health, height)) = target
                 && m.attack_cooldown <= 0.0
                 && !m.drinking_potion()
             {
                 let flat = (at - m.pos).with_y(0.0);
-                let sees = super::mob::line_of_sight(world, eye, at + DVec3::Y * (height * 0.85));
+                let sees = super::mob::line_of_sight(world, eye, at + DVec3::Y * height);
                 if flat.length() <= WITCH_HEAL_RANGE && sees {
                     // `performRangedAttack`: the target's next position, its
                     // eye less 1.1, lobbed by a fifth of the distance.
                     let lead = at + vel / 20.0;
                     let (xd, zd) = (lead.x - m.pos.x, lead.z - m.pos.z);
                     let dist = (xd * xd + zd * zd).sqrt();
-                    let yd = at.y + height * 0.85 - 1.1 - m.pos.y;
+                    let yd = at.y + height - 1.1 - m.pos.y;
                     let aim = DVec3::new(xd, yd + dist * 0.2, zd).normalize_or(DVec3::X);
                     let speed = if dist <= 2.0 { WITCH_SPEED_CLOSE } else { super::potion::WITCH_SPEED };
                     let id = if health <= 4.0 { "healing" } else { "regeneration" };

@@ -64,6 +64,8 @@ pub(crate) enum Stabbed {
     Cart(u32),
     Decor([i32; 3]),
     Crystal(u32),
+    /// v1.0 gap Track 2d: one of a dragon's parts (each an entity in Java).
+    Dragon(crate::entity::dragon::Hit),
 }
 
 /// v1.0 gap Track 2c: a non-living entity a mob's stab hurt.
@@ -72,6 +74,7 @@ enum Other {
     Cart(u32),
     Decor(usize),
     Crystal(u32),
+    Dragon(crate::entity::dragon::Hit),
 }
 
 /// `SpearAttack.SpearStatus`, the piglin's `SPEAR_STATUS` memory.
@@ -119,9 +122,9 @@ impl Mob {
         (weapon == Some(Weapon::GoldenSpear)).then_some(crate::item::Tier::Gold)
     }
 
-    /// The eye (Java's eye height is close to 0.85 of the box for humanoids).
+    /// The eye (`getEyePosition`, the kind's own height since Track 2d).
     pub(crate) fn spear_eye(&self) -> DVec3 {
-        self.pos + DVec3::Y * (self.shape().height * 0.85)
+        self.look_eye()
     }
 
     /// `Mob.lookAt(entity, yMax, xMax)` on the body's `yRot` (its `xRot`
@@ -365,6 +368,20 @@ impl Entities {
                         others.push((Other::Crystal(c.id), contact.amount + sharpness));
                     }
                 }
+                // v1.0 gap Track 2d: the dragon's parts (`EnderDragonPart` is
+                // pickable; the dragon itself isn't). A mob's stab lands on
+                // them and does nothing (`EnderDragon.hurt` takes health only
+                // from players and explosions).
+                for hit in self.spear_dragon_parts(world, eye, head, range, forward, block) {
+                    if !fresh(&mut charge, Stabbed::Dragon(hit)) {
+                        continue;
+                    }
+                    let Some(contact) = kinetic.contact(used, along, 0.0, base, false) else { continue };
+                    affected |= contact.damage || contact.knockback;
+                    if contact.damage {
+                        others.push((Other::Dragon(hit), contact.amount + sharpness));
+                    }
+                }
             }
             self.stab_others(uid, std::mem::take(&mut others));
             let m = &mut self.mobs[i];
@@ -417,6 +434,9 @@ impl Entities {
                 Other::Decor(k) => decor.push(k),
                 Other::Crystal(id) => {
                     self.crystals.hit(id, crate::entity::crystal::Blow::Other);
+                }
+                Other::Dragon(hit) => {
+                    self.strike_blow(hit, crate::entity::dragon::Blow::mob(damage));
                 }
             }
         }

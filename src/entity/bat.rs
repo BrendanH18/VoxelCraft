@@ -50,17 +50,14 @@ pub(super) fn spawn_ok<W: MobWorld + ?Sized>(
 }
 impl Mob {
     pub(super) fn bat_sense<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx) {
+        let (pos, eye) = (self.pos, self.look_eye());
         if let Some(s) = &mut self.bat {
             s.min_y = ctx.dimension.min_y();
             s.wake = ctx.players.iter().any(|p| {
                 p.alive
                     && !p.spectator
-                    && p.pos.distance_squared(self.pos) < 16.0
-                    && super::mob::line_of_sight(
-                        world,
-                        self.pos + DVec3::Y * 0.45,
-                        p.pos + DVec3::Y * (p.shape.height * 0.85),
-                    )
+                    && p.pos.distance_squared(pos) < 16.0
+                    && super::mob::line_of_sight(world, eye, p.eye())
             });
         }
     }
@@ -80,7 +77,9 @@ impl Mob {
                 if !ceiling || s.wake {
                     s.resting = false;
                 } else if rng.next_int(200) == 0 {
-                    self.head_yaw = rng.range(-std::f32::consts::PI, std::f32::consts::PI);
+                    // `yHeadRot = nextInt(360)`; the plain look and body
+                    // controls turn them toward each other after (Track 2d).
+                    self.look.head = rng.next_int(360) as f32;
                 }
             } else {
                 if s.target.is_some_and(|p| world.block(p) != Some(Block::AIR) || p.y <= s.min_y) {

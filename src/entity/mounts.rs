@@ -459,6 +459,9 @@ pub struct State {
     pub(super) look_target: Option<(PlayerId, DVec3)>,
     pub(super) look_ticker: i32,
     pub(super) look_left: u16,
+    /// v1.0 gap Track 2d: a llama's `RangedAttackGoal.attackTime` in ticks
+    /// (-1 with no target; not saved, as in Java).
+    pub(super) spit_time: i32,
     /// v1.0 gap Track 3b: `BodyRotationControl`'s `headStableTime` and
     /// `lastStableYHeadRot` (radians, VoxelCraft's yaw).
     pub(super) head_stable: u8,
@@ -595,6 +598,7 @@ impl State {
             look_target: None,
             look_ticker: 0,
             look_left: 0,
+            spit_time: -1,
             head_stable: 0,
             last_stable_head: 0.0,
             dash_ticks: 0,
@@ -1273,10 +1277,13 @@ impl Entities {
         // Spitting: Java's LlamaSpit, 1.5 blocks a tick with a little spread.
         for i in 0..self.mobs.len() {
             let m = &self.mobs[i];
-            if !m.simulation_active || m.kind != MobKind::Llama || !m.alive() || m.attack_cooldown > 0.0 || m.baby {
+            if !m.simulation_active || m.kind != MobKind::Llama || !m.alive() || m.baby {
                 continue;
             }
             let player = m.angry_player.and_then(|id| ctx.players.iter().find(|t| t.id == id && t.targetable));
+            // v1.0 gap Track 2d: `RangedAttackGoal.tick` looks at the target's
+            // eyes every tick it runs (`setLookAt(target, 30, 30)`).
+            let mut eye = player.map(|t| t.eye());
             let target = if let Some(t) = player {
                 // Java aims at a third of the target's height.
                 Some(t.pos + DVec3::Y * 0.6)
@@ -1291,19 +1298,36 @@ impl Entities {
                             && w.pos.distance_squared(m.pos) < 16.0 * 16.0
                     })
                     .min_by(|a, b| a.pos.distance_squared(m.pos).total_cmp(&b.pos.distance_squared(m.pos)))
-                    .map(|w| w.pos + DVec3::Y * (w.shape().height / 3.0))
+                    .map(|w| {
+                        eye = Some(w.look_eye());
+                        w.pos + DVec3::Y * (w.shape().height / 3.0)
+                    })
             };
-            let Some(target) = target else { continue };
-            let head = m.pos + DVec3::Y * (m.shape().height * 0.85);
+            let Some((target, eye)) = target.zip(eye) else {
+                // `RangedAttackGoal.stop`: `attackTime = -1`.
+                if let Some(s) = self.mobs[i].mount.as_mut() {
+                    s.spit_time = -1;
+                }
+                continue;
+            };
+            let head = m.look_eye();
             let mouth = head + (target - head).with_y(0.0).normalize_or_zero() * 0.5;
-            if (target - mouth).length_squared() > 16.0 * 16.0 {
+            let m = &mut self.mobs[i];
+            m.set_look_at(eye, super::mob::head::ATTACK_LOOK, super::mob::head::ATTACK_LOOK);
+            // `attackTime`: 40 ticks from the first tick (`lerp(d / 20, 40,
+            // 40)`), then the spit when it counts down to 0.
+            let Some(s) = m.mount.as_mut() else { continue };
+            s.spit_time -= 1;
+            if s.spit_time < 0 {
+                s.spit_time = 40;
+            }
+            if s.spit_time != 0 || m.attack_cooldown > 0.0 || (target - mouth).length_squared() > 16.0 * 16.0 {
                 continue;
             }
+            s.spit_time = 40;
             let spit = super::thrown::Thrown::spit(mouth, target, m.uid, &mut self.rng);
             self.sculk.shot(mouth, crate::world::vibration::EventSource::mob(m.uid));
             let m = &mut self.mobs[i];
-            // `RangedAttackGoal`: `setLookAt(target, 30, 30)`.
-            m.set_look_at(target, super::mob::head::ATTACK_LOOK, super::mob::head::ATTACK_LOOK);
             m.attack_cooldown = 2.0;
             m.attack_anim = 0.3;
             // Java: one spit per provocation, then the llama calms down.
@@ -1855,6 +1879,33 @@ mod tests {
         }
         w
     }
+    /// v1.0 gap Track 2d: `RangedAttackGoal(1.25, 40, 20)`: an angry llama
+    /// looks at the player for its 40-tick `attackTime` and spits then, not
+    /// at once.
+    #[test]
+    fn an_angry_llama_aims_for_forty_ticks_before_it_spits() {
+        let mut e = Entities::new(5);
+        e.mobs.push(Mob::new(MobKind::Llama, DVec3::new(0.5, 64.0, 0.5), 0.0));
+        e.ensure_mob_ids();
+        e.mobs[0].angry_player = Some(PlayerId::HOST);
+        let ctx = crate::entity::Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::DAY,
+            players: vec![crate::entity::Target::new(PlayerId::HOST, DVec3::new(6.5, 64.0, 0.5), true)],
+            daylight: 1.0,
+            spawning: false,
+            raining: false,
+            dimension: crate::world::terrain::Dimension::Overworld,
+        };
+        let mut ticks = 0;
+        while e.thrown.is_empty() {
+            e.tick_llamas(&ctx);
+            assert!(e.mobs[0].look.looking(), "it looks at the player every tick");
+            ticks += 1;
+            assert!(ticks < 100);
+        }
+        assert_eq!(ticks, 41, "attackTime: 40 after the first tick");
+    }
+
     #[test]
     fn natural_packs_share_variants_and_follow_java_pack_baby_rules() {
         use crate::entity::monster_spawns::PackGroup;

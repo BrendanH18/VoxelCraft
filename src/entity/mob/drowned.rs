@@ -24,9 +24,9 @@ impl Mob {
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
     ) -> (Option<DVec3>, f64) {
-        let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
+        let eye = self.look_eye();
         let aim = target.pos + DVec3::Y * (target.shape.height / 3.0);
-        let sees = line_of_sight(world, eye, target.pos + DVec3::Y * (target.shape.height * 0.9));
+        let sees = line_of_sight(world, eye, target.eye());
         let dist = self.pos.distance(target.pos);
         if self.attack_cooldown <= 0.0 && sees && dist <= tr::DROWNED_ATTACK_RADIUS {
             self.attack_cooldown = tr::DROWNED_ATTACK_INTERVAL as f32 / 20.0;

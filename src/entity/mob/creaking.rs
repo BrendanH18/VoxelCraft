@@ -53,7 +53,7 @@ impl Mob {
         } else {
             target.pos
         };
-        let sees = line_of_sight(w, self.pos + DVec3::Y * 2.3, target.pos + DVec3::Y * 1.62);
+        let sees = line_of_sight(w, self.look_eye(), target.eye());
         let to = target.pos - self.pos;
         if goal == target.pos && to.length_squared() < 4. && sees && self.attack_cooldown <= 0. {
             self.attack_cooldown = 2.;

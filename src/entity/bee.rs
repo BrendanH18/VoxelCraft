@@ -27,6 +27,14 @@ pub struct State {
     /// of its target (it tumbles as it stings). Not saved.
     pub rolling: bool,
 }
+impl State {
+    /// v1.0 gap Track 2d: `BeePollinateGoal.isPollinating`, the goal running
+    /// toward or at its saved flower (its look control then keeps the pitch).
+    pub fn pollinating(&self) -> bool {
+        self.flower.is_some() && !self.nectar && self.anger == 0
+    }
+}
+
 pub fn flower(b: Block) -> bool {
     if let Some((lower, true)) = crate::world::overworld_blocks::double_of(b) {
         return flower(lower);
@@ -399,6 +407,9 @@ pub(crate) fn steer<W: MobWorld + ?Sized>(
                 let at = p.as_dvec3() + DVec3::new(0.5, 0.6, 0.5);
                 goal = Some(at);
                 if m.pos.distance(at) < 0.6 {
+                    // v1.0 gap Track 2d: hovering at its flower it looks at it
+                    // (`getLookControl().setLookAt(flowerPos)`).
+                    m.look_toward(at);
                     s.pollination = s.pollination.saturating_add(ticks);
                     if s.pollination > 400 && rng.chance(0.8) {
                         s.nectar = true;

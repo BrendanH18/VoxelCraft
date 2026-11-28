@@ -785,6 +785,14 @@ impl Game {
         })
     }
 
+    /// v1.0 gap Track 2d: the merchants LAN players trade with, by profile.
+    pub(super) fn lan_trading(&self) -> impl Iterator<Item = (u64, &str)> + '_ {
+        self.lan.peers.iter().filter(|p| p.open).filter_map(|p| match p.body.container() {
+            Container::Trading(id) => Some((id, p.profile.as_deref()?)),
+            _ => None,
+        })
+    }
+
     pub(super) fn open_chests(&self) -> impl Iterator<Item = IVec3> + '_ {
         self.lan.peers.iter().filter(|p| p.open).filter_map(|p| match p.body.container() {
             Container::Chest(pos) | Container::EnderChest(pos) => Some(pos),

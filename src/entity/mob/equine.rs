@@ -328,14 +328,14 @@ impl Mob {
         if !camel_like(self.kind) || !self.alive() {
             return;
         }
-        let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
+        let eye = self.look_eye();
         // `NEAREST_VISIBLE_LIVING_ENTITIES`: within the 16-block follow
         // range and in sight.
         let visible = |p: &crate::entity::Target| {
             p.alive
                 && !p.spectator
                 && p.pos.distance_squared(self.pos) <= 16.0 * 16.0
-                && super::line_of_sight(world, eye, p.pos + DVec3::Y * crate::player::EYE_HEIGHT)
+                && super::line_of_sight(world, eye, p.eye())
         };
         let Some(s) = self.mount.as_ref() else { return };
         let mut target = s.look_target;
@@ -345,7 +345,7 @@ impl Mob {
             let seen = ctx.players.iter().find(|p| p.id == id && visible(p));
             match seen {
                 Some(p) if left > 1 => {
-                    target = Some((id, p.pos + DVec3::Y * crate::player::EYE_HEIGHT));
+                    target = Some((id, p.eye()));
                     left -= 1;
                 }
                 _ => {
@@ -368,7 +368,7 @@ impl Mob {
                     ticker == 0
                 };
                 if fire {
-                    target = Some((p.id, p.pos + DVec3::Y * crate::player::EYE_HEIGHT));
+                    target = Some((p.id, p.eye()));
                     // `Behavior.tryStart`: `minDuration + nextInt(max + 1 - min)`.
                     left = 45 + rng.next_int(46) as u16;
                 }

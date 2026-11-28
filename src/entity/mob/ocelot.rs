@@ -8,6 +8,7 @@ impl Mob {
         events: &mut Vec<EntityEvent>,
     ) -> Option<(Option<DVec3>, f64)> {
         let (uid, at) = self.ocelot.as_ref()?.prey?;
+        let at_eye = self.ocelot.as_ref().map_or(0.5, |s| s.prey_eye);
         if self.goals.running.is_some_and(|i| goals::table(self.kind)[i as usize].priority < 7) {
             return None;
         }
@@ -15,7 +16,7 @@ impl Mob {
         let flat = (at - self.pos).with_y(0.0);
         let d = self.pos.distance_squared(at);
         // `OcelotAttackGoal.tick`: `setLookAt(target, 30, 30)`.
-        self.set_look_at(at + DVec3::Y * 0.5, super::head::ATTACK_LOOK, super::head::ATTACK_LOOK);
+        self.set_look_at(at + DVec3::Y * at_eye, super::head::ATTACK_LOOK, super::head::ATTACK_LOOK);
         if self.ocelot.as_ref().unwrap().leaping {
             if !self.on_ground {
                 return Some((None, 0.0));

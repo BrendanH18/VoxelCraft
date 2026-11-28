@@ -50,6 +50,8 @@ pub(super) struct Aim {
     foe: Foe,
     pos: DVec3,
     shape: Shape,
+    /// The target's eye height (Track 2d).
+    eye: f64,
 }
 #[derive(Clone, Debug, Default)]
 pub struct State {
@@ -75,12 +77,16 @@ pub struct State {
     fall_distance: f64,
     carry: f64,
     pub(super) spit: Option<Stack>,
+    /// v1.0 gap Track 2d: `PandaBreedGoal` found no bamboo and points its
+    /// `PandaLookAtPlayerGoal` at the nearest player (`setTarget`), which the
+    /// look goals pick up.
+    pub(crate) look_at_nearest: bool,
 }
 impl State {
     pub fn variant(&self) -> Gene {
         if matches!(self.main, Gene::Brown | Gene::Weak) && self.main != self.hidden { Gene::Normal } else { self.main }
     }
-    pub(super) fn can_act(&self) -> bool {
+    pub(crate) fn can_act(&self) -> bool {
         !self.on_back && !self.scared && !self.sitting && self.eating == 0 && self.rolling == 0
     }
     pub fn save(&self) -> Value {
@@ -158,6 +164,7 @@ impl Mob {
         if s.ticks >= s.unhappy_cooldown {
             s.unhappy = 32;
             s.unhappy_cooldown = s.ticks.saturating_add(600);
+            s.look_at_nearest = true;
         }
         false
     }
@@ -225,7 +232,7 @@ impl Entities {
     }
     pub(super) fn panda_hurt(&mut self, index: usize, foe: Foe) {
         let Some(victim) = self.mobs.get(index).filter(|m| m.kind == MobKind::Panda && m.alive()) else { return };
-        let (pos, shape) = (victim.pos, victim.shape());
+        let (pos, shape, eye) = (victim.pos, victim.shape(), victim.eye_height());
         for (i, m) in self.mobs.iter_mut().enumerate() {
             if m.kind != MobKind::Panda || !m.alive() || foe == Foe::Mob(m.uid) {
                 continue;
@@ -236,7 +243,7 @@ impl Entities {
                     && m.panda.as_ref().is_some_and(|s| s.variant() == Gene::Aggressive && s.target.is_none());
             if eligible {
                 let s = m.panda.as_mut().unwrap();
-                s.target = Some(Aim { foe, pos, shape });
+                s.target = Some(Aim { foe, pos, shape, eye });
                 s.got_bamboo = false;
                 s.did_bite = false;
                 s.unseen = 0;
@@ -286,12 +293,12 @@ impl Entities {
                                 && p.targetable
                                 && self.difficulty != crate::simulation::difficulty::Difficulty::Peaceful
                         })
-                        .map(|p| Aim { foe: a.foe, pos: p.pos, shape: p.shape }),
+                        .map(|p| Aim { foe: a.foe, pos: p.pos, shape: p.shape, eye: p.eye_height() }),
                     Foe::Mob(id) => self
                         .mobs
                         .iter()
                         .find(|m| m.uid == id && m.alive() && m.simulation_active)
-                        .map(|m| Aim { foe: a.foe, pos: m.pos, shape: m.shape() }),
+                        .map(|m| Aim { foe: a.foe, pos: m.pos, shape: m.shape(), eye: m.eye_height() }),
                 })
                 .filter(|a| a.pos.distance_squared(self.mobs[i].pos) <= 256.0);
             s.target = if s.did_bite || s.got_bamboo { None } else { target };
@@ -308,11 +315,7 @@ impl Entities {
                 let m = &mut self.mobs[i];
                 let full = (u64::from(s.ticks) + u64::from(m.uid)).is_multiple_of(2);
                 if let Some(a) = s.target {
-                    if super::mob::line_of_sight(
-                        w,
-                        m.pos + DVec3::Y * m.shape().height * 0.85,
-                        a.pos + DVec3::Y * a.shape.height * 0.85,
-                    ) {
+                    if super::mob::line_of_sight(w, m.look_eye(), a.pos + DVec3::Y * a.eye) {
                         s.unseen = 0;
                     } else {
                         s.unseen = s.unseen.saturating_add(1);
@@ -320,6 +323,13 @@ impl Entities {
                             s.target = None;
                         }
                     }
+                }
+                // v1.0 gap Track 2d: `aiStep` turns an unhappy panda toward
+                // its target (`lookAt(target, 90, 90)`).
+                if s.unhappy > 0
+                    && let Some(a) = s.target
+                {
+                    m.turn_body_to(a.pos, 90.0);
                 }
                 if matches!(s.unhappy, 29 | 14) {
                     events.push(super::EntityEvent::Sound {
@@ -566,11 +576,7 @@ impl Mob {
             self.stop_goal(w);
             let d = a.pos - self.pos;
             let dir = d.with_y(0.0).normalize_or(DVec3::X);
-            let sees = super::mob::line_of_sight(
-                w,
-                self.pos + DVec3::Y * self.shape().height * 0.85,
-                a.pos + DVec3::Y * a.shape.height * 0.85,
-            );
+            let sees = super::mob::line_of_sight(w, self.look_eye(), a.pos + DVec3::Y * a.eye);
             let reach = 2.0399999618530273_f64.sqrt() - 0.6000000238418579;
             if in_box(self.pos, self.shape(), a.pos, a.shape, reach, 0.0) && sees && self.attack_cooldown <= 0.0 {
                 self.attack_cooldown = 1.0;

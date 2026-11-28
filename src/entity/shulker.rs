@@ -81,6 +81,9 @@ pub struct State {
     /// teleport and duplication).
     pub(crate) hurt: bool,
     pub(crate) bullet_hit: bool,
+    /// v1.0 gap Track 2d: its `LookAtPlayerGoal` (priority 1) took `LOOK`
+    /// from the running `ShulkerAttackGoal` (4), which stops.
+    pub(crate) look_interrupt: bool,
     carry: f64,
 }
 
@@ -99,12 +102,18 @@ impl Default for State {
             peek_time: 0,
             hurt: false,
             bullet_hit: false,
+            look_interrupt: false,
             carry: 0.0,
         }
     }
 }
 
 impl State {
+    /// Whether `ShulkerAttackGoal` is running (it holds `MOVE` and `LOOK`).
+    pub(crate) fn attacking(&self) -> bool {
+        self.attacking
+    }
+
     /// `isClosed`.
     pub fn closed(&self) -> bool {
         self.peek == 0
@@ -455,9 +464,19 @@ impl Entities {
         let target = self.mobs[i].shulker.as_ref().unwrap().target;
         let target_pos = target.and_then(|id| ctx.players.iter().find(|t| t.id == id).map(|t| t.pos));
         // `ShulkerAttackGoal`.
+        // v1.0 gap Track 2d: `LookAtPlayerGoal` (1) outranks the attack goal
+        // (4) for `LOOK`: while it runs the attack can't start, and when it
+        // starts it stops a running attack.
+        if std::mem::take(&mut self.mobs[i].shulker.as_mut().unwrap().look_interrupt)
+            && self.mobs[i].shulker.as_ref().unwrap().attacking
+        {
+            self.mobs[i].shulker.as_mut().unwrap().attacking = false;
+            self.set_peek(i, 0, events);
+        }
         let attacking = self.mobs[i].shulker.as_ref().unwrap().attacking;
+        let allowed = self.mobs[i].idle_look_allows(4, true);
         match (target.zip(target_pos), attacking) {
-            (Some(_), false) if !peaceful => {
+            (Some(_), false) if !peaceful && allowed => {
                 let s = self.mobs[i].shulker.as_mut().unwrap();
                 s.attacking = true;
                 s.peeking = false;
@@ -473,11 +492,11 @@ impl Entities {
         if let Some((id, tp)) = target.zip(target_pos)
             && self.mobs[i].shulker.as_ref().unwrap().attacking
         {
-            // `getLookControl().setLookAt(target)`.
-            let d = tp + DVec3::Y * 1.62 - (pos + DVec3::Y * 0.5);
+            // `getLookControl().setLookAt(target, 180, 180)`: Track 2d's
+            // `ShulkerLookControl` turns the head in the shell's own frame.
+            let eye = ctx.players.iter().find(|t| t.id == id).map_or(tp + DVec3::Y * 1.62, |t| t.eye());
             let m = &mut self.mobs[i];
-            m.head_yaw = (d.z.atan2(d.x) as f32) - m.yaw;
-            m.head_pitch = (d.y.atan2(d.x.hypot(d.z))) as f32;
+            m.goal_look_at(eye, 180.0, 180.0);
             let s = m.shulker.as_mut().unwrap();
             s.attack_time -= 1;
             if tp.distance_squared(pos) < 400.0 {

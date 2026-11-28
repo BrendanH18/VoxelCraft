@@ -392,3 +392,37 @@ fn the_margin_hit_checks_blocks_toward_the_box() {
     // Starting within the margin (but outside the box): `AABB.clip` finds no entry.
     assert!(!stab_hits(&Grid::flat(-10), DVec3::new(2.95, 0.5, 0.5), DVec3::new(-1.0, 0.0, 0.0), min, max, 0.125));
 }
+
+/// v1.0 gap Track 2d: a mob's spear reaches the dragon's parts
+/// (`EnderDragonPart` is pickable). The stab lands and is remembered for
+/// the contact cooldown, but takes no health: `EnderDragon.hurt` hurts only
+/// for players and explosions.
+#[test]
+fn mob_spears_reach_dragon_parts_and_do_nothing() {
+    use crate::entity::dragon::Hit;
+    let world = Grid::flat(-64);
+    let c = ctx(Vec::new(), Dimension::Overworld);
+    let mut e = Entities::new(4);
+    let id = e.wild_dragons.spawn(DVec3::new(0.5, 20.0, 0.5), 0.0);
+    let (_, min, max) = e.wild_dragons.dragons[0].dragon.parts()[0];
+    let centre = (min + max) * 0.5;
+    let mut m = Mob::new(MobKind::Zombie, centre - DVec3::new(2.0, 1.74, 0.0), 0.0);
+    m.persistent = true;
+    m.equipment.set(crate::entity::equipment::Slot::MainHand, Some(iron_spear()));
+    m.vel = DVec3::new(4.0, 0.0, 0.0);
+    m.spear_use = Some(SpearCharge { used: 12, stabbed: Vec::new() });
+    m.set_look_at(centre, SPEAR_GOAL_TURN, SPEAR_GOAL_TURN);
+    m.look_tick();
+    e.mobs.push(m);
+    e.ensure_mob_ids();
+    let health = e.wild_dragons.dragons[0].dragon.health;
+    let mut events = Vec::new();
+    e.mob_spear_stabs(&world, &c, &mut events);
+    let charge = e.mobs[0].spear_use.as_ref().unwrap();
+    assert!(
+        charge.stabbed.iter().any(|s| matches!(s.0, Stabbed::Dragon(Hit::Wild(d, _)) if d == id)),
+        "{:?}",
+        charge.stabbed
+    );
+    assert_eq!(e.wild_dragons.dragons[0].dragon.health, health, "a mob's stab takes no health");
+}

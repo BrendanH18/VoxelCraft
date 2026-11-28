@@ -780,6 +780,7 @@ impl Entities {
                 kind: m.kind,
                 pos: m.pos,
                 baby: m.baby,
+                eye: m.eye_height(),
                 huntable: false,
             }));
         }

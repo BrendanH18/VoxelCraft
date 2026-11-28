@@ -265,8 +265,8 @@ has the Java sources, checks and remaining differences. Code:
   runs (ravager 45°, breeze and camels 30°, goat 15°, frog 5°, sniffer
   50°, armadillo 32° or 0 rolled up, axolotl and dolphin 1°). Dolphins,
   tadpoles, nautiluses and axolotls use `SmoothSwimmingLookControl`.
-  The game's own eased head code is gone; shulkers, bats, phantoms,
-  ghasts, happy ghasts and wardens keep their own heads.
+  The game's own eased head code is gone; since Track 2d only the
+  phantom keeps its own head (below).
 - **`BodyRotationControl`** turns a separate drawn body (`Mob::body_yaw`,
   Java's `yBodyRot`) apart from the heading movement follows (`yRot`): a
   moving body faces its travel with the head held within the limit; a
@@ -290,3 +290,37 @@ has the Java sources, checks and remaining differences. Code:
 - **Spears**: the margin hit's block check toward the box's centre (for
   players' stabs too); mob stabs on minecarts and boats, decorations and
   End crystals; the body turns at the move control's 90° a tick.
+
+## Eyes, look priorities and own look controls (v1.0 gap Track 2d, implemented, unverified)
+
+The [Track 2d record](verification/2026-11-27-v1.0-gap-track-02d-look-details.md)
+has the Java sources, checks and remaining differences. Code:
+`src/entity/mob/eyes.rs` and `src/entity/mob/head.rs`.
+
+- **Eyes**: every mob looks, sees and is looked at from its own
+  `getEyeHeight` (`EntityTypes`' `eyeHeight`, each kind's
+  `BABY_DIMENSIONS`, sleeping villagers, sitting camels, a digging sniffer
+  or warden, phantoms and cubes by size, a floor shulker's lid), and
+  players from their pose's (1.62, 1.27 crouching, 0.4 swimming).
+- **Goal priorities**: an idle look goal takes `MOVE` and `LOOK` only from
+  goals of a strictly worse priority and stops them (`GoalSelector`), so
+  the parrot's `LookAtPlayerGoal` (1) holds off `FollowOwnerGoal` (2), the
+  witch's random look (3) its patrol and village goals (4), the panda's
+  (10) its stroll (14), and the shulker's (1) its attack (4).
+- **Brain writers**: merchants follow their actual customer; villagers'
+  `SetLookAndInteract`, `ShowTradesToPlayer` (40 ticks, 900 while the
+  player holds an offer's cost) and `WorkAtPoi` looks; the piglin's
+  `SetLookAndInteract`; brain `AnimalMakeLove`, `FollowTemptation` and
+  `BabyFollowAdult` set `LOOK_TARGET`; brain attacks go through the sink;
+  a look `RunOne` starts its `DoNothing` while a target is set.
+- **Kinds' own rules**: the pollinating bee keeps its pitch and looks at
+  its flower; the panda's `setTarget` after a failed breed and its
+  unhappy turn; the llama's `RangedAttackGoal` aims 40 ticks at its target
+  before it spits; the warden's `LOOK_TARGET` (`SetWardenLookTarget`,
+  roar, fight, disturbances) and the sonic boom's look; the shulker's
+  `ShulkerLookControl` in its shell's frame with no pitch and a still body;
+  the bat's random head and plain controls; the phantom's head a tick
+  behind its body; the ghast's and happy ghast's controls.
+- **Spears** reach the dragon's parts: a mob's stab lands and does nothing
+  (only players and explosions hurt the dragon); a player's jab or charge
+  deals the part damage.

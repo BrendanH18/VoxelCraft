@@ -141,6 +141,7 @@ impl Entities {
             }
             if let Some(&dest) = spear_dest.get(&(super::mounts::MOB_VEHICLE | m.uid)) {
                 m.hunt = Some(dest);
+                m.hunt_eye = 1.0;
                 m.hunt_charge = true;
             } else if let Some(&rider) = ridden.get(&(super::mounts::MOB_VEHICLE | m.uid)) {
                 m.hunt = ctx
@@ -150,6 +151,7 @@ impl Entities {
                         p.pos.distance_squared(m.pos) > if rider == MobKind::Skeleton { 8. * 8. } else { 1.5 * 1.5 }
                     })
                     .map(|p| p.pos);
+                m.hunt_eye = ctx.nearest_target(m.pos).map_or(1.0, |p| p.eye_height());
             }
         }
         for i in traps {

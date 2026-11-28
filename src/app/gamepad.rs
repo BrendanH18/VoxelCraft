@@ -474,6 +474,15 @@ impl Pads {
     pub(super) fn trading(&self, id: u64) -> bool {
         self.seats.iter().any(|s| matches!(s.menu,Some(Menu::Items {tab:Tab::Trading(other),..}) if id==other))
     }
+
+    /// v1.0 gap Track 2d: the merchants controller players trade with, by
+    /// the agent profile each seat plays as.
+    pub(super) fn trading_seats(&self) -> impl Iterator<Item = (u64, &str)> + '_ {
+        self.seats.iter().filter_map(|s| match s.menu {
+            Some(Menu::Items { tab: Tab::Trading(id), .. }) => Some((id, s.name.as_str())),
+            _ => None,
+        })
+    }
 }
 impl Game {
     pub(super) fn open_pad_trading(&mut self, id: u64) -> bool {

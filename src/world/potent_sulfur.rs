@@ -581,7 +581,7 @@ impl crate::entity::Entities {
                     if !m.alive() || !overlaps(m.aabb(), area) {
                         continue;
                     }
-                    let eye = m.pos + DVec3::Y * (m.shape().height * 0.85);
+                    let eye = m.look_eye();
                     if world.noxious_gas_reaches(source, eye) && m.kind != crate::entity::MobKind::Wither {
                         m.effects.add(crate::simulation::effects::Effect::Nausea, 0, EFFECT_TICKS);
                     }

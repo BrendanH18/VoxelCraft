@@ -74,19 +74,41 @@ pub(crate) fn yaw_toward(d: DVec3) -> Option<f32> {
     (d.x.abs() > 1e-5 || d.z.abs() > 1e-5).then(|| (d.z.atan2(d.x).to_degrees() as f32) - 90.0)
 }
 
+/// `ShulkerLookControl.getYRotD`: the yaw toward `d` in the frame of the
+/// shell clinging to `attach` (`forward` is south turned by the opposite
+/// face's `getRotation`, `right` its normal crossed with it).
+fn shulker_yaw(attach: crate::world::end_blocks::Dir, d: DVec3) -> Option<f32> {
+    use crate::world::end_blocks::Dir;
+    let (forward, right) = match attach {
+        Dir::Down => (DVec3::Z, DVec3::X),
+        Dir::Up => (DVec3::NEG_Z, DVec3::X),
+        Dir::South => (DVec3::NEG_Y, DVec3::NEG_X),
+        Dir::North => (DVec3::NEG_Y, DVec3::X),
+        Dir::East => (DVec3::NEG_Y, DVec3::Z),
+        Dir::West => (DVec3::NEG_Y, DVec3::NEG_Z),
+    };
+    let d = d.as_vec3();
+    let (dr, df) = (right.as_vec3().dot(d), forward.as_vec3().dot(d));
+    (dr.abs() > 1e-5 || df.abs() > 1e-5).then(|| (-dr).atan2(df).to_degrees())
+}
+
 /// `LookControl.getXRotD`.
 fn pitch_toward(d: DVec3) -> Option<f32> {
     let flat = d.x.hypot(d.z);
     (d.y.abs() > 1e-5 || flat > 1e-5).then(|| -(d.y.atan2(flat).to_degrees() as f32))
 }
 
+/// The player a tracker follows (`PlayerId(u32::MAX)` for none).
+fn at_player(at: Tracked) -> PlayerId {
+    match at {
+        Tracked::Player(id) => id,
+        _ => PlayerId(u32::MAX),
+    }
+}
+
 /// A player's eye height for its pose (standing, crouching, swimming).
 pub(crate) fn player_eye(t: &Target) -> f64 {
-    match t.shape.height {
-        h if h < 1.0 => 0.4,
-        h if h < 1.6 => 1.27,
-        _ => crate::player::EYE_HEIGHT,
-    }
+    t.eye_height()
 }
 
 /// Java's `LookControl` state and the `yHeadRot`/`xRot` it drives (none
@@ -187,6 +209,15 @@ const WITHER: &[Entry] = &[player(6, 8.0), random(7)];
 const CAT: &[Entry] = &[player(12, 10.0)];
 const OCELOT: &[Entry] = &[player(11, 10.0)];
 const WOLF: &[Entry] = &[player(10, 8.0), random(10)];
+/// `Shulker.registerGoals`: `LookAtPlayerGoal(8, 0.02, onlyHorizontal)` at 1,
+/// `RandomLookAroundGoal` at 8 (Track 2d).
+const SHULKER: &[Entry] = &[
+    Entry {
+        priority: 1,
+        goal: Idle::LookAt { who: Who::Player, range: 8.0, chance: 0.02, horizontal: true, interact: false },
+    },
+    random(8),
+];
 
 /// The idle look goals `kind` registers (`registerGoals`).
 fn goal_table(kind: MobKind) -> &'static [Entry] {
@@ -225,6 +256,7 @@ fn goal_table(kind: MobKind) -> &'static [Entry] {
         K::Cat => CAT,
         K::Ocelot => OCELOT,
         K::Wolf => WOLF,
+        K::Shulker => SHULKER,
         _ => &[],
     }
 }
@@ -257,6 +289,17 @@ enum Setter {
     Shuffled { options: &'static [(Sel, f32, u8)], nothing: u8 },
     /// `RandomLookAround(interval, maxYaw, 0, 0)`.
     Around { min: i32, max: i32, max_yaw: f32 },
+    /// `SetLookAndInteract.create(PLAYER, range)`: with no
+    /// `INTERACTION_TARGET`, the nearest visible player within `range`
+    /// becomes it and `LOOK_TARGET` (Track 2d).
+    Interact { range: f32 },
+}
+
+/// The villager packages whose interaction looks differ (Track 2d).
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Package {
+    Idle,
+    WorkOrMeet,
 }
 
 const PIGLIN_LOOKS: &[(Sel, f32, u8)] =
@@ -308,28 +351,40 @@ pub(crate) fn brain(kind: MobKind) -> bool {
             | K::Breeze
             | K::Nautilus
             | K::ZombieNautilus
+            | K::Warden
     )
 }
 
-/// Kinds whose head the game draws from its own code, not a look control:
-/// the shulker (`ShulkerLookControl`), bat, phantom (no look control),
-/// ghast, happy ghast, warden and camels (their own look memories, see
-/// `equine` and `warden`), and the Wither (`wither_tick`).
+/// Kinds whose head no look control turns: the phantom (`PhantomLookControl`
+/// does nothing; `PhantomBodyRotationControl` sets its head to the last
+/// body, Track 2d).
 fn own_head(kind: MobKind) -> bool {
     use MobKind as K;
-    matches!(kind, K::Shulker | K::Bat | K::Phantom | K::Ghast | K::HappyGhast | K::Warden)
+    matches!(kind, K::Phantom)
 }
 
 /// Which look control a kind has.
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Control {
     Plain,
+    /// `Ghast.GhastLookGoal` sets `yBodyRot = yRot` each tick before the
+    /// plain `LookControl` (Track 2d).
+    Ghast,
+    /// `HappyGhastLookControl` (adults): a request turns `yRot`, body and
+    /// head at once; otherwise the head is left alone.
+    HappyGhast,
+    /// `ShulkerLookControl`: yaw in the shell's frame, no pitch, no clamp
+    /// to the body (whose `yBodyRot` stays 0).
+    Shulker,
     /// `SmoothSwimmingLookControl(maxYRotFromCenter)`.
     SmoothSwim(f32),
 }
 
-fn control(kind: MobKind) -> Control {
+fn control(kind: MobKind, baby: bool) -> Control {
     match kind {
+        MobKind::Ghast => Control::Ghast,
+        MobKind::HappyGhast if !baby => Control::HappyGhast,
+        MobKind::Shulker => Control::Shulker,
         MobKind::Dolphin | MobKind::Tadpole | MobKind::Nautilus | MobKind::ZombieNautilus => Control::SmoothSwim(10.0),
         MobKind::Axolotl => Control::SmoothSwim(20.0),
         _ => Control::Plain,
@@ -358,6 +413,13 @@ pub(crate) fn senses_mobs(kind: MobKind) -> bool {
             | K::Zoglin
             | K::Creaking
             | K::Allay
+            // Track 2d: brains whose `AnimalMakeLove` and `BabyFollowAdult`
+            // look at mobs (`EntityTracker.isVisibleBy` reads the sensor).
+            | K::Goat
+            | K::Axolotl
+            | K::Armadillo
+            | K::Frog
+            | K::Sniffer
     )
 }
 
@@ -407,12 +469,25 @@ pub(crate) struct Head {
     nothing_left: i32,
     /// `GAZE_COOLDOWN_TICKS` (`RandomLookAround`).
     gaze_cooldown: i32,
+    /// `INTERACTION_TARGET` (a player; Track 2d). Piglins never erase it,
+    /// as in Java; villagers' `ShowTradesToPlayer` and panic do.
+    pub(crate) interaction: Option<PlayerId>,
+    /// A running `ShowTradesToPlayer`: ticks before it times out, its
+    /// `lookTime`, and the player's held item it last saw (`None` before
+    /// its first tick).
+    show_trades: Option<(i32, i32, Option<Option<crate::item::Item>>)>,
+    /// `PandaLookAtPlayerGoal.lookAt` kept between `canUse` calls (its
+    /// `setTarget`; Track 2d).
+    preset: Option<PlayerId>,
     /// `BodyRotationControl.headStableTime` and `lastStableYHeadRot`.
     stable: i32,
     last_stable: f32,
     /// A behaviour other than the idle look goals asked the look control
     /// this tick (it holds `LOOK`).
     pub(crate) requested: bool,
+    /// The priority of the goal outside the table that moved the mob this
+    /// tick, when the game knows it (the witch's raider goals; Track 2d).
+    pub(crate) move_priority: Option<u8>,
     /// Sensed by the entity pass: a living mob rides this one (its first
     /// passenger steers: `Mob.getControllingPassenger`).
     pub(crate) carrying_mob: bool,
@@ -457,9 +532,9 @@ impl Mob {
         }
     }
 
-    /// The eye (Java's default eye height, 0.85 of the box).
+    /// The eye (`getEyePosition`: the kind's own eye height, Track 2d).
     pub(crate) fn look_eye(&self) -> DVec3 {
-        self.pos + DVec3::Y * (self.shape().height * 0.85)
+        self.pos + DVec3::Y * self.eye_height()
     }
 
     fn look_ready(&mut self) {
@@ -496,6 +571,13 @@ impl Mob {
         self.head.requested = true;
     }
 
+    /// `LookControl.setLookAt` from a table goal (`BreedGoal`, `TemptGoal`,
+    /// `FollowOwnerGoal`): its `LOOK` flag is held at its own priority, which
+    /// the selector reads from the running goal (Track 2d).
+    pub(crate) fn goal_look_at(&mut self, at: DVec3, y_max: f32, x_max: f32) {
+        self.request(at, y_max, x_max);
+    }
+
     /// A goal holds `LOOK` this tick without asking the look control (the
     /// Wither's `WitherDoNothingGoal`).
     pub(crate) fn hold_look(&mut self) {
@@ -514,25 +596,73 @@ impl Mob {
         self.head.target = Some(at);
     }
 
-    /// Whether a running goal or behaviour other than the idle looks holds
-    /// `MOVE` (strolling, panic, chasing, a moving table goal).
-    fn move_held(&self, wish: bool) -> bool {
-        wish || matches!(self.ai, Ai::Chase | Ai::Panic)
-            || (self.ai == Ai::Wander && self.path_move)
-            || self.goals.running.is_some()
-            || !self.nav.is_done()
+    /// The priority of the table goal holding `MOVE` (a running table goal,
+    /// panic or a stroll) and whether it holds `LOOK` too, if the game
+    /// knows it (`GoalSelector`'s locked flags).
+    pub(super) fn table_holder(&self) -> Option<(u8, bool)> {
+        use super::goals::Goal as G;
+        // `ShulkerAttackGoal` (4, `MOVE` and `LOOK`).
+        if self.shulker.as_ref().is_some_and(|s| s.attacking()) {
+            return Some((4, true));
+        }
+        let t = super::goals::table(self.kind);
+        if let Some(i) = self.goals.running {
+            let e = t[i as usize];
+            return Some((e.priority, matches!(e.goal, G::Breed | G::Tempt | G::FollowOwner { .. })));
+        }
+        let find = |g: fn(&super::goals::Goal) -> bool| t.iter().find(|e| g(&e.goal)).map(|e| (e.priority, false));
+        match self.ai {
+            Ai::Panic => find(|g| matches!(g, G::Panic)),
+            Ai::Wander if self.path_move => find(|g| matches!(g, G::Stroll)),
+            _ => None,
+        }
     }
 
-    /// Whether one holds `LOOK`: an attack goal, a table goal that looks
-    /// (`BreedGoal`, `TemptGoal`, `FollowOwnerGoal`), or a behaviour that
+    /// Whether a goal or behaviour other than the idle looks holds `MOVE`
+    /// against an idle goal of `priority`: v1.0 gap Track 2d, Java's
+    /// `GoalSelector` lets a goal take a flag only from goals of a strictly
+    /// worse priority, so a table goal, stroll or raider goal the game
+    /// knows the priority of holds it only at that priority or better.
+    /// Anything else moving the mob (chasing, its own movement code, a
+    /// path) holds it outright.
+    fn move_held(&self, wish: bool, priority: u8) -> bool {
+        if matches!(self.ai, Ai::Chase) {
+            return true;
+        }
+        if let Some(p) = self.head.move_priority {
+            return p <= priority;
+        }
+        match self.table_holder() {
+            Some((p, _)) => p <= priority,
+            None => {
+                wish || matches!(self.ai, Ai::Panic) || (self.ai == Ai::Wander && self.path_move) || !self.nav.is_done()
+            }
+        }
+    }
+
+    /// Whether one holds `LOOK` against an idle goal of `priority`: an
+    /// attack goal, a table goal that looks (`BreedGoal`, `TemptGoal`,
+    /// `FollowOwnerGoal`) at that priority or better, or a behaviour that
     /// asked the look control this tick.
-    fn look_held(&self) -> bool {
-        use super::goals::Goal as G;
+    fn look_held(&self, priority: u8) -> bool {
         self.head.requested
             || self.ai == Ai::Chase
-            || self.goals.running.is_some_and(|i| {
-                matches!(super::goals::table(self.kind)[i as usize].goal, G::Breed | G::Tempt | G::FollowOwner { .. })
-            })
+            || self.table_holder().is_some_and(|(p, look)| look && p <= priority)
+    }
+
+    /// v1.0 gap Track 2d: the running idle look goal's priority and whether
+    /// it holds `MOVE` (`RandomLookAroundGoal`, `InteractGoal`), so the
+    /// table goals and strolls it outranks wait for it.
+    pub(crate) fn idle_look_holds(&self) -> Option<(u8, bool)> {
+        let (i, _) = self.head.running?;
+        let entry = goal_table(self.kind).get(i as usize)?;
+        Some((entry.priority, matches!(entry.goal, Idle::Random | Idle::LookAt { interact: true, .. })))
+    }
+
+    /// Whether a goal of `priority` needing `MOVE` (and `LOOK` if `look`)
+    /// may start beside the running idle look goal.
+    pub(crate) fn idle_look_allows(&self, priority: u8, look: bool) -> bool {
+        self.idle_look_holds().is_none_or(|(p, moves)| !(moves || look) || priority < p)
     }
 
     fn tracked_pos(&self, at: Tracked, ctx: &Ctx) -> Option<DVec3> {
@@ -635,6 +765,7 @@ impl Mob {
     pub(super) fn head_goals<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx, rng: &mut Rng, wish: bool) {
         if own_head(self.kind) || !self.alive() {
             self.head.requested = false;
+            self.head.move_priority = None;
             return;
         }
         self.look_ready();
@@ -646,6 +777,7 @@ impl Mob {
             self.look_goals(world, ctx, rng, wish);
         }
         self.head.requested = false;
+        self.head.move_priority = None;
         self.head.ticks = self.head.ticks.wrapping_add(1);
     }
 
@@ -655,16 +787,21 @@ impl Mob {
         if table.is_empty() {
             return;
         }
+        // `PandaBreedGoal.canUse`: `lookAtPlayerGoal.setTarget` with the
+        // nearest player by `BREED_TARGETING` (non-combat, 8 blocks).
+        if let Some(p) = self.panda.as_mut().filter(|p| p.look_at_nearest) {
+            p.look_at_nearest = false;
+            self.head.preset = self.nearest_player(world, ctx, 8.0, false, |_| true).map(|t| t.id);
+        }
         let full = self.head.ticks.wrapping_add(self.uid).is_multiple_of(2) || self.head.ticks <= 1;
         // `updateControlFlags`: a mob passenger steering this mob disables
         // MOVE and LOOK.
         let disabled = self.head.carrying_mob;
-        let move_held = self.move_held(wish);
-        let look_held = self.look_held();
         // A better goal taking a flag stops the running one at once.
         if let Some((i, r)) = self.head.running {
             let flags_move = matches!(table[i as usize].goal, Idle::Random | Idle::LookAt { interact: true, .. });
-            if look_held || flags_move && move_held || disabled {
+            let p = table[i as usize].priority;
+            if self.look_held(p) || flags_move && self.move_held(wish, p) || disabled {
                 self.head.running = None;
             } else if full {
                 // `canContinueToUse`.
@@ -685,7 +822,7 @@ impl Mob {
                             && (!matches!(at, Tracked::Mob(..))
                                 || self.head.seen.iter().any(|s| matches!(at, Tracked::Mob(u, _) if u == s.uid)))
                             && !(table[i as usize].goal == Idle::Trading
-                                && !self.villager.as_ref().is_some_and(|v| v.trading))
+                                && self.villager.as_ref().and_then(|v| v.customer) != Some(at_player(at)))
                     }
                     Running::Random { left, .. } => left >= 0,
                 };
@@ -694,17 +831,18 @@ impl Mob {
                 }
             }
         }
-        if full && !disabled && !look_held {
+        if full && !disabled {
             for (i, entry) in table.iter().enumerate() {
                 if self.head.running.is_some_and(|(r, _)| table[r as usize].priority <= entry.priority) {
                     continue;
                 }
                 let needs_move = matches!(entry.goal, Idle::Random | Idle::LookAt { interact: true, .. });
-                if needs_move && move_held {
+                if self.look_held(entry.priority) || needs_move && self.move_held(wish, entry.priority) {
                     continue;
                 }
                 if let Some(r) = self.can_use_look(world, ctx, rng, entry.goal) {
                     self.head.running = Some((i as u8, r));
+                    self.interrupt_for_look(world, entry.priority, needs_move);
                 }
             }
         }
@@ -732,7 +870,13 @@ impl Mob {
     }
 
     /// `canUse` and `start` of an idle look goal.
-    fn can_use_look<W: MobWorld + ?Sized>(&self, world: &W, ctx: &Ctx, rng: &mut Rng, goal: Idle) -> Option<Running> {
+    fn can_use_look<W: MobWorld + ?Sized>(
+        &mut self,
+        world: &W,
+        ctx: &Ctx,
+        rng: &mut Rng,
+        goal: Idle,
+    ) -> Option<Running> {
         match goal {
             Idle::Random => {
                 if rng.next_f32() >= 0.02 {
@@ -742,17 +886,9 @@ impl Mob {
                 Some(Running::Random { rel: (a.cos(), a.sin()), left: 20 + rng.next_int(20) as i32 })
             }
             Idle::Trading => {
-                // `isTrading`: the trading player (the nearest one, as the
-                // game keeps a trading flag rather than its customer).
-                if !self.villager.as_ref().is_some_and(|v| v.trading) {
-                    return None;
-                }
-                let t = ctx
-                    .players
-                    .iter()
-                    .filter(|t| t.alive)
-                    .min_by(|a, b| a.pos.distance_squared(self.pos).total_cmp(&b.pos.distance_squared(self.pos)))?;
-                Some(Running::LookAt { at: Tracked::Player(t.id), left: (40 + rng.next_int(40) as i32 + 1) / 2 })
+                // `isTrading`: `lookAt = getTradingPlayer()` (Track 2d).
+                let id = self.villager.as_ref().and_then(|v| v.customer)?;
+                Some(Running::LookAt { at: Tracked::Player(id), left: (40 + rng.next_int(40) as i32 + 1) / 2 })
             }
             Idle::LookAt { who, range, chance, .. } => {
                 if rng.next_f32() >= chance {
@@ -762,6 +898,20 @@ impl Mob {
                     return None;
                 }
                 let at = match who {
+                    Who::Player if self.kind == MobKind::Panda => {
+                        // `PandaLookAtPlayerGoal.canUse`: a set or found
+                        // `lookAt` is kept while the panda can't act.
+                        let id = self
+                            .head
+                            .preset
+                            .or_else(|| Some(self.nearest_player(world, ctx, f64::from(range), false, |_| true)?.id))?;
+                        if !self.panda.as_ref().is_some_and(|p| p.can_act()) {
+                            self.head.preset = Some(id);
+                            return None;
+                        }
+                        self.head.preset = None;
+                        Tracked::Player(id)
+                    }
                     Who::Player => {
                         Tracked::Player(self.nearest_player(world, ctx, f64::from(range), false, |_| true)?.id)
                     }
@@ -782,6 +932,30 @@ impl Mob {
                 // `start`: `adjustedTickDelay(40 + nextInt(40))` full updates.
                 Some(Running::LookAt { at, left: (40 + rng.next_int(40) as i32 + 1) / 2 })
             }
+        }
+    }
+
+    /// `GoalSelector.tick`: an idle look goal that started stops the worse
+    /// goals holding its flags (`LOOK`, and `MOVE` if it needs it).
+    fn interrupt_for_look<W: MobWorld + ?Sized>(&mut self, world: &W, priority: u8, needs_move: bool) {
+        if let Some((p, look)) = self.table_holder()
+            && p > priority
+            && (look || needs_move)
+        {
+            if let Some(s) = self.shulker.as_mut() {
+                s.look_interrupt = true;
+            } else if self.goals.running.is_some() {
+                self.stop_goal(world);
+            } else if self.ai == Ai::Wander && self.path_move {
+                self.ai = Ai::Idle;
+                self.ai_timer = 0.0;
+                self.path_move = false;
+            }
+            self.stop_navigation();
+        }
+        if needs_move && self.head.move_priority.is_some_and(|p| p > priority) {
+            // A raider goal (the witch's): it can't start again while the look runs.
+            self.stop_navigation();
         }
     }
 
@@ -808,12 +982,34 @@ impl Mob {
         if self.head.nothing_left > 0 {
             self.head.nothing_left -= 1;
         }
+        // Track 2d: the villager's interaction looks at their priorities:
+        // idle at 3, before the look `RunOne` (5); work and meet at 10, after.
+        let package = self.villager_package();
+        if self.villager.as_ref().is_some_and(|v| v.fleeing) {
+            // `VillagerPanicTrigger` erases `INTERACTION_TARGET`.
+            self.head.interaction = None;
+        }
+        if package == Some(Package::Idle) {
+            self.set_look_and_interact(world, ctx, 4.0);
+            self.show_trades_start(ctx, rng);
+        }
         for setter in self.brain_setters() {
-            if self.head.target.is_some() {
-                break;
+            // `SetEntityLookTarget`s need `LOOK_TARGET` absent; a `RunOne`
+            // still starts and falls to its `DoNothing`, and
+            // `SetLookAndInteract` only registers it.
+            if self.head.target.is_some() && !matches!(setter, Setter::RunOne { .. } | Setter::Interact { .. }) {
+                continue;
             }
             self.run_setter(world, ctx, rng, *setter);
         }
+        if package == Some(Package::WorkOrMeet) {
+            self.show_trades_start(ctx, rng);
+            self.set_look_and_interact(world, ctx, 4.0);
+        }
+        if package.is_none() {
+            self.head.show_trades = None;
+        }
+        self.show_trades_tick(ctx);
         // Tick phase: `LookAtTargetSink.tickOrStop`.
         let Some(left) = self.head.sink else { return };
         let visible = self.head.target.is_some_and(|at| self.still_visible(world, ctx, at));
@@ -836,17 +1032,90 @@ impl Mob {
     /// blocks of its customer keeps it as `LOOK_TARGET` (not in water or
     /// hurt recently).
     fn villager_trading_look(&mut self, ctx: &Ctx) {
-        if !self.villager.as_ref().is_some_and(|v| v.trading) || self.in_water || self.hurt_age < 10 {
+        let Some(id) = self.villager.as_ref().and_then(|v| v.customer) else { return };
+        if self.in_water || self.hurt_age < 10 {
             return;
         }
-        let near = ctx
-            .players
-            .iter()
-            .filter(|t| t.alive && t.pos.distance_squared(self.pos) <= 16.0)
-            .min_by(|a, b| a.pos.distance_squared(self.pos).total_cmp(&b.pos.distance_squared(self.pos)));
-        if let Some(t) = near {
-            self.set_look_target(Tracked::Player(t.id));
+        // `checkExtraStartConditions`: the customer alive and within 4 blocks.
+        if ctx.players.iter().any(|t| t.id == id && t.alive && t.pos.distance_squared(self.pos) <= 16.0) {
+            self.set_look_target(Tracked::Player(id));
         }
+    }
+
+    /// Which villager package's interaction looks run (Track 2d): idle's
+    /// (priority 3), work's and meet's (10), or none (play, rest, panic,
+    /// hiding and raids).
+    fn villager_package(&self) -> Option<Package> {
+        use crate::entity::villager::Activity;
+        let v = self.villager.as_ref().filter(|_| self.kind == MobKind::Villager)?;
+        let raiding = v.raid_activity != crate::entity::villager::RaidActivity::default();
+        if v.fleeing || v.bell_hide > 0.0 || raiding {
+            return None;
+        }
+        match v.activity {
+            Activity::Idle => Some(Package::Idle),
+            Activity::Work | Activity::Meet => Some(Package::WorkOrMeet),
+            Activity::Rest | Activity::Play => None,
+        }
+    }
+
+    /// `SetLookAndInteract`: with no `INTERACTION_TARGET`, the closest
+    /// visible player within `range` becomes it and `LOOK_TARGET`.
+    fn set_look_and_interact<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx, range: f32) {
+        if self.head.interaction.is_some() {
+            return;
+        }
+        if let Some(t) = self.nearest_player(world, ctx, f64::from(range), true, |_| true) {
+            self.head.interaction = Some(t.id);
+            self.head.target = Some(Tracked::Player(t.id));
+        }
+    }
+
+    /// `ShowTradesToPlayer.checkExtraStartConditions`: the interaction
+    /// target is a living player within `sqrt(17)` of an adult villager.
+    fn show_trades_valid<'a>(&self, ctx: &'a Ctx) -> Option<&'a Target> {
+        let id = self.head.interaction?;
+        let t = ctx.players.iter().find(|t| t.id == id && t.alive && !t.spectator)?;
+        (self.alive() && !self.baby && self.age >= 0 && t.pos.distance_squared(self.pos) <= 17.0).then_some(t)
+    }
+
+    /// `ShowTradesToPlayer(400, 1600).tryStart`.
+    fn show_trades_start(&mut self, ctx: &Ctx, rng: &mut Rng) {
+        if self.head.show_trades.is_none() && self.show_trades_valid(ctx).is_some() {
+            // `start`: `lookAtTarget`, `lookTime = 40`.
+            let left = 400 + rng.next_int(1201) as i32;
+            self.head.show_trades = Some((left, 40, None));
+            self.head.target = self.head.interaction.map(Tracked::Player);
+        }
+    }
+
+    /// `ShowTradesToPlayer.tickOrStop`: it keeps `LOOK_TARGET` on the
+    /// player, for 900 ticks while the player holds the cost of an offer in
+    /// stock (40 otherwise), and erases `INTERACTION_TARGET` when it stops.
+    fn show_trades_tick(&mut self, ctx: &Ctx) {
+        let Some((left, look, seen)) = self.head.show_trades else { return };
+        let held = self.show_trades_valid(ctx).map(|t| t.held_item);
+        let Some(held) = held.filter(|_| left > 0 && look > 0) else {
+            self.head.show_trades = None;
+            self.head.interaction = None;
+            return;
+        };
+        self.head.target = self.head.interaction.map(Tracked::Player);
+        let mut look = look;
+        let matches = |item: crate::item::Item, v: &crate::entity::villager::Villager| {
+            v.offers
+                .iter()
+                .flatten()
+                .any(|o| o.uses < o.max_uses && (o.cost.item == item || o.second.is_some_and(|s| s.item == item)))
+        };
+        let displaying = held.zip(self.villager.as_ref()).is_some_and(|(item, v)| matches(item, v));
+        if seen != Some(held) && displaying {
+            look = 900;
+        }
+        if !displaying {
+            look = look.min(40);
+        }
+        self.head.show_trades = Some((left - 1, look - 1, Some(held)));
     }
 
     /// The `LOOK_TARGET` writers of the brain's current activity.
@@ -903,6 +1172,7 @@ impl Mob {
         const IDLE: &[Setter] = &[
             Setter::Direct { sel: Sel::LovedItemPlayer, range: 14.0 },
             Setter::RunOne { options: PIGLIN_LOOKS, nothing: (1, 30, 60) },
+            Setter::Interact { range: 4.0 },
         ];
         const AVOID: &[Setter] = &[Setter::RunOne { options: PIGLIN_LOOKS, nothing: (1, 30, 60) }];
         const CELEBRATE: &[Setter] = &[
@@ -968,12 +1238,16 @@ impl Mob {
                         return;
                     }
                     let (sel, range, _) = options[i];
+                    if self.head.target.is_some() {
+                        continue;
+                    }
                     if let Some(at) = self.find_closest(world, ctx, sel, range) {
                         self.head.target = Some(at);
                         return;
                     }
                 }
             }
+            Setter::Interact { range } => self.set_look_and_interact(world, ctx, range),
             Setter::Shuffled { options, nothing } => {
                 if self.riding.is_none() {
                     return;
@@ -1061,14 +1335,37 @@ impl Mob {
         if skip {
             return;
         }
-        let body = self.body_yrot();
+        let mut body = self.body_yrot();
         let eye = self.look_eye();
         let navigating = !self.nav.is_done();
         let mut l = self.look;
-        match control(self.kind) {
-            Control::Plain => {
-                // `resetXRotOnTick`: not for a frog with a tongue target.
-                let keep_pitch = self.kind == MobKind::Frog && self.frog.as_ref().is_some_and(|f| f.tongue.is_some());
+        match control(self.kind, self.baby) {
+            Control::HappyGhast => {
+                let still = self.happy_ghast.as_ref().is_some_and(|h| h.still());
+                // Its move code already turned `yRot` toward the request,
+                // the quarter turn or the movement.
+                if still || l.cooldown > 0 {
+                    l.cooldown = l.cooldown.saturating_sub(u8::from(!still));
+                    self.body_yaw = self.yaw;
+                    l.head = self.yrot();
+                } else {
+                    // `faceMovementDirection`: `yBodyRot = yRot`.
+                    self.body_yaw = self.yaw;
+                }
+                l.pitch = 0.0;
+            }
+            Control::Ghast | Control::Plain => {
+                if self.kind == MobKind::Ghast {
+                    self.body_yaw = self.yaw;
+                    body = self.body_yrot();
+                }
+                // `resetXRotOnTick`: not for a frog with a tongue target, nor
+                // a pollinating bee (`BeeLookControl`, Track 2d).
+                let keep_pitch = match self.kind {
+                    MobKind::Frog => self.frog.as_ref().is_some_and(|f| f.tongue.is_some()),
+                    MobKind::Bee => self.bee.is_some_and(|b| b.pollinating()),
+                    _ => false,
+                };
                 if !keep_pitch {
                     l.pitch = 0.0;
                 }
@@ -1086,6 +1383,20 @@ impl Mob {
                 }
                 if navigating {
                     l.head = rotate_if_necessary(l.head, body, self.max_head_y_rot());
+                }
+            }
+            Control::Shulker => {
+                // `getXRotD` is always 0 and `xRot` restarts level.
+                l.pitch = 0.0;
+                if l.cooldown > 0 {
+                    l.cooldown -= 1;
+                    let attach = self.shulker.as_ref().map_or(crate::world::end_blocks::Dir::Down, |s| s.attach);
+                    if let Some(yaw) = shulker_yaw(attach, l.wanted - eye) {
+                        l.head = rotate_towards(l.head, yaw, l.y_max);
+                    }
+                } else {
+                    // Back to its `yBodyRot`, which stays 0.
+                    l.head = rotate_towards(l.head, 0.0, HEAD_ROT_SPEED);
                 }
             }
             Control::SmoothSwim(max_from_center) => {
@@ -1120,12 +1431,32 @@ impl Mob {
     /// `BodyRotationControl.clientTick` (or the kind's own), after the mob
     /// moved, then the drawn head. `moved` is this tick's horizontal move.
     pub(super) fn body_tick(&mut self, moved: DVec3) {
+        if self.kind == MobKind::Shulker {
+            // `ShulkerBodyRotationControl` does nothing: `yBodyRot` stays 0.
+            self.look_ready();
+            self.body_yaw = std::f32::consts::FRAC_PI_2;
+            self.head_yaw = super::wrap(wrap_degrees(self.look.head).to_radians());
+            self.head_pitch = 0.0;
+            return;
+        }
         if own_head(self.kind) {
-            // Their own code turns the one yaw they draw.
+            // `PhantomBodyRotationControl`: `yHeadRot = yBodyRot` (last
+            // tick's), then `yBodyRot = yRot`; its move code sets `xRot`.
+            let last = self.body_yaw;
             self.body_yaw = self.yaw;
+            self.head_yaw = super::wrap(last - self.yaw);
             return;
         }
         self.look_ready();
+        // `HappyGhastBodyRotationControl`: carrying anyone, head and body
+        // take `yRot` before the usual body control.
+        if self.kind == MobKind::HappyGhast
+            && !self.baby
+            && self.mount.as_ref().is_some_and(|s| s.rider.is_some() || s.passenger.is_some())
+        {
+            self.look.head = self.yrot();
+            self.body_yaw = self.yaw;
+        }
         if self.dying.is_none() {
             let frozen = match self.kind {
                 MobKind::Armadillo => self.armadillo.as_ref().is_some_and(|s| s.scared()),
