@@ -280,7 +280,9 @@ Block 1800 (texture layer 1400) is Java's crying obsidian, added for bartering:
 
 New state lives in the dimension's `nether_mobs` level property, as JSON:
 `{"mobs":[…], "bastions":[[x,y,z],…]}`.
-- Each mob records kind, position, yaw, health, baby flag, golden armor slots, weapon,
+- Each mob records kind, position, yaw, health, baby flag, golden armor slots, weapon
+  (`none`, `golden_sword`, `crossbow`, `golden_axe`, and since v1.0 gap Track 2b
+  `golden_spear`; a zombified piglin's as `held`),
   admired item and time left, pocket stacks, zombification timer, immunity, hunting
   flag and home.
 - Only persistent mobs are saved. Ordinary spawns despawn like other mobs.
@@ -354,6 +356,8 @@ Visual checks for the integrator:
   - Proportions: wide 10-pixel head, snout, tusks, flopping ears.
   - Leather outfit with gold buckle; golden armor overlays.
   - Sword arm chopping; crossbow held level while fighting.
+  - Golden spear (v1.0 gap Track 2b): held couched and level while charging, with
+    the head turning toward the target rather than snapping.
   - The gold ingot raised in the off hand with the head bowed while admiring.
 - **Brutes**: black, gold-trimmed tunic and golden axe swing.
 - **Hoglins and zoglins**:
