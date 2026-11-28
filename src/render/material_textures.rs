@@ -1690,15 +1690,19 @@ fn fixture(kind: u16, palette: &[[u8; 3]], flame: [u8; 3]) -> Canvas {
             }
         }
         ct::BARS => {
+            // v1.0 gap track 6f: the bars sit on columns 3-4, 7-8 and 11-12
+            // with half bars on the edges, so Java's `template_bars_post`
+            // (columns 7-8 on its crossed planes) and the arms' edge strips
+            // show a bar, and a row of bars joins into whole ones.
             for (y, row) in g.iter_mut().enumerate() {
                 for (x, v) in row.iter_mut().enumerate() {
-                    let bar = x % 4 == 1 || x % 4 == 2;
+                    let bar = x % 4 == 3 || x % 4 == 0;
                     let rail = (1..=2).contains(&y) || (13..=14).contains(&y);
                     *v = if !bar && !rail {
                         HOLE
                     } else if rail {
                         if y == 1 || y == 13 { 5 } else { 1 }
-                    } else if x % 4 == 1 {
+                    } else if x % 4 == 3 {
                         4
                     } else {
                         2

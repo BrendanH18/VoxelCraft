@@ -40,7 +40,45 @@ const fn op(face: u8, lo: [u8; 3], hi: [u8; 3], op: u8) -> Op {
     Op { face, lo, hi, op }
 }
 
+/// v1.0 gap track 6f: one face of a Java model drawn whole from the jar's
+/// element layout (bars): the face, its flat rect in sixteenths, its UV op
+/// and whether it is one of Java's planes just inside the cell's edge
+/// (0.001 or 15.999) facing into the cell. Such faces are detail quads with
+/// plane code 29 (see [`crate::mesh`]).
+#[derive(Clone, Copy, Debug)]
+pub(super) struct ModelFace {
+    pub(super) face: u8,
+    pub(super) lo: [u8; 3],
+    pub(super) hi: [u8; 3],
+    pub(super) op: u8,
+    pub(super) inset: bool,
+}
+
+const fn mf(face: u8, lo: [u8; 3], hi: [u8; 3], op: u8, inset: bool) -> ModelFace {
+    ModelFace { face, lo, hi, op, inset }
+}
+
 include!("java_uv_tables.rs");
+
+/// v1.0 gap track 6f: whether `b` (canonical) is iron or copper bars, whose
+/// mesh is Java's `template_bars_*` layout ([`BARS`]) rather than boxes.
+pub(super) fn is_bars(b: Block) -> bool {
+    matches!(b.shaped(), Some(Shaped::Pane)) && !b.is_glass_pane()
+}
+
+/// v1.0 gap track 6f: the faces of Java's model for `b` with its sides
+/// joined as `joined` says (north, east, south, west), when the game draws
+/// its whole layout from the jar ([`ModelFace`]).
+pub(super) fn model_faces(b: Block, joined: impl Fn(Facing) -> bool) -> Option<&'static [ModelFace]> {
+    if !is_bars(b) {
+        return None;
+    }
+    let bits = [Facing::North, Facing::East, Facing::South, Facing::West]
+        .into_iter()
+        .enumerate()
+        .fold(0, |acc, (i, f)| acc | usize::from(joined(f)) << i);
+    Some(BARS[bits])
+}
 
 /// The op's symmetry, `JAVA_UV_M`'s index.
 pub(super) const fn symmetry(op: u8) -> u32 {

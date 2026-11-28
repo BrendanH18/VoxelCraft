@@ -149,6 +149,18 @@ fn detail_coord(value:u32)->f32 {
     return select(f32(value),1.5,value==31u)/16.0;
 }
 
+// v1.0 gap track 6f: a model face's depth code (plane code 29, its AO
+// bits): 0-16 sixteenths, 17 Java's inset plane at 0.001 and 18 at 15.999.
+fn model_depth(code: u32) -> f32 {
+    if code == 17u {
+        return 0.001 / 16.0;
+    }
+    if code == 18u {
+        return 15.999 / 16.0;
+    }
+    return f32(code) / 16.0;
+}
+
 // v1.0 gap track 6c: a fine quad's coordinate codes (bamboo): bounds 0-7
 // and, for the plane, 8 more (8/16), in sixteenths.
 fn fine_coord(code: u32) -> f32 {
@@ -233,7 +245,7 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>, @loca
         order = array<u32, 4>(0u, 3u, 2u, 1u);
     }
     let c = order[((vi & 3u) + (w0 >> 31u)) & 3u];
-    let ao = (w1 >> (8u + 2u * c)) & 3u;
+    var ao = (w1 >> (8u + 2u * c)) & 3u;
     let light = (w2 >> (8u * c)) & 255u;
     let coord_mask = select(63u, 31u, detail);
     let base = vec3<u32>(w0 & coord_mask, (w0 >> 6u) & coord_mask, (w0 >> 12u) & coord_mask);
@@ -318,19 +330,29 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>, @loca
             // v1.0 gap track 6e: plane codes 17-24 put the face on the
             // cell's edge with Java's UV symmetry (code - 17), 25-28 are a
             // rail sloping at 1/16; the bounds' three spare bits hold the
-            // edge face's offset or another face's symmetry.
+            // edge face's offset or another face's symmetry (and a model
+            // face's, code 29).
             let code = (w1 >> 26u) & 31u;
             let spare = ((w0 >> 25u) & 1u) | (((w1 >> 20u) & 1u) << 1u) | (((w1 >> 25u) & 1u) << 2u);
             let edge_op = code >= 17u && code <= 24u;
             let slope = code >= 25u && code <= 28u;
+            // v1.0 gap track 6f: plane code 29 is a face of a Java model
+            // drawn without ambient occlusion (bars): its AO bits hold the
+            // depth code (bits 0-4) and UV offset (5-7), the spare bits its
+            // symmetry.
+            let model = code == 29u;
+            let model_bits = (w1 >> 8u) & 255u;
             let tag = code - 8u;
             uv_m = select(spare, code - 17u, edge_op);
-            uv_offset = select(0u, spare, edge_op);
+            uv_offset = select(select(0u, spare, edge_op), model_bits >> 5u, model);
             var depth = detail_coord(code);
             if edge_op {
                 depth = select(0.0, 1.0, (face & 1u) == 0u);
             } else if slope {
                 depth = 1.0 / 16.0;
+            } else if model {
+                depth = model_depth(model_bits & 31u);
+                ao = 3u;
             }
             var p = vec3<f32>(base);
             p[d] += depth;

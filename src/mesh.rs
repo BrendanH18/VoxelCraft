@@ -50,6 +50,13 @@
 //! Plane codes 25-28 are a rail's plane at 1/16 sloping east, west, north or
 //! south.
 //!
+//! v1.0 gap track 6f: plane code 29 is a face of a Java model the game draws
+//! whole from the jar's element layout (iron and copper bars, whose models
+//! have no ambient occlusion): word 1's AO bits hold its depth code (bits
+//! 8-12: 0-16 sixteenths, 17 for Java's 0.001 and 18 for 15.999, its planes
+//! just inside the cell) and its UV offset (bits 13-15), the spare bits its
+//! symmetry, and the shader draws it unoccluded.
+//!
 //! UVs follow Java's default face UVs ([`face_uv`], v1.0 gap track 6d):
 //! every face's texture upright and unmirrored seen from outside, except
 //! where a model gives explicit UVs (above).
@@ -417,6 +424,11 @@ const PLANE_JAVA_UV: u32 = 17;
 /// v1.0 gap track 6e: detail plane codes 25-28, a rail's plane at 1/16
 /// sloping east, west, north or south.
 const PLANE_SLOPE: u32 = 25;
+/// v1.0 gap track 6f: detail plane code 29, a face of a Java model drawn
+/// without ambient occlusion ([`java_uv::ModelFace`]): the AO bits hold its
+/// depth code (bits 0-4: 0-16 sixteenths, 17 Java's 0.001, 18 its 15.999)
+/// and UV offset (bits 5-7), the spare bits its symmetry.
+const PLANE_MODEL: u32 = 29;
 
 // v1.0 gap track 6c: fine-quad coordinate codes (`chunk.wgsl`'s
 // `fine_coord`): sixteenths 0, 0.8, 6.5, 7, 9, 9.5, 15.2 and 16 for bounds,
@@ -781,6 +793,56 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE], origin: glam
                 }
                 continue;
             }
+            // v1.0 gap track 6f: Java's whole element layout (bars): each
+            // face as the jar's model has it, lit flat (the models have no
+            // ambient occlusion: the cell's own light, or the neighbour's
+            // for a face on the cell's edge), in plane code 29.
+            let joined = |f: Facing| {
+                let o = f.offset();
+                let n =
+                    (i as isize + o.x as isize + o.y as isize * (D * D) as isize + o.z as isize * D as isize) as usize;
+                shape::pane_connects_on(blocks[n].canonical(), f)
+            };
+            if let Some(faces) = java_uv::model_faces(b, joined) {
+                for mf in faces.iter().filter(|m| usize::from(m.face) == face) {
+                    let depth = if positive { mf.hi[d] } else { mf.lo[d] };
+                    let r = [mf.lo[u], mf.hi[u], mf.lo[v], mf.hi[v]].map(u32::from);
+                    let on_edge = !mf.inset && depth == if positive { 16 } else { 0 };
+                    let front = if on_edge { (i as isize + sd) as usize } else { i };
+                    if on_edge && blocks[front].is_opaque() {
+                        continue;
+                    }
+                    let light = u32::from(sky[front] | blk[front] << 4) * 0x0101_0101;
+                    let code = match (mf.inset, depth) {
+                        (true, 0) => 17,
+                        (true, _) => 18,
+                        _ => u32::from(depth),
+                    };
+                    let bits = code | java_uv::offset(mf.op) << 5;
+                    let spare = java_uv::symmetry(mf.op);
+                    out[pass].push([
+                        (x | y << 6 | z << 12) as u32
+                            | (layer >> 8 & 1) << 5
+                            | (layer >> 9 & 1) << 11
+                            | (layer >> 10 & 1) << 17
+                            | (face as u32) << 18
+                            | r[0] << 21
+                            | (spare & 1) << 25
+                            | r[2] << 26
+                            | (layer >> 11 & 1) << 30,
+                        (layer & 255)
+                            | bits << 8
+                            | (r[1] & 15) << 16
+                            | (spare >> 1 & 1) << 20
+                            | (r[3] & 15) << 21
+                            | (spare >> 2 & 1) << 25
+                            | PLANE_MODEL << 26
+                            | DETAIL,
+                        light,
+                    ]);
+                }
+                continue;
+            }
             // v1.0 gap track 6e: Java's explicit face UVs (`java_uv`).
             let java_uvs = java_uv::has_ops(b);
             let frogspawn = b == crate::world::frog_blocks::FROGSPAWN;
@@ -995,7 +1057,8 @@ mod tests {
     /// A detail quad's corner `c` in its cell (blocks), decoded as
     /// `chunk.wgsl` does: bounds in sixteenths with upper bounds of 16
     /// stored as 0, the plane's code (1.5/16 for 31, the edge the face
-    /// points to for Java's UV codes 17-24, 1/16 for a rail's slope).
+    /// points to for Java's UV codes 17-24, 1/16 for a rail's slope, a
+    /// model face's depth code for 29).
     fn detail_position(q: [u32; 3], c: u32) -> [f32; 3] {
         let face = (q[0] >> 18) & 7;
         let d = (face / 2) as usize;
@@ -1008,6 +1071,11 @@ mod tests {
         let mut p = [0.0; 3];
         p[d] = match code {
             31 => 1.5 / 16.0,
+            29 => match q[1] >> 8 & 31 {
+                17 => 0.001 / 16.0,
+                18 => 15.999 / 16.0,
+                value => value as f32 / 16.0,
+            },
             17..=24 => face.is_multiple_of(2) as u32 as f32,
             25..=28 => 1.0 / 16.0,
             value => value as f32 / 16.0,
@@ -1037,7 +1105,11 @@ mod tests {
         let face = (q[0] >> 18) & 7;
         let code = q[1] >> 26 & 31;
         let spare = (q[0] >> 25 & 1) | (q[1] >> 20 & 1) << 1 | (q[1] >> 25 & 1) << 2;
-        let (m, offset) = if (17..=24).contains(&code) { (code - 17, spare) } else { (spare, 0) };
+        let (m, offset) = match code {
+            17..=24 => (code - 17, spare),
+            29 => (spare, q[1] >> 13 & 7),
+            _ => (spare, 0),
+        };
         let g = face_uv(face as usize, detail_position(q, c)).map(|x| x * 16.0);
         let [a, b, cc, dd] = M[m as usize];
         let o = OFFSET[offset as usize];
@@ -1682,6 +1754,83 @@ mod tests {
                 seen += 1;
             }
             assert_eq!(seen, 6, "{facing:?}");
+        }
+    }
+
+    /// v1.0 gap track 6f: iron and copper bars are Java's `template_bars_*`
+    /// layout: for each of the 16 sets of connections, every quad of the
+    /// cell is a face of the jar's multipart model (planes at 0.001 and
+    /// 15.999 included), every face of the model is drawn, and each corner
+    /// takes the jar's UV.
+    #[test]
+    fn bars_are_javas_model_layout() {
+        type Faces = Vec<(usize, [f32; 3], [f32; 3], Vec<([f32; 3], [f32; 2])>)>;
+        let fixture: std::collections::HashMap<String, std::collections::HashMap<String, Faces>> =
+            serde_json::from_str(include_str!("../tests/fixtures/java/26.3/block_model_uvs.json")).unwrap();
+        let near_uv = |a: [f32; 2], b: [f32; 2]| {
+            let d = |x: f32, y: f32| ((x - y).rem_euclid(16.0)).min((y - x).rem_euclid(16.0));
+            d(a[0], b[0]) < 1e-3 && d(a[1], b[1]) < 1e-3
+        };
+        // Positions in sixteenths; a plane drawn on the edge for Java's
+        // 0.001 facing out is within 0.01.
+        let near = |a: [f32; 3], b: [f32; 3]| (0..3).all(|i| (a[i] - b[i]).abs() < 0.01);
+        let copper = (0..crate::world::block::STATE_CAPACITY as u16)
+            .map(Block)
+            .find(|b| b.name() == "copper bars")
+            .expect("copper bars");
+        for bits in 0..16usize {
+            let label: String =
+                ["n", "e", "s", "w"].iter().enumerate().filter(|(i, _)| bits >> i & 1 == 1).map(|(_, s)| *s).collect();
+            let faces = &fixture["bars"][if label.is_empty() { "-" } else { &label }];
+            for bars in [Block::IRON_BARS, copper] {
+                let mut blocks = vec![([5, 5, 5], bars)];
+                for (i, at) in [[5, 5, 4], [6, 5, 5], [5, 5, 6], [4, 5, 5]].into_iter().enumerate() {
+                    if bits >> i & 1 == 1 {
+                        blocks.push((at, Block::GLASS));
+                    }
+                }
+                let m = mesh_blocks(&blocks);
+                let mut seen = vec![false; faces.len()];
+                let mut quads = 0;
+                for &q in m.quads.iter().filter(|q| q[1] & DETAIL != 0) {
+                    let cell = [q[0] & 31, q[0] >> 6 & 31, q[0] >> 12 & 31];
+                    if cell != [5, 5, 5] {
+                        continue;
+                    }
+                    quads += 1;
+                    assert_eq!(q[1] >> 26 & 31, PLANE_MODEL, "{} {label}: a model face", bars.name());
+                    let face = (q[0] >> 18 & 7) as usize;
+                    let corners: Vec<[f32; 3]> = (0..4).map(|c| detail_position(q, c).map(|x| x * 16.0)).collect();
+                    // Java's faces with these corners (the models repeat some).
+                    let mut matched = false;
+                    for (k, (_, _, _, verts)) in faces.iter().enumerate().filter(|(_, f)| f.0 == face) {
+                        let javas: Option<Vec<[f32; 2]>> = corners
+                            .iter()
+                            .map(|p| verts.iter().find(|(vp, _)| near(*vp, *p)).map(|(_, t)| *t))
+                            .collect();
+                        let Some(javas) = javas else { continue };
+                        for (c, java) in javas.iter().enumerate() {
+                            let ours = detail_uv(q, c as u32);
+                            assert!(
+                                near_uv(ours, *java),
+                                "{} {label} face {face} corner {c}: {ours:?} vs {java:?}",
+                                bars.name()
+                            );
+                        }
+                        seen[k] = true;
+                        matched = true;
+                    }
+                    assert!(
+                        matched,
+                        "{} {label}: face {face} {:?}-{:?} isn't Java's",
+                        bars.name(),
+                        corners[0],
+                        corners[2]
+                    );
+                }
+                assert!(seen.iter().all(|&s| s), "{} {label}: Java faces not drawn {seen:?}", bars.name());
+                assert!(quads <= faces.len(), "{} {label}: {quads} quads", bars.name());
+            }
         }
     }
 
