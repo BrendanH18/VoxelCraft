@@ -451,15 +451,20 @@ impl Game {
         if self.arrival.is_some() {
             return;
         }
-        let names = self.player_names();
+        let attackers = self.player_attackers();
         let mut players = std::mem::take(&mut self.agents.players);
         let mut lines = Vec::new();
         for (name, bot) in players.iter_mut().filter(|(_, b)| b.active) {
             bot.agent.tick_rules(&mut self.world, &mut self.mobs.entities, self.difficulty, &self.gamerules);
             // v1.0 gap Track 8f: the message names the killer and the
             // player by their profile names, and goes to every chat.
+            // v1.0 gap Track 8g: any attacker, mob or player.
             let vitals = &mut bot.agent.session.vitals;
-            vitals.name_killer(|id| names.get(&id).cloned());
+            let entities = &self.mobs.entities;
+            vitals.name_killer(|owner| match owner {
+                crate::entity::trident::Owner::Player(id) => attackers.get(&id).cloned(),
+                crate::entity::trident::Owner::Mob(uid) => entities.attacker(uid),
+            });
             if vitals.is_dead() && !bot.announced && self.gamerules.bool("show_death_messages") {
                 lines.push(format!("{name} {}", vitals.death.as_deref().unwrap_or("died")));
             }

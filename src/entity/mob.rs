@@ -1815,7 +1815,9 @@ impl Mob {
         // `Mob.doHurtTarget` reads the attack damage attribute, which the
         // main-hand item's modifiers raise (`entity::mob_combat`).
         let weapon = if self.kind == MobKind::ZombifiedPiglin { 0.0 } else { self.weapon_attack_bonus() };
-        ((base + strength + held + weapon - weakness).max(0.0), cause)
+        // v1.0 gap Track 8g: the mob is the hit's attacker, which the death
+        // message names (its custom name) and the kill credit remembers.
+        ((base + strength + held + weapon - weakness).max(0.0), cause.by(Some(super::trident::Owner::Mob(self.uid))))
     }
 
     /// Retaliation from the armor worn by a player struck in melee.

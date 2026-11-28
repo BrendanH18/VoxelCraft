@@ -351,8 +351,20 @@ pub struct Vitals {
     killed_by: Option<super::damage::DamageType>,
     /// v1.0 gap Track 8f: the player the death message names ("was slain
     /// by" them) until the game puts in their profile name
-    /// ([`Vitals::name_killer`]). Not saved: a saved death keeps its text.
-    pub killer: Option<crate::entity::PlayerId>,
+    /// ([`Vitals::name_killer`]). v1.0 gap Track 8g: any attacker, mob or
+    /// player, with how the message names them (a custom name, a named
+    /// weapon, a kill credit). Not saved: a saved death keeps its text.
+    pub killer: Option<super::death_message::Pending>,
+    /// v1.0 gap Track 8g: `CombatTracker`, the hits that took health. Not
+    /// saved (nor is Java's).
+    pub combat: super::death_message::CombatTracker,
+    /// v1.0 gap Track 8g: `lastHurtByPlayer` and `lastHurtByMob`, with the
+    /// seconds each is remembered for, for the kill credit. Not saved.
+    credit_player: Option<(crate::entity::PlayerId, f32)>,
+    credit_mob: Option<(u32, f32)>,
+    /// v1.0 gap Track 8g: the distance of the fall whose damage the last
+    /// tick returned, for the combat tracker's fall entry.
+    last_fall: f32,
     peaceful_timer: f32,
     peaceful_food_timer: f32,
     /// Java TIME_SINCE_REST statistic, in entity ticks; zero for older saves.
@@ -397,6 +409,10 @@ impl Default for Vitals {
             death: None,
             killed_by: None,
             killer: None,
+            combat: Default::default(),
+            credit_player: None,
+            credit_mob: None,
+            last_fall: 0.0,
             peaceful_timer: 0.0,
             peaceful_food_timer: 0.0,
             ticks_frozen: 0,
@@ -433,22 +449,35 @@ impl Vitals {
         let mut v = Self { health: health.clamp(0.0, MAX_HEALTH), air: air.clamp(0.0, MAX_AIR), ..Self::default() };
         if v.health <= 0.0 {
             let death = death.unwrap_or_else(|| "died".into());
-            v.death = Some(super::damage::Cause::saved(&death).map_or(death, |c| c.text.to_string()));
+            // v1.0 gap Track 8g: in Java's words, an old save's "a zombie"
+            // read back as "Zombie".
+            let death = super::damage::Cause::saved(&death).map_or(death, |c| c.text.to_string());
+            v.death = Some(super::death_message::java_words(&death).text);
         }
         v
     }
 
     /// v1.0 gap Track 8f: puts the profile name of the player the death
     /// message names ([`Vitals::killer`]) in place of "a player", as Java's
-    /// `DamageSource.getLocalizedDeathMessage` names them; `name` looks a
-    /// player up (None leaves the words as they are).
-    pub fn name_killer(&mut self, name: impl FnOnce(crate::entity::PlayerId) -> Option<String>) {
-        if let Some(id) = self.killer.take()
-            && let (Some(name), Some(death)) = (name(id), self.death.as_mut())
-        {
-            *death = super::damage::with_player_name(death, &name);
+    /// `DamageSource.getLocalizedDeathMessage` names them. v1.0 gap Track
+    /// 8g: any attacker, as [`super::death_message::Pending::finish`] names
+    /// them; `lookup` finds them (None leaves the words as they are).
+    pub fn name_killer(
+        &mut self,
+        lookup: impl FnOnce(crate::entity::trident::Owner) -> Option<super::death_message::Attacker>,
+    ) {
+        if let (Some(pending), Some(death)) = (self.killer.take(), self.death.as_mut()) {
+            pending.finish(death, lookup);
         }
     }
+
+    /// v1.0 gap Track 8g: `getKillCredit`: the player who hurt this one in
+    /// the last five seconds, else the mob.
+    pub fn kill_credit(&self) -> Option<crate::entity::trident::Owner> {
+        use crate::entity::trident::Owner;
+        self.credit_player.map(|(p, _)| Owner::Player(p)).or(self.credit_mob.map(|(m, _)| Owner::Mob(m)))
+    }
+
 
     /// Whether a death cause has been recorded; damage and survival ticks respect this state.
     /// `setIgnoreFallDamageFromCurrentImpulse(true, position)`: a player's
@@ -602,10 +631,27 @@ impl Vitals {
             self.health = (self.health - lost).max(0.0);
             self.hunger.exhaust(cause.kind.exhaustion());
         }
+        // v1.0 gap Track 8g: `resolveMobResponsibleForDamage` and
+        // `resolvePlayerResponsibleForDamage`, then `recordDamage` for a
+        // hit that took health.
+        match super::death_message::attacker(cause) {
+            Some(crate::entity::trident::Owner::Player(p)) => {
+                self.credit_player = Some((p, super::death_message::CREDIT_MEMORY));
+            }
+            Some(crate::entity::trident::Owner::Mob(m)) if !cause.is(Tag::NoAnger) => {
+                self.credit_mob = Some((m, super::death_message::CREDIT_MEMORY));
+            }
+            _ => {}
+        }
+        if lost > 0.0 {
+            let fall = if cause.is(Tag::IsFall) { std::mem::take(&mut self.last_fall) } else { 0.0 };
+            self.combat.record(cause, fall);
+        }
         if self.health <= 0.0 {
-            self.death = Some(cause.text.to_string());
+            let (death, killer) = self.combat.death_message(cause, self.kill_credit());
+            self.death = Some(death);
             self.killed_by = Some(cause.kind);
-            self.killer = cause.named_player();
+            self.killer = killer;
             self.time_since_rest = 0;
         } else if self.effects.has(super::effects::Effect::Infested) {
             self.infested_hits = self.infested_hits.saturating_add(1);
@@ -638,6 +684,11 @@ impl Vitals {
         // `LivingEntity.tick` counts the impulse grace down once a tick.
         self.impulse_grace = self.impulse_grace.saturating_sub(1);
         self.since_damage = (self.since_damage + dt).min(1e3);
+        // v1.0 gap Track 8g: the kill credit's memory and the combat
+        // tracker's `recheckStatus`.
+        self.credit_player = self.credit_player.map(|(p, t)| (p, t - dt)).filter(|&(_, t)| t > 0.0);
+        self.credit_mob = self.credit_mob.map(|(m, t)| (m, t - dt)).filter(|&(_, t)| t > 0.0);
+        self.combat.tick(dt, !self.is_dead());
         self.death_time = if self.is_dead() { (self.death_time + dt).min(1e3) } else { 0.0 };
         self.xp.tick(dt);
         self.pearl_cooldown = (self.pearl_cooldown - dt).max(0.0);
@@ -776,6 +827,7 @@ impl Vitals {
                     fall_damage(distance)
                 };
                 if hurts.fall > 0.0 || hurts.stalagmite > 0.0 {
+                    self.last_fall = distance.max(0.0) as f32;
                     self.impulse_impact_y = None;
                     self.impulse_grace = 0;
                 }
@@ -972,21 +1024,50 @@ mod tests {
     fn a_player_kill_names_the_killer() {
         use crate::entity::{PlayerId, trident::Owner};
         use crate::simulation::damage::Cause;
+        use crate::simulation::death_message::Attacker;
+        let named = |n: &str| Some(Attacker { name: n.into(), weapon: None, alive: true });
         let mut v = Vitals::default();
         v.hurt(100.0, Cause::PLAYER_ATTACK.by(Some(Owner::Player(PlayerId(2)))), false, |a| a);
-        assert_eq!(v.killer, Some(PlayerId(2)));
-        v.name_killer(|id| (id == PlayerId(2)).then(|| "Alex".to_string()));
+        assert_eq!(v.killer.as_ref().map(|k| k.owner), Some(Owner::Player(PlayerId(2))));
+        v.name_killer(|o| (o == Owner::Player(PlayerId(2))).then(|| named("Alex")).flatten());
         assert_eq!(v.death.as_deref(), Some("was slain by Alex"));
         assert_eq!(v.killer, None, "named once");
         let mut v = Vitals::default();
         v.hurt(100.0, Cause::PLAYER_ARROW.by(Some(Owner::Player(PlayerId(5)))), false, |a| a);
         v.name_killer(|_| None);
         assert_eq!(v.death.as_deref(), Some("was shot by a player"));
+        // v1.0 gap Track 8g: a mob is named as Java names it, or by its
+        // custom name.
         let mut v = Vitals::default();
         v.hurt(100.0, Cause::mob("was slain by a zombie").by(Some(Owner::Mob(3))), false, |a| a);
-        assert_eq!(v.killer, None);
-        v.name_killer(|_| Some("Alex".into()));
-        assert_eq!(v.death.as_deref(), Some("was slain by a zombie"));
+        assert_eq!(v.death.as_deref(), Some("was slain by Zombie"));
+        v.name_killer(|_| named("Grumbles"));
+        assert_eq!(v.death.as_deref(), Some("was slain by Grumbles"));
+    }
+
+    /// v1.0 gap Track 8g: a player who drowns or burns within five seconds
+    /// of a hit is "trying to escape" whoever dealt it (`getKillCredit`),
+    /// and is no longer after that.
+    #[test]
+    fn a_death_names_who_the_player_was_escaping() {
+        use crate::entity::{PlayerId, trident::Owner};
+        use crate::simulation::damage::Cause;
+        use crate::simulation::death_message::Attacker;
+        let alex = || Some(Attacker { name: "Alex".into(), weapon: None, alive: true });
+        let mut v = Vitals::default();
+        v.hurt(2.0, Cause::PLAYER_ATTACK.by(Some(Owner::Player(PlayerId(2)))), false, |a| a);
+        v.tick(4.0, &Env::default(), false);
+        v.hurt(100.0, Cause::DROWN, false, |a| a);
+        assert_eq!(v.kill_credit(), Some(Owner::Player(PlayerId(2))));
+        v.name_killer(|_| alex());
+        assert_eq!(v.death.as_deref(), Some("drowned while trying to escape Alex"));
+        let mut v = Vitals::default();
+        v.hurt(2.0, Cause::PLAYER_ATTACK.by(Some(Owner::Player(PlayerId(2)))), false, |a| a);
+        v.tick(5.5, &Env::default(), false);
+        assert_eq!(v.kill_credit(), None);
+        v.hurt(100.0, Cause::LAVA, false, |a| a);
+        v.name_killer(|_| alex());
+        assert_eq!(v.death.as_deref(), Some(CAUSE_LAVA));
     }
 
     const DT: f32 = 1.0 / 60.0;

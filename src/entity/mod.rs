@@ -1612,6 +1612,18 @@ impl Entities {
         self.mobs.iter().filter(|m| m.kind == kind && m.alive()).count()
     }
 
+    /// v1.0 gap Track 8g: the mob `uid` as a death message names it
+    /// (`Entity.getDisplayName`: its custom name, else its kind's Java
+    /// name) with its main-hand item's custom name; None once it's gone.
+    pub fn attacker(&self, uid: u32) -> Option<crate::simulation::death_message::Attacker> {
+        let m = self.mobs.iter().find(|m| m.uid == uid)?;
+        Some(crate::simulation::death_message::Attacker {
+            name: m.name.as_str().map_or_else(|| crate::simulation::death_message::mob_name(m.kind), str::to_string),
+            weapon: m.equipment.main_hand().and_then(|s| s.name.as_str()).map(str::to_string),
+            alive: m.alive(),
+        })
+    }
+
     pub fn spawn(&mut self, kind: MobKind, pos: DVec3) {
         let yaw = self.rng.range(0.0, TAU);
         let mut mob = Mob::new(kind, pos, yaw);

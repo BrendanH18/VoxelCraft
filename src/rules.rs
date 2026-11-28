@@ -991,7 +991,7 @@ mod tests {
             ExplosionRules { destroys_blocks: true, drop_decay: true }
         );
         assert_eq!(
-            blast(&rules, "was fireballed by a ghast"),
+            blast(&rules, "was blown up by a ghast"),
             ExplosionRules { destroys_blocks: true, drop_decay: true }
         );
         assert_eq!(tnt(&rules), ExplosionRules { destroys_blocks: true, drop_decay: false });
@@ -1006,7 +1006,7 @@ mod tests {
         let mut rules = GameRules::default();
         rules.set("mob_griefing", "false").unwrap();
         assert!(!blast(&rules, "was blown up by a creeper").destroys_blocks);
-        assert!(!blast(&rules, "was fireballed by a ghast").destroys_blocks);
+        assert!(!blast(&rules, "was blown up by a ghast").destroys_blocks);
         assert!(tnt(&rules).destroys_blocks, "TNT ignores mob_griefing");
         assert!(blast(&rules, "was killed by [Intentional Game Design]").destroys_blocks);
         for (rule, cause) in [
