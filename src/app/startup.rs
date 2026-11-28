@@ -385,6 +385,7 @@ impl Game {
             mobs: mobs::Mobs::new(seed, args.spawn.clone(), args.wait)
                 .holding(args.spawn_held.clone())
                 .babies(args.spawn_baby.clone())
+                .villagers(args.spawn_villager.clone())
                 .still(args.still_mobs),
             particles: crate::particles::System::new(seed),
             menu: menu::startup_menu(args.open_menu.as_deref()),

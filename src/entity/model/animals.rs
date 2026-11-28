@@ -28,31 +28,6 @@ const WOLF_HEAD: &[Cuboid] = &[
 const WOLF_LEG: &[Cuboid] = &[cube([-1.0, -6.0, -1.0], [1.0, 0.0, 1.0], FUR, 18).with(Pattern::Fur)];
 const WOLF_TAIL: &[Cuboid] = &[cube([-1.0, -1.0, -7.0], [1.0, 1.0, 0.0], FUR, 20).with(Pattern::Fur)];
 const WOLF_COLLAR: &[Cuboid] = &[cube([-3.6, 7.0, 3.0], [3.6, 12.0, 4.5], COLLAR, 0)];
-const FOX_BODY: &[Cuboid] = &[
-    cube([-3.0, 4.0, -6.0], [3.0, 10.0, 6.0], [201, 108, 47], 24),
-    cube([-3.0, 4.0, 3.0], [3.0, 7.0, 6.1], [239, 229, 209], 12),
-];
-const FOX_HEAD: &[Cuboid] = &[
-    cube([-3.5, -2.0, -1.0], [3.5, 4.0, 5.0], [201, 108, 47], 20),
-    cube([-2.0, -2.0, 5.0], [2.0, 0.0, 8.0], [243, 229, 207], 15),
-    cube([-1.0, -1.0, 8.0], [1.0, 0.0, 8.2], [35, 31, 29], 0),
-    cube([-3.0, 4.0, 0.0], [-1.0, 7.0, 2.0], [65, 44, 34], 16),
-    cube([1.0, 4.0, 0.0], [3.0, 7.0, 2.0], [65, 44, 34], 16),
-    cube([-3.0, 1.0, 5.0], [-1.5, 2.0, 5.1], [28, 26, 23], 0),
-    cube([1.5, 1.0, 5.0], [3.0, 2.0, 5.1], [28, 26, 23], 0),
-    // v0.18 Track 6: white cheeks, dark inner ears and eye glints.
-    cube([-3.6, -2.0, 1.5], [-3.5, 0.0, 4.5], [243, 236, 222], 0),
-    cube([3.5, -2.0, 1.5], [3.6, 0.0, 4.5], [243, 236, 222], 0),
-    cube([-2.6, 4.5, 2.0], [-1.4, 6.5, 2.05], [40, 28, 22], 0),
-    cube([1.4, 4.5, 2.0], [2.6, 6.5, 2.05], [40, 28, 22], 0),
-    cube([-2.0, 1.6, 5.1], [-1.7, 1.9, 5.15], [226, 214, 196], 0),
-    cube([2.0, 1.6, 5.1], [2.3, 1.9, 5.15], [226, 214, 196], 0),
-];
-const FOX_LEG: &[Cuboid] = &[cube([-0.8, -4.0, -0.8], [0.8, 0.0, 0.8], [65, 44, 34], 16)];
-const FOX_TAIL: &[Cuboid] = &[
-    cube([-2.0, -2.0, -7.0], [2.0, 2.0, 0.0], [201, 108, 47], 24),
-    cube([-2.0, -2.0, -10.0], [2.0, 2.0, -7.0], [242, 234, 218], 16),
-];
 const GOAT_BODY: &[Cuboid] = &[cube([-4.0, 8.0, -7.0], [4.0, 17.0, 6.0], [224, 219, 201], 28)];
 const GOAT_HEAD: &[Cuboid] = &[
     cube([-2.5, -3.0, 0.0], [2.5, 4.0, 7.0], [232, 227, 211], 18),
@@ -109,41 +84,32 @@ pub(super) fn pose(m: &Mob, time: f32, alpha: f32) -> Parts {
     let head = Quat::from_rotation_y(-m.head_yaw) * Quat::from_rotation_x(-m.head_pitch);
     let rx = Quat::from_rotation_x;
     match m.kind {
-        MobKind::Wolf | MobKind::Fox => {
-            let wolf = m.kind == MobKind::Wolf;
+        // v1.0 gap Track 7e: `AdultFoxModel` and its states.
+        MobKind::Fox => super::fox_model::adult(m, time, alpha),
+        MobKind::Wolf => {
             let sitting = a.is_some_and(|a| a.sit_pose);
             let sleeping = a.is_some_and(|a| a.sleeping);
             let body_rot = if sitting { rx(-0.7) } else { Quat::IDENTITY };
             let y = if sleeping { -3.0 } else { 0.0 };
             let mut p = parts![
-                part(if wolf { WOLF_BODY } else { FOX_BODY }, [0.0, y, 0.0], body_rot),
+                part(WOLF_BODY, [0.0, y, 0.0], body_rot),
                 part(
-                    if wolf { WOLF_HEAD } else { FOX_HEAD },
-                    [0.0, if wolf { 10.0 } else { 8.0 } + y, 6.0],
+                    WOLF_HEAD,
+                    [0.0, 10.0 + y, 6.0],
                     head * Quat::from_rotation_z(if a.is_some_and(|a| a.begging) { 0.25 } else { 0.0 })
                 ),
             ];
             for (i, x, z) in [(0, -2.0, 4.0), (1, 2.0, 4.0), (2, -2.0, -4.0), (3, 2.0, -4.0)] {
-                p.push(part(
-                    if wolf { WOLF_LEG } else { FOX_LEG },
-                    [x, if wolf { 6.0 } else { 4.0 } + y, z],
-                    rx(if sitting || sleeping { 1.2 } else { swing * trot[i] }),
-                ));
+                p.push(part(WOLF_LEG, [x, 6.0 + y, z], rx(if sitting || sleeping { 1.2 } else { swing * trot[i] })));
             }
-            let tail_pitch = if wolf { 1.0 - m.health / m.max_health() * 1.2 } else { -0.25 };
+            let tail_pitch = 1.0 - m.health / m.max_health() * 1.2;
             // A wolf wags its tail with the walk unless it is angry.
-            let wag = if wolf && m.ai != Ai::Chase { swing } else { 0.0 };
-            p.push(part(
-                if wolf { WOLF_TAIL } else { FOX_TAIL },
-                [0.0, if wolf { 10.0 } else { 7.0 } + y, -6.0],
-                Quat::from_rotation_y(-wag) * rx(tail_pitch),
-            ));
-            if wolf {
-                for armor in super::passive::wolf_armor(m, [0.0, y, 0.0], body_rot).iter().copied() {
-                    p.push(armor);
-                }
+            let wag = if m.ai != Ai::Chase { swing } else { 0.0 };
+            p.push(part(WOLF_TAIL, [0.0, 10.0 + y, -6.0], Quat::from_rotation_y(-wag) * rx(tail_pitch)));
+            for armor in super::passive::wolf_armor(m, [0.0, y, 0.0], body_rot).iter().copied() {
+                p.push(armor);
             }
-            if wolf && a.is_some_and(|a| a.owner.is_some()) {
+            if a.is_some_and(|a| a.owner.is_some()) {
                 p.push(part(WOLF_COLLAR, [0.0; 3], Quat::IDENTITY));
             }
             p
@@ -287,7 +253,6 @@ pub(super) fn model_scale(m: &Mob) -> Vec3 {
         1.0,
         match m.kind {
             MobKind::Wolf => 0.8,
-            MobKind::Fox => 0.7467,
             MobKind::Goat => 0.84,
             MobKind::Parrot => 0.8471,
             _ => 1.0,

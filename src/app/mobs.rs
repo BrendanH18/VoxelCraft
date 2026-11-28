@@ -24,6 +24,8 @@ pub(super) struct Mobs {
     held: Vec<(usize, crate::item::Item)>,
     /// `--spawn kind,x,y,z,baby`: babies by index into `pending`.
     babies: Vec<usize>,
+    /// v1.0 gap Track 7e: `type[:profession[:level]]` of spawned villagers.
+    villagers: Vec<(usize, String)>,
     /// `--wait`: seconds to keep simulating before a `--screenshot`.
     wait: f64,
     wait_start: Option<Instant>,
@@ -40,6 +42,7 @@ impl Mobs {
             pending: spawn,
             held: Vec::new(),
             babies: Vec::new(),
+            villagers: Vec::new(),
             wait,
             wait_start: None,
             sign_text: Default::default(),
@@ -53,6 +56,10 @@ impl Mobs {
 
     pub fn babies(self, babies: Vec<usize>) -> Self {
         Self { babies, ..self }
+    }
+
+    pub fn villagers(self, villagers: Vec<(usize, String)>) -> Self {
+        Self { villagers, ..self }
     }
 
     pub fn still(self, still: bool) -> Self {
@@ -123,6 +130,7 @@ impl Game {
         }
         let held = std::mem::take(&mut self.mobs.held);
         let babies = std::mem::take(&mut self.mobs.babies);
+        let villagers = std::mem::take(&mut self.mobs.villagers);
         for (i, (kind, mut pos, armor)) in std::mem::take(&mut self.mobs.pending).into_iter().enumerate() {
             if pos.y == i32::MIN {
                 pos.y = self.world.generator.column(pos.x, pos.z).height + 1;
@@ -149,6 +157,18 @@ impl Game {
                     Some(allay) => allay.liked = Some(stack),
                     None => mob.equipment.set(crate::entity::equipment::Slot::MainHand, Some(stack)),
                 }
+            }
+            // v1.0 gap Track 7e: a dressed villager for the outfit scenes.
+            if let Some((_, spec)) = villagers.iter().find(|(at, _)| *at == i)
+                && let Some(v) = self.mobs.entities.mobs.last_mut().and_then(|m| m.villager.as_mut())
+            {
+                let mut fields = spec.split(':');
+                v.map_variant = fields.next().map(str::to_owned);
+                if let Some(p) = fields.next() {
+                    let p = entity::villager::Profession::ALL.into_iter().find(|j| j.name().eq_ignore_ascii_case(p));
+                    v.set_profession(p.unwrap_or_default());
+                }
+                v.level = fields.next().and_then(|l| l.parse().ok()).unwrap_or(v.level).clamp(1, 5);
             }
             // v1.0 gap Track 7b: a baby for the capture scenes' baby models.
             if babies.contains(&i)

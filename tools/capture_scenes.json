@@ -9526,6 +9526,168 @@
     "--projectile",
     "arrow,1,149,-1"
    ]
+  },
+  {
+   "name": "mobs-still-villager-types",
+   "description": "v1.0 gap Track 7e: villager type outfits at noon, pinned with --still-mobs and facing the camera; desert, jungle, plains, savanna, snow, swamp and taiga from right to left on screen; rows front to back: jobless adult villagers, zombie villagers, then a villager child and a zombie villager cub of each type side by side",
+   "pose": [
+    0.5,
+    155.0,
+    10.0,
+    90,
+    -18
+   ],
+   "fill": [
+    [
+     -12,
+     150,
+     13,
+     12,
+     150,
+     27,
+     "grass"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "villager,-9,151,17,desert",
+    "villager,-6,151,17,jungle",
+    "villager,-3,151,17,plains",
+    "villager,0,151,17,savanna",
+    "villager,3,151,17,snow",
+    "villager,6,151,17,swamp",
+    "villager,9,151,17,taiga",
+    "zombie_villager,-9,151,20,desert",
+    "zombie_villager,-6,151,20,jungle",
+    "zombie_villager,-3,151,20,plains",
+    "zombie_villager,0,151,20,savanna",
+    "zombie_villager,3,151,20,snow",
+    "zombie_villager,6,151,20,swamp",
+    "zombie_villager,9,151,20,taiga",
+    "villager,-9,151,23,baby,desert",
+    "villager,-6,151,23,baby,jungle",
+    "villager,-3,151,23,baby,plains",
+    "villager,0,151,23,baby,savanna",
+    "villager,3,151,23,baby,snow",
+    "villager,6,151,23,baby,swamp",
+    "villager,9,151,23,baby,taiga",
+    "zombie_villager,-8,151,23,baby,desert",
+    "zombie_villager,-5,151,23,baby,jungle",
+    "zombie_villager,-2,151,23,baby,plains",
+    "zombie_villager,1,151,23,baby,savanna",
+    "zombie_villager,4,151,23,baby,snow",
+    "zombie_villager,7,151,23,baby,swamp",
+    "zombie_villager,10,151,23,baby,taiga"
+   ],
+   "group": "mobs",
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
+  },
+  {
+   "name": "mobs-still-villager-jobs",
+   "description": "v1.0 gap Track 7e: villager layers at noon, pinned with --still-mobs and facing the camera; front row: a desert farmer and butcher (their hats hide the desert wrap), a desert zombie villager butcher (its wrap shows), a snow librarian, jungle fisherman, savanna fletcher and taiga shepherd; back row: a plains nitwit (no badge), a swamp cleric, a plains mason holding up an emerald, a zombie villager in iron armor, a snow zombie armorer, a wandering trader and an adult fox",
+   "pose": [
+    0.5,
+    155.0,
+    11.0,
+    90,
+    -16
+   ],
+   "fill": [
+    [
+     -12,
+     150,
+     13,
+     12,
+     150,
+     26,
+     "grass"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "villager,-9,151,17,desert:farmer:2",
+    "villager,-6,151,17,desert:butcher:2",
+    "zombie_villager,-3,151,17,desert:butcher:2",
+    "villager,0,151,17,snow:librarian:3",
+    "villager,3,151,17,jungle:fisherman:4",
+    "villager,6,151,17,savanna:fletcher:5",
+    "villager,9,151,17,taiga:shepherd:2",
+    "villager,-9,151,21,plains:nitwit",
+    "villager,-6,151,21,swamp:cleric:3",
+    "villager,-3,151,21,plains:mason:5,emerald",
+    "zombie_villager,0,151,21,plains,iron",
+    "zombie_villager,3,151,21,snow:armorer:4",
+    "wandering_trader,6,151,21",
+    "fox,9,151,21"
+   ],
+   "group": "mobs",
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
+  },
+  {
+   "name": "mobs-still-villagers-plain",
+   "group": "mobs",
+   "description": "v1.0 gap Track 7e before/after: at noon, pinned with --still-mobs and facing the camera; front row a villager, a villager holding an emerald, a zombie villager, one in iron armor and a wandering trader; back row a villager child, a zombie villager cub, an adult fox and a fox kit (types from the capture world's biome)",
+   "pose": [
+    0.5,
+    154.5,
+    12.0,
+    90,
+    -14
+   ],
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "fill": [
+    [
+     -9,
+     150,
+     13,
+     9,
+     150,
+     25,
+     "grass"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "villager,-6,151,17",
+    "villager,-3,151,17,emerald",
+    "zombie_villager,0,151,17",
+    "zombie_villager,3,151,17,iron",
+    "wandering_trader,6,151,17",
+    "villager,-5,151,20,baby",
+    "zombie_villager,-2,151,20,baby",
+    "fox,1,151,20",
+    "fox,4,151,20,baby"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
   }
  ]
 }

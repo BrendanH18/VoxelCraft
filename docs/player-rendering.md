@@ -324,5 +324,32 @@ Checked against the Java 26.3 client
   `SnifferModel`, so `SniffletModel`'s `BABY_TRANSFORM` never applies.
 - **Baby layers.** Horse foals wear their markings, a trader cria its
   blanket, and a zombie villager cub its armor. Java draws no profession
-  on a cub, only its villager type's outfit, which this game draws on no
-  villager.
+  on a cub, only its villager type's outfit (drawn since Track 7e, below).
+
+## Villagers and foxes (v1.0 gap Track 7e)
+
+Checked against the Java 26.3 client
+([record](verification/2026-11-28-v1.0-gap-track-07e-villagers-fox.md)).
+
+- **Villager meshes.** Villagers and wandering traders are
+  `VillagerModel`'s parts (a 10-pixel head, the 20-pixel robe, the folded
+  `arms`), drawn at 0.9375; zombie villagers are `ZombieVillagerModel`'s
+  humanoid, unscaled, with raised zombie arms.
+- **Outfit layers.** `VillagerProfessionLayer`'s order: the biome type's
+  outfit (seven original outfits: palette, robe accents, headwear; the
+  baby outfit on children and the cub), then for adults with a job the
+  profession's apron and hat and, unless a nitwit, the level badge
+  (stone to diamond). The type's headwear shows only when the
+  profession's hat metadata is none, or partial while the type's is not
+  full (desert and snow villagers; zombie villagers' types have none).
+  Zombie villagers wear the outfits faded. Guests get the type and level.
+- **Zombie villager armor and hand.** The adult wears armor on its
+  humanoid parts, the helmet on the taller head, and holds its main hand.
+- **Shown trade.** `CrossedArmsItemLayer` holds a villager's shown trade
+  (a wandering trader's main hand) up in front of the folded arms, in
+  the item's ground transform.
+- **Fox.** The adult is `AdultFoxModel`'s mesh. Adult and kit run
+  `FoxModel.setupAnim` on the fox's state: the interested head roll,
+  crouching with its wiggle, sleeping curled (legs hidden, eyes closed),
+  sitting, the adult's pounce drop and the faceplanted paddle;
+  `FoxRenderer` pitches a pouncing or faceplanted fox by its look.

@@ -530,34 +530,6 @@ const WITCH_HEAD: &[Cuboid] = &[
     cube([-1.5, 11.5, -1.5], [1.5, 12.0, 1.5], WITCH_HAT, 24),
 ];
 
-// ---------------------------------------------------------------- villager
-// v0.18 Track 6: a woven robe with a belt and a darker hem, skin texture,
-// and eyes with whites and green irises under the brow.
-const VILLAGER_BODY: &[Cuboid] = &[
-    cube([-4.0, 8.0, -3.0], [4.0, 24.0, 3.0], [114, 78, 50], 30).with(Pattern::Cloth),
-    cube([-4.5, 5.0, -3.5], [4.5, 11.0, 3.5], [98, 66, 44], 30).with(Pattern::Cloth),
-    cube([-4.55, 5.0, -3.55], [4.55, 6.0, 3.55], [74, 50, 33], 12),
-    cube([-4.02, 12.0, -3.02], [4.02, 13.0, 3.02], [66, 44, 28], 10),
-    cube([-7.0, 15.0, 3.0], [7.0, 19.0, 6.0], [114, 78, 50], 28).with(Pattern::Cloth),
-    cube([-1.5, 15.0, 5.5], [1.5, 18.0, 6.5], [177, 131, 101], 24).with(Pattern::Hide),
-];
-const VILLAGER_HEAD: &[Cuboid] = &[
-    cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], [177, 131, 101], 24).with(Pattern::Hide),
-    cube([-1.0, 1.0, 4.0], [1.0, 5.0, 6.0], [162, 117, 86], 22).with(Pattern::Hide),
-    cube([-3.0, 4.0, 4.0], [-2.0, 5.0, 4.1], [236, 232, 224], 0),
-    cube([-2.0, 4.0, 4.0], [-1.0, 5.0, 4.1], [49, 103, 43], 0),
-    cube([1.0, 4.0, 4.0], [2.0, 5.0, 4.1], [49, 103, 43], 0),
-    cube([2.0, 4.0, 4.0], [3.0, 5.0, 4.1], [236, 232, 224], 0),
-    cube([-3.0, 5.5, 4.0], [3.0, 6.5, 4.1], [62, 43, 28], 0),
-];
-const VILLAGER_LEG: &[Cuboid] = &[cube([-2.0, -8.0, -2.0], [2.0, 0.0, 2.0], [68, 49, 36], 28).with(Pattern::Cloth)];
-const ZOMBIE_VILLAGER_HEAD: &[Cuboid] = &[
-    cube([-4.0, 0.0, -4.0], [4.0, 8.0, 4.0], [92, 148, 78], 24),
-    cube([-1.0, 1.0, 4.0], [1.0, 5.0, 6.0], [70, 120, 58], 22),
-    cube([-3.0, 4.0, 4.0], [-1.0, 5.0, 4.1], [160, 40, 36], 0),
-    cube([1.0, 4.0, 4.0], [3.0, 5.0, 4.1], [160, 40, 36], 0),
-    cube([-3.0, 5.5, 4.0], [3.0, 6.5, 4.1], [40, 28, 22], 0),
-];
 // v0.18 Track 6: vines climbing the chest, side and one arm, and a heavy
 // brow (the iron takes the default pattern's seams and cracks).
 const VINE: Rgb = [70, 112, 46];
@@ -598,37 +570,6 @@ const SNOW_HEAD: &[Cuboid] = &[
     cube([-4.03, 0.0, -0.2], [4.03, 8.0, 0.2], [192, 112, 20], 0),
 ];
 const SNOW_STICK: &[Cuboid] = &[cube([-0.5, -8.0, -0.5], [0.5, 2.0, 0.5], [120, 78, 42], 16)];
-const FARMER_HAT: &[Cuboid] = &[
-    cube([-6.0, 7.0, -6.0], [6.0, 8.0, 6.0], [213, 177, 88], 25),
-    cube([-4.0, 8.0, -4.0], [4.0, 10.0, 4.0], [199, 159, 72], 25),
-];
-const VILLAGER_APRONS: [[Cuboid; 1]; 15] = {
-    let colours = [
-        [114, 78, 50],
-        [79, 124, 46],
-        [155, 121, 51],
-        [166, 134, 71],
-        [223, 220, 202],
-        [139, 106, 73],
-        [226, 221, 200],
-        [224, 180, 119],
-        [135, 71, 149],
-        [90, 91, 93],
-        [69, 58, 48],
-        [86, 66, 52],
-        [218, 216, 210],
-        [159, 109, 67],
-        [204, 191, 180],
-    ];
-    let mut a = [[cube([-3.5, 8.0, 3.05], [3.5, 15.0, 3.15], [0, 0, 0], 20)]; 15];
-    let mut i = 0;
-    while i < 15 {
-        a[i][0] = cube([-3.5, 8.0, 3.05], [3.5, 15.0, 3.15], colours[i], 20);
-        i += 1;
-    }
-    a
-};
-
 // ---------------------------------------------------------------- zombified piglin
 
 const PIGLIN_SKIN: Rgb = [226, 150, 140];
@@ -1075,6 +1016,7 @@ mod camel_anim;
 mod conduit;
 mod copper_golem;
 mod creaking;
+mod fox_model;
 mod hostiles;
 mod illager;
 mod keyframes;
@@ -1086,6 +1028,7 @@ mod rig;
 mod rigged;
 mod shulker;
 mod sniffer;
+mod villager_outfit;
 mod warden;
 mod wither;
 pub use conduit::build_conduits;
@@ -1364,46 +1307,10 @@ fn pose(m: &Mob, time: f32, alpha: f32) -> Parts {
             parts.java_side(0..5);
             parts
         }
-        MobKind::Villager | MobKind::WanderingTrader => {
-            let profession = m.villager.as_ref().map_or(super::villager::Profession::None, |v| v.profession);
-            let mut parts = parts![
-                part(
-                    if m.kind == MobKind::WanderingTrader { trader_model::BODY } else { VILLAGER_BODY },
-                    [0.0; 3],
-                    Quat::IDENTITY
-                ),
-                // `VillagerModel`: half the usual stride.
-                part(VILLAGER_LEG, [-2.0, 8.0, 0.0], rx(-swing * 0.5)),
-                part(VILLAGER_LEG, [2.0, 8.0, 0.0], rx(swing * 0.5)),
-                part(VILLAGER_HEAD, [0.0, 24.0, 0.0], head),
-                part(&VILLAGER_APRONS[profession as usize], [0.0; 3], Quat::IDENTITY)
-            ];
-            parts.java_side(1..3);
-            if m.kind == MobKind::WanderingTrader {
-                parts.push(part(trader_model::HOOD, [0.0, 24.0, 0.0], head));
-            }
-            if profession == super::villager::Profession::Farmer {
-                parts.push(part(FARMER_HAT, [0.0, 24.0, 0.0], head));
-            }
-            parts
-        }
-        MobKind::ZombieVillager => {
-            let profession = m.villager.as_ref().map_or(super::villager::Profession::None, |v| v.profession);
-            let shake = if m.convert_left > 0.0 { (time * 18.0).sin() * 1.5 } else { 0.0 };
-            let mut parts = parts![
-                part(VILLAGER_BODY, [shake, 0.0, 0.0], Quat::IDENTITY),
-                // `ZombieVillagerModel` is a humanoid: the full stride.
-                part(VILLAGER_LEG, [-2.0 + shake, 8.0, 0.0], rx(-swing)),
-                part(VILLAGER_LEG, [2.0 + shake, 8.0, 0.0], rx(swing)),
-                part(ZOMBIE_VILLAGER_HEAD, [shake, 24.0, 0.0], head),
-                part(&VILLAGER_APRONS[profession as usize], [shake, 0.0, 0.0], Quat::IDENTITY)
-            ];
-            parts.java_side(1..3);
-            if profession == super::villager::Profession::Farmer {
-                parts.push(part(FARMER_HAT, [shake, 24.0, 0.0], head));
-            }
-            parts
-        }
+        // v1.0 gap Track 7e: `VillagerModel` and `ZombieVillagerModel` on
+        // Java's parts, with `VillagerProfessionLayer`'s outfits.
+        MobKind::Villager | MobKind::WanderingTrader => villager_outfit::villager(m),
+        MobKind::ZombieVillager => villager_outfit::zombie_villager(m, time),
         MobKind::TraderLlama => parts![
             part(trader_model::LLAMA_BODY, [0.0; 3], Quat::IDENTITY),
             part(trader_model::LLAMA_HEAD, [0.0, 20.0 * trader_model::LLAMA_Y, 5.0], head),
@@ -1759,6 +1666,13 @@ pub fn build(
         } else {
             origin
         };
+        // v1.0 gap Track 7e: `villagerLikeScale`, in the villager's mesh
+        // (after the sleeper's slide, which the renderer makes).
+        let scale = if matches!(m.kind, MobKind::Villager | MobKind::WanderingTrader) && !m.is_baby() {
+            scale * villager_outfit::VILLAGER_SCALE
+        } else {
+            scale
+        };
         let sulfur_fuse = m.sulfur_cube.as_ref().filter(|s| s.primed()).map(|s| s.fuse);
         let tint = if let Some(fuse) = sulfur_fuse {
             // `TntRenderer`'s white flash every 5 ticks of the fuse.
@@ -1823,6 +1737,10 @@ pub fn build(
                 {
                     cuboid = cuboid.with(p);
                 }
+                fox_model::colour(m, &mut cuboid);
+                if matches!(m.kind, MobKind::Villager | MobKind::WanderingTrader | MobKind::ZombieVillager) {
+                    villager_outfit::colour(m, &mut cuboid);
+                }
                 copper_golem::colour(m, &mut cuboid);
                 new_mobs::colour(m, &mut cuboid);
                 shulker::colour(m, &mut cuboid);
@@ -1879,16 +1797,15 @@ pub fn build(
                 }
             }
         }
-        // Zombie villagers use the villager mesh, which is not the six-limb armor rig
-        // (v1.0 gap Track 7d: the cub's is, and wears its armor).
+        // Zombie villagers wear their armor on `ZombieVillagerModel`'s
+        // humanoid parts (v1.0 gap Track 7d: the cub; Track 7e: the adult).
         let villager_cub = m.kind == MobKind::ZombieVillager && m.is_baby();
-        if (m.kind.is_zombie() && m.kind != MobKind::ZombieVillager)
-            || m.kind.is_bow_skeleton()
-            || m.kind == MobKind::Piglin
-            || villager_cub
-        {
+        if m.kind.is_zombie() || m.kind.is_bow_skeleton() || m.kind == MobKind::Piglin {
             let worn = m.equipment.worn();
-            if villager_cub {
+            if m.kind == MobKind::ZombieVillager && !villager_cub {
+                let limbs = villager_outfit::zombie_villager_armor(&posed);
+                super::player_model::draw_armor(out, &limbs, &worn, origin, body, scale, (light, torch));
+            } else if villager_cub {
                 use baby_rigs::zombie_villager as z;
                 let (head, rest) = z::armor(&posed);
                 let draw = |out: &mut EntityMesh,
@@ -1925,6 +1842,14 @@ pub fn build(
                 draw_held(out, &posed[4], stack, origin, body, scale, (light, torch), false);
             }
         }
+        // v1.0 gap Track 7e: `CrossedArmsItemLayer`, the shown trade held up
+        // in front of the folded arms (a child's `arms` part sits at Java's
+        // y 17.5, unturned).
+        if let Some(stack) = villager_outfit::crossed_arms_stack(m) {
+            let arms =
+                if m.is_baby() { part(&[], [0.0, 6.5, 0.0], Quat::IDENTITY) } else { posed[villager_outfit::ARMS] };
+            villager_outfit::crossed_arms_item(out, stack, &arms, origin, body, scale, (light, torch));
+        }
         if m.kind == MobKind::SulfurCube {
             new_mobs::sulfur_block(m, origin, body, scale, (light, torch), out);
         }
@@ -1944,7 +1869,9 @@ pub fn build(
 fn held_stack(m: &Mob) -> Option<crate::inventory::Stack> {
     let stack = m.main_hand()?;
     let shown = match m.kind {
-        MobKind::Zombie | MobKind::Husk | MobKind::Drowned => true,
+        // v1.0 gap Track 7e: the zombie villager is a humanoid too
+        // (`HumanoidMobRenderer`'s `ItemInHandLayer`).
+        MobKind::Zombie | MobKind::Husk | MobKind::Drowned | MobKind::ZombieVillager => true,
         k if k.is_bow_skeleton() => stack.item != crate::item::Item::BOW,
         MobKind::Pillager | MobKind::Vindicator | MobKind::Evoker | MobKind::Illusioner | MobKind::Vex => {
             illager::shows_item(m)
@@ -2930,6 +2857,9 @@ mod tests {
                     // v1.0 gap Track 7d: Java's nautilus shell stands 18
                     // pixels, its rider's seat, above its 0.95 box.
                     MobKind::Nautilus | MobKind::ZombieNautilus => 0.175,
+                    // v1.0 gap Track 7e: `ZombieVillagerModel` isn't scaled
+                    // like the villager's: its 10-pixel head tops 34 pixels.
+                    MobKind::ZombieVillager => 0.175,
                     _ => 0.0,
                 };
             assert!((hi.y - h).abs() < 0.15, "{kind:?} top {} vs box {h}", hi.y);

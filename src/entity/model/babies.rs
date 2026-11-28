@@ -189,13 +189,15 @@ const PUP_COLLAR: &[Cuboid] = &[cube([-3.3, -2.1, 3.0], [3.3, 2.6, 4.2], super::
 // ---------------------------------------------------------------- villager child
 
 const CHILD_SKIN: Rgb = [177, 131, 101];
-const CHILD_ROBE: Rgb = [114, 78, 50];
+/// v1.0 gap Track 7e: the robe, hem, belt and legs take the villager
+/// type's colours (`villager_outfit::colour`).
+const CHILD_ROBE: Rgb = super::villager_outfit::ROBE;
 /// `BabyVillagerModel`: an 8 x 8 x 7 head with the nose, a 4 x 5 x 3 body
 /// in a robe, arms folded in front and 3-pixel legs.
 const CHILD_BODY: &[Cuboid] = &[
     cube([-2.2, 2.0, -1.7], [2.2, 8.0, 1.7], CHILD_ROBE, 30).with(Pattern::Cloth),
-    cube([-2.25, 2.0, -1.75], [2.25, 2.6, 1.75], [74, 50, 33], 12),
-    cube([-2.22, 5.0, -1.72], [2.22, 5.5, 1.72], [66, 44, 28], 10),
+    cube([-2.25, 2.0, -1.75], [2.25, 2.6, 1.75], super::villager_outfit::TRIM, 12),
+    cube([-2.22, 5.0, -1.72], [2.22, 5.5, 1.72], super::villager_outfit::BELT, 10),
 ];
 const CHILD_HEAD: &[Cuboid] = &[
     cube([-4.0, 0.0, -3.5], [4.0, 8.0, 3.5], CHILD_SKIN, 24).with(Pattern::Hide),
@@ -215,7 +217,8 @@ const CHILD_ARM_BAR: &[Cuboid] = &[
     cube([-2.0, -1.0, -1.0], [2.0, 1.0, 1.0], CHILD_ROBE, 28).with(Pattern::Cloth),
     cube([-1.0, -1.0, 1.0], [1.0, 0.6, 1.05], CHILD_SKIN, 24),
 ];
-const CHILD_LEG: &[Cuboid] = &[cube([-1.0, -2.5, -1.0], [1.0, 0.5, 1.0], [68, 49, 36], 28).with(Pattern::Cloth)];
+const CHILD_LEG: &[Cuboid] =
+    &[cube([-1.0, -2.5, -1.0], [1.0, 0.5, 1.0], super::villager_outfit::LEGS, 28).with(Pattern::Cloth)];
 
 // ---------------------------------------------------------------- baby zombie
 
@@ -300,7 +303,7 @@ pub(super) fn pose(m: &Mob, time: f32, alpha: f32, head: Quat) -> Option<Parts> 
         MobKind::Panda => b::panda::pose(m, time),
         MobKind::Llama | MobKind::TraderLlama => b::llama::pose(m),
         MobKind::Camel => b::camel::pose(m, alpha),
-        MobKind::Fox => b::fox::pose(m, time),
+        MobKind::Fox => b::fox::pose(m, time, alpha),
         MobKind::Cat | MobKind::Ocelot => b::feline::pose(m),
         MobKind::Rabbit => b::rabbit::pose(m, alpha),
         MobKind::Horse | MobKind::SkeletonHorse | MobKind::ZombieHorse | MobKind::Donkey | MobKind::Mule => {
@@ -389,6 +392,9 @@ pub(super) fn pose(m: &Mob, time: f32, alpha: f32, head: Quat) -> Option<Parts> 
                 part(CHILD_ARM_BAR, [0.0, 5.6, 1.82], rx(-std::f32::consts::FRAC_PI_3)),
             ];
             p.java_side(1..3);
+            // v1.0 gap Track 7e: the type's baby outfit (`baby/<type>`).
+            let head = p[3];
+            super::villager_outfit::dress_baby(m, &mut p, head);
             p
         }
         _ => {
