@@ -667,7 +667,8 @@ impl Arrow {
                         crate::simulation::damage::Cause::PLAYER_ARROW
                             .by(self.owner.map(crate::entity::trident::Owner::Player))
                     } else {
-                        self.cause
+                        // v1.0 gap Track 8g: a mob's arrow names its shooter.
+                        self.cause.by(self.shooter.map(crate::entity::trident::Owner::Mob))
                     },
                 });
                 if self.potion.is_some() || self.custom_effect.is_some() || self.spectral {

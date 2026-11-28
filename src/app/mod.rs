@@ -1346,7 +1346,7 @@ impl Game {
         &self,
     ) -> std::collections::BTreeMap<crate::entity::PlayerId, voxelcraft::simulation::death_message::Attacker> {
         use voxelcraft::simulation::death_message::Attacker;
-        let weapon = |stack: Option<&crate::inventory::Stack>| stack.and_then(|s| s.name.as_str()).map(str::to_string);
+        let weapon = |stack: Option<crate::inventory::Stack>| stack.and_then(|s| s.name.as_str().map(str::to_string));
         let host = Attacker {
             name: self.lan.profile.clone(),
             weapon: weapon(self.session.inventory.get(self.body.actions.selected)),

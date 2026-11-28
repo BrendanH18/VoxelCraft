@@ -321,6 +321,8 @@ pub enum EntityEvent {
         from: DVec3,
         vel: DVec3,
         potion: crate::potion::Potion,
+        /// v1.0 gap Track 8g: the witch, the potion's owner.
+        thrower: u32,
     },
     LingeringCloud {
         pos: DVec3,
@@ -337,6 +339,10 @@ pub enum EntityEvent {
     PlayerMagic {
         player: PlayerId,
         amount: f32,
+        /// v1.0 gap Track 8g: Java's source for the harm: `indirectMagic`
+        /// naming the thrower (or the potion, or the cloud) for a splash
+        /// or lingering potion, `magic` for a tipped arrow's effect.
+        cause: crate::simulation::damage::Cause,
     },
     /// A creeper, ghast fireball or TNT exploded: break blocks and hurt
     /// everything nearby (see [`explosion_damage`]). [`Entities::explode`]

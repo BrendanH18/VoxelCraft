@@ -31,7 +31,7 @@ pub const RESET_COMBAT: f32 = 15.0;
 
 /// Java's `entity.minecraft.*` name for a mob kind: its words capitalised,
 /// "Zombified Piglin", "Polar Bear" (every kind VoxelCraft has is named so).
-pub fn mob_name(kind: crate::entity::mob::MobKind) -> String {
+pub fn mob_name(kind: crate::entity::MobKind) -> String {
     title(kind.name())
 }
 
@@ -52,7 +52,7 @@ fn title(name: &str) -> String {
 fn names() -> &'static [(String, String)] {
     static NAMES: OnceLock<Vec<(String, String)>> = OnceLock::new();
     NAMES.get_or_init(|| {
-        let mut v: Vec<(String, String)> = crate::entity::mob::MobKind::ALL
+        let mut v: Vec<(String, String)> = crate::entity::MobKind::ALL
             .iter()
             .map(|&k| (k.name().replace('_', " ").to_ascii_lowercase(), mob_name(k)))
             .collect();
@@ -250,8 +250,9 @@ pub struct Pending {
 pub enum Shape {
     /// The message names them where `name` stands (their kind's name, or
     /// "a player"); a named weapon turns it into `item` (the `.item`
-    /// variant) when there is one.
-    Named { name: Range<usize>, item: Option<&'static str> },
+    /// variant) when there is one. If they can't be found, `fallback`
+    /// replaces the message when there is one.
+    Named { name: Range<usize>, item: Option<&'static str>, fallback: Option<&'static str> },
     /// The message names no one; if they're still about, Java's `template`
     /// (the `.player` kill credit variant) names them instead.
     Credit { template: &'static str },
@@ -261,9 +262,14 @@ impl Pending {
     /// `death` finished with the attacker `lookup` finds (None: gone, or a
     /// kill credit's mob no longer alive), as Java names them.
     pub fn finish(&self, death: &mut String, lookup: impl FnOnce(Owner) -> Option<Attacker>) {
-        let Some(attacker) = lookup(self.owner) else { return };
+        let Some(attacker) = lookup(self.owner) else {
+            if let Shape::Named { fallback: Some(fallback), .. } = self.shape {
+                *death = fallback.to_string();
+            }
+            return;
+        };
         match &self.shape {
-            Shape::Named { name, item } => {
+            Shape::Named { name, item, .. } => {
                 if let (Some(item), Some(weapon)) = (item, attacker.weapon.as_deref()) {
                     *death = fill(item, &attacker.name, Some(weapon));
                 } else if !attacker.name.is_empty() && death.get(name.clone()).is_some() {
@@ -367,7 +373,9 @@ impl CombatTracker {
             let text = template.replace("%2$s", PLAYER);
             let at = template.find("%2$s").unwrap_or(0);
             let item = variant(&format!("{key}.item"));
-            return (text, Some(Pending { owner, shape: Shape::Named { name: at..at + PLAYER.len(), item } }));
+            // Gone before the message was put together: no one to name.
+            let fallback = variant("death.fell.killer");
+            return (text, Some(Pending { owner, shape: Shape::Named { name: at..at + PLAYER.len(), item, fallback } }));
         }
         // A fall under six blocks: Java's `death.attack.fall`, through
         // `getLocalizedDeathMessage`.
@@ -383,7 +391,7 @@ impl CombatTracker {
         if let Some(owner) = by {
             let pending = worded.name.clone().map(|name| Pending {
                 owner,
-                shape: Shape::Named { name, item: attack_variant(cause.kind, ".item") },
+                shape: Shape::Named { name, item: attack_variant(cause.kind, ".item"), fallback: None },
             });
             return (worded.text, pending);
         }
@@ -423,8 +431,8 @@ mod tests {
         assert_eq!(java_words("was slain by Zombie").name, None, "Java's words stay");
         let p = java_words("was slain by a player");
         assert_eq!(&p.text[p.name.unwrap()], PLAYER);
-        assert_eq!(mob_name(crate::entity::mob::MobKind::ZombifiedPiglin), "Zombified Piglin");
-        assert_eq!(mob_name(crate::entity::mob::MobKind::PolarBear), "Polar Bear");
+        assert_eq!(mob_name(crate::entity::MobKind::ZombifiedPiglin), "Zombified Piglin");
+        assert_eq!(mob_name(crate::entity::MobKind::PolarBear), "Polar Bear");
     }
 
     fn named(name: &str, weapon: Option<&str>) -> Option<Attacker> {
@@ -490,6 +498,9 @@ mod tests {
         let (mut text, pending) = t.death_message(Cause::FALL, None);
         pending.unwrap().finish(&mut text, |_| named("Alex", Some("Shove")));
         assert_eq!(text, "was doomed to fall by Alex using [Shove]");
+        let (mut text, pending) = t.death_message(Cause::FALL, None);
+        pending.unwrap().finish(&mut text, |_| None);
+        assert_eq!(text, "was doomed to fall", "the zombie is gone");
         // A fall on its own.
         let mut t = CombatTracker::default();
         t.record(Cause::FALL, 12.0);

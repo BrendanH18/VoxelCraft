@@ -453,3 +453,22 @@ fn agent_environment_damage_is_typed_and_goes_through_armor() {
     assert_eq!(a.vitals.death.as_deref(), Some(Cause::HOT_FLOOR.text));
     assert_eq!(a.vitals.killed_by(), Some(DamageType::HotFloor));
 }
+
+/// v1.0 gap Track 8g: the `.player`, `.item` and `death.fell.*` variants
+/// the game words its messages with are Java's, after the victim's `%1$s `.
+#[test]
+fn death_message_variants_are_javas() {
+    let f = fixture();
+    let messages = f["death_messages"].as_object().unwrap();
+    for (key, text) in voxelcraft::simulation::death_message::VARIANTS {
+        let java = messages.get(*key).and_then(|m| m.as_str()).unwrap_or_else(|| panic!("{key} isn't Java's"));
+        assert_eq!(java.strip_prefix("%1$s "), Some(*text), "{key}");
+    }
+    // Every `.player` and `.item` variant whose victim comes first is there.
+    for (key, java) in messages {
+        let variant = key.ends_with(".player") || key.ends_with(".item");
+        if key.starts_with("death.attack.") && variant && java.as_str().is_some_and(|j| j.starts_with("%1$s ")) {
+            assert!(voxelcraft::simulation::death_message::VARIANTS.iter().any(|(k, _)| k == key), "{key} missing");
+        }
+    }
+}

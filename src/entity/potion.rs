@@ -31,6 +31,9 @@ pub struct ThrownPotion {
     pub lingering: bool,
     /// The throwing player; witches throw with `None`.
     pub owner: Option<PlayerId>,
+    /// v1.0 gap Track 8g: the witch that threw it (`Mob::uid`), whom its
+    /// harm names. Not saved: a reloaded witch's potion names no one.
+    pub thrower: Option<u32>,
     pub pos: DVec3,
     /// Position at the start of the last simulation step, for rendering.
     pub previous_pos: DVec3,
@@ -71,6 +74,7 @@ impl ThrownPotion {
             potion: Potion::from_id(v["potion"].as_str()?)?,
             lingering: v["lingering"].as_bool().unwrap_or(false),
             owner: v["owner"].as_u64().and_then(|u| u32::try_from(u).ok()).map(PlayerId),
+            thrower: None,
             pos,
             previous_pos: pos,
             vel: s::read_v3(&v["motion"]).unwrap_or(DVec3::ZERO),
@@ -91,11 +95,11 @@ impl ThrownPotion {
 
     /// A LAN client's copy: drawn only, never simulated.
     pub(super) fn replica(potion: Potion, pos: DVec3, previous_pos: DVec3) -> Self {
-        Self { potion, lingering: false, owner: None, pos, previous_pos, vel: DVec3::ZERO, age: 0.0, fire: 0 }
+        Self { potion, lingering: false, owner: None, thrower: None, pos, previous_pos, vel: DVec3::ZERO, age: 0.0, fire: 0 }
     }
 
     pub fn new(potion: Potion, owner: Option<PlayerId>, pos: DVec3, vel: DVec3) -> Self {
-        Self { potion, lingering: false, owner, pos, previous_pos: pos, vel, age: 0.0, fire: 0 }
+        Self { potion, lingering: false, owner, thrower: None, pos, previous_pos: pos, vel, age: 0.0, fire: 0 }
     }
 
     /// A player's throw from `eye` along their look direction `dir`, adding
@@ -179,7 +183,9 @@ impl ThrownPotion {
         if self.lingering {
             events.push(EntityEvent::LingeringCloud { pos: self.pos, potion: self.potion, owner: self.owner });
         } else {
-            splash(self.potion, self.owner, self.pos, self.age, ctx, mobs, rng, events);
+            let by = self.owner.map(super::trident::Owner::Player).or(self.thrower.map(super::trident::Owner::Mob));
+            let cause = crate::simulation::damage::Cause::potion_magic(by, false);
+            splash_by(self.potion, self.owner, cause, self.pos, self.age, ctx, mobs, rng, events);
             splash_dragons(self.potion, self.owner, self.pos, self.age, boss, events);
         }
     }
@@ -243,10 +249,29 @@ fn instant_amount(base: f32, amplifier: u8, intensity: f64) -> f32 {
 /// effect is added to mobs with the attenuated duration, except Poison and
 /// Regeneration on the undead. Weakness also lands on zombie villagers so a
 /// golden apple can start a cure.
+#[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 pub(super) fn splash(
     potion: Potion,
     owner: Option<PlayerId>,
+    pos: DVec3,
+    age: f32,
+    ctx: &Ctx,
+    mobs: &mut [Mob],
+    rng: &mut Rng,
+    events: &mut Vec<EntityEvent>,
+) {
+    let cause = crate::simulation::damage::Cause::potion_magic(owner.map(super::trident::Owner::Player), false);
+    splash_by(potion, owner, cause, pos, age, ctx, mobs, rng, events);
+}
+
+/// [`splash`], the harm to players dealt as `cause` (v1.0 gap Track 8g:
+/// `indirectMagic(potion, owner)`).
+#[allow(clippy::too_many_arguments)]
+pub(super) fn splash_by(
+    potion: Potion,
+    owner: Option<PlayerId>,
+    cause: crate::simulation::damage::Cause,
     pos: DVec3,
     age: f32,
     ctx: &Ctx,
@@ -261,11 +286,11 @@ pub(super) fn splash(
             match effect {
                 Effect::InstantDamage => {
                     let amount = instant_amount(6.0, amplifier, scale);
-                    events.push(EntityEvent::PlayerMagic { player: t.id, amount });
+                    events.push(EntityEvent::PlayerMagic { player: t.id, amount, cause });
                 }
                 Effect::InstantHealth => {
                     let amount = instant_amount(4.0, amplifier, scale);
-                    events.push(EntityEvent::PlayerMagic { player: t.id, amount: -amount });
+                    events.push(EntityEvent::PlayerMagic { player: t.id, amount: -amount, cause });
                 }
                 _ => {
                     let ticks = (scale * f64::from(ticks) * f64::from(DURATION_SCALE) + 0.5) as u32;
@@ -390,7 +415,7 @@ mod tests {
         splash(harming, None, DVec3::new(0.0, 10.0, 0.0), 0.0, &c, &mut [], &mut Rng::new(1), &mut events);
         let amount = |id| {
             events.iter().find_map(|e| match *e {
-                EntityEvent::PlayerMagic { player, amount } if player == PlayerId(id) => Some(amount),
+                EntityEvent::PlayerMagic { player, amount, .. } if player == PlayerId(id) => Some(amount),
                 _ => None,
             })
         };

@@ -94,6 +94,11 @@ impl Cloud {
                     if effect.is_instant() {
                         let base = if effect == Effect::InstantDamage { 3. } else { -2. };
                         events.push(EntityEvent::PlayerMagic {
+                            // v1.0 gap Track 8g: `indirectMagic(cloud, owner)`.
+                            cause: crate::simulation::damage::Cause::potion_magic(
+                                self.owner.map(super::trident::Owner::Player),
+                                true,
+                            ),
                             player: t.id,
                             amount: base * (1u32 << amplifier.min(20)) as f32,
                         });

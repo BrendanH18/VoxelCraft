@@ -640,6 +640,25 @@ fn a_fire_charge_sets_fire_beside_the_block_it_is_used_on() {
     assert_eq!(cell.y, P.y, "on top of the floor block the crosshair is on: {cell}");
     assert!(w.get_block(cell).is_some_and(|b| b.is_fire()), "{:?}", w.get_block(cell));
     assert_eq!(s.inventory.get(0).map(|s| s.count), Some(1));
+    // v1.0 gap Track 8g: used again, the crosshair stops at the fire's
+    // sixteenth-high floor (`BaseFireBlock.SHAPE`) and fire can't go in the
+    // cell above it: nothing burns anew and the charge is kept (`FAIL`).
+    let fires = |w: &crate::world::World| {
+        let mut n = 0;
+        for x in -3..=3 {
+            for y in -1..=2 {
+                for z in -3..=3 {
+                    n += usize::from(w.get_block(P + IVec3::new(x, y, z)).is_some_and(|b| b.is_fire()));
+                }
+            }
+        }
+        n
+    };
+    assert_eq!(fires(&w), 1);
+    let again = use_held(&mut s, &mut w).map(|u| u.used);
+    assert!(!matches!(again, Some(Used::Ignited { .. })), "{again:?}");
+    assert_eq!(fires(&w), 1);
+    assert_eq!(s.inventory.get(0).map(|s| s.count), Some(1));
     // In creative the charge isn't used up.
     w.set_block(cell, Block::AIR);
     s.mode = GameMode::Creative;

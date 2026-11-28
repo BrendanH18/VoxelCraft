@@ -539,6 +539,18 @@ impl Cause {
         Self { by, ..self }
     }
 
+    /// v1.0 gap Track 8g: a thrown potion's or (`cloud`) its lingering
+    /// cloud's harm, owned by `by` (a player or a witch).
+    pub const fn potion_magic(by: Option<crate::entity::trident::Owner>, cloud: bool) -> Self {
+        use crate::entity::trident::Owner;
+        match by {
+            Some(Owner::Player(_)) => Cause::PLAYER_POTION.by(by),
+            Some(Owner::Mob(_)) => Cause::WITCH_POTION.by(by),
+            None if cloud => Cause::CLOUD,
+            None => Cause::SPLASH_POTION,
+        }
+    }
+
     /// A mob's melee hit (`DamageSources.mobAttack`).
     pub const fn mob(text: &'static str) -> Self {
         Self::new(DamageType::MobAttack, text)
@@ -574,6 +586,15 @@ impl Cause {
     /// Drunk or commanded Instant Damage (`magic()`). VoxelCraft also uses it
     /// for splash potions, which Java types `indirect_magic`.
     pub const MAGIC: Cause = Cause::new(DamageType::Magic, super::survival::CAUSE_MAGIC);
+    /// v1.0 gap Track 8g: a splash or lingering potion's Instant Damage
+    /// (`HealOrHarmMobEffect.applyInstantaneousEffect`: `indirectMagic`,
+    /// the potion or cloud the direct source and its owner the causing
+    /// one), naming the player or witch that threw it, else the potion or
+    /// cloud itself.
+    pub const PLAYER_POTION: Cause = Cause::new(DamageType::IndirectMagic, "was killed by a player using magic");
+    pub const WITCH_POTION: Cause = Cause::new(DamageType::IndirectMagic, "was killed by a witch using magic");
+    pub const SPLASH_POTION: Cause = Cause::new(DamageType::IndirectMagic, "was killed by a splash potion using magic");
+    pub const CLOUD: Cause = Cause::new(DamageType::IndirectMagic, "was killed by an area effect cloud using magic");
     pub const WITHER: Cause = Cause::new(DamageType::Wither, "withered away");
     /// `/kill` (`genericKill()`).
     pub const GENERIC_KILL: Cause = Cause::new(DamageType::GenericKill, "was killed");
@@ -680,6 +701,10 @@ impl Cause {
         Cause::STALAGMITE,
         Cause::FREEZE,
         Cause::MAGIC,
+        Cause::PLAYER_POTION,
+        Cause::WITCH_POTION,
+        Cause::SPLASH_POTION,
+        Cause::CLOUD,
         Cause::WITHER,
         Cause::GENERIC_KILL,
         Cause::OUT_OF_WORLD,

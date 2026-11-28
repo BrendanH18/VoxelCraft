@@ -4036,7 +4036,12 @@ impl Mob {
                 let flat = DVec3::new(aim_at.x - eye.x, 0.0, aim_at.z - eye.z);
                 let aim = DVec3::new(flat.x, aim_at.y - 1.1 - eye.y + flat.length() * 0.2, flat.z).normalize_or(dir);
                 if let Some(potion) = crate::potion::Potion::from_id(id) {
-                    events.push(EntityEvent::ThrowPotion { from: eye + dir * 0.4, vel: aim * WITCH_SPEED, potion });
+                    events.push(EntityEvent::ThrowPotion {
+                        from: eye + dir * 0.4,
+                        vel: aim * WITCH_SPEED,
+                        potion,
+                        thrower: self.uid,
+                    });
                 }
                 self.attack_cooldown = 3.0;
                 self.attack_anim = 0.35;

@@ -73,7 +73,13 @@ impl Arrow {
         for (effect, amplifier, ticks) in self.effects() {
             if effect.is_instant() {
                 let base = if effect == Effect::InstantDamage { 6.0 } else { -4.0 };
-                events.push(EntityEvent::PlayerMagic { player, amount: base * (1u32 << amplifier.min(20)) as f32 });
+                // v1.0 gap Track 8g: `addEffect`, whose tick hurts with `magic`
+                // (the shooter takes the kill credit from the arrow's hit).
+                events.push(EntityEvent::PlayerMagic {
+                    player,
+                    amount: base * (1u32 << amplifier.min(20)) as f32,
+                    cause: crate::simulation::damage::Cause::MAGIC,
+                });
             } else {
                 events.push(EntityEvent::PlayerEffect { player, effect, amplifier, ticks });
             }
