@@ -8801,11 +8801,11 @@
    "group": "materials",
    "description": "Two lit Nether portals on a stone floor in the sky at noon, one along X and one along Z, seen at an angle: the thin plane along each axis, its animated texture and the obsidian frame around it (v1.0 gap Track 5c)",
    "pose": [
-    -7.5,
-    151,
-    -5.5,
-    45,
-    -4
+    -4.5,
+    151.5,
+    -6.5,
+    75,
+    -6
    ],
    "hud": false,
    "fill": [
