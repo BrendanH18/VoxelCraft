@@ -20,6 +20,7 @@ pub(crate) mod door_break;
 mod drowned;
 mod endermite;
 pub(crate) mod equine;
+mod eyes;
 mod frog;
 pub(crate) mod goals;
 pub(super) mod hazards;
@@ -1478,6 +1479,8 @@ pub struct Mob {
     offset_timer: f32,
     /// Feet of whatever this mob is walking toward (a villager, monster, or player).
     pub(super) hunt: Option<DVec3>,
+    /// The eye height of what `hunt` follows (Track 2d; 1 for a place).
+    pub(super) hunt_eye: f64,
     /// `think` wants a melee swing resolved against `hunt` this tick.
     pub(super) strike: bool,
     /// Player-built golems stay loaded instead of despawning.
@@ -1717,6 +1720,7 @@ impl Mob {
             height_offset: 0.5,
             offset_timer: 0.0,
             hunt: None,
+            hunt_eye: 1.0,
             strike: false,
             built: false,
             weakness_left: 0.0,
@@ -2782,12 +2786,12 @@ impl Mob {
         // v1.0 Track 6: a raid witch with a raider to heal walks until it
         // sees it within 10 blocks (`RangedAttackGoal`); the raid tick throws.
         if self.kind == MobKind::Witch
-            && let Some((_, at)) = self.illager.as_ref().and_then(|s| s.raider.heal_target)
+            && let Some((_, at, at_eye)) = self.illager.as_ref().and_then(|s| s.raider.heal_target)
         {
-            let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
-            let sees = line_of_sight(world, eye, at + DVec3::Y);
+            let eye = self.look_eye();
+            let sees = line_of_sight(world, eye, at + DVec3::Y * at_eye);
             // `RangedAttackGoal.tick`: `setLookAt(target, 30, 30)`.
-            self.set_look_at(at + DVec3::Y, head::ATTACK_LOOK, head::ATTACK_LOOK);
+            self.set_look_at(at + DVec3::Y * at_eye, head::ATTACK_LOOK, head::ATTACK_LOOK);
             if (at - self.pos).with_y(0.0).length() <= WITCH_RANGE && sees {
                 self.stop_navigation();
                 return (None, 0.0);
@@ -2821,7 +2825,7 @@ impl Mob {
             if ((goal - self.pos) * DVec3::new(1.0, 0.0, 1.0)).length() <= 0.9 {
                 return (None, 0.0);
             }
-            let sees = line_of_sight(world, self.pos + DVec3::Y * (self.shape().height * 0.85), goal + DVec3::Y);
+            let sees = line_of_sight(world, self.look_eye(), goal + DVec3::Y);
             return (self.pursue(world, goal, speed, sees, true, rng), speed);
         }
         if let Some(wish) = self.leash_think(dt, world, rng) {
@@ -2983,7 +2987,7 @@ impl Mob {
                     _ => 1.5,
                 };
                 // `MeleeAttackGoal.tick`: `setLookAt(target, 30, 30)`.
-                self.set_look_at(goal + DVec3::Y, head::ATTACK_LOOK, head::ATTACK_LOOK);
+                self.set_look_at(goal + DVec3::Y * self.hunt_eye, head::ATTACK_LOOK, head::ATTACK_LOOK);
                 let golem = self.kind == MobKind::IronGolem;
                 if dist <= reach
                     && self.attack_cooldown <= 0.0
@@ -3005,7 +3009,7 @@ impl Mob {
                 } else {
                     self.kind.chase_speed()
                 };
-                let sees = line_of_sight(world, self.pos + DVec3::Y * (self.shape().height * 0.85), goal + DVec3::Y);
+                let sees = line_of_sight(world, self.look_eye(), goal + DVec3::Y * self.hunt_eye);
                 return (self.pursue(world, goal, speed, sees, true, rng), speed);
             }
         }
@@ -3027,7 +3031,7 @@ impl Mob {
             && let Some(at) = self.ride_walk
         {
             let speed = self.kind.chase_speed() * 0.8 * if self.baby { nether_ai::BABY_SPEED } else { 1.0 };
-            let sees = line_of_sight(world, self.pos + DVec3::Y * (self.shape().height * 0.85), at + DVec3::Y * 0.5);
+            let sees = line_of_sight(world, self.look_eye(), at + DVec3::Y * 0.5);
             return (self.pursue(world, at, speed, sees, false, rng), speed);
         }
         if self.nether.is_some()
@@ -3240,9 +3244,9 @@ impl Mob {
                 // Java's `MeleeAttackGoal`: walk a path to the target, planned
                 // again as it moves. Only spiders follow unseen targets.
                 let speed = self.kind.chase_speed() * if self.baby { 1.5 } else { 1.0 };
-                let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
+                let eye = self.look_eye();
                 let sees = matches!(self.kind, MobKind::Spider | MobKind::CaveSpider)
-                    || line_of_sight(world, eye, target.pos + DVec3::Y * 1.62);
+                    || line_of_sight(world, eye, target.eye());
                 (self.pursue(world, target.pos, speed, sees, true, rng), speed)
             }
             Ai::Panic => {
@@ -3332,8 +3336,8 @@ impl Mob {
         full: bool,
         accept: impl Fn(&super::Target) -> bool,
     ) -> Option<&'a super::Target> {
-        let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
-        let sees = |t: &super::Target| line_of_sight(world, eye, t.pos + DVec3::Y * crate::player::EYE_HEIGHT);
+        let eye = self.look_eye();
+        let sees = |t: &super::Target| line_of_sight(world, eye, t.eye());
         let c = &mut self.move_ctl;
         let current = c.target.and_then(|id| ctx.players.iter().find(|t| t.id == id));
         if let Some(t) = current {
@@ -3428,8 +3432,8 @@ impl Mob {
             self.path_move = false;
             self.stop_navigation();
         }
-        let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
-        let target_eye = target.pos + DVec3::Y * crate::player::EYE_HEIGHT;
+        let eye = self.look_eye();
+        let target_eye = target.eye();
         self.lift = target_eye.y > eye.y + self.height_offset as f64;
         let to = target.pos - self.pos;
         // `BlazeAttackGoal.tick`: `setLookAt(target, 10, 10)`.
@@ -3568,7 +3572,7 @@ impl Mob {
     /// Java's `isLookingAtMe`: `target` looks within a narrowing cone of
     /// this enderman's eyes, with nothing in between.
     fn watched_by<W: MobWorld + ?Sized>(&self, world: &W, target: &super::Target) -> bool {
-        let from = target.pos + DVec3::Y * crate::player::EYE_HEIGHT;
+        let from = target.eye();
         let to = self.eye() - from;
         let d = to.length();
         target.look != DVec3::ZERO
@@ -3706,7 +3710,7 @@ impl Mob {
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
     ) -> (Option<DVec3>, f64) {
-        let eye = self.pos + DVec3::Y * (self.shape().height * 0.9);
+        let eye = self.look_eye();
         let target = player + DVec3::Y * 1.2;
         if self.attack_cooldown <= 0.0 && hdist < SHOOT_RANGE && line_of_sight(world, eye, target) {
             self.attack_cooldown = if self.kind == MobKind::Skeleton {
@@ -3766,7 +3770,7 @@ impl Mob {
             }
             return self.drink_left > 0.0;
         }
-        let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
+        let eye = self.look_eye();
         let eye_in_water = world.block(eye.floor().as_ivec3()).is_some_and(Block::holds_water);
         let tick_chance = |rng: &mut Rng, p: f32| rng.chance(1.0 - (1.0 - p).powf(dt * 20.0));
         let drink = if eye_in_water && !self.effects.has(Effect::WaterBreathing) && tick_chance(rng, 0.15) {
@@ -3800,7 +3804,7 @@ impl Mob {
     ) -> (Option<DVec3>, f64) {
         use crate::simulation::effects::Effect;
         let player = target.pos;
-        let eye = self.pos + DVec3::Y * (self.shape().height * 0.9);
+        let eye = self.look_eye();
         let aim_at = player + DVec3::Y * 1.2;
         let sees = line_of_sight(world, eye, aim_at);
         if !self.effects.has(Effect::Speed) && (player - self.pos).length_squared() > 121.0 && rng.chance(0.5) {

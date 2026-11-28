@@ -778,7 +778,7 @@ impl Mob {
                 let Some((uid, at)) = self.animal.as_ref().and_then(|a| a.partner) else { return };
                 // `setLookAt(partner, 10, getMaxHeadXRot())`.
                 let x = self.max_head_x_rot();
-                self.set_look_at(at + DVec3::Y * (self.shape().height * 0.85), 10.0, x);
+                self.set_look_at(at + DVec3::Y * self.eye_height(), 10.0, x);
                 self.walk_to(world, at.floor().as_ivec3(), 1, speed, false);
                 let a = self.animal.as_mut().unwrap();
                 a.courtship += 0.1;
@@ -895,7 +895,7 @@ impl Mob {
         }
         let foe = match a.what {
             Avoided::Player => {
-                let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
+                let eye = self.look_eye();
                 let trusted = self.animal.as_ref().map(|s| s.trusted).unwrap_or_default();
                 ctx.players
                     .iter()
@@ -909,7 +909,7 @@ impl Mob {
                             && d.z.abs() <= a.dist + self.shape().half_width
                             && d.y.abs() <= 3.0 + self.shape().height
                             && d.length_squared() <= a.dist * a.dist
-                            && line_of_sight(world, eye, t.pos + DVec3::Y * 1.62)
+                            && line_of_sight(world, eye, t.eye())
                     })
                     .min_by(|l, r| l.pos.distance_squared(self.pos).total_cmp(&r.pos.distance_squared(self.pos)))
                     .map(|t| (Foe::Player(t.id), t.pos))
@@ -1015,7 +1015,7 @@ impl crate::entity::Entities {
                 other => other,
             };
             if full && avoiding.is_none() {
-                let eye = m.pos + DVec3::Y * (m.shape().height * 0.85);
+                let eye = m.look_eye();
                 let tame = |b: &Mob| b.animal.as_ref().is_some_and(|a| a.owner.is_some());
                 for (slot, entry) in t.iter().filter(|e| matches!(e.goal, G::Avoid(_))).take(3).enumerate() {
                     let G::Avoid(a) = entry.goal else { continue };
@@ -1050,7 +1050,7 @@ impl crate::entity::Entities {
                     seen[slot] = best
                         .filter(|&(_, j)| {
                             let b = &self.mobs[j];
-                            line_of_sight(world, eye, b.pos + DVec3::Y * (b.shape().height * 0.85))
+                            line_of_sight(world, eye, b.look_eye())
                         })
                         .map(|(_, j)| (self.mobs[j].uid, self.mobs[j].pos));
                 }

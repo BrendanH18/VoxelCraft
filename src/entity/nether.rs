@@ -183,6 +183,8 @@ pub struct NetherMob {
     /// Where a bastion resident stays near (Java's brute `HOME` memory).
     pub home: Option<DVec3>,
     pub(super) foe: Option<Foe>,
+    /// The attack target's eye height, refreshed with its position.
+    pub(super) foe_eye: f64,
     pub(super) foe_left: f32,
     /// Java's `UNIVERSAL_ANGER` memory: seconds left (600 ticks).
     pub(super) universal: f32,
@@ -246,6 +248,7 @@ impl NetherMob {
                     cannot_hunt: false,
                     home: None,
                     foe: None,
+                    foe_eye: 1.2,
                     foe_left: 0.0,
                     universal: 0.0,
                     universal_pick: false,
@@ -514,6 +517,8 @@ pub(super) struct Seen {
     pub kind: MobKind,
     pub pos: DVec3,
     pub baby: bool,
+    /// `getEyeHeight` (Track 2d).
+    pub eye: f64,
     /// A hoglin piglins may hunt.
     pub huntable: bool,
 }
@@ -603,6 +608,7 @@ impl Entities {
             kind: m.kind,
             pos: m.pos,
             baby: m.baby,
+            eye: m.eye_height(),
             huntable: m.kind == MobKind::Hoglin && m.nether.as_ref().is_some_and(|n| !n.cannot_hunt),
         }));
         let (mobs, view, items, rng) = (&mut self.mobs, &self.nether_view, &self.items, &mut self.rng);
@@ -779,7 +785,7 @@ impl Entities {
             if m.kind != MobKind::Piglin || !m.alive() || (at - m.pos).abs().cmpgt(DVec3::splat(ANGER_RANGE)).any() {
                 continue;
             }
-            let eye = m.pos + DVec3::Y * (m.shape().height * 0.9);
+            let eye = m.look_eye();
             let Some(n) = m.nether.as_mut() else { continue };
             if n.idle() && (!only_if_seen || super::mob::line_of_sight(world, eye, at + DVec3::Y * 1.5)) {
                 n.anger(Foe::Player(player));
@@ -1400,11 +1406,17 @@ fn sense<W: MobWorld + ?Sized>(
 ) -> Option<u32> {
     let (pos, baby, kind, uid) = (m.pos, m.baby, m.kind, m.uid);
     let brute = kind == MobKind::PiglinBrute;
-    let eye = pos + DVec3::Y * (m.shape().height * 0.9);
+    let eye = m.look_eye();
     let n = m.nether.as_mut()?;
     let locate = |foe: Foe| locate(foe, view, ctx);
     // Java's `StartCelebratingIfTargetDead`: a dead attack target sets the celebrate
     // location for 300 ticks; hoglin kills sometimes start a dance.
+    if let Goal::Attack { foe, .. } = n.goal {
+        n.foe_eye = match foe {
+            Foe::Player(id) => ctx.players.iter().find(|t| t.id == id).map_or(1.2, |t| t.eye_height()),
+            Foe::Mob(u) => view.iter().find(|s| s.uid == u).map_or(1.2, |s| s.eye),
+        };
+    }
     if let Goal::Attack { foe, pos: last } = n.goal
         && !brute
     {

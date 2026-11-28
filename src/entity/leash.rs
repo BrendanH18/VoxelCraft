@@ -289,7 +289,7 @@ impl Entities {
                     yaw: m.java_yaw(),
                     movement: m.vel / 20.0,
                     quad: m.kind == MobKind::HappyGhast,
-                    rope: m.pos + DVec3::Y * (m.shape().height * 0.85),
+                    rope: m.look_eye(),
                 })
             }
         }

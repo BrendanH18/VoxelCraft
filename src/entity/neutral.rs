@@ -256,7 +256,7 @@ impl Entities {
             }
             let m = &self.mobs[i];
             let range = follow_range(m.kind).unwrap_or(16.0);
-            let eye = m.pos + DVec3::Y * m.shape().height * 0.85;
+            let eye = m.look_eye();
             let owner = m.animal.as_ref().and_then(|a| a.owner);
             // Every kind's start conditions are `TargetingConditions.forCombat()`,
             // which checks the line of sight (the enderman's too).
@@ -268,7 +268,7 @@ impl Entities {
                         && p.alive
                         && owner != Some(p.id)
                         && p.pos.distance_squared(m.pos) <= p.detection_range(range).powi(2)
-                        && super::mob::line_of_sight(w, eye, p.pos + DVec3::Y * 1.62)
+                        && super::mob::line_of_sight(w, eye, p.eye())
                 })
                 .min_by(|a, b| a.pos.distance_squared(m.pos).total_cmp(&b.pos.distance_squared(m.pos)))
                 .map(|p| p.id);

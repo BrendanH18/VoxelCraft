@@ -541,9 +541,9 @@ pub struct Raider {
     pub patrol_cooldown: u32,
     /// v1.0 Track 6: a witch's `NearestHealableRaiderTargetGoal.cooldown`
     /// in ticks, and the raider it means to heal (`setTarget`) with that
-    /// raider's position. Neither is saved, as in Java.
+    /// raider's position and eye height. Neither is saved, as in Java.
     pub heal_cooldown: i32,
-    pub heal_target: Option<(u32, glam::DVec3)>,
+    pub heal_target: Option<(u32, glam::DVec3, f64)>,
 }
 
 impl Raider {
@@ -632,7 +632,7 @@ pub struct State {
     pub(crate) hurt_by: Option<u32>,
     pub(crate) hunted: Option<u32>,
     /// The mob target and where it stands this tick (`illager_upkeep`).
-    pub(crate) foe_at: Option<(u32, DVec3, Shape)>,
+    pub(crate) foe_at: Option<(u32, DVec3, Shape, f64)>,
     /// `spellCastingTickCount` (saved as `spell_ticks`).
     pub spell_ticks: i32,
     /// The spell being cast (`DATA_SPELL_CASTING_ID`).
@@ -973,9 +973,12 @@ impl Entities {
             }
         }
         // Targets among mobs: kinds, positions and owners in one pass.
-        let view: Vec<(u32, MobKind, DVec3, Shape, bool)> =
-            self.mobs.iter().map(|m| (m.uid, m.kind, m.pos, m.shape(), m.alive() && m.simulation_active)).collect();
-        let owner_kind = |uid: Option<u32>, view: &[(u32, MobKind, DVec3, Shape, bool)]| {
+        let view: Vec<(u32, MobKind, DVec3, Shape, bool, f64)> = self
+            .mobs
+            .iter()
+            .map(|m| (m.uid, m.kind, m.pos, m.shape(), m.alive() && m.simulation_active, m.eye_height()))
+            .collect();
+        let owner_kind = |uid: Option<u32>, view: &[(u32, MobKind, DVec3, Shape, bool, f64)]| {
             uid.and_then(|u| view.iter().find(|v| v.0 == u && v.4)).map(|v| v.1)
         };
         for i in 0..self.mobs.len() {
@@ -1009,21 +1012,21 @@ impl Entities {
             } else if hunted.is_none() && full && self.rng.next_int(5) == 0 {
                 // `NearestAttackableTargetGoal` (`randomInterval` 10): the
                 // nearest it can see within its follow range.
-                let eye = pos + DVec3::Y * (self.mobs[i].shape().height * 0.85);
+                let eye = self.mobs[i].look_eye();
                 let me = &self.mobs[i];
                 hunted = self
                     .mobs
                     .iter()
                     .filter(|m| m.simulation_active && m.pos.distance_squared(pos) <= range * range)
                     .filter(|m| attackable(me, johnny, m, owner_kind(m.illager.as_ref().and_then(|t| t.owner), &view)))
-                    .filter(|m| super::mob::line_of_sight(world, eye, m.pos + DVec3::Y * (m.shape().height * 0.85)))
+                    .filter(|m| super::mob::line_of_sight(world, eye, m.look_eye()))
                     .min_by(|a, b| a.pos.distance_squared(pos).total_cmp(&b.pos.distance_squared(pos)))
                     .map(|m| m.uid);
             }
             let find = |u: Option<u32>| {
                 u.and_then(|u| view.iter().find(|v| v.0 == u && v.4))
                     .filter(|v| v.2.distance_squared(pos) <= range * range)
-                    .map(|v| (v.0, v.2, v.3))
+                    .map(|v| (v.0, v.2, v.3, v.5))
             };
             let at_hurt = find(hurt_by);
             let at_hunt = find(hunted);

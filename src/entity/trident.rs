@@ -189,10 +189,10 @@ impl Trident {
             Owner::Player(id) => players
                 .iter()
                 .find(|t| t.id == id && t.alive && !t.spectator)
-                .map(|t| (t.pos + DVec3::Y * (t.shape.height * 0.9), true, t.shape.half_width * 2.0)),
+                .map(|t| (t.eye(), true, t.shape.half_width * 2.0)),
             Owner::Mob(uid) => mobs.iter().find(|m| m.uid == uid && m.alive()).map(|m| {
                 let s = m.shape();
-                (m.pos + DVec3::Y * (s.height * 0.85), false, s.half_width * 2.0)
+                (m.look_eye(), false, s.half_width * 2.0)
             }),
         }
     }

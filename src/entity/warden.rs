@@ -520,6 +520,8 @@ struct Foe {
     pos: DVec3,
     half_width: f64,
     height: f64,
+    /// `getEyeHeight` (Track 2d).
+    eye: f64,
     valid: bool,
 }
 
@@ -587,6 +589,7 @@ impl Entities {
                 pos: p.pos,
                 half_width: p.shape.half_width,
                 height: p.shape.height,
+                eye: p.eye_height(),
                 valid: p.targetable && p.alive && !p.spectator,
             }),
             EntityRef::Mob(uid) => self.mobs.iter().find(|m| m.uid == uid).map(|m| {
@@ -595,6 +598,7 @@ impl Entities {
                     pos: m.pos,
                     half_width: shape.half_width,
                     height: shape.height,
+                    eye: m.eye_height(),
                     valid: m.alive() && m.kind != MobKind::Warden,
                 }
             }),
@@ -727,6 +731,7 @@ impl Entities {
     /// `VibrationSystem.Listener.handleGameEvent` for posted events.
     fn warden_hear(&self, i: usize, s: &mut State, w: &World, ctx: &Ctx, posted: &[Posted]) {
         let m = &self.mobs[i];
+        // The state is out of the mob while it ticks: its own pose here.
         let eye = m.pos + DVec3::Y * if s.digging_or_emerging() { 0.85 } else { EYE };
         let eye_cell = eye.floor().as_ivec3();
         for e in posted {
@@ -986,7 +991,7 @@ impl Entities {
                 {
                     s.walk = None;
                     if let Some(f) = self.foe(ctx, t) {
-                        s.look = Some(f.pos + DVec3::Y * f.height * 0.85);
+                        s.look = Some(f.pos + DVec3::Y * f.eye);
                     }
                     s.pose = ROARING;
                     s.action = Some((Action::Roar, 0));
@@ -1088,7 +1093,7 @@ impl Entities {
         let m = &self.mobs[i];
         let shape = m.shape();
         let eye = m.pos + DVec3::Y * EYE;
-        let target_eye = foe.pos + DVec3::Y * foe.height * 0.85;
+        let target_eye = foe.pos + DVec3::Y * foe.eye;
         s.look = Some(target_eye);
         let sees = super::mob::line_of_sight(w, eye, target_eye);
         let reach = in_melee(m.pos, shape.half_width, shape.height, &foe);
@@ -1144,7 +1149,7 @@ impl Entities {
         }
         // `EntityAttachment.WARDEN_CHEST` at 1.6.
         let source = m.pos + DVec3::Y * 1.6;
-        let target_eye = foe.pos + DVec3::Y * foe.height * 0.85;
+        let target_eye = foe.pos + DVec3::Y * foe.eye;
         let delta = target_eye - source;
         let dir = delta.normalize_or_zero();
         let steps = delta.length().floor() as i32 + 7;

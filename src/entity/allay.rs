@@ -221,7 +221,7 @@ impl Entities {
                                 && !p.spectator
                                 && p.pos.distance_squared(m.pos) < 64. * 64.
                         })
-                        .map(|p| p.pos + DVec3::Y * (p.shape.height * 0.9))
+                        .map(|p| p.eye())
                 });
                 if s.sensor == 0 {
                     s.sensor = 20;

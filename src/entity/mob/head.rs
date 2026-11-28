@@ -82,11 +82,7 @@ fn pitch_toward(d: DVec3) -> Option<f32> {
 
 /// A player's eye height for its pose (standing, crouching, swimming).
 pub(crate) fn player_eye(t: &Target) -> f64 {
-    match t.shape.height {
-        h if h < 1.0 => 0.4,
-        h if h < 1.6 => 1.27,
-        _ => crate::player::EYE_HEIGHT,
-    }
+    t.eye_height()
 }
 
 /// Java's `LookControl` state and the `yHeadRot`/`xRot` it drives (none
@@ -457,9 +453,9 @@ impl Mob {
         }
     }
 
-    /// The eye (Java's default eye height, 0.85 of the box).
+    /// The eye (`getEyePosition`: the kind's own eye height, Track 2d).
     pub(crate) fn look_eye(&self) -> DVec3 {
-        self.pos + DVec3::Y * (self.shape().height * 0.85)
+        self.pos + DVec3::Y * self.eye_height()
     }
 
     fn look_ready(&mut self) {

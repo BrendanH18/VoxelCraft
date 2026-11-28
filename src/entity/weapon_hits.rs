@@ -191,7 +191,7 @@ impl Entities {
     pub fn wind_burst_mobs(&mut self, center: DVec3, multiplier: f32, exposure: impl Fn(DVec3, DVec3) -> f32) {
         for m in self.mobs.iter_mut().filter(|m| m.alive()) {
             let (min, max) = m.aabb();
-            let eye = m.pos + DVec3::Y * (m.shape().height * 0.85);
+            let eye = m.look_eye();
             let seen = exposure(min, max);
             if let Some(push) =
                 crate::weapons::mace::wind_burst_push(center, m.pos, eye, seen, multiplier, m.knockback_resistance())

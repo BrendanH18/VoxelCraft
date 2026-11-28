@@ -23,8 +23,6 @@
 //! Seats: a baby hoglin carries its rider at 0.875 (an adult at 1.49375), a
 //! baby piglin at its height 0.98, and a baby piglin rides 0.1875 above
 //! its feet (its `VEHICLE` attachment).
-use glam::DVec3;
-
 use super::mounts::MOB_VEHICLE;
 use super::{Ctx, Entities, MobKind, MobWorld};
 
@@ -96,13 +94,13 @@ impl Entities {
             // `PiglinSpecificSensor`.
             if ride.scan_in == 0 {
                 ride.scan_in = SENSE_TICKS;
-                let eye = m.pos + DVec3::Y * (m.shape().height * 0.85);
+                let eye = m.look_eye();
                 ride.seen = self
                     .mobs
                     .iter()
                     .filter(|h| h.kind == MobKind::Hoglin && h.baby && h.alive())
                     .filter(|h| h.pos.distance_squared(m.pos) <= SENSE_RANGE * SENSE_RANGE)
-                    .filter(|h| super::mob::line_of_sight(world, eye, h.pos + DVec3::Y * (h.shape().height * 0.85)))
+                    .filter(|h| super::mob::line_of_sight(world, eye, h.look_eye()))
                     .min_by(|a, b| a.pos.distance_squared(m.pos).total_cmp(&b.pos.distance_squared(m.pos)))
                     .map(|h| h.uid);
             }
@@ -202,6 +200,7 @@ mod tests {
     use crate::physics::test_util::Grid;
     use crate::simulation::lighting::SpawnLight;
     use crate::world::terrain::Dimension;
+    use glam::DVec3;
 
     fn ctx() -> Ctx {
         Ctx {

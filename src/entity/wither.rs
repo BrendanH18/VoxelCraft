@@ -346,16 +346,12 @@ impl Entities {
     /// attacked (`canAttack`: alive, a targetable player or a non-undead mob).
     fn foe_at(&self, ctx: &Ctx, foe: Foe) -> Option<(DVec3, f64)> {
         match foe {
-            Foe::Player(id) => ctx
-                .players
-                .iter()
-                .find(|t| t.id == id && t.alive && t.targetable)
-                .map(|t| (t.pos, t.shape.height * 0.9)),
-            Foe::Mob(uid) => self
-                .mobs
-                .iter()
-                .find(|m| m.uid == uid && m.alive() && !friend(m.kind))
-                .map(|m| (m.pos, m.shape().height * 0.85)),
+            Foe::Player(id) => {
+                ctx.players.iter().find(|t| t.id == id && t.alive && t.targetable).map(|t| (t.pos, t.eye_height()))
+            }
+            Foe::Mob(uid) => {
+                self.mobs.iter().find(|m| m.uid == uid && m.alive() && !friend(m.kind)).map(|m| (m.pos, m.eye_height()))
+            }
         }
     }
 
@@ -382,7 +378,7 @@ impl Entities {
                 let r = t.detection_range(range);
                 let d2 = t.pos.distance_squared(w.pos);
                 if d2 <= r * r {
-                    out.push((t.pos.distance_squared(from), Foe::Player(t.id), t.pos, t.shape.height * 0.9));
+                    out.push((t.pos.distance_squared(from), Foe::Player(t.id), t.pos, t.eye_height()));
                 }
             }
         }
@@ -391,7 +387,7 @@ impl Entities {
             if j != me && m.alive() && !friend(m.kind) && inside(m.pos, m.shape().height) {
                 let d2 = m.pos.distance_squared(w.pos);
                 if d2 <= range * range {
-                    out.push((m.pos.distance_squared(from), Foe::Mob(m.uid), m.pos, m.shape().height * 0.85));
+                    out.push((m.pos.distance_squared(from), Foe::Mob(m.uid), m.pos, m.eye_height()));
                 }
             }
         });
@@ -900,7 +896,7 @@ impl Entities {
             let Some((damage, knockback)) = super::explosion_damage(power, m.pos.distance(center), exposure) else {
                 continue;
             };
-            let eye = m.pos + DVec3::Y * (m.shape().height * 0.85);
+            let eye = m.look_eye();
             let push = (eye - center).normalize_or_zero() * knockback;
             m.wither_credit = KILL_CREDIT_SECS;
             if m.blast(damage, push, &mut self.rng) {

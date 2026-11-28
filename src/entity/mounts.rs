@@ -1294,7 +1294,7 @@ impl Entities {
                     .map(|w| w.pos + DVec3::Y * (w.shape().height / 3.0))
             };
             let Some(target) = target else { continue };
-            let head = m.pos + DVec3::Y * (m.shape().height * 0.85);
+            let head = m.look_eye();
             let mouth = head + (target - head).with_y(0.0).normalize_or_zero() * 0.5;
             if (target - mouth).length_squared() > 16.0 * 16.0 {
                 continue;

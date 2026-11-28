@@ -217,7 +217,7 @@ impl<W: MobWorld + ?Sized> Dolphin<'_, W> {
     }
 
     fn sees(&self, at: DVec3) -> bool {
-        let eye = self.m.pos + DVec3::Y * (self.m.shape().height * 0.85);
+        let eye = self.m.look_eye();
         line_of_sight(self.w, eye, at)
     }
 
@@ -262,7 +262,7 @@ impl<W: MobWorld + ?Sized> Host for Dolphin<'_, W> {
                 if self.rng.next_f32() >= 0.02 {
                     return false;
                 }
-                let eye = self.m.pos + DVec3::Y * (self.m.shape().height * 0.85);
+                let eye = self.m.look_eye();
                 self.g.look_at = self.nearest_player(6.0, eye);
                 self.g.look_at.is_some()
             }
@@ -571,7 +571,7 @@ impl<W: MobWorld + ?Sized> Dolphin<'_, W> {
             }
         }
         self.g.attack_in = (self.g.attack_in - 1).max(0);
-        if self.g.attack_in <= 0 && self.in_reach(&t) && self.sees(t.pos + DVec3::Y * t.shape.height * 0.85) {
+        if self.g.attack_in <= 0 && self.in_reach(&t) && self.sees(t.eye()) {
             self.g.attack_in = 20;
             self.m.attack_anim = 0.3;
             let flat = (t.pos - self.m.pos).with_y(0.0);
@@ -677,7 +677,7 @@ impl<W: MobWorld + ?Sized> Dolphin<'_, W> {
         let keep = t.targetable
             && t.pos.distance_squared(self.m.pos) <= FOLLOW_RANGE * FOLLOW_RANGE
             && self.m.within_home(t.pos.floor().as_ivec3());
-        if keep && self.sees(t.pos + DVec3::Y * t.shape.height * 0.85) {
+        if keep && self.sees(t.eye()) {
             self.g.unseen = 0;
         } else if keep {
             self.g.unseen += 1;
@@ -783,7 +783,7 @@ impl Entities {
             let steered = |c: &&super::super::minecart::Minecart| c.kind.boat().is_some() && inside(c.pos, 5.0);
             let boats: Vec<PlayerId> = self.minecarts.iter().filter(steered).filter_map(|c| c.rider).collect();
             let followed = m.dolphin().and_then(|d| d.boat).map_or((false, false), |id| (riding(id), moving(id)));
-            let eye = m.pos + DVec3::Y * (shape.height * 0.85);
+            let eye = m.look_eye();
             // `getNearestEntity` with `TargetingConditions`: the nearest of
             // the guardians it can see.
             let mut nearest: Option<(f64, usize)> = None;
@@ -795,7 +795,7 @@ impl Entities {
                     && inside(g.pos, 8.0)
                     && d2 <= 64.0
                     && nearest.is_none_or(|(bd, bj)| d2 < bd || d2 == bd && j < bj)
-                    && line_of_sight(w, eye, g.pos + DVec3::Y * (g.shape().height * 0.85))
+                    && line_of_sight(w, eye, g.look_eye())
                 {
                     nearest = Some((d2, j));
                 }
@@ -825,6 +825,7 @@ impl Entities {
                 continue;
             }
             let (pos, yrot, pitch, shape, alive) = (m.pos, m.yrot(), m.move_ctl.pitch, m.shape(), m.alive());
+            let eye = m.look_eye();
             // v1.0 gap Track 3b: `AgeableMob.aiStep`'s happy-villager
             // particle every fourth tick of a forced growth's 40, one at a
             // time somewhere over the dolphin (`getRandomX(1)`,
@@ -863,7 +864,7 @@ impl Entities {
                     (0.3 * ps * 1.5) as f64,
                     (0.3 * yc * pc + dir.sin() * pow) as f64,
                 ) / super::swim::TICK;
-                let at = pos + DVec3::Y * (shape.height * 0.85 - 0.3);
+                let at = eye - DVec3::Y * 0.3;
                 self.items.push(crate::entity::ItemEntity::new(stack, at, vel, 2.0, &mut self.rng));
             }
             let d = self.mobs[i].dolphin().unwrap();

@@ -119,9 +119,9 @@ impl Mob {
         (weapon == Some(Weapon::GoldenSpear)).then_some(crate::item::Tier::Gold)
     }
 
-    /// The eye (Java's eye height is close to 0.85 of the box for humanoids).
+    /// The eye (`getEyePosition`, the kind's own height since Track 2d).
     pub(crate) fn spear_eye(&self) -> DVec3 {
-        self.pos + DVec3::Y * (self.shape().height * 0.85)
+        self.look_eye()
     }
 
     /// `Mob.lookAt(entity, yMax, xMax)` on the body's `yRot` (its `xRot`

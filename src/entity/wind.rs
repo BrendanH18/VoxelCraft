@@ -97,7 +97,7 @@ impl Entities {
             if !m.alive() || m.pos.distance(burst.center) > reach {
                 continue;
             }
-            let eye = m.pos.y + m.shape().height * 0.85;
+            let eye = m.look_eye().y;
             if let Some(push) = burst.push(world, m.pos, eye, m.aabb(), 0.0) {
                 m.vel += push;
                 m.on_ground = false;

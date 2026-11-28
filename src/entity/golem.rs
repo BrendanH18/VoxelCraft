@@ -216,11 +216,11 @@ impl Entities {
                     MobKind::IronGolem if self.player_foe(i, ctx).is_some() => self
                         .player_foe(i, ctx)
                         .filter(|p| p.pos.distance_squared(pos) < GOLEM_RANGE * GOLEM_RANGE)
-                        .map(|p| p.pos),
+                        .map(|p| (p.pos, p.eye_height())),
                     MobKind::IronGolem => self
                         .mob_index
                         .nearest(&self.mobs, pos, GOLEM_RANGE, |o| o.kind.is_hostile() && o.kind != MobKind::Creeper)
-                        .map(|j| self.mobs[j].pos),
+                        .map(|j| (self.mobs[j].pos, self.mobs[j].eye_height())),
                     MobKind::Zombie | MobKind::Husk | MobKind::Drowned | MobKind::ZombieVillager => self
                         .mob_index
                         .nearest(&self.mobs, pos, GOLEM_RANGE, |o| o.kind == MobKind::Villager)
@@ -228,13 +228,14 @@ impl Entities {
                             !ctx.nearest_target(pos)
                                 .is_some_and(|p| p.pos.distance_squared(pos) < self.mobs[j].pos.distance_squared(pos))
                         })
-                        .map(|j| self.mobs[j].pos),
+                        .map(|j| (self.mobs[j].pos, self.mobs[j].eye_height())),
                     // Wandering traders flee through `AvoidEntityGoal` (`mob::goals`).
                     // Java creepers do not flee golems (they flee cats/ocelots).
                     _ => None,
                 }
             };
-            self.mobs[i].hunt = hunt;
+            self.mobs[i].hunt = hunt.map(|h| h.0);
+            self.mobs[i].hunt_eye = hunt.map_or(1.0, |h| h.1);
             self.mobs[i].strike = false;
         }
     }

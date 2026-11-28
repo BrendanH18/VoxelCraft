@@ -184,11 +184,11 @@ impl Mob {
     }
 
     fn eye_pos(&self) -> DVec3 {
-        self.pos + DVec3::Y * (self.shape().height * 0.85)
+        self.look_eye()
     }
 
     fn sees(&self, world: &(impl MobWorld + ?Sized), t: &Target) -> bool {
-        line_of_sight(world, self.eye_pos(), t.pos + DVec3::Y * (t.shape.height * 0.9))
+        line_of_sight(world, self.eye_pos(), t.eye())
     }
 
     /// `NearestAttackableTargetGoal` and `TargetGoal` for the shared chase.
@@ -523,7 +523,7 @@ impl Mob {
     fn face_target(&mut self, t: &Target) {
         use super::spear::SPEAR_GOAL_TURN;
         self.turn_body_to(t.pos, SPEAR_GOAL_TURN);
-        self.set_look_at(t.pos + DVec3::Y * (t.shape.height * 0.9), SPEAR_GOAL_TURN, SPEAR_GOAL_TURN);
+        self.set_look_at(t.eye(), SPEAR_GOAL_TURN, SPEAR_GOAL_TURN);
     }
 
     /// `LandRandomPos.getPosAway(mob, min, max, vertical, avoid)`.

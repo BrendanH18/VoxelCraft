@@ -17,26 +17,27 @@ use crate::simulation::effects::Effect;
 #[derive(Clone, Copy)]
 enum Aim<'a> {
     Player(&'a Target),
-    Mob(u32, DVec3, Shape),
+    /// uid, feet, box and eye height.
+    Mob(u32, DVec3, Shape, f64),
 }
 
 impl Aim<'_> {
     fn pos(&self) -> DVec3 {
         match self {
             Aim::Player(t) => t.pos,
-            Aim::Mob(_, p, _) => *p,
+            Aim::Mob(_, p, ..) => *p,
         }
     }
     fn shape(&self) -> Shape {
         match self {
             Aim::Player(t) => t.shape,
-            Aim::Mob(_, _, s) => *s,
+            Aim::Mob(_, _, s, _) => *s,
         }
     }
     fn eye(&self) -> DVec3 {
         match self {
-            Aim::Player(t) => t.pos + DVec3::Y * crate::player::EYE_HEIGHT,
-            Aim::Mob(_, p, s) => *p + DVec3::Y * (s.height * 0.85),
+            Aim::Player(t) => t.eye(),
+            Aim::Mob(_, p, _, e) => *p + DVec3::Y * *e,
         }
     }
     fn foe(&self) -> Foe {
@@ -91,8 +92,8 @@ impl Mob {
         full: bool,
     ) -> Option<Aim<'a>> {
         let s = self.illager.as_ref()?;
-        if let Some((uid, pos, shape)) = s.foe_at.filter(|f| s.hurt_by == Some(f.0)) {
-            return Some(Aim::Mob(uid, pos, shape));
+        if let Some((uid, pos, shape, eye)) = s.foe_at.filter(|f| s.hurt_by == Some(f.0)) {
+            return Some(Aim::Mob(uid, pos, shape, eye));
         }
         let foe_at = s.foe_at;
         // Stunned or roaring ravagers see nothing (`hasLineOfSight`).
@@ -108,7 +109,7 @@ impl Mob {
         if let Some(t) = player {
             return Some(Aim::Player(t));
         }
-        foe_at.map(|(uid, pos, shape)| Aim::Mob(uid, pos, shape))
+        foe_at.map(|(uid, pos, shape, eye)| Aim::Mob(uid, pos, shape, eye))
     }
 
     fn illager_goals<W: MobWorld + ?Sized>(
@@ -279,7 +280,7 @@ impl Mob {
         let s = self.illager.as_mut().unwrap();
         s.attack_wait = s.attack_wait.saturating_sub(ticks);
         self.face(aim.eye());
-        let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
+        let eye = self.look_eye();
         let sees = line_of_sight(world, eye, aim.eye());
         // Riding a ravager, the attack box spans the mount's too.
         let (hw, deflate) = match (self.kind, self.riding) {
@@ -645,7 +646,7 @@ impl Mob {
             }
             return None;
         };
-        let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
+        let eye = self.look_eye();
         let sees = line_of_sight(world, eye, aim.eye());
         let dist2 = self.pos.distance_squared(aim.pos());
         let s = self.illager.as_mut()?;
@@ -694,7 +695,7 @@ impl Mob {
     /// arrows spread by Multishot's angles.
     fn loose_arrows(&mut self, aim: Aim, count: u32, ctx: &Ctx, rng: &mut Rng, events: &mut Vec<EntityEvent>) {
         let _ = ctx;
-        let from = self.pos + DVec3::Y * (self.shape().height * 0.85 - 0.1);
+        let from = self.look_eye() - DVec3::Y * 0.1;
         let target = aim.pos() + DVec3::Y * (aim.shape().height / 3.0);
         let d = target - from;
         let horizontal = d.with_y(0.0).length();
@@ -752,7 +753,7 @@ impl Mob {
             return None;
         };
         let enchants = crossbow.active_enchants();
-        let eye = self.pos + DVec3::Y * (self.shape().height * 0.85);
+        let eye = self.look_eye();
         let sees = line_of_sight(world, eye, aim.eye());
         let dist2 = self.pos.distance_squared(aim.pos());
         let charge = il::charge_ticks(enchants.level(crate::enchant::Enchantment::QuickCharge));
