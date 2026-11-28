@@ -1823,6 +1823,11 @@ impl Game {
             if pos.y == i32::MIN {
                 pos.y = self.world.generator.column(pos.x, pos.z).height + 1;
             }
+            // Fire in an obsidian frame lights it, as `BaseFireBlock.onPlace`
+            // does in Java (v1.0 gap Track 5c: how captures build a portal).
+            if block == Block::FIRE && self.world.light_portal(pos) {
+                continue;
+            }
             // A double plant's lower half brings its upper half, as item placement does.
             self.world.before_overworld_place(pos, block);
             if !self.world.set_block(pos, block) {
@@ -2512,11 +2517,7 @@ impl Game {
                 )
             }),
             rain: scene.rain,
-            night_vision: self
-                .session
-                .vitals
-                .effects
-                .vision(scene.time, self.session.player.head_in_water(&self.world)),
+            night_vision: atmosphere.night_vision,
             darkness: crate::render::Darkness::of(&self.session.vitals.effects, alpha as f32),
             ui,
             // v0.18 Track 2: a menu over the world blurs what is under it.

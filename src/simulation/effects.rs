@@ -1055,13 +1055,19 @@ impl Effects {
         self.has(Effect::WaterBreathing) || self.has(Effect::ConduitPower)
     }
 
-    /// The light map's night-vision scale: Night Vision's, else full
-    /// underwater vision with Conduit Power while the eyes are in water
-    /// (`LightTexture`; Java ramps the underwater vision in over the first
-    /// 30 seconds under water, which isn't modelled).
-    pub fn vision(&self, time: f32, eye_in_water: bool) -> f32 {
-        let night = self.night_vision(time);
-        if night > 0.0 || !eye_in_water || !self.has(Effect::ConduitPower) { night } else { 1.0 }
+    /// The lightmap's night-vision strength (`LightmapRenderStateExtractor
+    /// .extract`'s `nightVisionEffectIntensity`): Night Vision's scale while
+    /// it is on, else the underwater vision `water_vision` (the client's
+    /// `getWaterVision`, 0 with the eyes out of water) with Conduit Power,
+    /// else none. `partial` is the frame's partial tick.
+    pub fn lightmap_vision(&self, partial: f32, water_vision: f32) -> f32 {
+        if self.has(Effect::NightVision) {
+            self.night_vision(partial)
+        } else if water_vision > 0.0 && self.has(Effect::ConduitPower) {
+            water_vision
+        } else {
+            0.0
+        }
     }
 
     /// The Luck attribute the effects add: +1 per Luck level, -1 per Bad Luck level.
@@ -1128,13 +1134,16 @@ impl Effects {
         3.0 * self.levels(Effect::Strength) as f32 - 4.0 * self.levels(Effect::Weakness) as f32
     }
 
-    /// How strongly night vision brightens the view, 0..=1: full, then
-    /// flickering over its last 10 seconds like Java's.
-    pub fn night_vision(&self, time: f32) -> f32 {
+    /// How strongly night vision brightens the view (`GameRenderer
+    /// .nightVisionScale`): 1, and over its last 200 ticks (10 seconds)
+    /// `0.7 + sin((duration - partial) · π · 0.2) · 0.3`, a flicker between
+    /// 0.4 and 1 every 10 ticks; 0 without the effect. `partial` is the
+    /// frame's partial tick.
+    pub fn night_vision(&self, partial: f32) -> f32 {
         match self.get(Effect::NightVision) {
             None => 0.0,
-            Some(a) if a.ticks > 200 => 1.0,
-            Some(a) => 0.7 + (((a.ticks as f32 - time * TPS) * std::f32::consts::PI * 0.2).sin() * 0.3).abs(),
+            Some(a) if !a.ends_within(200) => 1.0,
+            Some(a) => 0.7 + ((a.ticks as f32 - partial) * std::f32::consts::PI * 0.2).sin() * 0.3,
         }
     }
 
@@ -1465,7 +1474,7 @@ mod tests {
         e.add(Effect::Weakness, 0, 1800);
         assert_eq!(e.attack_bonus(), 2.0);
         e.add(Effect::NightVision, 0, 150);
-        assert!((0.7..=1.0).contains(&e.night_vision(3.0)));
+        assert!((0.4..=1.0).contains(&e.night_vision(0.5)));
         let back = Effects::deserialize(&e.serialize());
         assert_eq!(back.active, e.active);
         assert_eq!(Effects::deserialize("bogus:1:2|speed:x:3|speed:0:0").active, []);
@@ -1524,6 +1533,39 @@ mod tests {
 
     /// A LAN guest gets fresh effects in every snapshot: the blend and the
     /// tick count carry over and its own ticks move them on.
+    /// `GameRenderer.nightVisionScale` and the lightmap's choice in
+    /// `LightmapRenderStateExtractor.extract`.
+    #[test]
+    fn night_vision_flickers_over_its_last_ten_seconds_like_javas_scale() {
+        let mut e = Effects::default();
+        assert_eq!(e.night_vision(0.0), 0.0);
+        e.add(Effect::NightVision, 0, 201);
+        assert_eq!(e.night_vision(0.9), 1.0);
+        e.add(Effect::NightVision, 0, INFINITE);
+        assert_eq!(e.night_vision(0.5), 1.0);
+        e.clear();
+        let java = |duration: f32| 0.7 + (duration * std::f32::consts::PI * 0.2).sin() * 0.3;
+        e.add(Effect::NightVision, 0, 200);
+        for partial in [0.0, 0.25, 0.5, 0.99] {
+            assert!((e.night_vision(partial) - java(200.0 - partial)).abs() < 1e-6);
+        }
+        // A full swing every ten ticks, down to 0.4 (no absolute value).
+        let mut e = Effects::default();
+        e.add(Effect::NightVision, 0, 193);
+        assert!((e.night_vision(0.5) - 1.0).abs() < 1e-5, "{}", e.night_vision(0.5));
+        e.add(Effect::NightVision, 0, 198);
+        assert!((e.night_vision(0.5) - 0.4).abs() < 1e-5, "{}", e.night_vision(0.5));
+        // The lightmap: Night Vision's scale, else Conduit Power's underwater
+        // vision, else nothing.
+        let mut c = Effects::default();
+        c.add(Effect::ConduitPower, 0, 400);
+        assert_eq!(c.lightmap_vision(0.0, 0.0), 0.0);
+        assert_eq!(c.lightmap_vision(0.0, 0.36), 0.36);
+        c.add(Effect::NightVision, 0, 198);
+        assert!((c.lightmap_vision(0.5, 1.0) - 0.4).abs() < 1e-5);
+        assert_eq!(Effects::default().lightmap_vision(0.0, 1.0), 0.0);
+    }
+
     #[test]
     fn a_lan_guest_keeps_its_darkness_blend_across_snapshots() {
         let mut view = Effects::default();

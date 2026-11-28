@@ -168,7 +168,8 @@ pub struct FrameParams {
     /// Rain strength 0..1: hides the sun, moon and stars and thickens the
     /// clouds.
     pub rain: f32,
-    /// Night vision strength 0..1 (see `Effects::night_vision`).
+    /// The lightmap's night-vision strength 0..1 (Java's
+    /// `nightVisionEffectIntensity`; see `Effects::lightmap_vision`).
     pub night_vision: f32,
     /// Darkness (`LightmapRenderStateExtractor`): its blend factor, which
     /// lowers the Brightness option by as much, and its pulsing scale, which
@@ -2121,6 +2122,16 @@ mod tests {
                     .unwrap_or_else(|e| panic!("{name}, paged={paged:?}: {}", e.emit_to_string(&source)));
             }
         }
+    }
+
+    /// v1.0 gap Track 5c: the translucent shader animates the portal's own
+    /// layer, which sits on the first texture page however the layers are
+    /// paged.
+    #[test]
+    fn the_portal_animation_names_the_portal_layer() {
+        let layer = crate::world::block::tex::PORTAL;
+        assert!(include_str!("shaders/chunk.wgsl").contains(&format!("const PORTAL_LAYER: u32 = {layer}u;")));
+        assert!(layer < 256, "the portal's second sample reads the first page");
     }
 
     fn runs(offsets: &[u32], mask: u8) -> Vec<(u32, u32)> {

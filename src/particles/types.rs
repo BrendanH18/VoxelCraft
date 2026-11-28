@@ -170,6 +170,9 @@ pub struct System {
     /// v0.16 Track H: where potent sulfur's `animateTick` played its
     /// noxious gas sound since the game last asked.
     pub gas_sounds: Vec<DVec3>,
+    /// v1.0 gap Track 5c: where a Nether portal's `animateTick` played its
+    /// whoosh since the game last asked (the block's centre).
+    pub portal_sounds: Vec<DVec3>,
 }
 
 impl System {
@@ -182,6 +185,7 @@ impl System {
             tracking: VecDeque::with_capacity(256),
             fireworks: VecDeque::with_capacity(64),
             gas_sounds: Vec::new(),
+            portal_sounds: Vec::new(),
         }
     }
 

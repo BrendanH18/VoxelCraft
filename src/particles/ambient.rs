@@ -153,6 +153,10 @@ impl System {
                 self.burst(Burst::new(Kind::LavaDrip, pos, 1), setting);
             }
         } else if block.is_nether_portal() {
+            // `animateTick`: the whoosh one time in 100, at the block's centre.
+            if self.rng.next_int(100) == 0 && self.portal_sounds.len() < 16 {
+                self.portal_sounds.push(base + DVec3::splat(0.5));
+            }
             for _ in 0..4 {
                 let mut pos = base + random_vec(&mut self.rng);
                 let mut velocity = (random_vec(&mut self.rng) - DVec3::splat(0.5)) * 0.5;

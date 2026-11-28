@@ -67,19 +67,20 @@ fn apply_fog(color: vec3<f32>, d: vec2<f32>) -> vec3<f32> {
     return from_srgb(mix(to_srgb(color), g.fog_srgb.rgb, f));
 }
 
-// Night vision (Java's lightmap): brightens every light level toward full,
-// keeping its hue; g.effects.x is its strength. Then Darkness: lightmap.fsh
-// takes `DarknessScale` (g.effects.z, pulsing) off the light before its
-// clamp, so `raw`, the light before the clamp, puts back what lay above
-// full. Brightness follows, lowered by Darkness's blend on the CPU.
-fn night_vision(lit: vec3<f32>, raw: vec3<f32>) -> vec3<f32> {
-    let peak = max(max(lit.r, lit.g), max(lit.b, 1e-3));
-    let over = max(raw - vec3<f32>(1.0), vec3<f32>(0.0));
-    return brightness(mix(lit, lit / peak, g.effects.x) + over - vec3<f32>(g.effects.z));
+// v1.0 gap Track 5c: lightmap.fsh's ambient term, added before sky and
+// block light: the dimension's `visual/ambient_light_color`, or Night
+// Vision's `visual/night_vision_color` (#999999, in every dimension) times
+// its strength (g.effects.x), whichever is brighter.
+const NIGHT_VISION_COLOR: f32 = 153.0 / 255.0;
+fn ambient_light() -> vec3<f32> {
+    return max(g.ambient.rgb, vec3<f32>(NIGHT_VISION_COLOR * g.effects.x));
 }
-// The lightmap of an unclamped light sum.
+// The lightmap of an unclamped light sum, as lightmap.fsh finishes it:
+// Darkness's pulsing `DarknessScale` (g.effects.z) comes off before the
+// clamp, then the Brightness option (lowered by Darkness's blend on the
+// CPU) clamps and curves it.
 fn lightmap(raw: vec3<f32>) -> vec3<f32> {
-    return night_vision(clamp(raw, vec3<f32>(0.0), vec3<f32>(1.0)), raw);
+    return brightness(raw - vec3<f32>(g.effects.z));
 }
 
 // The Brightness option (Java's gamma, g.effects.y): lightmap.fsh moves each
@@ -345,13 +346,12 @@ fn overworld_parts(sky_level: f32, block_level: f32, normal: vec3<f32>) -> Overw
     let p = (2.0 * block_level - 1.0) * (2.0 * block_level - 1.0);
     let hue = mix(vec3<f32>(1.0, 0.847, 0.549), vec3<f32>(1.0), 0.9 * p);
     let block = hue * (block_level / (4.0 - 3.0 * block_level)) * 1.4;
-    let raw = g.ambient.rgb + sky + block;
-    let java = clamp(raw, vec3<f32>(0.0), vec3<f32>(1.0));
+    let raw = ambient_light() + sky + block;
     let s = max(max(sky.r, sky.g), sky.b);
     let b = max(max(block.r, block.g), block.b);
     let share = clamp(s / max(s + b, 1e-4), 0.0, 1.0);
     let sun = mix(vec3<f32>(1.0), daylight_tint(normal), share);
-    return OverworldLight(from_srgb(night_vision(java, raw)), sun);
+    return OverworldLight(from_srgb(lightmap(raw)), sun);
 }
 
 // Java 26.3 adds the environment ambient colour to sky and block light.
@@ -359,9 +359,10 @@ fn overworld_parts(sky_level: f32, block_level: f32, normal: vec3<f32>) -> Overw
 fn dimension_light(sky: vec3<f32>, torch: vec3<f32>) -> vec3<f32> {
     if g.ambient.w > 0.0 {
         // Unclamped: `lightmap` clamps it after Darkness, as Java does.
-        return g.ambient.rgb + sky + torch;
+        return ambient_light() + sky + torch;
     }
-    return max(sky, torch) * 0.96 + 0.04;
+    // The Overworld's ambient #0a0a0a (about 0.04), or night vision's.
+    return max(sky, torch) * 0.96 + max(ambient_light(), vec3<f32>(0.04));
 }
 
 // The sky's colour in direction `dir`, as sky.wgsl draws it: Java's sky
@@ -397,9 +398,28 @@ fn fs_cutout(in: VsOut) -> @location(0) vec4<f32> {
     return vec4<f32>(apply_fog(tex.rgb * select(lighting(in), vec3<f32>(1.0), fire), in.dist), 1.0);
 }
 
+// v1.0 gap Track 5c: the Nether portal's animated texture. Java's
+// `nether_portal.png` runs 32 frames of one tick each (its `.mcmeta` sets no
+// frame time); the game's single original layer moves on the same clock as
+// two copies scrolled diagonally opposite ways, a texel every second frame,
+// so the swirl churns and repeats every 32 ticks. The layer is on the first
+// texture page with or without paging, so the second copy samples it there.
+const PORTAL_LAYER: u32 = 81u;
+fn portal_step() -> f32 {
+    return f32((u32(g.sun.w * 20.0) % 32u) / 2u) / 16.0;
+}
+
 @fragment
 fn fs_translucent(in: VsOut) -> @location(0) vec4<f32> {
-    let tex = sample_block(in.uv, in.layer);
+    let portal = in.layer == PORTAL_LAYER;
+    let step = portal_step();
+    let dx = dpdx(in.uv);
+    let dy = dpdy(in.uv);
+    var tex = sample_block(in.uv + select(vec2<f32>(0.0), vec2<f32>(step, step), portal), in.layer);
+    if portal {
+        let other = textureSampleGrad(blocks, blocks_sampler, in.uv + vec2<f32>(-step, step), PORTAL_LAYER, dx, dy);
+        tex = (tex + other) * 0.5;
+    }
     var color = tex.rgb * lighting(in);
     var alpha = tex.a;
     if g.environment.y > 0.5 && in.layer == 5u && in.normal.y > 0.5 && in.rel.y < 0.0 {

@@ -577,6 +577,11 @@ pub fn outline(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block) 
 
 /// [`outline`] with what is above the cell (walls read it).
 pub fn outline_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block, above: Above) -> Boxes {
+    // v1.0 gap Track 5c: the Nether portal's plane along its axis.
+    if block.is_nether_portal() {
+        let along_x = super::portal::along_x(block, neighbour(Facing::East), neighbour(Facing::West));
+        return Boxes::from_box(super::portal::plane(along_x));
+    }
     if let Some(boxes) = super::end_blocks::outline(block, &neighbour, below, above.block) {
         return boxes;
     }

@@ -64,6 +64,12 @@ impl Game {
                 );
             }
         }
+        // `NetherPortalBlock.animateTick`: `PORTAL_AMBIENT` at volume 0.5,
+        // pitch 0.8 to 1.2.
+        for pos in std::mem::take(&mut self.particles.portal_sounds) {
+            let ambient = crate::audio::sounds::Sound::Portal(crate::audio::sounds::PortalCue::Ambient);
+            self.audio.play(ambient, Some(pos), 0.5, (0.8, 1.2));
+        }
         for pos in std::mem::take(&mut self.particles.gas_sounds) {
             let cue = voxelcraft::world::potent_sulfur::Cue::NoxiousGas;
             self.audio.play(crate::audio::Sound::Geyser(cue), Some(pos), 1.0, (1.0, 1.0));

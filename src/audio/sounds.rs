@@ -266,6 +266,35 @@ pub enum Sound {
     /// v1.0 gap Track 3b: camels sitting, standing and dashing, and mounts
     /// made mad.
     Mount(crate::entity::mounts::Cue),
+    /// v1.0 gap Track 5c: the Nether portal's own sounds (`block.portal.*`).
+    Portal(PortalCue),
+}
+
+/// v1.0 gap Track 5c: Java's `PORTAL_AMBIENT`, `PORTAL_TRIGGER` and
+/// `PORTAL_TRAVEL`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum PortalCue {
+    /// A portal block's whoosh (`NetherPortalBlock.animateTick`, one time in
+    /// 100, at the block): "Portal whooshes".
+    Ambient,
+    /// Stepping into a portal (`LocalPlayer.handlePortalTransitionEffect`):
+    /// "Portal noise intensifies".
+    Trigger,
+    /// Arriving through one (level event 1032): "Portal noise fades".
+    Travel,
+}
+
+impl PortalCue {
+    pub const ALL: [PortalCue; 3] = [PortalCue::Ambient, PortalCue::Trigger, PortalCue::Travel];
+
+    /// The Java sound event.
+    pub fn event(self) -> &'static str {
+        match self {
+            PortalCue::Ambient => "block.portal.ambient",
+            PortalCue::Trigger => "block.portal.trigger",
+            PortalCue::Travel => "block.portal.travel",
+        }
+    }
 }
 
 /// v0.18 Track 9: the five events of a Java `SoundType`.
@@ -346,7 +375,8 @@ impl Sound {
     const CONTAINER_END: usize = Self::BLOCK_END + ContainerCue::ALL.len();
     const SOUL_ESCAPE_END: usize = Self::CONTAINER_END + 1;
     const BUNDLE_END: usize = Self::SOUL_ESCAPE_END + voxelcraft::content::bundle::Cue::ALL.len();
-    pub const COUNT: usize = Self::BUNDLE_END + crate::entity::mounts::Cue::ALL.len();
+    const MOUNT_END: usize = Self::BUNDLE_END + crate::entity::mounts::Cue::ALL.len();
+    pub const COUNT: usize = Self::MOUNT_END + PortalCue::ALL.len();
 
     /// Dense index in `0..COUNT`.
     pub fn key(self) -> usize {
@@ -375,6 +405,7 @@ impl Sound {
             Sound::SoulEscape => Self::CONTAINER_END,
             Sound::Bundle(cue) => Self::SOUL_ESCAPE_END + cue as usize,
             Sound::Mount(cue) => Self::BUNDLE_END + cue as usize,
+            Sound::Portal(cue) => Self::MOUNT_END + cue as usize,
             Sound::Note(i) => 3 * M + 27 + Voice::ALL.len() * CALLS + i as usize,
             Sound::Thunder => Self::BASE_COUNT - 1,
             Sound::Bell => Self::BASE_COUNT - 4,
@@ -509,6 +540,7 @@ impl Sound {
             .chain([Sound::SoulEscape])
             .chain(voxelcraft::content::bundle::Cue::ALL.map(Sound::Bundle))
             .chain(crate::entity::mounts::Cue::ALL.map(Sound::Mount))
+            .chain(PortalCue::ALL.map(Sound::Portal))
     }
 
     /// Stable sound name used when exporting or identifying samples.
@@ -536,6 +568,7 @@ impl Sound {
             Sound::SoulEscape => "particle_soul_escape".into(),
             Sound::Bundle(c) => c.event().replace('.', "_"),
             Sound::Mount(c) => c.key().replace('.', "_"),
+            Sound::Portal(c) => c.event().replace('.', "_"),
             Sound::Thunder => "lightning_thunder".into(),
             Sound::HoneySlide => "honey_block_slide".into(),
             Sound::HoneyDrink => "honey_drink".into(),
@@ -688,6 +721,11 @@ impl Sound {
             // `Camel` and `AbstractHorse` play in their own category
             // (`NEUTRAL`; the dash-ready cue's `level().playSound` too).
             Sound::Mount(_) => SoundSource::Neutral,
+            // `animateTick` plays the whoosh as `BLOCKS`; the trigger and
+            // travel sounds are `SimpleSoundInstance.forLocalAmbience`
+            // (`AMBIENT`, not positioned).
+            Sound::Portal(PortalCue::Ambient) => SoundSource::Blocks,
+            Sound::Portal(_) => SoundSource::Ambient,
             Sound::Mob(voice, _) => voice.source(),
         }
     }
@@ -714,6 +752,7 @@ impl Sound {
             Sound::SoulEscape => 2,
             Sound::Bundle(_) => 2,
             Sound::Mount(_) => 2,
+            Sound::Portal(_) => 1,
             Sound::Warden(_) | Sound::Sculk(_) => 2,
             Sound::Sniffer(_) | Sound::Weapon(_) => 2,
             Sound::Step(_) => 4,
@@ -775,6 +814,7 @@ impl Sound {
             Sound::SoulEscape => soul_escape(&mut rng),
             Sound::Bundle(c) => super::bundle::render(c, &mut rng),
             Sound::Mount(c) => super::mounts::render(c, &mut rng),
+            Sound::Portal(c) => portal(c, &mut rng),
             Sound::Thunder => thunder(&mut rng),
             Sound::HoneySlide => honey_sound(&mut rng, 0.35),
             Sound::HoneyDrink => honey_sound(&mut rng, 0.22),
@@ -1694,6 +1734,55 @@ fn material_sound(m: Material, rng: &mut Rng, kind: Kind) -> Vec<f32> {
 /// v1.0 Track 5: an original stand-in for `particle.soul_escape`: a breathy
 /// wisp of band-passed noise that swells and fades over a faint, falling,
 /// hollow tone. Nothing is sampled.
+/// v1.0 gap Track 5c: the Nether portal's sounds, original recipes on one
+/// voice: a hollow, wavering drone of detuned low tones under a band of
+/// noise whose centre swirls. The whoosh swells and dies away; the trigger
+/// rises in pitch and loudness over four seconds; the travel sound starts
+/// full and falls away.
+fn portal(cue: PortalCue, rng: &mut Rng) -> Vec<f32> {
+    let (secs, peak) = match cue {
+        PortalCue::Ambient => (3.0, 0.45),
+        PortalCue::Trigger => (4.0, 0.6),
+        PortalCue::Travel => (4.5, 0.6),
+    };
+    let env = move |t: f32| match cue {
+        PortalCue::Ambient => (t / 0.8).min(1.0) * ((secs - t) / 1.4).clamp(0.0, 1.0),
+        PortalCue::Trigger => (t / 3.2).min(1.0).powi(2) * ((secs - t) / 0.6).clamp(0.0, 1.0),
+        PortalCue::Travel => (t / 0.12).min(1.0) * (-t / 1.4).exp() * ((secs - t) / 0.5).clamp(0.0, 1.0),
+    };
+    // A pitch multiplier over time.
+    let glide = move |t: f32| match cue {
+        PortalCue::Ambient => 1.0,
+        PortalCue::Trigger => 0.75 + 0.55 * t / secs,
+        PortalCue::Travel => 1.3 - 0.55 * t / secs,
+    };
+    let len = samples(secs);
+    let mut out = vec![0.0; len];
+    for (freq, amp) in [(70.0, 0.32), (105.0, 0.2), (141.0, 0.12)] {
+        for detune in [0.993, 1.007] {
+            let mut phase = 0.0f32;
+            for (i, s) in out.iter_mut().enumerate() {
+                let t = i as f32 / RATE;
+                let wobble = 1.0 + 0.03 * (TAU * 5.3 * t).sin();
+                phase = (phase + TAU * freq * detune * glide(t) * wobble / RATE) % TAU;
+                *s += phase.sin() * env(t) * amp * 0.5;
+            }
+        }
+    }
+    let mut air = noise(rng, len, env);
+    let mut band = Biquad::bandpass(700.0, 2.0);
+    for (i, s) in air.iter_mut().enumerate() {
+        if i % 64 == 0 {
+            let t = i as f32 / RATE;
+            let swirl = 1.0 + 0.45 * (TAU * 0.9 * t).sin();
+            band.retune(Biquad::bandpass(700.0 * glide(t) * swirl, 2.0));
+        }
+        *s = band.process(*s);
+    }
+    mix_into(&mut out, &air, 0.9, 0);
+    dsp::finish(out, peak)
+}
+
 fn soul_escape(rng: &mut Rng) -> Vec<f32> {
     let secs = 0.9;
     let mut out = noise(rng, samples(secs), |t| (t / 0.12).min(1.0) * (1.0 - t / secs).max(0.0).powf(1.6));

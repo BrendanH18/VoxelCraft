@@ -447,6 +447,20 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                         }
                     } else {
                         match b.kind() {
+                            // v1.0 gap Track 5c: a Nether portal is Java's
+                            // plane along its axis, drawn with the shaped blocks.
+                            RenderKind::Translucent if b.is_nether_portal() => {
+                                if face == 0 {
+                                    let along_x = crate::world::portal::along_x(
+                                        b,
+                                        blocks[i as usize + 1],
+                                        blocks[i as usize - 1],
+                                    );
+                                    shaped_cells
+                                        .push((i as usize, Boxes::from_box(crate::world::portal::plane(along_x))));
+                                }
+                                false
+                            }
                             // Low blocks (beds) show their lowered top under anything.
                             RenderKind::Cutout if face == 2 && b.top_drop() > 0 => true,
                             // Ice: the only translucent block that isn't a fluid.
@@ -577,7 +591,17 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                 || b == crate::world::beacon::BEACON
                 || crate::world::cave_blocks::see_through(b)
                 || matches!(b.shaped(), Some(crate::world::block::Shaped::Frame { .. }));
-            let pass = if see_through { CUTOUT } else { OPAQUE };
+            // Java's `nether_portal_ns` and `_ew` models: only the plane's two
+            // broad faces (no cullface, so never hidden by a neighbour), in
+            // the translucent layer its texture's alpha puts it in.
+            let portal = b.is_nether_portal();
+            let pass = if portal {
+                TRANSLUCENT
+            } else if see_through {
+                CUTOUT
+            } else {
+                OPAQUE
+            };
             let (x, y, z) = (i % D - MARGIN, i / (D * D) - MARGIN, i / D % D - MARGIN);
             let layer = tex::tinted(b.info().tex[face], foliage[x + z * CHUNK_SIZE]) as u32;
             if let Some(rail) = b.rail_shape() {
@@ -620,12 +644,22 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                 if r[0] >= r[1] || r[2] >= r[3] {
                     continue;
                 }
+                if portal && bx.max[d] - bx.min[d] == 16 {
+                    continue;
+                }
                 let on_edge = depth == if positive { 16 } else { 0 };
                 let front = if on_edge { i as isize + sd } else { i as isize };
                 if (on_edge && blocks[front as usize].is_opaque()) || boxes.face_hidden(j, d, positive, r) {
                     continue;
                 }
-                let (ao, light) = shade_corners(blocks, sky, blk, front, su, sv, true);
+                // `ModelBlockRenderer` draws a light-emitting block without
+                // ambient occlusion, its faces inside the cell flat with the
+                // cell's own light.
+                let (ao, light) = if portal {
+                    (0xFF, u64::from(sky[i] | blk[i] << 4) * 0x0101_0101)
+                } else {
+                    shade_corners(blocks, sky, blk, front, su, sv, true)
+                };
                 let (ao, light) = (ao as u32, light as u32);
                 let coord = |value: u8, axis: usize| {
                     if b == crate::world::frog_blocks::FROGSPAWN && axis == 1 && value == 2 {
@@ -1181,6 +1215,51 @@ mod tests {
         let m = mesh_blocks(&[([5, 5, 5], vine)]);
         assert_eq!(m.pass_quads(OPAQUE), 0);
         assert!(m.pass_quads(CUTOUT) > 0);
+    }
+
+    /// v1.0 gap Track 5c: a lit portal is Java's `nether_portal_ns` (along
+    /// X) or `nether_portal_ew` (along Z) model: per block, the two broad
+    /// faces of a 4/16 plane through the middle of the cell, translucent,
+    /// with nothing drawn between portal blocks or against the frame, and
+    /// lit flat by the cell's own light (no ambient occlusion, as Java draws
+    /// light-emitting blocks).
+    #[test]
+    fn nether_portals_are_javas_thin_plane_along_their_axis() {
+        for along_x in [true, false] {
+            let at = |a: usize, y: usize| if along_x { [a, y, 5] } else { [5, y, a] };
+            let mut blocks = Vec::new();
+            for a in 4..=7 {
+                for y in 4..=8 {
+                    let edge = a == 4 || a == 7 || y == 4 || y == 8;
+                    let b = if edge { Block::OBSIDIAN } else { crate::world::portal::of_axis(along_x) };
+                    blocks.push((at(a, y), b));
+                }
+            }
+            let m = mesh_blocks(&blocks);
+            let portal = m.quads_of(TRANSLUCENT);
+            assert_eq!(portal.quads.len(), 2 * 6, "along x: {along_x}");
+            let thin = if along_x { 2 } else { 0 };
+            let mut faces = [0; 6];
+            for &q in &portal.quads {
+                assert_eq!(q[1] >> 31, 1, "a detail quad");
+                assert_eq!(detail_layer(q), tex::PORTAL);
+                let cs = corners(q);
+                let face = cs[0].face as usize;
+                faces[face] += 1;
+                assert_eq!(face / 2, thin);
+                let depth = 5.0 + if face.is_multiple_of(2) { 10.0 / 16.0 } else { 6.0 / 16.0 };
+                for c in cs {
+                    assert!((c.pos[thin] - depth).abs() < 1e-6, "{c:?}");
+                    assert_eq!((c.ao, c.block, c.sky), (3, 11, cs[0].sky), "{c:?}");
+                }
+            }
+            assert_eq!(faces[2 * thin], 6);
+            // An older save's portal draws the same once its axis is read
+            // from the frame beside it.
+            let legacy: Vec<_> =
+                blocks.iter().map(|&(p, b)| (p, if b.is_nether_portal() { Block::NETHER_PORTAL } else { b })).collect();
+            assert_eq!(mesh_blocks(&legacy).quads_of(TRANSLUCENT).quads, portal.quads);
+        }
     }
 
     /// A detail quad's texture layer, decoded as `chunk.wgsl` does.
