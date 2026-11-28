@@ -504,7 +504,11 @@ impl Entities {
             // Thrown things are removed when they hit (`Projectile.onHit`).
             let mut gateways = self.fight.as_mut().map(|f| &mut f.gateway_entities);
             self.pearls.retain_mut(|p| {
-                if !world.entity_ticking(p.pos.floor().as_ivec3()) {
+                // v1.0 gap Track 8f: a pearl keeps its own chunk ticking for
+                // its owner (`registerAndUpdateEnderPearlTicket`, radius 2),
+                // so it flies on wherever the terrain is loaded.
+                let cell = p.pos.floor().as_ivec3();
+                if !world.entity_ticking(cell) && !world.loaded(cell) {
                     return true;
                 }
                 let keep = p.update(dt, world, mobs, rng, &mut events, gateways.as_deref_mut(), &boss);
@@ -629,14 +633,7 @@ impl Entities {
                         self.animals_owner_attack(i, owner);
                     }
                 }
-                EntityEvent::OwnerHurt { player, attacker } => {
-                    // Java's OwnerHurtByTargetGoal: wolves go for whatever hurt their owner.
-                    self.animals_defend_owner(attacker, player);
-                    // v1.0 gap Track 2f: the player's `lastHurtByMob`, which
-                    // foxes that trust it defend against.
-                    self.player_hurts = self.player_hurts.wrapping_add(1);
-                    self.player_hurt_by.insert(player, (attacker, self.player_hurts, 0));
-                }
+                EntityEvent::OwnerHurt { player, attacker } => self.mob_hurt_player(player, attacker),
                 EntityEvent::DragonXp { pos, points } => {
                     if self.mob_loot {
                         self.spawn_xp(pos, points);
@@ -718,5 +715,56 @@ impl Entities {
         }
         events.retain(|e| !matches!(e, EntityEvent::Vibration { .. }));
         events
+    }
+}
+
+impl Entities {
+    /// Mob `attacker` hurt `player` (their `lastHurtByMob`): Java's
+    /// `OwnerHurtByTargetGoal` sends their wolves at it, and (v1.0 gap
+    /// Track 2f) foxes that trust them defend against it. v1.0 gap Track
+    /// 8f: also the mob behind a blast that hurt them.
+    pub fn mob_hurt_player(&mut self, player: PlayerId, attacker: u32) {
+        self.animals_defend_owner(attacker, player);
+        self.player_hurts = self.player_hurts.wrapping_add(1);
+        self.player_hurt_by.insert(player, (attacker, self.player_hurts, 0));
+    }
+
+    /// v1.0 gap Track 8f: a blast hurt mob `i`, and `by` was behind it
+    /// (`DamageSource.getEntity`, for primed TNT its owner): `hurtServer`
+    /// makes them its attacker (`setLastHurtByMob`, `lastHurtByPlayer`),
+    /// as a projectile they shot does.
+    pub(super) fn blamed_for_blast(&mut self, i: usize, by: super::trident::Owner, killed: bool) {
+        use super::trident::Owner;
+        let Some((kind, own_uid)) = self.mobs.get(i).map(|m| (m.kind, m.uid)) else { return };
+        match by {
+            Owner::Player(owner) => {
+                if kind == MobKind::Villager {
+                    self.note_villager_hurt(i, owner, killed);
+                }
+                if killed {
+                    return;
+                }
+                if kind == MobKind::Warden {
+                    self.warden_hurt(i, crate::world::vibration::EntityRef::Player(owner), false);
+                }
+                if self.mobs[i].nether.is_some() {
+                    self.nether_hurt(i, nether::Foe::Player(owner));
+                }
+                self.hurt_by_player_target(i, owner);
+                self.animals_owner_attack(i, owner);
+            }
+            // A mob isn't its own attacker (a creeper's blast is its own).
+            Owner::Mob(uid) if uid != own_uid && !killed => {
+                let Some(attacker) = self.mobs.iter().find(|a| a.uid == uid && a.alive()) else { return };
+                if kind == MobKind::Wither {
+                    if super::wither::friend(attacker.kind) {
+                        return;
+                    }
+                    self.wither_hurt_by_mob(i, uid);
+                }
+                self.hurt_by_mob(i, uid, false);
+            }
+            Owner::Mob(_) => {}
+        }
     }
 }

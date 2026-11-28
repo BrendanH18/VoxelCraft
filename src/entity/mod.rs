@@ -85,7 +85,7 @@ pub mod potion;
 mod projectile;
 pub mod raid;
 mod replica;
-mod saved_projectiles;
+pub mod saved_projectiles;
 pub mod sculk_events;
 pub mod shadow;
 pub mod shulker;
@@ -215,6 +215,9 @@ pub enum MobSound {
     /// v1.0 gap Track 2f: the fox's own sounds (aggro, bite, eat, screech,
     /// sleep, sniff, spit).
     Fox(fox::Cue),
+    /// v1.0 gap Track 8f: `Villager.setUnhappy`'s `entity.villager.no`
+    /// with the head shake; true for a child (`getVoicePitch` 0.5 higher).
+    VillagerNo(bool),
 }
 
 /// Something an entity did that the game needs to react to.
@@ -409,8 +412,12 @@ pub enum EntityEvent {
         secs: f32,
     },
     /// A fireball hit a block next to the empty `cell`: light a fire there.
+    /// v1.0 gap Track 8f: `mob_owned` when a mob shot it, which needs
+    /// `mob_griefing` (`SmallFireball.onHitBlock`); a dispensed fire charge
+    /// sets its fire whatever the rule.
     IgniteBlock {
         cell: IVec3,
+        mob_owned: bool,
     },
     /// A thrown ender pearl landed at `pos`: teleport its thrower there.
     PearlLanded {
@@ -1699,13 +1706,13 @@ impl Entities {
     /// it before the blast breaks any blocks: Java hurts entities first, so
     /// the walls about to go still shield them.
     pub fn explode<W: BlockSource + ?Sized>(&mut self, world: &W, center: DVec3, power: f32) {
-        self.blast(world, center, power, false, true);
+        self.blast(world, center, power, false, true, None);
     }
 
     /// As [`Entities::explode`], but mobs it kills count as the player's
     /// (a ghast fireball punched back).
     pub fn explode_credited<W: BlockSource + ?Sized>(&mut self, world: &W, center: DVec3, power: f32) {
-        self.blast(world, center, power, true, true);
+        self.blast(world, center, power, true, true, None);
     }
 
     /// [`Entities::explode`] with its source's rules: `credit_player` as for
@@ -1721,7 +1728,21 @@ impl Entities {
         credit_player: bool,
         breaks_blocks: bool,
     ) {
-        self.blast(world, center, power, credit_player, breaks_blocks);
+        self.blast(world, center, power, credit_player, breaks_blocks, None);
+    }
+
+    /// v1.0 gap Track 8f: [`Entities::explode_with`] with `by` behind the
+    /// blast (`DamageSource.getEntity`: primed TNT's owner, a ghast for its
+    /// fireball's), whom every mob it hurts takes as its attacker.
+    pub fn explode_by<W: BlockSource + ?Sized>(
+        &mut self,
+        world: &W,
+        center: DVec3,
+        power: f32,
+        (credit_player, breaks_blocks): (bool, bool),
+        by: Option<trident::Owner>,
+    ) {
+        self.blast(world, center, power, credit_player, breaks_blocks, by);
     }
 
     fn blast<W: BlockSource + ?Sized>(
@@ -1731,6 +1752,7 @@ impl Entities {
         power: f32,
         credit_player: bool,
         breaks_blocks: bool,
+        by: Option<trident::Owner>,
     ) {
         // Java gathers the entities before hurting any, so drops from what
         // this blast breaks or kills are spared.
@@ -1750,7 +1772,8 @@ impl Entities {
             .map(|i| self.charged_blasts.swap_remove(i))
             .is_some();
         let mut killed = Vec::new();
-        for m in &mut self.mobs {
+        let mut hurt = Vec::new();
+        for (i, m) in self.mobs.iter_mut().enumerate() {
             if !m.alive() || m.pos.distance(center) > f64::from(power) * 2.0 {
                 continue;
             }
@@ -1776,8 +1799,18 @@ impl Entities {
                 }
                 None => push,
             };
-            if m.blast(damage, push, &mut self.rng) {
+            let before = m.health;
+            let dead = m.blast(damage, push, &mut self.rng);
+            if dead {
                 killed.push((m.kind, m.pos, m.burning));
+            }
+            if dead || m.health < before {
+                hurt.push((i, dead));
+            }
+        }
+        if let Some(by) = by {
+            for (i, dead) in hurt {
+                self.blamed_for_blast(i, by, dead);
             }
         }
         self.particles.push(crate::particles::Request::Explosion { pos: center, large: power >= 2.0 });

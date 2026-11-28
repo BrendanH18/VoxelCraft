@@ -529,6 +529,12 @@ impl Game {
         self.world.loot_sequences = loot_sequences;
         self.world.set_simulation_distance(self.settings.simulation_distance);
         let region_notice = attach_regions(&mut self.world, &self.storage, to, &props, self.settings_path.is_some());
+        // v1.0 gap Track 8f: pearls in flight stay in the level they fly
+        // in, saved with their owners until they're back there.
+        if self.lan.client.is_none() {
+            let from = self.dimension;
+            self.owned_pearls.leave_level(&mut self.mobs.entities, from);
+        }
         self.mobs.entities = crate::entity::Entities::new(seed);
         self.renderer.clear_world();
         self.particles.clear();

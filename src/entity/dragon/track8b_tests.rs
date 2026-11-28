@@ -116,7 +116,9 @@ fn a_crystal_broken_by_a_mob_blames_that_mob() {
     let events: Vec<_> = (0..5).flat_map(|_| e.update(0.05, &world, &ctx(Vec::new()))).collect();
     let (cause, credit) = blast(&events).expect("the crystal blew up");
     assert_eq!((cause.kind, cause.text, credit), (DamageType::PlayerExplosion, "was blown up by a player", true));
-    assert_eq!(cause, crate::simulation::damage::Cause::PLAYER_EXPLOSION);
+    // v1.0 gap Track 8f: naming the player who shot it.
+    assert_eq!(cause, crate::simulation::damage::Cause::PLAYER_EXPLOSION.naming(PlayerId::HOST));
+    assert_eq!(cause.named_player(), Some(PlayerId::HOST));
 }
 
 /// `checkWalls` on a bubble column: `removeBlock` leaves its fluid's

@@ -33,8 +33,10 @@ pub struct Pearl {
 }
 
 impl Pearl {
-    /// v1.0 gap Track 8e: the level file's copy, with its fire.
-    pub(super) fn save(&self) -> serde_json::Value {
+    /// v1.0 gap Track 8e: the saved copy, with its fire. v1.0 gap Track
+    /// 8f: kept with its owner's player data, as Java's
+    /// `ServerPlayer.saveEnderPearls` keeps it.
+    pub fn save(&self) -> serde_json::Value {
         use super::saved_projectiles::v3;
         serde_json::json!({
             "owner": self.owner.0,
@@ -45,7 +47,7 @@ impl Pearl {
         })
     }
 
-    pub(super) fn load(v: &serde_json::Value) -> Option<Self> {
+    pub fn load(v: &serde_json::Value) -> Option<Self> {
         use super::saved_projectiles as s;
         let pos = s::read_v3(&v["pos"])?;
         Some(Self {

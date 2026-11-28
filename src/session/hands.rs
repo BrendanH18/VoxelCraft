@@ -312,6 +312,7 @@ impl PlayerSession {
             }
         }
         self.vitals.death = None;
+        self.vitals.killer = None;
         self.vitals.totems_used = self.vitals.totems_used.wrapping_add(1);
         self.vitals.health = 1.0;
         self.vitals.effects.clear();

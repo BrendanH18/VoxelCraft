@@ -472,7 +472,16 @@ impl Actor<'_> {
             Used::TntPrimed { cell } => {
                 audio.play_in(SoundSource::Blocks, Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.95, 1.05))
             }
-            Used::Ignited { cell, portal } => {
+            // v1.0 gap Track 8f: a fire charge's `FIRECHARGE_USE` (the
+            // blaze's shot, `mob/ghast/fireball4` in Java's sound set), pitch
+            // `(r - r) * 0.2 + 1`.
+            Used::Ignited { cell, portal, charge: true } => {
+                audio.play_in(SoundSource::Blocks, Sound::Fireball, Some(cell.as_dvec3()), 1.0, (0.8, 1.2));
+                if portal {
+                    audio.play_in(SoundSource::Blocks, Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.5, 0.6));
+                }
+            }
+            Used::Ignited { cell, portal, charge: false } => {
                 audio.play(Sound::Place(Material::Stone), Some(cell.as_dvec3()), 0.7, (1.6, 1.9));
                 if portal {
                     audio.play_in(SoundSource::Blocks, Sound::Fuse, Some(cell.as_dvec3()), 1.0, (0.5, 0.6));

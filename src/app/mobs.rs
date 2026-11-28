@@ -652,8 +652,8 @@ impl Game {
                         bot.agent.session.vitals.ignite(secs);
                     }
                 }
-                EntityEvent::IgniteBlock { cell } => {
-                    if self.gamerules.bool("mob_griefing") {
+                EntityEvent::IgniteBlock { cell, mob_owned } => {
+                    if !mob_owned || self.gamerules.bool("mob_griefing") {
                         self.world.ignite(cell);
                     }
                 }
@@ -821,6 +821,13 @@ impl Game {
                         ),
                         MobSound::Fuse => (Sound::Fuse, 1.0),
                         MobSound::Bow => (Sound::Bow, 1.0),
+                        // v1.0 gap Track 8f: `makeSound(VILLAGER_NO)` at volume 1
+                        // and the voice pitch, `(r - r) * 0.2 + 1` (1.5 for a child).
+                        MobSound::VillagerNo(baby) => {
+                            let pitch = if baby { (1.3, 1.7) } else { (0.8, 1.2) };
+                            self.audio.play_in(SoundSource::Neutral, Sound::VillagerNo, Some(pos), 1.0, pitch);
+                            continue;
+                        }
                         MobSound::Ambient(kind) => (Sound::Mob(voice(kind), Call::Ambient), 0.7 * mob_volume(kind)),
                         MobSound::Hurt(kind) => (Sound::Mob(voice(kind), Call::Hurt), 0.9 * mob_volume(kind)),
                         MobSound::Death(kind) => (Sound::Mob(voice(kind), Call::Death), 0.9 * mob_volume(kind)),
@@ -1244,7 +1251,14 @@ impl Game {
             (true, false) => self.world.exploded_cells(center, power),
             (true, true) => self.world.rail_sparing_exploded_cells(center, power),
         };
-        self.mobs.entities.explode_with(&self.world, center, power, credit_player, blast.destroys_blocks);
+        // v1.0 gap Track 8f: whoever was behind the blast (TNT's owner, a
+        // ghast) is the attacker of every mob and player it hurts.
+        let flags = (credit_player, blast.destroys_blocks);
+        self.mobs.entities.explode_by(&self.world, center, power, flags, cause.by);
+        let blamed = match cause.by {
+            Some(crate::entity::trident::Owner::Mob(uid)) => Some(uid),
+            _ => None,
+        };
         // A player watching the credits isn't in the level (v1.0 gap Track 8e).
         if self.credits.is_none()
             && let Some((damage, push)) = self.session.blast(&self.world, center, power)
@@ -1252,13 +1266,22 @@ impl Game {
             let toward = Some(center - self.session.player.pos);
             if self.damage_player_from(self.difficulty.mob_damage(damage), cause, toward) > 0.0 {
                 self.session.player.hurt_from(push);
+                if let Some(uid) = blamed {
+                    self.mobs.entities.mob_hurt_player(crate::entity::PlayerId::HOST, uid);
+                }
             }
             self.session.player.vel += push;
         }
         if self.arrival.is_none() {
             for bot in self.agents.players.values_mut().filter(|b| b.active) {
                 if let Some((damage, push)) = bot.agent.session.blast(&self.world, center, power) {
-                    bot.agent.hurt(self.difficulty.mob_damage(damage), cause, DVec3::ZERO, &mut self.mobs.entities);
+                    let taken =
+                        bot.agent.hurt(self.difficulty.mob_damage(damage), cause, DVec3::ZERO, &mut self.mobs.entities);
+                    if taken > 0.0
+                        && let Some(uid) = blamed
+                    {
+                        self.mobs.entities.mob_hurt_player(bot.id, uid);
+                    }
                     bot.agent.session.player.vel += push;
                 }
             }

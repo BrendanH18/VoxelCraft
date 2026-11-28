@@ -306,7 +306,10 @@ impl Crystals {
                 // crystal's own with nobody behind it.
                 let cause = match blow {
                     Blow::Mob(kind) => blame(kind),
-                    Blow::Player { .. } => crate::simulation::damage::Cause::PLAYER_EXPLOSION,
+                    // v1.0 gap Track 8f: the message names the player
+                    // (`source.getEntity()`), though TNT it chains has no
+                    // owner (the crystal is the blast's source entity).
+                    Blow::Player { id, .. } => crate::simulation::damage::Cause::PLAYER_EXPLOSION.naming(id),
                     _ => crate::simulation::damage::Cause::END_CRYSTAL,
                 };
                 events.push(EntityEvent::Explosion {

@@ -271,6 +271,9 @@ pub enum Sound {
     /// v1.0 gap Track 2f: the fox's own sounds (`entity.fox.*` beyond its
     /// ambient, hurt and death calls).
     Fox(crate::entity::fox::Cue),
+    /// v1.0 gap Track 8f: `entity.villager.no`, the villager's refusal with
+    /// its head shake.
+    VillagerNo,
 }
 
 /// v1.0 gap Track 5c: Java's `PORTAL_AMBIENT`, `PORTAL_TRIGGER` and
@@ -380,7 +383,8 @@ impl Sound {
     const BUNDLE_END: usize = Self::SOUL_ESCAPE_END + voxelcraft::content::bundle::Cue::ALL.len();
     const MOUNT_END: usize = Self::BUNDLE_END + crate::entity::mounts::Cue::ALL.len();
     const PORTAL_END: usize = Self::MOUNT_END + PortalCue::ALL.len();
-    pub const COUNT: usize = Self::PORTAL_END + crate::entity::fox::Cue::ALL.len();
+    const FOX_END: usize = Self::PORTAL_END + crate::entity::fox::Cue::ALL.len();
+    pub const COUNT: usize = Self::FOX_END + 1;
 
     /// Dense index in `0..COUNT`.
     pub fn key(self) -> usize {
@@ -411,6 +415,7 @@ impl Sound {
             Sound::Mount(cue) => Self::BUNDLE_END + cue as usize,
             Sound::Portal(cue) => Self::MOUNT_END + cue as usize,
             Sound::Fox(cue) => Self::PORTAL_END + cue as usize,
+            Sound::VillagerNo => Self::FOX_END,
             Sound::Note(i) => 3 * M + 27 + Voice::ALL.len() * CALLS + i as usize,
             Sound::Thunder => Self::BASE_COUNT - 1,
             Sound::Bell => Self::BASE_COUNT - 4,
@@ -547,6 +552,7 @@ impl Sound {
             .chain(crate::entity::mounts::Cue::ALL.map(Sound::Mount))
             .chain(PortalCue::ALL.map(Sound::Portal))
             .chain(crate::entity::fox::Cue::ALL.map(Sound::Fox))
+            .chain([Sound::VillagerNo])
     }
 
     /// Stable sound name used when exporting or identifying samples.
@@ -576,6 +582,7 @@ impl Sound {
             Sound::Mount(c) => c.key().replace('.', "_"),
             Sound::Portal(c) => c.event().replace('.', "_"),
             Sound::Fox(c) => c.key().replace('.', "_"),
+            Sound::VillagerNo => "entity_villager_no".into(),
             Sound::Thunder => "lightning_thunder".into(),
             Sound::HoneySlide => "honey_block_slide".into(),
             Sound::HoneyDrink => "honey_drink".into(),
@@ -735,6 +742,8 @@ impl Sound {
             Sound::Portal(_) => SoundSource::Ambient,
             // `Fox.playSound`: the fox's own category (`NEUTRAL`).
             Sound::Fox(_) => SoundSource::Neutral,
+            // The villager's own category (`NEUTRAL`).
+            Sound::VillagerNo => SoundSource::Neutral,
             Sound::Mob(voice, _) => voice.source(),
         }
     }
@@ -763,6 +772,7 @@ impl Sound {
             Sound::Mount(_) => 2,
             Sound::Portal(_) => 1,
             Sound::Fox(_) => 2,
+            Sound::VillagerNo => 2,
             Sound::Warden(_) | Sound::Sculk(_) => 2,
             Sound::Sniffer(_) | Sound::Weapon(_) => 2,
             Sound::Step(_) => 4,
@@ -826,6 +836,7 @@ impl Sound {
             Sound::Mount(c) => super::mounts::render(c, &mut rng),
             Sound::Portal(c) => portal(c, &mut rng),
             Sound::Fox(c) => super::fox::render(c, &mut rng),
+            Sound::VillagerNo => super::voices::villager_no(&mut rng),
             Sound::Thunder => thunder(&mut rng),
             Sound::HoneySlide => honey_sound(&mut rng, 0.35),
             Sound::HoneyDrink => honey_sound(&mut rng, 0.22),

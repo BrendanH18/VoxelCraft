@@ -333,6 +333,7 @@ impl Game {
             day_count: root_props.get("day_count").and_then(|value| value.parse().ok()).unwrap_or(0),
             credits_seen: root_props.get("credits_seen").is_some_and(|v| v == "1"),
             credits: None,
+            owned_pearls: Default::default(),
             world_spawn: root_props
                 .get("world_spawn")
                 .and_then(|text| {
@@ -431,6 +432,7 @@ impl Game {
         game.world.maps =
             root_props.get("maps").and_then(|s| crate::world::maps::MapStorage::load(s)).unwrap_or_default();
         game.restore_dimension(&dimension_props);
+        game.load_owned_pearls(&root_props);
         // v0.18 Track 0's capture flags: `--open-recipe-book` opens the
         // crafting book (Track 5), `--creative-tab` selects a creative tab
         // (Track 4; the operator tab isn't shown, so it stays on the default).
@@ -443,7 +445,7 @@ impl Game {
             game.creative_select(tab);
         }
         if game.session.vitals.is_dead() {
-            game.on_death();
+            game.enter_death();
         } else if game.screenshot.is_none()
             && game.bench_render.is_none()
             && game.benchmark.is_none()

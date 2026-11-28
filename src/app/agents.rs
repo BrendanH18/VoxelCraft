@@ -24,6 +24,9 @@ pub(super) struct Bot {
     pub drawn_feet: DVec3,
     /// Distance walked toward the next footstep.
     pub stride: f64,
+    /// v1.0 gap Track 8f: this death's message has gone out (a death from
+    /// a blast or another player's hit lands outside the agent's own tick).
+    pub announced: bool,
 }
 
 impl Bot {
@@ -31,6 +34,8 @@ impl Bot {
     fn new(id: PlayerId, mut agent: Agent) -> Self {
         agent.session.id = id;
         let (seen_swings, drawn_feet) = (agent.swings, agent.session.player.pos);
+        // A profile loaded dead died before it was saved.
+        let announced = agent.session.vitals.is_dead();
         Self {
             id,
             agent,
@@ -41,6 +46,7 @@ impl Bot {
             seen_swings,
             drawn_feet,
             stride: 0.0,
+            announced,
         }
     }
 }
@@ -445,13 +451,19 @@ impl Game {
         if self.arrival.is_some() {
             return;
         }
+        let names = self.player_names();
         let mut players = std::mem::take(&mut self.agents.players);
+        let mut lines = Vec::new();
         for (name, bot) in players.iter_mut().filter(|(_, b)| b.active) {
-            let was_dead = bot.agent.session.vitals.is_dead();
             bot.agent.tick_rules(&mut self.world, &mut self.mobs.entities, self.difficulty, &self.gamerules);
-            if !was_dead && bot.agent.session.vitals.is_dead() && self.gamerules.bool("show_death_messages") {
-                log::info!("{name} {}", bot.agent.session.vitals.death.as_deref().unwrap_or("died"));
+            // v1.0 gap Track 8f: the message names the killer and the
+            // player by their profile names, and goes to every chat.
+            let vitals = &mut bot.agent.session.vitals;
+            vitals.name_killer(|id| names.get(&id).cloned());
+            if vitals.is_dead() && !bot.announced && self.gamerules.bool("show_death_messages") {
+                lines.push(format!("{name} {}", vitals.death.as_deref().unwrap_or("died")));
             }
+            bot.announced = vitals.is_dead();
             // `ServerPlayer.die` stores `lastDeathLocation` before an
             // immediate or hardcore respawn can clear the dead state.
             bot.agent.session.record_death(&self.world);
@@ -467,6 +479,10 @@ impl Game {
             }
         }
         self.agents.players = players;
+        for line in lines {
+            log::info!("{line}");
+            self.broadcast_chat(&line);
+        }
     }
     /// This initial host keeps agents in the host's active dimension, retaining inventory across travel.
     pub(super) fn relocate_agents(&mut self) {

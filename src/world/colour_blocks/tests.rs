@@ -288,7 +288,7 @@ fn candles_stack_to_four_and_light_and_go_out() {
     // Flint and steel lights it and wears.
     s.inventory.slots[0] = Some(Stack::new(Item::FLINT_AND_STEEL, 1));
     let used = use_held(&mut s, &mut w).map(|u| u.used);
-    assert!(matches!(used, Some(Used::Ignited { cell, portal: false }) if cell == P), "{used:?}");
+    assert!(matches!(used, Some(Used::Ignited { cell, portal: false, .. }) if cell == P), "{used:?}");
     assert_eq!(w.get_block(P), Some(candle::candle(6, 4, true, false)));
     assert_eq!(w.block_light(P), 12);
     // A bare hand puts it out.
@@ -624,4 +624,24 @@ fn sleepers_stand_up_beside_a_straw_bed() {
     assert!(crate::world::dismount::is_sleep_head(w.get_block(head).unwrap()));
     let (stand, _) = crate::world::dismount::bed_stand_up(&w, head, Facing::East, 0.0).expect("room beside the bed");
     assert!(stand.distance(head.as_dvec3() + DVec3::splat(0.5)) < 2.5, "{stand}");
+}
+
+/// v1.0 gap Track 8f: `FireChargeItem.useOn` on a plain block sets fire in
+/// the cell beside the clicked face and is used up; where fire can't go it
+/// does nothing and the charge stays.
+#[test]
+fn a_fire_charge_sets_fire_beside_the_block_it_is_used_on() {
+    let mut w = world();
+    // Looking down at the stone floor: fire goes on top of it.
+    let floor = P - IVec3::Y;
+    let mut s = player(P.as_dvec3() + DVec3::new(-2.5, 0.0, 0.5), floor.as_dvec3() + DVec3::new(0.5, 1.0, 0.5));
+    s.inventory.slots[0] = Some(Stack::new(Item::FIRE_CHARGE, 2));
+    let used = use_held(&mut s, &mut w).map(|u| u.used);
+    assert!(matches!(used, Some(Used::Ignited { cell, portal: false, charge: true }) if cell == P), "{used:?}");
+    assert!(w.get_block(P).is_some_and(|b| b.is_fire()), "{:?}", w.get_block(P));
+    assert_eq!(s.inventory.get(0).map(|s| s.count), Some(1));
+    // The same cell again: it holds fire now, so the charge does nothing.
+    let used = use_held(&mut s, &mut w).map(|u| u.used);
+    assert!(!matches!(used, Some(Used::Ignited { .. })), "{used:?}");
+    assert_eq!(s.inventory.get(0).map(|s| s.count), Some(1));
 }

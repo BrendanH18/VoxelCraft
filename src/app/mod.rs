@@ -245,6 +245,10 @@ struct Game {
     credits_seen: bool,
     /// Seconds into the credits while they play.
     credits: Option<f32>,
+    /// v1.0 gap Track 8f: ender pearls kept with their owners while the
+    /// owner or the pearl is out of this level, saved with each owner's
+    /// player data.
+    owned_pearls: voxelcraft::entity::saved_projectiles::OwnedPearls,
     /// Shared Overworld spawn changed by `/setworldspawn`.
     world_spawn: glam::IVec3,
     weather: weather::Weather,
@@ -1320,9 +1324,32 @@ impl Game {
     /// takes the shared death step (drops unless spectating or
     /// `keepInventory`, as every adapter does).
     fn on_death(&mut self) {
+        // v1.0 gap Track 8f: `ServerPlayer.die` names the killer and, with
+        // `show_death_messages`, sends the message to every player's chat.
+        let names = self.player_names();
+        self.session.vitals.name_killer(|id| names.get(&id).cloned());
         if self.gamerules.bool("show_death_messages") {
-            log::info!("player {}", self.session.vitals.death.as_deref().unwrap_or("died"));
+            let line = format!("{} {}", self.lan.profile, self.session.vitals.death.as_deref().unwrap_or("died"));
+            log::info!("{line}");
+            // A LAN guest's death goes out from the host, which runs it.
+            if self.lan.client.is_none() {
+                self.broadcast_chat(&line);
+            }
         }
+        self.enter_death();
+    }
+
+    /// v1.0 gap Track 8f: every player's profile name by id: the host's own
+    /// profile, then each agent, controller and LAN player's.
+    pub(super) fn player_names(&self) -> std::collections::BTreeMap<crate::entity::PlayerId, String> {
+        std::iter::once((crate::entity::PlayerId::HOST, self.lan.profile.clone()))
+            .chain(self.agents.players.iter().map(|(name, b)| (b.id, name.clone())))
+            .collect()
+    }
+
+    /// The death screen's side of [`Game::on_death`], also for a player
+    /// loaded dead (whose death was announced when it happened).
+    fn enter_death(&mut self) {
         if self.inventory_open {
             self.toggle_inventory();
         }

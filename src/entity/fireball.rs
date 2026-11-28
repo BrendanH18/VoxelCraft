@@ -235,7 +235,8 @@ impl Fireball {
             });
             events.push(EntityEvent::Ignite { player: hit.id, secs: BURN });
         }
-        events.push(EntityEvent::IgniteBlock { cell: self.pos.floor().as_ivec3() });
+        let mob_owned = matches!(self.owner, Some(super::trident::Owner::Mob(_)));
+        events.push(EntityEvent::IgniteBlock { cell: self.pos.floor().as_ivec3(), mob_owned });
     }
 
     /// Direction of travel, for drawing.
@@ -345,7 +346,11 @@ mod tests {
         while f.update(0.05, &world, &ctx(vec![]), &[], &[], &Default::default(), &mut events) {}
         // v1.0 gap Track 8d: `onProjectileHit` (the block hit) comes first.
         assert!(matches!(events.first(), Some(EntityEvent::ProjectileBlockHit { burning: true, .. })), "{events:?}");
-        let Some(EntityEvent::IgniteBlock { cell }) = events.get(1).copied() else { panic!("{events:?}") };
+        // v1.0 gap Track 8f: nobody's (a dispensed fire charge's), so it
+        // sets its fire without `mob_griefing`.
+        let Some(EntityEvent::IgniteBlock { cell, mob_owned: false }) = events.get(1).copied() else {
+            panic!("{events:?}")
+        };
         assert_eq!(cell.y, 10, "the air cell above the floor");
         assert!(cell.x >= 2 && cell.x <= 3, "{cell}");
     }
