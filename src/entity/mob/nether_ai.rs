@@ -531,9 +531,23 @@ impl Mob {
             // On the stable shape it steps like ground: a shore whose top is
             // level with the lava cell's top is half a block up.
             let hit = if self.on_ground {
-                crate::physics::move_box_stepping(world, &mut self.pos, &mut self.vel, delta, shape, STEP_HEIGHT)
+                {
+                    let context = Some(self.collision_context());
+                    crate::physics::move_box_stepping_context(
+                        world,
+                        &mut self.pos,
+                        &mut self.vel,
+                        delta,
+                        shape,
+                        STEP_HEIGHT,
+                        context,
+                    )
+                }
             } else {
-                crate::physics::move_box(world, &mut self.pos, &mut self.vel, delta, shape)
+                {
+                    let context = Some(self.collision_context());
+                    crate::physics::move_box_context(world, &mut self.pos, &mut self.vel, delta, shape, context)
+                }
             };
             let landed = self.pos.y <= s + 1e-9;
             if landed || hit.on_ground {
@@ -543,7 +557,13 @@ impl Mob {
         } else {
             self.vel.y = 2.0;
             let delta = self.vel * dt;
-            (crate::physics::move_box(world, &mut self.pos, &mut self.vel, delta, shape), false)
+            (
+                {
+                    let context = Some(self.collision_context());
+                    crate::physics::move_box_context(world, &mut self.pos, &mut self.vel, delta, shape, context)
+                },
+                false,
+            )
         };
         self.on_ground = landed || hit.on_ground;
         self.blocked = hit.horizontal;

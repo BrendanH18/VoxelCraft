@@ -186,3 +186,6 @@ impl World {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod entity_tests;

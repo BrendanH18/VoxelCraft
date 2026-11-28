@@ -102,7 +102,8 @@ impl PrimedTnt {
         }
         self.vel.y -= GRAVITY * dt;
         let delta = self.vel * dt;
-        let on_ground = physics::move_box(world, &mut self.pos, &mut self.vel, delta, SHAPE).on_ground;
+        let context = Some(physics::CollisionContext::entity(self.pos.y, 0.0, false));
+        let on_ground = physics::move_box_context(world, &mut self.pos, &mut self.vel, delta, SHAPE, context).on_ground;
         if on_ground {
             let k = (1.0 - dt * 8.0).max(0.0);
             self.vel.x *= k;

@@ -461,7 +461,10 @@ pub(crate) fn travel<W: MobWorld + ?Sized>(m: &mut Mob, dt: f64, world: &W, wish
     }
     let delta = dm * (dt / 0.05);
     let shape = m.shape();
-    let hit = crate::physics::move_box(world, &mut m.pos, &mut dm, delta, shape);
+    let hit = {
+        let context = Some(m.collision_context());
+        crate::physics::move_box_context(world, &mut m.pos, &mut dm, delta, shape, context)
+    };
     m.on_ground = hit.on_ground;
     m.in_water = world.block(m.pos.floor().as_ivec3()).is_some_and(Block::holds_water);
     m.vel = dm * DVec3::new(0.91, 0.98, 0.91) / 0.05;

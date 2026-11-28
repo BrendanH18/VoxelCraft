@@ -30,7 +30,7 @@ pub struct Arrow {
     pub pos: DVec3,
     /// Position at the start of the last simulation step, for rendering.
     pub previous_pos: DVec3,
-    vel: DVec3,
+    pub(super) vel: DVec3,
     /// Direction it points (kept once stuck).
     pub dir: Vec3,
     age: f32,
@@ -826,6 +826,9 @@ pub(super) fn lights(b: crate::world::block::Block) -> bool {
 /// `EntityTypes.ARROW`'s box: 0.5 × 0.5.
 const ARROW_HALF: f64 = 0.25;
 const ARROW_HEIGHT: f64 = 0.5;
+/// The same box as a [`crate::physics::Shape`] (tridents share it).
+pub(super) const ARROW_SHAPE: crate::physics::Shape =
+    crate::physics::Shape { half_width: ARROW_HALF, height: ARROW_HEIGHT };
 
 /// `Projectile.lerpRotation`: from `from` a fifth of the way to `to`, the
 /// short way round (`from` moved by whole turns first).

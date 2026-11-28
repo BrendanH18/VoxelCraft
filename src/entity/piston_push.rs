@@ -37,5 +37,41 @@ impl super::Entities {
         for t in &mut self.tnt {
             body(&mut t.pos, &mut t.vel, 20.0, super::tnt::SHAPE, None);
         }
+        for a in &mut self.arrows {
+            body(&mut a.pos, &mut a.vel, 20.0, super::projectile::ARROW_SHAPE, None);
+        }
+        for t in &mut self.tridents {
+            let noclip = t.no_physics;
+            let shape = super::projectile::ARROW_SHAPE;
+            push_body(
+                world,
+                PushBody { pos: &mut t.pos, vel: &mut t.vel, vel_per_tick: 1.0, shape, on_ground: None, noclip },
+            );
+        }
+        // `EndCrystal.tick` never moves it, so a slime block's launch does
+        // nothing; the push itself does.
+        for c in &mut self.crystals.list {
+            let mut vel = DVec3::ZERO;
+            let shape = crate::physics::Shape::new(super::crystal::WIDTH / 2.0, super::crystal::HEIGHT);
+            body(&mut c.pos, &mut vel, 20.0, shape, None);
+        }
+        let mut broken = Vec::new();
+        for (i, d) in self.decor.iter_mut().enumerate() {
+            if d.is_hanging() {
+                if crate::world::piston::pushes_box(world, d.aabb()) {
+                    broken.push(i);
+                }
+                continue;
+            }
+            let mut vel = DVec3::Y * d.vel_y;
+            body(&mut d.pos, &mut vel, 1.0, super::decor::STAND_SHAPE, None);
+            d.vel_y = vel.y;
+        }
+        for i in broken.into_iter().rev() {
+            self.piston_break_decor(i);
+        }
     }
 }
+
+#[cfg(test)]
+mod tests;

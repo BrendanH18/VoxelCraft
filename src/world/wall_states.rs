@@ -150,6 +150,135 @@ pub fn reshaped(block: Block, at: impl Fn(IVec3) -> Block) -> Block {
 }
 
 impl World {
+    /// v1.0 final F7: walls saved before VoxelCraft stored `UP` (v0.8 and
+    /// older, whose ids all load as UP=true, and any chunk an older build
+    /// kept in `chunks.bin`) get the post Java's `WallBlock.updateShape`
+    /// gives them when their chunk is first read from `chunks.bin`, instead
+    /// of waiting for a neighbour to change. The post of a wall under
+    /// another wall follows the upper one's, so each is computed from the
+    /// top of its stack down (across chunks: an upper chunk's walls are
+    /// recomputed the same way, not trusted). A wall a neighbour of which
+    /// isn't available (a never-edited chunk not loaded yet) keeps its
+    /// stored post and is listed in `pending`, for
+    /// [`World::retry_legacy_wall_posts`] once that chunk loads. Consistent
+    /// walls compute what they already store, so
+    /// walls saved by v0.9 to v0.18 don't change. No id or format changes:
+    /// the chunk is written to its region record at the next save.
+    pub(super) fn migrate_legacy_wall_posts(
+        &self,
+        pos: IVec3,
+        data: std::sync::Arc<super::chunk::ChunkData>,
+        pending: &mut Vec<IVec3>,
+    ) -> std::sync::Arc<super::chunk::ChunkData> {
+        use super::chunk::{CHUNK_SIZE, CHUNK_SIZE_I, CHUNK_VOLUME, chunk_of};
+        use std::cell::{Cell, RefCell};
+        if data.uniform().is_some() {
+            return data;
+        }
+        let cell = |i: usize| (i % CHUNK_SIZE, (i / CHUNK_SIZE) % CHUNK_SIZE, i / (CHUNK_SIZE * CHUNK_SIZE));
+        if !(0..CHUNK_VOLUME).any(|i| {
+            let (x, y, z) = cell(i);
+            up(data.get(x, y, z)).is_some()
+        }) {
+            return data;
+        }
+        let base = pos * CHUNK_SIZE_I;
+        let others = RefCell::new(rustc_hash::FxHashMap::default());
+        let missing = Cell::new(false);
+        // The block as saved, or `None` where no chunk is available.
+        let raw = |q: IVec3| -> Option<Block> {
+            if !self.contains_y(q.y) {
+                return Some(Block::AIR);
+            }
+            let c = chunk_of(q);
+            let l = q - c * CHUNK_SIZE_I;
+            let at = |d: &super::chunk::ChunkData| d.get(l.x as usize, l.y as usize, l.z as usize);
+            if c == pos {
+                return Some(at(&data));
+            }
+            let mut others = others.borrow_mut();
+            others.entry(c).or_insert_with(|| self.section_data(c)).as_deref().map(at)
+        };
+        let known = |q: IVec3| {
+            raw(q).unwrap_or_else(|| {
+                missing.set(true);
+                Block::AIR
+            })
+        };
+        // The recomputed wall at `p`: its stack's posts from the top down.
+        let migrated = |p: IVec3, wall: Block| -> (Block, bool) {
+            let mut stack = vec![(p, wall)];
+            let mut q = p + IVec3::Y;
+            while let Some(b) = raw(q).filter(|&b| up(b).is_some()) {
+                stack.push((q, b));
+                q += IVec3::Y;
+            }
+            let mut above: Option<(IVec3, Block)> = None;
+            let mut out = (wall, false);
+            for &(q, b) in stack.iter().rev() {
+                missing.set(false);
+                let at = |d: IVec3| match above {
+                    Some((a, ab)) if a == q + d => ab,
+                    _ => known(q + d),
+                };
+                let next = reshaped(b, at);
+                out = if missing.get() { (b, true) } else { (next, false) };
+                above = Some((q, out.0));
+            }
+            out
+        };
+        let mut out: Option<super::chunk::ChunkData> = None;
+        for i in 0..CHUNK_VOLUME {
+            let (x, y, z) = cell(i);
+            let wall = data.get(x, y, z);
+            if up(wall).is_none() {
+                continue;
+            }
+            let p = base + IVec3::new(x as i32, y as i32, z as i32);
+            let (next, unknown) = migrated(p, wall);
+            if unknown {
+                pending.push(p);
+            }
+            if next != wall {
+                out.get_or_insert_with(|| (*data).clone()).set(x, y, z, next);
+            }
+        }
+        out.map_or(data, std::sync::Arc::new)
+    }
+
+    /// v1.0 final F7: the legacy walls [`World::migrate_legacy_wall_posts`]
+    /// couldn't settle, next to the chunk at `pos` that just loaded, take
+    /// their post now, as an ordinary shape update (which walks down a
+    /// stack). The list isn't saved: a wall still waiting when its chunk
+    /// is saved keeps its post until a neighbour changes.
+    pub(super) fn retry_legacy_wall_posts(&mut self, pos: IVec3) {
+        use super::chunk::chunk_of;
+        if self.legacy_walls.is_empty() {
+            return;
+        }
+        let near = |p: IVec3| {
+            let d = (chunk_of(p) - pos).abs();
+            d.x <= 1 && d.z <= 1 && (0..=1).contains(&(pos.y - chunk_of(p).y))
+        };
+        let ready: Vec<IVec3> = self.legacy_walls.iter().copied().filter(|&p| near(p)).collect();
+        for p in ready {
+            let around =
+                [IVec3::X, IVec3::NEG_X, IVec3::Z, IVec3::NEG_Z, IVec3::Y].into_iter().flat_map(|d| [d, d + IVec3::Y]);
+            let unloaded =
+                around.chain([IVec3::Y * 2]).any(|d| self.contains_y(p.y + d.y) && self.get_block(p + d).is_none());
+            if unloaded {
+                continue;
+            }
+            self.legacy_walls.remove(&p);
+            let Some(wall) = self.get_block(p).filter(|&b| up(b).is_some()) else { continue };
+            let next = reshaped(wall, |d| self.get_block(p + d).unwrap_or(Block::AIR));
+            if next != wall {
+                let flags = super::redstone_order::flags::UPDATE_ALL | super::redstone_order::flags::COMPAT;
+                self.edit_exact_inner(p, next, false, true, flags);
+            }
+        }
+    }
+
     /// A post change only travels down. Other edits also affect horizontal
     /// neighbours and the bottom face of their blocks above a wall. Bound
     /// the walk by loaded cells/world height, without recursive edit calls.

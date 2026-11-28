@@ -135,7 +135,7 @@ pub struct Decor {
     /// Armor stands: the feet.
     pub pos: DVec3,
     pub previous_pos: DVec3,
-    vel_y: f64,
+    pub(super) vel_y: f64,
     /// Armor stands: Java's yaw in degrees (0 faces south, +Z).
     pub yaw: f32,
     /// What an item frame holds, turned `rotation` eighths of a turn.
@@ -718,7 +718,12 @@ impl Entities {
             // `LivingEntity.travel`: gravity 0.08 and drag 0.98 a tick.
             d.vel_y = (d.vel_y - 0.08) * 0.98;
             let mut vel = DVec3::Y * d.vel_y;
-            let hit = physics::move_box(world, &mut d.pos, &mut vel, DVec3::Y * d.vel_y, STAND_SHAPE);
+            // v1.0 final F7: the stand's own collision context (leather
+            // boots hold it up on powder snow).
+            let boots = d.armor[ArmorPiece::Boots as usize]
+                .is_some_and(|s| s.item.as_armor() == Some((ArmorPiece::Boots, ArmorMaterial::Leather)));
+            let context = Some(physics::CollisionContext::entity(d.pos.y, 0.0, boots));
+            let hit = physics::move_box_context(world, &mut d.pos, &mut vel, DVec3::Y * d.vel_y, STAND_SHAPE, context);
             if hit.on_ground {
                 d.vel_y = 0.0;
             }
@@ -779,6 +784,19 @@ impl Entities {
     fn post_decor_event(&mut self, i: usize, event: GameEvent, source: EventSource) {
         let pos = self.decor[i].pos;
         self.sculk.post(pos, event, source, None);
+    }
+
+    /// v1.0 final F7: a moving block reached hanging decoration `i`:
+    /// `BlockAttachedEntity.move` kills it (`entity_die`) and drops its
+    /// item, a frame's held item with it (`dropItem`, which posts a
+    /// frame's `block_change`).
+    pub(super) fn piston_break_decor(&mut self, i: usize) {
+        let drops = self.entity_drops;
+        self.post_decor_event(i, GameEvent::EntityDie, EventSource::NONE);
+        if matches!(self.decor[i].kind, Kind::Frame { .. }) {
+            self.post_decor_event(i, GameEvent::BlockChange, EventSource::NONE);
+        }
+        self.break_decor(i, drops, drops);
     }
 
     /// `ArmorStand.hurtServer` for explosions: stands caught in a blast break,

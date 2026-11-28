@@ -327,6 +327,9 @@ pub struct World {
     /// Player-modified chunks that are currently unloaded. With region
     /// storage, only `chunks.bin` chunks not yet moved into records.
     saved: FxHashMap<IVec3, Arc<ChunkData>>,
+    /// v1.0 final F7: walls from `chunks.bin` whose post waits for a
+    /// neighbouring chunk to load (`wall_states`); not saved.
+    legacy_walls: FxHashSet<IVec3>,
     /// v1.0 Track 3b: where unloaded chunks go (see [`chunk_records`]);
     /// `None` keeps them in memory.
     regions: Option<region::RegionStore>,
@@ -822,6 +825,7 @@ impl World {
             chunks: FxHashMap::default(),
             columns: FxHashMap::default(),
             saved,
+            legacy_walls: FxHashSet::default(),
             regions: None,
             region_records: Default::default(),
             gen_in_flight: FxHashSet::default(),
@@ -1783,6 +1787,16 @@ impl World {
     ) {
         // Saved portal blocks from before the `axis` state get theirs.
         let data = if modified { self.axis_legacy_portals(pos, data) } else { data };
+        // v1.0 final F7: walls from `chunks.bin` (saved before region
+        // storage) take Java's post now (`wall_states`).
+        let data = if modified && record.is_none() && self.regions.is_some() && !self.remote {
+            let mut pending = Vec::new();
+            let data = self.migrate_legacy_wall_posts(pos, data, &mut pending);
+            self.legacy_walls.extend(pending);
+            data
+        } else {
+            data
+        };
         let heights = mesh::chunk_heights(&data, pos.y * CHUNK_SIZE_I);
         let workers = &self.workers;
         let col = self.columns.entry(column_of(pos)).or_insert_with(|| {
@@ -1848,6 +1862,7 @@ impl World {
         if self.in_mesh_range(pos) {
             self.dirty.insert(pos);
         }
+        self.retry_legacy_wall_posts(pos);
     }
 
     /// Unload a present chunk, retaining edited data and queuing removal of its outgoing light.

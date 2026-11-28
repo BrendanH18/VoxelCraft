@@ -177,7 +177,10 @@ impl Mob {
         let start = self.pos;
         let mut v = before;
         let shape = self.shape();
-        let hit = physics::move_box(world, &mut self.pos, &mut v, before, shape);
+        let hit = {
+            let context = Some(self.collision_context());
+            physics::move_box_context(world, &mut self.pos, &mut v, before, shape, context)
+        };
         let moved = self.pos - start;
         let x_col = (moved.x - before.x).abs() > 1e-7;
         let z_col = (moved.z - before.z).abs() > 1e-7;

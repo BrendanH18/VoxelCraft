@@ -115,7 +115,8 @@ impl XpOrb {
             self.vel += to.normalize_or_zero() * f * f * PULL * dt;
         }
         let delta = self.vel * dt;
-        let hit = physics::move_box(world, &mut self.pos, &mut self.vel, delta, SHAPE);
+        let context = Some(physics::CollisionContext::entity(self.pos.y, 0.0, false));
+        let hit = physics::move_box_context(world, &mut self.pos, &mut self.vel, delta, SHAPE, context);
         // Java's drag: 0.98 per tick, and ground friction sideways.
         let side = if hit.on_ground { 0.6f64 * 0.98 } else { 0.98 }.powf(ticks);
         self.vel *= DVec3::new(side, 0.98f64.powf(ticks), side);

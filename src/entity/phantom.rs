@@ -268,7 +268,11 @@ impl Mob {
                     shape.height * (1. + f64::from(s.size) * 0.15),
                 );
                 let delta = vel;
-                s.collision = physics::move_box(w, &mut self.pos, &mut vel, delta, shape).horizontal;
+                s.collision = {
+                    let context = Some(self.collision_context());
+                    physics::move_box_context(w, &mut self.pos, &mut vel, delta, shape, context)
+                }
+                .horizontal;
                 self.vel = vel * 0.91 * 20.;
                 self.on_ground = false;
             }

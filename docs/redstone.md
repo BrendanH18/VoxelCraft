@@ -231,14 +231,26 @@ blocks and draws retracting bases in place.
 
 **Entities.** Each moving-block tick records what its shape sweeps. After
 the world tick, players (host, controllers and CLI agents), mobs, items,
-experience orbs, minecarts and boats, and primed TNT are moved by that sweep plus 0.01
+experience orbs, minecarts and boats, primed TNT, arrows and tridents, End
+crystals and armor stands are moved by that sweep plus 0.01
 through the shared collision path, with moving blocks going the same way
 ignored (`NOCLIP`) and Java's limit of 0.51 blocks per axis per tick, so
 entities pushed into walls stop against them. Slime sets the movement axis
 of the velocity of every entity in its swept area to one block per tick;
 honey moving sideways carries grounded entities standing on it by the
 progress step; an entity left inside a retracting base's cell is moved out of
-its front. Riders move with their vehicle.
+its front. Riders move with their vehicle. Every entity is Java's
+`PushReaction.PUSH_PULL` except markers, displays, interactions, area
+effect clouds, ominous item spawners and marker armor stands (VoxelCraft
+simulates only the clouds and the item spawners of those, and leaves them).
+Falling blocks are pushed as the moving blocks advance, with Java's 0.98
+box: a sideways push takes one off the grid, and it lands in the cell under
+its centre; a slime block's launch becomes its fall speed. An arrow stuck in
+a block that a piston moves is left behind (the moving box only sweeps what
+is ahead of it) and falls, as Java's does once its block is gone. An item
+frame or painting a moving block would move breaks instead and drops its
+item, a frame's item with it (`BlockAttachedEntity.move`), posting
+`entity_die` and, for a frame, `block_change` (v1.0 final F7).
 
 **Saves.** The `automation` dimension property (v2) stores each moving cell's
 block entity, its progress and the previous tick's progress, so a world
@@ -260,9 +272,13 @@ tick after the world tick instead of inside each block entity's tick, so an
 entity's later pushes in a tick see every moving block already advanced;
 pushed entities don't step up; the short piston-head shape is not modelled;
 honey's `isSupportedBy` is approximated by standing on the moving cell's top;
-projectiles, falling blocks, End crystals and decorations (item frames,
-paintings, armor stands) are not pushed (Java pushes them, and breaks
-hanging entities); Java saves the previous progress and
+thrown potions, pearls, snowballs and eggs, eyes of ender, fireballs,
+fireworks, wither skulls, shulker bullets, fishing bobbers and evoker fangs
+are not pushed (Java pushes them; they rarely sit in a moving block's path);
+a pushed falling block falls straight down its new column rather than
+colliding with the cells its box overlaps, and keeps no sideways speed
+from a slime block; item frames and paintings broken by a piston make no
+break sound; Java saves the previous progress and
 replays one step after a reload, VoxelCraft resumes exactly; Java
 loads chunks a push reaches, VoxelCraft stops at unloaded ones; and LAN
 clients don't receive moving-block entities, so they see moving cells empty. Directional

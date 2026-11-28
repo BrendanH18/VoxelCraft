@@ -182,6 +182,11 @@ impl World {
             }
         }
         self.pistons.order_scratch = order;
+        // v1.0 final F7: falling blocks are entities Java's moving blocks
+        // push like any other (`PushReaction.PUSH_PULL`).
+        if !self.pistons.pushes.is_empty() {
+            self.push_falling_blocks();
+        }
     }
 
     /// What a moving cell becomes: `updateFromNeighbourShapes` of the moved

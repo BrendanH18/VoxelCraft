@@ -1898,6 +1898,25 @@ impl Mob {
         dropped
     }
 
+    /// v1.0 final F7: Java 26.3's `CollisionContext.of(mob)`, which
+    /// `Entity.collide` passes to every block shape: scaffolding holds a
+    /// mob up only from above (no mob is ever `isDescending`), and powder
+    /// snow holds up only a falling mob (`fallDistance > 2.5`), or from
+    /// above one in leather boots or in `powder_snow_walkable_mobs`.
+    pub fn collision_context(&self) -> crate::physics::CollisionContext {
+        crate::physics::CollisionContext::entity(self.pos.y, self.fall_distance, self.walks_on_powder_snow())
+    }
+
+    /// `PowderSnowBlock.canEntityWalkOnPowderSnow` for a mob.
+    pub fn walks_on_powder_snow(&self) -> bool {
+        use crate::item::{ArmorMaterial, ArmorPiece};
+        matches!(self.kind, MobKind::Rabbit | MobKind::Endermite | MobKind::Silverfish | MobKind::Fox)
+            || self
+                .equipment
+                .get(super::equipment::Slot::of_piece(ArmorPiece::Boots))
+                .is_some_and(|s| s.item.as_armor() == Some((ArmorPiece::Boots, ArmorMaterial::Leather)))
+    }
+
     pub fn shape(&self) -> Shape {
         // `Warden.getDefaultDimensions`: one block tall while digging or emerging.
         if self.warden.as_ref().is_some_and(|s| s.digging_or_emerging()) {
@@ -4136,7 +4155,10 @@ impl Mob {
         if swims && self.in_water {
             self.vel += (target - self.vel) * (dt * 3.0).min(1.0);
             let delta = self.vel * dt;
-            let hit = physics::move_box(world, &mut self.pos, &mut self.vel, delta, shape);
+            let hit = {
+                let context = Some(self.collision_context());
+                physics::move_box_context(world, &mut self.pos, &mut self.vel, delta, shape, context)
+            };
             self.on_ground = hit.on_ground;
             self.blocked = hit.horizontal;
             // `travelInWater`: lift onto a bank only when the way ahead is free
@@ -4283,9 +4305,23 @@ impl Mob {
             crate::player::STEP_HEIGHT
         };
         let hit = if self.on_ground {
-            physics::move_box_stepping(world, &mut self.pos, &mut moving, delta, shape, step_height)
+            {
+                let context = Some(self.collision_context());
+                physics::move_box_stepping_context(
+                    world,
+                    &mut self.pos,
+                    &mut moving,
+                    delta,
+                    shape,
+                    step_height,
+                    context,
+                )
+            }
         } else {
-            physics::move_box(world, &mut self.pos, &mut moving, delta, shape)
+            {
+                let context = Some(self.collision_context());
+                physics::move_box_context(world, &mut self.pos, &mut moving, delta, shape, context)
+            }
         };
         // A blocked axis stops the walking and the current alike.
         for axis in 0..3 {

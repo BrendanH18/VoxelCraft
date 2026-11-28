@@ -132,9 +132,15 @@ impl Mob {
         let delta = dm;
         let shape = self.shape();
         let hit = if self.on_ground {
-            physics::move_box_stepping(w, &mut self.pos, &mut dm, delta, shape, 0.6)
+            {
+                let context = Some(self.collision_context());
+                physics::move_box_stepping_context(w, &mut self.pos, &mut dm, delta, shape, 0.6, context)
+            }
         } else {
-            physics::move_box(w, &mut self.pos, &mut dm, delta, shape)
+            {
+                let context = Some(self.collision_context());
+                physics::move_box_context(w, &mut self.pos, &mut dm, delta, shape, context)
+            }
         };
         self.on_ground = hit.on_ground;
         self.blocked = hit.horizontal;
