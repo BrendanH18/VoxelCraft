@@ -127,7 +127,9 @@ jobs:
 
   headless:
     name: simulation without client dependencies
-    runs-on: namespace-profile-gitrunner
+    # 16 GB, as the Linux test row: the library's test build outgrew the
+    # gitrunner profile's 8 GB (rustc was killed on 2026-11-28, twice).
+    runs-on: [nscloud-ubuntu-24.04-amd64-8x16-with-cache, nscloud-cache-tag-voxelcraft-ci-headless]
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
