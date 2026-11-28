@@ -258,7 +258,7 @@ pub(super) fn turtle(call: Call, rng: &mut Rng, baby: bool) -> Vec<f32> {
 /// it its own: transposed, filtered and layered with the mob's own
 /// texture (a husk's sand, a drowned's water, a stray's frost, a bogged's
 /// moss, a magma cube's sizzle, a skeleton horse's hollow bones).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub(super) struct Kin {
     pub base: super::voices::Voice,
     /// Playback rate: above 1 is higher and shorter.

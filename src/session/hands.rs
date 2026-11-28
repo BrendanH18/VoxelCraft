@@ -51,6 +51,10 @@ pub(super) struct State {
     /// v0.15 Track B: the hand holding a spyglass up and the ticks it has
     /// been held (`LivingEntity.useItem` for `SpyglassItem`).
     scoping: Option<(Hand, u32)>,
+    /// v1.0 final Track F4: ticks a goat horn has been held up after it was
+    /// blown (`InstrumentItem.use`'s `startUsingItem`, up to its 140-tick
+    /// use duration).
+    tooting: Option<u32>,
 }
 
 /// What a shield did to one attack.
@@ -170,6 +174,27 @@ impl PlayerSession {
 
     pub fn stop_scoping(&mut self) -> bool {
         self.hands.scoping.take().is_some()
+    }
+
+    /// v1.0 final Track F4: `InstrumentItem.use` starts using the horn.
+    pub(super) fn start_tooting(&mut self) {
+        self.hands.tooting = Some(0);
+    }
+
+    /// One tick of holding a blown horn up: releasing use, losing the horn
+    /// from the hand or its 140-tick use duration lower it.
+    pub fn tick_tooting(&mut self, slot: usize, held: bool) {
+        let Some(ticks) = self.hands.tooting else { return };
+        let there = self.inventory.get(slot).is_some_and(|s| crate::content::goat_horn::instrument(s.item).is_some());
+        let ticks = ticks + 1;
+        self.hands.tooting =
+            (held && there && !self.vitals.is_dead() && ticks < crate::content::goat_horn::USE_TICKS).then_some(ticks);
+    }
+
+    /// v1.0 final Track F4: a blown goat horn is held up (Java's
+    /// `isUsingItem` with `ItemUseAnimation.TOOT_HORN`).
+    pub fn tooting(&self) -> bool {
+        self.hands.tooting.is_some()
     }
 
     /// Java's `isScoping`: using a spyglass.

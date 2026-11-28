@@ -279,6 +279,7 @@ impl Actor<'_> {
         }
         self.session.tick_blocking(self.body.actions.selected, acting && self.body.right_held);
         self.session.tick_scoping(self.body.actions.selected, acting && self.body.right_held);
+        self.session.tick_tooting(self.body.actions.selected, acting && self.body.right_held);
         self.eat(acting, dt);
         if let Some(shot) = self.session.tick_draw(self.body.actions.selected, acting, self.world, self.entities) {
             self.present_shot(shot);

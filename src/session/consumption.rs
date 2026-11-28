@@ -59,7 +59,8 @@ impl PlayerSession {
         self.consumption.key.is_some()
     }
     /// Java's `isUsingItem` for the movement slow-down: eating, drinking,
-    /// drawing a bow or crossbow, brushing, or emptying a bundle.
+    /// drawing a bow or crossbow, brushing, emptying a bundle, or holding up
+    /// a blown goat horn.
     pub fn using_item(&self) -> bool {
         // A spear's charge keeps full speed and the sprint (`UseEffects(true, false, 1.0)`).
         self.consuming()
@@ -67,6 +68,7 @@ impl PlayerSession {
             || self.shield_raised()
             || self.brushing()
             || self.bundle_in_use()
+            || self.tooting()
     }
     pub fn consumption_progress(&self) -> f32 {
         if self.consumption.duration == 0 {

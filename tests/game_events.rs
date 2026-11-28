@@ -923,6 +923,19 @@ fn goat_horns_post_instrument_play_and_cool_down() {
     s.vitals.horn_cooldown = 0.0;
     let used = s.use_held(1, &mut w, &mut e, &ctx).unwrap().unwrap();
     assert!(matches!(used.used, Used::HornPlayed { instrument: 0, .. }));
+    // `startUsingItem`: held up (and slowing the player) until released
+    // or for its 140-tick use duration.
+    assert!(s.tooting() && s.using_item());
+    for _ in 0..139 {
+        s.tick_tooting(1, true);
+    }
+    assert!(s.tooting(), "held up for 139 ticks");
+    s.tick_tooting(1, true);
+    assert!(!s.tooting() && !s.using_item(), "lowered at its use duration");
+    s.vitals.horn_cooldown = 0.0;
+    s.use_held(1, &mut w, &mut e, &ctx).unwrap().unwrap();
+    s.tick_tooting(1, false);
+    assert!(!s.tooting(), "releasing use lowers it");
     // The horn isn't used up.
     assert!(s.inventory.get(0).is_some() && s.inventory.get(1).is_some());
 }

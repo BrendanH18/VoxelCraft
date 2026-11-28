@@ -1274,6 +1274,7 @@ impl Agent {
         }
         self.draw(world, entities);
         self.session.tick_blocking_unless_ticked(self.selected, self.eating && self.remaining > 0);
+        self.session.tick_tooting(self.selected, self.eating && self.remaining > 0);
         if self.session.bundle_in_use() {
             let using = self.eating && self.remaining > 0;
             if let Some(out) = self.session.tick_bundle_use(self.selected, using, entities) {

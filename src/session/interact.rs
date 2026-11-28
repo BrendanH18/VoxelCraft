@@ -855,6 +855,7 @@ impl PlayerSession {
                 return Err("goat horn cooling down");
             }
             self.vitals.horn_cooldown = crate::content::goat_horn::cooldown_seconds();
+            self.start_tooting();
             return Ok(Some(Used::HornPlayed { instrument, from: self.player.pos }));
         }
         if survival_items::throw_held(&self.player, &mut self.inventory, slot, creative, self.id, entities) {
