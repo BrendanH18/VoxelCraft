@@ -23,6 +23,8 @@ mod wild;
 pub use wild::{SHAPE as WILD_SHAPE, Wild, WildDragon};
 #[cfg(test)]
 mod track4c_tests;
+#[cfg(test)]
+mod track8_tests;
 
 pub const MAX_HEALTH: f32 = 200.0;
 /// Experience for the first kill, and for any later one.
@@ -580,7 +582,8 @@ impl Fight {
     }
 
     /// Advances the fight, and the End's crystals with it, by `dt` game
-    /// seconds.
+    /// seconds, with no other dragons about (the tests' fights).
+    #[cfg(test)]
     #[allow(clippy::too_many_arguments)]
     pub(super) fn update<W: BlockSource + ?Sized>(
         &mut self,
@@ -591,12 +594,28 @@ impl Fight {
         crystals: &mut Crystals,
         events: &mut Vec<EntityEvent>,
     ) {
+        self.update_beside(dt, world, ctx, rng, crystals, &Wild::default(), events);
+    }
+
+    /// [`Fight::update`] beside the dragons no fight owns, whose parts the
+    /// fight's fireballs meet too (v1.0 gap Track 8).
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn update_beside<W: BlockSource + ?Sized>(
+        &mut self,
+        dt: f64,
+        world: &W,
+        ctx: &Ctx,
+        rng: &mut Rng,
+        crystals: &mut Crystals,
+        wild: &Wild,
+        events: &mut Vec<EntityEvent>,
+    ) {
         self.pending += dt;
         while self.pending >= TICK - 1e-9 {
             self.pending -= TICK;
             self.restore_ritual(crystals);
             crystals.tick(world, true, events);
-            self.tick(world, ctx, rng, crystals, events);
+            self.tick(world, ctx, rng, crystals, wild, events);
         }
     }
 
@@ -605,12 +624,14 @@ impl Fight {
         self.respawn_check = true;
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn tick<W: BlockSource + ?Sized>(
         &mut self,
         world: &W,
         ctx: &Ctx,
         rng: &mut Rng,
         crystals: &mut Crystals,
+        wild: &Wild,
         events: &mut Vec<EntityEvent>,
     ) {
         self.settle_destroyed(ctx, crystals, events);
@@ -665,7 +686,8 @@ impl Fight {
         }
         let mut fireballs = std::mem::take(&mut self.fireballs);
         if !fireballs.is_empty() {
-            let boxes = Boxes::new(Some(self), &Wild::default(), crystals);
+            // Every dragon's parts are pickable (v1.0 gap Track 8).
+            let boxes = Boxes::new(Some(self), wild, crystals);
             fireballs.retain_mut(|f| f.tick(world, ctx, &boxes, &mut self.clouds));
         }
         self.fireballs = fireballs;
@@ -1190,6 +1212,14 @@ impl Boxes {
             .map(|&(hit, ..)| hit)
     }
 
+    /// The End crystal `p` is in (v1.0 gap Track 8: what llama spit meets).
+    pub fn crystal_at(&self, p: DVec3) -> Option<Hit> {
+        self.list
+            .iter()
+            .find(|&&(hit, min, max)| matches!(hit, Hit::Crystal(_)) && p.cmpge(min).all() && p.cmple(max).all())
+            .map(|&(hit, ..)| hit)
+    }
+
     /// The nearest crystal (unless `crystals` is false) or dragon part the
     /// move `from + dir * t`, `t` up to `max_dist`, enters.
     pub fn raycast(&self, from: DVec3, dir: DVec3, max_dist: f64, crystals: bool) -> Option<(Hit, f64)> {
@@ -1259,6 +1289,17 @@ impl Targets<'_> {
         if let Some(d) = dragon {
             d.heal_by(amount);
         }
+    }
+
+    /// v1.0 gap Track 8: whether `blow` on `hit` sets the projectile alight
+    /// ([`Dragon::scorches`]).
+    pub fn scorches(&self, hit: Hit, blow: Blow) -> bool {
+        let dragon = match hit {
+            Hit::Crystal(_) => None,
+            Hit::Dragon(_) => self.fight.as_deref().and_then(|f| f.dragon.as_ref()),
+            Hit::Wild(id, _) => self.wild.dragons.iter().find(|w| w.id == id).map(|w| &w.dragon),
+        };
+        dragon.is_some_and(|d| d.scorches(blow))
     }
 
     /// A projectile's `blow`, from player `by`; returns whether it landed
@@ -1573,6 +1614,15 @@ impl Dragon {
         }
     }
 
+    /// v1.0 gap Track 8: `AbstractDragonSittingPhase.onHurt` sets the
+    /// direct entity of an arrow's, trident's or wind charge's hit alight
+    /// for a second (`igniteForSeconds(1)`) as it takes the damage away;
+    /// `EnderDragon.hurt` asks it in any phase but `DYING`, and fire never
+    /// gets past the parts' immunity.
+    pub(super) fn scorches(&self, blow: Blow) -> bool {
+        blow.arrow && !blow.fire && self.health > 0.0 && self.phase.deflects_arrows()
+    }
+
     /// `EnderDragonPart.hurtServer` and `EnderDragon.hurt`: whether the hit
     /// landed (Java's result, which decides whether an arrow bounces off),
     /// not whether it took health: only a player's hits and explosions do.
@@ -1701,7 +1751,7 @@ impl Dragon {
         }
         self.fly();
         self.place_parts();
-        self.check_walls(world, arena.griefing, events);
+        self.check_walls(world, arena.griefing, rng, events);
         self.hit_players(ctx, events);
         true
     }
@@ -2117,14 +2167,23 @@ impl Dragon {
     /// every phase: every block in them that isn't air or
     /// `#dragon_transparent` breaks, without drops, under `mobGriefing`
     /// unless it is `#dragon_immune` (a fluid stays, as `removeBlock`
-    /// leaves it); any other is a wall (`hitWall`), which slows the next
-    /// move and wing beat (`inWall`). Without `mobGriefing` every such
-    /// block is a wall.
-    fn check_walls<W: BlockSource + ?Sized>(&mut self, world: &W, griefing: bool, events: &mut Vec<EntityEvent>) {
-        let (mut wall, mut broke) = (false, false);
-        for i in [3, 0, 4] {
+    /// leaves it, and a waterlogged block leaves its water); any other is a
+    /// wall (`hitWall`), which slows the next move and wing beat
+    /// (`inWall`). Without `mobGriefing` every such block is a wall. Each
+    /// part that broke something posts level event 2008 at a random cell of
+    /// its box (v1.0 gap Track 8): an explosion particle, and no sound.
+    fn check_walls<W: BlockSource + ?Sized>(
+        &mut self,
+        world: &W,
+        griefing: bool,
+        rng: &mut Rng,
+        events: &mut Vec<EntityEvent>,
+    ) {
+        let mut wall = false;
+        for i in [3, 4, 0] {
             let (_, min, max) = self.parts[i];
             let (lo, hi) = (min.floor().as_ivec3(), max.floor().as_ivec3());
+            let mut broke = false;
             for x in lo.x..=hi.x {
                 for y in lo.y..=hi.y {
                     for z in lo.z..=hi.z {
@@ -2142,9 +2201,11 @@ impl Dragon {
                     }
                 }
             }
-        }
-        if broke {
-            events.push(EntityEvent::Sound { sound: MobSound::DragonSmash, pos: self.pos });
+            if broke {
+                let mut pick = |lo: i32, hi: i32| lo + rng.next_int((hi - lo + 1) as u32) as i32;
+                let cell = IVec3::new(pick(lo.x, hi.x), pick(lo.y, hi.y), pick(lo.z, hi.z));
+                events.push(EntityEvent::DragonSmashed { cell });
+            }
         }
         self.in_wall = wall;
     }

@@ -1314,7 +1314,9 @@ impl Game {
                     }
                 }
             }
-            if let Some(bot) = self.agents.players.get(&name) {
+            // v1.0 gap Track 8: a spectator guest passes through portals as
+            // Java's do, so there's nothing to explain.
+            if let Some(bot) = self.agents.players.get(&name).filter(|b| b.agent.session.mode.uses_portals()) {
                 let p = bot.agent.session.player.pos.floor().as_ivec3();
                 if self
                     .world
