@@ -56,7 +56,10 @@ iron/copper/emerald ore. Screaming goats have shorter ram cooldowns. Every
 implemented, unverified): it picks a spot within 5 blocks it can't walk to
 within 8, over a solid block, with an arc at 65° to 80° its jumping box
 clears, looks at it for two seconds and leaps, landing with a hoof's step;
-the launch and landing sounds are original procedural stand-ins.
+the launch and landing sounds are original procedural stand-ins. Since
+[Track 2h](verification/2026-11-28-v1.0-gap-track-02h-details.md) its
+heading snaps to its body's at the launch (`setYRot(yBodyRot)`), and Jump
+Boost lengthens the leap by 0.1 a level (`getJumpBoostPower`).
 
 Sheep graze grass for two seconds, restoring wool and accelerating baby growth
 by sixty seconds. `mobGriefing=false` preserves the grass while still restoring
@@ -109,7 +112,10 @@ the trusted player's attacker can be a mob's projectile (arrows, tridents,
 wind charges, llama spit, shulker bullets, Wither skulls) or, over LAN with
 PvP, another player, whom the fox bites unless it trusts that player too
 or the player is in Creative or spectating. A chewing fox sheds item
-particles of what it eats.
+particles of what it eats. Since
+[Track 2h](verification/2026-11-28-v1.0-gap-track-02h-details.md) a blaze's
+fireball and a blast a mob is behind (a ghast's fireball, a creeper) record
+it as the hurt player's attacker too.
 
 ## Leads and name tags
 
@@ -220,7 +226,10 @@ cubs; one nearby bamboo stalk permits breeding. Pandas sit and snack on
 bamboo or dropped cake, cubs sneeze with rare slimeball gifts, playful
 pandas roll and lazy ones lie on their backs. Worried pandas fear thunder
 and avoid players/monsters; ordinary pandas retaliate once, aggressive ones
-keep fighting, and bamboo calms them. Genes, age and carried food persist;
+keep fighting, and bamboo calms them. A snacking panda chews every fifth
+tick with six item particles of its food ahead of its face
+(`addEatingParticles`, [Track 2h](verification/2026-11-28-v1.0-gap-track-02h-details.md);
+the chewing sound is the game's stand-in for `PANDA_EAT`). Genes, age and carried food persist;
 actions replicate with original cuboid models. See the
 [record](verification/2026-11-04-v0.15-passive-mobs.md) for the exact gene
 pool, timers, source data, focused checks and shared-engine differences.

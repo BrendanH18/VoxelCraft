@@ -732,6 +732,10 @@ impl Entities {
     /// `OwnerHurtByTargetGoal` sends their wolves at it, and (v1.0 gap
     /// Track 2f) foxes that trust them defend against it. v1.0 gap Track
     /// 8f: also the mob behind a blast that hurt them.
+    ///
+    /// [`EntityEvent::OwnerHurt`]; v1.0 gap Track 2h: also called by the game for a blast a mob is behind (a
+    /// ghast's fireball, a creeper), as `hurtServer` records any living
+    /// source entity.
     pub fn mob_hurt_player(&mut self, player: PlayerId, attacker: u32) {
         self.animals_defend_owner(attacker, player);
         self.player_hurts = self.player_hurts.wrapping_add(1);

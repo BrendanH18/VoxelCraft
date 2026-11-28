@@ -234,6 +234,11 @@ impl Fireball {
                 cause: crate::simulation::damage::Cause::BLAZE_FIREBALL,
             });
             events.push(EntityEvent::Ignite { player: hit.id, secs: BURN });
+            // v1.0 gap Track 2h: the hit is the shooter's (`DamageSources.fireball`
+            // names the owner), so the player's `lastHurtByMob` is the blaze.
+            if let Some(super::trident::Owner::Mob(attacker)) = self.owner {
+                events.push(EntityEvent::OwnerHurt { player: hit.id, attacker });
+            }
         }
         let mob_owned = matches!(self.owner, Some(super::trident::Owner::Mob(_)));
         events.push(EntityEvent::IgniteBlock { cell: self.pos.floor().as_ivec3(), mob_owned });
@@ -269,6 +274,8 @@ mod tests {
         let player = Target::new(PlayerId(2), DVec3::new(20.5, 10.0, 0.5), true);
         let c = ctx(vec![player]);
         let mut f = Fireball::new(DVec3::new(0.5, 11.0, 0.5), DVec3::X);
+        // v1.0 gap Track 2h: a blaze's fireball names its shooter.
+        f.owner = Some(crate::entity::trident::Owner::Mob(7));
         let mut events = Vec::new();
         let mut ticks = 0;
         while f.update(0.05, &world, &c, &[], &[], &Default::default(), &mut events) {
@@ -279,6 +286,7 @@ mod tests {
         assert!((15..35).contains(&ticks), "{ticks} ticks");
         assert!(events.contains(&EntityEvent::Ignite { player: PlayerId(2), secs: BURN }));
         assert!(events.iter().any(|e| matches!(e, EntityEvent::PlayerHit { damage: DAMAGE, .. })));
+        assert!(events.contains(&EntityEvent::OwnerHurt { player: PlayerId(2), attacker: 7 }));
         // Creative (untargetable) players are flown past.
         let c = ctx(vec![Target::new(PlayerId(2), DVec3::new(20.5, 10.0, 0.5), false)]);
         let mut f = Fireball::new(DVec3::new(0.5, 11.0, 0.5), DVec3::X);

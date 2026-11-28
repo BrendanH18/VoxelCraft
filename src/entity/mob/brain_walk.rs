@@ -108,6 +108,8 @@ pub(crate) enum FarmAct {
     /// `WorkAtComposter.compostItems`: the composter's level from (8 when
     /// `extractProduce` emptied it first) and to.
     Compost { cell: IVec3, from: u8, to: u8 },
+    /// Track 2h: `WorkAtPoi.start`'s `playWorkSound`.
+    WorkSound(crate::entity::villager::Profession),
     /// An item entity: bread it can't carry (`spawnAtLocation`), the
     /// composter's bone meal, or a half stack thrown to a trading partner
     /// (`BehaviorUtils.throwItem`); position, velocity (blocks a second).
@@ -146,7 +148,15 @@ pub(crate) fn harvestable<W: MobWorld + ?Sized>(world: &W, cell: IVec3) -> bool 
 
 /// Track 2g: `UseBonemeal.validPos`: a crop short of its last age.
 fn growing_crop<W: MobWorld + ?Sized>(world: &W, cell: IVec3) -> bool {
-    world.block(cell).and_then(|b| b.as_crop()).is_some_and(|(crop, age)| age < crop.max_age())
+    world.block(cell).is_some_and(growing)
+}
+
+/// A `CropBlock` short of its maximum age (`!isMaxAge`). Track 2h: a
+/// torchflower crop always is: `TorchflowerCropBlock`'s maximum age is 2,
+/// which its states (ages 0 and 1) never reach, since age 2 is the
+/// torchflower itself; so farmers bone-meal it but never harvest it.
+fn growing(b: Block) -> bool {
+    b.as_crop().is_some_and(|(crop, age)| age < crop.max_age()) || crate::world::sniffer_plants::torch_age(b).is_some()
 }
 
 /// Track 2g: `UseBonemeal.pickNextTarget`: a growing crop among the 27
@@ -684,7 +694,7 @@ impl Mob {
                         if b == Some(Block::AIR) && world.block(c - IVec3::Y).is_some_and(|b| b.is_farmland()) {
                             self.plant_seed(c);
                         }
-                        if b.is_some_and(|b| b.as_crop().is_some_and(|(crop, age)| age < crop.max_age())) {
+                        if b.is_some_and(growing) {
                             self.walking.harvest_valid.retain(|&p| p != c);
                             h.cell = (!self.walking.harvest_valid.is_empty()).then(|| {
                                 self.walking.harvest_valid
@@ -845,12 +855,16 @@ impl Mob {
                 if !closer_to_centre(job, self.pos, crate::entity::villager::WORK_DISTANCE) {
                     return false;
                 }
-                // `start`: looks at the job site (`BlockPosTracker`), uses it
-                // and restocks if it should (the village pass does that).
+                // `start`: looks at the job site (`BlockPosTracker`), plays
+                // the work sound (Track 2h), uses it and restocks if it
+                // should (the village pass does that).
                 self.head.target = Some(Tracked::Point(job.as_dvec3() + 0.5));
+                let profession = self.villager.as_ref().map_or(Default::default(), |v| v.profession);
+                if profession.work_sound().is_some() {
+                    self.walking.farm_acts.push(FarmAct::WorkSound(profession));
+                }
                 // Track 2g: a farmer's `WorkAtComposter.useWorkstation`.
-                let farmer =
-                    self.villager.as_ref().is_some_and(|v| v.profession == crate::entity::villager::Profession::Farmer);
+                let farmer = profession == crate::entity::villager::Profession::Farmer;
                 if farmer && let Some(level) = world.block(job).and_then(crate::world::composter::level) {
                     self.make_bread(rng);
                     self.compost_items(job, level, rng);
@@ -1214,9 +1228,9 @@ impl Mob {
                 }
             }
         }
-        if level != from {
-            self.walking.farm_acts.push(FarmAct::Compost { cell, from, to: level });
-        }
+        // Track 2h: `spawnComposterFillEffects` ends every `compostItems`,
+        // whether or not a layer went in.
+        self.walking.farm_acts.push(FarmAct::Compost { cell, from, to: level });
     }
 
     /// Track 2g: whether a `UseBonemeal` is running (the villager holds

@@ -431,3 +431,36 @@ has the Java sources, checks and remaining differences. Code:
   gravity without drag, every 30 to 60 seconds, with the long-jump and
   landing sounds; see [Animals](animals.md).
 
+## Work sounds, composters, bone meal, torchflowers, eating and fireballs (v1.0 gap Track 2h, implemented, unverified)
+
+The [Track 2h record](verification/2026-11-28-v1.0-gap-track-02h-details.md)
+has the Java sources, checks and remaining differences. Code:
+`src/entity/mob/brain_walk.rs`, `src/world/composter.rs`,
+`src/world/growth.rs`, `src/particles/`, `src/session/consumption.rs`,
+`src/entity/panda.rs`, `src/entity/fireball.rs`,
+`src/entity/animals/long_jump.rs` and `src/audio/work.rs`.
+
+- **Villagers** play their profession's work sound each time they start
+  work at their job site (`WorkAtPoi.start`'s `playWorkSound`; thirteen
+  original procedural stand-ins for `entity.villager.work_*`).
+- **Composters** play `fill` or `fill_success` and shed ten composter
+  particles at every fill, whether a player, a hopper or a farmer fills
+  them (level event 1500; a farmer's composting always ends with it),
+  `empty` when a player or farmer takes the bone meal out, and `ready`
+  when they ripen.
+- **Bone meal** sheds Java's happy-villager particles for every user
+  (players, dispensers, farmers; level event 1505) and for bees growing
+  crops (2011); dispensers now play its sound too.
+- **Farmers** bone-meal torchflower crops and never harvest them (they
+  never reach a `CropBlock`'s maximum age); while one uses bone meal it
+  holds it over its folded arms (`CrossedArmsItemLayer`).
+- **Eating** makes its sound and item particles on Java's rhythm (every
+  fourth tick after the first 21.875% of the meal) for every player:
+  the host, split-screen and LAN players and CLI agents. Pandas shed
+  particles of their snack as they chew.
+- **Blaze fireballs** and blasts a mob is behind (ghast fireballs,
+  creepers) record the mob as the player's attacker, for foxes and wolves
+  that defend them.
+- **Goats** turn their heading to their body's at a long jump's launch,
+  and Jump Boost lengthens it.
+

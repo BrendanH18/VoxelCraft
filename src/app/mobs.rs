@@ -793,6 +793,12 @@ impl Game {
                             let landing = cue == voxelcraft::entity::animals::long_jump::Cue::Step;
                             (Sound::Goat(cue), if landing { 2.0 } else { 1.0 })
                         }
+                        // v1.0 gap Track 2h: `makeSound` at the villager's
+                        // volume, 1.
+                        MobSound::VillagerWork(job) => (Sound::VillagerWork(job), 1.0),
+                        // v1.0 gap Track 2h: the game's chewing stand-in for
+                        // `PANDA_EAT` (Java's volume is 0.5 or 1).
+                        MobSound::PandaEat => (Sound::Step(crate::audio::sounds::Material::Snow), 0.75),
                         MobSound::CopperGolem(action, stage) => (Sound::CopperGolem(action, stage), 0.7),
                         MobSound::Hurt(MobKind::CopperGolem) => {
                             (Sound::CopperGolem(voxelcraft::entity::copper_golem::Sound::Hurt, 0), 0.9)
@@ -924,13 +930,9 @@ impl Game {
                     }
                 }
                 EntityEvent::VillagerBonemeal { cell } => {
-                    // `BoneMealItem.growCrop`; level event 1505's sound as the
-                    // player's bone meal plays it.
-                    if self.world.apply_bone_meal(cell) {
-                        let centre = cell.as_dvec3() + DVec3::splat(0.5);
-                        let grass = crate::audio::sounds::Sound::Place(crate::audio::sounds::Material::Grass);
-                        self.audio.play(grass, Some(centre), 0.8, (1.2, 1.4));
-                    }
+                    // `BoneMealItem.growCrop` and level event 1505 (v1.0
+                    // gap Track 2h: its particles and sound are the world's).
+                    self.world.use_bone_meal(cell);
                 }
                 EntityEvent::VillagerCompost { cell, from, to } => self.world.villager_compost(cell, from, to),
                 EntityEvent::RingBell { pos, mob } => {
@@ -1044,6 +1046,8 @@ fn mob_sound_source(sound: MobSound) -> Option<SoundSource> {
         MobSound::FrogAction(_) => Some(SoundSource::Neutral),
         // `AbstractVillager` and boats: `NEUTRAL`.
         MobSound::TraderDrink(_) | MobSound::BoatPaddle(_) => Some(SoundSource::Neutral),
+        // v1.0 gap Track 2h: the panda's `playSound`, `NEUTRAL`.
+        MobSound::PandaEat => Some(SoundSource::Neutral),
         MobSound::Thunder => Some(SoundSource::Weather),
         // Skeletons and pillagers shoot as hostile mobs, not as the player.
         MobSound::Bow => Some(SoundSource::Hostile),

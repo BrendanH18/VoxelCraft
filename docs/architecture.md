@@ -1514,7 +1514,7 @@ makes appended orderings contiguous in landing order.
 | 14022–14037 | — | — | 5. Nether generation and portals (5b used 14022–14023: Nether portal `axis=x`, `axis=z`) |
 | 14038–14053 | 1977–1981 | 4080–4087 | 6. Items and utilities (6b used layers 4080–4083: the spore blossom and small dripleaf item models; 6c used states 14038–14040: bamboo `age=0` with no, small and large leaves; 6d used layers 4084–4085: the spyglass's and trident's in-hand models) |
 | 14054–14069 | — | 4066–4079 | 7. Art and motion |
-| 14070–14335 | 1938–1949, 1982–2199 | 4088–4095 | Integrator |
+| 14070–14335 | 1938–1949, 1982–2199 | 4088–4095 | Integrator (2026-11-28, the final wave, from this row: F3 visuals states 14070–14101 and layers 4088–4091; F4 sounds items 1982–1991; F5 structures states 14102–14133 and items 1992–2001; F7 physics states 14134–14165) |
 
 ## Assessment branch ID reservations
 

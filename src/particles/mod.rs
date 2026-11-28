@@ -310,6 +310,20 @@ pub enum Request {
         vel: DVec3,
         item: crate::item::Item,
     },
+    /// v1.0 gap Track 2h: level event 1500 (`ComposterBlock.handleFill`):
+    /// a composter at `cell` was filled (its sound is the game's).
+    Composter {
+        cell: IVec3,
+    },
+    /// v1.0 gap Track 2h: happy-villager particles at `cell`: level event
+    /// 1505 (`BoneMealItem.addGrowthParticles`, `bone_meal`) or 2011 (a
+    /// bee's growth, `ParticleUtils.spawnParticleInBlock`), with Java's
+    /// `count` (15).
+    Growth {
+        cell: IVec3,
+        count: u8,
+        bone_meal: bool,
+    },
     /// HoneyBlock entity events 53/54 and slide sound.
     Honey {
         pos: DVec3,
@@ -362,7 +376,10 @@ impl Request {
             | Request::Honey { pos, .. }
             | Request::Item { pos, .. }
             | Request::Firework { pos, .. } => *pos,
-            Request::Break { cell, .. } | Request::Hit { cell, .. } => cell.as_dvec3() + DVec3::splat(0.5),
+            Request::Break { cell, .. }
+            | Request::Hit { cell, .. }
+            | Request::Composter { cell }
+            | Request::Growth { cell, .. } => cell.as_dvec3() + DVec3::splat(0.5),
         }
     }
 
@@ -384,6 +401,8 @@ impl Request {
             Request::EyeBreak { pos } => json!({"t": "e", "p": v(*pos)}),
             Request::Item { pos, vel, item } => json!({"t": "it", "p": v(*pos), "v": v(*vel), "i": item.0}),
             Request::Honey { pos, count, sound } => json!({"t": "honey", "p": v(*pos), "n": count, "sound": sound}),
+            Request::Composter { cell } => json!({"t": "cf", "p": c(*cell)}),
+            Request::Growth { cell, count, bone_meal } => json!({"t": "gr", "p": c(*cell), "n": count, "b": bone_meal}),
             Request::Firework { pos, vel, fireworks } => {
                 json!({"t": "fw", "p": v(*pos), "v": v(*vel), "f": fireworks.map(|f| f.field())})
             }
@@ -440,6 +459,12 @@ impl Request {
                 pos: v("p")?,
                 count: u8::try_from(j["n"].as_u64()?).ok()?.min(10),
                 sound: j["sound"] == true,
+            },
+            "cf" => Request::Composter { cell: c("p")? },
+            "gr" => Request::Growth {
+                cell: c("p")?,
+                count: u8::try_from(j["n"].as_u64()?).ok()?.min(64),
+                bone_meal: j["b"] == true,
             },
             "fw" => Request::Firework {
                 pos: v("p")?,

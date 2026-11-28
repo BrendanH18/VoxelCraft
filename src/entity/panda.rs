@@ -370,6 +370,17 @@ impl Entities {
                     s.eating = 1;
                 }
                 if s.eating > 0 {
+                    // v1.0 gap Track 2h: `addEatingParticles`, every fifth
+                    // tick of eating: `PANDA_EAT` and six particles of the
+                    // held item.
+                    if s.eating.is_multiple_of(5) {
+                        events.push(super::EntityEvent::Sound { sound: super::MobSound::PandaEat, pos: m.pos });
+                        if let Some(item) = m.animal.as_ref().and_then(|a| a.mouth).map(|h| h.item) {
+                            for (pos, vel) in eating_particles(m, u64::from(s.ticks)) {
+                                events.push(super::EntityEvent::ItemParticle { pos, vel, item });
+                            }
+                        }
+                    }
                     if s.eating > 80 && self.rng.next_int(20) == 1 {
                         if s.eating > 100 && m.animal.as_ref().unwrap().mouth.is_some_and(|h| edible(h.item)) {
                             m.animal.as_mut().unwrap().mouth = None;
@@ -621,6 +632,32 @@ impl Mob {
         }
         None
     }
+}
+
+/// v1.0 gap Track 2h: `Panda.addEatingParticles`' six particles (the
+/// client's random, seeded by `seed`): up to 0.4 aside, 0.3 to 0.9 down
+/// from a block over the eyes and 0.8 to 1.2 ahead of the body, moving up
+/// to 0.05 aside and 0.1 to 0.2 up turned by the head's pitch and the
+/// facing, then 0.05 up (blocks a tick).
+fn eating_particles(m: &Mob, seed: u64) -> [(DVec3, DVec3); 6] {
+    let mut rng = Rng::new(u64::from(m.uid).rotate_left(32) ^ seed ^ 0x5041_4e44);
+    // Java's degrees: `yRot` from the game's yaw, `xRot` from the pitch
+    // (positive looks down there).
+    let y_rot = f64::from(m.yaw.to_degrees() - 90.0).to_radians();
+    let body = f64::from(m.body_yaw.to_degrees() - 90.0).to_radians();
+    let x_rot = -f64::from(m.head_pitch);
+    // `Vec3.xRot` and `Vec3.yRot` by `a` radians.
+    let x_turn = |v: DVec3, a: f64| DVec3::new(v.x, v.y * a.cos() + v.z * a.sin(), v.z * a.cos() - v.y * a.sin());
+    let y_turn = |v: DVec3, a: f64| DVec3::new(v.x * a.cos() + v.z * a.sin(), v.y, v.z * a.cos() - v.x * a.sin());
+    let eye = m.pos.y + m.eye_height();
+    std::array::from_fn(|_| {
+        let mut f = || f64::from(rng.next_f32());
+        let vel = DVec3::new((f() - 0.5) * 0.1, f() * 0.1 + 0.1, (f() - 0.5) * 0.1);
+        let vel = y_turn(x_turn(vel, -x_rot), -y_rot);
+        let at = DVec3::new((f() - 0.5) * 0.8, -f() * 0.6 - 0.3, 1.0 + (f() - 0.5) * 0.4);
+        let at = y_turn(at, -body) + DVec3::new(m.pos.x, eye + 1.0, m.pos.z);
+        (at, vel + DVec3::Y * 0.05)
+    })
 }
 
 #[cfg(test)]

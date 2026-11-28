@@ -25,6 +25,9 @@ pub enum Event {
     Bucket(crate::survival_items::bucket::Effect),
     Chew,
     HoneyDrink,
+    /// v1.0 gap Track 2h: `LivingEntity.spawnItemParticles` while eating
+    /// `Item` (5 a chew, 16 on finishing; drinks have none).
+    EatParticles(Item, u32),
     /// Drew, loaded, fired or shot a bow or crossbow.
     Shot(crate::session::ranged::Shot),
     /// Absorbed an experience orb; with the level-up chime volume when it
@@ -1356,7 +1359,6 @@ impl Agent {
             self.bite = 0;
             return;
         }
-        let before = self.session.consumption_elapsed();
         let result = self.session.tick_consumption_either(self.selected, true, entities);
         let Ok(step) = result else {
             self.bite = 0;
@@ -1366,14 +1368,18 @@ impl Agent {
             return;
         };
         self.bite = (f64::from(step.progress) * EAT_TICKS as f64) as u32;
-        if ((before / TICK_SECONDS).round() as u32).is_multiple_of(5) {
-            self.emit(if self.session.inventory.get(self.selected).is_some_and(|s| s.item == Item::HONEY_BOTTLE) {
-                Event::HoneyDrink
-            } else {
-                Event::Chew
-            });
+        // v1.0 gap Track 2h: Java's rhythm (`shouldEmitParticlesAndSounds`).
+        if step.effects {
+            let held = self.session.consumable_in_hands(self.selected);
+            self.emit(if held == Some(Item::HONEY_BOTTLE) { Event::HoneyDrink } else { Event::Chew });
+            if let Some(item) = held.filter(|i| !i.is_drink()) {
+                self.emit(Event::EatParticles(item, 5));
+            }
         }
         if let Some(consumed) = step.completed {
+            if !consumed.item.is_drink() {
+                self.emit(Event::EatParticles(consumed.item, 16));
+            }
             if consumed.item == crate::content::chorus::CHORUS_FRUIT {
                 self.session.chorus_teleport(world, entities);
             }
