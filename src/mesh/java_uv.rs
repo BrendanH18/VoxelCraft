@@ -85,7 +85,8 @@ pub(super) fn is_bars(b: Block) -> bool {
 /// v1.0 final F10: also repeaters (`repeater_*tick*`, locked when a powered
 /// repeater or comparator points into either side, as Java's `locked`
 /// state is kept), comparators (`comparator*`) and cocoa
-/// (`cocoa_stage*`), all `ambientocclusion: false` in the jar; the glow
+/// (`cocoa_stage*`) and cauldrons' bodies (`cauldron`, the game drawing
+/// the contents' plane itself), all `ambientocclusion: false` in the jar; the glow
 /// planes round a lit diode's torches sit on half sixteenths and are left
 /// out. `neighbour` gives the (canonical) block beside `b` each way.
 pub(super) fn model_faces(b: Block, neighbour: impl Fn(Facing) -> Block) -> Option<&'static [ModelFace]> {
@@ -116,6 +117,9 @@ pub(super) fn model_faces(b: Block, neighbour: impl Fn(Facing) -> Block) -> Opti
             return Some(COMPARATORS[facing_index(java) * 4 + usize::from(subtract) * 2 + usize::from(on)]);
         }
         _ => {}
+    }
+    if crate::world::utilities::cauldron_of(b).is_some() {
+        return Some(CAULDRONS[0]);
     }
     if let Some((age, log)) = crate::world::overworld_blocks::cocoa_of(b) {
         // Java's facing is the log's side, as the game's.
@@ -192,6 +196,15 @@ pub(super) fn model_layer(b: Block, tex: u8, layer: u32) -> u32 {
     }
     if crate::world::overworld_blocks::cocoa_of(b).is_some() {
         return layer;
+    }
+    if crate::world::utilities::cauldron_of(b).is_some() {
+        // `#side`, `#top` (the rim), `#bottom`; `#inside` (Java's
+        // `cauldron_inner`, which the game has no layer for) the top's
+        // middle, as the game drew the floor before.
+        use crate::world::utilities::t as u;
+        return u32::from(
+            [u::CAULDRON_SIDE, u::CAULDRON_TOP, u::CAULDRON_BOTTOM, u::CAULDRON_TOP][usize::from(tex.min(3))],
+        );
     }
     if crate::world::end_blocks::is_end_rod(b) {
         return u32::from(crate::world::end_blocks::ROD_LAYER);

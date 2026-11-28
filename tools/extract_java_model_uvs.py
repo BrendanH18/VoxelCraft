@@ -2,7 +2,7 @@
 """Extract the explicit face UVs of Java's door, trapdoor, glass pane and
 glazed terracotta models (v1.0 gap track 6e), and the whole element layout
 of the bars, hopper, end rod and lantern models (track 6f) and the
-repeater, comparator and cocoa models (v1.0 final F10).
+repeater, comparator, cocoa and cauldron models (v1.0 final F10).
 
 Reads an unpacked Java client jar (its `assets/minecraft/models/block` and
 `blockstates`), emulates `FaceBakery`'s vertex order and UV assignment for
@@ -368,6 +368,11 @@ def main():
             v = variants[label]
             rows.append((label, [(v["model"], v.get("x", 0), v.get("y", 0))]))
     model_rows(jar, "cocoa", rows, ["cocoa"], lines, fixture, "COCOA")
+    # Cauldrons: the body (`cauldron`, the same 13 elements as every
+    # filled template's); the game draws the contents' plane itself.
+    v = jar.blockstate("cauldron")["variants"][""]
+    rows = [("cauldron", [(v["model"], v.get("x", 0), v.get("y", 0))])]
+    model_rows(jar, "cauldrons", rows, ["side", "top", "bottom", "inside"], lines, fixture, "CAULDRONS")
     # Glazed terracotta: the fixture only (the game turns its layers).
     for label, v in jar.blockstate("white_glazed_terracotta")["variants"].items():
         state_ops("glazed", label, v)

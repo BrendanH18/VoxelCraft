@@ -457,6 +457,9 @@ const FACE_OFFSET: [[isize; 3]; 6] = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 
 /// bits its UV symmetry, and the light word its one light (bits 0-7) and
 /// texel offset (bits 8-11 u, 12-15 v).
 const PLANE_MODEL: u32 = 29;
+/// v1.0 final F10: the cauldron's body boxes (`utilities::boxes`), drawn
+/// as Java's model; the box after them is its contents.
+const CAULDRON_BODY: usize = 9;
 
 // v1.0 gap track 6c: fine-quad coordinate codes (`chunk.wgsl`'s
 // `fine_coord`): sixteenths 0, 0.8, 6.5, 7, 9, 9.5, 15.2 and 16 for bounds,
@@ -845,6 +848,7 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE], origin: glam
             // end rods): each face as the jar's model has it, lit flat (Java
             // draws them without ambient occlusion: the cell's own light, or
             // the neighbour's for a face on the cell's edge), in plane code 29.
+            let cauldron = crate::world::utilities::cauldron_of(b);
             if let Some(faces) = model_cells[k] {
                 for mf in faces.iter().filter(|m| usize::from(m.face) == face) {
                     let depth = if positive { mf.hi[d] } else { mf.lo[d] };
@@ -893,12 +897,19 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE], origin: glam
                         light,
                     ]);
                 }
-                continue;
+                // v1.0 final F10: a cauldron's contents (its last box) are
+                // still drawn as a box below.
+                if cauldron.is_none() {
+                    continue;
+                }
             }
             // v1.0 gap track 6e: Java's explicit face UVs (`java_uv`).
             let java_uvs = java_uv::has_ops(b);
             let frogspawn = b == crate::world::frog_blocks::FROGSPAWN;
             for (j, bx) in boxes.as_slice().iter().enumerate() {
+                if cauldron.is_some() && model_cells[k].is_some() && j < CAULDRON_BODY {
+                    continue;
+                }
                 // v1.0 gap track 6e: Java's frogspawn is a plane at 1.5/16
                 // (both faces there, no sides), which also keeps the 1.5/16
                 // code out of the bounds.
@@ -2039,6 +2050,34 @@ mod tests {
                 assert_eq!(drawn.len(), 8, "{label}");
                 assert!(drawn.iter().all(|d| d.2 == b.info().tex[0]), "{label}");
             }
+        }
+    }
+
+    /// v1.0 final F10: a cauldron's body is Java's `cauldron` model (its
+    /// L-shaped legs and inside faces), lit flat as its `ambientocclusion:
+    /// false`; a filled cauldron adds only its contents' top.
+    #[test]
+    fn cauldrons_are_javas_model_layout() {
+        use crate::world::utilities::{Contents, cauldron, t as u};
+        let fixture = model_fixture();
+        let faces = &fixture["cauldrons"]["cauldron"];
+        let drawn = check_model_faces(&mesh_blocks(&[([5, 5, 5], cauldron(Contents::Empty))]), faces, "cauldron");
+        assert_eq!(drawn.len(), faces.len());
+        let layers = [u::CAULDRON_SIDE, u::CAULDRON_TOP, u::CAULDRON_BOTTOM];
+        assert!(drawn.iter().all(|d| layers.contains(&d.2)), "{drawn:?}");
+        for contents in [Contents::Water(1), Contents::Water(3), Contents::Lava, Contents::PowderSnow(2)] {
+            let m = mesh_blocks(&[([5, 5, 5], cauldron(contents))]);
+            let at_cell = |q: &&[u32; 3]| [q[0] & 31, q[0] >> 6 & 31, q[0] >> 12 & 31] == [5, 5, 5];
+            let others: Vec<_> = m
+                .quads
+                .iter()
+                .filter(at_cell)
+                .filter(|q| q[1] & DETAIL == 0 || q[1] >> 26 & 31 != PLANE_MODEL)
+                .collect();
+            assert_eq!(others.len(), 1, "{contents:?}: the contents' top only");
+            assert_eq!(others[0][0] >> 18 & 7, 2, "{contents:?}: a top face");
+            let model = m.quads.iter().filter(at_cell).filter(|q| q[1] & DETAIL != 0 && q[1] >> 26 & 31 == PLANE_MODEL);
+            assert_eq!(model.count(), faces.len(), "{contents:?}");
         }
     }
 

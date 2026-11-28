@@ -441,7 +441,7 @@ pub fn diode_pixel(layer: u16, x: usize, y: usize) -> [u8; 4] {
     } else {
         [168, 168, 168]
     };
-    let c = c.map(|v| (f32::from(v) * grain).clamp(0.0, 255.0) as u8);
+    let c = c.map(|v: u8| (f32::from(v) * grain).clamp(0.0, 255.0) as u8);
     [c[0], c[1], c[2], 255]
 }
 
