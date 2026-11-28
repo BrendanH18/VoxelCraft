@@ -193,6 +193,23 @@ fn face_uv(face: u32, p: vec3<f32>) -> vec2<f32> {
     }
 }
 
+// v1.0 gap track 6e: Java's explicit face UVs (src/mesh/java_uv.rs): the
+// planar UVs under one of the square's eight symmetries, as (u, v) rows
+// (identity, mirror u, mirror v, half turn, transpose, the quarter turns,
+// anti-transpose), then offset by whole texels.
+fn java_uv(uv: vec2<f32>, m: u32, offset: u32) -> vec2<f32> {
+    var rows = array<vec4<f32>, 8>(
+        vec4<f32>(1.0, 0.0, 0.0, 1.0), vec4<f32>(-1.0, 0.0, 0.0, 1.0),
+        vec4<f32>(1.0, 0.0, 0.0, -1.0), vec4<f32>(-1.0, 0.0, 0.0, -1.0),
+        vec4<f32>(0.0, 1.0, 1.0, 0.0), vec4<f32>(0.0, -1.0, 1.0, 0.0),
+        vec4<f32>(0.0, 1.0, -1.0, 0.0), vec4<f32>(0.0, -1.0, -1.0, 0.0));
+    var offsets = array<vec2<f32>, 8>(
+        vec2<f32>(0.0, 0.0), vec2<f32>(3.0, 0.0), vec2<f32>(13.0, 0.0), vec2<f32>(0.0, 3.0),
+        vec2<f32>(0.0, 13.0), vec2<f32>(0.0, 7.0), vec2<f32>(0.0, 9.0), vec2<f32>(1.0, 0.0));
+    let r = rows[m & 7u];
+    return vec2<f32>(r.x * uv.x + r.y * uv.y, r.z * uv.x + r.w * uv.y) + offsets[offset & 7u] / 16.0;
+}
+
 @vertex
 fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>, @location(2) origin: vec2<i32>) -> VsOut {
     let q = (vi >> 2u) * 3u;
@@ -224,7 +241,8 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>, @loca
 
     var local: vec3<f32>;
     var uv: vec2<f32>;
-    var mirror = false;
+    var uv_m = 0u;
+    var uv_offset = 0u;
     if fine {
         // Fine quad: bounds and plane as codes ([`fine_coord`]), moved by
         // the stalk's offset. A leaf plane stretches its whole texture over
@@ -292,17 +310,30 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>, @loca
         let v = (d + 2u) % 3u;
         if (w1 >> 31u) == 1u {
             // Detail quad (shaped blocks): part of the cell `base`, bounds
-            // and plane offset in 1/16 block.
-            let tag = (w0 >> 21u) & 31u;
-            let slope = face >= 2u && face <= 3u && tag >= 17u && tag <= 20u;
-            // v1.0 gap track 6d: on a side face the lower u bound is at most
-            // 15, so its top bit mirrors the texture (Java's door models).
-            let side = face < 2u || face >= 4u;
-            mirror = side && tag >= 16u;
-            let lo = vec2<u32>(select(select(tag, tag & 15u, side), 0u, slope), (w0 >> 26u) & 15u);
-            let hi = vec2<u32>((w1 >> 16u) & 31u, (w1 >> 21u) & 31u);
+            // and plane offset in 1/16 block. Upper bounds of 16 are stored
+            // as 0.
+            let lo = vec2<u32>((w0 >> 21u) & 15u, (w0 >> 26u) & 15u);
+            let hi_raw = vec2<u32>((w1 >> 16u) & 15u, (w1 >> 21u) & 15u);
+            let hi = select(hi_raw, vec2<u32>(16u), hi_raw == vec2<u32>(0u));
+            // v1.0 gap track 6e: plane codes 17-24 put the face on the
+            // cell's edge with Java's UV symmetry (code - 17), 25-28 are a
+            // rail sloping at 1/16; the bounds' three spare bits hold the
+            // edge face's offset or another face's symmetry.
+            let code = (w1 >> 26u) & 31u;
+            let spare = ((w0 >> 25u) & 1u) | (((w1 >> 20u) & 1u) << 1u) | (((w1 >> 25u) & 1u) << 2u);
+            let edge_op = code >= 17u && code <= 24u;
+            let slope = code >= 25u && code <= 28u;
+            let tag = code - 8u;
+            uv_m = select(spare, code - 17u, edge_op);
+            uv_offset = select(0u, spare, edge_op);
+            var depth = detail_coord(code);
+            if edge_op {
+                depth = select(0.0, 1.0, (face & 1u) == 0u);
+            } else if slope {
+                depth = 1.0 / 16.0;
+            }
             var p = vec3<f32>(base);
-            p[d] += detail_coord((w1 >> 26u) & 31u);
+            p[d] += depth;
             p[u] += detail_coord(select(lo.x, hi.x, c == 1u || c == 2u));
             p[v] += detail_coord(select(lo.y, hi.y, c >= 2u));
             if slope {
@@ -338,10 +369,7 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>, @loca
         }
 
         // Planar UVs from the chunk-local position: merged quads tile the texture.
-        uv = face_uv(face, local);
-        if mirror {
-            uv.x = -uv.x;
-        }
+        uv = java_uv(face_uv(face, local), uv_m, uv_offset);
     }
 
     var face_shade = array<f32, 8>(0.8, 0.8, 1.0, 0.55, 0.68, 0.68, 0.9, 0.9);

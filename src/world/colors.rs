@@ -87,6 +87,16 @@ pub(super) fn palette_ids() -> impl Iterator<Item = u16> {
     (561..592).chain(624..699).chain((699..763).step_by(4))
 }
 
+/// v1.0 gap track 6e: the quarter turns (clockwise) of a glazed
+/// terracotta's pattern on each face (+X, -X, +Y, -Y, +Z, -Z) by facing
+/// (south, north, east, west), the layers `tex::GLAZED + colour * 4 + turn`
+/// hold. Java's `template_glazed_terracotta` turns its north face 90
+/// degrees, south 270 and east 180, and its blockstate turns the whole model
+/// (`y` 0, 180, 270, 90) without `uvlock`, so the top and bottom turn with
+/// the facing and each side keeps its model face's turn.
+const GLAZED_FACE_TURNS: [[u16; 6]; 4] =
+    [[2, 0, 0, 0, 3, 1], [0, 2, 2, 2, 1, 3], [3, 1, 3, 1, 0, 2], [1, 3, 1, 3, 2, 0]];
+
 pub(super) const fn definition(id: u16) -> Option<(&'static str, RenderKind, [u16; 6])> {
     const WOOL: [&str; 16] = [
         "white wool",
@@ -262,7 +272,13 @@ pub(super) const fn definition(id: u16) -> Option<(&'static str, RenderKind, [u1
         }
         667..=682 => Some((POWDER[(id - 667) as usize], RenderKind::Opaque, [tex::CONCRETE_POWDER + id - 667; 6])),
         683..=698 => Some((CONCRETE[(id - 683) as usize], RenderKind::Opaque, [tex::CONCRETE + id - 683; 6])),
-        699..=762 => Some((GLAZED[((id - 699) / 4) as usize], RenderKind::Opaque, [tex::GLAZED + id - 699; 6])),
+        699..=762 => {
+            let i = id - 699;
+            let rot = GLAZED_FACE_TURNS[(i % 4) as usize];
+            let base = tex::GLAZED + i / 4 * 4;
+            let tex = [base + rot[0], base + rot[1], base + rot[2], base + rot[3], base + rot[4], base + rot[5]];
+            Some((GLAZED[(i / 4) as usize], RenderKind::Opaque, tex))
+        }
         _ => None,
     }
 }

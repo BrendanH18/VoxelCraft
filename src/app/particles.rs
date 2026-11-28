@@ -70,6 +70,10 @@ impl Game {
             let ambient = crate::audio::sounds::Sound::Portal(crate::audio::sounds::PortalCue::Ambient);
             self.audio.play(ambient, Some(pos), 0.5, (0.8, 1.2));
         }
+        // v1.0 gap track 6e: `DripstoneFallAndLandParticle`'s landing sound.
+        for (pos, lava, volume) in std::mem::take(&mut self.particles.drip_sounds) {
+            self.audio.play(crate::audio::Sound::DripstoneDrip(lava), Some(pos), volume, (1.0, 1.0));
+        }
         for pos in std::mem::take(&mut self.particles.gas_sounds) {
             let cue = voxelcraft::world::potent_sulfur::Cue::NoxiousGas;
             self.audio.play(crate::audio::Sound::Geyser(cue), Some(pos), 1.0, (1.0, 1.0));

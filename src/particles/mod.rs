@@ -18,6 +18,8 @@ pub use types::{Burst, Kind, System};
 pub const CAPACITY: usize = 16_384;
 /// v0.16 Track B: the most firework trail copies spawned in one tick.
 const TRAIL_CAPACITY: usize = 2048;
+/// v1.0 gap track 6e: dripstone landings reported in one tick, at most.
+const LANDED_CAPACITY: usize = 64;
 const REQUEST_CAPACITY: usize = 1024;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -90,6 +92,11 @@ pub struct Particle {
     pub landing_lifetime: u16,
     /// v0.16 Track B: a firework spark's fade colour, trail and twinkle.
     pub spark: Option<Spark>,
+    /// v1.0 gap track 6e: a pointed dripstone's drop
+    /// (`DripstoneFallAndLandParticle`), which sounds as it lands.
+    pub dripstone: bool,
+    /// Set by the tick a dripstone drop lands in, for [`Pool::tick`].
+    landed: bool,
     stopped: bool,
     on_ground: bool,
     random_state: u64,
@@ -118,6 +125,8 @@ impl Particle {
             successor_lifetime: 64,
             landing_lifetime: 20,
             spark: None,
+            dripstone: false,
+            landed: false,
             stopped: false,
             on_ground: false,
             random_state: pos.x.to_bits() ^ pos.z.to_bits() ^ 0x5350_4c41_5348,
@@ -194,25 +203,21 @@ impl Particle {
                         self.on_ground = true;
                         self.velocity.x *= 0.7;
                         self.velocity.z *= 0.7;
+                        // The falling drop gives way to `LANDING_LAVA` where it
+                        // lands; a dripstone's also sounds (`landed`).
                         if self.style == Kind::LavaDrip && self.motion == Motion::Normal {
                             self.motion = Motion::Stationary;
                             self.age = 0;
                             self.lifetime = self.landing_lifetime;
+                            self.landed = self.dripstone;
                         }
-                        // v1.0 gap track 6d: a falling dripstone water drop
-                        // lands as a splash (`DripstoneFallAndLandParticle`
-                        // spawns `SPLASH` where it lands).
+                        // v1.0 gap track 6e: a falling dripstone water drop is
+                        // gone where it lands; `Pool::tick` reports it, and the
+                        // system spawns Java's `SPLASH` there and its sound
+                        // (`DripstoneFallAndLandParticle.postMoveUpdate`).
                         if self.style == Kind::WaterDrip && self.motion == Motion::Normal {
-                            self.style = Kind::Splash;
-                            self.motion = Motion::Splash;
-                            self.gravity = 0.04;
-                            self.velocity = DVec3::new(0.0, 0.2, 0.0);
-                            self.color = [0.45, 0.65, 1.0, 1.0];
-                            self.age = 0;
-                            self.lifetime = self.landing_lifetime;
-                            self.stopped = false;
-                            self.on_ground = false;
-                            break;
+                            self.landed = true;
+                            return false;
                         }
                         if self.motion == Motion::Splash {
                             self.random_state =
@@ -448,11 +453,18 @@ pub struct Pool {
     particles: VecDeque<Particle>,
     /// v0.16 Track B: firework spark trails left this tick (reserved once).
     trails: Vec<Particle>,
+    /// v1.0 gap track 6e: where dripstone drops landed this tick, and
+    /// whether each was lava.
+    pub(super) landed: Vec<(DVec3, bool)>,
 }
 
 impl Default for Pool {
     fn default() -> Self {
-        Self { particles: VecDeque::with_capacity(CAPACITY), trails: Vec::with_capacity(TRAIL_CAPACITY) }
+        Self {
+            particles: VecDeque::with_capacity(CAPACITY),
+            trails: Vec::with_capacity(TRAIL_CAPACITY),
+            landed: Vec::with_capacity(LANDED_CAPACITY),
+        }
     }
 }
 
@@ -474,8 +486,15 @@ impl Pool {
 
     pub fn tick<W: BlockSource + ?Sized>(&mut self, world: &W) {
         let mut trails = std::mem::take(&mut self.trails);
+        let landed = &mut self.landed;
         self.particles.retain_mut(|p| {
             let keep = p.tick(world);
+            if p.landed {
+                p.landed = false;
+                if landed.len() < LANDED_CAPACITY {
+                    landed.push((p.pos, p.style == Kind::LavaDrip));
+                }
+            }
             if keep
                 && p.spark.is_some()
                 && let Some(copy) = firework::after_spark_tick(p)

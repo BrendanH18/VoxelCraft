@@ -83,6 +83,10 @@ pub enum Aim {
     CrossbowCharge(f32),
     /// A loaded crossbow held out to fire.
     CrossbowHold,
+    /// v1.0 gap track 6e: a trident being charged (`THROW_TRIDENT`): the
+    /// arm raised behind the head and the trident's `item/trident_throwing`
+    /// display.
+    Trident,
 }
 
 /// Render inputs belong to the view/player, never to a global camera.
@@ -200,7 +204,8 @@ pub(super) fn pose(player: &Player, appearance: &PlayerAppearance, time: f32) ->
         amount /= (speed * speed * speed).max(1.0);
     }
     let phase = position * 0.6662;
-    let mut right_arm = (phase + PI).cos() * amount;
+    let walk_right = (phase + PI).cos() * amount;
+    let mut right_arm = walk_right;
     let mut left_arm = phase.cos() * amount;
     if appearance.held.is_some() {
         right_arm = right_arm * 0.5 - PI / 10.0;
@@ -226,6 +231,12 @@ pub(super) fn pose(player: &Player, appearance: &PlayerAppearance, time: f32) ->
         Aim::CrossbowHold => {
             (right_arm, left_arm) = (-FRAC_PI_2 - player.pitch + 0.1, -1.5 - player.pitch);
             (right_yaw, left_yaw) = (Some(0.3 + head_yaw), Some(-0.6 + head_yaw));
+        }
+        // `HumanoidModel.poseRightArm`'s `THROW_TRIDENT`, in place of the
+        // held item's pose: half the walk swing, a half turn back.
+        Aim::Trident => {
+            right_arm = walk_right * 0.5 - PI;
+            right_yaw = Some(0.0);
         }
     }
     let attack = appearance.swing.clamp(0.0, 1.0);
@@ -466,14 +477,16 @@ pub fn build_player(
         let arm = parts[2];
         let stack = appearance.held_stack.filter(|s| s.item == item).unwrap_or(crate::inventory::Stack::new(item, 1));
         let hand = third_person_hand(arm.pivot, arm.rot, origin, body, PLAYER_SCALE, false);
-        out.push_held(held_item(
-            stack,
-            hand,
-            lighting,
-            appearance.held_statue,
-            appearance.held_icon,
-            appearance.held_tint,
-        ));
+        let mut model =
+            held_item(stack, hand, lighting, appearance.held_statue, appearance.held_icon, appearance.held_tint);
+        // v1.0 gap track 6e: Java's trident item definition switches to
+        // `item/trident_throwing` while it is used (`minecraft:using_item`).
+        if appearance.aim == Aim::Trident && item == crate::weapons::TRIDENT {
+            model.transform = hand
+                * crate::content::item_display::Context::ThirdPersonRightHand
+                    .matrix(&crate::content::item_display::TRIDENT_THROWING);
+        }
+        out.push_held(model);
     }
 }
 

@@ -124,6 +124,7 @@ impl HandAnim {
                 Aim::CrossbowCharge((ticks as f32 / voxelcraft::session::ranged::CROSSBOW_CHARGE_TICKS as f32).min(1.0))
             }
             (Some(Item::CHARGED_CROSSBOW), _) => Aim::CrossbowHold,
+            (Some(voxelcraft::weapons::TRIDENT), Some(_)) => Aim::Trident,
             _ => Aim::None,
         }
     }
@@ -148,6 +149,12 @@ impl HandAnim {
             translucent: false,
             mesh: None,
             stack: None,
+            // v1.0 gap track 6e: ticks the trident has been charged, within
+            // the tick (Java's `useDuration - (remaining - partialTicks + 1)`).
+            trident_charge: self
+                .draw
+                .filter(|_| self.shown == Some(voxelcraft::weapons::TRIDENT))
+                .map(|ticks| (ticks as f32 + self.tick_time / TICK - 1.0).max(0.0)),
         }
     }
 }
