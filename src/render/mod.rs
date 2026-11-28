@@ -43,13 +43,14 @@ use crate::world::chunk::{CHUNK_SIZE, CHUNK_SIZE_I};
 pub use block_model::{BlockModel, extent_y};
 
 /// A chunk draw's instance: its origin relative to the camera, and its world
-/// origin's x and z in blocks (v1.0 gap track 6c: the seed of the model
-/// offsets, `chunk.wgsl`'s `block_offset`).
+/// origin in blocks (v1.0 gap track 6c: x and z seed the model offsets,
+/// `chunk.wgsl`'s `block_offset`; v1.0 final track F3: all three seed the
+/// random model variants, `java_variant`).
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct ChunkInstance {
     offset: [f32; 3],
-    origin: [i32; 2],
+    origin: [i32; 3],
 }
 use ui::UiVertex;
 
@@ -749,7 +750,7 @@ impl Renderer {
         let chunk_buffers = [Some(wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<ChunkInstance>() as u64,
             step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &wgpu::vertex_attr_array![1 => Float32x3, 2 => Sint32x2],
+            attributes: &wgpu::vertex_attr_array![1 => Float32x3, 2 => Sint32x3],
         })];
         let make_chunk_pipeline = |label: &str,
                                    fs: &str,
@@ -1689,10 +1690,11 @@ impl Renderer {
             self.instances = Self::create_instance_buffer(&self.device, self.instance_capacity);
         }
         self.instance_scratch.clear();
-        self.instance_scratch.extend(self.visible.iter().map(|v| ChunkInstance {
-            offset: v.2,
-            origin: [v.1.x * crate::world::chunk::CHUNK_SIZE_I, v.1.z * crate::world::chunk::CHUNK_SIZE_I],
-        }));
+        self.instance_scratch.extend(
+            self.visible
+                .iter()
+                .map(|v| ChunkInstance { offset: v.2, origin: (v.1 * crate::world::chunk::CHUNK_SIZE_I).to_array() }),
+        );
         if !self.instance_scratch.is_empty() {
             self.queue.write_buffer(&self.instances, 0, bytemuck::cast_slice(&self.instance_scratch));
         }

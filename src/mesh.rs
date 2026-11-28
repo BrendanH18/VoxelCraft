@@ -20,6 +20,7 @@
 //! | 1    | 8-15  | ambient occlusion per corner, 2 bits (0 dark .. 3) |
 //! | 1    | 16-20 | water surface drop of the upper edge, 1/16 block   |
 //! | 1    | 21-24 | texture layer, high 4 bits (normal and cross quads) |
+//! | 1    | 25-26 | random variant group (v1.0 final track F3)         |
 //! | 2    | 0-31  | per corner: sky light (low 4 bits), block light    |
 //!
 //! For a face on axis `d` the u and v axes are `(d + 1) % 3` and
@@ -49,6 +50,12 @@
 //! (`java_uv`: doors, trapdoors and glass panes as Java's models map them).
 //! Plane codes 25-28 are a rail's plane at 1/16 sloping east, west, north or
 //! south.
+//!
+//! v1.0 final track F3: a normal quad's variant group (word 1 bits 25-26,
+//! [`variants`]) names Java's random model variants of a full cube (stone
+//! mirrored, grass turned, netherrack turned every way); the fragment
+//! shader picks each cell's variant by Java's position seed and turns or
+//! mirrors that cell's texture, so a merged quad still covers many cells.
 //!
 //! UVs follow Java's default face UVs ([`face_uv`], v1.0 gap track 6d):
 //! every face's texture upright and unmirrored seen from outside, except
@@ -89,6 +96,7 @@ use crate::world::chunk::{CHUNK_SIZE, CHUNK_SIZE_I, ChunkData, WORLD_MAX_Y, WORL
 use crate::world::shape::{self, Boxes};
 
 mod java_uv;
+pub mod variants;
 
 /// A cross drawn on its side: Java's amethyst buds and clusters on walls
 /// (`facing` north, south, east, west: the cross model turned x 90 and y
@@ -379,6 +387,12 @@ const PRESENT: u64 = 1 << 31;
 /// Top drop of a low block (see `Block::top_drop`), in 1/16 block, above
 /// the 12 layer bits, AO and kind.
 const DROP_SHIFT: u64 = 26;
+/// v1.0 final track F3: a full cube's random variant group
+/// ([`variants::group`]) in the merge key's four spare bits above the
+/// layer, so faces of different groups never merge.
+const GROUP_SHIFT: u64 = 12;
+/// Word 1 bits of a normal quad's variant group (see the module docs).
+const WORD_GROUP_SHIFT: u32 = 25;
 
 /// What face culling and water surfaces see: waterlogged blocks are water
 /// (their own model is added separately), except a waterlogged cube that
@@ -603,7 +617,14 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE], origin: glam
                         };
                         let layer = tex::tinted(b.info().tex[face], foliage[x + z * CHUNK_SIZE]) as u64;
                         let drop = (b.top_drop() as u64) << DROP_SHIFT;
-                        key = PRESENT | kind << KIND_SHIFT | ao << AO_SHIFT | layer | drop | light << LIGHT_SHIFT;
+                        let group = if kind == 0 { variants::group(b) as u64 } else { 0 };
+                        key = PRESENT
+                            | kind << KIND_SHIFT
+                            | ao << AO_SHIFT
+                            | layer
+                            | group << GROUP_SHIFT
+                            | drop
+                            | light << LIGHT_SHIFT;
                         any = true;
                     }
                     mask[vv * CHUNK_SIZE + uu] = key;
@@ -665,7 +686,11 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE], origin: glam
                             | (w as u32 - 1) << 21
                             | (h as u32 - 1) << 26
                             | flip << 31,
-                        (layer & 255) | corner_ao << 8 | drop << 16 | (layer >> 8) << 21,
+                        (layer & 255)
+                            | corner_ao << 8
+                            | drop << 16
+                            | (layer >> 8) << 21
+                            | (((key >> GROUP_SHIFT) & 15) as u32) << WORD_GROUP_SHIFT,
                         (key >> LIGHT_SHIFT) as u32,
                     ]);
                     uu += w;
@@ -1120,7 +1145,8 @@ mod tests {
                 let offset_kind = if pass == CROSS { 7 << 24 } else { 0 };
                 let coord_extras = if detail { (1 << 5) | (1 << 11) | (1 << 17) | (1 << 30) } else { offset_kind };
                 assert_eq!(high[0] & !coord_extras, low[0] & !coord_extras);
-                let layer_bits = 255 | if detail { 0 } else { 15 << 21 };
+                // v1.0 final track F3: stone also names its variant group.
+                let layer_bits = 255 | if detail { 0 } else { 15 << 21 | 3 << WORD_GROUP_SHIFT };
                 assert_eq!(high[1] & !layer_bits, low[1] & !layer_bits);
                 assert_eq!(high[2], low[2]);
                 if pass != CROSS {
@@ -1128,6 +1154,30 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// v1.0 final track F3: full cubes with Java's random variants carry
+    /// their group in word 1 and still merge; their neighbours of another
+    /// group (or none) don't merge with them.
+    #[test]
+    fn variant_groups_ride_on_normal_quads_and_keep_merging() {
+        let mut blocks: Vec<([usize; 3], Block)> = (0..4).map(|x| ([x, 8, 8], Block::GRASS)).collect();
+        blocks.extend((4..6).map(|x| ([x, 8, 8], Block::STONE)));
+        blocks.push(([6, 8, 8], Block::NETHERRACK));
+        blocks.push(([7, 8, 8], Block::SNOWY_GRASS));
+        let mesh = mesh_blocks(&blocks).quads_of(OPAQUE);
+        let tops: Vec<(u32, u32, u32)> = mesh
+            .quads
+            .iter()
+            .filter(|q| (q[0] >> 18) & 7 == 2)
+            .map(|q| (q[0] & 63, ((q[0] >> 21) & 31) + 1, (q[1] >> WORD_GROUP_SHIFT) & 3))
+            .collect();
+        let mut tops = tops;
+        tops.sort();
+        assert_eq!(
+            tops,
+            [(0, 4, variants::TURNED), (4, 2, variants::MIRRORED), (6, 1, variants::NETHERRACK), (7, 1, 0)]
+        );
     }
 
     #[test]

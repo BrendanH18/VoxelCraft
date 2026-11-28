@@ -12,9 +12,10 @@
 //! from the third quad on (`ss / 2 % 2`), in block light 15 with the
 //! entity's own sky light, as `entityCutoutCull` on the block atlas.
 //!
-//! VoxelCraft has one animated fire texture (`tex::FIRE_0`, seven frames at
-//! ten a second, as the fire block draws it); the `fire_1` quads take it
-//! three frames on.
+//! VoxelCraft's `fire_0` is `tex::FIRE_0`, seven frames at ten a second, as
+//! the fire block draws it; v1.0 final track F3: the `fire_1` quads draw the
+//! second texture (`tex::FIRE_1`, packed one frame a colour channel, as
+//! material 7 with the channel in the layer's bits 12-13).
 
 use super::*;
 use crate::world::block::tex;
@@ -45,8 +46,7 @@ pub(crate) fn flame(
     let (mut r, mut yo, mut zo) = (0.5f32, 0.0f32, 0.0f32);
     let mut ss = 0u32;
     while h > 0.0 {
-        let layer =
-            tex::FIRE_0 + ((frame + if ss.is_multiple_of(2) { 0 } else { 3 }) % u32::from(tex::FIRE_FRAMES)) as u16;
+        let (material, layer) = flame_texture(ss, frame);
         // `fire_0` and `fire_1` as they are for the first two quads, then
         // mirrored for two, and so on.
         let (left_u, right_u) = if (ss / 2).is_multiple_of(2) { (0.0, 1.0) } else { (1.0, 0.0) };
@@ -68,7 +68,7 @@ pub(crate) fn flame(
                 light: [sky, 255, 0, 0],
                 // Block light 15 (`LightCoordsUtil.withBlock(.., 15)`), the
                 // block atlas (material 2) at the fire's layer.
-                torch: [255, 2, layer as u8, (layer >> 8) as u8],
+                torch: [255, material, layer as u8, (layer >> 8) as u8],
             });
         }
         h -= 0.45;
@@ -76,6 +76,17 @@ pub(crate) fn flame(
         r *= 0.9;
         zo -= 0.03;
         ss += 1;
+    }
+}
+
+/// The `ss`th flame quad's material and layer at animation frame `frame`:
+/// `fire_0` (the block atlas, material 2) for even quads, `fire_1` (material
+/// 7, its packed layer and channel) for odd ones.
+pub(crate) fn flame_texture(ss: u32, frame: u32) -> (u8, u16) {
+    if ss.is_multiple_of(2) {
+        (2, tex::FIRE_0 + frame as u16)
+    } else {
+        (7, (tex::FIRE_1 + (frame / 3) as u16) | ((frame % 3) as u16) << 12)
     }
 }
 
@@ -108,11 +119,12 @@ mod tests {
         assert!((zs(0) - 0.35).abs() < 1e-5 && (zs(1) - 0.35 * 0.9).abs() < 1e-5, "{} {}", zs(0), zs(1));
         // The fire texture in block light 15 with the entity's sky light.
         for v in out.iter() {
-            assert_eq!((v.torch[0], v.torch[1], v.light[0]), (255, 2, 200));
-            let layer = u16::from(v.torch[2]) | (u16::from(v.torch[3]) << 8);
-            assert!((tex::FIRE_0..tex::FIRE_0 + u16::from(tex::FIRE_FRAMES)).contains(&layer));
+            assert_eq!((v.torch[0], v.light[0]), (255, 200));
         }
-        assert_ne!(quad(0)[0].torch[2], quad(1)[0].torch[2], "fire_1 differs from fire_0");
+        // `fire_0` then `fire_1` (v1.0 final track F3: its own texture).
+        let layer = |q: usize| u16::from(quad(q)[0].torch[2]) | (u16::from(quad(q)[0].torch[3]) << 8);
+        assert_eq!((quad(0)[0].torch[1], layer(0)), (2, tex::FIRE_0));
+        assert_eq!((quad(1)[0].torch[1], layer(1)), (7, tex::FIRE_1));
     }
 
     /// v1.0 gap Track 8d: a burning mob carries the flame over its box (a
@@ -128,7 +140,8 @@ mod tests {
             out.iter()
                 .filter(|v| {
                     let layer = u16::from(v.torch[2]) | (u16::from(v.torch[3]) << 8);
-                    v.torch[1] == 2 && (tex::FIRE_0..tex::FIRE_0 + u16::from(tex::FIRE_FRAMES)).contains(&layer)
+                    (v.torch[1] == 2 && (tex::FIRE_0..tex::FIRE_0 + u16::from(tex::FIRE_FRAMES)).contains(&layer))
+                        || (v.torch[1] == 7 && (tex::FIRE_1..tex::FIRE_1_END).contains(&(layer & 4095)))
                 })
                 .count()
         };
