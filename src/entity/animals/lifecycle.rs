@@ -142,7 +142,9 @@ impl Entities {
                                 player: t.id,
                                 damage: 2.0,
                                 knockback: (dir * 18.0 + DVec3::Y * 4.0).as_vec3(),
-                                cause: crate::simulation::damage::Cause::GOAT_RAM,
+                                // v1.0 final F8: `noAggroMobAttack(goat)`.
+                                cause: crate::simulation::damage::Cause::GOAT_RAM
+                                    .by(Some(crate::entity::trident::Owner::Mob(m.uid))),
                             });
                             a.ramming = 0.0;
                         }

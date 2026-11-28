@@ -303,6 +303,8 @@ pub enum EntityEvent {
         player: PlayerId,
         physical: f32,
         magic: f32,
+        /// v1.0 final F8: the guardian (`Mob::uid`), both hits' attacker.
+        guardian: u32,
     },
     /// Fixed, armored contact damage (guardian spikes and pufferfish).
     /// `poison` ticks of Poison follow only when the sting hurts, as in
@@ -1318,6 +1320,13 @@ impl Rng {
     }
 }
 
+/// v1.0 final F8: how long a departed mob is remembered for a death
+/// message, in seconds: the combat tracker's longest memory
+/// (`RESET_COMBAT_STATUS_TIME`) and a few seconds more.
+pub const DEPARTED_MEMORY: f32 = 20.0;
+/// v1.0 final F8: at most this many departed mobs are remembered.
+pub const DEPARTED_MAX: usize = 64;
+
 pub struct Entities {
     pub mobs: Vec<Mob>,
     /// v0.15 Track A: evoker fangs (not saved; each lives under two seconds).
@@ -1458,6 +1467,12 @@ pub struct Entities {
     merge_timer: f32,
     /// Next [`Mob::uid`] to hand out.
     next_uid: u32,
+    /// v1.0 final F8: mobs gone from the level in the last
+    /// [`DEPARTED_MEMORY`] seconds, as a death message names them: Java's
+    /// `DamageSource` holds its entity, so a creeper's own blast (or a
+    /// zombie that died or despawned since its hit) still names it by its
+    /// custom name. Not saved; at most [`DEPARTED_MAX`].
+    departed: Vec<(u32, crate::simulation::death_message::Attacker, f32)>,
     /// Living mobs as nether mobs saw them this update (reused buffer).
     nether_view: Vec<nether::Seen>,
     /// Players at the last update, to credit melee hits on nether mobs.
@@ -1593,6 +1608,7 @@ impl Entities {
             generation_populated: Default::default(),
             merge_timer: 0.0,
             next_uid: 1,
+            departed: Vec::new(),
             nether_view: Vec::new(),
             player_spots: Vec::new(),
             hurt_by: Vec::new(),
@@ -1643,13 +1659,48 @@ impl Entities {
     /// v1.0 gap Track 8g: the mob `uid` as a death message names it
     /// (`Entity.getDisplayName`: its custom name, else its kind's Java
     /// name) with its main-hand item's custom name; None once it's gone.
+    /// v1.0 final F8: the Ender Dragon ([`dragon::DRAGON_UID`]) as
+    /// "Ender Dragon", alive while one is; a mob gone from the level since
+    /// as it was ([`Entities::depart`]), no longer alive.
     pub fn attacker(&self, uid: u32) -> Option<crate::simulation::death_message::Attacker> {
-        let m = self.mobs.iter().find(|m| m.uid == uid)?;
-        Some(crate::simulation::death_message::Attacker {
+        use crate::simulation::death_message::Attacker;
+        if uid == dragon::DRAGON_UID {
+            let fight = self.fight.as_ref().and_then(|f| f.dragon.as_ref()).is_some_and(|d| d.health > 0.0);
+            let wild = self.wild_dragons.dragons.iter().any(|w| w.dragon.health > 0.0);
+            return Some(Attacker { name: "Ender Dragon".into(), weapon: None, alive: fight || wild });
+        }
+        let Some(m) = self.mobs.iter().find(|m| m.uid == uid) else {
+            return self.departed.iter().find(|(u, ..)| *u == uid).map(|(_, a, _)| a.clone());
+        };
+        Some(Self::attacker_of(m))
+    }
+
+    fn attacker_of(m: &Mob) -> crate::simulation::death_message::Attacker {
+        crate::simulation::death_message::Attacker {
             name: m.name.as_str().map_or_else(|| crate::simulation::death_message::mob_name(m.kind), str::to_string),
             weapon: m.equipment.main_hand().and_then(|s| s.name.as_str()).map(str::to_string),
             alive: m.alive(),
-        })
+        }
+    }
+
+    /// v1.0 final F8: remembers `m`, leaving the level, for
+    /// [`Entities::attacker`].
+    pub(crate) fn depart(&mut self, m: &Mob) {
+        if self.departed.len() >= DEPARTED_MAX {
+            self.departed.remove(0);
+        }
+        let attacker = crate::simulation::death_message::Attacker { alive: false, ..Self::attacker_of(m) };
+        self.departed.push((m.uid, attacker, DEPARTED_MEMORY));
+    }
+
+    /// v1.0 final F8: forgets departed mobs [`DEPARTED_MEMORY`] seconds on.
+    pub(crate) fn age_departed(&mut self, dt: f32) {
+        if !self.departed.is_empty() {
+            self.departed.retain_mut(|(_, _, t)| {
+                *t -= dt;
+                *t > 0.0
+            });
+        }
     }
 
     pub fn spawn(&mut self, kind: MobKind, pos: DVec3) {
@@ -3116,7 +3167,7 @@ impl Entities {
         }
         let spiked = matches!(target.kind, MobKind::Guardian | MobKind::ElderGuardian)
             && target.aquatic.as_ref().is_some_and(|a| a.beam.is_some() || target.vel.length_squared() < 0.1);
-        let (kind, pos, shape) = (target.kind, target.pos, target.shape());
+        let (kind, pos, shape, target_uid) = (target.kind, target.pos, target.shape(), target.uid);
         // `Player.attack`: the item's `getAttackDamageBonus` (the mace's smash)
         // joins after the charge scaling and before the critical multiplier.
         let base = ((crate::mining::attack_damage(held.map(|s| s.item)) + bonus).max(0.0)
@@ -3138,7 +3189,9 @@ impl Entities {
             self.pending_sounds.push(EntityEvent::PlayerSting {
                 player: owner,
                 damage: 2.0,
-                cause: crate::simulation::damage::Cause::GUARDIAN_SPIKES,
+                // v1.0 final F8: `thorns(guardian)`, the guardian named.
+                cause: crate::simulation::damage::Cause::GUARDIAN_SPIKES
+                    .by(Some(crate::entity::trident::Owner::Mob(target_uid))),
                 poison: 0,
             });
         }
@@ -3414,6 +3467,33 @@ mod tests {
                 self.blocks.iter().filter(|(p, b)| p.x == x && p.z == z && **b != Block::AIR).map(|(p, _)| p.y);
             Some(placed.fold(self.floor_y - 1, i32::max))
         }
+    }
+
+    /// v1.0 final F8: a named creeper gone in its own blast is still named
+    /// by its custom name (Java's `DamageSource` holds the creeper), no
+    /// longer alive, and forgotten after [`DEPARTED_MEMORY`]; the dragon's
+    /// uid names the Ender Dragon.
+    #[test]
+    fn a_departed_attacker_keeps_its_name_for_the_message() {
+        let world = Grid::flat(0);
+        let mut e = Entities::new(3);
+        e.spawn(MobKind::Creeper, DVec3::new(0.5, 0.0, 0.5));
+        let uid = 42;
+        e.mobs[0].uid = uid;
+        e.mobs[0].name = crate::inventory::StackName::new("Boom").unwrap();
+        e.mobs[0].health = 0.0;
+        e.mobs[0].dying = Some(mob::DEATH_TIME);
+        let c = ctx(DVec3::new(0.5, 0.0, 0.5));
+        e.update(0.05, &world, &c);
+        assert!(e.mobs.iter().all(|m| m.uid != uid), "gone");
+        let a = e.attacker(uid).expect("remembered");
+        assert_eq!((a.name.as_str(), a.alive), ("Boom", false));
+        for _ in 0..((DEPARTED_MEMORY / 0.5) as usize + 1) {
+            e.update(0.5, &world, &c);
+        }
+        assert_eq!(e.attacker(uid), None);
+        let dragon = e.attacker(dragon::DRAGON_UID).unwrap();
+        assert_eq!((dragon.name.as_str(), dragon.alive), ("Ender Dragon", false), "no dragon about");
     }
 
     /// Hostile kinds that fill their cap on the flat plains test grid.

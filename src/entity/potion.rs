@@ -32,7 +32,9 @@ pub struct ThrownPotion {
     /// The throwing player; witches throw with `None`.
     pub owner: Option<PlayerId>,
     /// v1.0 gap Track 8g: the witch that threw it (`Mob::uid`), whom its
-    /// harm names. Not saved: a reloaded witch's potion names no one.
+    /// harm names. v1.0 final F8: saved as `thrower` when there is one
+    /// (Java's `Projectile` saves its `Owner`), so a reloaded witch's
+    /// potion still names her.
     pub thrower: Option<u32>,
     pub pos: DVec3,
     /// Position at the start of the last simulation step, for rendering.
@@ -59,7 +61,7 @@ impl ThrownPotion {
     /// v1.0 gap Track 8e: the level file's copy, with its fire.
     pub(super) fn save(&self) -> serde_json::Value {
         use super::saved_projectiles::v3;
-        serde_json::json!({
+        let mut v = serde_json::json!({
             "potion": self.potion.info().id,
             "lingering": self.lingering,
             "owner": self.owner.map(|p| p.0),
@@ -67,7 +69,12 @@ impl ThrownPotion {
             "motion": v3(self.vel),
             "age": self.age,
             "fire": self.fire,
-        })
+        });
+        // v1.0 final F8: written only when a witch threw it.
+        if let Some(uid) = self.thrower {
+            v["thrower"] = uid.into();
+        }
+        v
     }
 
     pub(super) fn load(v: &serde_json::Value) -> Option<Self> {
@@ -78,7 +85,7 @@ impl ThrownPotion {
             potion: Potion::from_id(v["potion"].as_str()?)?,
             lingering: v["lingering"].as_bool().unwrap_or(false),
             owner: v["owner"].as_u64().and_then(|u| u32::try_from(u).ok()).map(PlayerId),
-            thrower: None,
+            thrower: v["thrower"].as_u64().and_then(|u| u32::try_from(u).ok()),
             pos,
             previous_pos: pos,
             vel: s::read_v3(&v["motion"]).unwrap_or(DVec3::ZERO),
@@ -382,8 +389,23 @@ pub(super) fn splash_by(
 #[cfg(test)]
 mod tests {
     use super::*;
+
     use crate::entity::Target;
     use crate::physics::test_util::Grid;
+
+    /// v1.0 final F8: a witch's potion saved mid-flight keeps its thrower
+    /// (`Projectile`'s `Owner`); a player's writes no `thrower`.
+    #[test]
+    fn a_witchs_potion_keeps_its_thrower_through_a_save() {
+        let (eye, dir) = (DVec3::new(0.5, 70.0, 0.5), DVec3::X);
+        let mut potion = ThrownPotion::thrown(crate::potion::Potion::AWKWARD, PlayerId::HOST, eye, dir, DVec3::ZERO);
+        assert!(potion.save().get("thrower").is_none(), "only when there is one");
+        potion.owner = None;
+        potion.thrower = Some(12);
+        let saved = potion.save();
+        assert_eq!(saved["thrower"], 12);
+        assert_eq!(ThrownPotion::load(&saved).unwrap().thrower, Some(12));
+    }
 
     fn ctx(players: Vec<Target>) -> Ctx {
         Ctx {

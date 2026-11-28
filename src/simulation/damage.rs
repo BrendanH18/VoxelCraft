@@ -522,11 +522,21 @@ pub struct Cause {
     /// `by` (an End crystal a player broke: `explosion(crystal, player)`,
     /// whose blast has no indirect source). Never saved.
     pub names: Option<crate::entity::PlayerId>,
+    /// v1.0 final F8: the player a tamed wolf's hit gives the kill credit
+    /// to, its owner (`LivingEntity.resolvePlayerResponsibleForDamage`).
+    /// Never saved.
+    pub credit: Option<crate::entity::PlayerId>,
 }
 
 impl Cause {
     pub const fn new(kind: DamageType, text: &'static str) -> Self {
-        Self { kind, text, tnt: false, by: None, names: None }
+        Self { kind, text, tnt: false, by: None, names: None, credit: None }
+    }
+
+    /// v1.0 final F8: this cause crediting `player` with the hit (a tamed
+    /// wolf's owner).
+    pub const fn credited(self, player: Option<crate::entity::PlayerId>) -> Self {
+        Self { credit: player, ..self }
     }
 
     /// v1.0 gap Track 8f: this cause naming `player` in its message.
@@ -623,6 +633,13 @@ impl Cause {
     pub const LLAMA_SPIT: Cause = Cause::new(DamageType::Spit, "was slain by a llama");
     /// A small fireball's direct hit (`fireball(fireball, blaze)`).
     pub const BLAZE_FIREBALL: Cause = Cause::new(DamageType::Fireball, "was fireballed by a blaze");
+    /// v1.0 final F8: a ghast fireball's direct hit before its blast
+    /// (`LargeFireball.onHitEntity`, `fireball(fireball, ghast)`), "was
+    /// fireballed by" its owner.
+    pub const GHAST_FIREBALL_HIT: Cause = Cause::new(DamageType::Fireball, "was fireballed by a ghast");
+    /// v1.0 final F8: a fireball's direct hit with no owner
+    /// (`unattributed_fireball`, message id `onFire`).
+    pub const UNATTRIBUTED_FIREBALL: Cause = Cause::new(DamageType::UnattributedFireball, super::survival::CAUSE_FIRE);
 
     // Explosions (`DamageSources.explosion`: `player_explosion` when the
     // blast has both a direct and an indirect living source).
@@ -668,7 +685,9 @@ impl Cause {
     /// `sting(bee)`: `death.attack.sting`, which doesn't name the bee.
     pub const BEE_STING: Cause = Cause::new(DamageType::Sting, "was stung to death");
     pub const PUFFERFISH: Cause = Cause::mob("was slain by a pufferfish");
-    pub const GOAT_RAM: Cause = Cause::mob("was slain by a goat");
+    /// `RamTarget.tick`'s `noAggroMobAttack(goat)` (v1.0 final F8: typed
+    /// `mob_attack_no_aggro`, so it starts no kill credit but names the goat).
+    pub const GOAT_RAM: Cause = Cause::new(DamageType::MobAttackNoAggro, "was slain by a goat");
     pub const ENDER_DRAGON: Cause = Cause::mob("was slain by the Ender Dragon");
     /// The dragon's breath cloud: Instant Damage from an owned area effect
     /// cloud, which `HealOrHarmMobEffect` types `indirect_magic`.
@@ -725,6 +744,8 @@ impl Cause {
         Cause::PLAYER_WIND_CHARGE,
         Cause::LLAMA_SPIT,
         Cause::BLAZE_FIREBALL,
+        Cause::GHAST_FIREBALL_HIT,
+        Cause::UNATTRIBUTED_FIREBALL,
         Cause::CREEPER,
         Cause::GHAST_FIREBALL,
         // TNT's and an ownerless End crystal's blasts are worded as the plain
@@ -786,12 +807,15 @@ impl Cause {
     /// [`Cause::RETIRED`] text now has.
     /// v1.0 gap Track 8g: a message saved in Java's words ("was slain by
     /// Zombie") reads back as the cause it was worded from.
+    /// v1.0 final F8: a retired text first, since the ghast fireball's
+    /// direct hit says what its blast once did (and is saved only in Java's
+    /// words, "was fireballed by Ghast").
     pub fn saved(text: &str) -> Option<Self> {
-        Self::KNOWN
+        Self::RETIRED
             .iter()
-            .copied()
-            .find(|c| c.text == text)
-            .or_else(|| Self::RETIRED.iter().find(|(old, _)| *old == text).map(|&(_, c)| c))
+            .find(|(old, _)| *old == text)
+            .map(|&(_, c)| c)
+            .or_else(|| Self::KNOWN.iter().copied().find(|c| c.text == text))
             .or_else(|| Self::KNOWN.iter().copied().find(|c| super::death_message::java_words(c.text).text == text))
     }
 
@@ -854,8 +878,12 @@ mod tests {
         assert_eq!(Cause::from("was blown up by an End crystal").kind, DamageType::Explosion);
         assert_eq!(Cause::saved("blew up"), Some(Cause::EXPLOSION));
         assert_eq!(Cause::saved("was slain by a zombie"), None);
-        for (old, _) in Cause::RETIRED {
-            assert!(!Cause::KNOWN.iter().any(|c| c.text == *old), "{old} is still a cause's text");
+        // v1.0 final F8: the ghast fireball's direct hit reuses its blast's
+        // old words; an old save's text still reads back as the blast.
+        for (old, retired) in Cause::RETIRED {
+            assert_eq!(Cause::saved(old), Some(*retired), "{old}");
+            let reused = Cause::KNOWN.iter().any(|c| c.text == *old);
+            assert!(!reused || *old == Cause::GHAST_FIREBALL_HIT.text, "{old} is still a cause's text");
         }
         assert_eq!(Cause::saved("was killed trying to hurt a player"), Some(Cause::THORNS));
     }

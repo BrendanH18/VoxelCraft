@@ -536,7 +536,7 @@ fn evokers_summon_vexes_then_raise_fangs() {
         m.pos = DVec3::new(0.5, 1.0, 0.5);
         for ev in e.update(0.05, &world, &c) {
             if let EntityEvent::PlayerHit { damage, cause, .. } = ev
-                && cause == FANGS_CAUSE
+                && cause == FANGS_CAUSE.by(Some(crate::entity::trident::Owner::Mob(owner)))
             {
                 assert_eq!(damage, FANG_DAMAGE);
                 fang_hits += 1;

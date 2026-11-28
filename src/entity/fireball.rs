@@ -9,6 +9,8 @@ use crate::physics::BlockSource;
 
 /// Damage to the player hit by a blaze fireball, and seconds they burn.
 pub const DAMAGE: f32 = 5.0;
+/// v1.0 final F8: a ghast fireball's direct hit (`LargeFireball.onHitEntity`).
+pub const LARGE_HIT: f32 = 6.0;
 pub const BURN: f32 = 5.0;
 /// Ghast fireballs explode with this power (Java's large fireball).
 pub const GHAST_POWER: f32 = 1.0;
@@ -216,6 +218,26 @@ impl Fireball {
     /// Blaze fireballs burn whoever they touch. Ghast fireballs explode.
     fn impact(&self, player: Option<&super::Target>, events: &mut Vec<EntityEvent>) {
         if self.large {
+            // v1.0 final F8: `LargeFireball.onHitEntity` hurts the player it
+            // hits by 6 (`fireball(fireball, owner)`, else
+            // `unattributed_fireball`) before `onHit`'s blast.
+            if let Some(hit) = player {
+                let push = DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 2.0 + DVec3::Y * 2.0;
+                let cause = match self.owner {
+                    Some(_) => crate::simulation::damage::Cause::GHAST_FIREBALL_HIT.by(self.owner),
+                    None => crate::simulation::damage::Cause::UNATTRIBUTED_FIREBALL,
+                };
+                events.push(EntityEvent::PlayerHit {
+                    java: None,
+                    player: hit.id,
+                    damage: LARGE_HIT,
+                    knockback: push.as_vec3(),
+                    cause,
+                });
+                if let Some(super::trident::Owner::Mob(attacker)) = self.owner {
+                    events.push(EntityEvent::OwnerHurt { player: hit.id, attacker });
+                }
+            }
             events.push(EntityEvent::Explosion {
                 center: self.pos,
                 power: GHAST_POWER,
@@ -294,6 +316,31 @@ mod tests {
         let mut events = Vec::new();
         while f.update(0.05, &world, &c, &[], &[], &Default::default(), &mut events) {}
         assert!(events.is_empty());
+    }
+
+    /// v1.0 final F8: a ghast's fireball hurts the player it hits by 6,
+    /// naming the ghast (`fireball(fireball, ghast)`), before it bursts; an
+    /// ownerless one's hit is `unattributed_fireball`.
+    #[test]
+    fn a_ghast_fireball_hits_the_player_before_it_bursts() {
+        use crate::simulation::damage::Cause;
+        let world = Grid::flat(0);
+        let c = ctx(vec![Target::new(PlayerId(2), DVec3::new(20.5, 10.0, 0.5), true)]);
+        for owner in [Some(crate::entity::trident::Owner::Mob(7)), None] {
+            let mut f = Fireball::large(DVec3::new(0.5, 11.0, 0.5), DVec3::X);
+            f.owner = owner;
+            let mut events = Vec::new();
+            while f.update(0.05, &world, &c, &[], &[], &Default::default(), &mut events) {}
+            let hit = events.iter().position(|e| matches!(e, EntityEvent::PlayerHit { .. })).expect("a direct hit");
+            let blast = events.iter().position(|e| matches!(e, EntityEvent::Explosion { .. })).expect("a blast");
+            assert!(hit < blast, "{events:?}");
+            let EntityEvent::PlayerHit { damage, cause, .. } = events[hit] else { unreachable!() };
+            assert_eq!(damage, LARGE_HIT);
+            let expected =
+                if owner.is_some() { Cause::GHAST_FIREBALL_HIT.by(owner) } else { Cause::UNATTRIBUTED_FIREBALL };
+            assert_eq!(cause, expected);
+            assert_eq!(events.contains(&EntityEvent::OwnerHurt { player: PlayerId(2), attacker: 7 }), owner.is_some());
+        }
     }
 
     /// v1.0 gap Track 8d: a creative player (`abilities.invulnerable`) is

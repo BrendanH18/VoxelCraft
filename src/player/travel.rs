@@ -153,6 +153,10 @@ impl Player {
         if world.block(self.pos.floor().as_ivec3()).is_none() {
             return;
         }
+        // v1.0 final F8: the last step's landing was recorded with it.
+        if self.on_ground {
+            self.last_climbable = None;
+        }
         let before = self.pos;
         self.jumped = false;
         let mut dm = self.vel / TICK_RATE;
@@ -182,6 +186,12 @@ impl Player {
         self.vel = dm * TICK_RATE;
         self.soul.moved = self.pos - before;
         self.climbing = self.on_climbable(world);
+        // v1.0 final F8: `onClimbable` keeps the cell; `checkFallDamage`
+        // forgets it on the ground once the landing is recorded, which is
+        // the next step here (the landing's fall damage comes after the move).
+        if self.climbing {
+            self.last_climbable = Some(self.pos.floor().as_ivec3());
+        }
         // `LivingEntity.tick`: `fallFlyTicks` counts the glide; the wings ease.
         self.fall_fly_ticks = if self.fall_flying { self.fall_fly_ticks + 1 } else { 0 };
         self.tick_elytra_animation();

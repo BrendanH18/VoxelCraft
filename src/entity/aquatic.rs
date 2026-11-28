@@ -251,7 +251,9 @@ pub(super) fn upkeep<W: MobWorld + ?Sized>(
                 let magic = if m.difficulty == Difficulty::Hard { 3.0 } else { 1.0 };
                 let physical = if elder { 8.0 } else { 6.0 };
                 match aim {
-                    Aim::Player(player) => events.push(EntityEvent::PlayerBeam { player, physical, magic }),
+                    Aim::Player(player) => {
+                        events.push(EntityEvent::PlayerBeam { player, physical, magic, guardian: m.uid })
+                    }
                     Aim::Mob(target) => {
                         // v1.0 gap Track 3b: `GuardianAttackGoal.tick`'s two
                         // hits. First `indirectMagic` (1, 2 more on Hard and
@@ -1382,10 +1384,10 @@ mod tests {
         let expected =
             crate::simulation::survival::armor_reduce(5.0, a.inventory.armor_points(), a.inventory.armor_toughness())
                 + 1.0;
-        let taken = a.hurt_beam(6.0, 1.0, &mut e);
+        let taken = a.hurt_beam(6.0, 1.0, None, &mut e);
         assert!((taken - expected).abs() < 1e-5);
         let mut bare = crate::agent::Agent::new(DVec3::ZERO);
-        assert_eq!(bare.hurt_beam(6.0, 1.0, &mut e), 6.0);
+        assert_eq!(bare.hurt_beam(6.0, 1.0, None, &mut e), 6.0);
     }
 
     #[test]

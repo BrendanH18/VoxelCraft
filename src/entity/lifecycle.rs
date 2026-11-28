@@ -80,6 +80,7 @@ impl Entities {
             .collect();
         self.player_spots.clear();
         self.player_spots.extend(ctx.players.iter().map(|t| (t.id, t.pos)));
+        self.age_departed(dt as f32);
         self.resolve_hurt_by(ctx);
         self.call_reinforcements(world, ctx);
         self.nether_sense(dt as f32, world, ctx);
@@ -177,6 +178,8 @@ impl Entities {
                     self.particles.push(crate::particles::Request::Burst(burst));
                 }
                 let dead = self.mobs.swap_remove(i);
+                // v1.0 final F8: a death message may still name it.
+                self.depart(&dead);
                 if dead.dying.is_some_and(|t| t >= mob::DEATH_TIME)
                     && let Some(stack) = dead
                         .wolf_armor
