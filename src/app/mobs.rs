@@ -777,6 +777,9 @@ impl Game {
                 | EntityEvent::Hatched { .. }
                 | EntityEvent::ExperienceBurst { .. }
                 | EntityEvent::DropEquipment { .. }
+                // Applied by the entities within their tick.
+                | EntityEvent::DragonStruck { .. }
+                | EntityEvent::DragonHealed { .. }
                 | EntityEvent::Vibration { .. } => {}
                 EntityEvent::AnimalBlock { cell, from, to } => {
                     self.world.animal_block(cell, from, to);

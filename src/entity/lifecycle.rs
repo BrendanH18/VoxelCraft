@@ -336,6 +336,10 @@ impl Entities {
             }
         }
         // v1.0 Track 7: dragons no fight owns (spawn eggs).
+        self.wild_dragons.griefing_off = !self.villager_griefing;
+        if let Some(fight) = &mut self.fight {
+            fight.griefing_off = !self.villager_griefing;
+        }
         self.wild_dragons.update(dt, world, ctx, &mut self.rng, &self.crystals, &mut events);
         if let Some(fight) = &mut self.fight {
             // The End's crystals tick with the fight.
@@ -430,7 +434,11 @@ impl Entities {
                     | EntityEvent::ShootWindCharge { .. }
             )
         });
-        self.update_wither_skulls(world, ctx, &mut events);
+        // v1.0 gap Track 4c: the crystals and dragon parts as they now
+        // stand, for every projectile but arrows (which strike them at
+        // once); their hits are applied once they have all moved.
+        let boss = super::dragon::Boxes::new(self.fight.as_ref(), &self.wild_dragons, &self.crystals);
+        self.update_wither_skulls(world, ctx, &boss, &mut events);
         {
             let (mobs, sculk) = (&self.mobs, &mut self.sculk);
             let carts: Vec<(u32, DVec3, DVec3)> = if self.fireballs.is_empty() {
@@ -443,7 +451,7 @@ impl Entities {
                     return true;
                 }
                 let before = f.pos;
-                let keep = f.update(dt, world, ctx, mobs, &carts, &mut events);
+                let keep = f.update(dt, world, ctx, mobs, &carts, &boss, &mut events);
                 if !keep {
                     let none = crate::world::vibration::EventSource::NONE;
                     sculk.land(world, f.pos, f.pos - before, none);
@@ -454,10 +462,10 @@ impl Entities {
         if self.arrows.iter().any(|a| a.piercing()) {
             self.ensure_mob_ids();
         }
-        let targets = if self.arrows.is_empty() { Vec::new() } else { self.arrow_targets() };
+        let others = if self.arrows.is_empty() { Vec::new() } else { self.arrow_targets() };
         {
             let (mobs, rng, sculk) = (&mut self.mobs, &mut self.rng, &mut self.sculk);
-            let mut boss = super::dragon::Targets {
+            let mut targets = super::dragon::Targets {
                 fight: self.fight.as_mut(),
                 wild: &mut self.wild_dragons,
                 crystals: &mut self.crystals,
@@ -468,7 +476,7 @@ impl Entities {
                 }
                 let was_stuck = a.is_stuck();
                 let before = a.pos;
-                let keep = a.update(dt, world, ctx, mobs, &targets, Some(&mut boss), rng, &mut events);
+                let keep = a.update(dt, world, ctx, mobs, &others, Some(&mut targets), rng, &mut events);
                 // `Projectile.onHit`: `projectile_land` on the block it stuck
                 // in, or where it hit an entity and went.
                 if !was_stuck && (a.is_stuck() || !keep) {
@@ -484,7 +492,7 @@ impl Entities {
                 if !world.entity_ticking(p.pos.floor().as_ivec3()) {
                     return true;
                 }
-                let keep = p.update(dt, world, mobs, rng, &mut events, gateways.as_deref_mut());
+                let keep = p.update(dt, world, mobs, rng, &mut events, gateways.as_deref_mut(), &boss);
                 if !keep {
                     sculk.land(world, p.pos, p.vel, sculk_events::Sculk::projectile_source(Some(p.owner), None));
                 }
@@ -494,7 +502,7 @@ impl Entities {
                 if !world.entity_ticking(p.pos.floor().as_ivec3()) {
                     return true;
                 }
-                let keep = p.update(dt, world, ctx, mobs, rng, &mut events);
+                let keep = p.update(dt, world, ctx, mobs, &boss, rng, &mut events);
                 if !keep {
                     sculk.land(world, p.pos, p.vel, sculk_events::Sculk::projectile_source(p.owner, None));
                 }
@@ -504,7 +512,7 @@ impl Entities {
                 if !world.entity_ticking(t.pos.floor().as_ivec3()) {
                     return true;
                 }
-                let keep = t.update(dt, world, mobs, &self.mob_index, &ctx.players, rng, &mut events);
+                let keep = t.update(dt, world, mobs, &self.mob_index, &ctx.players, &boss, rng, &mut events);
                 if !keep {
                     let source = sculk_events::Sculk::projectile_source(t.owner, t.shooter);
                     sculk.land(world, t.pos, t.pos - t.previous_pos, source);
@@ -513,15 +521,15 @@ impl Entities {
             });
         }
         self.pearl_endermites(&events, ctx);
-        self.update_tridents(dt, world, ctx, &mut events);
+        self.update_tridents(dt, world, ctx, &boss, &mut events);
         // v0.16 Track B: firework rockets.
-        self.update_fireworks(world, ctx, &mut events);
+        self.update_fireworks(world, ctx, &boss, &mut events);
         {
             let (rng, mobs, index) = (&mut self.rng, &self.mobs, &self.mob_index);
             let mut i = 0;
             while i < self.bobbers.len() {
                 if !world.entity_ticking(self.bobbers[i].pos.floor().as_ivec3())
-                    || self.bobbers[i].update(dt, world, rng, ctx, mobs, index)
+                    || self.bobbers[i].update(dt, world, rng, ctx, mobs, index, &boss)
                 {
                     i += 1;
                 } else {
@@ -538,8 +546,9 @@ impl Entities {
         self.ensure_mob_ids();
         self.clouds.retain_mut(|cloud| {
             !world.entity_ticking(cloud.pos.floor().as_ivec3())
-                || cloud.tick(dt, ctx, &mut self.mobs, &mut self.rng, &mut events)
+                || cloud.tick(dt, ctx, &mut self.mobs, &boss, &mut self.rng, &mut events)
         });
+        self.apply_dragon_hits(&mut events);
         self.update_eyes(dt, world, &mut events);
         self.apply_entity_shots(&events, ctx);
         self.resolve_mob_hits(&mut events);

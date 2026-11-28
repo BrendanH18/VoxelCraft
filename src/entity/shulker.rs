@@ -335,6 +335,8 @@ enum BulletHit {
     Player(PlayerId),
     Mob(usize),
     Block,
+    /// v1.0 gap Track 4c: an End crystal or a dragon part.
+    Boss(super::dragon::Hit),
 }
 
 impl Entities {
@@ -691,6 +693,10 @@ impl Entities {
                 hit = Some(BulletHit::Mob(j));
                 break;
             }
+            if let Some(h) = super::dragon::hit_at(self.fight.as_ref(), &self.wild_dragons, &self.crystals, p) {
+                hit = Some(BulletHit::Boss(h));
+                break;
+            }
         }
         if hit.is_none() {
             b.pos += b.vel;
@@ -762,6 +768,15 @@ impl Entities {
                     if let Some(s) = &mut m.shulker {
                         s.bullet_hit = true;
                     }
+                }
+            }
+            // `mobProjectile(this, shulker)` for 4: it breaks a crystal, and
+            // lands on a dragon without hurting it (a shulker isn't a
+            // player); a part isn't living, so nothing levitates.
+            BulletHit::Boss(struck) => {
+                if !struck.is_dragon() {
+                    let blow = super::dragon::Blow::projectile(BULLET_DAMAGE, false);
+                    events.push(EntityEvent::DragonStruck { hit: struck, blow, by: None });
                 }
             }
             BulletHit::Block => {

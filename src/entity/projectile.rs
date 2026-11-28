@@ -328,9 +328,17 @@ impl Arrow {
                     if let Some((hit, _)) = boss_hit.filter(|&(_, t)| mob.is_none_or(|(_, m)| t < m))
                         && let Some(boss) = boss.as_deref_mut()
                     {
-                        let damage = (self.vel.length() / BOW_SPEED * BOW_DAMAGE * self.power_factor()).ceil() as f32;
+                        let mut damage =
+                            (self.vel.length() / BOW_SPEED * BOW_DAMAGE * self.power_factor()).ceil() as f32;
+                        if self.critical {
+                            damage += (rng.next_f32() * (damage / 2.0 + 1.0)).floor();
+                        }
+                        // `AbstractArrow.onHitEntity`: the damage source's
+                        // entity is the owner (a dispenser's arrow has
+                        // none), and only a player's arrow takes health; a
+                        // skeleton's lands and is gone.
                         let by = if self.from_player { self.owner } else { None };
-                        if boss.strike(hit, damage, by, self.from_player) {
+                        if boss.strike(hit, super::dragon::Blow::arrow(damage, by.is_some()), by) {
                             return false;
                         }
                         // Refused (a perched dragon's scales, or a dying

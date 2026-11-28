@@ -47,6 +47,7 @@ impl Pearl {
 
     /// Moves the pearl; returns `false` once it has landed (pushing a
     /// [`EntityEvent::PearlLanded`]) or is lost.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn update<W: BlockSource + ?Sized>(
         &mut self,
         dt: f64,
@@ -55,7 +56,10 @@ impl Pearl {
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
         mut gateways: Option<&mut super::dragon::gateway::Gateways>,
+        boss: &super::dragon::Boxes,
     ) -> bool {
+        // `oldPosition()`: where it was when this tick began.
+        let start = self.pos;
         self.age += dt as f32;
         let ticks = dt * 20.0;
         let water = world.block(self.pos.floor().as_ivec3()).is_some_and(|b| b.holds_water());
@@ -94,6 +98,18 @@ impl Pearl {
                 events.push(EntityEvent::PearlLanded { owner: self.owner, pos: mob.pos });
                 return false;
             }
+            // v1.0 gap Track 4c: an End crystal (`hurt(thrown, 0)` breaks
+            // it) or a dragon part (it refuses so little). Either way the
+            // thrower goes to where the pearl was when the tick began
+            // (`ThrownEnderpearl.onHit` teleports to `oldPosition()`).
+            if let Some(struck) = boss.hit_at(next, true) {
+                if !struck.is_dragon() {
+                    let blow = super::dragon::Blow::projectile(0.0, true);
+                    events.push(EntityEvent::DragonStruck { hit: struck, blow, by: Some(self.owner) });
+                }
+                events.push(EntityEvent::PearlLanded { owner: self.owner, pos: start });
+                return false;
+            }
         }
         self.age < MAX_FLIGHT && self.pos.y > -128.0
     }
@@ -111,7 +127,7 @@ mod tests {
         let mut rng = Rng::new(1);
         let mut events = Vec::new();
         for _ in 0..400 {
-            if !pearl.update(0.05, world, mobs, &mut rng, &mut events, None) {
+            if !pearl.update(0.05, world, mobs, &mut rng, &mut events, None, &Default::default()) {
                 break;
             }
         }

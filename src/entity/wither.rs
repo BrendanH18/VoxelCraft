@@ -749,6 +749,7 @@ impl Entities {
         &mut self,
         world: &W,
         ctx: &Ctx,
+        boss: &super::dragon::Boxes,
         events: &mut Vec<EntityEvent>,
     ) {
         if self.wither_skulls.is_empty() {
@@ -775,7 +776,7 @@ impl Entities {
             if owner_dead {
                 return false;
             }
-            match k.tick(world, ctx, &self.mobs) {
+            match k.tick(world, ctx, &self.mobs, boss) {
                 None => true,
                 Some(hit) => {
                     let source = super::sculk_events::Sculk::projectile_source(None, k.owner);
@@ -802,6 +803,17 @@ impl Entities {
         let owner = k.owner.and_then(|u| self.mobs.iter().position(|m| m.uid == u));
         match hit {
             Hit::Block => {}
+            // `witherSkull(this, wither)` for 8 (magic 5 with no owner): it
+            // breaks a crystal, and lands on a dragon without hurting it (a
+            // Wither isn't a player); a part isn't living, so no Wither
+            // effect. The skull's blast follows, which does hurt it.
+            Hit::Boss(struck) => {
+                let damage = if owner.is_some() { SKULL_DAMAGE } else { SKULL_MAGIC_DAMAGE };
+                if !struck.is_dragon() {
+                    let blow = super::dragon::Blow::projectile(damage, false);
+                    events.push(EntityEvent::DragonStruck { hit: struck, blow, by: None });
+                }
+            }
             Hit::Player(id) => {
                 let damage = if owner.is_some() { SKULL_DAMAGE } else { SKULL_MAGIC_DAMAGE };
                 events.push(EntityEvent::ArrowEffectsStart { player: id });
@@ -863,9 +875,9 @@ impl Entities {
         self.blast_carts(world, center, power);
         self.blast_decor(center, power);
         if let Some(fight) = &mut self.fight {
-            fight.explode(center, power);
+            fight.explode(world, center, power);
         }
-        self.wild_dragons.explode(center, power);
+        self.wild_dragons.explode(world, center, power);
         self.crystals.explode(center, power);
         let mut killed = Vec::new();
         for m in &mut self.mobs {
@@ -1112,6 +1124,8 @@ pub enum Hit {
     Block,
     Player(PlayerId),
     Mob(usize),
+    /// v1.0 gap Track 4c: an End crystal or a dragon part.
+    Boss(super::dragon::Hit),
 }
 
 /// A flying wither skull (`WitherSkull`): black, or blue and `dangerous`.
@@ -1160,7 +1174,13 @@ impl Skull {
     /// `AbstractHurtingProjectile.tick`: speed up along the motion, then
     /// move, stopping at the first block, player or mob in the way (its
     /// owner and the Wither's friends excluded, as `canHitEntity`).
-    pub fn tick<W: MobWorld + ?Sized>(&mut self, world: &W, ctx: &Ctx, mobs: &[Mob]) -> Option<Hit> {
+    pub fn tick<W: MobWorld + ?Sized>(
+        &mut self,
+        world: &W,
+        ctx: &Ctx,
+        mobs: &[Mob],
+        boss: &super::dragon::Boxes,
+    ) -> Option<Hit> {
         self.previous_pos = self.pos;
         self.age += 1;
         let in_water = world.block(self.pos.floor().as_ivec3()).is_some_and(Block::holds_water);
@@ -1193,6 +1213,9 @@ impl Skull {
                 }
             }) {
                 return Some(Hit::Mob(j));
+            }
+            if let Some(hit) = boss.hit_at(next, true) {
+                return Some(Hit::Boss(hit));
             }
         }
         None

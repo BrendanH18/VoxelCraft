@@ -405,6 +405,21 @@ pub enum EntityEvent {
         player: PlayerId,
         attacker: u32,
     },
+    /// v1.0 gap Track 4c: a projectile other than an arrow struck an End
+    /// crystal or a dragon part with `blow`, thrown by player `by`;
+    /// [`Entities::update`] applies it once the projectiles have moved
+    /// (none of them acts on whether the hit landed).
+    DragonStruck {
+        hit: dragon::Hit,
+        blow: dragon::Blow,
+        by: Option<PlayerId>,
+    },
+    /// v1.0 gap Track 4c: a splash or cloud of Healing reached the dragon
+    /// `hit` names (`LivingEntity.heal`).
+    DragonHealed {
+        hit: dragon::Hit,
+        amount: f32,
+    },
     /// An arrow hit a vehicle, cushion or decoration (`motion` in blocks
     /// per second); [`Entities::update`] applies it.
     EntityShot {
@@ -1643,9 +1658,9 @@ impl Entities {
         self.blast_carts(world, center, power);
         self.blast_decor(center, power);
         if let Some(fight) = &mut self.fight {
-            fight.explode(center, power);
+            fight.explode(world, center, power);
         }
-        self.wild_dragons.explode(center, power);
+        self.wild_dragons.explode(world, center, power);
         self.crystals.explode(center, power);
         // v0.16 Track C: a charged creeper's blast knocks one head off.
         let charged = self
@@ -2503,8 +2518,8 @@ impl Entities {
     pub fn strike_as(&mut self, hit: dragon::Hit, damage: f32, by: PlayerId, creative: bool) -> bool {
         match hit {
             dragon::Hit::Crystal(id) => self.crystals.hit(id, crystal::Blow::Player { id: by, creative }),
-            dragon::Hit::Dragon(_) => self.fight.as_mut().is_some_and(|f| f.strike(hit, damage, false)),
-            dragon::Hit::Wild(id, part) => self.wild_dragons.strike(id, part, damage, false),
+            dragon::Hit::Dragon(_) => self.fight.as_mut().is_some_and(|f| f.strike(hit, dragon::Blow::melee(damage))),
+            dragon::Hit::Wild(id, part) => self.wild_dragons.strike(id, part, dragon::Blow::melee(damage)),
         }
     }
 

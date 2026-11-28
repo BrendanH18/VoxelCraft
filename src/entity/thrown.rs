@@ -264,6 +264,7 @@ impl Thrown {
         mobs: &mut [Mob],
         index: &super::mob_index::MobIndex,
         players: &[super::Target],
+        boss: &super::dragon::Boxes,
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
     ) -> bool {
@@ -368,6 +369,36 @@ impl Thrown {
                     hit = Some(i);
                 }
             });
+            // v1.0 gap Track 4c: an End crystal or a dragon part
+            // (`EnderDragonPart` is pickable; wind charges pass crystals,
+            // `AbstractWindCharge.canHitEntity`). Llama spit isn't stopped
+            // by what it hits and can't hurt a dragon, so it flies on.
+            if hit.is_none()
+                && self.kind != Kind::LlamaSpit
+                && let Some(struck) = boss.hit_at(next, !self.kind.is_wind())
+            {
+                self.pos = next;
+                // `ThrownExperienceBottle` has no `onHitEntity`: it only bursts.
+                if self.kind == Kind::ExperienceBottle {
+                    self.bottle_burst(next, -self.vel, rng, events);
+                    return false;
+                }
+                // `Snowball`, `ThrownEgg`: `hurt(thrown, 0)`, which breaks a
+                // crystal and does nothing to a dragon (`EnderDragon.hurt`
+                // refuses under 0.01); a wind charge's one point, which only
+                // a player's takes from the dragon.
+                let blow = match self.kind {
+                    Kind::WindCharge | Kind::BreezeWindCharge => {
+                        super::dragon::Blow::wind_charge(self.kind == Kind::BreezeWindCharge, self.owner.is_some())
+                    }
+                    _ => super::dragon::Blow::projectile(0.0, self.owner.is_some()),
+                };
+                if !struck.is_dragon() || blow.damage > 0.0 {
+                    events.push(EntityEvent::DragonStruck { hit: struck, blow, by: self.owner });
+                }
+                self.impact(next, rng, events);
+                return false;
+            }
             if let Some(i) = hit {
                 let mob = &mut mobs[i];
                 // `Breeze.deflection`: every projectile but wind charges
@@ -472,7 +503,16 @@ mod tests {
             index.rebuild(std::slice::from_ref(&mob));
             let mut hit = false;
             for _ in 0..8 {
-                if !thrown.update(0.05, &world, std::slice::from_mut(&mut mob), &index, &[], rng, &mut events) {
+                if !thrown.update(
+                    0.05,
+                    &world,
+                    std::slice::from_mut(&mut mob),
+                    &index,
+                    &[],
+                    &Default::default(),
+                    rng,
+                    &mut events,
+                ) {
                     hit = true;
                     break;
                 }
@@ -511,7 +551,7 @@ mod tests {
         index.rebuild(&mobs);
         let mut events = Vec::new();
         for _ in 0..8 {
-            if !t.update(0.05, &world, &mut mobs, &index, &[], &mut rng, &mut events) {
+            if !t.update(0.05, &world, &mut mobs, &index, &[], &Default::default(), &mut rng, &mut events) {
                 break;
             }
         }
@@ -535,7 +575,7 @@ mod tests {
         let index = super::super::mob_index::MobIndex::default();
         let mut events = Vec::new();
         let mut steps = 0;
-        while t.update(0.05, &world, &mut [], &index, &[], &mut rng, &mut events) {
+        while t.update(0.05, &world, &mut [], &index, &[], &Default::default(), &mut rng, &mut events) {
             steps += 1;
             assert!(steps < 40);
         }
@@ -560,7 +600,16 @@ mod tests {
         let mut events = Vec::new();
         for _ in 0..4 {
             let index = index_for(&breeze);
-            if !t.update(0.05, &world, std::slice::from_mut(&mut breeze), &index, &[], &mut rng, &mut events) {
+            if !t.update(
+                0.05,
+                &world,
+                std::slice::from_mut(&mut breeze),
+                &index,
+                &[],
+                &Default::default(),
+                &mut rng,
+                &mut events,
+            ) {
                 break;
             }
         }
@@ -577,7 +626,16 @@ mod tests {
         let mut events = Vec::new();
         for _ in 0..4 {
             let index = index_for(&breeze);
-            if !w.update(0.05, &world, std::slice::from_mut(&mut breeze), &index, &[], &mut rng, &mut events) {
+            if !w.update(
+                0.05,
+                &world,
+                std::slice::from_mut(&mut breeze),
+                &index,
+                &[],
+                &Default::default(),
+                &mut rng,
+                &mut events,
+            ) {
                 break;
             }
         }
@@ -616,7 +674,7 @@ mod tests {
         for _ in 0..200 {
             let mut index = super::super::mob_index::MobIndex::default();
             index.rebuild(mobs);
-            if !t.update(0.05, world, mobs, &index, players, &mut rng, &mut events) {
+            if !t.update(0.05, world, mobs, &index, players, &Default::default(), &mut rng, &mut events) {
                 return events;
             }
         }
@@ -648,7 +706,7 @@ mod tests {
         let index = super::super::mob_index::MobIndex::default();
         let mut events = Vec::new();
         for tick in 0..40 {
-            assert!(t.update(0.05, &world, &mut [], &index, &[], &mut rng, &mut events));
+            assert!(t.update(0.05, &world, &mut [], &index, &[], &Default::default(), &mut rng, &mut events));
             v.y -= gravity;
             v *= 0.99;
             pos += v;
