@@ -11,7 +11,7 @@ mod resolver;
 use glam::{DVec3, IVec3};
 use rustc_hash::FxHashMap;
 
-pub use entities::{PUSH_OFFSET, PistonPush, PushBody, STICKY_TOP, TICK_MOVEMENT, push_body, push_player};
+pub use entities::{PUSH_OFFSET, PistonPush, PushBody, STICKY_TOP, TICK_MOVEMENT, push_body, push_player, pushes_box};
 pub use moving::{Moving, SHORT_HEAD, SPIT_PROGRESS, STEP};
 pub use reaction::{
     PistonClass, PushReaction, has_block_entity, is_sticky, piston_class, push_reaction, stick_together,
