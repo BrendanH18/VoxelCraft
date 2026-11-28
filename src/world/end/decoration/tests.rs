@@ -226,3 +226,27 @@ fn return_gateways_are_javas() {
 fn ivec2(v: &Value) -> IVec2 {
     IVec2::new(v[0].as_i64().unwrap() as i32, v[1].as_i64().unwrap() as i32)
 }
+
+/// A generated return gateway is a new block entity (the game gives it an
+/// age of 0, so it shows the spawn beam), and the world knows its exact
+/// exit.
+#[test]
+fn a_world_notes_the_return_gateways_it_generates() {
+    use crate::world::terrain::{Dimension, Generator};
+    let g = IVec3::new(-2024, 68, -63);
+    let generator = Generator::with_generation(0, Dimension::End, Generation::V7);
+    assert_eq!(generator.end().unwrap().return_gateway_at(g), Some(super::RETURN_EXIT));
+    let mut world = crate::world::World::new(std::sync::Arc::new(generator), Default::default(), 1);
+    let at = g.as_dvec3();
+    for _ in 0..20_000 {
+        world.update(at);
+        if world.get_block(g).is_some() && world.pending_jobs() == 0 {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    assert_eq!(world.get_block(g), Some(Block::END_GATEWAY));
+    assert_eq!(world.generated_gateways, vec![g]);
+    assert_eq!(world.return_gateway_exit(g), Some(super::RETURN_EXIT));
+    assert_eq!(world.return_gateway_exit(g + IVec3::Y), None);
+}
