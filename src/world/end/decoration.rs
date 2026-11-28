@@ -37,7 +37,9 @@
 //! feature can reach into a neighbouring chunk; where two chunks' features
 //! meet, which comes first is not fixed in Java either. Here each chunk's
 //! features see every island, city and gateway around them (as if the
-//! neighbours had decorated first), but not the neighbours' chorus.
+//! neighbours had decorated first), and its chorus sees the chorus of the
+//! neighbours before it in a fixed order ([`decorates_before`]), each as
+//! it grows alone.
 
 use std::sync::{Arc, Mutex};
 
@@ -74,8 +76,8 @@ pub(super) struct Caches {
 /// Whether chunk `a` decorates before its neighbour `b` here: Java
 /// decorates in whatever order the server reaches chunks, and a feature
 /// reaching into a chunk decorated earlier meets what is there. VoxelCraft
-/// fixes the order north to south, then west to east (lower z, then lower
-/// x, first).
+/// fixes the order west to east, then north to south (lower x, then lower
+/// z, first), the order the fixture's server mostly took.
 fn decorates_before(a: IVec2, b: IVec2) -> bool {
     (a.x, a.y) < (b.x, b.y)
 }

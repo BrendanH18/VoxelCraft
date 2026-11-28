@@ -297,6 +297,8 @@ src/
     nether_features.rs  huge fungi, vines, deltas, basalt columns (Java ports)
     nether_decoration.rs  per-chunk feature placement across chunk borders
     end.rs           the End: islands, pillars, podium, biomes, chorus, cities
+    end/decoration.rs  generation 7's End decoration (Java's small islands,
+                     return gateways and chorus on its decoration seed)
     end_islands.rs   Java's End noise router (generation 7's islands)
     nether_flora.rs  nylium, vine growth and Nether bone meal
     fortress.rs      Nether fortress layouts (Java's pieces), painted per chunk
