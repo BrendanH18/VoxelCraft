@@ -59,6 +59,7 @@ impl Cloud {
         dt: f64,
         c: &Ctx,
         mobs: &mut [Mob],
+        boss: &super::dragon::Boxes,
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
     ) -> bool {
@@ -151,6 +152,37 @@ impl Cloud {
                         });
                     } else {
                         m.health = (m.health + amount).min(m.max_health());
+                    }
+                }
+                if self.radius < 0.5 {
+                    return false;
+                }
+            }
+            // v1.0 gap Track 4c: the dragons, each a `LivingEntity` whose
+            // feet must stand within the radius. Only the instant effects
+            // reach one (`EnderDragon.addEffect` refuses the rest), and only
+            // a player's cloud takes its health.
+            for &(hit, feet) in &boss.dragons {
+                if !self.potion.effects().any(|(e, _, _)| e.is_instant()) {
+                    break;
+                }
+                let (min, max) = super::dragon::WILD_SHAPE.aabb(feet);
+                let key = match hit {
+                    super::dragon::Hit::Wild(id, _) => u64::from(id),
+                    _ => u64::from(u32::MAX),
+                };
+                if !self.contains(feet, min, max) || !self.dose((2u64 << 32) | key) {
+                    continue;
+                }
+                for (effect, amp, _) in self.potion.effects() {
+                    let amount = (1u32 << amp.min(20)) as f32;
+                    match effect {
+                        Effect::InstantDamage => {
+                            let blow = super::dragon::Blow::projectile(3. * amount, self.owner.is_some());
+                            events.push(EntityEvent::DragonStruck { hit, blow, by: self.owner });
+                        }
+                        Effect::InstantHealth => events.push(EntityEvent::DragonHealed { hit, amount: 2. * amount }),
+                        _ => {}
                     }
                 }
                 if self.radius < 0.5 {
@@ -284,19 +316,19 @@ mod tests {
         let ctx = context();
         let mut rng = Rng::new(1);
         for _ in 0..9 {
-            assert!(c.tick(0.05, &ctx, &mut [], &mut rng, &mut ev));
+            assert!(c.tick(0.05, &ctx, &mut [], &Default::default(), &mut rng, &mut ev));
         }
         assert!(ev.is_empty());
-        assert!(c.tick(0.05, &ctx, &mut [], &mut rng, &mut ev));
+        assert!(c.tick(0.05, &ctx, &mut [], &Default::default(), &mut rng, &mut ev));
         assert!(ev.iter().any(|e| matches!(e, EntityEvent::PlayerEffect { ticks: 225, .. })));
         assert!((c.radius - 2.495).abs() < 1e-5);
         c = Cloud::load(&c.save()).unwrap();
         ev.clear();
         for _ in 0..19 {
-            c.tick(0.05, &ctx, &mut [], &mut rng, &mut ev);
+            c.tick(0.05, &ctx, &mut [], &Default::default(), &mut rng, &mut ev);
         }
         assert!(ev.is_empty());
-        c.tick(0.05, &ctx, &mut [], &mut rng, &mut ev);
+        c.tick(0.05, &ctx, &mut [], &Default::default(), &mut rng, &mut ev);
         assert!(!ev.is_empty());
         let mut e = Entities::new(3);
         e.clouds.push(c);
@@ -324,7 +356,7 @@ mod tests {
         ctx.players.clear();
         let mut mobs = [Mob::new(MobKind::Stray, DVec3::ZERO, 0.), Mob::new(MobKind::Spider, DVec3::ZERO, 0.)];
         for _ in 0..10 {
-            c.tick(0.05, &ctx, &mut mobs, &mut Rng::new(4), &mut Vec::new());
+            c.tick(0.05, &ctx, &mut mobs, &Default::default(), &mut Rng::new(4), &mut Vec::new());
         }
         assert!((c.radius - 2.995).abs() < 1e-5);
         assert!(mobs.iter().all(|m| !m.effects.has(Effect::Poison)));

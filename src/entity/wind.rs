@@ -103,6 +103,12 @@ impl Entities {
                 m.on_ground = false;
             }
         }
+        // v1.0 gap Track 4c: the dragons too (their parts' pushes are lost
+        // when they're placed again).
+        if let Some(fight) = &mut self.fight {
+            fight.wind_burst(world, burst);
+        }
+        self.wild_dragons.wind_burst(world, burst);
         // Java's gust emitters (small for a player's charge, large for a
         // breeze's): a ring of white puffs here.
         let mut gust = crate::particles::Burst::new(

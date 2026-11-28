@@ -361,7 +361,9 @@ impl Game {
             Command::Dimension(to) => {
                 if to != self.dimension {
                     let arrival = match to {
-                        crate::world::terrain::Dimension::End => super::dimension::Arrival::EndSpawn,
+                        crate::world::terrain::Dimension::End => {
+                            super::dimension::Arrival::EndSpawn { vel: glam::DVec3::ZERO }
+                        }
                         crate::world::terrain::Dimension::Nether => super::dimension::Arrival::Portal(
                             crate::world::portal::PortalTrip::without_portal(glam::IVec3::new(0, 64, 0)),
                         ),

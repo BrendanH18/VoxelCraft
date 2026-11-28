@@ -99,21 +99,17 @@ pub(super) enum Arrival {
     Respawn,
     /// Back from the dead to the Nether respawn anchor at this cell.
     Anchor(IVec3),
-    EndSpawn,
+    /// Into the End, on the obsidian platform, with `vel`: the motion the
+    /// player entered the portal with, turned to face west
+    /// ([`crate::world::portal::end_arrival_motion`], v1.0 gap Track 4c).
+    EndSpawn { vel: DVec3 },
     /// Through an End gateway at `from` to the one at `exit`, which is
     /// built (after the `EndIslandFeature` island at `island`, if any) and
     /// linked back if it's new. The traveller keeps `vel` (Java's
     /// `Relative.DELTA`). An `exact` exit (a generation 7 return gateway's,
     /// `end_gateway_return`) is a spot, not a gateway: the traveller
     /// arrives at its bottom centre and nothing is built.
-    Gateway {
-        exit: IVec3,
-        from: IVec3,
-        island: Option<IVec3>,
-        link: bool,
-        vel: DVec3,
-        exact: bool,
-    },
+    Gateway { exit: IVec3, from: IVec3, island: Option<IVec3>, link: bool, vel: DVec3, exact: bool },
 }
 
 /// Where a dimension's save lives inside the world folder.
@@ -546,7 +542,7 @@ impl Game {
         let target = match arrival {
             Arrival::Portal(trip) => trip.target,
             Arrival::PortalAt(p, _) => p,
-            Arrival::EndSpawn => crate::world::end::SPAWN,
+            Arrival::EndSpawn { .. } => crate::world::end::SPAWN,
             Arrival::Gateway { exit, .. } => exit,
             // Load where `respawn_point` will put the player: the bed (checked
             // once its chunk is in), else the set spawn point or the
@@ -559,7 +555,7 @@ impl Game {
             Arrival::PortalAt(..) => 2,
             Arrival::Respawn => 0,
             Arrival::Anchor(_) => 1,
-            Arrival::EndSpawn => 2,
+            Arrival::EndSpawn { .. } => 2,
             // Room for the gateway's arrival search and a new island.
             Arrival::Gateway { island: None, .. } => 6,
             Arrival::Gateway { island: Some(_), .. } => 16,
@@ -630,14 +626,15 @@ impl Game {
                     }
                 }
             }
-            Arrival::EndSpawn => {
+            Arrival::EndSpawn { .. } => {
                 // `EndPortalBlock.getPortalDestination`:
                 // `EndPlatformFeature.createEndPlatform(.., true)` replaces
                 // every block of the platform that isn't obsidian (its
                 // floor) or air (the three layers above) with
                 // `destroyBlock(pos, true)`, dropping what was there. The
                 // player faces west (`Direction.WEST.toYRot()`) and keeps
-                // their pitch (`Relative.X_ROT`).
+                // their pitch (`Relative.X_ROT`) and motion (`Relative.DELTA`,
+                // turned with the yaw when they entered).
                 let spawn = crate::world::end::SPAWN;
                 for z in -2..=2 {
                     for x in -2..=2 {
@@ -705,7 +702,7 @@ impl Game {
         };
         self.relocate_agents();
         self.session.player.vel = match arrival {
-            Arrival::Gateway { vel, .. } => vel,
+            Arrival::Gateway { vel, .. } | Arrival::EndSpawn { vel } => vel,
             Arrival::Portal(trip) | Arrival::PortalAt(_, trip) => trip.vel,
             _ => DVec3::ZERO,
         };
@@ -810,7 +807,12 @@ impl Game {
             }
             let (to, arrival) = match self.dimension {
                 Dimension::End => (Dimension::Overworld, Arrival::Respawn),
-                _ => (Dimension::End, Arrival::EndSpawn),
+                _ => {
+                    let p = &self.session.player;
+                    let yaw = crate::knockback::java_yaw_degrees(p.yaw);
+                    let vel = crate::world::portal::end_arrival_motion(p.vel, yaw);
+                    (Dimension::End, Arrival::EndSpawn { vel })
+                }
             };
             self.switch_dimension(to, arrival);
             return;

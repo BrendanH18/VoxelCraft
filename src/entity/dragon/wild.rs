@@ -46,6 +46,8 @@ pub struct Wild {
     pub clouds: Vec<BreathCloud>,
     pending: f64,
     next_id: u32,
+    /// The `mobGriefing` game rule is off; set each tick by the entities.
+    pub griefing_off: bool,
 }
 
 impl Wild {
@@ -98,6 +100,7 @@ impl Wild {
         events: &mut Vec<EntityEvent>,
     ) {
         let (floor, top) = (ctx.dimension.min_y(), ctx.dimension.max_y());
+        let griefing = !self.griefing_off;
         let (fireballs, clouds) = (&mut self.fireballs, &mut self.clouds);
         self.dragons.retain_mut(|w| {
             // Entities in unloaded chunks don't tick.
@@ -113,10 +116,14 @@ impl Wild {
                 clouds,
                 top,
                 floor,
+                griefing,
             };
             w.dragon.tick(&mut arena, world, ctx, rng, crystals, events)
         });
-        self.fireballs.retain_mut(|f| f.tick(world, ctx, &mut self.clouds));
+        if !self.fireballs.is_empty() {
+            let boxes = super::Boxes::new(None, self, crystals);
+            self.fireballs.retain_mut(|f| f.tick(world, ctx, &boxes, &mut self.clouds));
+        }
         self.clouds.retain_mut(|c| c.tick(ctx, events));
     }
 
@@ -135,21 +142,35 @@ impl Wild {
             .min_by(|a, b| a.1.total_cmp(&b.1))
     }
 
-    /// A hit on a part of dragon `id`; arrows bounce off it while perched.
-    pub fn strike(&mut self, id: u32, part: Part, damage: f32, arrow: bool) -> bool {
-        self.dragons.iter_mut().find(|w| w.id == id).is_some_and(|w| {
-            if arrow && w.dragon.phase.deflects_arrows() {
-                return false;
-            }
-            w.dragon.hurt_by(part, damage, true)
-        })
+    /// A hit on a part of dragon `id`: whether it landed
+    /// ([`super::Dragon::hurt`]; arrows bounce off it while perched).
+    pub fn strike(&mut self, id: u32, part: Part, blow: super::Blow) -> bool {
+        self.dragons.iter_mut().find(|w| w.id == id).is_some_and(|w| w.dragon.hurt(part, blow))
     }
 
-    /// A blast at `center`: each dragon takes the damage of its worst-hit part.
-    pub fn explode(&mut self, center: DVec3, power: f32) {
+    /// A blast at `center` on each dragon ([`super::Dragon::blast`]).
+    pub fn explode<W: BlockSource + ?Sized>(&mut self, world: &W, center: DVec3, power: f32) {
         for w in &mut self.dragons {
-            w.dragon.blast(center, power);
+            w.dragon.blast(world, center, power);
         }
+    }
+
+    /// A wind burst's push on each dragon.
+    pub fn wind_burst<W: BlockSource + ?Sized>(&mut self, world: &W, burst: &crate::entity::wind::WindBurst) {
+        for w in &mut self.dragons {
+            w.dragon.push_from_blast(world, burst.center, burst.radius, burst.knockback);
+        }
+    }
+
+    /// The dragon part `p` is inside of.
+    pub fn hit_at(&self, p: DVec3) -> Option<Hit> {
+        self.dragons.iter().find_map(|w| {
+            w.dragon
+                .parts
+                .iter()
+                .find(|&&(_, min, max)| p.cmpge(min).all() && p.cmple(max).all())
+                .map(|&(part, ..)| Hit::Wild(w.id, part))
+        })
     }
 
     /// The dragons for the level file (`EnderDragon.addAdditionalSaveData`:
@@ -300,10 +321,10 @@ mod tests {
         // Hovering counts as sitting: arrows still hurt it, and more than a
         // quarter of its health taken makes it take off.
         let id = wild.dragons[0].id;
-        assert!(wild.strike(id, Part::Head, 20.0, true), "arrows hurt a hovering dragon");
+        assert!(wild.strike(id, Part::Head, super::super::Blow::arrow(20.0, true)), "arrows hurt a hovering dragon");
         assert_eq!(wild.dragons[0].dragon.phase, Phase::Hovering);
         run(&mut wild, 11, &ctx, &mut events);
-        assert!(wild.strike(id, Part::Head, 40.0, false));
+        assert!(wild.strike(id, Part::Head, super::super::Blow::melee(40.0)));
         assert_eq!(wild.dragons[0].dragon.phase, Phase::Takeoff);
         // Far from the origin's perch, the takeoff becomes the holding pattern,
         // which heads for the inner ring around (0, 0).
@@ -318,7 +339,7 @@ mod tests {
         let mut wild = Wild::default();
         wild.spawn(DVec3::new(0.0, 120.0, 0.0), 0.0);
         let id = wild.dragons[0].id;
-        assert!(wild.strike(id, Part::Head, 500.0, false));
+        assert!(wild.strike(id, Part::Head, super::super::Blow::melee(500.0)));
         let mut events = Vec::new();
         run(&mut wild, 210, &ctx(Vec::new()), &mut events);
         assert!(wild.dragons.is_empty(), "removed once dying ends");
@@ -336,7 +357,7 @@ mod tests {
         let mut wild = Wild::default();
         wild.spawn(DVec3::new(5.0, 90.0, 6.0), 30.0);
         let id = wild.dragons[0].id;
-        wild.strike(id, Part::Head, 30.0, false);
+        wild.strike(id, Part::Head, super::super::Blow::melee(30.0));
         let back = Wild::load(&wild.serialize());
         let (a, b) = (&wild.dragons[0].dragon, &back.dragons[0].dragon);
         assert_eq!(

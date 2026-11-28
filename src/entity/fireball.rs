@@ -69,6 +69,7 @@ impl Fireball {
 
     /// Moves the fireball; returns `false` once it has hit something or
     /// burnt out.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn update<W: BlockSource + ?Sized>(
         &mut self,
         dt: f64,
@@ -76,6 +77,7 @@ impl Fireball {
         ctx: &Ctx,
         mobs: &[super::Mob],
         carts: &[(u32, DVec3, DVec3)],
+        boss: &super::dragon::Boxes,
         events: &mut Vec<EntityEvent>,
     ) -> bool {
         self.age += dt as f32;
@@ -113,6 +115,18 @@ impl Fireball {
                         owner: None,
                         motion: self.vel / 20.0,
                     });
+                }
+                return false;
+            }
+            // v1.0 gap Track 4c: an End crystal or a dragon part. Both are
+            // fire immune, so the direct hit (`DamageTypes.FIREBALL`, in
+            // `#is_fire`) does nothing; a ghast's fireball explodes there
+            // (and the blast hurts the dragon and breaks the crystal), a
+            // blaze's is simply gone (`SmallFireball` sets no block alight
+            // when it hits an entity).
+            if boss.hit_at(next, true).is_some() {
+                if self.large {
+                    self.impact(None, events);
                 }
                 return false;
             }
@@ -189,7 +203,7 @@ mod tests {
         let mut f = Fireball::new(DVec3::new(0.5, 11.0, 0.5), DVec3::X);
         let mut events = Vec::new();
         let mut ticks = 0;
-        while f.update(0.05, &world, &c, &[], &[], &mut events) {
+        while f.update(0.05, &world, &c, &[], &[], &Default::default(), &mut events) {
             ticks += 1;
             assert!(ticks < 100);
         }
@@ -201,7 +215,7 @@ mod tests {
         let c = ctx(vec![Target::new(PlayerId(2), DVec3::new(20.5, 10.0, 0.5), false)]);
         let mut f = Fireball::new(DVec3::new(0.5, 11.0, 0.5), DVec3::X);
         let mut events = Vec::new();
-        while f.update(0.05, &world, &c, &[], &[], &mut events) {}
+        while f.update(0.05, &world, &c, &[], &[], &Default::default(), &mut events) {}
         assert!(events.is_empty());
     }
 
@@ -213,7 +227,7 @@ mod tests {
             let from = DVec3::new(0.5, 11.0, 0.5);
             let mut f = if large { Fireball::large(from, DVec3::X) } else { Fireball::new(from, DVec3::X) };
             let mut events = Vec::new();
-            while f.update(0.05, &world, &ctx(vec![]), &[], &[cart], &mut events) {}
+            while f.update(0.05, &world, &ctx(vec![]), &[], &[cart], &Default::default(), &mut events) {}
             assert!(f.pos.x < 10.6, "stopped at the cart");
             if large {
                 assert!(matches!(events.as_slice(), [EntityEvent::Explosion { .. }]), "{events:?}");
@@ -240,7 +254,7 @@ mod tests {
         let world = Grid::flat(10);
         let mut f = Fireball::new(DVec3::new(0.5, 12.5, 0.5), DVec3::new(1.0, -1.0, 0.0));
         let mut events = Vec::new();
-        while f.update(0.05, &world, &ctx(vec![]), &[], &[], &mut events) {}
+        while f.update(0.05, &world, &ctx(vec![]), &[], &[], &Default::default(), &mut events) {}
         let Some(EntityEvent::IgniteBlock { cell }) = events.first().copied() else { panic!("{events:?}") };
         assert_eq!(cell.y, 10, "the air cell above the floor");
         assert!(cell.x >= 2 && cell.x <= 3, "{cell}");
@@ -253,7 +267,7 @@ mod tests {
         f.deflect(DVec3::NEG_Y);
         assert!(f.heading().y < 0.0);
         let mut events = Vec::new();
-        while f.update(0.05, &world, &ctx(vec![]), &[], &[], &mut events) {}
+        while f.update(0.05, &world, &ctx(vec![]), &[], &[], &Default::default(), &mut events) {}
         assert!(events.iter().any(|e| matches!(
             e,
             EntityEvent::Explosion {

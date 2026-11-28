@@ -661,6 +661,21 @@ pub fn spiral(center: IVec3, radius: i32) -> Vec<IVec3> {
     }
 }
 
+/// v1.0 gap Track 4c: a player's motion arriving through an End portal into
+/// the End. `EndPortalBlock.getPortalDestination` keeps it
+/// (`Relative.DELTA`) and sets the yaw to west (90°) while keeping the
+/// pitch (`Relative.X_ROT`); `ROTATE_DELTA` turns the motion with the
+/// yaw (`PositionMoveRotation.calculateAbsolute`: `yRot` by the old yaw
+/// less the new, in Java's float radians and `Mth` tables, after an
+/// `xRot` by the unchanged pitch's zero). `java_yaw` is the old yaw in
+/// Java's degrees; the motion is in any unit.
+pub fn end_arrival_motion(vel: glam::DVec3, java_yaw: f32) -> glam::DVec3 {
+    use crate::knockback::{mth_cos, mth_sin};
+    let radians = f64::from(f64::from(java_yaw - 90.0).to_radians() as f32);
+    let (cos, sin) = (f64::from(mth_cos(radians)), f64::from(mth_sin(radians)));
+    glam::DVec3::new(vel.x * cos + vel.z * sin, vel.y, vel.z * cos - vel.x * sin)
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -670,6 +685,22 @@ mod tests {
 
     use super::*;
     use crate::world::terrain::Generator;
+
+    /// v1.0 gap Track 4c: arriving in the End keeps the motion, turned with
+    /// the yaw to the west the player now faces.
+    #[test]
+    fn the_end_portal_keeps_motion_turned_to_face_west() {
+        // Running south (Java yaw 0) into the portal: running west on the platform.
+        let v = end_arrival_motion(DVec3::new(0.0, -0.5, 0.3), 0.0);
+        assert!((v - DVec3::new(-0.3, -0.5, 0.0)).length() < 1e-6, "{v}");
+        // Already facing west: unchanged.
+        let v = end_arrival_motion(DVec3::new(-0.2, 0.1, 0.05), 90.0);
+        assert!((v - DVec3::new(-0.2, 0.1, 0.05)).length() < 1e-6, "{v}");
+        // Facing north (180): its motion turns half round, and keeps its speed.
+        let v = end_arrival_motion(DVec3::new(0.1, 0.0, -0.4), 180.0);
+        assert!((v - DVec3::new(-0.4, 0.0, -0.1)).length() < 1e-6, "{v}");
+        assert!((v.length() - DVec3::new(0.1, 0.0, -0.4).length()).abs() < 1e-6);
+    }
 
     /// A loaded world with a hollow sky high above the terrain to build in.
     fn world() -> World {

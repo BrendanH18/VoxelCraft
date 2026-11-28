@@ -64,12 +64,14 @@ impl ThrownPotion {
     }
 
     /// Moves the potion; returns `false` once it has shattered.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn update<W: BlockSource + ?Sized>(
         &mut self,
         dt: f64,
         world: &W,
         ctx: &Ctx,
         mobs: &mut [Mob],
+        boss: &super::dragon::Boxes,
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
     ) -> bool {
@@ -83,10 +85,16 @@ impl ThrownPotion {
             let next = self.pos + delta / steps as f64;
             if world.block(next.floor().as_ivec3()).is_some_and(|b| b.is_solid()) {
                 self.pos = next;
-                self.shatter(ctx, mobs, rng, events);
+                self.shatter(ctx, mobs, boss, rng, events);
                 return false;
             }
             self.pos = next;
+            // v1.0 gap Track 4c: an End crystal or a dragon part stops it
+            // too (it has no `onHitEntity`: a crystal survives).
+            if boss.hit_at(next, true).is_some() {
+                self.shatter(ctx, mobs, boss, rng, events);
+                return false;
+            }
             let hit_player = ctx.players.iter().any(|t| t.alive && t.contains(next) && self.owner != Some(t.id));
             let hit_mob = mobs.iter().position(|m| {
                 let (min, max) = m.aabb();
@@ -102,19 +110,27 @@ impl ThrownPotion {
                         self.pos = t.pos;
                     }
                 }
-                self.shatter(ctx, mobs, rng, events);
+                self.shatter(ctx, mobs, boss, rng, events);
                 return false;
             }
         }
         !(self.age >= MAX_FLIGHT || self.pos.y < -128.0)
     }
 
-    fn shatter(&self, ctx: &Ctx, mobs: &mut [Mob], rng: &mut Rng, events: &mut Vec<EntityEvent>) {
+    fn shatter(
+        &self,
+        ctx: &Ctx,
+        mobs: &mut [Mob],
+        boss: &super::dragon::Boxes,
+        rng: &mut Rng,
+        events: &mut Vec<EntityEvent>,
+    ) {
         events.push(EntityEvent::PotionSplashed { pos: self.pos, colour: self.potion.colour() });
         if self.lingering {
             events.push(EntityEvent::LingeringCloud { pos: self.pos, potion: self.potion, owner: self.owner });
         } else {
             splash(self.potion, self.owner, self.pos, self.age, ctx, mobs, rng, events);
+            splash_dragons(self.potion, self.owner, self.pos, self.age, boss, events);
         }
     }
 }
@@ -133,6 +149,37 @@ fn splash_intensity(pos: DVec3, age: f32, min: DVec3, max: DVec3) -> Option<f64>
     let separation = (min - margin - potion_max).max(potion_min - max - margin).max(DVec3::ZERO);
     let distance = separation.length();
     (distance < REACH).then_some(1.0 - distance / REACH)
+}
+
+/// v1.0 gap Track 4c: `ThrownSplashPotion.onHitAsPotion` on the dragons,
+/// each a `LivingEntity` with its own 16 × 8 box. `EnderDragon.addEffect`
+/// refuses every lasting effect, so only Harming and Healing reach it:
+/// Harming through `hurtServer` (its body; only a player's potion takes
+/// health), Healing through `heal`.
+fn splash_dragons(
+    potion: Potion,
+    owner: Option<PlayerId>,
+    pos: DVec3,
+    age: f32,
+    boss: &super::dragon::Boxes,
+    events: &mut Vec<EntityEvent>,
+) {
+    for (effect, amplifier, _) in potion.effects() {
+        for &(hit, feet) in &boss.dragons {
+            let (min, max) = super::dragon::WILD_SHAPE.aabb(feet);
+            let Some(scale) = splash_intensity(pos, age, min, max) else { continue };
+            match effect {
+                Effect::InstantDamage => {
+                    let blow = super::dragon::Blow::projectile(instant_amount(6.0, amplifier, scale), owner.is_some());
+                    events.push(EntityEvent::DragonStruck { hit, blow, by: owner });
+                }
+                Effect::InstantHealth => {
+                    events.push(EntityEvent::DragonHealed { hit, amount: instant_amount(4.0, amplifier, scale) });
+                }
+                _ => {}
+            }
+        }
+    }
 }
 
 /// Java's instant effect amount: `base << amplifier`, scaled and rounded.
@@ -272,7 +319,7 @@ mod tests {
         let mut events = Vec::new();
         let c = ctx(vec![]);
         let mut n = 0;
-        while p.update(0.05, &world, &c, &mut [], &mut Rng::new(1), &mut events) {
+        while p.update(0.05, &world, &c, &mut [], &Default::default(), &mut Rng::new(1), &mut events) {
             n += 1;
             assert!(n < 200);
         }

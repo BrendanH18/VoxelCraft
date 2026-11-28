@@ -414,6 +414,203 @@ def extract_seed(jar, seed, keep=None):
     }
 
 
+# v1.0 gap-closing Track 4c: End cities. For each seed, `locate` finds the
+# city nearest each of these points, and a square of chunks CITY_REACH out
+# from its start chunk is force-loaded (its interior compared).
+CITY_ORIGINS = {0: [(1500, 0), (0, -1500)], 42: [(-1500, 0), (0, 1500)]}
+CITY_REACH = 7
+
+
+def find(nbt, key):
+    """`nbt[key]` under either capitalisation (26.3 renamed some keys)."""
+    for k in (key, key[:1].lower() + key[1:], key[:1].upper() + key[1:]):
+        if k in nbt:
+            return nbt[k]
+    return None
+
+
+def city_starts(nbt):
+    """The `end_city` structure start stored in a chunk, if any: its
+    pieces as [template, rotation, overwrite, x0, y0, z0, x1, y1, z1]."""
+    structures = find(nbt, "structures") or {}
+    starts = find(structures, "starts") or {}
+    start = starts.get("minecraft:end_city")
+    if not start or find(start, "id") == "INVALID":
+        return None
+    pieces = []
+    for child in find(start, "Children") or []:
+        bb = find(child, "BB")
+        pieces.append(
+            [
+                find(child, "Template").replace("minecraft:", ""),
+                find(child, "Rot"),
+                bool(find(child, "OW")),
+            ]
+            + list(bb)
+        )
+    return pieces
+
+
+def city_references(nbt):
+    """Start chunks of the `end_city` starts whose pieces reach this chunk."""
+    structures = find(nbt, "structures") or {}
+    refs = (find(structures, "References") or {}).get("minecraft:end_city", [])
+    out = []
+    for packed in refs:
+        packed &= MASK
+        x, z = packed & 0xFFFFFFFF, packed >> 32
+        out.append((x - (1 << 32) if x >= 1 << 31 else x, z - (1 << 32) if z >= 1 << 31 else z))
+    return out
+
+
+def locate_city(server, x, z):
+    mark = len(server.lines)
+    server.send("execute in minecraft:the_end positioned %d 64 %d run locate structure minecraft:end_city" % (x, z))
+    pattern = re.compile(r"nearest minecraft:end_city is at \[(-?\d+), ~, (-?\d+)\]")
+    end = time.time() + 600
+    while time.time() < end:
+        with server.lock:
+            for line in server.lines[mark:]:
+                m = pattern.search(line)
+                if m:
+                    return int(m.group(1)) >> 4, int(m.group(2)) >> 4
+                if "Could not find" in line:
+                    raise ValueError("no End city near %d %d" % (x, z))
+        time.sleep(0.5)
+    raise TimeoutError("locate")
+
+
+def chunk_row(x, z, biome, b, footprint):
+    """A chunk's row: as `extract_seed`'s, then the end stone and chorus of
+    the columns outside every city piece's box (`footprint`)."""
+    stone = sorted(p for p, n in b.items() if n == "end_stone")
+    chorus = sorted((p, n) for p, n in b.items() if n.startswith("chorus"))
+    city = any(n not in PLAIN and not n.startswith("chorus") for n in b.values())
+    stone_out = [p for p in stone if (p[0], p[2]) not in footprint]
+    chorus_out = [(p, n) for p, n in chorus if (p[0], p[2]) not in footprint]
+    return [
+        x,
+        z,
+        biome,
+        len(stone),
+        fnv("%d %d %d;" % p for p in stone),
+        len(chorus),
+        fnv("%d %d %d %s;" % (p + (n,)) for p, n in chorus),
+        city,
+        len(stone_out),
+        fnv("%d %d %d;" % p for p in stone_out),
+        len(chorus_out),
+        fnv("%d %d %d %s;" % (p + (n,)) for p, n in chorus_out),
+    ]
+
+
+def extract_city_seed(jar, seed, keep=None):
+    with tempfile.TemporaryDirectory(prefix="voxelcraft-end-cities-") as temporary:
+        root = Path(temporary) if keep is None else keep / ("cities-%d" % seed)
+        root.mkdir(parents=True, exist_ok=True)
+        server = Server(jar, root, seed)
+        server.wait_for("Done (")
+        centres = []
+        for x, z in CITY_ORIGINS[seed]:
+            c = locate_city(server, x, z)
+            if c not in centres:
+                centres.append(c)
+        grids = []
+        loaded = set()
+        for cx, cz in centres:
+            grid = [
+                (x, z)
+                for x in range(cx - CITY_REACH, cx + CITY_REACH + 1)
+                for z in range(cz - CITY_REACH, cz + CITY_REACH + 1)
+            ]
+            grids.append(((cx, cz), grid))
+            loaded.update(grid)
+        load_chunks(server, sorted(loaded))
+        mark = len(server.lines)
+        server.send("save-all flush")
+        server.wait_for("Saved the game", mark)
+        server.send("stop")
+        server.proc.wait(timeout=600)
+        region = root / "world" / "dimensions" / "minecraft" / "the_end" / "region"
+        if not region.exists():
+            region = root / "world" / "DIM1" / "region"
+        nbts = {c: read_chunk(region, c[0], c[1]) for c in loaded}
+        out = []
+        for (cx, cz), grid in grids:
+            interior = [(x, z) for x, z in grid if abs(x - cx) < CITY_REACH and abs(z - cz) < CITY_REACH]
+            refs = set()
+            for c in interior:
+                refs.update(city_references(nbts[c]))
+            cities = []
+            for s in sorted(refs):
+                nbt = nbts.get(s) or read_chunk(region, s[0], s[1])
+                pieces = city_starts(nbt) if nbt is not None else None
+                if pieces is None:
+                    raise ValueError("start %s of a city in the grid wasn't saved" % (s,))
+                cities.append({"start": list(s), "pieces": pieces})
+            footprint = set()
+            for city in cities:
+                for p in city["pieces"]:
+                    x0, _, z0, x1, _, z1 = p[3:]
+                    footprint.update((x, z) for x in range(x0, x1 + 1) for z in range(z0, z1 + 1))
+            chunks = []
+            bases = []
+            gateways = []
+            for x, z in interior:
+                nbt = nbts[(x, z)]
+                if nbt is None or nbt.get("Status", "").replace("minecraft:", "") != "full":
+                    raise ValueError("chunk %d %d not generated" % (x, z))
+                b = chunk_blocks(nbt)
+                chunks.append(chunk_row(x, z, chunk_biome(nbt), b, footprint))
+                for p, n in b.items():
+                    if n == "chorus_plant" and b.get((p[0], p[1] - 1, p[2])) == "end_stone":
+                        bases.append(list(p))
+                    if n == "end_gateway":
+                        gateways.append(list(p))
+            out.append(
+                {
+                    "centre": [cx, cz],
+                    "grid": [[cx - CITY_REACH + 1, cz - CITY_REACH + 1], [cx + CITY_REACH - 1, cz + CITY_REACH - 1]],
+                    "cities": cities,
+                    "chunks": chunks,
+                    "chorus_bases": sorted(bases),
+                    "gateways": sorted(gateways),
+                }
+            )
+        return out
+
+
+def extract_cities(server_path, keep=None):
+    data = server_path.read_bytes()
+    if hashlib.sha1(data).hexdigest() != SERVER_SHA1:
+        raise ValueError("not the pinned official Java 26.3 server artifact")
+    seeds = {}
+    with tempfile.TemporaryDirectory(prefix="voxelcraft-end-cities-jar-") as temporary:
+        jar = Path(temporary) / "server.jar"
+        jar.write_bytes(data)
+        for seed in SEEDS:
+            seeds[str(seed)] = extract_city_seed(jar, seed, keep)
+    return {
+        "reference": {
+            "version": "26.3",
+            "server_sha1": SERVER_SHA1,
+            "sources": [
+                "the pinned dedicated server run on a new world per seed: 'execute in minecraft:the_end "
+                "positioned X 64 Z run locate structure minecraft:end_city' from each origin, 'forceload add' "
+                "on the chunks within %d of each city's start chunk, 'save-all flush', then the End's region "
+                "files read back (chunks, their end_city References and the starts' pieces)" % CITY_REACH,
+            ],
+            "origins": {str(k): v for k, v in CITY_ORIGINS.items()},
+            "format": "per seed, one grid per located city: centre (the located start chunk); grid (the compared "
+            "chunks, inclusive); cities: every end_city start whose pieces reach the grid, with its pieces "
+            "[template, rotation, overwrite, min x, y, z, max x, y, z] in Java's order; chunks: as "
+            "end_decoration.json's rows, then the end stone count and hash and the chorus count and hash of the "
+            "columns outside every piece's box; chorus_bases and gateways in the grid",
+        },
+        "seeds": seeds,
+    }
+
+
 def extract(server_path, keep=None):
     data = server_path.read_bytes()
     if hashlib.sha1(data).hexdigest() != SERVER_SHA1:
@@ -449,8 +646,12 @@ def main():
     parser.add_argument("server", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--keep", type=Path, help="keep each seed's server folder here")
+    parser.add_argument(
+        "--cities", action="store_true", help="write the End city grids (end_city_decoration.json) instead"
+    )
     args = parser.parse_args()
-    args.output.write_text(dump(extract(args.server, args.keep)))
+    run = extract_cities if args.cities else extract
+    args.output.write_text(dump(run(args.server, args.keep)))
 
 
 def dump(data):

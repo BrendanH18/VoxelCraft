@@ -166,6 +166,7 @@ impl Trident {
         players: &[Target],
         pvp: bool,
         thundering: bool,
+        boss: &super::dragon::Boxes,
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
         effects: &mut Vec<Effect>,
@@ -174,7 +175,7 @@ impl Trident {
         let ticks = (self.remainder + 1e-9) as u32;
         self.remainder = (self.remainder - f64::from(ticks)).max(0.0);
         for _ in 0..ticks {
-            if !self.tick(world, mobs, players, pvp, thundering, rng, events, effects) {
+            if !self.tick(world, mobs, players, pvp, thundering, boss, rng, events, effects) {
                 return false;
             }
         }
@@ -204,6 +205,7 @@ impl Trident {
         players: &[Target],
         pvp: bool,
         thundering: bool,
+        boss: &super::dragon::Boxes,
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
         effects: &mut Vec<Effect>,
@@ -273,7 +275,7 @@ impl Trident {
             self.dir = facing.normalize().as_vec3();
         }
         if physics {
-            if !self.step_move_and_hit(world, mobs, players, pvp, thundering, rng, events, effects) {
+            if !self.step_move_and_hit(world, mobs, players, pvp, thundering, boss, rng, events, effects) {
                 return false;
             }
         } else {
@@ -296,6 +298,7 @@ impl Trident {
         players: &[Target],
         pvp: bool,
         thundering: bool,
+        boss: &super::dragon::Boxes,
         rng: &mut Rng,
         events: &mut Vec<EntityEvent>,
         effects: &mut Vec<Effect>,
@@ -305,7 +308,7 @@ impl Trident {
         let reach = block.map_or(1.0, |(t, ..)| t);
         let step = self.vel * reach;
         if !self.dealt_damage
-            && let Some((target, t)) = self.find_hit(from, step, mobs, players, pvp)
+            && let Some((target, t)) = self.find_hit(from, step, mobs, players, pvp, boss)
         {
             self.pos = from + step * t;
             // `Breeze.deflection`: `ProjectileDeflection.REVERSE` before any damage.
@@ -332,7 +335,15 @@ impl Trident {
 
     /// The nearest mob or player the move from `from` along `step` crosses
     /// (`AbstractArrow.findHitEntity`, boxes grown by 0.3), and how far along.
-    fn find_hit(&self, from: DVec3, step: DVec3, mobs: &[Mob], players: &[Target], pvp: bool) -> Option<(Hit, f64)> {
+    fn find_hit(
+        &self,
+        from: DVec3,
+        step: DVec3,
+        mobs: &[Mob],
+        players: &[Target],
+        pvp: bool,
+        boss: &super::dragon::Boxes,
+    ) -> Option<(Hit, f64)> {
         let grow = DVec3::splat(PICK_MARGIN);
         let ray = |min: DVec3, max: DVec3| {
             let (min, max) = (min - grow, max + grow);
@@ -364,6 +375,14 @@ impl Trident {
                 && best.is_none_or(|(_, b)| t < b)
             {
                 best = Some((Hit::Player(p.id, p.pos), t));
+            }
+        }
+        // v1.0 gap Track 4c: End crystals and dragon parts.
+        for &(hit, min, max) in &boss.list {
+            if let Some(t) = ray(min, max)
+                && best.is_none_or(|(_, b)| t < b)
+            {
+                best = Some((Hit::Boss(hit), t));
             }
         }
         best
@@ -444,6 +463,16 @@ impl Trident {
                     effects.push(Effect::Lightning(pos));
                     events.push(EntityEvent::Sound { sound: MobSound::Weapon(Cue::TridentThunder), pos });
                 }
+            }
+            // `ThrownTrident.onHitEntity`: `trident(this, owner)` for 8 (no
+            // Impaling bonus: a dragon isn't `#sensitive_to_impaling`). It
+            // breaks a crystal; a dragon takes it only from a player, and
+            // not perched (it's an `AbstractArrow`) or dying. Whatever
+            // happens, it bounces back below (`projectileReceivesSideEffectsOnHit`).
+            // Channeling never strikes: the End has no thunder.
+            Hit::Boss(hit) => {
+                let blow = super::dragon::Blow::arrow(tr::BASE_DAMAGE, owner_player.is_some());
+                events.push(EntityEvent::DragonStruck { hit, blow, by: owner_player });
             }
         }
         // `projectileReceivesSideEffectsOnHit`: the hit sound and a reversed bounce.
@@ -614,6 +643,8 @@ pub struct Throw {
 enum Hit {
     Mob(usize),
     Player(PlayerId, DVec3),
+    /// v1.0 gap Track 4c: an End crystal or a dragon part.
+    Boss(super::dragon::Hit),
 }
 
 /// `Projectile.getMovementToShoot`: the normalized aim with a triangular
@@ -697,6 +728,7 @@ impl super::Entities {
         dt: f64,
         world: &W,
         ctx: &super::Ctx,
+        boss: &super::dragon::Boxes,
         events: &mut Vec<EntityEvent>,
     ) {
         if self.tridents.is_empty() {
@@ -710,7 +742,7 @@ impl super::Entities {
                 return true;
             }
             let was_in_ground = t.in_ground;
-            let keep = t.update(dt, world, mobs, &ctx.players, pvp, thundering, rng, events, &mut effects);
+            let keep = t.update(dt, world, mobs, &ctx.players, pvp, thundering, boss, rng, events, &mut effects);
             // `Projectile.onHit`: `projectile_land` where it stuck.
             if keep && !was_in_ground && t.in_ground {
                 sculk.post(t.pos, crate::world::vibration::GameEvent::ProjectileLand, t.event_source(), None);
@@ -799,6 +831,34 @@ mod tests {
 
     fn run(e: &mut Entities, world: &Grid, ticks: u32) -> Vec<EntityEvent> {
         (0..ticks).flat_map(|_| e.update(0.05, world, &ctx())).collect()
+    }
+
+    /// v1.0 gap Track 4c: `ThrownTrident.onHitEntity` on a dragon part: a
+    /// player's trident takes 8 (a quarter plus one on the body), and it
+    /// bounces back whatever happens; perched, the dragon takes nothing.
+    #[test]
+    fn a_trident_strikes_the_dragon_and_bounces_back() {
+        for (sitting, lost) in [(false, 3.0), (true, 0.0)] {
+            let world = Grid::flat(10);
+            let mut e = Entities::new(3);
+            e.wild_dragons.spawn(DVec3::new(10.5, 40.0, 0.5), 0.0);
+            if sitting {
+                e.wild_dragons.dragons[0].dragon.phase = crate::entity::dragon::Phase::SittingScanning;
+            }
+            let at = e.wild_dragons.dragons[0].dragon.pos;
+            let from = DVec3::new(at.x - 8.0, at.y + 1.2, at.z);
+            e.tridents.push(flying(Stack::new(crate::weapons::TRIDENT, 1), from, DVec3::X * 2.5));
+            let events = run(&mut e, &world, 4);
+            let t = &e.tridents[0];
+            assert!(t.dealt_damage && t.vel.x < 0.0 && t.vel.x > -0.1, "bounced: {}", t.vel);
+            assert!(
+                events
+                    .iter()
+                    .any(|ev| matches!(ev, EntityEvent::Sound { sound: MobSound::Weapon(Cue::TridentHit), .. }))
+            );
+            let health = e.wild_dragons.dragons[0].dragon.health;
+            assert_eq!(crate::entity::dragon::MAX_HEALTH - health, lost, "sitting {sitting}");
+        }
     }
 
     #[test]

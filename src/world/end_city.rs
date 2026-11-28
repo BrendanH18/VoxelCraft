@@ -88,6 +88,8 @@ pub fn start_chunk(seed: u64, region: IVec2) -> IVec2 {
 pub trait Terrain {
     /// Whether `#has_structure/end_city` holds at block `(x, z)`.
     fn city_biome(&self, x: i32, z: i32) -> bool;
+    /// The start height of a column: generation 7's is Java's
+    /// `getFirstOccupiedHeight`, the earlier generations' one above it.
     fn first_free(&self, x: i32, z: i32) -> i32;
 }
 
