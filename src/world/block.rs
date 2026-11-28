@@ -1182,6 +1182,28 @@ impl Block {
             || java_flat_block_item(self)
     }
 
+    /// v1.0 gap track 6: the state an item of this block is drawn as. Java's
+    /// item models are the block models with their front to the north,
+    /// which a slot shows on the left; a whole-cube block with a front
+    /// (furnaces, pumpkins, dispensers, hives, observers) is turned to face
+    /// north, whatever state the item holds. Anything else draws as it is.
+    pub fn item_facing(self) -> Block {
+        use super::redstone_blocks::{self as r, Component};
+        match r::component(self) {
+            // Pistons' items point up (`piston_inventory`).
+            Some(Component::Piston { sticky, .. }) => return r::piston(4, sticky, false),
+            // Dispensers, droppers and observers face north (index 1).
+            Some(Component::Dispenser { dropper, .. }) => return r::dispenser(1, dropper),
+            Some(Component::Observer { .. }) => return r::observer(1, false),
+            _ => {}
+        }
+        if !super::shape::item_shape(self).is_empty() || self.top_drop() != 0 {
+            return self;
+        }
+        let turned = self.with_facing(Facing::North);
+        if turned.base() == self.base() { turned } else { self }
+    }
+
     /// Badlands terracotta: 0 plain, then orange, yellow, red, brown, white
     /// and light grey.
     pub const fn terracotta(colour: u8) -> Block {
@@ -3967,8 +3989,9 @@ static OPAQUE: [bool; STATE_CAPACITY] = {
 /// the block's own textures (`item/generated` with a `block/...` layer, from
 /// `tests/fixtures/java/26.3/item_models.json`), which drew their world
 /// shape in 3D until 2026-11-27: glass panes show their glass, bars their
-/// bars, and the lily pad, vine, lever, redstone torch, tripwire hook and
-/// frogspawn their own texture.
+/// bars, and the lily pad, vine and frogspawn their own texture. (The
+/// lever, redstone torch and tripwire hook stay 3D: their textures are
+/// their boxes' materials, not sprites like Java's.)
 const JAVA_FLAT_BLOCK_ITEMS: &[&str] = &[
     "glass_pane",
     "white_stained_glass_pane",
@@ -3998,9 +4021,6 @@ const JAVA_FLAT_BLOCK_ITEMS: &[&str] = &[
     "waxed_oxidized_copper_bars",
     "lily_pad",
     "vine",
-    "lever",
-    "redstone_torch",
-    "tripwire_hook",
     "frogspawn",
 ];
 

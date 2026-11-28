@@ -116,7 +116,9 @@ fn weapon(i: u8, x: i32, y: i32) -> Option<Rgba> {
             if let Some(p) = shaded(&blade, x, y, c, 0.05) {
                 return Some(if u == 15 && (8..=13).contains(&v) { tint(c, 1.25) } else { p });
             }
-            handle(x, y, 0, 8)
+            // v1.0 gap track 6: the shaft runs into the head (it stopped
+            // six pixels short, leaving the head floating).
+            handle(x, y, 0, 11)
         }
     }
 }
@@ -163,7 +165,8 @@ fn tool(kind: ToolKind, tier: Tier, x: i32, y: i32) -> Option<Rgba> {
     }
     let top = match kind {
         ToolKind::Sword => -1,
-        ToolKind::Shovel => 8,
+        // v1.0 gap track 6: up into the blade (a pixel short before).
+        ToolKind::Shovel => 9,
         ToolKind::Pickaxe => 9,
         ToolKind::Hoe | ToolKind::Axe => 11,
     };

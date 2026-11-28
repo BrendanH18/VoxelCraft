@@ -1733,3 +1733,28 @@ scripts/boat-check.sh -- 'cargo test --profile ci --locked --lib structure_catal
 Java's pools; `structure_catalogue_tests` checks both against this file,
 and the painted templates' counts and connector positions against the
 piece lines ([record](../../../../docs/verification/2026-11-25-v1.0-track-08-generation.md)).
+
+## Item models
+
+`item_models.json` records how Java 26.3 draws every item in a slot with
+no components set: the GUI leaf of its item model definition
+(`assets/minecraft/items/<id>.json`, following a `select`'s `gui` case or
+fallback, a `condition`'s `on_false`, a `range_dispatch`'s fallback and a
+`composite`'s first model), as `flat` (its `models/` parent chain reaches
+`builtin/generated`, with the `layer0` texture), `block` (it reaches a model
+with elements) or `special` (a special renderer: chests, beds' heads,
+banners, shields, heads, shulker boxes, the conduit, the decorated pot,
+copper golem statues). The extractor reads only the pinned client jar
+([record](../../../../docs/verification/2026-11-27-v1.0-gap-track-06-items-utilities.md)).
+
+```sh
+python3 tools/extract_java_item_model_fixtures.py /path/to/client.jar --output target/item-models.json
+diff tests/fixtures/java/26.3/item_models.json target/item-models.json
+```
+
+`tests/java_item_models.rs` checks every Java item id the game resolves
+against it: each is a sprite or 3D exactly as in Java, except the listed
+items that still differ (doors, lanterns, chains and a dozen more Java
+draws as sprites of item textures the game doesn't have; beds, banners,
+the shield and two plants Java draws in 3D), and the list stays exact.
+

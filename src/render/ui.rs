@@ -248,13 +248,22 @@ impl Ui {
             self.icon(x - 1.0, y - 1.0, size + 2.0, t[0], WHITE);
             return;
         }
+        let block = block.item_facing();
+        let t = block.info().tex;
         let boxes = shape::item_boxes(block);
         // Half width `s`: the top diamond is `s` tall, each side face `s` tall.
         let (l, s) = (x, size / 2.0);
         let q = s / 2.0;
         // A point of the unit cube in icon pixels: +X runs down-right, +Z
         // up-right, +Y up. The top, -Z (left) and +X (right) faces show.
-        let at = |p: [f32; 3]| [l + s * (p[0] + p[2]), y + q * (1.0 + p[0] - p[2]) + s * (1.0 - p[1])];
+        // v1.0 gap track 6: an item Java draws larger or smaller in a slot
+        // grows or shrinks about the cube's centre.
+        let k = shape::item_scale(block).gui;
+        let grow = |p: [f32; 3]| p.map(|c| (c - 0.5) * k + 0.5);
+        let at = |p: [f32; 3]| {
+            let p = grow(p);
+            [l + s * (p[0] + p[2]), y + q * (1.0 + p[0] - p[2]) + s * (1.0 - p[1])]
+        };
         let shade = |f: f32| [f, f, f, 1.0];
         // Far boxes first, so nearer ones paint over them.
         let mut order: Vec<_> = boxes.as_slice().iter().copied().enumerate().collect();

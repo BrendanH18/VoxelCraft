@@ -85,7 +85,9 @@ uses the engine's collision physics; acknowledged input is removed, remaining
 inputs replay from the authoritative position/velocity. Remote player/mob
 positions and arrows interpolate between snapshots.
 
-Protocol **6** requires an exact protocol and game-version match. Each frame starts with a
+Protocol **7** requires an exact protocol and game-version match (7 since
+2026-11-27: a click carries the clicked bundle's selected stack, Java's
+`ServerboundSelectBundleItemPacket`, as one more byte). Each frame starts with a
 little-endian `u32` payload length, followed by a packet byte. Maximum payload:
 256 KiB. Hello includes a `u16` protocol version, game version and profile;
 Welcome supplies seed, dimension and player ID. Input contains a sequence,

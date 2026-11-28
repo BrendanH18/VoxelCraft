@@ -9,9 +9,10 @@ use std::collections::BTreeSet;
 use serde_json::Value;
 use voxelcraft::{inventory::Stack, item, java_registry};
 
-/// Block items Java draws as a sprite from an item texture of their own,
-/// which the game draws in 3D from their world shape (it has no such
-/// sprites yet).
+/// Block items Java draws as a sprite, which the game draws in 3D from their
+/// world shape: it has no such sprites yet (Java's are item textures of
+/// their own, or for the lever, redstone torch and tripwire hook a block
+/// texture the game's boxes don't share).
 const STILL_3D: &[&str] = &[
     "bamboo",
     "bell",
@@ -22,10 +23,13 @@ const STILL_3D: &[&str] = &[
     "flower_pot",
     "hopper",
     "leaf_litter",
+    "lever",
+    "redstone_torch",
     "pink_petals",
     "repeater",
     "sniffer_egg",
     "soul_campfire",
+    "tripwire_hook",
     "turtle_egg",
     "wildflowers",
 ];
@@ -83,7 +87,7 @@ fn panes_bars_and_flat_blocks_show_their_texture_as_a_sprite() {
     // Java's `item/generated` with the block's own texture: these items are
     // flat, drawn with their block's first face layer.
     for (id, english) in
-        [("glass_pane", "Glass Pane"), ("iron_bars", "Iron Bars"), ("vine", "Vines"), ("lever", "Lever")]
+        [("glass_pane", "Glass Pane"), ("iron_bars", "Iron Bars"), ("vine", "Vines"), ("frogspawn", "Frogspawn")]
     {
         let it = java_registry::item(id, english).unwrap();
         let block = it.block().unwrap();

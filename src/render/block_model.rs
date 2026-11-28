@@ -89,7 +89,11 @@ pub fn vertices(models: &[BlockModel], camera: DVec3, ticks: f64) -> Vec<BlockVe
             continue;
         }
         // v0.18 Track 9: a barrel in use shows its open top.
-        let tex = m.lid.and_then(|_| crate::world::lids::barrel_faces(m.block)).unwrap_or(m.block.info().tex);
+        // An item's front faces north, as Java's item models have it.
+        let tex = m
+            .lid
+            .and_then(|_| crate::world::lids::barrel_faces(m.block))
+            .unwrap_or_else(|| if m.lid.is_none() { m.block.item_facing() } else { m.block }.info().tex);
         let (sin, cos) = m.yaw.sin_cos();
         // Unit-cube corner -> camera-relative position, turned about the centre.
         let place = |c: Vec3| match m.orient {

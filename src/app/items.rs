@@ -267,7 +267,7 @@ impl Game {
                 .or_else(|| stack.item.dial_layer(self.dial_of(&self.session.player).for_stack(&stack)))
                 .or_else(|| stack.item.icon_layer()),
         };
-        let size = if block.is_some() { 0.25 } else { 0.5 };
+        let size = block.map_or(0.5, |b| 0.25 * crate::world::shape::item_scale(b).ground as f64);
         // `ITEM_MIN_HOVER_HEIGHT` less the model's own lowest point (a
         // flat icon's quad starts at its bottom edge).
         let lowest = block.map_or(0.0, |b| {

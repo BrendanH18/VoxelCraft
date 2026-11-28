@@ -132,7 +132,9 @@ pub(crate) fn held_block(
     scale: f32,
     tint: [u8; 4],
 ) {
+    let block = block.item_facing();
     let tex = block.info().tex;
+    let half = half * crate::world::shape::item_scale(block).hand;
     for (index, bounds) in crate::world::shape::item_boxes(block).as_slice().iter().enumerate() {
         let tex = crate::world::shape::item_box_layer(block, index).map_or(tex, |l| [l; 6]);
         let part = Limb {

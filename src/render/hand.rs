@@ -383,7 +383,9 @@ pub(super) fn vertices(
     match block {
         Some(block) => {
             // Block models: turned 45 degrees and shrunk to 0.4, centred.
-            let m = arm * rot_y(45.0) * Mat4::from_scale(Vec3::splat(0.4)) * translate(-0.5, -0.5, -0.5);
+            let block = block.item_facing();
+            let k = 0.4 * shape::item_scale(block).hand;
+            let m = arm * rot_y(45.0) * Mat4::from_scale(Vec3::splat(k)) * translate(-0.5, -0.5, -0.5);
             let tex = block.info().tex;
             let boxes = shape::item_boxes(block);
             for (i, bx) in boxes.as_slice().iter().enumerate() {
