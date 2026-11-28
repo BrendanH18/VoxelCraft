@@ -124,10 +124,11 @@ fn baby_eye(kind: MobKind) -> f32 {
 /// where Java gives one (`EntityDimensions.scalable(width, height)` or the
 /// adult's `scale(f)`), otherwise `LivingEntity.getDefaultDimensions`'s
 /// adult box scaled by `getAgeScale` (0.5). Widths and heights are Java's
-/// floats; the box's half width is `width / 2` in float.
+/// values; the box's half width is `width / 2`.
 pub(crate) fn baby_shape(kind: MobKind) -> Shape {
     use MobKind as K;
-    let own = |w: f32, h: f32| Shape::new(f64::from(w / 2.0), f64::from(h));
+    // In double, as the adult boxes are (Java's floats differ by < 1e-7).
+    let own = |w: f64, h: f64| Shape::new(w / 2.0, h);
     let adult = kind.shape();
     // `scale(f)` of the adult box (kept in double, as the adult boxes are).
     let scaled = |f: f64| Shape::new(adult.half_width * f, adult.height * f);
