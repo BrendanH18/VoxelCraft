@@ -168,6 +168,12 @@ pub const VARIANTS: &[(&str, &str)] = &[
     ("death.attack.wither.player", "withered away while fighting %2$s"),
     ("death.attack.witherSkull.item", "was shot by a skull from %2$s using %3$s"),
     ("death.fell.accident.generic", "fell from a high place"),
+    ("death.fell.accident.ladder", "fell off a ladder"),
+    ("death.fell.accident.other_climbable", "fell while climbing"),
+    ("death.fell.accident.scaffolding", "fell off scaffolding"),
+    ("death.fell.accident.twisting_vines", "fell off some twisting vines"),
+    ("death.fell.accident.vines", "fell off some vines"),
+    ("death.fell.accident.weeping_vines", "fell off some weeping vines"),
     ("death.fell.assist", "was doomed to fall by %2$s"),
     ("death.fell.assist.item", "was doomed to fall by %2$s using %3$s"),
     ("death.fell.finish", "fell too far and was finished by %2$s"),
@@ -285,6 +291,79 @@ impl Pending {
     }
 }
 
+/// v1.0 final F8: `FallLocation`, where a hit found the player: the
+/// climbable block they last held on to (`getLastClimbablePos`, kept until
+/// they stand on the ground), else water. A fall's death message names it
+/// (`death.fell.accident.<id>`), and the hardest hit taken in one stands
+/// in for a fall (`getMostSignificantFall`'s alternative).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FallLocation {
+    Generic,
+    Ladder,
+    Vines,
+    WeepingVines,
+    TwistingVines,
+    Scaffolding,
+    OtherClimbable,
+    Water,
+}
+
+impl FallLocation {
+    /// `blockToFallLocation`: ladders and every trapdoor (`#trapdoors`),
+    /// vines, weeping and twisting vines (both parts), scaffolding, and
+    /// anything else (the cell's block now, which may no longer climb,
+    /// as Java reads it when the hit is recorded) "while climbing".
+    pub fn of_block(block: Option<crate::world::block::Block>) -> Self {
+        use crate::world::nether_biome_blocks as nb;
+        let Some(b) = block else { return Self::OtherClimbable };
+        let b = b.canonical();
+        if b.is_ladder()
+            || matches!(
+                crate::world::redstone_blocks::component(b),
+                Some(crate::world::redstone_blocks::Component::Trapdoor { .. })
+            )
+        {
+            Self::Ladder
+        } else if crate::world::overworld_blocks::vine_wall(b).is_some() {
+            Self::Vines
+        } else if let Some((vine, _)) = nb::Vine::of(b) {
+            match vine {
+                nb::Vine::Weeping => Self::WeepingVines,
+                nb::Vine::Twisting => Self::TwistingVines,
+            }
+        } else if crate::world::scaffolding::is_scaffolding(b) {
+            Self::Scaffolding
+        } else {
+            Self::OtherClimbable
+        }
+    }
+
+    /// `FallLocation.id`.
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::Generic => "generic",
+            Self::Ladder => "ladder",
+            Self::Vines => "vines",
+            Self::WeepingVines => "weeping_vines",
+            Self::TwistingVines => "twisting_vines",
+            Self::Scaffolding => "scaffolding",
+            Self::OtherClimbable => "other_climbable",
+            Self::Water => "water",
+        }
+    }
+
+    /// The message after the victim's name: `death.fell.accident.<id>`.
+    /// Java 26.3's `en_us.json` has no `death.fell.accident.water`, so its
+    /// chat shows the bare key (in practice never: a fall in water does no
+    /// damage).
+    pub fn message(self) -> &'static str {
+        match self {
+            Self::Water => "death.fell.accident.water",
+            _ => variant(&format!("death.fell.accident.{}", self.id())).unwrap_or("fell from a high place"),
+        }
+    }
+}
+
 /// One hit in a [`CombatTracker`] (`CombatEntry`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Entry {
@@ -292,12 +371,14 @@ struct Entry {
     /// `#is_fall` or `#always_most_significant_fall`.
     fall: bool,
     always_most_significant: bool,
+    /// The health it took (`damage`, after absorption).
+    damage: f32,
     fall_distance: f32,
+    location: Option<FallLocation>,
 }
 
 /// `CombatTracker` for a player: the hits that took health, until a quiet
-/// spell (or death) clears them. Fall locations aren't kept: every fall is
-/// Java's `GENERIC`, and ladders, vines and water don't pick a hit.
+/// spell (or death) clears them, each with its [`FallLocation`].
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct CombatTracker {
     entries: Vec<Entry>,
@@ -321,9 +402,10 @@ impl CombatTracker {
         }
     }
 
-    /// `recordDamage`: a hit of `cause` that took health, the player
-    /// `fall_distance` blocks into a fall.
-    pub fn record(&mut self, cause: Cause, fall_distance: f32) {
+    /// `recordDamage`: a hit of `cause` that took `damage` health, the
+    /// player `fall_distance` blocks into a fall at `location`
+    /// (`FallLocation.getCurrentFallLocation`).
+    pub fn record(&mut self, cause: Cause, damage: f32, fall_distance: f32, location: Option<FallLocation>) {
         let by = attacker(cause);
         if self.entries.len() >= MAX_ENTRIES {
             self.entries.remove(0);
@@ -332,7 +414,9 @@ impl CombatTracker {
             by,
             fall: cause.is(DamageTag::IsFall),
             always_most_significant: cause.is(DamageTag::AlwaysMostSignificantFall),
+            damage,
             fall_distance,
+            location,
         });
         self.since = 0.0;
         if by.is_some() {
@@ -341,19 +425,25 @@ impl CombatTracker {
     }
 
     /// `getMostSignificantFall`: the hit before the biggest fall over five
-    /// blocks (the fall itself when it came first). Without fall locations
-    /// Java's alternative (the hardest hit while climbing) never applies.
+    /// blocks (the fall itself when it came first), else the hardest hit
+    /// over five taken while climbing or in water.
     fn knock_off(&self) -> Option<Entry> {
         let mut result = None;
         let mut best = 0.0f32;
+        let mut alternative: Option<Entry> = None;
+        let mut alt_damage = 0.0f32;
         for (i, e) in self.entries.iter().enumerate() {
             let distance = if e.always_most_significant { f32::MAX } else { e.fall_distance };
             if (e.fall || e.always_most_significant) && distance > 0.0 && (result.is_none() || distance > best) {
                 result = Some(if i > 0 { self.entries[i - 1] } else { *e });
                 best = distance;
             }
+            if e.location.is_some() && (alternative.is_none() || e.damage > alt_damage) {
+                alternative = Some(*e);
+                alt_damage = e.damage;
+            }
         }
-        result.filter(|_| best > 5.0)
+        if best > 5.0 && result.is_some() { result } else { alternative.filter(|_| alt_damage > 5.0) }
     }
 
     /// `getDeathMessage` for the killing blow `cause` (already recorded):
@@ -365,7 +455,7 @@ impl CombatTracker {
             && let Some(knock) = self.knock_off()
         {
             if knock.fall || knock.always_most_significant {
-                return (variant("death.fell.accident.generic").unwrap_or(cause.text).to_string(), None);
+                return (knock.location.unwrap_or(FallLocation::Generic).message().to_string(), None);
             }
             let (owner, key) = match (knock.by, by) {
                 (Some(a), killer) if Some(a) != killer => (a, "death.fell.assist"),
@@ -495,8 +585,8 @@ mod tests {
     fn falls_name_who_knocked_the_player_off() {
         let zombie = Some(Owner::Mob(4));
         let mut t = CombatTracker::default();
-        t.record(Cause::mob("was slain by a zombie").by(zombie), 0.0);
-        t.record(Cause::FALL, 12.0);
+        t.record(Cause::mob("was slain by a zombie").by(zombie), 3.0, 0.0, None);
+        t.record(Cause::FALL, 1.0, 12.0, None);
         let (mut text, pending) = t.death_message(Cause::FALL, None);
         assert_eq!(text, "was doomed to fall by a player");
         pending.unwrap().finish(&mut text, |_| named("Zombie", None));
@@ -509,25 +599,78 @@ mod tests {
         assert_eq!(text, "was doomed to fall", "the zombie is gone");
         // A fall on its own.
         let mut t = CombatTracker::default();
-        t.record(Cause::FALL, 12.0);
+        t.record(Cause::FALL, 1.0, 12.0, None);
         assert_eq!(t.death_message(Cause::FALL, None), ("fell from a high place".into(), None));
         // Under six blocks: `death.attack.fall`, with the credit.
         let mut t = CombatTracker::default();
-        t.record(Cause::FALL, 4.0);
+        t.record(Cause::FALL, 1.0, 4.0, None);
         let (mut text, pending) = t.death_message(Cause::FALL, zombie);
         assert_eq!(text, "hit the ground too hard");
         pending.unwrap().finish(&mut text, |_| named("Zombie", None));
         assert_eq!(text, "hit the ground too hard while trying to escape Zombie");
         // A hit with no one behind it before the fall.
         let mut t = CombatTracker::default();
-        t.record(Cause::CAMPFIRE, 0.0);
-        t.record(Cause::FALL, 9.0);
+        t.record(Cause::CAMPFIRE, 1.0, 0.0, None);
+        t.record(Cause::FALL, 1.0, 9.0, None);
         assert_eq!(t.death_message(Cause::FALL, None), ("was doomed to fall".into(), None));
         // Quiet for five seconds out of combat: forgotten.
         let mut t = CombatTracker::default();
-        t.record(Cause::CAMPFIRE, 0.0);
+        t.record(Cause::CAMPFIRE, 1.0, 0.0, None);
         t.tick(5.5, true);
-        t.record(Cause::FALL, 9.0);
+        t.record(Cause::FALL, 1.0, 9.0, None);
         assert_eq!(t.death_message(Cause::FALL, None).0, "fell from a high place");
+    }
+
+    /// v1.0 final F8: `FallLocation` and `getMostSignificantFall`'s
+    /// alternative.
+    #[test]
+    fn falls_name_where_the_player_fell_from() {
+        use crate::world::block::Block;
+        use crate::world::nether_biome_blocks as nb;
+        let zombie = Some(Owner::Mob(4));
+        for (location, text) in [
+            (FallLocation::Ladder, "fell off a ladder"),
+            (FallLocation::Vines, "fell off some vines"),
+            (FallLocation::WeepingVines, "fell off some weeping vines"),
+            (FallLocation::TwistingVines, "fell off some twisting vines"),
+            (FallLocation::Scaffolding, "fell off scaffolding"),
+            (FallLocation::OtherClimbable, "fell while climbing"),
+            (FallLocation::Water, "death.fell.accident.water"),
+        ] {
+            let mut t = CombatTracker::default();
+            t.record(Cause::FALL, 9.0, 12.0, Some(location));
+            assert_eq!(t.death_message(Cause::FALL, None), (text.into(), None), "{location:?}");
+        }
+        // A fall after another one: the earlier fall's location.
+        let mut t = CombatTracker::default();
+        t.record(Cause::FALL, 2.0, 5.0, Some(FallLocation::Vines));
+        t.record(Cause::FALL, 9.0, 12.0, None);
+        assert_eq!(t.death_message(Cause::FALL, None).0, "fell off some vines");
+        // A short fall after a hard hit on a ladder: the hit knocked them off.
+        let mut t = CombatTracker::default();
+        t.record(Cause::mob("was slain by a zombie").by(zombie), 6.0, 0.0, Some(FallLocation::Ladder));
+        t.record(Cause::FALL, 1.0, 4.0, None);
+        let (mut text, pending) = t.death_message(Cause::FALL, None);
+        pending.unwrap().finish(&mut text, |_| named("Zombie", None));
+        assert_eq!(text, "was doomed to fall by Zombie");
+        // Five or less on the ladder doesn't count.
+        let mut t = CombatTracker::default();
+        t.record(Cause::mob("was slain by a zombie").by(zombie), 5.0, 0.0, Some(FallLocation::Ladder));
+        t.record(Cause::FALL, 1.0, 4.0, None);
+        assert_eq!(t.death_message(Cause::FALL, None).0, "hit the ground too hard");
+
+        // `blockToFallLocation`.
+        assert_eq!(FallLocation::of_block(Some(Block::LADDER)), FallLocation::Ladder);
+        let trapdoor = crate::world::redstone_blocks::trapdoor(crate::world::block::Facing::North, true, false, false);
+        assert_eq!(FallLocation::of_block(Some(trapdoor)), FallLocation::Ladder);
+        assert_eq!(FallLocation::of_block(Some(crate::world::overworld_blocks::VINE)), FallLocation::Vines);
+        assert_eq!(FallLocation::of_block(Some(nb::WEEPING_VINES_PLANT)), FallLocation::WeepingVines);
+        assert_eq!(FallLocation::of_block(Some(nb::Vine::Twisting.head(3))), FallLocation::TwistingVines);
+        assert_eq!(FallLocation::of_block(Some(crate::world::scaffolding::SCAFFOLDING)), FallLocation::Scaffolding);
+        assert_eq!(
+            FallLocation::of_block(Some(crate::world::overworld_blocks::CAVE_VINES)),
+            FallLocation::OtherClimbable
+        );
+        assert_eq!(FallLocation::of_block(Some(Block::AIR)), FallLocation::OtherClimbable, "broken since");
     }
 }

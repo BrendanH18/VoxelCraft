@@ -257,6 +257,12 @@ pub fn player_environment(player: &Player, world: &World, moved: f64) -> Env {
         fall_flying: player.fall_flying,
         fall_speed: player.vel.y / 20.0,
         kinetic: player.kinetic_damage,
+        // v1.0 final F8: `FallLocation.getCurrentFallLocation`, the block in
+        // the last climbable cell as it is now.
+        fall_location: match player.last_climbable {
+            Some(cell) => Some(death_message::FallLocation::of_block(world.get_block(cell))),
+            None => player.in_water.then_some(death_message::FallLocation::Water),
+        },
     }
 }
 

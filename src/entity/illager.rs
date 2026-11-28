@@ -1375,6 +1375,13 @@ impl Entities {
                 events.push(EntityEvent::MobKilled { kind, pos, burning, player_kill, looting: 0 });
             }
         }
+        // v1.0 final F8: `EvokerFangs.dealDamageTo`: `indirectMagic(fangs,
+        // evoker)` while the evoker is in the level, else plain `magic`.
+        let cause = if fang.owner != 0 && self.mobs.iter().any(|m| m.uid == fang.owner) {
+            FANGS_CAUSE.by(Some(super::trident::Owner::Mob(fang.owner)))
+        } else {
+            Cause::MAGIC
+        };
         for t in &ctx.players {
             if t.targetable && touches(t.pos, t.shape) {
                 events.push(EntityEvent::PlayerHit {
@@ -1382,7 +1389,7 @@ impl Entities {
                     damage: FANG_DAMAGE,
                     knockback: glam::Vec3::ZERO,
                     java: None,
-                    cause: FANGS_CAUSE,
+                    cause,
                 });
             }
         }

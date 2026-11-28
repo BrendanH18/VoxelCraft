@@ -1605,9 +1605,16 @@ impl Agent {
     /// v1.0 gap Track 8d: `GuardianAttackGoal.tick`'s two hits,
     /// `indirectMagic` then the attack through armor, which the hurt
     /// cooldown lets in only by its excess.
-    pub fn hurt_beam(&mut self, physical: f32, magic: f32, entities: &mut Entities) -> f32 {
-        let first = self.hurt_through(magic, Cause::GUARDIAN_MAGIC, false, DVec3::ZERO, None, entities);
-        first + self.hurt_through(physical, Cause::GUARDIAN_BEAM, true, DVec3::ZERO, None, entities)
+    /// v1.0 final F8: `by` the guardian, whom both hits name.
+    pub fn hurt_beam(
+        &mut self,
+        physical: f32,
+        magic: f32,
+        by: Option<crate::entity::trident::Owner>,
+        entities: &mut Entities,
+    ) -> f32 {
+        let first = self.hurt_through(magic, Cause::GUARDIAN_MAGIC.by(by), false, DVec3::ZERO, None, entities);
+        first + self.hurt_through(physical, Cause::GUARDIAN_BEAM.by(by), true, DVec3::ZERO, None, entities)
     }
 
     fn hurt_through(

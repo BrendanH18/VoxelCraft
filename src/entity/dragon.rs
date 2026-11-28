@@ -59,6 +59,12 @@ pub const PILLAR_TICKS: u32 = 40;
 /// The block radius cleared around a pillar's cap, and its blast's power.
 pub const PILLAR_CLEAR: i32 = 10;
 pub const PILLAR_BLAST: f32 = 5.0;
+/// v1.0 final F8: the uid a damage source names the Ender Dragon by (it
+/// is no [`super::Mob`]; mob uids count up from 1 and never reach it).
+/// [`super::Entities::attacker`] names it "Ender Dragon".
+pub const DRAGON_UID: u32 = u32::MAX;
+pub const DRAGON_OWNER: super::trident::Owner = super::trident::Owner::Mob(DRAGON_UID);
+
 /// `SUMMONING_DRAGON`: growls from 80, the dragon at 100.
 pub const SUMMON_TICKS: u32 = 100;
 pub const SUMMON_GROWL_FROM: u32 = 80;
@@ -2343,7 +2349,8 @@ impl Dragon {
                     player: t.id,
                     damage: 10.0,
                     knockback: glam::Vec3::ZERO,
-                    cause: crate::simulation::damage::Cause::ENDER_DRAGON,
+                    // v1.0 final F8: `mobAttack(dragon)`.
+                    cause: crate::simulation::damage::Cause::ENDER_DRAGON.by(Some(DRAGON_OWNER)),
                 });
             } else if wing {
                 let away = (t.pos - body).with_y(0.0);
@@ -2359,7 +2366,8 @@ impl Dragon {
                         player: t.id,
                         damage: 5.0,
                         knockback: push.as_vec3(),
-                        cause: crate::simulation::damage::Cause::ENDER_DRAGON,
+                        // v1.0 final F8: `mobAttack(dragon)`.
+                        cause: crate::simulation::damage::Cause::ENDER_DRAGON.by(Some(DRAGON_OWNER)),
                     });
                 }
             }
@@ -2492,7 +2500,8 @@ impl BreathCloud {
                         player: t.id,
                         damage: self.damage,
                         knockback: glam::Vec3::ZERO,
-                        cause: crate::simulation::damage::Cause::DRAGON_BREATH,
+                        // v1.0 final F8: `indirectMagic(cloud, dragon)`.
+                        cause: crate::simulation::damage::Cause::DRAGON_BREATH.by(Some(DRAGON_OWNER)),
                     });
                 }
             }

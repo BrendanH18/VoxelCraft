@@ -113,6 +113,10 @@ pub struct Env {
     pub in_water: bool,
     /// On a ladder: also breaks falls.
     pub climbing: bool,
+    /// v1.0 final F8: `FallLocation.getCurrentFallLocation`: the block at
+    /// the last climbable cell held since standing on the ground, else
+    /// water when in it.
+    pub fall_location: Option<super::death_message::FallLocation>,
     /// Eyes under water: uses up air.
     pub head_in_water: bool,
     /// Respiration level of the worn helmet: air lasts `level + 1` times
@@ -365,6 +369,10 @@ pub struct Vitals {
     /// v1.0 gap Track 8g: the distance of the fall whose damage the last
     /// tick returned, for the combat tracker's fall entry.
     last_fall: f32,
+    /// v1.0 final F8: where the last tick found the player
+    /// (`FallLocation.getCurrentFallLocation`, [`Env::fall_location`]), for
+    /// the combat tracker's entries. Not saved.
+    fall_location: Option<super::death_message::FallLocation>,
     peaceful_timer: f32,
     peaceful_food_timer: f32,
     /// Java TIME_SINCE_REST statistic, in entity ticks; zero for older saves.
@@ -413,6 +421,7 @@ impl Default for Vitals {
             credit_player: None,
             credit_mob: None,
             last_fall: 0.0,
+            fall_location: None,
             peaceful_timer: 0.0,
             peaceful_food_timer: 0.0,
             ticks_frozen: 0,
@@ -642,6 +651,10 @@ impl Vitals {
             }
             _ => {}
         }
+        // v1.0 final F8: a tamed wolf's hit credits its owner.
+        if let Some(owner) = cause.credit {
+            self.credit_player = Some((owner, super::death_message::CREDIT_MEMORY));
+        }
         if lost > 0.0 {
             // A fall's damage that didn't come through this tick's landing
             // (a ridden mount's) stands for a fall three blocks longer.
@@ -654,7 +667,7 @@ impl Vitals {
             } else {
                 0.0
             };
-            self.combat.record(cause, fall);
+            self.combat.record(cause, lost, fall, self.fall_location);
         }
         if self.health <= 0.0 {
             let (death, killer) = self.combat.death_message(cause, self.kill_credit());
@@ -698,6 +711,7 @@ impl Vitals {
         self.credit_player = self.credit_player.map(|(p, t)| (p, t - dt)).filter(|&(_, t)| t > 0.0);
         self.credit_mob = self.credit_mob.map(|(m, t)| (m, t - dt)).filter(|&(_, t)| t > 0.0);
         self.combat.tick(dt, !self.is_dead());
+        self.fall_location = env.fall_location;
         self.death_time = if self.is_dead() { (self.death_time + dt).min(1e3) } else { 0.0 };
         self.xp.tick(dt);
         self.pearl_cooldown = (self.pearl_cooldown - dt).max(0.0);
@@ -1077,6 +1091,53 @@ mod tests {
         v.hurt(100.0, Cause::LAVA, false, |a| a);
         v.name_killer(|_| alex());
         assert_eq!(v.death.as_deref(), Some(CAUSE_LAVA));
+    }
+
+    /// v1.0 final F8: a tamed wolf's hit credits its owner
+    /// (`resolvePlayerResponsibleForDamage`), and a goat's ram
+    /// (`mob_attack_no_aggro`) credits no one but names the goat when it
+    /// knocks the player off.
+    #[test]
+    fn a_tamed_wolfs_owner_takes_the_credit_and_a_goat_knocks_players_off() {
+        use crate::entity::{PlayerId, trident::Owner};
+        use crate::simulation::damage::Cause;
+        use crate::simulation::death_message::Attacker;
+        let wolf = Cause::mob("was slain by a wolf").by(Some(Owner::Mob(9))).credited(Some(PlayerId(2)));
+        let mut v = Vitals::default();
+        v.hurt(2.0, wolf, false, |a| a);
+        assert_eq!(v.kill_credit(), Some(Owner::Player(PlayerId(2))));
+        v.tick(1.0, &Env::default(), false);
+        v.hurt(100.0, Cause::DROWN, false, |a| a);
+        v.name_killer(|o| {
+            assert_eq!(o, Owner::Player(PlayerId(2)));
+            Some(Attacker { name: "Alex".into(), weapon: None, alive: true })
+        });
+        assert_eq!(v.death.as_deref(), Some("drowned while trying to escape Alex"));
+
+        let goat = Cause::GOAT_RAM.by(Some(Owner::Mob(5)));
+        let mut v = Vitals::default();
+        v.hurt(2.0, goat, false, |a| a);
+        assert_eq!(v.kill_credit(), None, "no_anger");
+        v.tick(1.0, &Env::default(), false);
+        v.last_fall = 20.0;
+        v.hurt(100.0, Cause::FALL, false, |a| a);
+        v.name_killer(|o| {
+            assert_eq!(o, Owner::Mob(5));
+            Some(Attacker { name: "Goat".into(), weapon: None, alive: true })
+        });
+        assert_eq!(v.death.as_deref(), Some("was doomed to fall by Goat"));
+    }
+
+    /// v1.0 final F8: a hit records where the last tick found the player.
+    #[test]
+    fn a_fall_off_a_ladder_says_so() {
+        use crate::simulation::damage::Cause;
+        use crate::simulation::death_message::FallLocation;
+        let mut v = Vitals::default();
+        v.tick(0.05, &Env { fall_location: Some(FallLocation::Ladder), ..Env::default() }, false);
+        v.last_fall = 20.0;
+        v.hurt(100.0, Cause::FALL, false, |a| a);
+        assert_eq!(v.death.as_deref(), Some("fell off a ladder"));
     }
 
     const DT: f32 = 1.0 / 60.0;

@@ -501,16 +501,19 @@ impl Game {
                         bot.agent.hurt_fall(damage, &mut self.mobs.entities);
                     }
                 }
-                EntityEvent::PlayerBeam { player, physical, magic } => {
+                EntityEvent::PlayerBeam { player, physical, magic, guardian } => {
                     let physical = self.difficulty.mob_damage(physical);
+                    // v1.0 final F8: `indirectMagic(guardian, guardian)` and
+                    // `mobAttack(guardian)`, both naming the guardian.
+                    let by = Some(crate::entity::trident::Owner::Mob(guardian));
                     if player == PlayerId::HOST {
                         // v1.0 gap Track 8d: `GuardianAttackGoal.tick`'s two
                         // hits, `indirectMagic` then the attack, which the
                         // hurt cooldown lets in only by its excess.
-                        self.damage_player(magic, Cause::GUARDIAN_MAGIC);
-                        self.damage_player_armored(physical, Cause::GUARDIAN_BEAM);
+                        self.damage_player(magic, Cause::GUARDIAN_MAGIC.by(by));
+                        self.damage_player_armored(physical, Cause::GUARDIAN_BEAM.by(by));
                     } else if let Some(bot) = self.agents.by_id_mut(player) {
-                        bot.agent.hurt_beam(physical, magic, &mut self.mobs.entities);
+                        bot.agent.hurt_beam(physical, magic, by, &mut self.mobs.entities);
                     }
                 }
                 EntityEvent::BeeSting { uid, player, poison } => {
