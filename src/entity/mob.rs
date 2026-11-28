@@ -57,6 +57,10 @@ const JUMP_VELOCITY: f64 = 8.4;
 const MAX_STEP: f64 = 1.0 / 60.0;
 /// Seconds of red flash (and knockback immunity) after taking damage.
 pub const HURT_TIME: f32 = 0.5;
+/// v1.0 gap Track 8d: `hurtServer`'s `damageCooldownTime = 20` on a full hit.
+pub const COOLDOWN: u8 = 20;
+/// The hurt cooldown's half-way mark: above it a hit lands only by its excess.
+pub const COOLDOWN_HALF: u8 = 10;
 /// How long a dead mob stays before it is removed. v1.0 gap Track 7:
 /// Java's `tickDeath` removes it as its `deathTime` reaches 20 ticks after
 /// death; this game removes it at the start of a tick, before that tick's
@@ -1561,6 +1565,14 @@ pub struct Mob {
     /// Ticks since it was last hurt (`HURT_BY` lasts 40), and where a baby
     /// piglin walks to mount (`Mount`); never saved.
     pub(crate) hurt_age: u32,
+    /// v1.0 gap Track 8d: `LivingEntity.damageCooldownTime` (Java's old
+    /// `invulnerableTime`), in ticks: 20 after a hit that lands in full,
+    /// counted down once a tick; above 10, a hit lands only by what it adds
+    /// over `last_hurt`. Never saved (Java saves neither).
+    pub(crate) damage_cooldown: u8,
+    /// `LivingEntity.lastHurt`: the amount of the last hit that landed,
+    /// before armor and the rest of `actuallyHurt`.
+    pub(crate) last_hurt: f32,
     pub(crate) ride_walk: Option<DVec3>,
     /// v1.0 Track 9: how many times a slime block or bed has bounced it
     /// (`restituteMovementAfterCollisions`), for the `bounce` game event.
@@ -1764,6 +1776,8 @@ impl Mob {
             hunt_charge: false,
             mob_steered: false,
             hurt_age: u32::MAX,
+            damage_cooldown: 0,
+            last_hurt: 0.0,
             ride_walk: None,
             bounces: 0,
         }
@@ -1973,6 +1987,26 @@ impl Mob {
             || self.armadillo.as_ref().is_some_and(|s| s.scared() && amount <= 1.0)
             // `primeTime` makes a lit sulfur cube permanently invulnerable.
             || self.sulfur_cube.as_ref().is_some_and(|s| s.primed())
+            || self.cooldown_refuses(amount)
+    }
+
+    /// v1.0 gap Track 8d: `LivingEntity.hurtServer`'s hurt cooldown refusing
+    /// a hit: within the first half of `damageCooldownTime` (above 10 of
+    /// its 20 ticks), a hit no harder than `lastHurt` does nothing at all
+    /// (`#bypasses_cooldown` is empty in 26.3).
+    pub fn cooldown_refuses(&self, amount: f32) -> bool {
+        // `Armadillo.hurtServer` halves a scared one's hit before the check.
+        let amount =
+            if self.armadillo.as_ref().is_some_and(|s| s.scared()) { ((amount - 1.0) / 2.0).max(0.0) } else { amount };
+        self.damage_cooldown > COOLDOWN_HALF && amount <= self.last_hurt
+    }
+
+    /// Whether a hit now would land in full (`tookFullDamage`): outside the
+    /// first half of the hurt cooldown. Only a full hit flashes, plays the
+    /// hurt or death sound, kicks the legs and takes `hurtServer`'s own
+    /// knockback (`dealDefaultKnockback`).
+    pub fn full_hit(&self) -> bool {
+        self.damage_cooldown <= COOLDOWN_HALF
     }
     fn damage_typed(&mut self, amount: f32, knockback: Option<DVec3>, bypass_wolf_armor: bool, rng: &mut Rng) -> bool {
         // `isInvulnerableTo` refuses the hit before any knockback.
@@ -1985,7 +2019,8 @@ impl Mob {
         } else {
             1.0 - self.knockback_resistance()
         };
-        if let Some(kb) = knockback.filter(|_| taken > 0.0).map(|kb| kb * taken) {
+        // v1.0 gap Track 8d: a hit inside the hurt cooldown takes no knockback.
+        if let Some(kb) = knockback.filter(|_| taken > 0.0 && self.full_hit()).map(|kb| kb * taken) {
             self.vel.x = kb.x;
             self.vel.z = kb.z;
             self.vel.y = self.vel.y.max(kb.y);
@@ -2022,12 +2057,33 @@ impl Mob {
     /// Takes a hit followed by Java's knockbacks in order (`hurtServer`'s
     /// default push, then the attacker's extra one), each halving the motion
     /// left by the previous. Returns `true` if this killed the mob.
+    ///
+    /// The first push is `hurtServer`'s own (`dealDefaultKnockback`), which a
+    /// hit inside the hurt cooldown doesn't take (v1.0 gap Track 8d).
     pub fn damage_pushed(&mut self, amount: f32, pushes: &[crate::knockback::Push], rng: &mut Rng) -> bool {
+        let (default, extra) = match pushes.split_first() {
+            Some((first, rest)) => (Some(*first), rest),
+            None => (None, pushes),
+        };
+        self.damage_knocked(amount, default, extra, rng)
+    }
+
+    /// [`Mob::damage_pushed`] with `hurtServer`'s own push (`default`, taken
+    /// only by a full hit) apart from the attacker's (`extra`: the attack's
+    /// knockback and sweep, which any hit that lands takes).
+    pub fn damage_knocked(
+        &mut self,
+        amount: f32,
+        default: Option<crate::knockback::Push>,
+        extra: &[crate::knockback::Push],
+        rng: &mut Rng,
+    ) -> bool {
         // `isInvulnerableTo` refuses the hit before any knockback.
         if self.refuses_hit(amount) {
             return false;
         }
-        for &push in pushes {
+        let default = default.filter(|_| self.full_hit());
+        for push in default.into_iter().chain(extra.iter().copied()) {
             self.knock_back(push, rng);
         }
         // A sulfur cube with a block takes melee and projectile hits only
@@ -2096,6 +2152,21 @@ impl Mob {
         if self.armadillo.is_some() && amount <= 0.0 {
             return false;
         }
+        // v1.0 gap Track 8d: `LivingEntity.hurtServer`'s hurt cooldown, on the
+        // amount `Armadillo.hurtServer` passes on, before armor (`actuallyHurt` reduces only what lands).
+        let full = self.full_hit();
+        let amount = if full {
+            self.last_hurt = amount;
+            self.damage_cooldown = COOLDOWN;
+            amount
+        } else {
+            if amount <= self.last_hurt {
+                return false;
+            }
+            let excess = amount - self.last_hurt;
+            self.last_hurt = amount;
+            excess
+        };
         // v0.16 Track A: a shut shulker's shell is 20 armor; the hit
         // decides on its teleport and duplication next tick.
         let amount = match &mut self.shulker {
@@ -2140,7 +2211,8 @@ impl Mob {
         // Horse armor's BODY attributes: armor points and toughness.
         let body = self.mount.as_ref().and_then(|s| s.slots[1]).map(|s| s.item);
         let armor = body.map_or(0, super::mounts::armor_points);
-        let amount = if armor > 0 {
+        let bypasses_armor = self.hit_cause.is_some_and(|c| c.is(crate::simulation::damage::DamageTag::BypassesArmor));
+        let amount = if armor > 0 && !bypasses_armor {
             let toughness = body.map_or(0.0, super::mounts::armor_toughness);
             crate::simulation::survival::armor_reduce_with(amount, armor, toughness, self.armor_effectiveness)
         } else {
@@ -2189,10 +2261,14 @@ impl Mob {
         if let Some(s) = &mut self.copper_golem {
             s.interrupt();
         }
-        self.hurt = HURT_TIME;
+        // Only a full hit sets `hurtTime` and sends the damage event
+        // (`handleDamageEvent` kicks the legs); any hit that lands is
+        // remembered (`setLastHurtByMob`).
+        if full {
+            self.hurt = HURT_TIME;
+            self.limb_amp = super::motion::HURT_KICK;
+        }
         self.hurt_age = 0;
-        // `LivingEntity.handleDamageEvent`: the hit kicks the legs.
-        self.limb_amp = super::motion::HURT_KICK;
         if let Some(s) = &mut self.bat {
             s.resting = false;
         }
@@ -2244,12 +2320,18 @@ impl Mob {
             self.provoked.max(if self.kind == MobKind::Enderman { ENDERMAN_ANGER_TIME } else { PROVOKED_TIME });
         if self.health <= 0.0 {
             self.dying = Some(0.0);
-            self.cry = Some(if let Some(s) = &self.copper_golem {
-                MobSound::CopperGolem(super::copper_golem::Sound::Death, s.stage as u8)
-            } else {
-                MobSound::Death(self.kind)
-            });
+            // A killing hit inside the hurt cooldown dies silently.
+            if full {
+                self.cry = Some(if let Some(s) = &self.copper_golem {
+                    MobSound::CopperGolem(super::copper_golem::Sound::Death, s.stage as u8)
+                } else {
+                    MobSound::Death(self.kind)
+                });
+            }
             return true;
+        }
+        if !full {
+            return false;
         }
         self.cry = Some(if let Some(s) = &self.copper_golem {
             MobSound::CopperGolem(super::copper_golem::Sound::Hurt, s.stage as u8)
@@ -2424,9 +2506,20 @@ impl Mob {
                 let base = self.mount.as_ref().map_or(self.max_health(), |s| s.max_health);
                 self.health = self.health.min(base + self.effects.max_health_bonus());
             }
-            let damage = outcome.damage + outcome.wither + outcome.poison.min((self.health - 1.0).max(0.0));
-            if damage > 0.0 {
-                self.damage_bypassing_wolf_armor(damage, None, rng);
+            // v1.0 gap Track 8d: each effect hurts on its own
+            // (`hurtServer(magic, 1)`, `hurtServer(wither, 1)`), so the hurt
+            // cooldown refuses a second 1 in the same tick.
+            let poison = outcome.poison.min((self.health - 1.0).max(0.0));
+            for damage in [poison, outcome.wither, outcome.damage] {
+                if damage > 0.0 && self.alive() && self.damage_bypassing_wolf_armor(damage, None, rng) {
+                    events.push(EntityEvent::MobKilled {
+                        kind: self.kind,
+                        pos: self.pos,
+                        burning: self.burning,
+                        player_kill: self.player_hit_left > 0.0,
+                        looting: 0,
+                    });
+                }
             }
         }
         self.hop_left -= dtf;
@@ -2469,6 +2562,8 @@ impl Mob {
         }
         self.hurt = (self.hurt - dtf).max(0.0);
         self.hurt_age = self.hurt_age.saturating_add(1);
+        // `LivingEntity.baseTick`: the hurt cooldown counts down a tick.
+        self.damage_cooldown = self.damage_cooldown.saturating_sub(1);
         self.provoked = (self.provoked - dtf).max(0.0);
         if matches!(self.kind, MobKind::Wolf | MobKind::Llama | MobKind::Enderman | MobKind::ZombifiedPiglin)
             && self.provoked == 0.0
@@ -2513,7 +2608,18 @@ impl Mob {
             self.teleport(world, rng, None, events);
         }
 
-        super::aquatic::environment(self, dtf, world);
+        if self.alive() {
+            super::aquatic::environment(self, dtf, world, rng);
+            if !self.alive() {
+                events.push(EntityEvent::MobKilled {
+                    kind: self.kind,
+                    pos: self.pos,
+                    burning: self.burning,
+                    player_kill: self.player_hit_left > 0.0,
+                    looting: 0,
+                });
+            }
+        }
         // Bred horses and donkeys age with the shared animal clock; mules only here.
         if super::mounts::equine(self.kind)
             && !super::undead_mounts::undead(self.kind)
@@ -3895,11 +4001,6 @@ impl Mob {
         } else {
             physics::is_fluid_at(world, self.pos + DVec3::new(0.0, 0.3, 0.0))
         };
-        if self.kind == MobKind::SnowGolem && self.alive() && self.in_water {
-            // Java: one damage each tick while in water. Death loot is emitted
-            // by the caller once health is gone.
-            self.health -= self.effects.absorb(20.0 * dt as f32 * self.effects.resistance_factor());
-        }
         let hopping = self.kind.is_cube();
         let speed = if hopping { (0.2 + 0.1 * self.size as f64) * 10.0 * effect_speed } else { speed };
         let wish = if hopping && self.on_ground && self.hop_left > 0.0 { None } else { wish };
@@ -4117,7 +4218,12 @@ impl Mob {
                 } else {
                     (s.fall_distance - 3.).ceil().max(0.) as f32
                 };
-                self.health -= self.effects.absorb(damage * self.effects.resistance_factor());
+                // v1.0 gap Track 8d: through `hurtServer`, queued for the
+                // tick's `take_fall`.
+                if damage > 0. {
+                    self.pending_fall += damage;
+                    self.pending_fall_cause = Cause::FALL;
+                }
                 // `AbstractHorse.causeFallDamage`: only a fall that hurts the
                 // horse passes on, as each rider's own fall damage.
                 if super::mounts::equine(self.kind) && s.rider.is_some() && damage > 0. {
@@ -4162,16 +4268,15 @@ impl Mob {
             self.fire_left = 0.0;
         } else if sunburn || in_fire {
             self.fire_left = 8.0;
-            if in_fire && !self.burning {
-                self.damage_from(1.0, Cause::IN_FIRE, rng);
-            }
         } else {
             self.fire_left = (self.fire_left - dt).max(0.0);
         }
         let wet = physics::touches_block(world, self.pos, self.shape(), Block::holds_water) || world.rains_on(head);
-        if self.kind.hurt_by_water() && wet && self.hurt <= 0.0 {
-            // Water hurts endermen and blazes (Java's 1 damage, spaced by hurt time).
-            self.damage(1.0, None, rng);
+        // `LivingEntity.aiStep`: `isSensitiveToWater` mobs (endermen, blazes,
+        // striders, snow golems) take `hurtServer(drown, 1)` each tick in
+        // water or rain, which the hurt cooldown spaces (v1.0 gap Track 8d).
+        if (self.kind.hurt_by_water() || self.kind == MobKind::SnowGolem) && wet && self.alive() {
+            self.damage_from(1.0, Cause::DROWN, rng);
         }
         self.burning = self.alive() && self.fire_left > 0.0;
         if self.kind == MobKind::Blaze {
@@ -4184,18 +4289,24 @@ impl Mob {
             return;
         }
         // v1.0 Track 5: `lava`, `in_fire` and `on_fire` damage, so armor
-        // and Fire Protection reduce it as Java's do.
-        let (interval, amount, cause) = if in_lava {
-            (0.5, 4.0, Cause::LAVA)
-        } else if in_fire {
-            (0.5, 1.0, Cause::IN_FIRE)
-        } else {
-            (1.0, if sunburn { 2.0 } else { 1.0 }, Cause::ON_FIRE)
-        };
+        // and Fire Protection reduce it as Java's do. v1.0 gap Track 8d:
+        // lava (`lavaHurt`, 4) and fire (`BaseFireBlock.entityInside`, 1)
+        // hurt every tick they touch, which the hurt cooldown spaces to one
+        // in ten ticks; burning hurts once a second outside lava
+        // (`remainingFireTicks % 20`), refused too while a hit as hard is
+        // cooling down.
+        if in_lava {
+            self.burn_timer = 0.0;
+            self.damage_from(4.0, Cause::LAVA, rng);
+            return;
+        }
+        if in_fire {
+            self.damage_from(1.0, Cause::IN_FIRE, rng);
+        }
         self.burn_timer += dt;
-        if self.burn_timer >= interval {
-            self.burn_timer -= interval;
-            self.damage_from(amount, cause, rng);
+        if self.burn_timer >= 1.0 && self.alive() {
+            self.burn_timer -= 1.0;
+            self.damage_from(if sunburn { 2.0 } else { 1.0 }, Cause::ON_FIRE, rng);
         }
     }
 }
@@ -4511,11 +4622,26 @@ mod equipment_effect_tests {
     fn resistance_also_reduces_snow_golem_water_damage() {
         let mut world = Grid::flat(10);
         world.set(IVec3::new(0, 11, 0), Block::WATER);
+        // v1.0 gap Track 8d: the water's `hurtServer(drown, 1)` comes from
+        // `aiStep` in a whole update now, not the physics step.
+        world.set(IVec3::new(0, 12, 0), Block::WATER);
         let mut m = Mob::new(MobKind::SnowGolem, DVec3::new(0.5, 11., 0.5), 0.);
         m.effects.add(Effect::Resistance, 2, 400);
         let before = m.health;
-        m.physics_step(0.05, &world, None, 0.);
-        assert!((before - m.health - 0.4).abs() < 1e-6);
+        let c = crate::entity::Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::DAY,
+            players: vec![crate::entity::Target::new(
+                crate::entity::PlayerId::HOST,
+                DVec3::new(60.5, 10.0, 0.5),
+                false,
+            )],
+            daylight: 0.0,
+            spawning: false,
+            raining: false,
+            dimension: Dimension::Overworld,
+        };
+        m.update(0.05, &world, &c, &mut Rng::new(1), &mut Vec::new());
+        assert!((before - m.health - 0.4).abs() < 1e-6, "{}", before - m.health);
     }
 }
 
@@ -4708,5 +4834,106 @@ mod motion_tests {
         // Removed between its 19th and 20th tick of `dying`.
         let ticks = std::hint::black_box(DEATH_TIME) / motion::TICK;
         assert!(ticks > 18.0 && ticks < 19.0, "{ticks}");
+    }
+}
+
+/// v1.0 gap Track 8d: `LivingEntity.hurtServer`'s hurt cooldown
+/// (`damageCooldownTime`, `lastHurt`) on mobs.
+#[cfg(test)]
+mod hurt_cooldown_tests {
+    use super::*;
+    use crate::entity::{PlayerId, Target};
+    use crate::physics::test_util::Grid;
+
+    fn ctx() -> Ctx {
+        Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::DAY,
+            players: vec![Target::new(PlayerId::HOST, DVec3::new(60.5, 10.0, 0.5), false)],
+            daylight: 0.0,
+            spawning: false,
+            raining: false,
+            dimension: Dimension::Overworld,
+        }
+    }
+
+    /// A hit sets the cooldown to 20; until it has run down to 10 a hit no
+    /// harder than the last is refused outright, and a harder one deals
+    /// only its excess, with no flash, sound, leg kick or knockback; the
+    /// tenth tick after a full hit takes a full hit again.
+    #[test]
+    fn hits_inside_the_cooldown_land_only_by_their_excess() {
+        let world = Grid::flat(10);
+        let c = ctx();
+        let (mut rng, mut events) = (Rng::new(5), Vec::new());
+        let mut m = Mob::new(MobKind::Zombie, DVec3::new(0.5, 10.0, 0.5), 0.0);
+        m.update(0.05, &world, &c, &mut rng, &mut events);
+        assert!(!m.damage(4.0, Some(DVec3::new(4.0, 2.0, 0.0)), &mut rng));
+        assert_eq!((m.health, m.damage_cooldown, m.last_hurt), (16.0, COOLDOWN, 4.0));
+        assert_eq!(m.vel.x, 4.0, "a full hit takes its knockback");
+        assert!(matches!(m.cry.take(), Some(MobSound::Hurt(MobKind::Zombie))));
+        // As hard, or softer: refused (and an arrow would bounce).
+        assert!(m.refuses_hit(4.0) && m.refuses_hit(1.0) && !m.refuses_hit(5.0));
+        m.vel = DVec3::ZERO;
+        m.hurt = 0.0;
+        m.damage(3.0, Some(DVec3::new(4.0, 2.0, 0.0)), &mut rng);
+        assert_eq!(m.health, 16.0);
+        // Harder: the excess, quietly, with no push.
+        m.damage(6.0, Some(DVec3::new(4.0, 2.0, 0.0)), &mut rng);
+        assert_eq!((m.health, m.last_hurt), (14.0, 6.0));
+        assert_eq!((m.vel.x, m.hurt), (0.0, 0.0), "no knockback, no red flash");
+        assert!(m.cry.is_none(), "no hurt sound");
+        // Nine ticks on, still cooling (11 left); the tenth makes it 10.
+        for _ in 0..9 {
+            m.update(0.05, &world, &c, &mut rng, &mut events);
+        }
+        assert!(m.refuses_hit(1.0));
+        m.update(0.05, &world, &c, &mut rng, &mut events);
+        assert!(m.full_hit() && !m.refuses_hit(1.0));
+        m.damage(1.0, None, &mut rng);
+        assert_eq!((m.health, m.damage_cooldown), (13.0, COOLDOWN));
+    }
+
+    /// Lava hurts every tick it is touched (`lavaHurt`), so the cooldown
+    /// is what spaces it: 4 a half second, not every tick.
+    #[test]
+    fn lava_hurts_once_per_half_cooldown() {
+        let mut world = Grid::flat(10);
+        world.set(glam::IVec3::new(0, 10, 0), crate::world::block::Block::LAVA);
+        let c = ctx();
+        let (mut rng, mut events) = (Rng::new(5), Vec::new());
+        let mut m = Mob::new(MobKind::Zombie, DVec3::new(0.5, 10.0, 0.5), 0.0);
+        for _ in 0..20 {
+            m.update(0.05, &world, &c, &mut rng, &mut events);
+            m.pos = DVec3::new(0.5, 10.0, 0.5);
+        }
+        assert_eq!(m.health, 20.0 - 8.0, "two lava hits in twenty ticks");
+    }
+
+    /// The guardian's beam on a mob: `indirectMagic` then the attack in
+    /// the same tick, the second landing only by what it adds.
+    #[test]
+    fn a_second_hit_in_the_same_tick_adds_only_its_excess() {
+        let mut rng = Rng::new(1);
+        let mut m = Mob::new(MobKind::Squid, DVec3::ZERO, 0.0);
+        m.damage(1.0, Some(DVec3::ZERO), &mut rng);
+        m.damage(6.0, Some(DVec3::ZERO), &mut rng);
+        assert_eq!(m.health, 10.0 - 6.0);
+    }
+
+    /// Snow golems in water take `hurtServer(drown, 1)` a tick, which the
+    /// cooldown spaces to 1 a half second (it was 20 a second).
+    #[test]
+    fn a_snow_golem_in_water_takes_one_a_half_second() {
+        let mut world = Grid::flat(10);
+        world.set(glam::IVec3::new(0, 10, 0), crate::world::block::Block::WATER);
+        world.set(glam::IVec3::new(0, 11, 0), crate::world::block::Block::WATER);
+        let c = ctx();
+        let (mut rng, mut events) = (Rng::new(5), Vec::new());
+        let mut m = Mob::new(MobKind::SnowGolem, DVec3::new(0.5, 10.0, 0.5), 0.0);
+        for _ in 0..20 {
+            m.update(0.05, &world, &c, &mut rng, &mut events);
+            m.pos = DVec3::new(0.5, 10.0, 0.5);
+        }
+        assert_eq!(m.health, 4.0 - 2.0);
     }
 }

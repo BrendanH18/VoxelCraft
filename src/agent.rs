@@ -1489,12 +1489,31 @@ impl Agent {
 
     /// Damage through protection enchantments (armor points aside).
     fn damage(&mut self, amount: f32, cause: impl Into<Cause>) -> f32 {
-        let cause = cause.into();
+        self.damage_through(amount, cause.into(), false).1
+    }
+
+    /// [`Agent::damage`], through armor points too when `armored`: the hurt
+    /// cooldown sees `amount` before armor and enchantments, as Java's
+    /// `hurtServer` does (v1.0 gap Track 8d). Returns what armor wears by
+    /// and the damage taken.
+    fn damage_through(&mut self, amount: f32, cause: Cause, armored: bool) -> (f32, f32) {
         if self.immunity.blocks(cause) {
-            return 0.0;
+            return (0.0, 0.0);
         }
-        let amount = crate::enchant::protect(amount, &self.session.inventory.armor, cause);
-        let taken = self.session.vitals.damage(amount, cause, self.creative || self.session.mode.invulnerable());
+        let invulnerable = self.creative || self.session.mode.invulnerable();
+        let inv = &self.session.inventory;
+        let (points, toughness) = (inv.armor_points(), inv.armor_toughness());
+        let mut worn = false;
+        let (landed, taken) = self.session.vitals.hurt(amount, cause, invulnerable, |a| {
+            let a = if armored {
+                let (reduced, w) = simulation::damage::after_armor(a, cause, points, toughness);
+                worn = w;
+                reduced
+            } else {
+                a
+            };
+            crate::enchant::protect(a, &inv.armor, cause)
+        });
         if taken > 0.0 && self.session.vitals.is_dead() {
             self.session.totem_saves(self.selected);
         }
@@ -1502,7 +1521,7 @@ impl Agent {
         if taken > 0.0 && self.session.vitals.last_hit_fresh() {
             self.session.player.animation.hurt_direction = 0.0;
         }
-        taken
+        (if worn { landed } else { 0.0 }, taken)
     }
 
     /// Damage from a mob, arrow, explosion or the world, through armor
@@ -1514,15 +1533,7 @@ impl Agent {
         if knockback.with_y(0.0).length_squared() > 0.0 && self.shielded(amount, -knockback) {
             return 0.0;
         }
-        let (reduced, wear) = self.armor_absorb(amount, cause);
-        self.hurt_after_armor(reduced, wear, cause, knockback, None, entities)
-    }
-
-    /// `getDamageAfterArmorAbsorb`: the damage left and the armor wear.
-    fn armor_absorb(&self, amount: f32, cause: Cause) -> (f32, f32) {
-        let inv = &self.session.inventory;
-        let (reduced, worn) = simulation::damage::after_armor(amount, cause, inv.armor_points(), inv.armor_toughness());
-        (reduced, if worn { amount } else { 0.0 })
+        self.hurt_through(amount, cause, true, knockback, None, entities)
     }
 
     /// A raised shield facing `toward` (horizontally, from this agent to the
@@ -1552,14 +1563,13 @@ impl Agent {
         {
             return 0.0;
         }
-        let (reduced, wear) = self.armor_absorb(amount, cause);
-        self.hurt_after_armor(reduced, wear, cause, DVec3::ZERO, Some(hit), entities)
+        self.hurt_through(amount, cause, true, DVec3::ZERO, Some(hit), entities)
     }
 
     /// Magic damage from something consumed (a harming potion): no armor or
     /// knockback, with protection and death/drop rules.
     pub fn hurt_magic(&mut self, amount: f32, entities: &mut Entities) -> f32 {
-        self.hurt_after_armor(amount, 0.0, Cause::MAGIC, DVec3::ZERO, None, entities)
+        self.hurt_through(amount, Cause::MAGIC, false, DVec3::ZERO, None, entities)
     }
 
     /// Mounted falls bypass armor points, retaining protection and death/drop rules.
@@ -1577,32 +1587,38 @@ impl Agent {
         if self.shielded(damage, from - self.session.player.pos) {
             return 0.0;
         }
-        self.hurt_after_armor(damage, 0.0, Cause::SONIC_BOOM, push * crate::knockback::TICK_RATE, None, entities)
+        self.hurt_through(damage, Cause::SONIC_BOOM, false, push * crate::knockback::TICK_RATE, None, entities)
     }
 
+    /// v1.0 gap Track 8d: `GuardianAttackGoal.tick`'s two hits,
+    /// `indirectMagic` then the attack through armor, which the hurt
+    /// cooldown lets in only by its excess.
     pub fn hurt_beam(&mut self, physical: f32, magic: f32, entities: &mut Entities) -> f32 {
-        let inv = &self.session.inventory;
-        let reduced = simulation::survival::armor_reduce(physical, inv.armor_points(), inv.armor_toughness());
-        self.hurt_after_armor(reduced + magic, physical, Cause::GUARDIAN_BEAM, DVec3::ZERO, None, entities)
+        let first = self.hurt_through(magic, Cause::GUARDIAN_MAGIC, false, DVec3::ZERO, None, entities);
+        first + self.hurt_through(physical, Cause::GUARDIAN_BEAM, true, DVec3::ZERO, None, entities)
     }
 
-    fn hurt_after_armor(
+    fn hurt_through(
         &mut self,
-        reduced: f32,
-        wear: f32,
+        amount: f32,
         cause: Cause,
+        armored: bool,
         knockback: DVec3,
         java: Option<&crate::knockback::Hit>,
         entities: &mut Entities,
     ) -> f32 {
-        let taken = self.damage(reduced, cause);
+        if self.session.vitals.is_dead() {
+            return 0.0;
+        }
+        let (wear, taken) = self.damage_through(amount, cause, armored);
         if taken <= 0.0 {
             return 0.0;
         }
         if let Some(hit) = java {
             let mut jitter = || f64::from(entities.roll_range(0.0, 1.0));
             self.session.knocked_back(hit, &mut jitter);
-        } else {
+        } else if self.session.vitals.last_hit_fresh() {
+            // Only a full hit takes `hurtServer`'s push (v1.0 gap Track 8d).
             self.session.player.hurt_from(knockback);
             self.session.player.vel +=
                 simulation::survival::knockback_taken(knockback, self.session.inventory.knockback_resistance());

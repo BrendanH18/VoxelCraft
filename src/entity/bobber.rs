@@ -49,6 +49,11 @@ pub struct Bobber {
     /// v1.0 gap Track 4c: the End crystal or dragon part it is snagged on
     /// (`EnderDragonPart` and `EndCrystal` are pickable).
     hooked_boss: Option<super::dragon::Hit>,
+    /// v1.0 gap Track 8d: `remainingFireTicks` (it applies block effects,
+    /// `FishingHook.tick`), and the block its flight hit this tick, for
+    /// `onHitBlock`'s `onProjectileHit`. Not saved.
+    fire: u16,
+    pub(super) struck: Option<glam::IVec3>,
 }
 
 /// What reeling a bobber does to the rod and what it brings back.
@@ -92,6 +97,8 @@ impl Bobber {
             luck: i32::from(luck),
             hooked: None,
             hooked_boss: None,
+            fire: 0,
+            struck: None,
         }
     }
 
@@ -116,12 +123,26 @@ impl Bobber {
                 return false;
             }
         }
+        let start = self.pos;
         match self.state {
             State::Flying => self.fly(dt, world, mobs, index, boss),
             State::Bobbing => self.bob(dt, world, rng),
             State::Hooked => self.follow(mobs, boss),
         }
+        // v1.0 gap Track 8d: `applyEffectsFromBlocks` after the move, then
+        // `baseTick`'s burn.
+        super::projectile::tick_fire(&mut self.fire, world, start, self.pos, 0.125, 0.25);
         true
+    }
+
+    /// v1.0 gap Track 8d: on fire (`isOnFire`).
+    pub fn burning(&self) -> bool {
+        self.fire > 0
+    }
+
+    /// v1.0 gap Track 8d: a LAN client's copy burns as the host says.
+    pub fn set_burning(&mut self, burning: bool) {
+        self.fire = if burning { self.fire.max(1) } else { 0 };
     }
 
     fn fly<W: MobWorld + ?Sized>(
@@ -167,6 +188,9 @@ impl Bobber {
             }
             if world.block(cell).is_some_and(|b| b.is_solid()) {
                 self.vel = DVec3::ZERO;
+                if !self.on_ground {
+                    self.struck = Some(cell);
+                }
                 self.on_ground = true;
                 return;
             }

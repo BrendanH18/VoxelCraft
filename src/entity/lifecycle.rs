@@ -249,6 +249,7 @@ impl Entities {
                 && (self.mobs[i].on_ground || self.still_ticks > 10)
             {
                 self.mobs[i].hold_still(world, face);
+                self.mobs[i].burning = self.still_burning;
                 i += 1;
                 continue;
             }
@@ -542,6 +543,11 @@ impl Entities {
                 if !world.entity_ticking(self.bobbers[i].pos.floor().as_ivec3())
                     || self.bobbers[i].update(dt, world, rng, ctx, mobs, index, &boss)
                 {
+                    // v1.0 gap Track 8d: the block its flight hit.
+                    let b = &mut self.bobbers[i];
+                    if let Some(cell) = b.struck.take() {
+                        events.push(super::projectile::block_hit(cell, b.pos, b.burning(), false));
+                    }
                     i += 1;
                 } else {
                     self.bobbers.swap_remove(i);

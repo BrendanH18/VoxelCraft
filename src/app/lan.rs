@@ -368,7 +368,8 @@ fn state(agent: &Agent, name: &str) -> Value {
         "food":agent.session.vitals.hunger.food,"saturation":agent.session.vitals.hunger.saturation,"exhaustion":agent.session.vitals.hunger.exhaustion,
         "death":agent.session.vitals.death,"xp":agent.session.vitals.xp.serialize(),"effects":agent.session.vitals.effects.serialize(),"sleep":agent.session.sleeping,"vehicle":agent.session.player.vehicle,
         "respawns":agent.session.respawns,"drawing":agent.session.drawing_slot(),"consuming":agent.session.consuming(),
-        "glide":agent.session.player.fall_flying,"glide_ticks":agent.session.player.fall_fly_ticks})
+        "glide":agent.session.player.fall_flying,"glide_ticks":agent.session.player.fall_fly_ticks,
+        "fire":agent.session.vitals.burning()})
 }
 /// What clients need of *other* players: pose, held item, armor and health, not their inventory.
 /// Rounds to a millimetre (or a thousandth of a radian): plenty for drawing, far fewer bytes.
@@ -398,7 +399,9 @@ fn state_lite(agent: &Agent, name: &str, swing: Option<f32>, eating: f32) -> Val
         "armor":agent.session.inventory.armor.iter().copied().map(stack_appearance).collect::<Vec<_>>(),
         "offhand":stack_appearance(agent.session.inventory.offhand),
         "time_since_rest":agent.session.vitals.time_since_rest,"ticks_frozen":agent.session.vitals.ticks_frozen,"health":agent.session.vitals.health,"death":agent.session.vitals.death,"sleep":agent.session.sleeping,"vehicle":agent.session.player.vehicle,
-        "glide":agent.session.player.fall_flying,"glide_ticks":agent.session.player.fall_fly_ticks})
+        "glide":agent.session.player.fall_flying,"glide_ticks":agent.session.player.fall_fly_ticks,
+        // v1.0 gap Track 8d: on fire, for Java's flame on other players.
+        "fire":agent.session.vitals.burning()})
 }
 fn apply(agent: &mut Agent, v: &Value) {
     if let Some(pos) = vector(&v["pos"]) {
@@ -459,6 +462,11 @@ fn apply(agent: &mut Agent, v: &Value) {
     }
     agent.session.sleeping = v["sleep"].as_f64().map(|f| f as f32);
     agent.session.player.vehicle = v["vehicle"].as_u64().and_then(|id| u32::try_from(id).ok());
+    // v1.0 gap Track 8d: the host's word on whether this player burns (the
+    // flame on them, the screen's fire); the next snapshot renews it.
+    if v["fire"] == true {
+        agent.session.vitals.ignite(1.0);
+    }
 }
 
 impl Game {
@@ -1569,6 +1577,10 @@ impl Game {
                     if m.bee.is_some_and(|b| b.rolling) {
                         v["roll"] = json!(true);
                     }
+                    // v1.0 gap Track 8d: a burning mob carries Java's flame.
+                    if m.burning {
+                        v["fire"] = json!(true);
+                    }
                     if let Some(t) = m.crossbow_draw() {
                         v["draw"] = json!(r3(t as f64));
                     }
@@ -1621,7 +1633,7 @@ impl Game {
                 .map(|m| m.serialize())
                 .collect::<Vec<_>>()
                 .join(";");
-            let arrows:Vec<_>=self.mobs.entities.arrows.iter().filter(|a|a.pos.distance_squared(bot.agent.session.player.pos)<160.0*160.0).take(256).map(|a|json!({"pos":a.pos.to_array(),"previous":a.previous_pos.to_array(),"dir":a.dir.to_array(),"player":a.from_player,"critical":a.critical,"tipped":a.tipped,"potion":a.potion.map(|p|p.0)})).collect();
+            let arrows:Vec<_>=self.mobs.entities.arrows.iter().filter(|a|a.pos.distance_squared(bot.agent.session.player.pos)<160.0*160.0).take(256).map(|a|json!({"pos":a.pos.to_array(),"previous":a.previous_pos.to_array(),"dir":a.dir.to_array(),"player":a.from_player,"critical":a.critical,"tipped":a.tipped,"potion":a.potion.map(|p|p.0),"fire":a.burning()})).collect();
             let decor = self.mobs.entities.decor_near(bot.agent.session.player.pos, 160.0, 256);
             // Signs, shelves and chiseled bookshelves near the player, when
             // they changed or the player moved 16 blocks since the last send.
@@ -2105,6 +2117,7 @@ impl Game {
                 if let Some(bee) = mob.bee.as_mut() {
                     bee.rolling = m["roll"] == true;
                 }
+                mob.burning = m["fire"] == true;
                 mob.set_crossbow_draw(m["draw"].as_f64().map(|t| t as f32));
                 mob.riding = m["r"].as_u64().and_then(|r| u32::try_from(r).ok());
                 mob.animate_replica(voxelcraft::simulation::TICK_SECONDS as f32);
@@ -2220,6 +2233,7 @@ impl Game {
                 arrow.from_player = a["player"] == true;
                 arrow.critical = a["critical"] == true;
                 arrow.tipped = a["tipped"] == true;
+                arrow.set_burning(a["fire"] == true);
                 arrow.potion = a["potion"]
                     .as_u64()
                     .filter(|i| *i < voxelcraft::potion::Potion::COUNT as u64)

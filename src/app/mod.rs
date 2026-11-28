@@ -1224,13 +1224,34 @@ impl Game {
         amount: f32,
         cause: impl Into<voxelcraft::simulation::damage::Cause>,
     ) -> f32 {
-        let cause = cause.into();
+        self.hurt_player(amount, cause.into(), false).1
+    }
+
+    /// [`Game::damage_player`], through armor points too when `armored`.
+    /// The hurt cooldown sees `amount` before armor and the armor's
+    /// enchantments, as Java's `hurtServer` does (v1.0 gap Track 8d).
+    /// Returns what armor wears by (zero for `#bypasses_armor` damage or
+    /// unarmored) and the damage taken.
+    fn hurt_player(&mut self, amount: f32, cause: voxelcraft::simulation::damage::Cause, armored: bool) -> (f32, f32) {
         // Java's `Player.isInvulnerableTo` for the fall, fire and drowning rules.
         if self.gamerules.damage_immunity().blocks(cause) {
-            return 0.0;
+            return (0.0, 0.0);
         }
-        let amount = crate::enchant::protect(amount, &self.session.inventory.armor, cause);
-        let taken = self.session.vitals.damage(amount, cause, self.session.mode.invulnerable());
+        let invulnerable = self.session.mode.invulnerable();
+        let inv = &self.session.inventory;
+        let (points, toughness) = (inv.armor_points(), inv.armor_toughness());
+        let mut worn = false;
+        let (landed, taken) = self.session.vitals.hurt(amount, cause, invulnerable, |a| {
+            let a = if armored {
+                let (reduced, w) = voxelcraft::simulation::damage::after_armor(a, cause, points, toughness);
+                worn = w;
+                reduced
+            } else {
+                a
+            };
+            crate::enchant::protect(a, &inv.armor, cause)
+        });
+        let wear = if worn { landed } else { 0.0 };
         if taken > 0.0 {
             // A stronger hit inside the immunity window keeps the hurt direction, as Java skips it.
             if self.session.vitals.last_hit_fresh() {
@@ -1243,11 +1264,11 @@ impl Game {
             if self.session.totem_saves(self.body.actions.selected) {
                 self.show_popup("Totem of Undying");
                 self.audio.play(crate::audio::sounds::Sound::Hurt, None, 0.6, (1.4, 1.6));
-                return taken;
+                return (wear, taken);
             }
             self.on_death();
         }
-        taken
+        (wear, taken)
     }
 
     /// [`Game::damage_player_armored`] for an attack that comes from a place,
@@ -1283,16 +1304,10 @@ impl Game {
         amount: f32,
         cause: impl Into<voxelcraft::simulation::damage::Cause>,
     ) -> f32 {
-        let cause = cause.into();
-        let (reduced, worn) = voxelcraft::simulation::damage::after_armor(
-            amount,
-            cause,
-            self.session.inventory.armor_points(),
-            self.session.inventory.armor_toughness(),
-        );
-        let taken = self.damage_player(reduced, cause);
-        if taken > 0.0 && worn && self.session.mode.is_survival() {
-            for item in self.session.inventory.wear_armor(amount) {
+        let (wear, taken) = self.hurt_player(amount, cause.into(), true);
+        // `hurtArmor` wears by what landed (a stronger hit's excess).
+        if taken > 0.0 && wear > 0.0 && self.session.mode.is_survival() {
+            for item in self.session.inventory.wear_armor(wear) {
                 self.show_popup(&format!("{} broke", capitalize(item.name())));
                 let sound = crate::audio::sounds::Sound::Break(crate::audio::sounds::Material::Wood);
                 self.audio.play_in(crate::audio::SoundSource::Players, sound, None, 0.8, (1.3, 1.5));
@@ -2265,8 +2280,11 @@ impl Game {
         let now = Instant::now();
         self.poll_lan();
         self.poll_agents();
+        // v1.0 gap Track 8d: only a pause screen pauses (`isPauseScreen`):
+        // not the sign editor, a lectern's book or the console (Java's
+        // `ChatScreen`).
         let paused = pauses_simulation(
-            self.menu.is_open() || self.console.open || self.credits.is_some(),
+            self.menu.pauses() || self.credits.is_some(),
             self.agents.host.is_some() || self.lan.host.is_some() || self.lan.client.is_some(),
         );
         self.respawn_if_due();
@@ -2454,7 +2472,7 @@ impl Game {
                 .push(voxelcraft::entity::shadow::player(eye - (self.session.player.eye() - self.session.player.pos)));
         }
         let verts = self.mobs.entities.shadows(&self.world, camera, alpha, &casters, self.settings.entity_shadows);
-        push_avatars(&self.world, &others, camera, fog_end, scene.time, verts);
+        push_avatars(&self.world, &others, (camera, forward), fog_end, scene.time, verts);
         crate::render::signs::text(
             &mut self.mobs.sign_text,
             crate::render::signs::FONT_VERSION,
@@ -2476,6 +2494,7 @@ impl Game {
                     self.session.inventory.get(self.body.actions.selected),
                 ),
             );
+            let look = crate::entity::model::PlayerAppearance { view: forward, ..look };
             crate::entity::model::build_player(
                 &self.session.player,
                 eye - (self.session.player.eye() - self.session.player.pos),
@@ -2768,7 +2787,7 @@ impl Game {
 fn push_avatars(
     world: &World,
     players: &[(&Player, DVec3, crate::entity::model::PlayerAppearance, &str)],
-    camera: DVec3,
+    (camera, forward): (DVec3, glam::Vec3),
     fog_end: f32,
     time: f32,
     verts: &mut crate::entity::model::EntityMesh,
@@ -2778,6 +2797,7 @@ fn push_avatars(
         let inside = (camera - feet).with_y(0.0).length() < 0.4 && (feet.y..feet.y + 1.9).contains(&camera.y);
         if !inside && feet.distance_squared(camera) < (fog_end as f64 + 2.0).powi(2) {
             let glow = verts.glow_start();
+            let appearance = crate::entity::model::PlayerAppearance { view: forward, ..appearance };
             crate::entity::model::build_player(
                 player,
                 feet,
@@ -2804,10 +2824,12 @@ fn capitalize(s: &str) -> String {
 }
 
 /// Single-player pause, as Java's integrated server pauses only while it is
-/// not shared: an open game menu, the console or the credits stop gameplay
-/// ticks, unless other players are in this world (the CLI agent server, a
-/// LAN host or a LAN client). Controller players' own menus never pause the
-/// world; the inventory and container screens don't either.
+/// not shared: an open pause screen (`Screen.isPauseScreen`) or the credits
+/// stop gameplay ticks, unless other players are in this world (the CLI
+/// agent server, a LAN host or a LAN client). Controller players' own menus
+/// never pause the world; the inventory and container screens, the sign
+/// editor, a lectern's book and the console (Java's `ChatScreen`) don't
+/// either (v1.0 gap Track 8d).
 fn pauses_simulation(screen_open: bool, shared: bool) -> bool {
     screen_open && !shared
 }

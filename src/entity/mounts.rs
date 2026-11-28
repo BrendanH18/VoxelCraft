@@ -2150,6 +2150,10 @@ mod tests {
                 }
             }
             assert!(m.on_ground);
+            // v1.0 gap Track 8d: the fall hurts through `hurtServer`, which
+            // the tick's `take_fall` applies after the moves.
+            m.damage_cooldown = 0;
+            m.take_fall(&mut crate::entity::Rng::new(1));
             assert_eq!(before - m.health, hurt, "from {from}");
         }
     }

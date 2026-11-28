@@ -58,6 +58,12 @@ impl Fireball {
         self.large
     }
 
+    /// v1.0 gap Track 8d: the box (`EntityTypes`): a ghast's fireball is
+    /// 1 block square, a blaze's 0.3125.
+    pub fn size(&self) -> f64 {
+        if self.large { 1.0 } else { 0.3125 }
+    }
+
     /// Sends a ghast fireball back along the puncher's look direction.
     pub fn deflect(&mut self, look: DVec3) {
         let dir = look.normalize_or(DVec3::X);
@@ -89,6 +95,12 @@ impl Fireball {
         for _ in 0..steps {
             let next = self.pos + delta / steps as f64;
             if world.block(next.floor().as_ivec3()).is_some_and(|b| b.is_solid()) {
+                // v1.0 gap Track 8d: `Projectile.onHitBlock`'s
+                // `onProjectileHit` first; a fireball is always on fire
+                // (`AbstractHurtingProjectile.shouldBurn`), so it lights a
+                // candle or campfire or primes TNT.
+                let cell = next.floor().as_ivec3();
+                events.push(super::projectile::block_hit(cell, self.pos, true, !self.deflected));
                 self.impact(None, events);
                 return false;
             }

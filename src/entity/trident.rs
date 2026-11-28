@@ -437,14 +437,16 @@ impl Trident {
         }
         let player_owned = matches!(self.owner, Some(Owner::Player(_)));
         for p in players {
-            if !p.targetable || !p.alive || self.owner == Some(Owner::Player(p.id)) || (player_owned && !pvp) {
+            // v1.0 gap Track 8d: creative players are hit too, and refuse it.
+            let hittable = p.targetable || p.invulnerable && !p.spectator;
+            if !hittable || !p.alive || self.owner == Some(Owner::Player(p.id)) || (player_owned && !pvp) {
                 continue;
             }
             let (min, max) = p.shape.aabb(p.pos);
             if let Some(t) = ray(min, max)
                 && best.is_none_or(|(_, b)| t < b)
             {
-                best = Some((Hit::Player(p.id, p.pos), t));
+                best = Some((Hit::Player(p.id, p.pos, p.refuses_hit(tr::BASE_DAMAGE, !player_owned)), t));
             }
         }
         // v1.0 gap Track 4c: End crystals and dragon parts.
@@ -516,7 +518,10 @@ impl Trident {
                     events.push(EntityEvent::Sound { sound: MobSound::Weapon(Cue::TridentThunder), pos: mob.pos });
                 }
             }
-            Hit::Player(id, pos) => {
+            // `ThrownTrident.onHitEntity`: a refused hit does nothing but
+            // the bounce and its sound.
+            Hit::Player(_, _, true) => {}
+            Hit::Player(id, pos, false) => {
                 let damage = tr::BASE_DAMAGE;
                 let cause = if owner_player.is_some() {
                     crate::simulation::damage::Cause::PLAYER_TRIDENT
@@ -742,7 +747,9 @@ pub struct Throw {
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Hit {
     Mob(usize),
-    Player(PlayerId, DVec3),
+    /// A player, and whether their `hurtServer` refuses the trident
+    /// (creative, or the hurt cooldown; v1.0 gap Track 8d).
+    Player(PlayerId, DVec3, bool),
     /// v1.0 gap Track 4c: an End crystal or a dragon part.
     Boss(super::dragon::Hit),
 }

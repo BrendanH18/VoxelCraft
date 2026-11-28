@@ -109,6 +109,8 @@ impl HandAnim {
             aim: self.aim(),
             glowing: vitals.effects.glowing() && vitals.death_time().is_none(),
             elytra: worn[1].is_some_and(|s| s.item == voxelcraft::content::elytra::ELYTRA),
+            burning: vitals.burning(),
+            view: glam::Vec3::ZERO,
         }
     }
 

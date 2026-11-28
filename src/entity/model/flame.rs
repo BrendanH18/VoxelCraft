@@ -23,7 +23,7 @@ use crate::world::block::tex;
 /// the bottom centre of its box) whose bounding box is `width` by `height`
 /// blocks, seen along `forward`, in sky light `sky` (0..255) at `time`
 /// seconds.
-pub(super) fn flame(
+pub(crate) fn flame(
     out: &mut EntityMesh,
     origin: Vec3,
     (width, height): (f32, f32),
@@ -113,6 +113,26 @@ mod tests {
             assert!((tex::FIRE_0..tex::FIRE_0 + u16::from(tex::FIRE_FRAMES)).contains(&layer));
         }
         assert_ne!(quad(0)[0].torch[2], quad(1)[0].torch[2], "fire_1 differs from fire_0");
+    }
+
+    /// v1.0 gap Track 8d: a burning mob carries the flame over its box (a
+    /// zombie's 0.6 by 1.95: six quads), and nothing else of it is drawn
+    /// in the fire texture (the rising cubes are gone).
+    #[test]
+    fn a_burning_mob_carries_the_flame() {
+        let fire = |burning: bool| {
+            let mut m = Mob::new(MobKind::Zombie, DVec3::ZERO, 0.0);
+            m.burning = burning;
+            let mut out = EntityMesh::flat();
+            build(std::slice::from_ref(&m), DVec3::new(0.0, 1.0, -4.0), Vec3::Z, 64.0, 1.0, &mut out);
+            out.iter()
+                .filter(|v| {
+                    let layer = u16::from(v.torch[2]) | (u16::from(v.torch[3]) << 8);
+                    v.torch[1] == 2 && (tex::FIRE_0..tex::FIRE_0 + u16::from(tex::FIRE_FRAMES)).contains(&layer)
+                })
+                .count()
+        };
+        assert_eq!((fire(false), fire(true)), (0, 6 * 6));
     }
 
     /// A taller box stacks more quads: 1.4 / 0.45, rounded up, for a box

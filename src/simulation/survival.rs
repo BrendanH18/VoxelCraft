@@ -483,6 +483,12 @@ impl Vitals {
     }
 
     /// Seconds since the hit that started the immunity window; stronger hits within it do not reset this.
+    /// v1.0 gap Track 8d: `lastHurt` while the hurt cooldown is in its
+    /// first half (a hit no harder is refused), or `None`.
+    pub fn cooling_down(&self) -> Option<f32> {
+        (self.since_damage < INVULNERABLE && !self.is_dead()).then_some(self.last_damage)
+    }
+
     pub fn since_damage(&self) -> f32 {
         self.since_damage
     }
@@ -521,24 +527,35 @@ impl Vitals {
     /// `#bypasses_effects` and `#bypasses_resistance`, and the hit costs the
     /// type's food exhaustion.
     pub fn damage(&mut self, amount: f32, cause: impl Into<super::damage::Cause>, creative: bool) -> f32 {
+        self.hurt(amount, cause.into(), creative, |a| a).1
+    }
+
+    /// [`Vitals::damage`] in Java's order (v1.0 gap Track 8d): the hurt
+    /// cooldown compares `amount` as `hurtServer` has it, before armor, and
+    /// only what lands (all of a full hit, a stronger hit's excess) goes
+    /// through `reduce` (armor and the armor's enchantments,
+    /// `getDamageAfterArmorAbsorb` and `getDamageAfterMagicAbsorb`) and
+    /// Resistance. Returns what landed before `reduce` (what armor wears
+    /// by) and what was taken after it.
+    pub fn hurt(
+        &mut self,
+        amount: f32,
+        cause: super::damage::Cause,
+        creative: bool,
+        reduce: impl FnOnce(f32) -> f32,
+    ) -> (f32, f32) {
         use super::damage::DamageTag as Tag;
-        let cause = cause.into();
         let creative = creative && !cause.is(Tag::BypassesInvulnerability);
         if creative || self.is_dead() || amount <= 0.0 {
-            return 0.0;
+            return (0.0, 0.0);
         }
         if cause.is(Tag::IsFire) && self.effects.has(super::effects::Effect::FireResistance) {
-            return 0.0;
+            return (0.0, 0.0);
         }
-        let amount = if cause.is(Tag::BypassesEffects) || cause.is(Tag::BypassesResistance) {
-            amount
-        } else {
-            amount * self.effects.resistance_factor()
-        };
-        let taken = if self.since_damage < INVULNERABLE {
+        let landed = if self.since_damage < INVULNERABLE {
             // Only a stronger hit gets through, and only the difference.
             if amount <= self.last_damage {
-                return 0.0;
+                return (0.0, 0.0);
             }
             let extra = amount - self.last_damage;
             self.last_damage = amount;
@@ -549,6 +566,12 @@ impl Vitals {
             self.since_damage = 0.0;
             self.fresh_hit = true;
             amount
+        };
+        let reduced = reduce(landed);
+        let taken = if cause.is(Tag::BypassesEffects) || cause.is(Tag::BypassesResistance) {
+            reduced
+        } else {
+            reduced * self.effects.resistance_factor()
         };
         // Java's `Player.actuallyHurt`: absorption soaks up the hit before
         // health, and a hit it absorbs entirely costs no exhaustion. The hit
@@ -566,7 +589,7 @@ impl Vitals {
         } else if self.effects.has(super::effects::Effect::Infested) {
             self.infested_hits = self.infested_hits.saturating_add(1);
         }
-        taken
+        (landed, taken)
     }
 
     /// Advances air, hunger, regeneration and fall tracking by `dt` seconds
@@ -1422,6 +1445,26 @@ mod tests {
             v.tick(DT, &ground(0.0), false);
         }
         assert_eq!(v.damage(3.0, "test", false), 3.0);
+    }
+
+    /// v1.0 gap Track 8d: `hurtServer` compares the hit with `lastHurt`
+    /// before armor; only what lands goes through armor (`reduce`) and
+    /// Resistance, and armor wears by that.
+    #[test]
+    fn the_hurt_cooldown_sees_hits_before_armor() {
+        let mut v = Vitals::default();
+        let half = |a: f32| a * 0.5;
+        let cause: super::super::damage::Cause = "test".into();
+        assert_eq!(v.hurt(6.0, cause, false, half), (6.0, 3.0));
+        assert_eq!(v.cooling_down(), Some(6.0));
+        // 7 after armor is 3.5, but what lands is 7 - 6 before it.
+        assert_eq!(v.hurt(7.0, cause, false, half), (1.0, 0.5));
+        assert_eq!(v.hurt(7.0, cause, false, half), (0.0, 0.0));
+        assert_eq!(v.health, 20.0 - 3.5);
+        for _ in 0..(INVULNERABLE / DT) as usize + 2 {
+            v.tick(DT, &ground(0.0), false);
+        }
+        assert_eq!(v.cooling_down(), None);
     }
 
     /// Java's `Player.actuallyHurt`: absorption is spent first, after the

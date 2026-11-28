@@ -21,6 +21,7 @@ use crate::simulation::experience;
 use bytemuck::{Pod, Zeroable};
 
 mod flame;
+pub(crate) use flame::flame;
 mod labels;
 mod nether;
 
@@ -1722,7 +1723,7 @@ pub fn build(
         let hurt = if (m.hurt / motion::TICK).round() > 0.0 || m.dying.is_some_and(|t| t > 0.0) { 1.0 } else { 0.0 };
         let light = [(m.sky_light.clamp(0.0, 1.0) * 255.0) as u8, 0, (hurt * 255.0) as u8, 0];
         let torch = (m.block_light.clamp(0.0, 1.0) * 255.0) as u8;
-        // A lit creeper swells and flashes white; burning mobs glow orange.
+        // A lit creeper swells and flashes white (burning ones carry the flame below).
         let fuse = m.fuse / FUSE_TIME;
         let scale = (1.0 + fuse * 0.18)
             * if m.kind == MobKind::CaveSpider {
@@ -1774,8 +1775,6 @@ pub fn build(
             // over the last 80 ticks.
             let lit = invul > 80 || invul / 5 % 2 != 1;
             ([200.0, 220.0, 255.0], if lit { 0.55 } else { 0.0 })
-        } else if m.burning {
-            (FIRE, 0.3)
         } else {
             (FIRE, 0.0)
         };
@@ -1928,8 +1927,11 @@ pub fn build(
         if m.kind == MobKind::SulfurCube {
             new_mobs::sulfur_block(m, origin, body, scale, (light, torch), out);
         }
+        // v1.0 gap Track 8d: `displayFireAnimation` submits Java's flame
+        // over the mob's box (it replaces rising cubes and an orange tint).
         if m.burning {
-            flames(out, m, rel, time);
+            let sky = (m.sky_light.clamp(0.0, 1.0) * 255.0) as u8;
+            flame::flame(out, rel, (shape.half_width as f32 * 2.0, shape.height as f32), forward, sky, time);
         }
         out.glow_end(glow, m.effects.glowing() && m.alive());
     }
@@ -1972,35 +1974,6 @@ fn draw_held(
     let hand = super::player_model::third_person_hand(arm.pivot, arm.rot, origin, body, scale, baby);
     let light = (f32::from(light.0[0]) / 255.0, f32::from(light.1) / 255.0);
     out.push_held(super::player_model::held_item(stack, hand, light, None, None, None));
-}
-
-/// Small glowing cubes rising around a burning mob.
-fn flames(out: &mut EntityMesh, m: &Mob, rel: Vec3, time: f32) {
-    let shape = m.shape();
-    let (r, h) = (shape.half_width as f32 * 16.0 + 0.5, shape.height as f32 * 16.0);
-    for i in 0..10 {
-        let fi = i as f32;
-        let t = (time * 1.3 + fi * 0.618).fract();
-        let angle = fi * 2.4 + (time * 1.3 + fi * 0.618).floor() * 1.7;
-        let size = 3.0 * (1.0 - t) + 0.5;
-        let center = Vec3::new(angle.cos() * r, t * h * 1.1, angle.sin() * r);
-        let color = if t < 0.4 {
-            [255, 214, 80]
-        } else if t < 0.75 {
-            [255, 140, 30]
-        } else {
-            [220, 60, 20]
-        };
-        let c = Cuboid {
-            min: (center - Vec3::splat(size / 2.0)).to_array(),
-            max: (center + Vec3::splat(size / 2.0)).to_array(),
-            color,
-            noise: 0,
-            translucent: false,
-            pattern: 0,
-        };
-        push_cuboid(out, &c, &|v: Vec3| rel + v / 16.0, Quat::IDENTITY, ([255, 255, 0, 255], 0), (FIRE, 0.0), 0.0);
-    }
 }
 
 /// Arrows, pointing along their flight. v1.0 gap Track 8c: a burning one

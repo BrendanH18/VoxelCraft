@@ -739,6 +739,11 @@ impl Entities {
                     None
                 };
                 let damage = damage + weapon.map_or(0.0, |w| crate::enchant::creature_damage_bonus(w, kind.creature()));
+                // v1.0 gap Track 8d: a hit the hurt cooldown (or anything
+                // else in `hurtServer`) refuses leaves no trace.
+                if self.mobs[i].refuses_hit(damage) {
+                    continue;
+                }
                 let anger = self.mobs[i].provocation();
                 let before = self.mobs[i].health;
                 let killed = self.mobs[i].damage(damage, Some(knockback), &mut self.rng);
