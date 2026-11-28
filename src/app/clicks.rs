@@ -33,9 +33,9 @@ impl Screen<'_> {
         let mut out: Vec<SlotRef> = match *self.container {
             // `InventoryMenu`: result, 2x2 grid, armour, then the player's
             // slots and the off-hand last.
-            Container::Inventory => craft(4)
-                .chain(crate::item::ArmorPiece::ALL.into_iter().map(SlotRef::Armor))
-                .collect(),
+            Container::Inventory => {
+                craft(4).chain(crate::item::ArmorPiece::ALL.into_iter().map(SlotRef::Armor)).collect()
+            }
             Container::CraftingTable => craft(9).collect(),
             Container::Furnace(_) => vec![SlotRef::FurnaceInput, SlotRef::FurnaceFuel, SlotRef::FurnaceOutput],
             Container::Brewing(_) => vec![

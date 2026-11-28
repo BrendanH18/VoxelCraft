@@ -1405,7 +1405,9 @@ impl Game {
         // The held stack follows the mouse.
         // v1.0 final track F1: during a drag it shows what will be left.
         let cursor = match &self.screen_mouse.preview {
-            Some((_, left)) => self.session.inventory.cursor.and_then(|c| (*left > 0).then_some(Stack { count: *left, ..c })),
+            Some((_, left)) => {
+                self.session.inventory.cursor.and_then(|c| (*left > 0).then_some(Stack { count: *left, ..c }))
+            }
             None => self.session.inventory.cursor,
         };
         if let Some(stack) = cursor {

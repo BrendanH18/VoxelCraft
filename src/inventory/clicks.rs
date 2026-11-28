@@ -303,13 +303,8 @@ mod tests {
 
     #[test]
     fn pickup_all_takes_part_stacks_first_then_full_ones() {
-        let mut r = row(vec![
-            Some(st(stone(), 64)),
-            None,
-            Some(st(stone(), 10)),
-            Some(st(dirt(), 5)),
-            Some(st(stone(), 30)),
-        ]);
+        let mut r =
+            row(vec![Some(st(stone(), 64)), None, Some(st(stone(), 10)), Some(st(dirt(), 5)), Some(st(stone(), 30))]);
         let mut cursor = Some(st(stone(), 4));
         pickup_all(&mut r, 1, false, &mut cursor);
         assert_eq!(cursor, Some(st(stone(), 64)));

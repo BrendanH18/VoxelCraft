@@ -1107,7 +1107,8 @@ impl Game {
         } else {
             None
         };
-        let numbers: Vec<u16> = words.map(|w| w.parse::<u16>().map_err(|_| "Bad slot".to_string())).collect::<Result<_, _>>()?;
+        let numbers: Vec<u16> =
+            words.map(|w| w.parse::<u16>().map_err(|_| "Bad slot".to_string())).collect::<Result<_, _>>()?;
         if numbers.is_empty() || numbers.len() > 64 {
             return Err("Bad slot".into());
         }
