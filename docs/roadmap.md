@@ -2294,6 +2294,14 @@ slot icons take Java's orientation; controller seats pick bundle stacks
 with the right stick (Java has no gamepad support; owner's choice).
 Track 7c's look approved by the owner on 2026-11-27, with the adult
 nautilus to be turned to Java's shell-first facing.
+Overnight (owner, 2026-11-27): the owner, unavailable until morning,
+asked for the build to be completely finished by 10:00 on 2026-11-28.
+The integrator merges the remaining tracks, including those whose look
+the owner hasn't approved (each one merge commit, recorded as awaiting
+approval and reverted if the owner rejects it), resolves fidelity
+questions by matching Java and approves no exception, then prepares
+1.0.0's version, notes, inventory and §8 in a pull request with CI green.
+Merging to `main`, tagging and publishing wait for the owner's play.
 
 1. **Effects and mob damage** (PLY-03b, MOB-02d): Darkness darkening the
    lightmap, not only the fog; Smite and Bane of Arthropods on mobs'
