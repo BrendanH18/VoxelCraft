@@ -353,6 +353,7 @@ impl Entities {
         let dragons_from = events.len();
         self.wild_dragons.update(dt, world, ctx, &mut self.rng, &self.crystals, self.fight.as_ref(), &mut events);
         if let Some(fight) = &mut self.fight {
+            fight.dragon_ticking = fight.dragon.as_ref().is_none_or(|d| world.entity_ticking(d.pos.floor().as_ivec3()));
             // The End's crystals tick with the fight.
             fight.update_beside(dt, world, ctx, &mut self.rng, &mut self.crystals, &self.wild_dragons, &mut events);
         } else if !self.crystals.is_empty() {

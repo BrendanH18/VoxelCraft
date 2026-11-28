@@ -298,6 +298,11 @@ pub struct Fight {
     /// The `mobGriefing` game rule is off (the dragon breaks nothing and
     /// every block in its way slows it); set each tick by the entities.
     pub griefing_off: bool,
+    /// v1.0 final F11: whether the fight's dragon is in an entity-ticking
+    /// chunk, set before each update. With no player in the fight's area
+    /// there is no `DRAGON` ticket, so the dragon moves only where another
+    /// ticket (or a player elsewhere) makes its chunk tick. Not saved.
+    pub dragon_ticking: bool,
 }
 
 impl Fight {
@@ -342,6 +347,7 @@ impl Fight {
             links: Vec::new(),
             gateway_entities: Default::default(),
             griefing_off: false,
+            dragon_ticking: true,
         };
         fight.apply_replica(v);
         Some(fight)
@@ -419,6 +425,7 @@ impl Fight {
             links: Vec::new(),
             gateway_entities: Default::default(),
             griefing_off: false,
+            dragon_ticking: true,
         }
     }
 
@@ -668,7 +675,8 @@ impl Fight {
             }
             !ready
         });
-        if let Some(mut dragon) = self.dragon.take() {
+        let dragon_ticks = watched || self.dragon_ticking;
+        if let Some(mut dragon) = self.dragon.take_if(|_| dragon_ticks) {
             let mut arena = Arena {
                 fight: true,
                 alive_crystals: self.alive_crystals,

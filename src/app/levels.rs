@@ -58,6 +58,26 @@ pub(super) fn order(d: Dimension) -> u8 {
     }
 }
 
+/// The dimensions to open as background levels, oldest need first: those
+/// travellers are bound for, the Nether while it owes portals, and those
+/// pearls of players in the game wait in; none already `live`.
+pub(super) fn waiting_levels(
+    arrivals: &[super::portal_travel::PortalArrival],
+    owed_portals: bool,
+    pearls: &[Dimension],
+    live: &[Dimension],
+) -> Vec<Dimension> {
+    let mut out: Vec<Dimension> = Vec::new();
+    let wanted =
+        arrivals.iter().map(|a| a.to).chain(owed_portals.then_some(Dimension::Nether)).chain(pearls.iter().copied());
+    for d in wanted {
+        if !live.contains(&d) && !out.contains(&d) {
+            out.push(d);
+        }
+    }
+    out
+}
+
 /// The Java chunk of a block position.
 pub(super) fn chunk_at(p: IVec3) -> glam::IVec2 {
     tickets::chunk_of(p.x, p.z)
@@ -146,19 +166,15 @@ impl Game {
         if !self.runs_levels() {
             return;
         }
-        let mut wanted: Vec<Dimension> = self.portal_arrivals.iter().map(|a| a.to).collect();
-        if !self.owed_portals.is_empty() {
-            wanted.push(Dimension::Nether);
-        }
         let agents = &self.agents.players;
         let online = |id: crate::entity::PlayerId| {
             id == crate::entity::PlayerId::HOST || agents.values().any(|b| b.active && b.id == id)
         };
-        wanted.extend(self.owned_pearls.waiting_in(online));
-        for d in wanted {
-            if d != self.dimension && self.level_index(d).is_none() {
-                self.open_level(d);
-            }
+        let pearls = self.owned_pearls.waiting_in(online);
+        let live: Vec<Dimension> =
+            std::iter::once(self.dimension).chain(self.levels.iter().map(|l| l.dimension)).collect();
+        for d in waiting_levels(&self.portal_arrivals, !self.owed_portals.is_empty(), &pearls, &live) {
+            self.open_level(d);
         }
     }
 
@@ -382,5 +398,67 @@ impl Game {
         let levels = std::iter::once((self.dimension, &self.mobs.entities))
             .chain(self.levels.iter().map(|l| (l.dimension, &l.entities)));
         self.owned_pearls.save_levels(levels, owner)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::dimension::{OwedPortal, owed_portals_text, parse_owed_portals};
+    use super::super::portal_travel::{PortalArrival, Route, arrivals_text, parse_arrivals};
+    use super::*;
+    use crate::world::portal::PortalTrip;
+
+    /// v1.0 final F11: a save from before F11 with entities waiting for
+    /// other dimensions (Track F2's `portal_arrivals`), portals owed to the
+    /// Nether (Track 8c's `owed_nether_portals`) and pearls waiting in a
+    /// level (Track 8f's `ender_pearls` with their dimension) still reads,
+    /// and each opens the level it waits for, where it is then resolved
+    /// as soon as its ground loads.
+    #[test]
+    fn old_saves_waiting_work_opens_the_levels_it_waits_for() {
+        let trip = PortalTrip::without_portal(IVec3::new(40, 70, -8));
+        let arrivals = vec![
+            PortalArrival {
+                to: Dimension::Nether,
+                route: Route::Nether(trip),
+                width: 0.9,
+                height: 1.4,
+                yaw: 0.0,
+                batch: vec![("nether_mobs".into(), "{}".into())],
+            },
+            PortalArrival {
+                to: Dimension::End,
+                route: Route::EndSpawn { vel: DVec3::ZERO },
+                width: 0.25,
+                height: 0.25,
+                yaw: 0.0,
+                batch: Vec::new(),
+            },
+        ];
+        let arrivals = parse_arrivals(&arrivals_text(&arrivals));
+        let owed =
+            parse_owed_portals(&owed_portals_text(&[OwedPortal { target: IVec3::new(5, 64, 5), along_x: true }]));
+        assert_eq!(owed.len(), 1);
+        let mut pearls = crate::entity::saved_projectiles::OwnedPearls::default();
+        let saved = serde_json::json!([{"owner": 0, "pos": [0.5, 80.0, 0.5], "motion": [1.0, 0.0, 0.0], "dimension": "overworld"}]);
+        pearls.load(&saved, crate::entity::PlayerId::HOST);
+        let waiting = pearls.waiting_in(|_| true);
+        // In the End, with nothing else loaded: the Nether and the
+        // Overworld open; the End is the host's.
+        let open = waiting_levels(&arrivals, !owed.is_empty(), &waiting, &[Dimension::End]);
+        assert_eq!(open, [Dimension::Nether, Dimension::Overworld]);
+        // Already running: nothing more opens.
+        assert!(
+            waiting_levels(&arrivals, true, &waiting, &[Dimension::End, Dimension::Nether, Dimension::Overworld])
+                .is_empty()
+        );
+        // Pearls of a player who isn't in the game wait with them.
+        assert!(pearls.waiting_in(|_| false).is_empty());
+    }
+
+    #[test]
+    fn levels_tick_in_javas_order() {
+        assert!(order(Dimension::Overworld) < order(Dimension::Nether));
+        assert!(order(Dimension::Nether) < order(Dimension::End));
     }
 }
