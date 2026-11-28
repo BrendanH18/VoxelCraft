@@ -50,47 +50,168 @@ impl Category {
 pub(in crate::app) const RULES: [(&str, Category, &str, Option<&str>); 59] = [
     ("advance_time", Category::Updates, "Advance time of day", None),
     ("advance_weather", Category::Updates, "Update weather", None),
-    ("allow_entering_nether_using_portals", Category::Misc, "Allow Nether", Some("Controls whether players are allowed to enter the Nether.")),
-    ("block_drops", Category::Drops, "Drop blocks", Some("Controls resource drops from blocks, including experience orbs.")),
-    ("block_explosion_drop_decay", Category::Drops, "In block interaction explosions, some blocks won't drop their loot", Some("Some of the drops from blocks destroyed by explosions caused by block interactions are lost in the explosion.")),
+    (
+        "allow_entering_nether_using_portals",
+        Category::Misc,
+        "Allow Nether",
+        Some("Controls whether players are allowed to enter the Nether."),
+    ),
+    (
+        "block_drops",
+        Category::Drops,
+        "Drop blocks",
+        Some("Controls resource drops from blocks, including experience orbs."),
+    ),
+    (
+        "block_explosion_drop_decay",
+        Category::Drops,
+        "In block interaction explosions, some blocks won't drop their loot",
+        Some(
+            "Some of the drops from blocks destroyed by explosions caused by block interactions are lost in the explosion.",
+        ),
+    ),
     ("command_block_output", Category::Chat, "Broadcast command block output", None),
     ("command_blocks_work", Category::Misc, "Enable Command Blocks", None),
     ("drowning_damage", Category::Player, "Deal drowning damage", None),
     ("elytra_movement_check", Category::Player, "Do elytra movement check", None),
-    ("ender_pearls_vanish_on_death", Category::Player, "Thrown Ender Pearls vanish on death", Some("Whether Ender Pearls thrown by a player vanish when that player dies.")),
-    ("entity_drops", Category::Drops, "Drop entity equipment", Some("Controls drops from Minecarts (including inventories), Item Frames, Boats, etc.")),
+    (
+        "ender_pearls_vanish_on_death",
+        Category::Player,
+        "Thrown Ender Pearls vanish on death",
+        Some("Whether Ender Pearls thrown by a player vanish when that player dies."),
+    ),
+    (
+        "entity_drops",
+        Category::Drops,
+        "Drop entity equipment",
+        Some("Controls drops from Minecarts (including inventories), Item Frames, Boats, etc."),
+    ),
     ("fall_damage", Category::Player, "Deal fall damage", None),
     ("fire_damage", Category::Player, "Deal fire damage", None),
-    ("fire_spread_radius_around_player", Category::Updates, "Fire spread radius", Some("The radius in blocks around a player in which fire can spread.")),
-    ("forgive_dead_players", Category::Mobs, "Forgive dead players", Some("Angered neutral mobs stop being angry when the targeted player dies nearby.")),
+    (
+        "fire_spread_radius_around_player",
+        Category::Updates,
+        "Fire spread radius",
+        Some("The radius in blocks around a player in which fire can spread."),
+    ),
+    (
+        "forgive_dead_players",
+        Category::Mobs,
+        "Forgive dead players",
+        Some("Angered neutral mobs stop being angry when the targeted player dies nearby."),
+    ),
     ("freeze_damage", Category::Player, "Deal freeze damage", None),
-    ("global_sound_events", Category::Misc, "Global sound events", Some("When certain game events happen, like a boss spawning, the sound is heard everywhere.")),
+    (
+        "global_sound_events",
+        Category::Misc,
+        "Global sound events",
+        Some("When certain game events happen, like a boss spawning, the sound is heard everywhere."),
+    ),
     ("immediate_respawn", Category::Player, "Respawn immediately", None),
     ("keep_inventory", Category::Player, "Keep inventory after death", None),
-    ("lava_source_conversion", Category::Updates, "Lava converts to source", Some("When flowing lava is surrounded on two sides by lava sources, it converts into a source.")),
-    ("limited_crafting", Category::Player, "Require recipe for crafting", Some("If enabled, players will be able to craft only unlocked recipes.")),
-    ("locator_bar", Category::Player, "Enable player Locator Bar", Some("When enabled, a bar is shown on the screen to indicate the direction of players.")),
+    (
+        "lava_source_conversion",
+        Category::Updates,
+        "Lava converts to source",
+        Some("When flowing lava is surrounded on two sides by lava sources, it converts into a source."),
+    ),
+    (
+        "limited_crafting",
+        Category::Player,
+        "Require recipe for crafting",
+        Some("If enabled, players will be able to craft only unlocked recipes."),
+    ),
+    (
+        "locator_bar",
+        Category::Player,
+        "Enable player Locator Bar",
+        Some("When enabled, a bar is shown on the screen to indicate the direction of players."),
+    ),
     ("log_admin_commands", Category::Chat, "Broadcast admin commands", None),
-    ("max_block_modifications", Category::Misc, "Command modification block limit", Some("The number of blocks that can be changed at once by one command, such as fill or clone.")),
-    ("max_command_forks", Category::Misc, "Command context limit", Some("Maximum number of contexts that can be used by commands like 'execute as'.")),
-    ("max_command_sequence_length", Category::Misc, "Command chain size limit", Some("Applies to command block chains and functions.")),
+    (
+        "max_block_modifications",
+        Category::Misc,
+        "Command modification block limit",
+        Some("The number of blocks that can be changed at once by one command, such as fill or clone."),
+    ),
+    (
+        "max_command_forks",
+        Category::Misc,
+        "Command context limit",
+        Some("Maximum number of contexts that can be used by commands like 'execute as'."),
+    ),
+    (
+        "max_command_sequence_length",
+        Category::Misc,
+        "Command chain size limit",
+        Some("Applies to command block chains and functions."),
+    ),
     ("max_entity_cramming", Category::Mobs, "Entity cramming threshold", None),
-    ("max_minecart_speed", Category::Misc, "Minecart max speed", Some("Maximum default speed of a moving Minecart on land.")),
-    ("max_snow_accumulation_height", Category::Updates, "Snow accumulation height", Some("When it snows, layers of snow form on the ground up to at most this number of layers.")),
-    ("mob_drops", Category::Drops, "Drop mob loot", Some("Controls resource drops from mobs, including experience orbs.")),
-    ("mob_explosion_drop_decay", Category::Drops, "In mob explosions, some blocks won't drop their loot", Some("Some of the drops from blocks destroyed by explosions caused by mobs are lost in the explosion.")),
+    (
+        "max_minecart_speed",
+        Category::Misc,
+        "Minecart max speed",
+        Some("Maximum default speed of a moving Minecart on land."),
+    ),
+    (
+        "max_snow_accumulation_height",
+        Category::Updates,
+        "Snow accumulation height",
+        Some("When it snows, layers of snow form on the ground up to at most this number of layers."),
+    ),
+    (
+        "mob_drops",
+        Category::Drops,
+        "Drop mob loot",
+        Some("Controls resource drops from mobs, including experience orbs."),
+    ),
+    (
+        "mob_explosion_drop_decay",
+        Category::Drops,
+        "In mob explosions, some blocks won't drop their loot",
+        Some("Some of the drops from blocks destroyed by explosions caused by mobs are lost in the explosion."),
+    ),
     ("mob_griefing", Category::Mobs, "Allow destructive mob actions", None),
     ("natural_health_regeneration", Category::Player, "Regenerate health", None),
     ("player_movement_check", Category::Player, "Do player movement check", None),
-    ("players_nether_portal_creative_delay", Category::Player, "Player's Nether Portal delay in creative mode", Some("Time (in ticks) that a creative mode player needs to stand in a Nether Portal before changing dimensions.")),
-    ("players_nether_portal_default_delay", Category::Player, "Player's Nether Portal delay in non-creative mode", Some("Time (in ticks) that a non-creative mode player needs to stand in a Nether Portal before changing dimensions.")),
-    ("players_sleeping_percentage", Category::Player, "Sleep percentage", Some("The percentage of players who must be sleeping to skip the night.")),
-    ("projectiles_can_break_blocks", Category::Drops, "Projectiles can break blocks", Some("Controls whether impact projectiles will destroy blocks that are destructible by them.")),
+    (
+        "players_nether_portal_creative_delay",
+        Category::Player,
+        "Player's Nether Portal delay in creative mode",
+        Some(
+            "Time (in ticks) that a creative mode player needs to stand in a Nether Portal before changing dimensions.",
+        ),
+    ),
+    (
+        "players_nether_portal_default_delay",
+        Category::Player,
+        "Player's Nether Portal delay in non-creative mode",
+        Some(
+            "Time (in ticks) that a non-creative mode player needs to stand in a Nether Portal before changing dimensions.",
+        ),
+    ),
+    (
+        "players_sleeping_percentage",
+        Category::Player,
+        "Sleep percentage",
+        Some("The percentage of players who must be sleeping to skip the night."),
+    ),
+    (
+        "projectiles_can_break_blocks",
+        Category::Drops,
+        "Projectiles can break blocks",
+        Some("Controls whether impact projectiles will destroy blocks that are destructible by them."),
+    ),
     ("pvp", Category::Player, "Enable pvp", Some("Controls whether players are allowed to damage other players.")),
     ("raids", Category::Mobs, "Do raids", None),
     ("random_tick_speed", Category::Updates, "Random tick speed rate", None),
     ("reduced_debug_info", Category::Misc, "Reduce debug info", Some("Limits contents of debug screen.")),
-    ("respawn_radius", Category::Player, "Respawn location radius", Some("Controls the size of the area around the spawn point that players can spawn in.")),
+    (
+        "respawn_radius",
+        Category::Player,
+        "Respawn location radius",
+        Some("Controls the size of the area around the spawn point that players can spawn in."),
+    ),
     ("send_command_feedback", Category::Chat, "Send command feedback", None),
     ("show_advancement_messages", Category::Chat, "Announce advancements", None),
     ("show_death_messages", Category::Chat, "Show death messages", None),
@@ -102,11 +223,35 @@ pub(in crate::app) const RULES: [(&str, Category, &str, Option<&str>); 59] = [
     ("spawn_wardens", Category::Spawning, "Spawn Wardens", None),
     ("spawner_blocks_work", Category::Misc, "Enable Spawner Blocks", None),
     ("spectators_generate_chunks", Category::Player, "Allow spectators to generate terrain", None),
-    ("spread_vines", Category::Updates, "Vines spread", Some("Controls whether the Vines block spreads randomly to adjacent blocks. Does not affect other types of vine blocks such as Weeping Vines, Twisting Vines, etc.")),
+    (
+        "spread_vines",
+        Category::Updates,
+        "Vines spread",
+        Some(
+            "Controls whether the Vines block spreads randomly to adjacent blocks. Does not affect other types of vine blocks such as Weeping Vines, Twisting Vines, etc.",
+        ),
+    ),
     ("tnt_explodes", Category::Misc, "Allow TNT to be activated and to explode", None),
-    ("tnt_explosion_drop_decay", Category::Drops, "In TNT explosions, some blocks won't drop their loot", Some("Some of the drops from blocks destroyed by explosions caused by TNT are lost in the explosion.")),
-    ("universal_anger", Category::Mobs, "Universal anger", Some("Angered neutral mobs attack any nearby player, not just the player that angered them. Works best if forgive_dead_players is disabled.")),
-    ("water_source_conversion", Category::Updates, "Water converts to source", Some("When flowing water is surrounded on two sides by water sources, it converts into a source.")),
+    (
+        "tnt_explosion_drop_decay",
+        Category::Drops,
+        "In TNT explosions, some blocks won't drop their loot",
+        Some("Some of the drops from blocks destroyed by explosions caused by TNT are lost in the explosion."),
+    ),
+    (
+        "universal_anger",
+        Category::Mobs,
+        "Universal anger",
+        Some(
+            "Angered neutral mobs attack any nearby player, not just the player that angered them. Works best if forgive_dead_players is disabled.",
+        ),
+    ),
+    (
+        "water_source_conversion",
+        Category::Updates,
+        "Water converts to source",
+        Some("When flowing water is surrounded on two sides by water sources, it converts into a source."),
+    ),
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -129,8 +274,7 @@ pub(in crate::app) struct EditGameRules {
 
 /// The rules shown, by index in [`RULES`], in Java's order.
 fn shown() -> Vec<usize> {
-    let mut v: Vec<usize> =
-        (0..RULES.len()).filter(|&i| GameRules::definition(RULES[i].0).is_some()).collect();
+    let mut v: Vec<usize> = (0..RULES.len()).filter(|&i| GameRules::definition(RULES[i].0).is_some()).collect();
     v.sort_by_key(|&i| (RULES[i].1, RULES[i].0));
     v
 }
@@ -150,7 +294,10 @@ impl EditGameRules {
 
     /// Whether a number box holds a value its rule accepts.
     fn valid(&self, i: usize) -> bool {
-        self.fields.iter().find(|(j, _)| *j == i).is_none_or(|(_, f)| self.rules.clone().set(RULES[i].0, f.text()).is_ok())
+        self.fields
+            .iter()
+            .find(|(j, _)| *j == i)
+            .is_none_or(|(_, f)| self.rules.clone().set(RULES[i].0, f.text()).is_ok())
     }
 
     fn all_valid(&self) -> bool {
@@ -265,12 +412,13 @@ mod tests {
         let keep = RULES.iter().position(|r| r.0 == "keep_inventory").unwrap();
         let tick = RULES.iter().position(|r| r.0 == "random_tick_speed").unwrap();
         assert_eq!(RULES[keep].2, "Keep inventory after death");
-        let mut host = crate::app::options::tests::Host::default();
+        type Host = crate::app::options::tests::Host;
+        let mut host = Host::default();
         let mut screen = EditGameRules::new(Rc::clone(&target));
         screen.activate(&mut host, Id::Bool(keep));
-        screen.field(Id::Int(tick)).unwrap().set("1000000000");
+        Screen::<Host>::field(&mut screen, Id::Int(tick)).unwrap().set("-1");
         assert!(!screen.all_valid(), "out of range");
-        screen.field(Id::Int(tick)).unwrap().set("10");
+        Screen::<Host>::field(&mut screen, Id::Int(tick)).unwrap().set("10");
         assert!(matches!(screen.activate(&mut host, Id::Done), Step::Pop));
         assert!(target.borrow().bool("keep_inventory"));
         assert_eq!(target.borrow().int("random_tick_speed"), 10);

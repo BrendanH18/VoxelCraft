@@ -191,7 +191,7 @@ impl CreateWorld {
             mode: if self.mode == Mode::Creative { GameMode::Creative } else { GameMode::Survival },
             difficulty: self.difficulty(),
             hardcore: self.mode == Mode::Hardcore,
-            rules: self.rules.borrow().clone(),
+            rules: Box::new(self.rules.borrow().clone()),
         };
         Action::Play(self.folder(host), Some(new))
     }

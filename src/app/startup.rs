@@ -85,7 +85,7 @@ impl Game {
         if existing.is_none()
             && let Some(new) = &new
         {
-            gamerules = new.rules.clone();
+            gamerules = (*new.rules).clone();
             for (name, value) in &args.gamerules {
                 if let Err(e) = gamerules.set(name, value) {
                     log::warn!("--gamerule {name}={value}: {e}");

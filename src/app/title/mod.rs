@@ -59,8 +59,8 @@ pub(crate) struct NewWorld {
     pub mode: GameMode,
     pub difficulty: Difficulty,
     pub hardcore: bool,
-    /// v1.0 final F6: the More tab's game rules.
-    pub rules: voxelcraft::rules::GameRules,
+    /// v1.0 final F6: the More tab's game rules (boxed: they are large).
+    pub rules: Box<voxelcraft::rules::GameRules>,
 }
 
 /// What the title screen asks the app to do.
