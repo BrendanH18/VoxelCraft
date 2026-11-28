@@ -264,6 +264,8 @@ fn villagers_mostly_look_at_cats() {
             breedable: false,
             baby: false,
             chasing: None,
+            farmer: false,
+            wants_food: false,
         }];
         let mut ticks = 0;
         while v.head.target.is_none() && ticks < 200 {

@@ -854,6 +854,22 @@ impl Mob {
     fn fox_bite(&mut self, t: Prey, events: &mut Vec<EntityEvent>) {
         let flat = (t.pos - self.pos).with_y(0.0);
         self.attack_anim = 0.3;
+        if let Some(player) = t.player {
+            // v1.0 gap Track 2g: biting the player it defends against
+            // (`Mob.doHurtTarget`: 2 damage, Java's melee knockback).
+            let dir = flat.normalize_or(DVec3::X);
+            let yaw = (-dir.x).atan2(dir.z).to_degrees() as f32;
+            let extra = crate::knockback::attack_strength(self.attack_knockback(), 0, false);
+            events.push(EntityEvent::PlayerHit {
+                java: Some(crate::knockback::Hit::melee(self.pos, t.pos, yaw, extra)),
+                player,
+                damage: 2.0,
+                knockback: (dir * 6.0 + DVec3::Y * 5.0).as_vec3(),
+                cause: self.melee_attack().1,
+            });
+            events.push(EntityEvent::OwnerHurt { player, attacker: self.uid });
+            return;
+        }
         events.push(EntityEvent::MobHit {
             target: t.uid,
             attacker: self.uid,

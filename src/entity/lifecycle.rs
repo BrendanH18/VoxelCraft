@@ -55,6 +55,7 @@ impl Entities {
         self.trader_tick(dt as f32, world, ctx);
         self.tick_decor(world);
         self.village_upkeep(dt as f32, world);
+        self.villager_pickup(world);
         self.populate_village_residents(world, difficulty);
         self.cat_spawner_tick(dt, world, ctx);
         self.assign_hunts(ctx);
@@ -628,7 +629,7 @@ impl Entities {
                     // v1.0 gap Track 2f: the player's `lastHurtByMob`, which
                     // foxes that trust it defend against.
                     self.player_hurts = self.player_hurts.wrapping_add(1);
-                    self.player_hurt_by.insert(player, (attacker, self.player_hurts, 0));
+                    self.player_hurt_by.insert(player, (fox::Attacker::Mob(attacker), self.player_hurts, 0));
                 }
                 EntityEvent::DragonXp { pos, points } => {
                     if self.mob_loot {
@@ -653,6 +654,9 @@ impl Entities {
                 }
                 EntityEvent::ExperienceBurst { pos, toward, points } => self.spawn_xp_toward(pos, toward, points),
                 EntityEvent::DropEquipment { stack, pos } => self.scatter(stack, pos),
+                EntityEvent::ThrowItem { stack, pos, vel } => {
+                    self.items.push(item::ItemEntity::new(stack, pos, vel, 0.5, &mut self.rng));
+                }
                 _ => {}
             }
         }
@@ -665,6 +669,7 @@ impl Entities {
                     | EntityEvent::Hatched { .. }
                     | EntityEvent::ExperienceBurst { .. }
                     | EntityEvent::DropEquipment { .. }
+                    | EntityEvent::ThrowItem { .. }
             )
         });
         let mut destroyed = Vec::new();

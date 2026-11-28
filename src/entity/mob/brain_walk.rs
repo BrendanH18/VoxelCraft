@@ -27,6 +27,7 @@
 //! running `DoNothing`, `JumpOnBed`, scent or sniff holds it. Nothing here
 //! is saved, as Java saves none of it.
 use super::head::{Sel, Tracked};
+use crate::inventory::Stack;
 use super::*;
 use crate::entity::PlayerId;
 
@@ -80,7 +81,47 @@ enum Hold {
     Work(i32),
     /// Track 2f: `HarvestFarmland`.
     Harvest(Harvest),
+    /// Track 2g: `UseBonemeal`.
+    Bonemeal(Bonemeal),
 }
+
+/// Track 2g: a running `UseBonemeal`: `cropPos`, `nextWorkCycleTime`,
+/// `timeWorkedSoFar` and the ticks before its 60-tick run times out.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Bonemeal {
+    cell: Option<IVec3>,
+    next: u32,
+    worked: i32,
+    left: i32,
+}
+
+/// v1.0 gap Track 2g: what a villager's work does to the world or drops
+/// this tick; the mob's update sends each as an [`crate::entity::EntityEvent`].
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum FarmAct {
+    /// `HarvestFarmland`'s `destroyBlock` of a ripe crop.
+    Harvest(IVec3),
+    /// `HarvestFarmland` planting a seed from the inventory on farmland.
+    Plant(IVec3, Block),
+    /// `UseBonemeal`: `BoneMealItem.growCrop` and level event 1505.
+    Bonemeal(IVec3),
+    /// `WorkAtComposter.compostItems`: the composter's level from (8 when
+    /// `extractProduce` emptied it first) and to.
+    Compost { cell: IVec3, from: u8, to: u8 },
+    /// An item entity: bread it can't carry (`spawnAtLocation`), the
+    /// composter's bone meal, or a half stack thrown to a trading partner
+    /// (`BehaviorUtils.throwItem`); position, velocity (blocks a second).
+    Item(Stack, DVec3, DVec3),
+}
+
+/// `ItemEntity`'s own toss (`nextDouble() * 0.2 - 0.1`, 0.2 up a tick), in
+/// blocks a second.
+fn item_toss(rng: &mut Rng) -> DVec3 {
+    DVec3::new(rng.next_f64() * 0.2 - 0.1, 0.2, rng.next_f64() * 0.2 - 0.1) * 20.0
+}
+
+/// `WorkAtComposter.COMPOSTABLE_ITEMS`.
+const COMPOSTABLE: [Item; 2] = [Item::WHEAT_SEEDS, Item::BEETROOT_SEEDS];
 
 /// Track 2f: the point of interest a stroll option reads: the villager's
 /// `JOB_SITE`, or the brute's `HOME` (where it spawned in its bastion).
@@ -101,6 +142,34 @@ pub(crate) fn harvestable<W: MobWorld + ?Sized>(world: &W, cell: IVec3) -> bool 
     let Some(b) = world.block(cell) else { return false };
     b.as_crop().is_some_and(|(crop, age)| age == crop.max_age())
         || b == Block::AIR && world.block(cell - IVec3::Y).is_some_and(|b| b.is_farmland())
+}
+
+/// Track 2g: `UseBonemeal.validPos`: a crop short of its last age.
+fn growing_crop<W: MobWorld + ?Sized>(world: &W, cell: IVec3) -> bool {
+    world.block(cell).and_then(|b| b.as_crop()).is_some_and(|(crop, age)| age < crop.max_age())
+}
+
+/// Track 2g: `UseBonemeal.pickNextTarget`: a growing crop among the 27
+/// cells round the villager's block, each found replacing the pick one
+/// time in its count.
+fn pick_bonemeal_target<W: MobWorld + ?Sized>(world: &W, pos: DVec3, rng: &mut Rng) -> Option<IVec3> {
+    let at = pos.floor().as_ivec3();
+    let mut found = None;
+    let mut count = 0;
+    for x in -1..=1 {
+        for y in -1..=1 {
+            for z in -1..=1 {
+                let p = at + IVec3::new(x, y, z);
+                if growing_crop(world, p) {
+                    count += 1;
+                    if rng.next_int(count) == 0 {
+                        found = Some(p);
+                    }
+                }
+            }
+        }
+    }
+    found
 }
 
 /// The brain walking state of a mob (never saved).
@@ -157,9 +226,13 @@ pub(crate) struct Walking {
     /// `validFarmlandAroundVillager`.
     harvest_ok: u32,
     harvest_valid: Vec<IVec3>,
-    /// Track 2f: a ripe crop `HarvestFarmland` breaks this tick (the mob's
-    /// update sends it as [`crate::entity::EntityEvent::VillagerHarvest`]).
-    pub(crate) harvest_now: Option<IVec3>,
+    /// Track 2f: a ripe crop `HarvestFarmland` breaks this tick; Track 2g:
+    /// everything the work does to the world this tick (the mob's update
+    /// sends them as events).
+    pub(crate) farm_acts: Vec<FarmAct>,
+    /// Track 2g: `UseBonemeal.lastBonemealingSession` (brain clock; 0 before
+    /// the first).
+    bonemeal_last: u32,
     /// Track 2f: `CANT_REACH_WALK_TARGET_SINCE` (brain clock).
     pub(crate) cant_reach_since: Option<u32>,
     /// Track 2f: the village sections within three of the mob, for a
@@ -232,8 +305,8 @@ enum Opt {
     },
     /// Track 2f: `HarvestFarmland`.
     Harvest,
-    /// Track 2f: `UseBonemeal`, which needs bone meal in the villager's
-    /// inventory; the game's villagers never pick any up, so it never starts.
+    /// Track 2f: `UseBonemeal`, with bone meal in the villager's inventory
+    /// (Track 2g).
     UseBonemeal,
 }
 
@@ -492,6 +565,9 @@ impl Mob {
         {
             s.stop_early();
         }
+        if let Some(Hold::Bonemeal(_)) = self.walking.hold {
+            self.walking.bonemeal_last = self.walking.now;
+        }
         if let Some(Hold::Harvest(_)) = self.walking.hold {
             self.stop_harvest();
         }
@@ -550,6 +626,10 @@ impl Mob {
             if let Hold::Harvest(_) = hold {
                 self.stop_harvest();
             }
+            if let Hold::Bonemeal(_) = hold {
+                // `UseBonemeal.stop`.
+                self.walking.bonemeal_last = self.walking.now;
+            }
             self.walking.hold = None;
             // The gate stops; it starts again on the next tick.
             return;
@@ -595,9 +675,14 @@ impl Mob {
                     {
                         let b = world.block(c);
                         if b.is_some_and(|b| b.as_crop().is_some_and(|(crop, age)| age == crop.max_age())) {
-                            // `destroyBlock`; the game's harvest also
-                            // replants (Java plants from the farmer's seeds).
-                            self.walking.harvest_now = Some(c);
+                            // `destroyBlock` (its drops fall for the farmer
+                            // to pick up).
+                            self.walking.farm_acts.push(FarmAct::Harvest(c));
+                        }
+                        // Track 2g: air over farmland and `hasFarmSeeds`: the
+                        // first `VILLAGER_PLANTABLE_SEEDS` stack is planted.
+                        if b == Some(Block::AIR) && world.block(c - IVec3::Y).is_some_and(|b| b.is_farmland()) {
+                            self.plant_seed(c);
                         }
                         if b.is_some_and(|b| b.as_crop().is_some_and(|(crop, age)| age < crop.max_age())) {
                             self.walking.harvest_valid.retain(|&p| p != c);
@@ -614,6 +699,37 @@ impl Mob {
                     h.worked += 1;
                 }
                 self.walking.hold = Some(Hold::Harvest(h));
+                true
+            }
+            Hold::Bonemeal(mut h) => {
+                // `canStillUse` and the 60-tick timeout.
+                if h.left <= 0 || h.worked >= 80 || h.cell.is_none() {
+                    return false;
+                }
+                h.left -= 1;
+                let now = self.walking.now;
+                if let Some(c) = h.cell
+                    && now >= h.next
+                    && closer_to_centre(c, self.pos, 1.0)
+                {
+                    // `BoneMealItem.growCrop`: a crop short of its last age.
+                    let slot = self.villager.as_ref().and_then(|v| {
+                        v.inventory().iter().position(|s| s.is_some_and(|s| s.item == Item::BONE_MEAL))
+                    });
+                    if let Some(slot) = slot
+                        && growing_crop(world, c)
+                    {
+                        self.villager.as_mut().unwrap().shrink_slot(slot);
+                        self.walking.farm_acts.push(FarmAct::Bonemeal(c));
+                        h.cell = pick_bonemeal_target(world, self.pos, rng);
+                        if let Some(next) = h.cell {
+                            self.harvest_walk(next);
+                        }
+                        h.next = now.wrapping_add(40);
+                    }
+                    h.worked += 1;
+                }
+                self.walking.hold = Some(Hold::Bonemeal(h));
                 true
             }
             Hold::Nothing(left) => {
@@ -731,6 +847,15 @@ impl Mob {
                 // `start`: looks at the job site (`BlockPosTracker`), uses it
                 // and restocks if it should (the village pass does that).
                 self.head.target = Some(Tracked::Point(job.as_dvec3() + 0.5));
+                // Track 2g: a farmer's `WorkAtComposter.useWorkstation`.
+                let farmer =
+                    self.villager.as_ref().is_some_and(|v| v.profession == crate::entity::villager::Profession::Farmer);
+                if farmer
+                    && let Some(level) = world.block(job).and_then(crate::world::composter::level)
+                {
+                    self.make_bread(rng);
+                    self.compost_items(job, level, rng);
+                }
                 self.walking.work_due = true;
                 self.walking.hold = Some(Hold::Work(60));
                 true
@@ -827,7 +952,26 @@ impl Mob {
                 self.walking.hold = Some(Hold::Harvest(Harvest { cell: Some(cell), worked: 0, left: 60 }));
                 true
             }
-            Opt::UseBonemeal => false,
+            Opt::UseBonemeal => {
+                // Track 2g: `LOOK_TARGET` and `WALK_TARGET` absent; every 10
+                // ticks, 160 after the last session, with bone meal.
+                let now = self.walking.now;
+                let last = self.walking.bonemeal_last;
+                if walking
+                    || self.head.target.is_some()
+                    || !now.is_multiple_of(10)
+                    || last != 0 && last.wrapping_add(160) > now
+                    || self.villager.as_ref().is_none_or(|v| v.count_item(Item::BONE_MEAL) == 0)
+                {
+                    return false;
+                }
+                let Some(cell) = pick_bonemeal_target(world, self.pos, rng) else { return false };
+                // `start`: looks and walks at the crop (0.5, 1 short), holding
+                // bone meal.
+                self.harvest_walk(cell);
+                self.walking.hold = Some(Hold::Bonemeal(Bonemeal { cell: Some(cell), next: now, worked: 0, left: 60 }));
+                true
+            }
             Opt::VillageStroll(speed) => {
                 if walking {
                     return false;
@@ -994,6 +1138,94 @@ impl Mob {
         }
     }
 
+    /// Track 2g: `HarvestFarmland`'s planting: the first inventory stack in
+    /// `VILLAGER_PLANTABLE_SEEDS` that places a block is planted at `cell`
+    /// (the world plants it and plays `item.crop.plant`) and shrinks by one.
+    fn plant_seed(&mut self, cell: IVec3) {
+        let Some(v) = self.villager.as_mut() else { return };
+        let found = v.inventory().iter().enumerate().find_map(|(i, s)| {
+            let s = (*s)?;
+            if !crate::entity::villager_breeding::plantable_seed(s.item) {
+                return None;
+            }
+            s.item.places().map(|b| (i, b))
+        });
+        if let Some((slot, block)) = found {
+            v.shrink_slot(slot);
+            self.walking.farm_acts.push(FarmAct::Plant(cell, block));
+        }
+    }
+
+    /// Track 2g: `WorkAtComposter.makeBread`: with 36 bread or fewer, up to
+    /// three bread from three wheat each; what doesn't fit drops half a block
+    /// up (`spawnAtLocation(stack, 0.5)`).
+    fn make_bread(&mut self, rng: &mut Rng) {
+        let Some(v) = self.villager.as_mut() else { return };
+        if v.count_item(Item::BREAD) > 36 {
+            return;
+        }
+        let bread = (v.count_item(Item::WHEAT) / 3).min(3);
+        if bread == 0 {
+            return;
+        }
+        v.remove_item_type(Item::WHEAT, bread * 3);
+        if let Some(left) = v.accept_food(Stack::new(Item::BREAD, bread as u8)) {
+            let at = self.pos + DVec3::Y * 0.5;
+            self.walking.farm_acts.push(FarmAct::Item(left, at, item_toss(rng)));
+        }
+    }
+
+    /// Track 2g: `WorkAtComposter.compostItems`: a full composter is emptied
+    /// first (`extractProduce`: one bone meal at its top, within 0.35 across);
+    /// then, from the last slot back, wheat and beetroot seeds beyond ten of
+    /// each kind go in, at most 20, each `ComposterBlock.insertItem` (a layer
+    /// on its chance, the first always), stopping at level 7.
+    fn compost_items(&mut self, cell: IVec3, mut level: u8, rng: &mut Rng) {
+        let from = level;
+        if level == 8 {
+            let at = cell.as_dvec3()
+                + DVec3::new(0.5 + (rng.next_f64() - 0.5) * 0.7, 1.01, 0.5 + (rng.next_f64() - 0.5) * 0.7);
+            let toss = item_toss(rng);
+            self.walking.farm_acts.push(FarmAct::Item(Stack::new(Item::BONE_MEAL, 1), at, toss));
+            level = 0;
+        }
+        let Some(v) = self.villager.as_mut() else { return };
+        let mut total = 20u32;
+        let mut seen = [0u32; 2];
+        'slots: for i in (0..8).rev() {
+            if total == 0 {
+                break;
+            }
+            let Some(s) = v.inventory()[i] else { continue };
+            let Some(kind) = COMPOSTABLE.iter().position(|&c| c == s.item) else { continue };
+            let count = u32::from(s.count);
+            seen[kind] += count;
+            let to_use = seen[kind].saturating_sub(10).min(total).min(count);
+            total -= to_use;
+            for _ in 0..to_use {
+                if level < 7 {
+                    let chance = crate::world::composter::chance(s.item);
+                    if level == 0 && chance > 0.0 || rng.next_f64() < f64::from(chance) {
+                        level += 1;
+                    }
+                    v.shrink_slot(i);
+                }
+                if level == 7 {
+                    break 'slots;
+                }
+            }
+        }
+        if level != from {
+            self.walking.farm_acts.push(FarmAct::Compost { cell, from, to: level });
+        }
+    }
+
+    /// Track 2g: whether a `UseBonemeal` is running (the villager holds
+    /// bone meal in its main hand, for the model).
+    pub fn using_bone_meal(&self) -> bool {
+        matches!(self.walking.hold, Some(Hold::Bonemeal(_)))
+    }
+
     /// `HarvestFarmland`'s look and walk to a cell (`BlockPosTracker`, 0.5,
     /// 1 block short).
     fn harvest_walk(&mut self, cell: IVec3) {
@@ -1124,6 +1356,7 @@ impl Mob {
             Some(p) if left > 0 => {
                 if self.pos.distance_squared(p.pos) <= 5.0 {
                     self.lock_gaze_and_walk(p);
+                    self.trade_throws(p);
                 }
                 self.walking.trading_villager = left;
             }
@@ -1131,6 +1364,49 @@ impl Mob {
                 self.walking.trading_villager = 0;
                 self.walking.interaction = None;
             }
+        }
+    }
+
+    /// Track 2g: `TradeWithVillager.tick`'s throws (the game's gossip pass
+    /// gossips): excess food to a farmer or a villager that wants more, a
+    /// farmer's wheat beyond half a stack, and the partner's requested items
+    /// it doesn't request itself (only farmers request any), each
+    /// `throwHalfStack`.
+    fn trade_throws(&mut self, p: super::head::Seen) {
+        use crate::entity::villager::Profession;
+        let Some(v) = self.villager.as_ref() else { return };
+        let farmer = v.profession == Profession::Farmer;
+        let mut throws: Vec<fn(&Stack) -> bool> = Vec::new();
+        if v.has_excess_food() && (farmer || p.wants_food) {
+            throws.push(|s: &Stack| crate::entity::villager_breeding::food_points(s.item) > 0);
+        }
+        if farmer && v.count_item(Item::WHEAT) > 32 {
+            throws.push(|s: &Stack| s.item == Item::WHEAT);
+        }
+        if p.farmer && !farmer {
+            throws.push(|s: &Stack| crate::entity::villager_breeding::requested(Profession::Farmer, s.item));
+        }
+        for wanted in throws {
+            let v = self.villager.as_mut().unwrap();
+            let Some((i, count)) = v.inventory().iter().enumerate().find_map(|(i, s)| {
+                let s = (*s).filter(wanted)?;
+                if s.count > s.max() / 2 {
+                    Some((i, s.count / 2))
+                } else {
+                    (s.count > 24).then_some((i, s.count - 24))
+                }
+            }) else {
+                continue;
+            };
+            let stack = v.inventory()[i].unwrap();
+            for _ in 0..count {
+                v.shrink_slot(i);
+            }
+            // `BehaviorUtils.throwItem`: from 0.3 below the eyes, 0.3 a tick
+            // toward the partner's feet, 10 ticks before pickup.
+            let from = DVec3::new(self.pos.x, self.pos.y + self.eye_height() - 0.3, self.pos.z);
+            let vel = (p.pos - self.pos).normalize_or_zero() * 0.3 * 20.0;
+            self.walking.farm_acts.push(FarmAct::Item(Stack { count, ..stack }, from, vel));
         }
     }
 

@@ -1606,7 +1606,7 @@ impl Mob {
             ))
         });
         let health = mount.as_ref().map_or(kind.max_health(), |s| s.max_health);
-        Self {
+        let mut m = Self {
             simulation_active: true,
             infested: 0,
             mount,
@@ -1789,7 +1789,16 @@ impl Mob {
             last_hurt: 0.0,
             ride_walk: None,
             bounces: 0,
+        };
+        // v1.0 gap Track 2g: `PiglinBrute.finalizeSpawn` (`PiglinBruteAi.initMemories`):
+        // a brute's `HOME` is where it spawns, however it spawns (a saved brute
+        // loads its own).
+        if kind == MobKind::PiglinBrute
+            && let Some(n) = m.nether.as_mut()
+        {
+            n.home = Some(pos);
         }
+        m
     }
 
     pub(super) fn melee_attack(&self) -> (f32, Cause) {
@@ -2678,9 +2687,17 @@ impl Mob {
         // after the mob's other goals took their flags.
         if self.dying.is_none() {
             self.head_goals(world, ctx, rng, wish.is_some());
-            // v1.0 gap Track 2f: `HarvestFarmland` breaking a ripe crop.
-            if let Some(cell) = self.walking.harvest_now.take() {
-                events.push(EntityEvent::VillagerHarvest { cell });
+            // v1.0 gap Track 2f: `HarvestFarmland` breaking a ripe crop;
+            // Track 2g: planting, bone meal, composting and items.
+            for act in std::mem::take(&mut self.walking.farm_acts) {
+                use brain_walk::FarmAct;
+                events.push(match act {
+                    FarmAct::Harvest(cell) => EntityEvent::VillagerHarvest { cell },
+                    FarmAct::Plant(cell, block) => EntityEvent::VillagerPlant { cell, block },
+                    FarmAct::Bonemeal(cell) => EntityEvent::VillagerBonemeal { cell },
+                    FarmAct::Compost { cell, from, to } => EntityEvent::VillagerCompost { cell, from, to },
+                    FarmAct::Item(stack, pos, vel) => EntityEvent::ThrowItem { stack, pos, vel },
+                });
             }
         }
 

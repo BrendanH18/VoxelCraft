@@ -494,9 +494,36 @@ pub enum EntityEvent {
     VillagerDoor {
         cell: IVec3,
     },
-    /// A farmer villager harvests the ripe crop at `cell` and replants it (Java `HarvestFarmland`).
+    /// A farmer villager breaks the ripe crop at `cell` (Java
+    /// `HarvestFarmland`'s `destroyBlock`, which drops its items).
     VillagerHarvest {
         cell: IVec3,
+    },
+    /// v1.0 gap Track 2g: a farmer plants `block` from its inventory on the
+    /// farmland under `cell` (`HarvestFarmland`, `item.crop.plant`).
+    VillagerPlant {
+        cell: IVec3,
+        block: crate::world::block::Block,
+    },
+    /// v1.0 gap Track 2g: a villager uses bone meal on the crop at `cell`
+    /// (`UseBonemeal`: `BoneMealItem.growCrop`, level event 1505).
+    VillagerBonemeal {
+        cell: IVec3,
+    },
+    /// v1.0 gap Track 2g: a farmer's `WorkAtComposter` took the composter at
+    /// `cell` from level `from` (8: emptied first) to `to`.
+    VillagerCompost {
+        cell: IVec3,
+        from: u8,
+        to: u8,
+    },
+    /// v1.0 gap Track 2g: a mob throws or drops `stack` from `pos` at `vel`
+    /// (blocks a second), 10 ticks before it can be picked up
+    /// (`BehaviorUtils.throwItem`, `spawnAtLocation`); handled internally.
+    ThrowItem {
+        stack: crate::inventory::Stack,
+        pos: DVec3,
+        vel: DVec3,
     },
     /// v1.0 Track 6: a villager rings its meeting bell before a raid
     /// (`RingBell`, `BellBlock.attemptToRing` with the villager as source).
@@ -1219,6 +1246,11 @@ impl Rng {
         splitmix64(&mut self.0)
     }
 
+    /// A double in `[0, 1)` (Java's `nextDouble`, 53 bits).
+    pub fn next_f64(&mut self) -> f64 {
+        (splitmix64(&mut self.0) >> 11) as f64 / (1u64 << 53) as f64
+    }
+
     pub fn range(&mut self, lo: f32, hi: f32) -> f32 {
         lo + (hi - lo) * self.next_f32()
     }
@@ -1350,7 +1382,7 @@ pub struct Entities {
     /// v1.0 gap Track 2f: each player's `lastHurtByMob` (a mob's uid), the
     /// hurt's number and its age in ticks, for the foxes'
     /// `DefendTrustedTargetGoal`.
-    pub(crate) player_hurt_by: rustc_hash::FxHashMap<PlayerId, (u32, u32, u32)>,
+    pub(crate) player_hurt_by: rustc_hash::FxHashMap<PlayerId, (fox::Attacker, u32, u32)>,
     pub(crate) player_hurts: u32,
     /// v0.15 Track D: the `max_entity_cramming` gamerule, which caps
     /// Oozing's slimes.

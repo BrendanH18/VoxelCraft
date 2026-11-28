@@ -409,6 +409,10 @@ impl Thrown {
                             crate::simulation::damage::Cause::WIND_CHARGE
                         },
                     });
+                    // v1.0 gap Track 2g: the breeze is the player's `lastHurtByMob`.
+                    if let Some(attacker) = self.shooter {
+                        events.push(EntityEvent::OwnerHurt { player: t.id, attacker });
+                    }
                 }
                 self.burst(self.pos, events);
                 return false;
@@ -428,6 +432,9 @@ impl Thrown {
                         knockback: (DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 0.5).as_vec3(),
                         cause: crate::simulation::damage::Cause::LLAMA_SPIT,
                     });
+                    if let Some(attacker) = self.shooter {
+                        events.push(EntityEvent::OwnerHurt { player: t.id, attacker });
+                    }
                 }
                 continue;
             }

@@ -35,6 +35,18 @@ impl World {
         }
         true
     }
+    /// v1.0 gap Track 2g: a farmer's `WorkAtComposter` took the composter
+    /// at `p` from level `from` (8: `extractProduce` emptied it, its bone
+    /// meal already dropped) to `to`, if it is still at `from`.
+    pub fn villager_compost(&mut self, p: IVec3, from: u8, to: u8) {
+        if self.get_block(p).and_then(level) != Some(from) || to > 7 {
+            return;
+        }
+        self.set_block(p, state(to));
+        if to == 7 {
+            self.schedule_redstone(p, 20, 0);
+        }
+    }
     pub fn take_compost(&mut self, p: IVec3) -> Option<Stack> {
         if self.get_block(p).and_then(level) != Some(8) {
             return None;

@@ -218,7 +218,7 @@ fn foxes_defend_a_trusted_player_from_its_attacker() {
     e.mobs[f].animal.as_mut().unwrap().sleeping = true;
     let mut c = ctx(0.0);
     c.players.push(Target::new(PlayerId(1), DVec3::new(8.5, 64.0, 0.5), true));
-    e.player_hurt_by.insert(PlayerId(1), (zombie, 1, 0));
+    e.player_hurt_by.insert(PlayerId(1), (super::Attacker::Mob(zombie), 1, 0));
     for _ in 0..60 {
         e.fox_upkeep(&c);
         e.mobs[f].goals.ticks = e.mobs[f].goals.ticks.wrapping_add(1);

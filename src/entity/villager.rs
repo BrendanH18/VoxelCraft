@@ -194,6 +194,9 @@ pub struct Villager {
     pub reputation: i16,
     pub(super) last_slept: Option<i64>,
     pub(super) golem_seen: f32,
+    /// The 8-slot inventory (`AbstractVillager.inventory`, saved as `food`:
+    /// older saves hold only food; v1.0 gap Track 2g adds seeds, wheat and
+    /// bone meal).
     pub(super) food: [Option<Stack>; 8],
     pub(super) food_level: u8,
     pub(super) courtship: u16,
@@ -1111,7 +1114,7 @@ impl Entities {
                         *slot = s
                             .as_str()
                             .and_then(|s| stack_from_str(s).flatten())
-                            .filter(|s| super::villager_breeding::food_points(s.item) > 0);
+                            .filter(|s| s.count > 0);
                     }
                 }
                 v.food_level = a["food_level"].as_u64().unwrap_or(0).min(15) as u8;
@@ -1647,29 +1650,41 @@ mod tests {
         assert!(!restored.mobs[2].baby);
     }
     #[test]
-    fn villagers_share_excess_and_obey_pickup_gamerule() {
+    fn villagers_pick_up_what_java_wants_and_obey_the_gamerule() {
+        // v1.0 gap Track 2g: `Villager.wantsToPickUp`: `VILLAGER_PICKS_UP`
+        // (seeds, bread, wheat, beetroots), villager food, and the farmer's
+        // requested items (bone meal); nothing else.
         let w = grid();
         let mut e = Entities::new(8);
         e.spawn(MobKind::Villager, DVec3::ZERO);
-        e.spawn(MobKind::Villager, DVec3::X);
-        e.mobs[0].villager.as_mut().unwrap().food[0] = Some(Stack::new(Item::BREAD, 6));
-        e.breed_villagers(&w);
-        assert_eq!(e.mobs[1].villager.as_ref().unwrap().food_points(), 0, "small stacks are not shared");
-        e.mobs[0].villager.as_mut().unwrap().food[0] = Some(Stack::new(Item::CARROT, 36));
-        e.breed_villagers(&w);
-        assert_eq!(e.mobs[0].villager.as_ref().unwrap().food_points(), 18);
-        assert_eq!(e.mobs[1].villager.as_ref().unwrap().food_points(), 18);
-        e.mobs[0].villager.as_mut().unwrap().food = [None; 8];
-        e.mobs[1].villager.as_mut().unwrap().food = [None; 8];
-        e.drop_from_block(Stack::new(Item::POTATO, 12), IVec3::ZERO);
-        e.items[0].pickup_delay = 0.0;
+        for item in [Item::POTATO, Item::WHEAT_SEEDS, Item::BONE_MEAL, Item::IRON_INGOT] {
+            e.drop_from_block(Stack::new(item, 12), IVec3::ZERO);
+        }
+        for it in &mut e.items {
+            it.pickup_delay = 0.0;
+        }
         e.villager_griefing = false;
-        e.breed_villagers(&w);
-        assert_eq!(e.items[0].stack.count, 12);
+        e.villager_pickup(&w);
+        assert_eq!(e.items.len(), 4, "mobGriefing off: nothing is picked up");
         e.villager_griefing = true;
-        e.breed_villagers(&w);
-        assert!(e.items.is_empty());
-        assert_eq!(e.mobs.iter().map(|m| m.villager.as_ref().unwrap().food_points()).sum::<u16>(), 12);
+        e.villager_pickup(&w);
+        let left: Vec<Item> = e.items.iter().map(|i| i.stack.item).collect();
+        assert_eq!(left, [Item::BONE_MEAL, Item::IRON_INGOT], "an unemployed villager wants no bone meal");
+        let v = e.mobs[0].villager.as_ref().unwrap();
+        assert_eq!((v.count_item(Item::POTATO), v.count_item(Item::WHEAT_SEEDS)), (12, 12));
+        assert_eq!(v.food_points(), 12, "seeds aren't food");
+        e.mobs[0].villager.as_mut().unwrap().set_profession(Profession::Farmer);
+        e.villager_pickup(&w);
+        assert_eq!(e.items.iter().map(|i| i.stack.item).collect::<Vec<_>>(), [Item::IRON_INGOT]);
+        assert_eq!(e.mobs[0].villager.as_ref().unwrap().count_item(Item::BONE_MEAL), 12);
+        // Breeding eats only the food, and the inventory saves and loads.
+        let v = e.mobs[0].villager.as_mut().unwrap();
+        v.eat_for_breeding();
+        assert_eq!((v.count_item(Item::POTATO), v.count_item(Item::WHEAT_SEEDS)), (0, 12));
+        let mut restored = Entities::new(8);
+        restored.load_villagers(&e.villagers_to_string());
+        let v = restored.mobs[0].villager.as_ref().unwrap();
+        assert_eq!((v.count_item(Item::WHEAT_SEEDS), v.count_item(Item::BONE_MEAL)), (12, 12));
     }
     #[test]
     fn breeding_requires_food_free_bed_and_two_blocks_headroom() {

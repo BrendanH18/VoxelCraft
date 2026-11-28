@@ -105,6 +105,17 @@ pub(crate) struct Prey {
     /// The target goal that picked it and its priority.
     pub hunt: Hunt,
     pub priority: u8,
+    /// v1.0 gap Track 2g: a player the fox defends a trusted player from
+    /// (`uid` is then unused).
+    pub player: Option<super::PlayerId>,
+}
+
+/// v1.0 gap Track 2g: who last hurt a player (`LivingEntity.lastHurtByMob`):
+/// a mob, by melee or its projectile, or another player.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Attacker {
+    Mob(u32),
+    Player(super::PlayerId),
 }
 
 /// The running goal outside the shared table, with its state.
@@ -318,6 +329,17 @@ fn alerts(m: &Mob) -> bool {
 }
 
 impl Entities {
+    /// v1.0 gap Track 2g: player `attacker` hurt player `victim` (a PvP hit
+    /// that landed): `victim`'s `lastHurtByMob`, which foxes that trust it
+    /// defend against.
+    pub fn note_player_hurt_by_player(&mut self, victim: super::PlayerId, attacker: super::PlayerId) {
+        if victim == attacker {
+            return;
+        }
+        self.player_hurts = self.player_hurts.wrapping_add(1);
+        self.player_hurt_by.insert(victim, (Attacker::Player(attacker), self.player_hurts, 0));
+    }
+
     /// The foxes' targets and senses before the mobs think: each target goal
     /// keeps a living target within its follow range and, without one, looks
     /// on the fox's full updates one time in `reducedTickDelay(10)` for the
@@ -358,10 +380,31 @@ impl Entities {
                     height: s.height,
                     hunt,
                     priority,
+                    player: None,
                 }
+            };
+            // v1.0 gap Track 2g: a player target (a trusted player's attacker).
+            let player_prey = |t: &super::Target, hunt: Hunt, priority: u8| Prey {
+                uid: u32::MAX,
+                kind: MobKind::Fox,
+                pos: t.pos,
+                vel: t.vel,
+                eye: t.eye_height(),
+                half_width: t.shape.half_width,
+                height: t.shape.height,
+                hunt,
+                priority,
+                player: Some(t.id),
             };
             // `TargetGoal.canContinueToUse`: alive and within the follow range.
             let kept = m.fox.as_ref().unwrap().target.and_then(|p| {
+                if let Some(id) = p.player {
+                    // `canAttack`: a living player that isn't creative or
+                    // spectating.
+                    let t = ctx.players.iter().find(|t| t.id == id)?;
+                    return (t.alive && t.targetable && t.pos.distance_squared(pos) <= FOLLOW_RANGE * FOLLOW_RANGE)
+                        .then(|| player_prey(t, p.hunt, p.priority));
+                }
                 let &j = by_uid.get(&p.uid)?;
                 let t = &self.mobs[j];
                 (t.alive() && t.pos.distance_squared(pos) <= FOLLOW_RANGE * FOLLOW_RANGE)
@@ -379,13 +422,32 @@ impl Entities {
                 if let Some(p) = trusted.iter().flatten().find(|id| ctx.players.iter().any(|t| t.id == **id))
                     && let Some(&(attacker, seq, _)) = self.player_hurt_by.get(p)
                     && Some(seq) != stamp
-                    && let Some(&j) = by_uid.get(&attacker)
-                    && attacker != uid
-                    && self.mobs[j].alive()
-                    && self.mobs[j].pos.distance_squared(pos) <= FOLLOW_RANGE * FOLLOW_RANGE
                 {
-                    target = Some(prey(j, Hunt::Defend, 3));
-                    defended = Some(seq);
+                    match attacker {
+                        Attacker::Mob(a) => {
+                            if let Some(&j) = by_uid.get(&a)
+                                && a != uid
+                                && self.mobs[j].alive()
+                                && self.mobs[j].pos.distance_squared(pos) <= FOLLOW_RANGE * FOLLOW_RANGE
+                            {
+                                target = Some(prey(j, Hunt::Defend, 3));
+                                defended = Some(seq);
+                            }
+                        }
+                        // Track 2g: another player, unless the fox trusts it
+                        // (the goal's selector) or can't attack it.
+                        Attacker::Player(a) => {
+                            if let Some(t) = ctx.players.iter().find(|t| t.id == a)
+                                && !trusted.contains(&Some(a))
+                                && t.alive
+                                && t.targetable
+                                && t.pos.distance_squared(pos) <= FOLLOW_RANGE * FOLLOW_RANGE
+                            {
+                                target = Some(player_prey(t, Hunt::Defend, 3));
+                                defended = Some(seq);
+                            }
+                        }
+                    }
                 }
             }
             if full {

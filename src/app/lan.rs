@@ -2633,6 +2633,13 @@ impl Game {
         // `Player.attack`: the extra knockback, sweep and post-attack effects
         // (Thorns) follow only a hit `hurtOrSimulate` accepted.
         let (extra, sweep, thorns) = if landed { (extra, sweep, thorns) } else { (0.0, false, [0; 4]) };
+        // v1.0 gap Track 2g: the target's `lastHurtByMob`, which the foxes
+        // that trust it defend against.
+        if landed
+            && let (Some(victim), Some(by)) = (self.player(&target).map(|s| s.id), self.player(attacker).map(|s| s.id))
+        {
+            self.mobs.entities.note_player_hurt_by_player(victim, by);
+        }
         if extra > 0.0 {
             // `causeExtraKnockback`: the push slows the attacker and stops its sprint.
             if let Some(me) = self.player_mut(attacker) {

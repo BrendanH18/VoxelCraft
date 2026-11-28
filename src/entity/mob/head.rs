@@ -440,6 +440,18 @@ pub(crate) struct Seen {
     /// Track 2f: its `INTERACTION_TARGET` mob (who a playing baby chases),
     /// refreshed every tick.
     pub chasing: Option<u32>,
+    /// Track 2g: a farmer villager (`TradeWithVillager`'s requested items).
+    pub farmer: bool,
+    /// Track 2g: a villager that `wantsMoreFood`, refreshed every tick.
+    pub wants_food: bool,
+}
+
+/// Track 2g: whether `m` is a farmer villager and whether it
+/// `wantsMoreFood`.
+fn villager_wants(m: &Mob) -> (bool, bool) {
+    m.villager.as_ref().map_or((false, false), |v| {
+        (v.profession == crate::entity::villager::Profession::Farmer, v.wants_more_food())
+    })
 }
 
 /// What a look goal or `LOOK_TARGET` follows.
@@ -1758,7 +1770,18 @@ impl crate::entity::Entities {
                             && b.age == 0
                             && b.villager.as_ref().is_some_and(|v| !v.sleeping && v.food_points() >= 12);
                         let (baby, chasing) = (b.is_baby(), b.walking.interaction);
-                        seen.push(Seen { uid: b.uid, kind: b.kind, eye: at, pos: b.pos, breedable, baby, chasing });
+                        let (farmer, wants_food) = villager_wants(b);
+                        seen.push(Seen {
+                            uid: b.uid,
+                            kind: b.kind,
+                            eye: at,
+                            pos: b.pos,
+                            breedable,
+                            baby,
+                            chasing,
+                            farmer,
+                            wants_food,
+                        });
                     }
                 }
                 self.mobs[i].head.seen = seen;
@@ -1770,6 +1793,7 @@ impl crate::entity::Entities {
                         s.eye = self.mobs[j].look_eye();
                         s.pos = self.mobs[j].pos;
                         s.chasing = self.mobs[j].walking.interaction;
+                        (s.farmer, s.wants_food) = villager_wants(&self.mobs[j]);
                         true
                     }
                     _ => false,
