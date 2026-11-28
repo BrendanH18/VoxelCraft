@@ -451,10 +451,12 @@ release notes in `packaging/RELEASE-NOTES.md`. It is not tagged.
   port Java's End islands; spectators can't use portals; bamboo's
   sub-texel geometry; Java's slot icon orientation; the nautilus shell
   first; the right stick for bundles; the owner's play verifies rows.
-- **Waiting for the owner:** the looks merged overnight without approval
-  (gap Tracks 6c, 6d, 6e, 6f, 7d, 7e, 7f, 8c's and 8d's flames, final F1's
-  off-hand, F3's block variants, fire and bells, and F10's models); FE-05 (one running
-  dimension), proposed; the owner's play of the build, which verifies
+- **Owner decisions taken (2026-11-28):** every look merged overnight
+  approved ("all looks good": gap Tracks 6c, 6d, 6e, 6f, 7d, 7e, 7f, 8c's
+  and 8d's flames, final F1's off-hand, F3's block variants, fire and
+  bells, and F10's models); FE-05 (one running dimension) closed rather
+  than accepted, in final Track F11.
+- **Waiting:** F11 merged; the owner's play of the build, which verifies
   rows; then the merge, the `1.0` tag and the published release.
 - **Not run:** no frame-time runs (dropped by the owner, 2026-11-27);
   nobody has played the build since the gap-closing work began.
