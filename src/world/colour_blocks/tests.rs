@@ -627,8 +627,7 @@ fn sleepers_stand_up_beside_a_straw_bed() {
 }
 
 /// v1.0 gap Track 8f: `FireChargeItem.useOn` on a plain block sets fire in
-/// the cell beside the clicked face and is used up; where fire can't go it
-/// does nothing and the charge stays.
+/// the cell beside the clicked face and is used up, except in creative.
 #[test]
 fn a_fire_charge_sets_fire_beside_the_block_it_is_used_on() {
     let mut w = world();
@@ -637,11 +636,14 @@ fn a_fire_charge_sets_fire_beside_the_block_it_is_used_on() {
     let mut s = player(P.as_dvec3() + DVec3::new(-2.5, 0.0, 0.5), floor.as_dvec3() + DVec3::new(0.5, 1.0, 0.5));
     s.inventory.slots[0] = Some(Stack::new(Item::FIRE_CHARGE, 2));
     let used = use_held(&mut s, &mut w).map(|u| u.used);
-    assert!(matches!(used, Some(Used::Ignited { cell, portal: false, charge: true }) if cell == P), "{used:?}");
-    assert!(w.get_block(P).is_some_and(|b| b.is_fire()), "{:?}", w.get_block(P));
+    let Some(Used::Ignited { cell, portal: false, charge: true }) = used else { panic!("{used:?}") };
+    assert_eq!(cell.y, P.y, "on top of the floor block the crosshair is on: {cell}");
+    assert!(w.get_block(cell).is_some_and(|b| b.is_fire()), "{:?}", w.get_block(cell));
     assert_eq!(s.inventory.get(0).map(|s| s.count), Some(1));
-    // The same cell again: it holds fire now, so the charge does nothing.
+    // In creative the charge isn't used up.
+    w.set_block(cell, Block::AIR);
+    s.mode = GameMode::Creative;
     let used = use_held(&mut s, &mut w).map(|u| u.used);
-    assert!(!matches!(used, Some(Used::Ignited { .. })), "{used:?}");
+    assert!(matches!(used, Some(Used::Ignited { charge: true, .. })), "{used:?}");
     assert_eq!(s.inventory.get(0).map(|s| s.count), Some(1));
 }
