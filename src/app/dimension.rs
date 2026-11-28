@@ -16,7 +16,7 @@ use crate::audio::SoundSource;
 use crate::audio::sounds::{PortalCue, Sound};
 use crate::world::World;
 use crate::world::block::Block;
-use crate::world::portal::{BORDER, PortalTrip};
+use crate::world::portal::{BORDER, PortalKind, PortalTrip};
 use crate::world::storage::{self, SavedChunks, Storage};
 use crate::world::terrain::{Dimension, Generator};
 
@@ -24,6 +24,51 @@ use super::Game;
 
 /// `Player.getDimensionChangingDelay`: 10 ticks, in seconds.
 const PORTAL_COOLDOWN: f64 = 10.0 / 20.0;
+
+/// v1.0 gap Track 8c: the root level file's key for [`OwedPortal`]s.
+pub(super) const OWED_PORTALS_KEY: &str = "owed_nether_portals";
+/// At most this many owed portals are kept (each refused trip from a
+/// different block of a portal adds one); later ones are dropped.
+const MAX_OWED_PORTALS: usize = 256;
+
+/// v1.0 gap Track 8c: a Nether portal a refused trip owes. With
+/// `allow_entering_nether_using_portals` off, Java's
+/// `NetherPortalBlock.getPortalDestination` still runs before
+/// `teleportToPortalDestination` refuses the trip: `getExitPortal` looks
+/// for a portal within 16 blocks of `target` in the Nether and, finding
+/// none, builds one there along the entry's axis (`createPortal`). Nothing
+/// in the Nether changes while the player is in the Overworld here (it
+/// isn't loaded), so the game builds it as the Nether next loads, before
+/// the arrival: the same search over the same unchanged Nether gives the
+/// same portal Java built at the time of the trip.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct OwedPortal {
+    pub target: IVec3,
+    pub along_x: bool,
+}
+
+/// The [`OWED_PORTALS_KEY`] text: `x,y,z,x` or `x,y,z,z` per portal, `;`
+/// between them.
+pub(super) fn owed_portals_text(owed: &[OwedPortal]) -> String {
+    let one =
+        |o: &OwedPortal| format!("{},{},{},{}", o.target.x, o.target.y, o.target.z, if o.along_x { "x" } else { "z" });
+    owed.iter().map(one).collect::<Vec<_>>().join(";")
+}
+
+/// Reads [`owed_portals_text`]; damaged entries are skipped.
+pub(super) fn parse_owed_portals(text: &str) -> Vec<OwedPortal> {
+    let one = |entry: &str| {
+        let parts: Vec<&str> = entry.split(',').collect();
+        let [x, y, z, axis] = parts[..] else { return None };
+        let along_x = match axis {
+            "x" => true,
+            "z" => false,
+            _ => return None,
+        };
+        Some(OwedPortal { target: IVec3::new(x.parse().ok()?, y.parse().ok()?, z.parse().ok()?), along_x })
+    };
+    text.split(';').filter_map(one).take(MAX_OWED_PORTALS).collect()
+}
 
 /// Level properties that belong to one dimension rather than the player.
 pub(super) const DIMENSION_KEYS: [&str; 40] = [
@@ -508,15 +553,14 @@ impl Game {
         true
     }
 
-    /// Goes through the portal the player is standing in.
-    fn travel(&mut self) {
-        let to = self.dimension.other();
+    /// `NetherPortalBlock.getPortalDestination`'s trip to `to` from where the
+    /// player stands: the scaled position at the traveller's own height,
+    /// clamped to the world border; a new portal follows the one entered,
+    /// and the traveller arrives where they stood in it
+    /// (`getRelativePortalPosition`), keeping their motion.
+    fn portal_trip(&self, to: Dimension) -> PortalTrip {
         let scale = if to == Dimension::Nether { 1.0 / 8.0 } else { 8.0 };
         let player = &self.session.player;
-        // `NetherPortalBlock.getPortalDestination`: the scaled position at
-        // the traveller's own height, clamped to the world border; a new
-        // portal follows the one entered, and the traveller arrives where
-        // they stood in it (`getRelativePortalPosition`), keeping their motion.
         let target = BORDER.clamp(DVec3::new(player.pos.x * scale, player.pos.y, player.pos.z * scale));
         let (width, height) = java_size(player.collision_shape());
         let mut trip = PortalTrip::without_portal(target);
@@ -526,6 +570,14 @@ impl Game {
             trip.offset = crate::world::portal::relative_position(rect, along_x, player.pos, width, height);
         }
         trip.vel = player.vel;
+        trip
+    }
+
+    /// Goes through the portal the player is standing in.
+    fn travel(&mut self) {
+        let to = self.dimension.other();
+        let mut trip = self.portal_trip(to);
+        let target = trip.target;
         // v1.0 gap Track 8b, `getExitPortal`: a player who turned spectator
         // after the count's last tick in the portal still goes, but only to
         // a portal already there (`getPortalDestination` gives no
@@ -538,11 +590,59 @@ impl Game {
         self.switch_dimension(to, Arrival::Portal(trip));
     }
 
+    /// v1.0 gap Track 8c: a trip into the Nether the
+    /// `allow_entering_nether_using_portals` rule refused still owes the
+    /// Nether its exit portal, as Java builds it before refusing
+    /// ([`OwedPortal`]). A spectator's owes none (`getExitPortal` builds
+    /// them nothing), and a LAN client's is the host's to build.
+    fn owe_refused_portal(&mut self) {
+        if self.lan.client.is_some() || self.session.mode == voxelcraft::rules::GameMode::Spectator {
+            return;
+        }
+        let trip = self.portal_trip(Dimension::Nether);
+        let owed = OwedPortal { target: trip.target, along_x: trip.along_x };
+        if !self.owed_portals.contains(&owed) && self.owed_portals.len() < MAX_OWED_PORTALS {
+            log::info!(
+                "the Nether rule refused a trip: its exit portal near {} is built when the Nether loads",
+                owed.target
+            );
+            self.owed_portals.push(owed);
+        }
+    }
+
+    /// v1.0 gap Track 8c: arriving in the Nether, the portals refused trips
+    /// owe ([`OwedPortal`]) come first, oldest first, each once the ground
+    /// around it has loaded: `getExitPortal`'s search, then `createPortal`
+    /// if it finds none. Returns whether one is still owed (the player
+    /// waits, held at it so it streams in, behind the arrival screen).
+    fn build_owed_portal(&mut self) -> bool {
+        let Some(&owed) = self.owed_portals.first() else { return false };
+        let r = SEARCH_RADIUS;
+        let ready = [(-r, -r), (r, -r), (-r, r), (r, r), (0, 0)]
+            .iter()
+            .all(|&(dx, dz)| self.world.column_loaded(owed.target.x + dx, owed.target.z + dz));
+        if !ready {
+            self.session.player.pos = owed.target.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
+            self.session.player.vel = DVec3::ZERO;
+            return true;
+        }
+        if self.world.find_portal(owed.target, crate::world::portal::NETHER_PORTAL_RADIUS).is_none()
+            && self.world.create_portal(owed.target, owed.along_x).is_none()
+        {
+            log::error!("unable to create a portal at {}", owed.target);
+        }
+        self.owed_portals.remove(0);
+        true
+    }
+
     /// While travelling: holds the player in place until the destination
     /// has streamed in, then puts them in (or builds) the portal there, or
     /// at their respawn point. Returns whether the player is still waiting.
     pub(super) fn update_arrival(&mut self) -> bool {
         let Some(arrival) = self.arrival else { return false };
+        if self.dimension == Dimension::Nether && self.lan.client.is_none() && self.build_owed_portal() {
+            return true;
+        }
         let target = match arrival {
             Arrival::Portal(trip) => trip.target,
             Arrival::PortalAt(p, _) => p,
@@ -777,35 +877,32 @@ impl Game {
         })
     }
 
-    /// Standing in a Nether portal long enough takes you to the other
-    /// dimension. Falling into an End portal takes you at once: to the End's
-    /// obsidian platform, or out of the End to your spawn point.
+    /// The portal blocks the player moved into this tick (`entityInside`):
+    /// a Nether portal, an End portal or an End gateway marks the player
+    /// inside it for the next tick's [`Game::process_portal`].
     pub(super) fn update_portal(&mut self) {
         if self.credits.is_some() {
             return;
         }
         // v1.0 gap Track 8: a spectator passes through every portal as if
         // it weren't there (`noPhysics`: no `entityInside`), so a countdown
-        // already begun runs down as it does outside.
+        // already begun runs down as it does outside. (A rider never gets
+        // here: the tick moves only a player on foot.)
         let touches = self.session.mode.uses_portals() && !self.session.vitals.is_dead();
         if self.dimension == Dimension::End
             && touches
             && let Some(cell) = self.touched(Block::END_GATEWAY)
         {
             // `EndGatewayBlock.entityInside`: a gateway cooling down does
-            // nothing; otherwise it starts its cooldown (and beam) and the
-            // player enters it, or, still on their own portal cooldown,
-            // only restarts that (`setAsInsidePortal`).
+            // nothing; otherwise it starts its cooldown (and beam) and marks
+            // the player inside it (`setAsInsidePortal`), and the next
+            // tick's `handlePortal` takes them through (v1.0 gap Track 8c).
             let Some(fight) = &mut self.mobs.entities.fight else { return };
             if fight.gateway_entities.cooling(cell) {
                 return;
             }
             fight.gateway_entities.trigger(cell);
-            if self.portal_cooldown > 0.0 {
-                self.portal_cooldown = PORTAL_COOLDOWN;
-            } else {
-                self.enter_gateway(cell);
-            }
+            self.inside_portal(PortalKind::Gateway, cell);
             return;
         }
         // Java's End portal block spans 6..12 sixteenths: coming up from
@@ -816,19 +913,15 @@ impl Game {
             if self.portal_locked {
                 return;
             }
+            // `EndPortalBlock.entityInside`: in the End, a player who hasn't
+            // seen the credits gets them at once; anyone else is marked
+            // inside, and the next tick's `handlePortal` takes them through
+            // (`getPortalTransitionTime` is the `Portal` default of 0).
             if self.dimension == Dimension::End && self.begin_credits() {
                 return;
             }
-            let (to, arrival) = match self.dimension {
-                Dimension::End => (Dimension::Overworld, Arrival::Respawn),
-                _ => {
-                    let p = &self.session.player;
-                    let yaw = crate::knockback::java_yaw_degrees(p.yaw);
-                    let vel = crate::world::portal::end_arrival_motion(p.vel, yaw);
-                    (Dimension::End, Arrival::EndSpawn { vel })
-                }
-            };
-            self.switch_dimension(to, arrival);
+            let cell = self.touched(Block::END_PORTAL).unwrap_or_else(|| self.session.player.pos.floor().as_ivec3());
+            self.inside_portal(PortalKind::End, cell);
             return;
         }
         if self.dimension == Dimension::End || !touches || !self.in_portal(Block::NETHER_PORTAL, (0.0, 1.0)) {
@@ -844,14 +937,26 @@ impl Game {
         }
         self.portal_seen = true;
         if !self.portal_locked {
-            self.portal.enter();
+            let cell = self.touched(Block::NETHER_PORTAL).unwrap_or_else(|| self.session.player.pos.floor().as_ivec3());
+            self.portal.enter(PortalKind::Nether, cell);
+        }
+    }
+
+    /// `Entity.setAsInsidePortal`: on cooldown it only restarts the
+    /// cooldown; otherwise the count for `kind` is marked inside at `cell`.
+    fn inside_portal(&mut self, kind: PortalKind, cell: IVec3) {
+        if self.portal_cooldown > 0.0 {
+            self.portal_cooldown = PORTAL_COOLDOWN;
+        } else {
+            self.portal.enter(kind, cell);
         }
     }
 
     /// v1.0 gap Track 8b: `Entity.handlePortal`, at the start of the tick
-    /// before the player moves: the cooldown runs down, and the Nether
-    /// portal count ([`crate::world::portal::PortalProcessor`]) counts the
-    /// tick the player was last marked inside the portal, or runs down 4.
+    /// before the player moves: the cooldown runs down, and the portal
+    /// count ([`crate::world::portal::PortalProcessor`]) counts the tick
+    /// the player was last marked inside the portal, or runs down 4. Track
+    /// 8c: End portals and gateways count here too, with a delay of 0.
     /// Returns whether the player set off (and so waits to arrive).
     pub(super) fn process_portal(&mut self) -> bool {
         if self.credits.is_some() {
@@ -861,18 +966,53 @@ impl Game {
         // `canUsePortal(false)`: not riding, alive and (`LivingEntity`) not asleep.
         let allowed =
             self.session.player.vehicle.is_none() && !self.session.vitals.is_dead() && self.session.sleeping.is_none();
-        if !self.portal.process(allowed, self.portal_delay()) {
+        let (kind, entry) = (self.portal.kind(), self.portal.entry());
+        let delay = match kind {
+            PortalKind::Nether => self.portal_delay(),
+            PortalKind::End | PortalKind::Gateway => 0,
+        };
+        if !self.portal.process(allowed, delay) {
             return false;
         }
+        // `handlePortal` sets the cooldown before `getPortalDestination`.
         self.portal_cooldown = PORTAL_COOLDOWN;
-        // `teleportToPortalDestination`: `ServerLevel.isAllowedToEnterPortal`
-        // gates only the Nether. Java builds the Nether's exit portal
-        // first; here a refused trip doesn't load the Nether at all.
-        if !self.gamerules.portal_allows_trip_from(self.dimension) {
-            return false;
+        match kind {
+            PortalKind::Nether => {
+                // `teleportToPortalDestination`: `ServerLevel.isAllowedToEnterPortal`
+                // gates only the Nether, after `getPortalDestination` has
+                // found or built the exit portal (v1.0 gap Track 8c).
+                if !self.gamerules.portal_allows_trip_from(self.dimension) {
+                    self.owe_refused_portal();
+                    return false;
+                }
+                self.travel();
+            }
+            PortalKind::End => self.through_end_portal(),
+            // `EndGatewayBlock.getPortalDestination`: nothing if the
+            // gateway at the entry has gone.
+            PortalKind::Gateway => {
+                if self.dimension == Dimension::End && self.world.get_block(entry) == Some(Block::END_GATEWAY) {
+                    self.enter_gateway(entry);
+                }
+            }
         }
-        self.travel();
         self.arrival.is_some()
+    }
+
+    /// `EndPortalBlock.getPortalDestination`: into the End, on the obsidian
+    /// platform facing west with the motion turned to match, or out of the
+    /// End to the player's respawn point.
+    fn through_end_portal(&mut self) {
+        let (to, arrival) = match self.dimension {
+            Dimension::End => (Dimension::Overworld, Arrival::Respawn),
+            _ => {
+                let p = &self.session.player;
+                let yaw = crate::knockback::java_yaw_degrees(p.yaw);
+                let vel = crate::world::portal::end_arrival_motion(p.vel, yaw);
+                (Dimension::End, Arrival::EndSpawn { vel })
+            }
+        };
+        self.switch_dimension(to, arrival);
     }
 
     /// Ticks the count takes: Java's `NetherPortalBlock.getPortalTransitionTime`,
@@ -887,7 +1027,8 @@ impl Game {
     /// left plays `PORTAL_TRIGGER` as the purple starts from nothing (a
     /// local `AMBIENT` sound at volume 0.25, pitch 0.8 to 1.2) and closes
     /// the inventory and any container (`isAllowedInPortal`: only pause,
-    /// chat, death and credits screens stay). Returns whether the player
+    /// chat, death and credits screens stay; Track 8c: the sign editor and a
+    /// lectern's book close too). Returns whether the player
     /// stood in the portal, for [`super::distortion::Distortion::tick`].
     pub(super) fn portal_effect(&mut self) -> bool {
         if !std::mem::take(&mut self.portal_seen) {
@@ -895,6 +1036,14 @@ impl Game {
         }
         if self.inventory_open {
             self.toggle_inventory();
+        }
+        // v1.0 gap Track 8c: the sign editor and a lectern's book too. (An
+        // unshared world pauses under every menu, so only a shared one
+        // reaches this with one open.)
+        if self.menu.is_open()
+            && let Some(action) = self.with_menu(|stack, game, _| stack.close_for_portal(game))
+        {
+            self.menu_action = Some(action);
         }
         if self.distortion.portal(1.0) == 0.0 {
             self.audio.play(Sound::Portal(PortalCue::Trigger), None, 0.25, (0.8, 1.2));
@@ -932,6 +1081,23 @@ mod tests {
     use super::*;
     use crate::world::chunk::ChunkData;
     use crate::world::storage::LevelInfo;
+
+    /// v1.0 gap Track 8c: the Nether portals refused trips owe are saved in
+    /// the root level file and read back; damaged entries are skipped, and
+    /// the key isn't one of a dimension's.
+    #[test]
+    fn owed_nether_portals_round_trip() {
+        let owed = vec![
+            OwedPortal { target: IVec3::new(-12, 70, 3), along_x: true },
+            OwedPortal { target: IVec3::new(400, 31, -9), along_x: false },
+        ];
+        let text = owed_portals_text(&owed);
+        assert_eq!(text, "-12,70,3,x;400,31,-9,z");
+        assert_eq!(parse_owed_portals(&text), owed);
+        assert_eq!(parse_owed_portals("1,2,3,x;bad;4,5,6,y;7,8,9,z").len(), 2);
+        assert!(parse_owed_portals("").is_empty());
+        assert!(!DIMENSION_KEYS.contains(&OWED_PORTALS_KEY));
+    }
 
     #[test]
     fn every_entity_save_key_stays_with_its_dimension() {

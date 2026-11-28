@@ -259,10 +259,13 @@ impl Crystals {
             let Some(i) = self.list.iter().position(|c| c.id == id) else { continue };
             let c = self.list.remove(i);
             if blow != Blow::Explosion {
-                // At its feet, credited to the player who hit it, or named
-                // after the mob behind the blow.
+                // At its feet, named after the player (v1.0 gap Track 8c)
+                // or mob behind the blow (`explosion(crystal,
+                // source.getEntity())`, a `player_explosion`), or the
+                // crystal's own with nobody behind it.
                 let cause = match blow {
                     Blow::Mob(kind) => blame(kind),
+                    Blow::Player { .. } => crate::simulation::damage::Cause::PLAYER_EXPLOSION,
                     _ => crate::simulation::damage::Cause::END_CRYSTAL,
                 };
                 events.push(EntityEvent::Explosion {

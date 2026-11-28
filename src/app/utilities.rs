@@ -98,6 +98,7 @@ impl Game {
                         glint: stack.has_foil(),
                         translucent: false,
                         mesh: Some((stack, voxelcraft::content::item_models::Context::Fixed)),
+                        transform: None,
                     };
                 }
                 let size = if block.is_some() { 0.375 } else { 0.5 };
@@ -107,6 +108,16 @@ impl Game {
                         .item
                         .dial_layer(self.dial_of(&self.session.player).for_stack(&stack))
                         .or_else(|| stack.item.flat_layer()),
+                };
+                // v1.0 gap track 6c: fences, walls and anvils turn a quarter
+                // in a frame (their `fixed` transforms' 90 degrees about y), so
+                // a fence, which runs north to south as Java's
+                // `fence_inventory` does, lies across the frame.
+                let fixed = voxelcraft::content::item_display::of(&stack).fixed.rotation;
+                let orient = if block.is_some() && fixed[0] == 0.0 && fixed[2] == 0.0 && fixed[1] % 180.0 == 90.0 {
+                    orient * glam::Quat::from_rotation_y(fixed[1].to_radians())
+                } else {
+                    orient
                 };
                 // A block sits on the frame's backing rather than in the wall.
                 let out =
@@ -126,6 +137,7 @@ impl Game {
                     glint: stack.has_foil(),
                     translucent: crate::item::translucent(&stack),
                     mesh: None,
+                    transform: None,
                 }
             },
         )

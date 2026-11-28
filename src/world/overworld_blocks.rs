@@ -203,6 +203,58 @@ pub const BAMBOO: Block = Block(2022);
 pub const BAMBOO_SMALL_LEAVES: Block = Block(2023);
 pub const BAMBOO_LARGE_LEAVES: Block = Block(2024);
 pub const BAMBOO_SAPLING: Block = Block(2025);
+/// v1.0 gap track 6c: Java's bamboo `age=0`, the thin stalk (2 texels
+/// across), with no, small and large leaves: states 14038-14040 (Track 6's
+/// reservation). The stalks 2022-2024 are `age=1` (3 texels), as Java's
+/// `BambooFeature` generates every stalk; saves from before this have only
+/// those. Each thin state answers as its thick one for every rule
+/// ([`Block`]'s aliases); only the drawing and growth read the age.
+pub const THIN_BAMBOO: Block = Block(THIN_BAMBOO_FIRST);
+pub const THIN_BAMBOO_SMALL_LEAVES: Block = Block(THIN_BAMBOO_FIRST + 1);
+pub const THIN_BAMBOO_LARGE_LEAVES: Block = Block(THIN_BAMBOO_FIRST + 2);
+pub const THIN_BAMBOO_FIRST: u16 = 14038;
+pub const THIN_BAMBOO_LAST: u16 = 14040;
+
+/// A thin bamboo state (`age=0`).
+pub const fn is_thin_bamboo(id: u16) -> bool {
+    id >= THIN_BAMBOO_FIRST && id <= THIN_BAMBOO_LAST
+}
+
+/// The thick stalk a thin one answers as; any other block unchanged.
+pub const fn thick_bamboo(b: Block) -> Block {
+    if is_thin_bamboo(b.0) { Block(b.0 - THIN_BAMBOO_FIRST + 2022) } else { b }
+}
+
+/// A bamboo stalk's Java `age` (0 thin, 1 thick) and `leaves` (0 none, 1
+/// small, 2 large).
+pub const fn bamboo_stalk(b: Block) -> Option<(u8, u8)> {
+    match b.0 {
+        2022..=2024 => Some((1, (b.0 - 2022) as u8)),
+        THIN_BAMBOO_FIRST..=THIN_BAMBOO_LAST => Some((0, (b.0 - THIN_BAMBOO_FIRST) as u8)),
+        _ => None,
+    }
+}
+
+/// `BambooStalkBlock.getStateForPlacement`: bamboo placed on a shoot is a
+/// bare thin stalk, on a stalk a bare stalk of its thickness, under a stalk
+/// one of that stalk's; anywhere else it is planted as a shoot.
+pub fn bamboo_placed(below: Block, above: Block) -> Block {
+    if below.canonical() == BAMBOO_SAPLING {
+        return bamboo(0, 0);
+    }
+    if let Some((age, _)) = bamboo_stalk(below.canonical()) {
+        return bamboo(age, 0);
+    }
+    match bamboo_stalk(above.canonical()) {
+        Some((age, _)) => bamboo(age, 0),
+        None => BAMBOO_SAPLING,
+    }
+}
+
+/// The bamboo stalk of `age` and `leaves` ([`bamboo_stalk`]).
+pub const fn bamboo(age: u8, leaves: u8) -> Block {
+    Block(if age == 0 { THIN_BAMBOO_FIRST } else { 2022 } + leaves as u16)
+}
 pub const BAMBOO_BLOCK: Block = Block(2026);
 pub const BAMBOO_PLANKS: Block = Block(2027);
 pub const BAMBOO_MOSAIC: Block = Block(2028);
@@ -1056,7 +1108,7 @@ pub fn boxes(b: Block) -> Option<&'static [super::shape::Box16]> {
         }
         out
     };
-    Some(match b.0 {
+    Some(match thick_bamboo(b).0 {
         2400..=2415 => &WALL_BUD_BOXES[(b.0 - WALL_BUDS) as usize],
         2054..=2057 => &VINES[(b.0 - 2054) as usize],
         1950 => &DRIPLEAF,
@@ -1076,7 +1128,7 @@ pub fn boxes(b: Block) -> Option<&'static [super::shape::Box16]> {
 /// that collides or outlines.
 pub fn bamboo_leaf_planes(b: Block) -> Option<[super::shape::Box16; 2]> {
     use super::shape::Box16 as B;
-    matches!(b.0, 2023 | 2024)
+    matches!(thick_bamboo(b).0, 2023 | 2024)
         .then_some([B { min: [1, 0, 8], max: [15, 16, 8] }, B { min: [8, 0, 1], max: [8, 16, 15] }])
 }
 

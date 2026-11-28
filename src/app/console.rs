@@ -17,6 +17,10 @@ pub(super) struct Console {
     pub history_index: Option<usize>,
     pub draft: String,
     pub lines: VecDeque<String>,
+    /// v1.0 gap track 6c: when the last chat line came, so a single-player
+    /// game shows its chat for Java's 10 seconds (`ChatComponent`'s 200
+    /// ticks) as a LAN game always does.
+    pub last_line: Option<std::time::Instant>,
 }
 
 /// What a finished console command prints: failures always, successes only

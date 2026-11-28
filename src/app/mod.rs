@@ -291,6 +291,8 @@ struct Game {
     decor_scene: Vec<(IVec3, IVec3, Item, Option<Item>)>,
     /// `--brush`: strokes on suspicious blocks, after `--place`.
     brush_scene: Vec<(IVec3, IVec3, u8)>,
+    /// v1.0 gap Track 8c: `--projectile` arrows and tridents to stick in blocks.
+    projectile_scene: Vec<(bool, IVec3, bool)>,
     /// `--open-block`: a container to open once placements are done.
     open_block: Option<IVec3>,
     /// `--drop`: thrown once the world has loaded.
@@ -350,6 +352,13 @@ struct Game {
     /// (`Player.getDimensionChangingDelay`, 10 ticks); touching a portal or
     /// gateway meanwhile restarts it rather than using it.
     portal_cooldown: f64,
+    /// v1.0 gap Track 8c: Nether portals owed by trips the
+    /// `allow_entering_nether_using_portals` rule refused (Java's
+    /// `getPortalDestination` builds the exit portal before
+    /// `teleportToPortalDestination` refuses the trip), built when the
+    /// Nether next loads ([`dimension::OwedPortal`]). Saved in the root
+    /// level file.
+    owed_portals: Vec<dimension::OwedPortal>,
 }
 
 pub struct App {
@@ -955,9 +964,13 @@ impl Game {
     /// A key or mouse button let go during play.
     fn on_release(&mut self, input: keys::Input) {
         let bindings = self.settings.keys;
+        // Java's `KeyboardHandler.keyPress`: with the debug modifier and
+        // the overlay on one key, the overlay toggles when it is let go,
+        // unless a debug key was used while it was held.
         if !self.menu.is_open()
             && !self.console.open
-            && bindings.actions(input).any(|a| a == keys::Action::DebugOverlay)
+            && self.debug_keys_shared()
+            && bindings.actions(input).any(|a| a == keys::Action::DebugModifier)
         {
             if !self.debug_key_used {
                 self.show_debug = !self.show_debug;
@@ -1070,12 +1083,18 @@ impl Game {
             // Java's default binds the debug modifier and the overlay to
             // the same key: the overlay toggles when it is let go, unless a
             // debug key was used while it was held (`usedDebugKeyAsModifier`).
-            A::DebugOverlay => self.debug_key_used = false,
+            // v1.0 gap track 6c: bound apart, the overlay key toggles it
+            // when pressed.
+            A::DebugOverlay if !self.debug_keys_shared() => self.show_debug = !self.show_debug,
+            A::DebugOverlay => {}
+            A::DebugModifier => self.debug_key_used = false,
             // v1.0 gap track 6b: F3+H, `KeyboardHandler.handleDebugKeys`.
-            A::AdvancedTooltips if self.held(A::DebugOverlay) => {
+            A::AdvancedTooltips if self.held(A::DebugModifier) => {
                 self.debug_key_used = true;
                 self.settings.advanced_tooltips = !self.settings.advanced_tooltips;
-                self.show_popup(if self.settings.advanced_tooltips {
+                // v1.0 gap track 6c: in chat, as `debugFeedbackTranslated`
+                // puts it (`showDebugChat`).
+                self.chat_line(if self.settings.advanced_tooltips {
                     "[Debug]: Advanced tooltips: shown"
                 } else {
                     "[Debug]: Advanced tooltips: hidden"
@@ -1111,6 +1130,12 @@ impl Game {
 
     /// Whether an action's key is down: held, or toggled on for Sneak and
     /// Sprint in Toggle mode. A table lookup per call.
+    /// Java's `modifierAndOverlayIsSame`: the debug modifier and overlay
+    /// keys are bound to the same key (as by default).
+    fn debug_keys_shared(&self) -> bool {
+        self.settings.keys.get(keys::Action::DebugModifier) == self.settings.keys.get(keys::Action::DebugOverlay)
+    }
+
     fn held(&self, action: keys::Action) -> bool {
         match action {
             keys::Action::Sneak if self.settings.toggle_sneak => self.sneak_toggled,
@@ -1903,6 +1928,9 @@ impl Game {
         for (pos, face, item, held) in std::mem::take(&mut self.decor_scene) {
             self.place_scripted_decor(pos, face, item, held);
         }
+        for (trident, cell, fire) in std::mem::take(&mut self.projectile_scene) {
+            self.mobs.entities.stick_scripted_projectile(trident, cell, fire);
+        }
         for (pos, face, strokes) in std::mem::take(&mut self.brush_scene) {
             if !self.world.brush_scripted(pos, face, strokes) {
                 log::warn!("--brush {pos}: not a suspicious block");
@@ -2683,6 +2711,7 @@ impl Game {
                 glint: false,
                 translucent: false,
                 mesh: None,
+                transform: None,
             })
             .chain(self.mobs.entities.tnt.iter().map(|t| {
                 let s = t.size();
@@ -2703,6 +2732,7 @@ impl Game {
                     glint: false,
                     translucent: false,
                     mesh: None,
+                    transform: None,
                 }
             }))
             .chain(self.world.moving_piston_blocks(alpha).chain(self.world.moving_piston_heads(alpha)).map(
@@ -2721,6 +2751,7 @@ impl Game {
                     glint: false,
                     translucent: false,
                     mesh: None,
+                    transform: None,
                 },
             ))
             .chain(self.item_models(alpha))

@@ -10,8 +10,11 @@
 //! offset, then `rotationZYX`) and maps Java's space onto this game's by
 //! the half turn about X that [`Part::on_java_side`] describes: Java's
 //! right (-x) stays the mob's right (-X), y and z change sign, and the y
-//! and z turns with them. Nothing from Java's geometry files or textures
-//! is used; the numbers are proportions and pivots.
+//! and z turns with them. v1.0 gap Track 7d: parts scale as well
+//! (`xScale`, `yScale`, `zScale`, applied after the turn and carried to
+//! the children), and a part can skip drawing its own boxes while its
+//! children draw (`skipDraw`). Nothing from Java's geometry files or
+//! textures is used; the numbers are proportions and pivots.
 
 use super::*;
 
@@ -72,15 +75,26 @@ pub(super) struct Rig {
     bones: &'static [Bone],
     pub at: [[f32; 3]; MAX_BONES + 1],
     pub rot: [[f32; 3]; MAX_BONES + 1],
+    /// `ModelPart.xScale`, `yScale` and `zScale` (the model root's last).
+    pub scale: [[f32; 3]; MAX_BONES + 1],
     /// `ModelPart.visible`.
     pub shown: [bool; MAX_BONES],
+    /// `ModelPart.skipDraw`: the part's own boxes hidden, its children
+    /// still drawn.
+    pub skip: [bool; MAX_BONES],
 }
 
 impl Rig {
     pub fn new(bones: &'static [Bone]) -> Self {
         debug_assert!(bones.len() <= MAX_BONES);
-        let mut r =
-            Self { bones, at: [[0.0; 3]; MAX_BONES + 1], rot: [[0.0; 3]; MAX_BONES + 1], shown: [true; MAX_BONES] };
+        let mut r = Self {
+            bones,
+            at: [[0.0; 3]; MAX_BONES + 1],
+            rot: [[0.0; 3]; MAX_BONES + 1],
+            scale: [[1.0; 3]; MAX_BONES + 1],
+            shown: [true; MAX_BONES],
+            skip: [false; MAX_BONES],
+        };
         for (i, b) in bones.iter().enumerate() {
             debug_assert!(b.parent == ROOT || (b.parent as usize) < i, "parents first");
             (r.at[i], r.rot[i]) = (b.at, b.rot);
@@ -119,36 +133,52 @@ impl Rig {
     }
 
     /// Every bone composed with its parents and turned onto this game's
-    /// axes; bones without boxes, or hidden, add no part.
+    /// axes; bones without boxes, hidden or skipping their draw add no
+    /// part. A part's world transform is `pivot + rot * (stretch * v)`:
+    /// Java's `translate`, `rotate`, `scale` for each part from the root
+    /// down, so a parent's scale stretches its children's offsets and,
+    /// carried through their turns (`rot⁻¹ * stretch * rot`), their boxes.
     pub fn parts(&self) -> Parts {
-        let mut world = [(Vec3::ZERO, Quat::IDENTITY); MAX_BONES];
+        let mut world = [(Vec3::ZERO, Quat::IDENTITY, Mat3::IDENTITY); MAX_BONES];
         let mut shown = [true; MAX_BONES];
         let mut out = Parts::new();
-        let (base, base_rot) = self.model_root();
+        let root = self.model_root();
         for (i, b) in self.bones.iter().enumerate() {
             let [x, y, z] = self.at[i];
-            let local = java_quat(self.rot[i]);
-            let (pivot, rot) = if b.parent == ROOT {
-                (base + base_rot * Vec3::new(x, -y, -z), base_rot * local)
+            let parent = if b.parent == ROOT {
+                root
             } else {
-                let (pp, pr) = world[b.parent as usize];
                 shown[i] = shown[b.parent as usize];
-                (pp + pr * Vec3::new(x, -y, -z), pr * local)
+                world[b.parent as usize]
             };
-            world[i] = (pivot, rot);
+            world[i] = compose(parent, Vec3::new(x, -y, -z), java_quat(self.rot[i]), self.scale[i]);
             shown[i] &= self.shown[i];
-            if shown[i] && !b.boxes.is_empty() {
-                out.push(Part { boxes: b.boxes, pivot, rot });
+            if shown[i] && !self.skip[i] && !b.boxes.is_empty() {
+                let (pivot, rot, stretch) = world[i];
+                out.push(Part { boxes: b.boxes, pivot, rot, stretch });
             }
         }
         out
     }
 
-    /// Where the model's root part puts Java's origin, and its turn.
-    fn model_root(&self) -> (Vec3, Quat) {
+    /// Where the model's root part puts Java's origin, its turn and scale.
+    fn model_root(&self) -> (Vec3, Quat, Mat3) {
         let [x, y, z] = self.at[MODEL_ROOT];
-        (Vec3::new(x, 24.0 - y, -z), java_quat(self.rot[MODEL_ROOT]))
+        compose(
+            (Vec3::new(0.0, 24.0, 0.0), Quat::IDENTITY, Mat3::IDENTITY),
+            Vec3::new(x, -y, -z),
+            java_quat(self.rot[MODEL_ROOT]),
+            self.scale[MODEL_ROOT],
+        )
     }
+}
+
+/// A child's world transform from its parent's, its offset (this game's
+/// axes), turn and Java scale. Java scales on its own axes; the half turn
+/// about X onto this game's keeps each axis, so the factors carry over.
+fn compose((pp, pr, ps): (Vec3, Quat, Mat3), offset: Vec3, rot: Quat, [sx, sy, sz]: [f32; 3]) -> (Vec3, Quat, Mat3) {
+    let turn = Mat3::from_quat(rot);
+    (pp + pr * (ps * offset), pr * rot, turn.transpose() * ps * turn * Mat3::from_diagonal(Vec3::new(sx, sy, sz)))
 }
 
 #[cfg(test)]
@@ -176,5 +206,33 @@ mod tests {
         // Java's +y turn (towards the mob's left) is a -Y turn here.
         r.rot[0] = [0.0, 0.5, 0.0];
         assert!((r.parts()[0].rot.to_euler(glam::EulerRot::YXZ).0 + 0.5).abs() < 1e-5);
+    }
+
+    /// v1.0 gap Track 7d: a part's scale stretches its own boxes and its
+    /// children's offsets and boxes, through their turns; `skip` hides only
+    /// the part's own boxes.
+    #[test]
+    fn scaled_parts_stretch_themselves_and_their_children() {
+        static BONES: &[Bone] = &[
+            bone(BOX, ROOT, [0.0, 18.0, 0.0], [0.0; 3]),
+            bone(BOX, 0, [0.0, 6.0, 0.0], [std::f32::consts::FRAC_PI_2, 0.0, 0.0]),
+        ];
+        let mut r = Rig::new(BONES);
+        r.scale[0] = [1.0, 2.0, 1.0];
+        let p = r.parts();
+        // The parent's box is twice as long, its child hangs twice as far.
+        assert!((p[0].stretch * Vec3::new(0.0, -6.0, 0.0) - Vec3::new(0.0, -12.0, 0.0)).length() < 1e-5);
+        assert!((p[1].pivot - Vec3::new(0.0, -6.0, 0.0)).length() < 1e-5, "{}", p[1].pivot);
+        // The child turned a quarter about X points its box along the
+        // parent's z, which the parent doesn't stretch: still 6 long.
+        let foot = p[1].rot * (p[1].stretch * Vec3::new(0.0, -6.0, 0.0));
+        assert!((foot.length() - 6.0).abs() < 1e-4, "{foot}");
+        // Along the parent's y it is stretched twice.
+        let side = p[1].rot * (p[1].stretch * Vec3::new(0.0, 0.0, 1.0));
+        assert!((side.length() - 2.0).abs() < 1e-4, "{side}");
+        r.skip[0] = true;
+        let p = r.parts();
+        assert_eq!(p.len(), 1);
+        assert!((p[0].pivot - Vec3::new(0.0, -6.0, 0.0)).length() < 1e-5);
     }
 }

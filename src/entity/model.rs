@@ -11,7 +11,7 @@ mod trader_model;
 
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
-use glam::{DVec3, Quat, Vec3};
+use glam::{DVec3, Mat3, Quat, Vec3};
 
 use super::mob::{Ai, FUSE_TIME, Mob, MobKind};
 use super::motion;
@@ -20,6 +20,7 @@ use super::{Arrow, Puff, XpOrb};
 use crate::simulation::experience;
 use bytemuck::{Pod, Zeroable};
 
+mod flame;
 mod labels;
 mod nether;
 
@@ -127,6 +128,28 @@ pub struct EntityMesh {
     /// which the renderer draws into its outline mask.
     glow_verts: Vec<EntityVertex>,
     glow_boxes: Vec<BoxInstance>,
+    /// v1.0 gap track 6c: items held by players seen from outside and by
+    /// mobs, drawn by the renderer's item model pass.
+    held: Vec<HeldItemModel>,
+}
+
+/// v1.0 gap track 6c: an item in a third-person or mob hand. The renderer
+/// draws it as dropped and framed items are drawn (`render::block_model`),
+/// with the enchantment glint and translucent blocks blended.
+#[derive(Clone, Copy, Debug)]
+pub struct HeldItemModel {
+    pub stack: crate::inventory::Stack,
+    /// The item's model space (a block is 0..1) to camera-relative blocks,
+    /// its third-person display transform included.
+    pub transform: glam::Mat4,
+    pub sky_light: f32,
+    pub block_light: f32,
+    /// The block model to draw instead of the stack's (a statue's pose).
+    pub block: Option<crate::world::block::Block>,
+    /// The sprite to draw instead of the stack's (a compass or clock frame).
+    pub icon: Option<u16>,
+    /// A dyed stack's sprite tint.
+    pub tint: Option<[u8; 3]>,
 }
 
 /// Where an entity's geometry starts in an [`EntityMesh`].
@@ -151,6 +174,17 @@ impl EntityMesh {
         self.boxes.clear();
         self.glow_verts.clear();
         self.glow_boxes.clear();
+        self.held.clear();
+    }
+
+    /// v1.0 gap track 6c: adds a held item.
+    pub fn push_held(&mut self, item: HeldItemModel) {
+        self.held.push(item);
+    }
+
+    /// The held items, in emission order.
+    pub fn held_items(&self) -> &[HeldItemModel] {
+        &self.held
     }
 
     /// Marks where the next entity's geometry starts.
@@ -945,10 +979,15 @@ struct Part {
     boxes: &'static [Cuboid],
     pivot: Vec3,
     rot: Quat,
+    /// v1.0 gap Track 7d: the part's boxes stretched before its turn, as
+    /// Java's `ModelPart` scales them (`xScale`, `yScale`, `zScale`, and
+    /// its parents' scales carried through their turns): identity for
+    /// every part but a [`rig::Rig`]'s scaled ones.
+    stretch: Mat3,
 }
 
 fn part(boxes: &'static [Cuboid], pivot: [f32; 3], rot: Quat) -> Part {
-    Part { boxes, pivot: Vec3::from_array(pivot), rot }
+    Part { boxes, pivot: Vec3::from_array(pivot), rot, stretch: Mat3::IDENTITY }
 }
 
 impl Part {
@@ -961,7 +1000,13 @@ impl Part {
     /// across the body.
     fn on_java_side(self) -> Self {
         let r = self.rot;
-        Self { pivot: self.pivot * Vec3::new(-1.0, 1.0, 1.0), rot: Quat::from_xyzw(r.x, -r.y, -r.z, r.w), ..self }
+        let mirror = Mat3::from_diagonal(Vec3::new(-1.0, 1.0, 1.0));
+        Self {
+            pivot: self.pivot * Vec3::new(-1.0, 1.0, 1.0),
+            rot: Quat::from_xyzw(r.x, -r.y, -r.z, r.w),
+            stretch: mirror * self.stretch * mirror,
+            ..self
+        }
     }
 }
 
@@ -972,7 +1017,7 @@ struct Parts {
 }
 impl Parts {
     fn new() -> Self {
-        Self { data: [Part { boxes: &[], pivot: Vec3::ZERO, rot: Quat::IDENTITY }; 24], len: 0 }
+        Self { data: [part(&[], [0.0; 3], Quat::IDENTITY); 24], len: 0 }
     }
     fn push(&mut self, p: Part) {
         self.data[self.len] = p;
@@ -1752,7 +1797,7 @@ pub fn build(
         let model_scale = animals::model_scale(m);
         for (pi, p) in posed.iter().enumerate() {
             let rot = body * p.rot;
-            let xf = |v: Vec3| origin + body * ((p.pivot + p.rot * v) * model_scale) * scale / 16.0;
+            let xf = |v: Vec3| origin + body * ((p.pivot + p.rot * (p.stretch * v)) * model_scale) * scale / 16.0;
             // v0.18 Track 6: the part's map and shades, once for all its boxes.
             let frame = (!out.flat).then(|| BoxFrame::new(&xf, rot));
             // Endermen eyes and blazes glow at full brightness.
@@ -1834,13 +1879,27 @@ pub fn build(
                 }
             }
         }
-        // Zombie villagers use the villager mesh, which is not the six-limb armor rig.
+        // Zombie villagers use the villager mesh, which is not the six-limb armor rig
+        // (v1.0 gap Track 7d: the cub's is, and wears its armor).
+        let villager_cub = m.kind == MobKind::ZombieVillager && m.is_baby();
         if (m.kind.is_zombie() && m.kind != MobKind::ZombieVillager)
             || m.kind.is_bow_skeleton()
             || m.kind == MobKind::Piglin
+            || villager_cub
         {
             let worn = m.equipment.worn();
-            if m.is_baby() && babies::has_model(m.kind) {
+            if villager_cub {
+                use baby_rigs::zombie_villager as z;
+                let (head, rest) = z::armor(&posed);
+                let draw = |out: &mut EntityMesh,
+                            limbs: &[super::player_model::Limb; 6],
+                            worn: &[Option<super::armor::Worn>; 4],
+                            k: f32| {
+                    super::player_model::draw_armor(out, limbs, worn, origin, body, scale * k, (light, torch));
+                };
+                draw(out, &head, &[worn[0], None, None, None], z::HEAD_ARMOR);
+                draw(out, &rest, &[None, worn[1], worn[2], worn[3]], z::BODY_ARMOR);
+            } else if m.is_baby() && babies::has_model(m.kind) {
                 // v1.0 gap Track 7b: the baby's armor at Java's baby scales.
                 let (head, rest) = babies::armor(&posed);
                 let draw = |out: &mut EntityMesh,
@@ -1861,9 +1920,9 @@ pub fn build(
                 // A baby's hand holds the item at Java's baby scale.
                 let k = babies::BODY_ARMOR;
                 let arm = Part { pivot: posed[4].pivot / k, ..posed[4] };
-                draw_held(out, &arm, stack.item, origin, body, scale * k, (light, torch));
+                draw_held(out, &arm, stack, origin, body, scale * k, (light, torch), true);
             } else {
-                draw_held(out, &posed[4], stack.item, origin, body, scale, (light, torch));
+                draw_held(out, &posed[4], stack, origin, body, scale, (light, torch), false);
             }
         }
         if m.kind == MobKind::SulfurCube {
@@ -1895,32 +1954,24 @@ fn held_stack(m: &Mob) -> Option<crate::inventory::Stack> {
     shown.then_some(stack)
 }
 
-/// `ItemInHandLayer`'s right grip on `arm`: a block item as a small cube,
-/// anything else as its flat icon in the third-person hand display.
+/// `ItemInHandLayer`'s right grip on `arm`, the stack's model with its
+/// third-person display transform (v1.0 gap track 6c; it was a small cube
+/// or a flat icon), drawn by the renderer's item model pass. A baby's model
+/// takes Java's baby offset.
+#[allow(clippy::too_many_arguments)]
 fn draw_held(
     out: &mut EntityMesh,
     arm: &Part,
-    item: crate::item::Item,
+    stack: crate::inventory::Stack,
     origin: Vec3,
     body: Quat,
     scale: f32,
     light: ([u8; 4], u8),
+    baby: bool,
 ) {
-    let mut held = super::player_model::Limb {
-        pivot: arm.pivot + arm.rot * Vec3::new(0.0, -9.0, 1.0),
-        rot: arm.rot * Quat::from_rotation_x(-FRAC_PI_2) * Quat::from_rotation_y(PI),
-        min: [-4.0, -4.0, -0.5],
-        max: [4.0, 4.0, 0.5],
-        uv: [0.0; 2],
-    };
-    if let Some(block) = item.block().filter(|b| !b.flat_icon()) {
-        super::player_model::held_block(out, &held, origin, body, light, block, 3.2, scale, [255, 255, 255, 0]);
-        return;
-    }
-    held.rot *= Quat::from_rotation_y(-FRAC_PI_2) * Quat::from_rotation_z(55f32.to_radians());
-    let layer = item.flat_layer().unwrap_or(crate::world::block::tex::ITEM_BASE);
-    let tint = crate::inventory::components::undyed_tint(item).map_or([255, 255, 255, 0], |[r, g, b]| [r, g, b, 0]);
-    super::player_model::textured_box(out, &held, 0.0, origin, body, light, 2, layer, scale, tint);
+    let hand = super::player_model::third_person_hand(arm.pivot, arm.rot, origin, body, scale, baby);
+    let light = (f32::from(light.0[0]) / 255.0, f32::from(light.1) / 255.0);
+    out.push_held(super::player_model::held_item(stack, hand, light, None, None, None));
 }
 
 /// Small glowing cubes rising around a burning mob.
@@ -1952,10 +2003,15 @@ fn flames(out: &mut EntityMesh, m: &Mob, rel: Vec3, time: f32) {
     }
 }
 
-/// Arrows, pointing along their flight.
-pub fn build_arrows(arrows: &[Arrow], camera: DVec3, alpha: f64, out: &mut EntityMesh) {
+/// Arrows, pointing along their flight. v1.0 gap Track 8c: a burning one
+/// (Flame, fire, lava, a perched dragon's scales) carries Java's flame
+/// ([`flame::flame`]) over its 0.5 by 0.5 box, seen along `forward`.
+pub fn build_arrows(arrows: &[Arrow], camera: DVec3, forward: Vec3, time: f32, alpha: f64, out: &mut EntityMesh) {
     for a in arrows {
         let rel = (a.previous_pos.lerp(a.pos, alpha) - camera).as_vec3();
+        if a.burning() {
+            flame::flame(out, rel, (0.5, 0.5), forward, 230, time);
+        }
         let rot = Quat::from_rotation_arc(Vec3::Z, a.dir.normalize_or(Vec3::Z));
         // Stuck arrows sit with the tip buried.
         let origin = if a.is_stuck() { rel - a.dir * 0.2 } else { rel };
@@ -1989,9 +2045,21 @@ const TRIDENT: &[Cuboid] = &[
 /// Thrown tridents (v0.16): stuck ones sit with their prongs buried.
 pub use illager::build_fangs;
 
-pub fn build_tridents(tridents: &[super::trident::Trident], camera: DVec3, alpha: f64, out: &mut EntityMesh) {
+/// v1.0 gap Track 8c: a burning trident carries Java's flame over its 0.5
+/// by 0.5 box too.
+pub fn build_tridents(
+    tridents: &[super::trident::Trident],
+    camera: DVec3,
+    forward: Vec3,
+    time: f32,
+    alpha: f64,
+    out: &mut EntityMesh,
+) {
     for t in tridents {
         let rel = (t.previous_pos.lerp(t.pos, alpha) - camera).as_vec3();
+        if t.burning() {
+            flame::flame(out, rel, (0.5, 0.5), forward, 230, time);
+        }
         let dir = t.dir.normalize_or(Vec3::Z);
         let rot = Quat::from_rotation_arc(Vec3::Z, dir);
         let origin = if t.in_ground { rel - dir * 0.45 } else { rel + Vec3::Y * 0.25 };
@@ -2847,7 +2915,10 @@ mod tests {
                 || kind == MobKind::Phantom && (-0.4..0.0).contains(&lo.y)
                 // and Java's rabbit's front paws dip a fraction of a pixel
                 // below its feet.
-                || kind == MobKind::Rabbit && (-0.01..0.0).contains(&lo.y);
+                || kind == MobKind::Rabbit && (-0.01..0.0).contains(&lo.y)
+                // and (Track 7d) Java's adult nautilus's lower mouth, a
+                // hundredth of a pixel.
+                || matches!(kind, MobKind::Nautilus | MobKind::ZombieNautilus) && (-0.01..0.0).contains(&lo.y);
             assert!(lo.y.abs() < 1e-4 || floats && lo.y.abs() < 0.25 || hovers, "{kind:?} feet at {}", lo.y);
             // The mooshroom cap layer extends above its cow collision box.
             // (v1.0 gap Track 7c: Java's adult rabbit's ears stand about a
@@ -2856,6 +2927,9 @@ mod tests {
                 + match kind {
                     MobKind::Mooshroom => 0.4,
                     MobKind::Rabbit => 0.55,
+                    // v1.0 gap Track 7d: Java's nautilus shell stands 18
+                    // pixels, its rider's seat, above its 0.95 box.
+                    MobKind::Nautilus | MobKind::ZombieNautilus => 0.175,
                     _ => 0.0,
                 };
             assert!((hi.y - h).abs() < 0.15, "{kind:?} top {} vs box {h}", hi.y);

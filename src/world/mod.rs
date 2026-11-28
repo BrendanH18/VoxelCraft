@@ -103,6 +103,7 @@ mod nether_order;
 pub mod nether_placed;
 mod nether_surface;
 pub mod noise;
+pub mod offset;
 pub mod ore;
 pub mod overworld_blocks;
 mod overworld_flora;
@@ -2046,11 +2047,17 @@ impl World {
         if b == frog_blocks::FROGSPAWN {
             return ([0.0; 3], [1.0, frog_blocks::HEIGHT as f32, 1.0]);
         }
+        // v1.0 gap track 6c: the outlines Java moves by the block's offset.
+        let o = offset::outline_offset(b, p).as_vec3();
+        if let Some((min, max)) = offset::bamboo_outline(b) {
+            return ((min.as_vec3() + o).to_array(), (max.as_vec3() + o).to_array());
+        }
         let neighbour = |f: block::Facing| self.get_block(p + f.offset()).unwrap_or(Block::AIR);
         let below = self.get_block(p - IVec3::Y).unwrap_or(Block::AIR);
         let above = shape::Above::read(b, |d| self.get_block(p + d).unwrap_or(Block::AIR));
         shape::outline_with(b, neighbour, below, above).bounds().map_or(([0.0; 3], [1.0; 3]), |bx| {
-            (bx.min.map(|c| f32::from(c) / 16.0), bx.max.map(|c| f32::from(c) / 16.0))
+            let at = |c: [u8; 3], i: usize| f32::from(c[i]) / 16.0 + o[i];
+            (std::array::from_fn(|i| at(bx.min, i)), std::array::from_fn(|i| at(bx.max, i)))
         })
     }
 
@@ -2509,8 +2516,10 @@ mod tests {
         }
         let flower = IVec3::new(0, y + 1, 0);
         assert!(world.set_block(flower, Block::POPPY));
-        // The crosshair selects the flower, not the dirt under it.
-        let eye = DVec3::new(0.5, y as f64 + 4.5, 0.5);
+        // The crosshair selects the flower, not the dirt under it (v1.0
+        // gap track 6c: its outline moved by Java's offset for the column).
+        let o = offset::offset(Block::POPPY, 0, 0);
+        let eye = DVec3::new(0.5 + o.x, y as f64 + 4.5, 0.5 + o.z);
         assert_eq!(world.raycast(eye, DVec3::NEG_Y, 10.0).unwrap().0, flower);
 
         // Removing the dirt pops the flower off as an item.

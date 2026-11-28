@@ -149,32 +149,93 @@ fn detail_coord(value:u32)->f32 {
     return select(f32(value),1.5,value==31u)/16.0;
 }
 
+// v1.0 gap track 6c: a fine quad's coordinate codes (bamboo): bounds 0-7
+// and, for the plane, 8 more (8/16), in sixteenths.
+fn fine_coord(code: u32) -> f32 {
+    var table = array<f32, 9>(0.0, 0.8, 6.5, 7.0, 9.0, 9.5, 15.2, 16.0, 8.0);
+    return table[min(code, 8u)] / 16.0;
+}
+
+// v1.0 gap track 6c: Java's model offset (`BlockBehaviour.OffsetType`,
+// see src/world/offset.rs) of a block in world column (x, z), for offset
+// kind 1 (XZ, up to 1/4), 2 (XZ, up to 1/8), 3 (XYZ, down to 1/5) or 4
+// (XYZ, down to 1/10). Only bits 16-27 of `Mth.getSeed`'s 64-bit result
+// are read, and the low bits of a product depend only on the low bits of
+// its factors, so 32-bit arithmetic gives Java's exact seed.
+fn block_offset(kind: u32, x: i32, z: i32) -> vec3<f32> {
+    if kind == 0u {
+        return vec3<f32>(0.0);
+    }
+    let s = (bitcast<u32>(x) * 3129871u) ^ (bitcast<u32>(z) * 116129781u);
+    let seed = (s * s * 42317861u + s * 11u) >> 16u;
+    let max_h = select(0.25, 0.125, kind == 2u);
+    let ox = clamp((f32(seed & 15u) / 15.0 - 0.5) * 0.5, -max_h, max_h);
+    let oz = clamp((f32((seed >> 8u) & 15u) / 15.0 - 0.5) * 0.5, -max_h, max_h);
+    var oy = 0.0;
+    if kind >= 3u {
+        oy = (f32((seed >> 4u) & 15u) / 15.0 - 1.0) * select(0.2, 0.1, kind == 4u);
+    }
+    return vec3<f32>(ox, oy, oz);
+}
+
 @vertex
-fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>) -> VsOut {
+fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>, @location(2) origin: vec2<i32>) -> VsOut {
     let q = (vi >> 2u) * 3u;
     let w0 = quads[q];
     let w1 = quads[q + 1u];
     let w2 = quads[q + 2u];
     let face = (w0 >> 18u) & 7u;
     let size = vec2<u32>(((w0 >> 21u) & 31u) + 1u, ((w0 >> 26u) & 31u) + 1u);
+    let detail = (w1 & 0x80000000u) != 0u;
+    // v1.0 gap track 6c: a detail quad with a cross's face code is a fine
+    // quad (bamboo), its own face in bits 21-23.
+    let fine = face >= 6u && detail;
+    let real_face = select(face, (w0 >> 21u) & 7u, fine);
+    let leaf = fine && ((w0 >> 28u) & 1u) == 1u;
 
     // Corners are (0,0), (w,0), (w,h), (0,h) in the face's (u, v) plane.
     // Negative faces run in reverse for winding; `flip` rotates by one so
     // the index pattern's diagonal becomes the other one.
     var order = array<u32, 4>(0u, 1u, 2u, 3u);
-    if (face & 1u) == 1u {
+    if (real_face & 1u) == 1u && real_face < 6u {
         order = array<u32, 4>(0u, 3u, 2u, 1u);
     }
     let c = order[((vi & 3u) + (w0 >> 31u)) & 3u];
     let ao = (w1 >> (8u + 2u * c)) & 3u;
     let light = (w2 >> (8u * c)) & 255u;
-    let detail = (w1 & 0x80000000u) != 0u;
     let coord_mask = select(63u, 31u, detail);
     let base = vec3<u32>(w0 & coord_mask, (w0 >> 6u) & coord_mask, (w0 >> 12u) & coord_mask);
+    let column = vec2<i32>(origin.x + i32(base.x), origin.y + i32(base.z));
 
     var local: vec3<f32>;
     var uv: vec2<f32>;
-    if face >= 6u {
+    if fine {
+        // Fine quad: bounds and plane as codes ([`fine_coord`]), moved by
+        // the stalk's offset. A leaf plane stretches its whole texture over
+        // its 0.8 to 15.2 (Java's UVs 0 to 16).
+        let d = real_face >> 1u;
+        let u = (d + 1u) % 3u;
+        let v = (d + 2u) % 3u;
+        let lo = vec2<f32>(fine_coord((w1 >> 16u) & 7u), fine_coord((w1 >> 22u) & 7u));
+        let hi = vec2<f32>(fine_coord((w1 >> 19u) & 7u), fine_coord((w1 >> 25u) & 7u));
+        let at_u = c == 1u || c == 2u;
+        let at_v = c >= 2u;
+        var p = vec3<f32>(base);
+        p[d] += fine_coord((w0 >> 24u) & 15u);
+        var t = p;
+        p[u] += select(lo.x, hi.x, at_u);
+        p[v] += select(lo.y, hi.y, at_v);
+        t[u] += select(select(lo.x, hi.x, at_u), select(0.0, 1.0, at_u), leaf);
+        t[v] += select(select(lo.y, hi.y, at_v), select(0.0, 1.0, at_v), leaf);
+        local = p + block_offset(1u, column.x, column.y);
+        if d == 0u {
+            uv = vec2<f32>(t.z, -t.y);
+        } else if d == 1u {
+            uv = t.xz;
+        } else {
+            uv = vec2<f32>(t.x, -t.y);
+        }
+    } else if face >= 6u {
         // Cross-shaped block: a unit diagonal plane through the cell, (0,0)
         // to (1,1) in xz for face 6 and (1,0) to (0,1) for face 7.
         let t = select(0u, 1u, c == 1u || c == 2u);
@@ -190,7 +251,8 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>) -> Vs
         } else if axis == 2u {
             corner = base + vec3<u32>(across, t, along);
         }
-        local = vec3<f32>(corner);
+        // v1.0 gap track 6c: word 0 bits 24-26 name the plant's offset kind.
+        local = vec3<f32>(corner) + block_offset((w0 >> 24u) & 7u, column.x, column.y);
         uv = vec2<f32>(f32(t), f32(1u - up));
     } else {
         let d = face >> 1u;
@@ -259,8 +321,11 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>) -> Vs
     let layer_high = select((w1 >> 21u) & 15u,
         ((w0 >> 5u) & 1u) | (((w0 >> 11u) & 1u) << 1u) | (((w0 >> 17u) & 1u) << 2u) | (((w0 >> 30u) & 1u) << 3u),
         detail);
-    out.layer = (w1 & 255u) | (layer_high << 8u);
-    out.shade = face_shade[face] * ao_curve[ao];
+    let fine_high = ((w0 >> 5u) & 1u) | (((w0 >> 11u) & 1u) << 1u) | (((w0 >> 17u) & 1u) << 2u) | (((w0 >> 18u) & 1u) << 3u);
+    out.layer = (w1 & 255u) | (select(layer_high, fine_high, fine) << 8u);
+    // A bamboo leaf is shaded as a face up (`shade_direction_override`).
+    let shade_face = select(real_face, 2u, leaf);
+    out.shade = face_shade[shade_face] * ao_curve[ao];
     out.dist = fog_distances(rel);
     out.rel = rel;
     var normals = array<vec3<f32>, 8>(
@@ -268,7 +333,7 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>) -> Vs
         vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(0.0, -1.0, 0.0),
         vec3<f32>(0.0, 0.0, 1.0), vec3<f32>(0.0, 0.0, -1.0),
         vec3<f32>(-0.707, 0.0, 0.707), vec3<f32>(0.707, 0.0, 0.707));
-    out.normal = normals[face];
+    out.normal = normals[shade_face];
     out.light = vec2<f32>(f32(light & 15u), f32(light >> 4u)) / 15.0;
     // Four equal corner bytes: the light is constant across the quad.
     let uniform_light = w2 == (w2 & 255u) * 0x01010101u;

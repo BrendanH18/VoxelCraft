@@ -28,6 +28,7 @@ impl Game {
                 glint: false,
                 translucent: false,
                 mesh: None,
+                transform: None,
                 patterns: None,
                 lid: Some(self.world.shulker_lid(cell, alpha as f32)),
             }

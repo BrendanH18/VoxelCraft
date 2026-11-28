@@ -640,18 +640,40 @@ pub fn find_portal_in(
     best.map(|(_, _, p)| p)
 }
 
-/// v1.0 gap Track 8b: Java 26.3's `PortalProcessor` for a player in a
-/// Nether portal, the server's countdown. `NetherPortalBlock.entityInside`
+/// The portal block a [`PortalProcessor`] counts for (Java's `Portal`
+/// instance, which `isSamePortal` compares).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PortalKind {
+    /// `NetherPortalBlock`: 80 ticks for a survivor
+    /// (`getPortalTransitionTime`), and the purple (`Transition.CONFUSION`).
+    #[default]
+    Nether,
+    /// `EndPortalBlock`: the `Portal` default of 0 ticks, so the trip comes
+    /// on the next tick.
+    End,
+    /// `EndGatewayBlock`: 0 ticks too.
+    Gateway,
+}
+
+/// v1.0 gap Track 8b: Java 26.3's `PortalProcessor`, the server's
+/// countdown for a player in a portal. A portal block's `entityInside`
 /// calls `setAsInsidePortal` ([`PortalProcessor::enter`]) as the player
 /// moves, and the next tick's `Entity.handlePortal` (at the start of the
 /// tick, before moving) counts it ([`PortalProcessor::process`]): the trip
-/// comes on the tick `portalTime++` reaches the delay (80 ticks for a
-/// survivor), the 81st after the one the player stepped in, and every tick
-/// spent out of the portal takes 4 off the count until it runs out.
+/// comes on the tick `portalTime++` reaches the portal's delay (80 ticks
+/// for a survivor in a Nether portal, the 81st after the one the player
+/// stepped in), and every tick spent out of the portal takes 4 off the
+/// count until it runs out. Track 8c: End portals and gateways count
+/// through it too (a delay of 0: the next tick), and a different portal
+/// starts a new count (`isSamePortal`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PortalProcessor {
     /// `Entity.portalProcess` isn't null.
     active: bool,
+    /// `portal`.
+    kind: PortalKind,
+    /// `entryPosition`: the portal cell the player was last marked in.
+    entry: IVec3,
     /// `portalTime`.
     time: u32,
     /// `insidePortalThisTick`.
@@ -659,12 +681,15 @@ pub struct PortalProcessor {
 }
 
 impl PortalProcessor {
-    /// `Entity.setAsInsidePortal` off cooldown: a new count starts at 0,
-    /// or the running one is marked inside for the next tick.
-    pub fn enter(&mut self) {
-        if !self.active {
-            *self = Self { active: true, time: 0, inside: true };
-        } else {
+    /// `Entity.setAsInsidePortal` off cooldown: a new count starts at 0 for
+    /// a new portal (none running, or another kind), or the running one is
+    /// marked inside for the next tick at `cell`, unless already marked
+    /// this tick (the first cell touched stays the entry).
+    pub fn enter(&mut self, kind: PortalKind, cell: IVec3) {
+        if !self.active || self.kind != kind {
+            *self = Self { active: true, kind, entry: cell, time: 0, inside: true };
+        } else if !self.inside {
+            self.entry = cell;
             self.inside = true;
         }
     }
@@ -704,6 +729,16 @@ impl PortalProcessor {
     /// Whether a count is running (`portalProcess` isn't null).
     pub fn active(&self) -> bool {
         self.active
+    }
+
+    /// The portal counted for (meaningful while [`PortalProcessor::active`]).
+    pub fn kind(&self) -> PortalKind {
+        self.kind
+    }
+
+    /// `getEntryPosition`: the portal cell the trip leaves from.
+    pub fn entry(&self) -> IVec3 {
+        self.entry
     }
 }
 
@@ -818,14 +853,14 @@ mod tests {
         let mut p = PortalProcessor::default();
         assert!(!p.process(true, 80), "nothing before the player steps in");
         // Tick 0: moving into the portal.
-        p.enter();
+        p.enter(PortalKind::Nether, IVec3::ZERO);
         let mut went = None;
         for tick in 1..=100 {
             if p.process(true, 80) {
                 went = Some(tick);
                 break;
             }
-            p.enter();
+            p.enter(PortalKind::Nether, IVec3::ZERO);
         }
         assert_eq!(went, Some(81));
         assert_eq!(p.time(), 81, "the count stays after the trip");
@@ -840,10 +875,10 @@ mod tests {
 
         // Stepping back in before it runs out carries the count on.
         let mut p = PortalProcessor::default();
-        p.enter();
+        p.enter(PortalKind::Nether, IVec3::ZERO);
         for _ in 0..40 {
             p.process(true, 80);
-            p.enter();
+            p.enter(PortalKind::Nether, IVec3::ZERO);
         }
         p.process(true, 80);
         assert_eq!(p.time(), 41);
@@ -851,10 +886,10 @@ mod tests {
             p.process(true, 80);
         }
         assert_eq!(p.time(), 21);
-        p.enter();
+        p.enter(PortalKind::Nether, IVec3::ZERO);
         let ticks = (1..).find(|_| {
             let go = p.process(true, 80);
-            p.enter();
+            p.enter(PortalKind::Nether, IVec3::ZERO);
             go
         });
         assert_eq!(ticks, Some(60), "21 counted, 59 more to reach 80, the trip on the next");
@@ -862,12 +897,48 @@ mod tests {
         // Not allowed (riding): the mark is used up, nothing counts, and a
         // count still at 0 is dropped.
         let mut p = PortalProcessor::default();
-        p.enter();
+        p.enter(PortalKind::Nether, IVec3::ZERO);
         assert!(!p.process(false, 80));
         assert!(!p.active());
         // The creative delay of 0 goes on the tick after stepping in.
-        p.enter();
+        p.enter(PortalKind::Nether, IVec3::ZERO);
         assert!(p.process(true, 0));
+    }
+
+    /// v1.0 gap Track 8c: End portals and gateways count through the same
+    /// processor with the `Portal` default delay of 0, so the trip comes on
+    /// the tick after the one the player touched it; another portal starts
+    /// a new count (`isSamePortal`), and the entry is the first cell marked
+    /// in a tick (`setAsInsidePortal` skips a count already marked).
+    #[test]
+    fn end_portals_and_gateways_go_on_the_next_tick() {
+        let mut p = PortalProcessor::default();
+        let (a, b) = (IVec3::new(1, 60, 2), IVec3::new(2, 60, 2));
+        p.enter(PortalKind::End, a);
+        p.enter(PortalKind::End, b);
+        assert_eq!((p.kind(), p.entry()), (PortalKind::End, a));
+        assert!(p.process(true, 0), "the next tick's handlePortal");
+        assert!(!p.process(true, 0), "out of the portal: the count runs down");
+        assert!(!p.active());
+
+        // A Nether count running when the player touches a gateway is
+        // replaced, not carried on.
+        let mut p = PortalProcessor::default();
+        for _ in 0..30 {
+            p.enter(PortalKind::Nether, a);
+            p.process(true, 80);
+        }
+        assert_eq!(p.time(), 30);
+        p.enter(PortalKind::Gateway, b);
+        assert_eq!((p.kind(), p.entry(), p.time()), (PortalKind::Gateway, b, 0));
+        // Riding or asleep, the mark is used up without a trip.
+        assert!(!p.process(false, 0));
+        assert!(!p.active());
+        // A later tick's mark moves the entry.
+        p.enter(PortalKind::Gateway, a);
+        p.process(true, 5);
+        p.enter(PortalKind::Gateway, b);
+        assert_eq!(p.entry(), b);
     }
 
     /// A loaded world with a hollow sky high above the terrain to build in.

@@ -1201,7 +1201,8 @@ impl Block {
 
     /// v1.0 gap track 6: the state an item of this block is drawn as. Java's
     /// item models are the block models with their front to the north,
-    /// which a slot shows on the left; a whole-cube block with a front
+    /// which a slot shows on the right (v1.0 gap track 6c: Java's GUI turn;
+    /// it was the left in the game's mirrored view); a whole-cube block with a front
     /// (furnaces, pumpkins, dispensers, hives, observers) is turned to face
     /// north, whatever state the item holds. Anything else draws as it is.
     pub fn item_facing(self) -> Block {
@@ -1213,6 +1214,25 @@ impl Block {
             Some(Component::Dispenser { dropper, .. }) => return r::dispenser(1, dropper),
             Some(Component::Observer { .. }) => return r::observer(1, false),
             _ => {}
+        }
+        // v1.0 gap track 6c: shaped blocks whose item model is a facing's
+        // block model, turned to the facing Java's blockstates give no turn:
+        // fence gates face south; the lectern, big dripleaf, dried ghast and
+        // calibrated sculk sensor north.
+        let model_facing = if self.is_gate() {
+            Some(Facing::South)
+        } else if self.base() == Block::LECTERN
+            || self.base() == super::overworld_blocks::BIG_DRIPLEAF
+            || super::dried_ghast::decode(self).is_some()
+            || super::cave_blocks::calibrated_of(self).is_some()
+        {
+            Some(Facing::North)
+        } else {
+            None
+        };
+        if let Some(facing) = model_facing {
+            let turned = self.with_facing(facing);
+            return if turned.base() == self.base() { turned } else { self };
         }
         if !super::shape::item_shape(self).is_empty() || self.top_drop() != 0 {
             return self;
@@ -1327,6 +1347,8 @@ impl Block {
         // A Nether portal along either axis answers as the portal (v1.0 gap
         // Track 5b).
         let c = if super::portal::owns(c.0) { Block::NETHER_PORTAL } else { c };
+        // A thin bamboo stalk answers as the thick one (v1.0 gap track 6c).
+        let c = super::overworld_blocks::thick_bamboo(c);
         (c != self).then_some(c)
     }
 
@@ -1455,6 +1477,9 @@ impl Block {
         }
         if super::portal::owns(self.0) {
             return Block::NETHER_PORTAL;
+        }
+        if super::overworld_blocks::is_thin_bamboo(self.0) {
+            return super::overworld_blocks::BAMBOO;
         }
         if super::heavy_core::owns(self.0) {
             return super::heavy_core::HEAVY_CORE;
@@ -3430,6 +3455,14 @@ pub(super) const fn make(id: u16) -> BlockInfo {
         12256..=super::frosted_ice::LAST => super::frosted_ice::registry(id),
         // Sugar cane ages 1-15 (13952 itself stays unregistered).
         13953..=super::sugar_cane::LAST => super::sugar_cane::registry(id),
+        // v1.0 gap track 6c: the thin bamboo stalks, named and drawn as the
+        // thick ones (their boxes differ, `mesh`).
+        super::overworld_blocks::THIN_BAMBOO_FIRST..=super::overworld_blocks::THIN_BAMBOO_LAST => {
+            match super::overworld_blocks::registry(id - super::overworld_blocks::THIN_BAMBOO_FIRST + 2022) {
+                Some(info) => info,
+                None => ("unknown", Invisible, all(0)),
+            }
+        }
         // v1.0 gap Track 5b: the Nether portal along X and along Z.
         super::portal::FIRST..=super::portal::LAST => ("nether portal", Translucent, all(tex::PORTAL)),
         // v1.0 Track 4: farmland moistures 1-6.

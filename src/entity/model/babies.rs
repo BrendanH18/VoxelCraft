@@ -311,11 +311,11 @@ pub(super) fn pose(m: &Mob, time: f32, alpha: f32, head: Quat) -> Option<Parts> 
         MobKind::Bee => b::bee::pose(m, time, alpha),
         MobKind::Squid | MobKind::GlowSquid => b::squid::pose(m, alpha),
         MobKind::Dolphin => b::dolphin::pose(m, time),
-        MobKind::Armadillo => b::armadillo::pose(m),
+        MobKind::Armadillo => b::armadillo::pose(m, alpha),
         MobKind::Piglin | MobKind::ZombifiedPiglin => b::piglin::pose(m, time),
         MobKind::Strider => b::strider::pose(m, time),
         MobKind::ZombieVillager => b::zombie_villager::pose(m, time),
-        MobKind::Sniffer => b::snifflet::pose(m, time),
+        MobKind::Sniffer => b::snifflet::pose(m, alpha),
         MobKind::Nautilus => b::nautilus::pose(m, time),
         MobKind::Chicken => {
             // `ChickenModel.setupAnim`; the baby's head is its body, which
@@ -535,5 +535,94 @@ mod tests {
         };
         let p = pose(&m, 0.0, 1.0, Quat::IDENTITY).unwrap();
         assert!(p[4].pivot.x < 0.0 && p[3].pivot.x > 0.0);
+    }
+
+    fn baby(kind: MobKind) -> Mob {
+        let mut m = Mob::new(kind, DVec3::new(10.0, 64.0, 0.0), 0.0);
+        m.baby = true;
+        m.age = crate::entity::animals::BABY_AGE;
+        m
+    }
+
+    fn pivots(m: &Mob, alpha: f32) -> Vec<(Vec3, Quat)> {
+        pose(m, 0.0, alpha, Quat::IDENTITY).unwrap().iter().map(|p| (p.pivot, p.rot)).collect()
+    }
+
+    /// v1.0 gap Track 7d: the camel calf's idle keyframes (ears and tail)
+    /// run from its idle state, which `tick_anim` starts and restarts.
+    #[test]
+    fn a_camel_calf_flicks_its_ears_while_idle() {
+        let mut m = baby(MobKind::Camel);
+        let still = pivots(&m, 0.0);
+        m.tick_anim(DVec3::ZERO);
+        assert!(m.anim.idle_start.is_some());
+        m.tick_count += 53;
+        assert_ne!(pivots(&m, 0.0), still);
+    }
+
+    /// v1.0 gap Track 7d: hidden in its shell the armadillo pup shows the
+    /// ball, its head and front legs (tucked by the keyframes), not its
+    /// body's own box, hind legs or tail; a peek moves the head out.
+    #[test]
+    fn an_armadillo_pup_rolls_up_and_peeks() {
+        use crate::entity::armadillo as a;
+        let mut m = baby(MobKind::Armadillo);
+        let open = pose(&m, 0.0, 0.0, Quat::IDENTITY).unwrap().len();
+        let s = m.armadillo.as_mut().unwrap();
+        (s.pose, s.pose_ticks) = (a::SCARED, 20);
+        let p = pose(&m, 0.0, 0.0, Quat::IDENTITY).unwrap();
+        // Body, tail and two hind legs go; the ball comes.
+        assert_eq!(p.len(), open - 4 + 1, "{open}");
+        let rest = pivots(&m, 0.0);
+        m.armadillo.as_mut().unwrap().peeking = 30;
+        assert_ne!(pivots(&m, 0.0), rest, "peeking");
+        let s = m.armadillo.as_mut().unwrap();
+        (s.pose, s.pose_ticks, s.peeking) = (a::ROLLING, 2, 0);
+        let rolling = pivots(&m, 0.0);
+        m.armadillo.as_mut().unwrap().pose = a::IDLE;
+        assert_ne!(pivots(&m, 0.0), rolling, "the roll-up runs");
+    }
+
+    /// v1.0 gap Track 7d: the snifflet runs the sniffer's own keyframes
+    /// (`SnifferModel` draws it): digging lowers it, and Java never scales
+    /// its head (`SniffletModel`'s `BABY_TRANSFORM` isn't used in 26.3).
+    #[test]
+    fn a_snifflet_digs_with_the_sniffer_s_keyframes() {
+        let mut m = baby(MobKind::Sniffer);
+        let p = pose(&m, 0.0, 0.0, Quat::IDENTITY).unwrap();
+        assert!(p.iter().all(|p| p.stretch == Mat3::IDENTITY));
+        let idle = pivots(&m, 0.0);
+        let s = m.sniffer.as_mut().unwrap();
+        (s.pose, s.elapsed) = (crate::entity::sniffer::DIGGING, 40);
+        assert_ne!(pivots(&m, 0.0), idle);
+    }
+
+    /// v1.0 gap Track 7d: the baby layers Track 7c left out: a horse foal's
+    /// markings, the trader cria's blanket and the zombie villager cub's
+    /// armor.
+    #[test]
+    fn foal_markings_the_trader_cria_s_blanket_and_the_cub_s_armor() {
+        let mut foal = baby(MobKind::Horse);
+        foal.mount.as_mut().unwrap().marking = 0;
+        let plain = pose(&foal, 0.0, 0.0, Quat::IDENTITY).unwrap().len();
+        foal.mount.as_mut().unwrap().marking = 3;
+        assert_eq!(pose(&foal, 0.0, 0.0, Quat::IDENTITY).unwrap().len(), plain + 1);
+        let wild = pose(&baby(MobKind::Llama), 0.0, 0.0, Quat::IDENTITY).unwrap().len();
+        assert_eq!(pose(&baby(MobKind::TraderLlama), 0.0, 0.0, Quat::IDENTITY).unwrap().len(), wild + 1);
+        let mut cub = baby(MobKind::ZombieVillager);
+        let (_, bare) = bounds_and_count(&cub);
+        cub.equipment.wear_set(crate::entity::armor::ArmorKind::Iron, false);
+        let ((lo, hi), worn) = bounds_and_count(&cub);
+        assert!(worn > bare, "{worn} vs {bare}");
+        // The armor stays on the cub: about as tall as it, its boots at its
+        // feet.
+        assert!(lo.y > -0.03 && hi.y < 1.2, "{lo} {hi}");
+    }
+
+    fn bounds_and_count(m: &Mob) -> ((Vec3, Vec3), usize) {
+        let mut out = EntityMesh::flat();
+        build(std::slice::from_ref(m), DVec3::new(0.0, 64.0, 0.0), Vec3::X, 100.0, 1.0, &mut out);
+        let n = out.iter().count();
+        (bounds(m), n)
     }
 }

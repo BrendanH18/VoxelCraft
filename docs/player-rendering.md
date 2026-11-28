@@ -301,3 +301,28 @@ Checked against the Java 26.3 client
   loads; admiring piglins draw `ADMIRING_ITEM`.
 - **LAN.** Squid tentacle cycles, bee rolls and piglin draws reach guests
   with every tick's pose.
+
+## Model details (v1.0 gap Track 7d)
+
+Checked against the Java 26.3 client
+([record](verification/2026-11-27-v1.0-gap-track-07d-model-details.md)).
+
+- **Scale.** Rig parts scale as Java's `ModelPart` does (after the turn,
+  carried to the children's offsets and boxes), and every keyframe
+  `SCALE` channel runs: the nautilus's swim pulse, the fox kit's walk,
+  the sniffer's nose and body. A part can skip its own boxes while its
+  children draw (`skipDraw`).
+- **Nautilus.** The adult nautilus and zombie nautilus are Java's adult
+  mesh, facing as Java's (owner, 2026-11-27): the shell leads and the
+  body and mouth trail, swimming with `NautilusAnimation.SWIMMING` as the
+  baby does. The saddle, the armor and a warm zombie nautilus's corals
+  (hidden under armor) follow Java's layers.
+- **Baby keyframes.** The camel calf's idle (restarted every 80 to 119
+  ticks), the armadillo pup's roll-up, roll-out and peek (its head and
+  front legs drawn while it hides) and the snifflet's sniffer keyframes.
+  The snifflet's head is its mesh's size: 26.3 draws snifflets with
+  `SnifferModel`, so `SniffletModel`'s `BABY_TRANSFORM` never applies.
+- **Baby layers.** Horse foals wear their markings, a trader cria its
+  blanket, and a zombie villager cub its armor. Java draws no profession
+  on a cub, only its villager type's outfit, which this game draws on no
+  villager.

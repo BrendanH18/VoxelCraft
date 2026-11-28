@@ -88,6 +88,7 @@ fn growth_rule(b: Block) -> RandomRule {
         b if matches!(super::gen5_blocks::spike_of(b), Some((true, _, _))) => RandomRule::Speleothem,
         b if (1600..=1687).contains(&b.0) => RandomRule::NetherFlora,
         b if (super::overworld_blocks::FIRST..=super::overworld_blocks::LAST).contains(&b.canonical().0)
+            || super::overworld_blocks::is_thin_bamboo(b.canonical().0)
             || (2150..=2157).contains(&b.0)
             || (2160..=2164).contains(&b.canonical().0) =>
         {

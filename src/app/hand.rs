@@ -105,6 +105,7 @@ impl HandAnim {
             held_tint: held
                 .filter(|s| Some(s.item) == self.shown)
                 .and_then(|s| voxelcraft::inventory::components::dye_tint(&s)),
+            held_stack: held.filter(|s| Some(s.item) == self.shown),
             aim: self.aim(),
             glowing: vitals.effects.glowing() && vitals.death_time().is_none(),
             elytra: worn[1].is_some_and(|s| s.item == voxelcraft::content::elytra::ELYTRA),

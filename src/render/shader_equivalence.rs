@@ -370,3 +370,41 @@ fn night_vision_is_the_lightmaps_ambient_term() {
     let no_vision = Uniforms { night_vision: 0.0, ..day };
     assert_eq!(overworld_parts(&day, 1.0, 0.0, Vec3::Y).0, overworld_parts(&no_vision, 1.0, 0.0, Vec3::Y).0);
 }
+
+/// v1.0 gap track 6c: `chunk.wgsl`'s `block_offset` in 32-bit arithmetic,
+/// as written there.
+fn shader_block_offset(kind: u32, x: i32, z: i32) -> Vec3 {
+    if kind == 0 {
+        return Vec3::ZERO;
+    }
+    let s = (x as u32).wrapping_mul(3_129_871) ^ (z as u32).wrapping_mul(116_129_781);
+    let seed = s.wrapping_mul(s).wrapping_mul(42_317_861).wrapping_add(s.wrapping_mul(11)) >> 16;
+    let max_h = if kind == 2 { 0.125 } else { 0.25 };
+    let ox = ((((seed & 15) as f32) / 15.0 - 0.5) * 0.5).clamp(-max_h, max_h);
+    let oz = (((((seed >> 8) & 15) as f32) / 15.0 - 0.5) * 0.5).clamp(-max_h, max_h);
+    let oy = if kind >= 3 { (((seed >> 4) & 15) as f32 / 15.0 - 1.0) * if kind == 4 { 0.1 } else { 0.2 } } else { 0.0 };
+    Vec3::new(ox, oy, oz)
+}
+
+#[test]
+fn the_shaders_model_offset_is_javas() {
+    use crate::world::offset::{Kind, offset_of};
+    for line in [
+        "let s = (bitcast<u32>(x) * 3129871u) ^ (bitcast<u32>(z) * 116129781u);",
+        "let seed = (s * s * 42317861u + s * 11u) >> 16u;",
+        "let max_h = select(0.25, 0.125, kind == 2u);",
+        "oy = (f32((seed >> 4u) & 15u) / 15.0 - 1.0) * select(0.2, 0.1, kind == 4u);",
+    ] {
+        assert!(SHADER.contains(line), "chunk.wgsl changed: {line}");
+    }
+    let kinds = [Kind::Xz, Kind::XzSpeleothem, Kind::Xyz, Kind::XyzSmallDripleaf];
+    for x in (-3_000_000..3_000_000).step_by(99_991).chain(-300..300) {
+        for z in (-3_000_000..3_000_000).step_by(199_999).chain(-40..40) {
+            for kind in kinds {
+                let java = offset_of(kind, x, z).as_vec3();
+                let shader = shader_block_offset(kind as u32, x, z);
+                assert!((java - shader).abs().max_element() < 1e-6, "{kind:?} at {x} {z}: {java} {shader}");
+            }
+        }
+    }
+}

@@ -221,7 +221,7 @@ impl Game {
 
     /// Runs `f` on the menu stack with the game as its host; resumes play
     /// when it closes the last screen.
-    fn with_menu<T>(&mut self, f: impl FnOnce(&mut Stack<Game>, &mut Game, Size) -> T) -> T {
+    pub(super) fn with_menu<T>(&mut self, f: impl FnOnce(&mut Stack<Game>, &mut Game, Size) -> T) -> T {
         let mut stack = std::mem::take(&mut self.menu);
         let (_, size) = self.menu_view();
         let was_open = stack.is_open();

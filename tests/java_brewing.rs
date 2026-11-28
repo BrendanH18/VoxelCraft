@@ -148,13 +148,16 @@ fn invisibility_hides_skin_but_keeps_equipment_and_reduces_detection() {
     assert_eq!(target.visibility_percent(), 0.8 * 0.7);
     let player = Player::new(DVec3::ZERO);
     let draw = |look: PlayerAppearance| {
-        let mut out = Vec::new();
+        let mut out = voxelcraft::entity::model::EntityMesh::flat();
         build_player(&player, DVec3::ZERO, DVec3::new(0., 0., 8.), (1., 0.), 0., look, &mut out);
         out
     };
     assert!(!draw(PlayerAppearance::default()).is_empty());
-    assert!(draw(PlayerAppearance { invisible: true, ..Default::default() }).is_empty());
-    assert!(!draw(PlayerAppearance { invisible: true, held: Some(Item::STICK), ..Default::default() }).is_empty());
+    let hidden = draw(PlayerAppearance { invisible: true, ..Default::default() });
+    assert!(hidden.is_empty() && hidden.held_items().is_empty());
+    // v1.0 gap track 6c: the held item goes to the item model pass.
+    let holding = draw(PlayerAppearance { invisible: true, held: Some(Item::STICK), ..Default::default() });
+    assert!(holding.is_empty() && holding.held_items().len() == 1);
     let mut effects = voxelcraft::simulation::effects::Effects::default();
     effects.add(Effect::Invisibility, 0, 1);
     effects.tick(0.05);

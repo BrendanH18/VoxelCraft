@@ -241,10 +241,11 @@ const fn layer(kind: Kind, face: u16) -> u16 {
 }
 
 /// Name, render kind and the layers the item icon draws (+X, -X, +Y, -Y,
-/// +Z, -Z). The face is on -Z, the side a slot shows on the left, as
-/// Java's head items show their face (`item/template_skull`'s GUI turn of
-/// 45 degrees, half a turn from a block's 225; v1.0 gap track 6: it was on
-/// +Z, out of sight in a slot).
+/// +Z, -Z). The face is on +Z, where Java's head item model has it (the
+/// item's `transformation` turns the skull model, which faces -Z, half
+/// about x), so `item/template_skull`'s GUI turn of 45 degrees shows it on
+/// the right of a slot (v1.0 gap track 6c; Track 6 had put it on -Z for
+/// the game's mirrored slot view).
 pub const fn registry(id: u16) -> (&'static str, RenderKind, [u16; 6]) {
     let Some(s) = decode(Block(id)) else { return ("unknown", RenderKind::Invisible, [0; 6]) };
     let k = s.kind;
@@ -253,7 +254,7 @@ pub const fn registry(id: u16) -> (&'static str, RenderKind, [u16; 6]) {
         Mount::Wall(_) => k.wall_name(),
     };
     let side = layer(k, 2);
-    (name, RenderKind::Shaped, [side, side, layer(k, 3), layer(k, 4), layer(k, 1), layer(k, 0)])
+    (name, RenderKind::Shaped, [side, side, layer(k, 3), layer(k, 4), layer(k, 0), layer(k, 1)])
 }
 
 /// Every head's floor state for the creative palette, in Java's order.
