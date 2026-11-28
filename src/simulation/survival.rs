@@ -1748,11 +1748,16 @@ mod tests {
         let restored = Vitals::restore(7.5, 99.0, None);
         assert_eq!((restored.health, restored.air), (7.5, MAX_AIR));
         // v1.0 gap Track 8e: an old save's TNT death comes back in Java's
-        // words; a mob's stays as it was.
+        // words; v1.0 gap Track 8g: so does a mob's, by Java's name for it,
+        // and one saved in Java's words stays.
         let restored = Vitals::restore(0.0, 3.0, Some("was blown up by TNT".into()));
         assert_eq!(restored.death.as_deref(), Some("blew up"));
         let restored = Vitals::restore(0.0, 3.0, Some("was slain by a zombie".into()));
-        assert_eq!(restored.death.as_deref(), Some("was slain by a zombie"));
+        assert_eq!(restored.death.as_deref(), Some("was slain by Zombie"));
+        let restored = Vitals::restore(0.0, 3.0, Some("was fireballed by a ghast".into()));
+        assert_eq!(restored.death.as_deref(), Some("was blown up by Ghast"));
+        let restored = Vitals::restore(0.0, 3.0, Some("was slain by Grumbles".into()));
+        assert_eq!(restored.death.as_deref(), Some("was slain by Grumbles"));
     }
 }
 
