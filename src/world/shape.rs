@@ -575,6 +575,14 @@ pub fn outline(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block) 
     outline_with(block, neighbour, below, Above::NONE)
 }
 
+/// v1.0 final F10: Java's `DiodeBlock.SHAPE`, a repeater's or comparator's
+/// outline and collision: the 2-high plate only, not its torches.
+fn diode_shape(block: Block) -> Option<Boxes> {
+    use super::redstone_blocks::{Component, component};
+    matches!(component(block), Some(Component::Repeater { .. } | Component::Comparator { .. }))
+        .then(|| Boxes::from_box(b([0, 0, 0], [16, 2, 16])))
+}
+
 /// [`outline`] with what is above the cell (walls read it).
 pub fn outline_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block, above: Above) -> Boxes {
     // v1.0 gap Track 8g: fire and soul fire are a sixteenth-high floor
@@ -582,6 +590,9 @@ pub fn outline_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Bl
     // crosshair stops.
     if block.is_fire() {
         return Boxes::from_box(b([0, 0, 0], [16, 1, 16]));
+    }
+    if let Some(boxes) = diode_shape(block) {
+        return boxes;
     }
     // v1.0 gap Track 5c: the Nether portal's plane along its axis.
     if block.is_nether_portal() {
@@ -858,6 +869,9 @@ pub fn collision_or_cube(block: Block, neighbour: impl Fn(Facing) -> Block, belo
 
 /// [`collision`] with what is above the cell (a wall's raised post).
 pub fn collision_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block, above: Above) -> Boxes {
+    if let Some(boxes) = diode_shape(block) {
+        return boxes;
+    }
     if let Some((age, false)) = super::sniffer_plants::pitcher_state(block) {
         let (lo, hi, h) = if age == 0 { (5, 11, 3) } else { (3, 13, 5) };
         return Boxes::from_box(b([lo, 0, lo], [hi, h, hi]));

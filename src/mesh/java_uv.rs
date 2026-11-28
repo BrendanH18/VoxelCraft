@@ -81,13 +81,49 @@ pub(super) fn is_bars(b: Block) -> bool {
 /// (`template_bars_*`), hoppers (`hopper`, `hopper_side`), end rods
 /// (`end_rod`) and lanterns (`template_lantern`, `template_hanging_lantern`,
 /// without the handle's turned planes, which the game's quads can't draw).
-pub(super) fn model_faces(b: Block, joined: impl Fn(Facing) -> bool) -> Option<&'static [ModelFace]> {
+///
+/// v1.0 final F10: also repeaters (`repeater_*tick*`, locked when a powered
+/// repeater or comparator points into either side, as Java's `locked`
+/// state is kept), comparators (`comparator*`) and cocoa
+/// (`cocoa_stage*`) and cauldrons' bodies (`cauldron`, the game drawing
+/// the contents' plane itself), all `ambientocclusion: false` in the jar; the glow
+/// planes round a lit diode's torches sit on half sixteenths and are left
+/// out. `neighbour` gives the (canonical) block beside `b` each way.
+pub(super) fn model_faces(b: Block, neighbour: impl Fn(Facing) -> Block) -> Option<&'static [ModelFace]> {
+    use crate::world::redstone_blocks::{Component, component};
     if is_bars(b) {
         let bits = [Facing::North, Facing::East, Facing::South, Facing::West]
             .into_iter()
             .enumerate()
-            .fold(0, |acc, (i, f)| acc | usize::from(joined(f)) << i);
+            .fold(0, |acc, (i, f)| acc | usize::from(crate::world::shape::pane_connects_on(neighbour(f), f)) << i);
         return Some(BARS[bits]);
+    }
+    match component(b) {
+        // The game's facing is the output side; Java's the input, opposite.
+        Some(Component::Repeater { facing, delay, on }) => {
+            let java = facing.clockwise().clockwise();
+            let locked = [facing.clockwise(), facing.counter_clockwise()].into_iter().any(|side| {
+                // `RepeaterBlock.isLocked`: a powered diode beside it whose
+                // output points into it (its facing away from that side).
+                matches!(component(neighbour(side)),
+                    Some(Component::Repeater { facing: f, on: true, .. } | Component::Comparator { facing: f, on: true, .. })
+                        if f == side.clockwise().clockwise())
+            });
+            let row = facing_index(java) * 16 + usize::from(delay - 1) * 4 + usize::from(locked) * 2 + usize::from(on);
+            return Some(REPEATERS[row]);
+        }
+        Some(Component::Comparator { facing, subtract, on }) => {
+            let java = facing.clockwise().clockwise();
+            return Some(COMPARATORS[facing_index(java) * 4 + usize::from(subtract) * 2 + usize::from(on)]);
+        }
+        _ => {}
+    }
+    if crate::world::utilities::cauldron_of(b).is_some() {
+        return Some(CAULDRONS[0]);
+    }
+    if let Some((age, log)) = crate::world::overworld_blocks::cocoa_of(b) {
+        // Java's facing is the log's side, as the game's.
+        return Some(COCOA[facing_index(log) * 3 + usize::from(age.min(2))]);
     }
     if let Some(crate::world::redstone_blocks::Component::Hopper { facing, .. }) =
         crate::world::redstone_blocks::component(b)
@@ -131,9 +167,44 @@ pub(super) fn lantern_hanging(b: Block) -> Option<bool> {
 /// `#inside` are its outside, rim and inside textures; an end rod's one
 /// texture is the rod's layer, drawn in Java's `end_rod` layout; a
 /// lantern's its own layer, drawn in Java's lantern layout.
+///
+/// v1.0 final F10: a repeater's or comparator's `#slab` is smooth stone,
+/// `#top` its own top (Java's `repeater`, `repeater_on`, `comparator` and
+/// `comparator_on`, redrawn in Java's layout), `#unlit` and `#lit` the
+/// redstone torch's off and on layers and `#lock` bedrock; cocoa's one
+/// texture is its age's layer.
 pub(super) fn model_layer(b: Block, tex: u8, layer: u32) -> u32 {
+    use crate::content::item_models as im;
+    use crate::world::block::tex as t;
+    use crate::world::redstone_blocks::{Component, component};
     if is_bars(b) {
         return layer;
+    }
+    let diode = match component(b) {
+        Some(Component::Repeater { on, .. }) => Some(if on { im::REPEATER_TOP_ON } else { im::REPEATER_TOP }),
+        Some(Component::Comparator { on, .. }) => Some(if on { im::COMPARATOR_TOP_ON } else { im::COMPARATOR_TOP }),
+        _ => None,
+    };
+    if let Some(top) = diode {
+        return u32::from(match tex {
+            0 => t::SMOOTH_STONE,
+            1 => top,
+            2 => REDSTONE_TORCH_OFF,
+            3 => REDSTONE_TORCH_ON,
+            _ => t::BEDROCK,
+        });
+    }
+    if crate::world::overworld_blocks::cocoa_of(b).is_some() {
+        return layer;
+    }
+    if crate::world::utilities::cauldron_of(b).is_some() {
+        // `#side`, `#top` (the rim), `#bottom`; `#inside` (Java's
+        // `cauldron_inner`, which the game has no layer for) the top's
+        // middle, as the game drew the floor before.
+        use crate::world::utilities::t as u;
+        return u32::from(
+            [u::CAULDRON_SIDE, u::CAULDRON_TOP, u::CAULDRON_BOTTOM, u::CAULDRON_TOP][usize::from(tex.min(3))],
+        );
     }
     if crate::world::end_blocks::is_end_rod(b) {
         return u32::from(crate::world::end_blocks::ROD_LAYER);
@@ -144,6 +215,10 @@ pub(super) fn model_layer(b: Block, tex: u8, layer: u32) -> u32 {
         _ => layer,
     }
 }
+
+/// The redstone torch's lit and unlit layers (`redstone_blocks::registry`).
+const REDSTONE_TORCH_ON: u16 = 1116;
+const REDSTONE_TORCH_OFF: u16 = 1117;
 
 /// The op's symmetry, `JAVA_UV_M`'s index.
 pub(super) const fn symmetry(op: u8) -> u32 {

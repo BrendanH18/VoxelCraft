@@ -471,6 +471,9 @@ const FACE_OFFSET: [[isize; 3]; 6] = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 
 /// bits its UV symmetry, and the light word its one light (bits 0-7) and
 /// texel offset (bits 8-11 u, 12-15 v).
 const PLANE_MODEL: u32 = 29;
+/// v1.0 final F10: the cauldron's body boxes (`utilities::boxes`), drawn
+/// as Java's model; the box after them is its contents.
+const CAULDRON_BODY: usize = 9;
 
 // v1.0 gap track 6c: fine-quad coordinate codes (`chunk.wgsl`'s
 // `fine_coord`): sixteenths 0, 0.8, 6.5, 7, 9, 9.5, 15.2 and 16 for bounds,
@@ -748,14 +751,14 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE], origin: glam
             model_cells = shaped_cells
                 .iter()
                 .map(|&(i, _)| {
-                    let joined = |f: Facing| {
+                    let neighbour = |f: Facing| {
                         let o = f.offset();
                         let n =
                             (i as isize + o.x as isize + o.y as isize * (D * D) as isize + o.z as isize * D as isize)
                                 as usize;
-                        shape::pane_connects_on(blocks[n].canonical(), f)
+                        blocks[n].canonical()
                     };
-                    java_uv::model_faces(blocks[i].canonical(), joined)
+                    java_uv::model_faces(blocks[i].canonical(), neighbour)
                 })
                 .collect();
         }
@@ -779,6 +782,7 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE], origin: glam
                 || crate::world::overworld_blocks::bamboo_leaf_planes(b).is_some()
                 || crate::world::utilities::see_through(b)
                 || b == crate::world::beacon::BEACON
+                || crate::world::overworld_blocks::cocoa_of(b).is_some()
                 || crate::world::cave_blocks::see_through(b)
                 || matches!(b.shaped(), Some(crate::world::block::Shaped::Frame { .. }));
             // Java's `nether_portal_ns` and `_ew` models: only the plane's two
@@ -869,6 +873,7 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE], origin: glam
             // end rods): each face as the jar's model has it, lit flat (Java
             // draws them without ambient occlusion: the cell's own light, or
             // the neighbour's for a face on the cell's edge), in plane code 29.
+            let cauldron = crate::world::utilities::cauldron_of(b);
             if let Some(faces) = model_cells[k] {
                 for mf in faces.iter().filter(|m| usize::from(m.face) == face) {
                     let depth = if positive { mf.hi[d] } else { mf.lo[d] };
@@ -917,12 +922,19 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE], origin: glam
                         light,
                     ]);
                 }
-                continue;
+                // v1.0 final F10: a cauldron's contents (its last box) are
+                // still drawn as a box below.
+                if cauldron.is_none() {
+                    continue;
+                }
             }
             // v1.0 gap track 6e: Java's explicit face UVs (`java_uv`).
             let java_uvs = java_uv::has_ops(b);
             let frogspawn = b == crate::world::frog_blocks::FROGSPAWN;
             for (j, bx) in boxes.as_slice().iter().enumerate() {
+                if cauldron.is_some() && model_cells[k].is_some() && j < CAULDRON_BODY {
+                    continue;
+                }
                 // v1.0 gap track 6e: Java's frogspawn is a plane at 1.5/16
                 // (both faces there, no sides), which also keeps the 1.5/16
                 // code out of the bounds.
@@ -2014,6 +2026,116 @@ mod tests {
             }
         }
         assert_eq!(matched, 11, "every face of the item but the rod's underside is Java's");
+    }
+
+    /// v1.0 final F10: repeaters (every delay, facing and power, and
+    /// locked by a powered repeater beside it), comparators (every facing,
+    /// mode and power) and cocoa (every age and facing) are Java's models,
+    /// every face with the jar's UVs and the layers the model's texture
+    /// variables name.
+    #[test]
+    fn diodes_and_cocoa_are_javas_model_layout() {
+        use crate::world::redstone_blocks::{Component, component};
+        let fixture = model_fixture();
+        let java_name = |f: Facing| match f {
+            Facing::North => "north",
+            Facing::South => "south",
+            Facing::East => "east",
+            Facing::West => "west",
+        };
+        let (mut repeaters, mut comparators) = (0, 0);
+        for id in 1162..=1209u16 {
+            let b = Block(id);
+            match component(b) {
+                Some(Component::Repeater { facing, delay, on }) => {
+                    let java = java_name(facing.clockwise().clockwise());
+                    for locked in [false, true] {
+                        let label = format!("delay={delay},facing={java},locked={locked},powered={on}");
+                        let mut blocks = vec![([5, 5, 5], b)];
+                        let mut faces = fixture["repeaters"][&label].clone();
+                        if locked {
+                            // Both on stone (a placed diode needs it), so the
+                            // plate's underside is culled.
+                            faces.retain(|f| !(f.0 == 3 && f.1[1] == 0.0));
+                            // A powered repeater to the side, its output
+                            // pointing into this one.
+                            let side = facing.clockwise();
+                            let o = side.offset();
+                            let at = [(5 + o.x) as usize, 5, (5 + o.z) as usize];
+                            let into = side.clockwise().clockwise();
+                            let id = (1162..=1193u16)
+                                .find(|&i| {
+                                    matches!(component(Block(i)), Some(Component::Repeater { facing, delay: 1, on: true }) if facing == into)
+                                })
+                                .unwrap();
+                            blocks.push((at, Block(id)));
+                            blocks.insert(0, ([5, 4, 5], Block::STONE));
+                            blocks.insert(0, ([at[0], 4, at[2]], Block::STONE));
+                        }
+                        let drawn = check_model_faces(&mesh_blocks(&blocks), &faces, &label);
+                        let torch = if on { 1116 } else { 1117 };
+                        let top = if on {
+                            crate::content::item_models::REPEATER_TOP_ON
+                        } else {
+                            crate::content::item_models::REPEATER_TOP
+                        };
+                        // The plate's top, its smooth stone sides and
+                        // underside, the torches and (locked) the bedrock bar.
+                        let allowed = [tex::SMOOTH_STONE, top, torch, if locked { tex::BEDROCK } else { torch }];
+                        assert!(drawn.iter().all(|d| allowed.contains(&d.2)), "{label}: {drawn:?}");
+                        assert!(drawn.iter().any(|d| d.0 == 2 && d.2 == top), "{label}: the top");
+                        assert_eq!(locked, drawn.iter().any(|d| d.2 == tex::BEDROCK), "{label}: the lock");
+                        repeaters += 1;
+                    }
+                }
+                Some(Component::Comparator { facing, subtract, on }) => {
+                    let java = java_name(facing.clockwise().clockwise());
+                    let mode = if subtract { "subtract" } else { "compare" };
+                    let label = format!("facing={java},mode={mode},powered={on}");
+                    check_model_faces(&mesh_blocks(&[([5, 5, 5], b)]), &fixture["comparators"][&label], &label);
+                    comparators += 1;
+                }
+                _ => {}
+            }
+        }
+        assert_eq!((repeaters, comparators), (64, 16));
+        for log in Facing::ALL {
+            for age in 0..3 {
+                let b = crate::world::overworld_blocks::cocoa(age, log);
+                let label = format!("age={age},facing={}", java_name(log));
+                let drawn = check_model_faces(&mesh_blocks(&[([5, 5, 5], b)]), &fixture["cocoa"][&label], &label);
+                assert_eq!(drawn.len(), 8, "{label}");
+                assert!(drawn.iter().all(|d| d.2 == b.info().tex[0]), "{label}");
+            }
+        }
+    }
+
+    /// v1.0 final F10: a cauldron's body is Java's `cauldron` model (its
+    /// L-shaped legs and inside faces), lit flat as its `ambientocclusion:
+    /// false`; a filled cauldron adds only its contents' top.
+    #[test]
+    fn cauldrons_are_javas_model_layout() {
+        use crate::world::utilities::{Contents, cauldron, t as u};
+        let fixture = model_fixture();
+        let faces = &fixture["cauldrons"]["cauldron"];
+        let drawn = check_model_faces(&mesh_blocks(&[([5, 5, 5], cauldron(Contents::Empty))]), faces, "cauldron");
+        assert_eq!(drawn.len(), faces.len());
+        let layers = [u::CAULDRON_SIDE, u::CAULDRON_TOP, u::CAULDRON_BOTTOM];
+        assert!(drawn.iter().all(|d| layers.contains(&d.2)), "{drawn:?}");
+        for contents in [Contents::Water(1), Contents::Water(3), Contents::Lava, Contents::PowderSnow(2)] {
+            let m = mesh_blocks(&[([5, 5, 5], cauldron(contents))]);
+            let at_cell = |q: &&[u32; 3]| [q[0] & 31, q[0] >> 6 & 31, q[0] >> 12 & 31] == [5, 5, 5];
+            let others: Vec<_> = m
+                .quads
+                .iter()
+                .filter(at_cell)
+                .filter(|q| q[1] & DETAIL == 0 || q[1] >> 26 & 31 != PLANE_MODEL)
+                .collect();
+            assert_eq!(others.len(), 1, "{contents:?}: the contents' top only");
+            assert_eq!(others[0][0] >> 18 & 7, 2, "{contents:?}: a top face");
+            let model = m.quads.iter().filter(at_cell).filter(|q| q[1] & DETAIL != 0 && q[1] >> 26 & 31 == PLANE_MODEL);
+            assert_eq!(model.count(), faces.len(), "{contents:?}");
+        }
     }
 
     /// v1.0 gap track 6f: lanterns (iron, soul and every copper state,

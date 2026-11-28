@@ -123,6 +123,9 @@ pub(super) fn pixel(layer: u16, x: usize, y: usize) -> Rgba {
         return fire_1::packed(layer - tex::FIRE_1, x, y);
     }
     // v1.0 gap track 6b: the item models' plant layers.
+    if (voxelcraft::content::item_models::DIODE_TEX..voxelcraft::content::item_models::DIODE_TEX_END).contains(&layer) {
+        return voxelcraft::content::item_models::diode_pixel(layer, x, y);
+    }
     if (voxelcraft::content::item_models::TEX..voxelcraft::content::item_models::TEX_END).contains(&layer) {
         return voxelcraft::content::item_models::pixel(layer, x, y);
     }

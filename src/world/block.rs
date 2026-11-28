@@ -386,7 +386,7 @@ pub mod tex {
         ];
         // v0.15 Track D's frosted ice (layers 4000..4004) and Track F's
         // explorer maps (4056..4066) set the count.
-        const ENDS2: [u32; 6] = [
+        const ENDS2: [u32; 7] = [
             super::super::frosted_ice::TEX_END as u32,
             super::super::explorer_maps::TEX_END as u32,
             // v0.16 Track A (layers 529..541).
@@ -397,6 +397,8 @@ pub mod tex {
             crate::content::item_models::TEX_END as u32,
             // v1.0 final track F3: fire's second texture (4088..4091).
             FIRE_1_END as u32,
+            // v1.0 final F10: the repeater's and comparator's tops (4092..4096).
+            crate::content::item_models::DIODE_TEX_END as u32,
         ];
         let mut max = 0;
         let mut i = 0;
