@@ -41,6 +41,16 @@ use crate::mesh::{CROSS, CUTOUT, FACE_ORDER, MeshData, OPAQUE, PASSES, TRANSLUCE
 use crate::world::block::tex;
 use crate::world::chunk::{CHUNK_SIZE, CHUNK_SIZE_I};
 pub use block_model::BlockModel;
+
+/// A chunk draw's instance: its origin relative to the camera, and its world
+/// origin's x and z in blocks (v1.0 gap track 6c: the seed of the model
+/// offsets, `chunk.wgsl`'s `block_offset`).
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct ChunkInstance {
+    offset: [f32; 3],
+    origin: [i32; 2],
+}
 use ui::UiVertex;
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
@@ -359,6 +369,9 @@ pub struct Renderer {
     blur: blur::Blur,
     particles: particles::ParticlePass,
     block_models: block_model::BlockModelPass,
+    /// v1.0 gap track 6c: the items held in the last [`Renderer::set_entities`]
+    /// mesh, drawn with the block models.
+    held_models: Vec<BlockModel>,
     weather: weather::WeatherPass,
     clouds: clouds::CloudPass,
     quad_indices: wgpu::Buffer,
@@ -381,7 +394,7 @@ pub struct Renderer {
     visible: Vec<(f32, IVec3, [f32; 3], u8)>,
     /// The visible chunks' origins for the instance buffer, kept between
     /// frames so drawing allocates nothing once it has grown.
-    instance_scratch: Vec<[f32; 3]>,
+    instance_scratch: Vec<ChunkInstance>,
     capture: Option<std::path::PathBuf>,
     /// v1.0 gap track 6: the next frame is read back into memory instead
     /// (`--item-review`), and the last one read.
@@ -731,10 +744,12 @@ impl Renderer {
 
         // Quads come from the arena's storage buffers (vertex pulling); the
         // only vertex input is the per-draw chunk origin.
+        // v1.0 gap track 6c: and the chunk's world origin (x, z), which
+        // seeds the plants' and bamboo's offsets (`block_offset`).
         let chunk_buffers = [Some(wgpu::VertexBufferLayout {
-            array_stride: 12,
+            array_stride: std::mem::size_of::<ChunkInstance>() as u64,
             step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &wgpu::vertex_attr_array![1 => Float32x3],
+            attributes: &wgpu::vertex_attr_array![1 => Float32x3, 2 => Sint32x2],
         })];
         let make_chunk_pipeline = |label: &str,
                                    fs: &str,
@@ -1000,6 +1015,7 @@ impl Renderer {
             blur,
             particles,
             block_models,
+            held_models: Vec::new(),
             weather,
             clouds,
             quad_indices,
@@ -1365,7 +1381,7 @@ impl Renderer {
     fn create_instance_buffer(device: &wgpu::Device, capacity: usize) -> wgpu::Buffer {
         device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("chunk instances"),
-            size: (capacity * 12) as u64,
+            size: (capacity * std::mem::size_of::<ChunkInstance>()) as u64,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         })
@@ -1673,7 +1689,10 @@ impl Renderer {
             self.instances = Self::create_instance_buffer(&self.device, self.instance_capacity);
         }
         self.instance_scratch.clear();
-        self.instance_scratch.extend(self.visible.iter().map(|v| v.2));
+        self.instance_scratch.extend(self.visible.iter().map(|v| ChunkInstance {
+            offset: v.2,
+            origin: [v.1.x * crate::world::chunk::CHUNK_SIZE_I, v.1.z * crate::world::chunk::CHUNK_SIZE_I],
+        }));
         if !self.instance_scratch.is_empty() {
             self.queue.write_buffer(&self.instances, 0, bytemuck::cast_slice(&self.instance_scratch));
         }
@@ -1730,6 +1749,7 @@ impl Renderer {
             &self.device,
             &self.queue,
             &p.block_models,
+            &self.held_models,
             &p.signs,
             hand,
             p.camera,

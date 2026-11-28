@@ -98,6 +98,7 @@ impl Game {
                         glint: stack.has_foil(),
                         translucent: false,
                         mesh: Some((stack, voxelcraft::content::item_models::Context::Fixed)),
+                        transform: None,
                     };
                 }
                 let size = if block.is_some() { 0.375 } else { 0.5 };
@@ -126,6 +127,7 @@ impl Game {
                     glint: stack.has_foil(),
                     translucent: crate::item::translucent(&stack),
                     mesh: None,
+                    transform: None,
                 }
             },
         )

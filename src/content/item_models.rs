@@ -15,7 +15,7 @@
 //! bed halves' faces, the banner's cloth and pole, planks and iron for the
 //! shield) and four original layers for the two plants ([`TEX`]).
 
-use glam::{EulerRot, Mat4, Quat, Vec3};
+use glam::{Quat, Vec3};
 
 use crate::color::DyeColor;
 use crate::inventory::Stack;
@@ -23,107 +23,7 @@ use crate::item::Item;
 use crate::world::block::{Block, tex};
 use crate::world::colour_blocks::banner::{self, Banner, BannerMount, Quad};
 
-/// A display transform (`ItemTransform`): rotation in degrees (Java's XYZ
-/// order), translation in sixteenths, scale.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Transform {
-    pub rotation: [f32; 3],
-    pub translation: [f32; 3],
-    pub scale: f32,
-}
-
-impl Transform {
-    const fn new(rotation: [f32; 3], translation: [f32; 3], scale: f32) -> Self {
-        Self { rotation, translation, scale }
-    }
-
-    /// `ItemTransform.apply`: translate, rotate, scale.
-    pub fn matrix(&self) -> Mat4 {
-        let [rx, ry, rz] = self.rotation.map(f32::to_radians);
-        Mat4::from_translation(Vec3::from_array(self.translation) / 16.0)
-            * Mat4::from_quat(Quat::from_euler(EulerRot::XYZ, rx, ry, rz))
-            * Mat4::from_scale(Vec3::splat(self.scale))
-    }
-}
-
-/// Where an item is drawn (`ItemDisplayContext`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Context {
-    Gui,
-    Ground,
-    /// An item frame (and the shelf, which the game draws like a frame).
-    Fixed,
-    FirstPersonRightHand,
-}
-
-/// A base model's display transforms and GUI light.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Display {
-    pub gui: Transform,
-    pub ground: Transform,
-    pub fixed: Transform,
-    pub first_person: Transform,
-    /// `gui_light: front` (lit flat from the front) rather than `side`.
-    pub front_light: bool,
-}
-
-impl Display {
-    pub fn transform(&self, context: Context) -> Transform {
-        match context {
-            Context::Gui => self.gui,
-            Context::Ground => self.ground,
-            Context::Fixed => self.fixed,
-            Context::FirstPersonRightHand => self.first_person,
-        }
-    }
-}
-
-/// `block/template_bed`.
-pub const BED: Display = Display {
-    gui: Transform::new([30.0, 340.0, 0.0], [2.0, 3.0, 0.0], 0.5325),
-    ground: Transform::new([0.0, 180.0, 0.0], [0.0, 1.0, 2.0], 0.25),
-    fixed: Transform::new([270.0, 180.0, 0.0], [0.0, 4.0, -2.0], 0.5),
-    first_person: Transform::new([30.0, 340.0, 0.0], [0.0, 3.0, 0.0], 0.375),
-    front_light: false,
-};
-
-/// `item/template_banner`.
-pub const BANNER: Display = Display {
-    gui: Transform::new([30.0, 20.0, 0.0], [0.0, -3.25, 0.0], 0.5325),
-    ground: Transform::new([0.0, 0.0, 0.0], [0.0, 1.0, 0.0], 0.25),
-    fixed: Transform::new([0.0, 180.0, 0.0], [0.0, 0.0, 0.0], 0.5),
-    first_person: Transform::new([0.0, 90.0, 0.0], [0.0, 0.0, 0.0], 0.375),
-    front_light: true,
-};
-
-/// `item/shield`.
-pub const SHIELD: Display = Display {
-    gui: Transform::new([15.0, -25.0, -5.0], [2.0, 3.0, 0.0], 0.65),
-    ground: Transform::new([0.0, 0.0, 0.0], [2.0, 4.0, 2.0], 0.25),
-    fixed: Transform::new([0.0, 180.0, 0.0], [-4.5, 4.5, -5.0], 0.55),
-    first_person: Transform::new([0.0, 180.0, 5.0], [-10.0, 1.75, -10.0], 1.25),
-    front_light: true,
-};
-
-/// `block/block` (the spore blossom), and with `item/small_dripleaf`'s
-/// first-person override.
-pub const BLOCK: Display = Display {
-    gui: Transform::new([30.0, 225.0, 0.0], [0.0, 0.0, 0.0], 0.625),
-    ground: Transform::new([0.0, 0.0, 0.0], [0.0, 3.0, 0.0], 0.25),
-    fixed: Transform::new([0.0, 0.0, 0.0], [0.0, 0.0, 0.0], 0.5),
-    first_person: Transform::new([0.0, 45.0, 0.0], [0.0, 0.0, 0.0], 0.4),
-    front_light: false,
-};
-pub const SMALL_DRIPLEAF: Display =
-    Display { first_person: Transform::new([0.0, 45.0, 0.0], [0.0, 3.2, 0.0], 0.4), ..BLOCK };
-
-impl Context {
-    /// The model-space to context-space matrix for `display`: Java's
-    /// display transform, then `translate(-0.5, -0.5, -0.5)`.
-    pub fn matrix(self, display: &Display) -> Mat4 {
-        display.transform(self).matrix() * Mat4::from_translation(Vec3::splat(-0.5))
-    }
-}
+pub use super::item_display::{BANNER, BED, BLOCK, Context, Display, SHIELD, SMALL_DRIPLEAF, Transform};
 
 /// An item's 3D model.
 #[derive(Clone, Debug)]

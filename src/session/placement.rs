@@ -361,6 +361,10 @@ impl PlayerSession {
                         // `CalibratedSculkSensorBlock.getStateForPlacement`: facing where the player looks.
                         if crate::world::cave_blocks::calibrated_of(block).is_some() {
                             block.with_facing(ctx.facing)
+                        } else if block == ob::BAMBOO {
+                            // v1.0 gap track 6c: `BambooStalkBlock.getStateForPlacement`.
+                            let at_cell = |c: IVec3| world.get_block(c).unwrap_or(Block::AIR);
+                            ob::bamboo_placed(at_cell(at - IVec3::Y), at_cell(at + IVec3::Y))
                         } else {
                             block
                         }

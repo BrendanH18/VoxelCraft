@@ -942,7 +942,7 @@ impl Game {
         // The workstation, small in the corner (`RecipeToast`'s 0.6 scale).
         match (entry.station.icon_layer(), entry.station.block()) {
             (Some(layer), _) => ui.icon(x + 3.0, 3.0, 9.6, layer, WHITE),
-            (None, Some(block)) => ui.block_icon(x + 3.0, 3.0, 9.6, block),
+            (None, Some(block)) => ui.block_icon(x + 3.0, 3.0, 9.6, block, false),
             _ => {}
         }
     }

@@ -11,6 +11,15 @@ and a `composite`'s first model. That leaf is either a `special` renderer
 parent chain ends at `builtin/generated` (a flat sprite, extruded) or in
 a block model with elements (drawn in 3D).
 
+Each item also names its display transforms (v1.0 gap track 6c), an index
+into `displays`: for every context the game draws (`gui`, `ground`, `fixed`,
+`firstperson_righthand`, `thirdperson_righthand`, `on_shelf`), the transform
+of the nearest model in the leaf's parent chain that sets it (Java merges
+display per context) as rotation (degrees), translation (sixteenths) and
+scale, nine numbers, with `ItemTransform`'s defaults filled in and a context
+no model sets as the identity; and the chain's `gui_light`. A special
+renderer's transforms come from its `base` model.
+
     python3 tools/extract_java_item_model_fixtures.py client.jar \\
         --output tests/fixtures/java/26.3/item_models.json
 """
@@ -76,11 +85,50 @@ def kind_of(jar, model):
     return "none", chain
 
 
+CONTEXTS = ["gui", "ground", "fixed", "firstperson_righthand", "thirdperson_righthand", "on_shelf"]
+IDENTITY = {"rotation": [0.0, 0.0, 0.0], "translation": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0]}
+
+
+def display_of(jar, model):
+    """The display transforms and GUI light of `model`'s parent chain."""
+    found = {}
+    light = None
+    name = strip(model)
+    while name and name != "builtin/generated":
+        try:
+            data = json.loads(jar.read("assets/minecraft/models/{}.json".format(name)))
+        except KeyError:
+            break
+        for context, transform in data.get("display", {}).items():
+            found.setdefault(context, transform)
+        if light is None and "gui_light" in data:
+            light = data["gui_light"]
+        name = strip(data["parent"]) if "parent" in data else None
+    out = {}
+    for context in CONTEXTS:
+        transform = found.get(context) or {}
+        out[context] = [float(v) for key in IDENTITY for v in transform.get(key, IDENTITY[key])]
+    out["gui_light"] = light or "side"
+    return out
+
+
+DISPLAYS = []
+
+
+def display_index(jar, model):
+    """The index of `model`'s display in DISPLAYS, adding it when new."""
+    display = display_of(jar, model)
+    if display not in DISPLAYS:
+        DISPLAYS.append(display)
+    return DISPLAYS.index(display)
+
+
 def extract(client):
     data = client.read_bytes()
     if hashlib.sha1(data).hexdigest() != CLIENT_SHA1:
         raise ValueError("not the pinned official Java 26.3 client artifact")
     out = {}
+    DISPLAYS.clear()
     with zipfile.ZipFile(client) as jar:
         prefix = "assets/minecraft/items/"
         for path in sorted(n for n in jar.namelist() if n.startswith(prefix) and n.endswith(".json")):
@@ -90,19 +138,22 @@ def extract(client):
             if kind == "special":
                 special = strip(node["model"]["type"])
                 out[item] = {"kind": "special", "special": special, "base": strip(node.get("base", ""))}
+                out[item]["display"] = display_index(jar, node.get("base", ""))
             elif kind == "model":
                 TEXTURES.clear()
                 k, chain = kind_of(jar, node["model"])
                 out[item] = {"kind": k, "model": chain[0]}
                 if k == "flat" and "layer0" in TEXTURES:
                     out[item]["layer0"] = TEXTURES["layer0"]
+                out[item]["display"] = display_index(jar, node["model"])
             else:
                 out[item] = {"kind": kind}
     return {
         "reference": "Minecraft Java Edition 26.3",
         "client_sha1": CLIENT_SHA1,
-        "source": "assets/minecraft/items/*.json and the models/ parent chains of their GUI leaf",
+        "source": "assets/minecraft/items/*.json and the models/ parent chains of their GUI leaf, with their display transforms",
         "items": out,
+        "displays": DISPLAYS,
     }
 
 

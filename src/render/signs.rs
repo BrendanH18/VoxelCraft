@@ -415,44 +415,61 @@ fn lay_out(sign: Sign, cell: IVec3, text: &SignText, front: bool, side: &mut Cac
 
 // ---- Shelf items -------------------------------------------------------
 
-/// The items on shelves within [`RANGE`] of `camera`, a quarter of a block
-/// each (Java's `ShelfRenderer`).
+/// The items on shelves within [`RANGE`] of `camera`, as Java's
+/// `ShelfRenderer` places them (v1.0 gap track 6c): from the cell's centre,
+/// turned to the shelf's facing (`-toYRot`), the slot's offset of 5/16
+/// across and a quarter back, a quarter size, then the item's model with
+/// its `on_shelf` display transform, raised so the middle of its bounds
+/// (`getModelBoundingBox`) sits there. Java's `align_items_to_bottom` is
+/// only ever read from saved data, so items are always centred.
 pub fn shelf_items(world: &World, camera: DVec3, out: &mut Vec<BlockModel>) {
+    use glam::Mat4;
+    use voxelcraft::content::{item_display, item_models};
     for (&cell, items) in world.wood_entities().shelves() {
         if (cell.as_dvec3() + DVec3::splat(0.5)).distance_squared(camera) > RANGE * RANGE {
             continue;
         }
         let Some(shelf) = world.get_block(cell).and_then(shelves::shelf) else { continue };
         let (sky_light, block_light) = light(world, cell);
+        // `Direction.toYRot`: south 0, west 90, north 180, east 270.
+        let y_rot = match shelf.facing {
+            crate::world::block::Facing::South => 0.0f32,
+            crate::world::block::Facing::West => 90.0,
+            crate::world::block::Facing::North => 180.0,
+            crate::world::block::Facing::East => 270.0,
+        };
         for (slot, stack) in items.iter().enumerate() {
             let Some(stack) = stack else { continue };
-            let (anchor, yaw) = shelves::item_anchor(shelf, slot);
-            let block = crate::item::model_block(stack);
-            let icon = match block {
-                Some(_) => None,
-                None => stack.item.flat_layer(),
+            let mesh = item_models::has_mesh(stack.item).then_some((*stack, item_models::Context::OnShelf));
+            let block = if mesh.is_some() { None } else { crate::item::model_block(stack) };
+            let icon = match (mesh, block) {
+                (None, None) => stack.item.flat_layer(),
+                _ => None,
             };
-            let size = 0.25;
-            // v1.0 gap track 6b: a 3D item mesh stands at the anchor with
-            // its ground transform (the dropped model, as other shelved
-            // items use).
-            let mesh = voxelcraft::content::item_models::has_mesh(stack.item)
-                .then_some((*stack, voxelcraft::content::item_models::Context::Ground));
+            let local = item_models::Context::OnShelf.matrix(&item_display::drawn(stack));
+            let (low, high) = super::block_model::extent_y(stack, block, local);
+            let transform = Mat4::from_translation((cell.as_dvec3() - camera).as_vec3() + Vec3::splat(0.5))
+                * Mat4::from_rotation_y((-y_rot).to_radians())
+                * Mat4::from_translation(Vec3::new((slot as f32 - 1.0) * 0.3125, 0.0, -0.25))
+                * Mat4::from_scale(Vec3::splat(0.25))
+                * Mat4::from_translation(Vec3::new(0.0, -(low + high) / 2.0, 0.0))
+                * local;
             out.push(BlockModel {
                 patterns: None,
                 lid: None,
-                min: cell.as_dvec3() + anchor - if mesh.is_some() { DVec3::ZERO } else { DVec3::splat(size / 2.0) },
-                size: if mesh.is_some() { 1.0 } else { size as f32 },
+                min: DVec3::ZERO,
+                size: 1.0,
                 block: block.unwrap_or(Block::AIR),
                 sky_light,
                 block_light,
-                yaw: yaw.to_radians(),
+                yaw: 0.0,
                 icon,
                 orient: None,
                 tint: crate::inventory::components::dye_tint_bytes(*stack),
                 glint: stack.has_foil(),
                 translucent: crate::item::translucent(stack),
                 mesh,
+                transform: Some(transform),
             });
         }
     }

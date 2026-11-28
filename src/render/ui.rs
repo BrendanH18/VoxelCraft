@@ -239,83 +239,103 @@ impl Ui {
         self.quad([[px0, py0], [px1, py0], [px1, py1], [px0, py1]], uv, layer as f32, color);
     }
 
-    /// Isometric block icon filling a `size` square: a cube, a lowered one
-    /// for low blocks, or the boxes of a shaped block.
-    pub fn block_icon(&mut self, x: f32, y: f32, size: f32, block: Block) {
-        let t = block.info().tex;
+    /// v1.0 gap track 6c: a block item in the `size`-pixel item area at
+    /// (x, y) of a slot (16 pixels of an 18-pixel slot, inset by one), as
+    /// Java's `GuiItemAtlas` draws it: the item's boxes with their faces'
+    /// textures, placed by its model's GUI display transform
+    /// ([`Ui::gui_model`]). Until 2026-11-27 icons were an isometric cube
+    /// mirrored left to right from Java's view.
+    pub fn block_icon(&mut self, x: f32, y: f32, size: f32, block: Block, glint: bool) {
         if block.flat_icon() {
             // Plants, torches and ladders show their flat sprite, like items
             // (v1.0 gap track 6b: an item sprite of its own where it has one).
-            let layer = crate::item::Item::from_block(block).flat_layer().unwrap_or(t[0]);
-            self.icon(x - 1.0, y - 1.0, size + 2.0, layer, WHITE);
+            let layer = crate::item::Item::from_block(block).flat_layer().unwrap_or(block.info().tex[0]);
+            self.icon(x, y, size, layer, WHITE);
             return;
         }
-        let block = block.item_facing();
-        let t = block.info().tex;
-        let boxes = shape::item_boxes(block);
-        // Half width `s`: the top diamond is `s` tall, each side face `s` tall.
-        let (l, s) = (x, size / 2.0);
-        let q = s / 2.0;
-        // A point of the unit cube in icon pixels: +X runs down-right, +Z
-        // up-right, +Y up. The top, -Z (left) and +X (right) faces show.
-        // v1.0 gap track 6: an item Java draws larger or smaller in a slot
-        // grows or shrinks about the cube's centre.
-        let k = shape::item_scale(block).gui;
-        let grow = |p: [f32; 3]| p.map(|c| (c - 0.5) * k + 0.5);
-        let at = |p: [f32; 3]| {
-            let p = grow(p);
-            [l + s * (p[0] + p[2]), y + q * (1.0 + p[0] - p[2]) + s * (1.0 - p[1])]
-        };
-        let shade = |f: f32| [f, f, f, 1.0];
-        // Far boxes first, so nearer ones paint over them.
-        let mut order: Vec<_> = boxes.as_slice().iter().copied().enumerate().collect();
-        order.sort_by_key(|&(_, b)| {
-            b.min[0] as i32 + b.max[0] as i32 + b.min[1] as i32 + b.max[1] as i32 - b.min[2] as i32 - b.max[2] as i32
-        });
-        for (i, b) in order {
-            // Candle wicks, the beacon's plinth and core: their own layers.
-            let t = shape::item_box_layer(block, i).map_or(t, |l| [l; 6]);
-            let (lo, hi) = (b.min.map(|c| c as f32 / 16.0), b.max.map(|c| c as f32 / 16.0));
-            let top = [[lo[0], hi[1], lo[2]], [lo[0], hi[1], hi[2]], [hi[0], hi[1], hi[2]], [hi[0], hi[1], lo[2]]];
-            let left = [[lo[0], hi[1], lo[2]], [hi[0], hi[1], lo[2]], [hi[0], lo[1], lo[2]], [lo[0], lo[1], lo[2]]];
-            let right = [[hi[0], hi[1], lo[2]], [hi[0], hi[1], hi[2]], [hi[0], lo[1], hi[2]], [hi[0], lo[1], lo[2]]];
-            // UVs as on the cube: (z, x) on top, (x or z, 1 - y) on the sides.
-            let face = |c: [[f32; 3]; 4], uv: fn([f32; 3]) -> [f32; 2]| (c.map(at), c.map(uv));
-            for ((p, uv), layer, colour) in [
-                (face(top, |p| [p[2], p[0]]), t[2], WHITE),
-                (face(left, |p| [p[0], 1.0 - p[1]]), t[5], shade(0.8)),
-                (face(right, |p| [p[2], 1.0 - p[1]]), t[0], shade(0.62)),
-            ] {
-                self.quad(p, uv, layer as f32, colour);
+        let stack = voxelcraft::inventory::Stack::new(crate::item::Item::from_block(block.base()), 1);
+        let display = voxelcraft::content::item_display::drawn(&stack);
+        self.gui_model(x, y, size, &block_item_quads(block), &display, glint);
+    }
+
+    /// v1.0 gap track 6b: an item mesh (`content::item_models`) in the
+    /// `size`-pixel item area at (x, y), placed with its GUI display
+    /// transform ([`Ui::gui_model`]).
+    pub fn item_mesh(&mut self, x: f32, y: f32, size: f32, mesh: &voxelcraft::content::item_models::Mesh, glint: bool) {
+        self.gui_model(x, y, size, &mesh.quads, &mesh.display, glint);
+    }
+
+    /// v1.0 gap track 6c: model-space quads (a block is 0..1) in the
+    /// `size`-pixel item area at (x, y), as `GuiItemAtlas` draws an item:
+    /// the GUI display transform about the area's centre, one block across
+    /// the area, x right, y up and z toward the viewer (Java scales the
+    /// pose by (16, -16, 16) and flips the atlas back); faces turned away
+    /// are dropped and far ones drawn first, each lit by Java's GUI lights
+    /// for its turn ([`gui_shade`](voxelcraft::content::item_display::gui_shade):
+    /// `ITEMS_3D` for block models, `ITEMS_FLAT` for `gui_light: front`).
+    /// `glint` lays the enchantment glint over every face.
+    pub fn gui_model(
+        &mut self,
+        x: f32,
+        y: f32,
+        size: f32,
+        quads: &[voxelcraft::world::colour_blocks::banner::Quad],
+        display: &voxelcraft::content::item_display::Display,
+        glint: bool,
+    ) {
+        use voxelcraft::content::item_display::{Context, gui_shade};
+        let m = Context::Gui.matrix(display);
+        let (cx, cy) = (x + size / 2.0, y + size / 2.0);
+        let mut placed: Vec<_> = quads
+            .iter()
+            .map(|q| (q.corners.map(|c| m.transform_point3(c)), m.transform_vector3(q.normal).normalize_or_zero(), q))
+            .filter(|(_, n, _)| n.z > 1e-4)
+            .collect();
+        let depth = |c: &[glam::Vec3; 4]| c.iter().map(|c| c.z).sum::<f32>();
+        placed.sort_by(|a, b| depth(&a.0).total_cmp(&depth(&b.0)));
+        for (corners, normal, q) in placed {
+            let shade = gui_shade(normal, display.front_light);
+            let [r, g, b] = q.tint.map_or([1.0; 3], |t| [t[0], t[1], t[2]].map(|v| f32::from(v) / 255.0));
+            let p = corners.map(|c| [cx + c.x * size, cy - c.y * size]);
+            self.quad(p, q.uv, q.layer as f32, [r * shade, g * shade, b * shade, 1.0]);
+            if glint {
+                self.glint_quad(p, q.uv, q.layer);
             }
         }
     }
 
-    /// v1.0 gap track 6b: an item mesh (`content::item_models`) in a
-    /// `size`-pixel slot area at (x, y), placed with its GUI display
-    /// transform: far quads first, back faces dropped, each lit by how it is
-    /// turned (Java's `gui_light`: from the side and above for block models,
-    /// from the front for the banner and shield). The view is mirrored
-    /// left to right like the game's block icons, so a model's north face
-    /// shows on the left as theirs does.
-    pub fn item_mesh(&mut self, x: f32, y: f32, size: f32, mesh: &voxelcraft::content::item_models::Mesh) {
-        use voxelcraft::content::item_models::Context;
-        let (cx, cy) = (x + size / 2.0, y + size / 2.0);
-        let mut quads: Vec<_> = mesh.placed(Context::Gui).filter(|q| q.normal.z > 1e-4).collect();
-        let depth = |q: &voxelcraft::world::colour_blocks::banner::Quad| q.corners.iter().map(|c| c.z).sum::<f32>();
-        quads.sort_by(|a, b| depth(a).total_cmp(&depth(b)));
-        for q in quads {
-            let n = glam::Vec3::new(-q.normal.x, q.normal.y, q.normal.z);
-            let shade = if mesh.display.front_light {
-                0.55 + 0.45 * n.z + 0.1 * n.y
-            } else {
-                0.794 + 0.127 * n.x + 0.238 * n.y
-            }
-            .clamp(0.4, 1.0);
-            let [r, g, b] = q.tint.map_or([1.0; 3], |t| [t[0], t[1], t[2]].map(|v| f32::from(v) / 255.0));
-            let p = q.corners.map(|c| [cx - c.x * size, cy - c.y * size]);
-            self.quad(p, q.uv, q.layer as f32, [r * shade, g * shade, b * shade, 1.0]);
+    /// The enchantment glint over one face of a 3D item (as the flat icons'
+    /// glint in `hud`): a faint purple sheen over the face's texture shape
+    /// with a brighter band sweeping down it along the texture's v.
+    fn glint_quad(&mut self, p: [[f32; 2]; 4], uv: [[f32; 2]; 4], layer: u16) {
+        let sheen = [0.55, 0.25, 1.0, -0.3];
+        self.quad(p, uv, layer as f32, sheen);
+        let band = 0.3;
+        let top = (glint_clock() * 0.6).fract() * (1.0 + band) - band;
+        let (v0, v1) = (top.max(0.0), (top + band).min(1.0));
+        if v1 <= v0 {
+            return;
         }
+        // The face is a parallelogram with its texture mapped affinely: v
+        // runs along one pair of opposite edges (0 to 3 and 1 to 2, or 0 to
+        // 1 and 3 to 2); the band is cut out of it along that pair.
+        let (a, b, c, d) = if (uv[3][1] - uv[0][1]).abs() > 1e-6 { (0, 3, 1, 2) } else { (0, 1, 3, 2) };
+        let (va, vb) = (uv[a][1], uv[b][1]);
+        if (vb - va).abs() < 1e-6 {
+            return;
+        }
+        let at = |t: f32, from: usize, to: usize| {
+            let k = ((t - va) / (vb - va)).clamp(0.0, 1.0);
+            let mix = |x: [f32; 2], y: [f32; 2]| [x[0] + (y[0] - x[0]) * k, x[1] + (y[1] - x[1]) * k];
+            (mix(p[from], p[to]), mix(uv[from], uv[to]))
+        };
+        let (lo, hi) = (v0.max(va.min(vb)), v1.min(va.max(vb)));
+        if hi <= lo {
+            return;
+        }
+        let (a0, b0) = (at(lo, a, b), at(lo, c, d));
+        let (a1, b1) = (at(hi, a, b), at(hi, c, d));
+        self.quad([a0.0, b0.0, b1.0, a1.0], [a0.1, b0.1, b1.1, a1.1], layer as f32, [0.8, 0.6, 1.0, -0.35]);
     }
 
     /// Width of the ink of `s` in UI pixels: the advances less the last
@@ -406,6 +426,66 @@ impl Ui {
         self.rect(x - 1.0, y - 1.0, w + 2.0, font::LINE_HEIGHT as f32 + 1.0, [0.0, 0.0, 0.0, 0.4]);
         self.text_flat(x, y, s, color);
     }
+}
+
+/// Seconds since the first glint was drawn: the glint's clock.
+pub fn glint_clock() -> f32 {
+    static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    START.get_or_init(std::time::Instant::now).elapsed().as_secs_f32()
+}
+
+/// v1.0 gap track 6c: the quads of a block item's model in Java's item
+/// model space (a block is 0..1): the item's boxes ([`shape::item_boxes`]
+/// of [`Block::item_facing`]) with the block's face layers and Java's face
+/// UVs (each face's texture upright and unmirrored seen from outside, as
+/// `FaceBakery`'s default UVs map it). A head's full cube is Java's 8 × 8 × 8
+/// skull box on the floor of the block (`SkullModel`).
+pub fn block_item_quads(block: Block) -> Vec<voxelcraft::world::colour_blocks::banner::Quad> {
+    use glam::Vec3;
+    let block = block.item_facing();
+    let tex = block.info().tex;
+    let head = crate::world::skulls::decode(block.canonical()).is_some();
+    let mut out = Vec::with_capacity(6);
+    for (i, b) in shape::item_boxes(block).as_slice().iter().enumerate() {
+        // Candle wicks, the beacon's plinth and core: their own layers.
+        let tex = shape::item_box_layer(block, i).map_or(tex, |l| [l; 6]);
+        let (lo, hi) = (Vec3::from_array(b.min.map(f32::from)) / 16.0, Vec3::from_array(b.max.map(f32::from)) / 16.0);
+        let place = |p: Vec3| if head { Vec3::new(0.25 + p.x * 0.5, p.y * 0.5, 0.25 + p.z * 0.5) } else { p };
+        for (face, &layer) in tex.iter().enumerate() {
+            let (d, positive) = (face / 2, face % 2 == 0);
+            let (u, v) = ((d + 1) % 3, (d + 2) % 3);
+            let corner = |a: bool, b: bool| {
+                let mut p = [0.0f32; 3];
+                p[d] = if positive { hi[d] } else { lo[d] };
+                p[u] = if a { hi[u] } else { lo[u] };
+                p[v] = if b { hi[v] } else { lo[v] };
+                Vec3::from_array(p)
+            };
+            let c = if positive {
+                [corner(false, false), corner(true, false), corner(true, true), corner(false, true)]
+            } else {
+                [corner(false, false), corner(false, true), corner(true, true), corner(true, false)]
+            };
+            let uv = c.map(|p| match face {
+                0 => [1.0 - p.z, 1.0 - p.y],
+                1 => [p.z, 1.0 - p.y],
+                2 => [p.x, p.z],
+                3 => [p.x, 1.0 - p.z],
+                4 => [p.x, 1.0 - p.y],
+                _ => [1.0 - p.x, 1.0 - p.y],
+            });
+            let mut normal = Vec3::ZERO;
+            normal[d] = if positive { 1.0 } else { -1.0 };
+            out.push(voxelcraft::world::colour_blocks::banner::Quad {
+                corners: c.map(place),
+                uv,
+                layer,
+                normal,
+                tint: None,
+            });
+        }
+    }
+    out
 }
 
 #[cfg(test)]

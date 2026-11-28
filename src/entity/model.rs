@@ -127,6 +127,28 @@ pub struct EntityMesh {
     /// which the renderer draws into its outline mask.
     glow_verts: Vec<EntityVertex>,
     glow_boxes: Vec<BoxInstance>,
+    /// v1.0 gap track 6c: items held by players seen from outside and by
+    /// mobs, drawn by the renderer's item model pass.
+    held: Vec<HeldItemModel>,
+}
+
+/// v1.0 gap track 6c: an item in a third-person or mob hand. The renderer
+/// draws it as dropped and framed items are drawn (`render::block_model`),
+/// with the enchantment glint and translucent blocks blended.
+#[derive(Clone, Copy, Debug)]
+pub struct HeldItemModel {
+    pub stack: crate::inventory::Stack,
+    /// The item's model space (a block is 0..1) to camera-relative blocks,
+    /// its third-person display transform included.
+    pub transform: glam::Mat4,
+    pub sky_light: f32,
+    pub block_light: f32,
+    /// The block model to draw instead of the stack's (a statue's pose).
+    pub block: Option<crate::world::block::Block>,
+    /// The sprite to draw instead of the stack's (a compass or clock frame).
+    pub icon: Option<u16>,
+    /// A dyed stack's sprite tint.
+    pub tint: Option<[u8; 3]>,
 }
 
 /// Where an entity's geometry starts in an [`EntityMesh`].
@@ -151,6 +173,17 @@ impl EntityMesh {
         self.boxes.clear();
         self.glow_verts.clear();
         self.glow_boxes.clear();
+        self.held.clear();
+    }
+
+    /// v1.0 gap track 6c: adds a held item.
+    pub fn push_held(&mut self, item: HeldItemModel) {
+        self.held.push(item);
+    }
+
+    /// The held items, in emission order.
+    pub fn held_items(&self) -> &[HeldItemModel] {
+        &self.held
     }
 
     /// Marks where the next entity's geometry starts.
@@ -1860,9 +1893,9 @@ pub fn build(
                 // A baby's hand holds the item at Java's baby scale.
                 let k = babies::BODY_ARMOR;
                 let arm = Part { pivot: posed[4].pivot / k, ..posed[4] };
-                draw_held(out, &arm, stack.item, origin, body, scale * k, (light, torch));
+                draw_held(out, &arm, stack, origin, body, scale * k, (light, torch), true);
             } else {
-                draw_held(out, &posed[4], stack.item, origin, body, scale, (light, torch));
+                draw_held(out, &posed[4], stack, origin, body, scale, (light, torch), false);
             }
         }
         if m.kind == MobKind::SulfurCube {
@@ -1894,32 +1927,24 @@ fn held_stack(m: &Mob) -> Option<crate::inventory::Stack> {
     shown.then_some(stack)
 }
 
-/// `ItemInHandLayer`'s right grip on `arm`: a block item as a small cube,
-/// anything else as its flat icon in the third-person hand display.
+/// `ItemInHandLayer`'s right grip on `arm`, the stack's model with its
+/// third-person display transform (v1.0 gap track 6c; it was a small cube
+/// or a flat icon), drawn by the renderer's item model pass. A baby's model
+/// takes Java's baby offset.
+#[allow(clippy::too_many_arguments)]
 fn draw_held(
     out: &mut EntityMesh,
     arm: &Part,
-    item: crate::item::Item,
+    stack: crate::inventory::Stack,
     origin: Vec3,
     body: Quat,
     scale: f32,
     light: ([u8; 4], u8),
+    baby: bool,
 ) {
-    let mut held = super::player_model::Limb {
-        pivot: arm.pivot + arm.rot * Vec3::new(0.0, -9.0, 1.0),
-        rot: arm.rot * Quat::from_rotation_x(-FRAC_PI_2) * Quat::from_rotation_y(PI),
-        min: [-4.0, -4.0, -0.5],
-        max: [4.0, 4.0, 0.5],
-        uv: [0.0; 2],
-    };
-    if let Some(block) = item.block().filter(|b| !b.flat_icon()) {
-        super::player_model::held_block(out, &held, origin, body, light, block, 3.2, scale, [255, 255, 255, 0]);
-        return;
-    }
-    held.rot *= Quat::from_rotation_y(-FRAC_PI_2) * Quat::from_rotation_z(55f32.to_radians());
-    let layer = item.flat_layer().unwrap_or(crate::world::block::tex::ITEM_BASE);
-    let tint = crate::inventory::components::undyed_tint(item).map_or([255, 255, 255, 0], |[r, g, b]| [r, g, b, 0]);
-    super::player_model::textured_box(out, &held, 0.0, origin, body, light, 2, layer, scale, tint);
+    let hand = super::player_model::third_person_hand(arm.pivot, arm.rot, origin, body, scale, baby);
+    let light = (f32::from(light.0[0]) / 255.0, f32::from(light.1) / 255.0);
+    out.push_held(super::player_model::held_item(stack, hand, light, None, None, None));
 }
 
 /// Small glowing cubes rising around a burning mob.

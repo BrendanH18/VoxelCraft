@@ -796,16 +796,21 @@ pub(super) fn draw_model_sized(ui: &mut Ui, x: f32, y: f32, size: f32, stack: St
     let layer = stack.item.dial_layer(dial.for_stack(&stack)).or_else(|| stack.item.flat_layer());
     let px = size / 16.0;
     // v1.0 gap track 6b: beds, banners, the shield and two plants in 3D.
+    // v1.0 gap track 6c: 3D items in Java's GUI orientation, with the glint.
     if let Some(mesh) = voxelcraft::content::item_models::mesh(&stack) {
-        ui.item_mesh(x + px, y + px, size, &mesh);
+        ui.item_mesh(x + px, y + px, size, &mesh, stack.has_foil());
         return;
     }
     match (crate::item::model_block(&stack), layer) {
-        (Some(block), _) => ui.block_icon(x + 2.0 * px, y + 2.0 * px, 14.0 * px, block),
+        (Some(block), _) => ui.block_icon(x + px, y + px, size, block, stack.has_foil()),
         (None, Some(layer)) => {
-            ui.icon(x + px, y + px, size, layer, crate::entity::wolf_armor::item_tint(stack));
+            // A flat item's GUI transform only moves it (the amethyst buds
+            // sit two pixels up).
+            let t = voxelcraft::content::item_display::of(&stack).gui.translation;
+            let (x, y) = (x + px + t[0] * px, y + px - t[1] * px);
+            ui.icon(x, y, size, layer, crate::entity::wolf_armor::item_tint(stack));
             if stack.has_foil() {
-                glint(ui, x + px, y + px, size, layer);
+                glint(ui, x, y, size, layer);
             }
         }
         (None, None) => {}
@@ -844,8 +849,7 @@ pub(super) fn draw_decorations(ui: &mut Ui, x: f32, y: f32, stack: Stack, counts
 /// The enchantment glint: a faint purple sheen over the icon's shape with
 /// a brighter band sweeping down it.
 fn glint(ui: &mut Ui, x: f32, y: f32, size: f32, layer: u16) {
-    static START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
-    let t = START.get_or_init(Instant::now).elapsed().as_secs_f32();
+    let t = crate::render::ui::glint_clock();
     ui.icon_shape(x, y, size, layer, [0.0, 0.0, 1.0, 1.0], [0.55, 0.25, 1.0, 0.3]);
     let band = 0.3;
     let top = (t * 0.6).fract() * (1.0 + band) - band;

@@ -2673,6 +2673,7 @@ impl Game {
                 glint: false,
                 translucent: false,
                 mesh: None,
+                transform: None,
             })
             .chain(self.mobs.entities.tnt.iter().map(|t| {
                 let s = t.size();
@@ -2693,6 +2694,7 @@ impl Game {
                     glint: false,
                     translucent: false,
                     mesh: None,
+                    transform: None,
                 }
             }))
             .chain(self.world.moving_piston_blocks(alpha).chain(self.world.moving_piston_heads(alpha)).map(
@@ -2711,6 +2713,7 @@ impl Game {
                     glint: false,
                     translucent: false,
                     mesh: None,
+                    transform: None,
                 },
             ))
             .chain(self.item_models(alpha))
