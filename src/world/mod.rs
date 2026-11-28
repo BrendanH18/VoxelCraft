@@ -426,6 +426,10 @@ pub struct World {
     /// that popped off or washed away, explosion debris) and the cell they
     /// came from; the game turns them into dropped items.
     pub drops: Vec<(IVec3, crate::inventory::Stack)>,
+    /// Generation 7's return gateways (`end_gateway_return`) in chunks
+    /// generated since the game last took them: each is a new
+    /// `TheEndGatewayBlockEntity`, its age starting at 0.
+    pub generated_gateways: Vec<IVec3>,
     /// Bounded client visual requests, also emitted by headless player actions.
     pub particles: crate::particles::Requests,
     /// Experience released at a block (a broken furnace's store); the game
@@ -867,6 +871,7 @@ impl World {
             tile_drops: true,
             rules: WorldRules::default(),
             drops: Vec::new(),
+            generated_gateways: Vec::new(),
             particles: Default::default(),
             xp_drops: Vec::new(),
             brews_done: Vec::new(),
@@ -1801,6 +1806,7 @@ impl World {
         }
         if let Some((features, rolled)) = generated {
             self.register_features(&data, features, rolled);
+            self.register_return_gateways(pos, &data);
         }
         self.register_village_life(pos, &data);
         self.register_banners(pos, &data);

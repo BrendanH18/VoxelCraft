@@ -2519,6 +2519,97 @@ mod tests {
         assert!(events.contains(&EntityEvent::DragonKilled { first: true }));
     }
 
+    /// v1.0 gap Track 4b: in `DYING`, in the flight to the portal and in
+    /// the death that follows, the parts are still there to hit, and
+    /// nothing hurts them: an arrow bounces off (Java's `EnderDragon.hurt`
+    /// refuses the hit and the arrow is deflected) rather than flying on
+    /// through.
+    #[test]
+    fn a_dying_dragon_is_hit_but_not_hurt() {
+        let end = EndGen::new(5);
+        let island = Island(*end.pillars());
+        let (mut fight, mut crystals) = fresh(&end);
+        crystals.list.clear();
+        let mut rng = Rng::new(2);
+        let mut events = Vec::new();
+        fight.update(TICK, &island, &ctx(Vec::new()), &mut rng, &mut crystals, &mut events);
+        let d = fight.dragon.as_mut().unwrap();
+        d.pos = DVec3::new(80.0, 100.0, 30.0);
+        d.place_parts();
+        d.hurt_by(Part::Head, 500.0, true);
+        assert_eq!((d.phase, d.health), (Phase::Dying, 1.0));
+        let head = part_center(d, Part::Head);
+        let from = head + DVec3::new(0.0, 0.0, -20.0);
+        let (hit, t) = fight.raycast(from, DVec3::Z, 40.0).expect("the dying dragon's parts are hit");
+        assert!(t < 20.0);
+        assert!(fight.hit_at(head).is_some());
+        assert!(!fight.strike(hit, 9.0, true), "nothing hurts a dying dragon");
+        assert!(!fight.strike(hit, 9.0, false));
+        assert_eq!(fight.dragon.as_ref().unwrap().health, 1.0);
+        // Nor once it has died and rises (`tickDeath`).
+        fight.dragon.as_mut().unwrap().health = 0.0;
+        let head = part_center(fight.dragon.as_ref().unwrap(), Part::Head);
+        let (hit, _) = fight.raycast(head + DVec3::new(0.0, 0.0, -20.0), DVec3::Z, 40.0).unwrap();
+        assert!(!fight.strike(hit, 9.0, true));
+    }
+
+    /// v1.0 gap Track 4b: the roar (`SITTING_ATTACKING`) is Java's client
+    /// growl every tick of the phase; the growl now and then
+    /// (`growlTime`) is only for a dragon not sitting, first after 101
+    /// ticks.
+    #[test]
+    fn the_roar_growls_every_tick_and_the_perched_dragon_is_otherwise_quiet() {
+        let roars = |events: &[EntityEvent]| {
+            events.iter().filter(|e| matches!(e, EntityEvent::Sound { sound: MobSound::DragonRoar, .. })).count()
+        };
+        let end = EndGen::new(5);
+        let island = Island(*end.pillars());
+        let (mut fight, mut crystals) = fresh(&end);
+        let mut rng = Rng::new(4);
+        let mut events = Vec::new();
+        fight.update(TICK, &island, &ctx(Vec::new()), &mut rng, &mut crystals, &mut events);
+        let d = fight.dragon.as_mut().unwrap();
+        d.set_phase(Phase::SittingScanning);
+        d.growl = 0;
+        events.clear();
+        for _ in 0..20 {
+            fight.update(TICK, &island, &ctx(Vec::new()), &mut rng, &mut crystals, &mut events);
+        }
+        assert_eq!(roars(&events), 0, "a sitting dragon doesn't growl by itself");
+        fight.dragon.as_mut().unwrap().set_phase(Phase::SittingAttacking);
+        events.clear();
+        let mut ticks = 0;
+        while fight.dragon.as_ref().unwrap().phase == Phase::SittingAttacking {
+            fight.update(TICK, &island, &ctx(Vec::new()), &mut rng, &mut crystals, &mut events);
+            ticks += 1;
+        }
+        assert_eq!(roars(&events), ticks - 1, "one growl a tick of the roar");
+        // In flight: the first growl on the 101st tick.
+        let mut d = Dragon::new(DVec3::new(0.0, 100.0, 0.0));
+        let mut events = Vec::new();
+        let mut arena_fireballs = Vec::new();
+        let mut arena_clouds = Vec::new();
+        let mut arena = Arena {
+            fight: false,
+            alive_crystals: 0,
+            previously_killed: true,
+            podium: IVec3::ZERO,
+            fireballs: &mut arena_fireballs,
+            clouds: &mut arena_clouds,
+            top: 256,
+            floor: 0,
+        };
+        d.phase = Phase::HoldingPattern;
+        let first = (1..=200)
+            .find(|_| {
+                events.clear();
+                d.tick(&mut arena, &Air, &ctx(Vec::new()), &mut rng, &Crystals::default(), &mut events);
+                roars(&events) > 0
+            })
+            .unwrap();
+        assert_eq!(first, 101);
+    }
+
     /// v1.0 gap Track 4: `DragonLandingPhase` comes down on the bottom
     /// centre of the egg's cell and, within a block of it, resets the flame
     /// count and sits scanning (`SITTING_SCANNING`); with no one about it

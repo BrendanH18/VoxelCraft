@@ -68,7 +68,7 @@ pub(super) struct Caches {
     islands: Mutex<FxHashMap<IVec2, Arc<Vec<IVec3>>>>,
     gateways: Mutex<FxHashMap<IVec2, Option<IVec3>>>,
     /// Each chunk's chorus grown alone.
-    alone: Mutex<FxHashMap<IVec2, Arc<Vec<(IVec3, Block)>>>>,
+    alone: Mutex<FxHashMap<IVec2, super::Plants>>,
 }
 
 /// Whether chunk `a` decorates before its neighbour `b` here: Java
@@ -219,6 +219,12 @@ impl EndGen {
         })
     }
 
+    /// Generation 7's return gateway in the chunk `chunk`, if any.
+    pub fn return_gateway_at_chunk(&self, chunk: IVec2) -> Option<IVec3> {
+        self.noise.as_ref()?;
+        self.return_gateway(chunk)
+    }
+
     /// Whether `cell` holds a return gateway generation 7 placed: its
     /// exit, exact.
     pub fn return_gateway_at(&self, cell: IVec3) -> Option<IVec3> {
@@ -243,7 +249,7 @@ impl EndGen {
     }
 
     /// The chunk's chorus grown with nothing of its neighbours' around.
-    fn chorus_alone(&self, chunk: IVec2) -> Arc<Vec<(IVec3, Block)>> {
+    fn chorus_alone(&self, chunk: IVec2) -> super::Plants {
         cached(&self.decoration.alone, chunk, || Arc::new(self.grow_chorus(chunk, &FxHashSet::default())))
     }
 

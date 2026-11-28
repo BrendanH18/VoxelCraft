@@ -208,6 +208,12 @@ impl Game {
     pub(super) fn update_mobs(&mut self, dt: f64) {
         // Entities leave the level with their chunk and return when it loads.
         self.mobs.entities.sync_chunk_entities(&mut self.world);
+        // Return gateways generated since: new block entities, age 0.
+        for g in std::mem::take(&mut self.world.generated_gateways) {
+            if let Some(fight) = &mut self.mobs.entities.fight {
+                fight.gateway_entities.placed(g);
+            }
+        }
         self.mobs.entities.moon_brightness =
             [1.0, 0.75, 0.5, 0.25, 0.0, 0.25, 0.5, 0.75][self.day_count.rem_euclid(8) as usize];
         self.mobs.entities.clock_time =

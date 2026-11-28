@@ -295,6 +295,31 @@ impl World {
         }
     }
 
+    /// Generation 7: where the return gateway at `cell` leads
+    /// (`end_gateway_return`'s exact exit), if it is one.
+    pub fn return_gateway_exit(&self, cell: IVec3) -> Option<IVec3> {
+        self.generator.end()?.return_gateway_at(cell)
+    }
+
+    /// Notes the return gateways a newly generated section holds.
+    pub(super) fn register_return_gateways(&mut self, pos: IVec3, data: &super::chunk::ChunkData) {
+        let Some(end) = self.generator.end() else { return };
+        let base = pos * super::chunk::CHUNK_SIZE_I;
+        let size = super::chunk::CHUNK_SIZE_I;
+        for cz in (base.z..base.z + size).step_by(16) {
+            for cx in (base.x..base.x + size).step_by(16) {
+                let Some(g) = end.return_gateway_at_chunk(glam::IVec2::new(cx >> 4, cz >> 4)) else { continue };
+                let l = g - base;
+                if l.cmpge(IVec3::ZERO).all()
+                    && l.cmplt(IVec3::splat(size)).all()
+                    && data.get(l.x as usize, l.y as usize, l.z as usize) == Block::END_GATEWAY
+                {
+                    self.generated_gateways.push(g);
+                }
+            }
+        }
+    }
+
     /// v0.16 Track G: the gateway exit search for the gateway at `entry`
     /// against the End as it stands (see [`gateway_exit`]).
     pub fn find_gateway_exit(&self, entry: IVec3) -> Option<GatewayExit> {
