@@ -353,3 +353,33 @@ Checked against the Java 26.3 client
   crouching with its wiggle, sleeping curled (legs hidden, eyes closed),
   sitting, the adult's pounce drop and the faceplanted paddle;
   `FoxRenderer` pitches a pouncing or faceplanted fox by its look.
+
+## Profession outfits, the fox's mouth item, the unhappy shake (v1.0 gap Track 7f)
+
+Checked against the Java 26.3 client
+([record](verification/2026-11-28-v1.0-gap-track-07f-villager-details.md)).
+
+- **Profession layers.** Every profession wears its own clothes, original
+  art in the box style, between the type's outfit and the level badge as
+  `VillagerProfessionLayer` draws them: aprons with bibs and straps (the
+  armorer's, butcher's, farmer's, leatherworker's, mason's, toolsmith's,
+  weaponsmith's), the fisherman's waxed apron and neckerchief, the
+  fletcher's tunic and quiver, the librarian's tabard, the cartographer's
+  waistcoat and rolled map, the shepherd's woolly cape and satchel, the
+  cleric's vestments and the nitwit's green coat. Face pieces sit on the
+  head: the armorer's welding mask, the cartographer's monocle, the
+  weaponsmith's eyepatch; smiths and craftsmen wear gloves. The cleric's
+  and nitwit's clothes repaint the robe and sleeves and cover the type's
+  touches on it, not its headwear. Zombie villagers wear the same clothes
+  rotted; babies wear none.
+- **Fox mouth item.** `FoxHeldItemLayer`: the main-hand item at the head's
+  pivot (in the pounce pitch), turned by the head roll and the look,
+  moved to the mouth (Java's offsets for the adult and the kit, awake and
+  asleep), laid flat, in the item's ground transform; the kit's at 0.75.
+- **Faceplant paddle.** `legMotionPos` belongs to the model (one for the
+  adult, one for the kit) and gains 0.67 each time it poses a faceplanted
+  fox, so the paddle runs per rendered frame, shared by every such fox.
+- **Unhappy shake.** While a villager's `unhappyCounter` runs (40 ticks
+  after a refused trade or a use on a child), `VillagerModel` bows the
+  head to 0.4 and rolls it `0.3 * sin(0.45 * ageInTicks)`, children too.
+  Guests get the counter with the pose.

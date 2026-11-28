@@ -9747,7 +9747,7 @@
   },
   {
    "name": "mobs-still-villager-faces",
-   "description": "v1.0 gap Track 7f: close-up at noon, pinned with --still-mobs: front row (on screen right to left) a taiga armorer in its welding mask, a plains cartographer with its monocle, a desert weaponsmith with its eyepatch, a swamp cleric; back row a jungle leatherworker, an adult fox holding an emerald in its mouth, a fox kit holding a feather and a savanna toolsmith",
+   "description": "v1.0 gap Track 7f: close-up at noon, pinned with --still-mobs: front row (on screen right to left) a taiga armorer in its welding mask, a plains cartographer with its monocle, a desert weaponsmith with its eyepatch, a swamp cleric; back row a jungle leatherworker and a savanna toolsmith",
    "pose": [
     0.5,
     152.9,
@@ -9773,9 +9773,47 @@
     "villager,0,151,16,desert:weaponsmith:4",
     "villager,1,151,16,swamp:cleric:2",
     "villager,-2,151,18,jungle:leatherworker:2",
-    "fox,-1,151,18,emerald",
-    "fox,0,151,17,baby,feather",
     "villager,1,151,18,savanna:toolsmith:1"
+   ],
+   "group": "mobs",
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
+  },
+  {
+   "name": "mobs-still-fox-held",
+   "description": "v1.0 gap Track 7f: foxes holding items in their mouths (FoxHeldItemLayer) at noon, pinned with --still-mobs, on screen right to left: an adult fox with an emerald, a fox kit with a feather, an adult fox with wheat",
+   "pose": [
+    0.5,
+    152.4,
+    13.8,
+    90,
+    -18
+   ],
+   "fill": [
+    [
+     -6,
+     150,
+     13,
+     6,
+     150,
+     22,
+     "grass"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "fox,-1,151,17,emerald",
+    "fox,0,151,17,baby,feather",
+    "fox,1,151,17,wheat"
    ],
    "group": "mobs",
    "hud": false,
