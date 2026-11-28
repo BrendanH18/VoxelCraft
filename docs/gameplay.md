@@ -540,6 +540,12 @@ different ways. Nothing is placed or found beyond the world border,
 29,999,984 blocks out. Spectators pass through Nether portals, End
 portals and End gateways without travelling, as in Java
 ([gap Track 8](verification/2026-11-27-v1.0-gap-track-08-leftovers.md)).
+With the `allow_entering_nether_using_portals` rule off, a portal refuses
+the trip into the Nether once its count is up, but as in Java the trip
+still owes the Nether its exit portal, built (if none is found within 16
+blocks) when the Nether next loads; a sign being edited or a lectern's book
+closes as you stand in a Nether portal, as the inventory does
+([gap Track 8c](verification/2026-11-27-v1.0-gap-track-08c-details.md)).
 Each portal block remembers which way its
 portal stands (Java's `axis`), and breaking the frame along that way (or
 above or below) puts the portal out; portals from saves made before
@@ -593,7 +599,7 @@ session there, as if you had just come through a portal.
 | Creeper | 20 | walks up and lights a 1.5 s fuse within 3 blocks (kept lit within 7); a fall adds 1.5 ticks a block to the fuse (to 0.25 s short of going off), which then burns down; explodes for up to 43 damage over 6 blocks, destroying blocks (not bedrock, obsidian or fluids) | 0–2 gunpowder |
 | Spider | 16 | fast; climbs walls; hunts only in the dark or after being hit, bites for 2 | 0–2 string |
 | Zombified piglin | 20 | Nether only, in packs; ignores you until you hit one, then the whole pack within 32 blocks chases you for 30 s and strikes with gold swords for 5 | 0–1 rotten flesh, 0–1 gold nuggets |
-| Enderman | 40 | 2.9 blocks tall; rare at night in the Overworld and Nether, common in the End. Neutral until hit or until you look it in the eyes (within 64 blocks), then screams, opens its jaw and hits for 7. Freezes while you watch it (up close it teleports away), teleports toward you from more than 16 blocks, dodges arrows by teleporting, is hurt by water and rain, and wanders off by teleporting in daylight | 0–1 ender pearls |
+| Enderman | 40 | 2.9 blocks tall; rare at night in the Overworld and Nether, common in the End. Neutral until hit or until you look it in the eyes (within 64 blocks), then screams, opens its jaw and hits for 7. Freezes while you watch it (up close it teleports away), teleports toward you from more than 16 blocks, dodges arrows and tridents by teleporting (they fly on, and a burning arrow sets it alight), is hurt by water and rain, and wanders off by teleporting in daylight | 0–1 ender pearls |
 | Blaze | 20 | Nether fortresses: from spawner cages and inside fortress pieces in groups of 2-3. Hovers, glows while charging, then fires bursts of three fireballs (5 damage, setting you alight) and hits for 6 up close; hurt by water and rain, immune to fire and lava | 0–1 blaze rods |
 | Silverfish | 8 | strongholds: from the portal room's spawner; small and quick, chases and nibbles for 1 | nothing |
 | Piglin | 16 | Nether packs of 4 and bastions; a fifth are babies. Adults attack players without golden armor with a golden sword (8) or a crossbow. Opening chests or breaking gold nearby angers them for 30 s, and a hit piglin alerts the others. Throw gold ingots to barter: one is admired for about 6 s, then traded for a roll of Java's table. They hunt baby hoglins and zombify after 15 s outside the Nether | what they carried; their gear sometimes |
@@ -633,9 +639,13 @@ hovers for four seconds, then drops back as an item four times in five and
 shatters otherwise. Right click an empty End portal frame to put an eye in
 it; when twelve frames with eyes ring a 3x3 hole, all facing in, the portal
 opens with a deep rumble. Falling into an End portal takes you to the End's
-obsidian platform at once (rebuilt as you arrive: whatever stands in it
-breaks and drops, as Java's `createEndPlatform` does); one in the End takes
-you back to your bed or the world spawn. Agents use eyes with `place`.
+obsidian platform on the next tick, as Java's `PortalProcessor` does
+(rebuilt as you arrive: whatever stands in it breaks and drops, as Java's
+`createEndPlatform` does); one in the End takes you back to your bed or the
+world spawn. Arriving, you can't use a portal for half a second, and
+touching one meanwhile restarts that wait
+([gap Track 8c](verification/2026-11-27-v1.0-gap-track-08c-details.md)).
+Agents use eyes with `place`.
 
 Inventory search filters creative items by name. Type in the search field
 (automatically focused in creative), or press Ctrl+F. In survival and containers,
