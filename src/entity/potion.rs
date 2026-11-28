@@ -338,7 +338,9 @@ mod tests {
             n += 1;
             assert!(n < 200);
         }
-        assert!(matches!(events[0], EntityEvent::PotionSplashed { pos, .. } if (4.0..14.0).contains(&pos.x)));
+        // v1.0 gap Track 8d: `onProjectileHit` (the block hit) comes first.
+        assert!(matches!(events[0], EntityEvent::ProjectileBlockHit { burning: false, .. }));
+        assert!(matches!(events[1], EntityEvent::PotionSplashed { pos, .. } if (4.0..14.0).contains(&pos.x)));
     }
 
     #[test]

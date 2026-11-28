@@ -297,7 +297,9 @@ mod tests {
         let mut f = Fireball::new(DVec3::new(0.5, 12.5, 0.5), DVec3::new(1.0, -1.0, 0.0));
         let mut events = Vec::new();
         while f.update(0.05, &world, &ctx(vec![]), &[], &[], &Default::default(), &mut events) {}
-        let Some(EntityEvent::IgniteBlock { cell }) = events.first().copied() else { panic!("{events:?}") };
+        // v1.0 gap Track 8d: `onProjectileHit` (the block hit) comes first.
+        assert!(matches!(events.first(), Some(EntityEvent::ProjectileBlockHit { burning: true, .. })), "{events:?}");
+        let Some(EntityEvent::IgniteBlock { cell }) = events.get(1).copied() else { panic!("{events:?}") };
         assert_eq!(cell.y, 10, "the air cell above the floor");
         assert!(cell.x >= 2 && cell.x <= 3, "{cell}");
     }
