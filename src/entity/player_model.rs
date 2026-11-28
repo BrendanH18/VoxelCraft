@@ -146,6 +146,19 @@ pub(crate) fn third_person_hand(pivot: Vec3, rot: Quat, origin: Vec3, body: Quat
         * Mat4::from_translation(offset / 16.0)
 }
 
+/// v1.0 gap track 6d: `ItemInHandLayer`'s chain after a model's
+/// `translateToHand`, given that hand as a matrix from this model's frame
+/// (pixels) to camera-relative blocks: half a turn about x into Java's
+/// frame, -90 degrees about x, 180 about y and the adult offset of (1, 2,
+/// -10) sixteenths, from the held item's model space.
+pub(crate) fn item_in_hand_layer(hand: Mat4) -> Mat4 {
+    hand * Mat4::from_rotation_x(PI)
+        * Mat4::from_scale(Vec3::splat(16.0))
+        * Mat4::from_rotation_x(-FRAC_PI_2)
+        * Mat4::from_rotation_y(PI)
+        * Mat4::from_translation(Vec3::new(1.0, 2.0, -10.0) / 16.0)
+}
+
 /// v1.0 gap track 6c: `stack` held in the third-person right hand `hand`
 /// ([`third_person_hand`]): its model placed with Java's
 /// `thirdperson_righthand` display transform, for the renderer's item model
@@ -159,49 +172,9 @@ pub(crate) fn held_item(
     icon: Option<u16>,
     tint: Option<[u8; 3]>,
 ) -> super::model::HeldItemModel {
-    let display = crate::content::item_display::drawn(&stack);
+    let display = crate::content::item_display::held(&stack);
     let transform = hand * crate::content::item_display::Context::ThirdPersonRightHand.matrix(&display);
     super::model::HeldItemModel { stack, transform, sky_light: light.0, block_light: light.1, block, icon, tint }
-}
-
-/// v1.0 gap track 6: a held block item, `half` model units from its centre
-/// to a face of a whole cube: each of the item's boxes
-/// ([`crate::world::shape::item_boxes`]) in `held`'s place, every face with
-/// the block's own texture, so a held slab, stair or fence keeps its shape.
-/// The allay and the copper golem hold items this way (their own grips);
-/// players and the humanoid mobs use [`held_item`] since v1.0 gap track 6c.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn held_block(
-    out: &mut Vec<EntityVertex>,
-    held: &Limb,
-    origin: Vec3,
-    body: Quat,
-    light: ([u8; 4], u8),
-    block: crate::world::block::Block,
-    half: f32,
-    scale: f32,
-    tint: [u8; 4],
-) {
-    let block = block.item_facing();
-    let tex = block.info().tex;
-    let half = half * crate::world::shape::item_scale(block).hand;
-    for (index, bounds) in crate::world::shape::item_boxes(block).as_slice().iter().enumerate() {
-        let tex = crate::world::shape::item_box_layer(block, index).map_or(tex, |l| [l; 6]);
-        let part = Limb {
-            min: bounds.min.map(|v| (v as f32 - 8.0) * half / 8.0),
-            max: bounds.max.map(|v| (v as f32 - 8.0) * half / 8.0),
-            ..*held
-        };
-        textured_box(out, &part, 0.0, origin, body, light, 2, tex[0], scale, tint);
-        let start = out.len() - 36;
-        for (i, face) in out[start..].as_chunks_mut::<6>().0.iter_mut().enumerate() {
-            let layer = tex[i ^ 1];
-            for vertex in face {
-                vertex.torch[2] = layer as u8;
-                vertex.torch[3] = (layer >> 8) as u8;
-            }
-        }
-    }
 }
 
 #[derive(Clone, Copy)]

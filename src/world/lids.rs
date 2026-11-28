@@ -375,12 +375,8 @@ pub fn chest_quads(facing: Facing, bounds: Bounds, faces: [u16; 6], openness: f3
             } else {
                 [corner(false, false), corner(false, true), corner(true, true), corner(true, false)]
             };
-            // UVs as the chunk mesh maps them: sides (horizontal, down), tops (x, z).
-            let uv = model.map(|p| match d {
-                0 => [p.z, 1.0 - p.y],
-                1 => [p.x, p.z],
-                _ => [p.x, 1.0 - p.y],
-            });
+            // UVs as the chunk mesh maps them (Java's face UVs).
+            let uv = model.map(|p| crate::mesh::face_uv(face, p.to_array()));
             let mut normal = Vec3::ZERO;
             normal[d] = if positive { 1.0 } else { -1.0 };
             let (corners, normal) =

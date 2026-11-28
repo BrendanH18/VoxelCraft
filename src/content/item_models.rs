@@ -78,6 +78,107 @@ pub fn mesh(stack: &Stack) -> Option<Mesh> {
     }
 }
 
+/// v1.0 gap track 6d: a model element (`BlockElement`): from and to in
+/// sixteenths and each face's explicit UV rectangle in texels (`None` for a
+/// face the model leaves out), faces +X, -X, +Y, -Y, +Z, -Z.
+pub type Element = ([f32; 3], [f32; 3], [Option<[f32; 4]>; 6]);
+
+/// v1.0 gap track 6d: `elements`' quads with the face layers `tex`, each
+/// face's UV rectangle laid over it as `FaceBakery` lays an explicit one
+/// (its first corner where the face's default UV is lowest, so a reversed
+/// rectangle mirrors).
+pub fn element_quads(elements: &[Element], tex: [u16; 6]) -> Vec<Quad> {
+    use glam::Vec3;
+    let mut out = Vec::new();
+    for &(from, to, faces) in elements {
+        let (lo, hi) = (Vec3::from_array(from) / 16.0, Vec3::from_array(to) / 16.0);
+        for (face, rect) in faces.iter().enumerate() {
+            let Some([u0, v0, u1, v1]) = *rect else { continue };
+            let (d, positive) = (face / 2, face % 2 == 0);
+            let (u, v) = ((d + 1) % 3, (d + 2) % 3);
+            let corner = |a: bool, b: bool| {
+                let mut p = [0.0f32; 3];
+                p[d] = if positive { hi[d] } else { lo[d] };
+                p[u] = if a { hi[u] } else { lo[u] };
+                p[v] = if b { hi[v] } else { lo[v] };
+                Vec3::from_array(p)
+            };
+            let c = if positive {
+                [corner(false, false), corner(true, false), corner(true, true), corner(false, true)]
+            } else {
+                [corner(false, false), corner(false, true), corner(true, true), corner(true, false)]
+            };
+            let default = c.map(|p| crate::mesh::face_uv(face, p.to_array()));
+            let min = |i: usize| default.iter().map(|q| q[i]).fold(f32::MAX, f32::min);
+            let max = |i: usize| default.iter().map(|q| q[i]).fold(f32::MIN, f32::max);
+            let (lu, hu, lv, hv) = (min(0), max(0), min(1), max(1));
+            let uv = default.map(|q| {
+                [(u0 + (q[0] - lu) / (hu - lu) * (u1 - u0)) / 16.0, (v0 + (q[1] - lv) / (hv - lv) * (v1 - v0)) / 16.0]
+            });
+            let mut normal = Vec3::ZERO;
+            normal[d] = if positive { 1.0 } else { -1.0 };
+            out.push(Quad { corners: c, uv, layer: tex[face], normal, tint: None });
+        }
+    }
+    out
+}
+
+/// v1.0 gap track 6d: Java's `item/spyglass_in_hand` model: the narrow
+/// tube over the wide one, sampling [`SPYGLASS_MODEL`] as Java's samples
+/// `spyglass_model`.
+const SPYGLASS_IN_HAND: [Element; 2] = {
+    const S: Option<[f32; 4]> = Some([0., 2., 2., 7.]);
+    const W: Option<[f32; 4]> = Some([0., 7., 2., 13.]);
+    [
+        ([7., 8.5, 7.], [9., 13.5, 9.], [S, S, Some([0., 0., 2., 2.]), None, S, S]),
+        ([6.9, 2.4, 6.9], [9.1, 8.6, 9.1], [W, W, Some([0., 5., 2., 7.]), Some([0., 13., 2., 15.]), W, W]),
+    ]
+};
+
+/// v1.0 gap track 6d: Java's `TridentModel` in item model space: its parts
+/// (pixels) through the `minecraft:trident` special model's
+/// `transformation`, a scale of (1, -1, -1), so the spikes point up and the
+/// shaft hangs 27/16 below: the pole, the base, the left, middle and right
+/// spikes, sampling [`TRIDENT_MODEL`].
+const TRIDENT_IN_HAND: [Element; 5] = {
+    const fn all(side: [f32; 4], end: [f32; 4]) -> [Option<[f32; 4]>; 6] {
+        [Some(side), Some(side), Some(end), Some(end), Some(side), Some(side)]
+    }
+    const SPIKE: [Option<[f32; 4]>; 6] = all([6., 0., 7., 4.], [6., 0., 7., 1.]);
+    [
+        ([-0.5, -27., -0.5], [0.5, -2., 0.5], all([0., 0., 1., 16.], [0., 0., 1., 1.])),
+        ([-1.5, -2., -0.5], [1.5, 0., 0.5], all([2., 0., 5., 2.], [2., 0., 5., 1.])),
+        ([-2.5, -1., -0.5], [-1.5, 3., 0.5], SPIKE),
+        ([-0.5, 0., -0.5], [0.5, 4., 0.5], SPIKE),
+        ([1.5, -1., -0.5], [2.5, 3., 0.5], SPIKE),
+    ]
+};
+
+/// v1.0 gap track 6d: the model Java switches `stack` to in a hand (its
+/// item definition's `display_context` select falls back to it outside
+/// slots, the ground, frames and shelves): the trident's `TridentModel`
+/// (`item/trident_in_hand`) and the spyglass's `item/spyglass_in_hand`.
+pub fn in_hand_mesh(stack: &Stack) -> Option<Mesh> {
+    if stack.item == crate::weapons::TRIDENT {
+        Some(Mesh {
+            quads: element_quads(&TRIDENT_IN_HAND, [TRIDENT_MODEL; 6]),
+            display: super::item_display::TRIDENT_IN_HAND,
+        })
+    } else if stack.item == Item::SPYGLASS {
+        Some(Mesh {
+            quads: element_quads(&SPYGLASS_IN_HAND, [SPYGLASS_MODEL; 6]),
+            display: super::item_display::SPYGLASS_IN_HAND,
+        })
+    } else {
+        None
+    }
+}
+
+/// Whether `item` has an [`in_hand_mesh`].
+pub fn has_in_hand_mesh(item: Item) -> bool {
+    item == crate::weapons::TRIDENT || item == Item::SPYGLASS
+}
+
 /// Whether `item` has a [`mesh`] (without building it).
 pub fn has_mesh(item: Item) -> bool {
     item.bed_color().is_some()
@@ -109,14 +210,7 @@ fn cuboid(out: &mut Vec<Quad>, lo: Vec3, hi: Vec3, origin: Vec3, layers: [u16; 6
         } else {
             [corner(false, false), corner(false, true), corner(true, true), corner(true, false)]
         };
-        let uv = c.map(|p| {
-            let l = p - origin;
-            match d {
-                0 => [l.z, 1.0 - l.y],
-                1 => [l.x, l.z],
-                _ => [l.x, 1.0 - l.y],
-            }
-        });
+        let uv = c.map(|p| crate::mesh::face_uv(face, (p - origin).to_array()));
         let mut normal = Vec3::ZERO;
         normal[d] = if positive { 1.0 } else { -1.0 };
         out.push(Quad { corners: c, uv, layer, normal, tint: None });
@@ -294,7 +388,13 @@ pub const BLOSSOM_PETAL: u16 = TEX;
 pub const BLOSSOM_BASE: u16 = TEX + 1;
 pub const DRIPLEAF_LEAF: u16 = TEX + 2;
 pub const DRIPLEAF_STEM: u16 = TEX + 3;
-pub const TEX_END: u16 = TEX + 4;
+/// v1.0 gap track 6d: the spyglass's in-hand model's texture (Java's
+/// `item/spyglass_model` layout: the eyepiece, narrow tube, wide tube and
+/// lens down columns 0-1) and the trident's in-hand model's (the shaft
+/// down column 0, the base at (2, 0), the spikes at (6, 0)).
+pub const SPYGLASS_MODEL: u16 = TEX + 4;
+pub const TRIDENT_MODEL: u16 = TEX + 5;
+pub const TEX_END: u16 = TEX + 6;
 
 /// Original 16 × 16 art for [`TEX`]'s layers: light from the top left as
 /// the game's plants are.
@@ -361,6 +461,39 @@ pub fn pixel(layer: u16, x: usize, y: usize) -> [u8; 4] {
                 return [0; 4];
             }
             rgba(shade([84, 138, 52], grain * if x == 7 { 1.08 } else { 0.86 }))
+        }
+        SPYGLASS_MODEL => {
+            // Down columns 0-1: dark eyepiece glass, the narrow copper tube
+            // with a seam, the wide tube with darker rims and a lit band,
+            // and the pale blue objective lens. Lit on the left column.
+            if x > 1 || y > 14 {
+                return [0; 4];
+            }
+            let side = if x == 0 { 1.08 } else { 0.84 };
+            let copper = [186, 110, 66];
+            let c = match y {
+                0..=1 => [44, 56, 74],
+                4 => [150, 86, 52],
+                2..=6 => copper,
+                7 | 12 => [142, 80, 46],
+                9 => [214, 140, 92],
+                8..=11 => [196, 120, 74],
+                _ => [118, 176, 206],
+            };
+            let glint = (y == 0 || y == 13) && x == 0;
+            rgba(shade(c, if glint { 1.3 } else { grain * side }))
+        }
+        TRIDENT_MODEL => {
+            // The shaft down column 0, the base at (2..5, 0..2), the spikes
+            // at (6, 0..4) with a bright tip, in the thrown trident's teals.
+            let c = match (x, y) {
+                (0, _) => [58, 116, 108],
+                (2..=4, 0..=1) => [96, 182, 168],
+                (6, 0) => [168, 236, 222],
+                (6, 1..=3) => [110, 200, 186],
+                _ => return [0; 4],
+            };
+            rgba(shade(c, grain))
         }
         _ => [0; 4],
     }

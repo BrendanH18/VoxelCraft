@@ -50,10 +50,14 @@ pub enum Kind {
     /// v1.0 Track 5: `soul` (`EmissiveRisingParticle.EmissiveProvider`),
     /// from Soul Speed boots on soul sand and soul soil.
     Soul,
+    /// v1.0 gap track 6d: `dripping_dripstone_water`
+    /// (`DripstoneWaterHangProvider`): a blue drop hanging from a pointed
+    /// dripstone's tip for 40 ticks, falling and splashing.
+    WaterDrip,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 29] = [
+    pub const ALL: [Kind; 30] = [
         Kind::Smoke,
         Kind::LargeSmoke,
         Kind::Rain,
@@ -83,6 +87,7 @@ impl Kind {
         Kind::EndRod,
         Kind::Nautilus,
         Kind::Soul,
+        Kind::WaterDrip,
     ];
 
     pub fn sprite(self) -> u16 {
@@ -99,7 +104,7 @@ impl Kind {
             Self::Effect => 9,
             Self::Explosion => 10,
             Self::DragonBreath => 11,
-            Self::LavaDrip => 12,
+            Self::LavaDrip | Self::WaterDrip => 12,
             Self::CrimsonSpore | Self::WarpedSpore | Self::Ash | Self::WhiteAsh => 13,
             Self::SoulFlame => 14,
             Self::Note => 15,
@@ -420,7 +425,7 @@ impl System {
                 p.size *= rng.range(0.2, 2.2);
                 p.lifetime = (16.0 / rng.range(0.2, 1.0)) as u16;
             }
-            Kind::LavaDrip => {
+            Kind::LavaDrip | Kind::WaterDrip => {
                 // Hang for 40 ticks (gravity 0.06 * 0.02, then *0.02 friction),
                 // fall with gravity 0.06, and sit as the landing particle.
                 p.motion = Motion::DripHang;
@@ -429,7 +434,8 @@ impl System {
                 p.lifetime = 40;
                 p.successor_lifetime = (64.0 / rng.range(0.2, 1.0)) as u16;
                 p.landing_lifetime = (16.0 / rng.range(0.2, 1.0)) as u16;
-                p.color = [1.0, 1.0, 0.5, 1.0];
+                // `DripstoneWaterHangProvider`'s (0.2, 0.3, 1).
+                p.color = if kind == Kind::WaterDrip { [0.2, 0.3, 1.0, 1.0] } else { [1.0, 1.0, 0.5, 1.0] };
                 p.size = 0.05;
                 p.collision_size = 0.01;
             }

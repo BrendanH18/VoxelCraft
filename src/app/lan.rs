@@ -522,11 +522,7 @@ impl Game {
         self.lan_send(Packet::Click { slot, right, shift, revision, grid_size, selected });
     }
     pub(super) fn chat_line(&mut self, message: &str) {
-        self.console.last_line = Some(std::time::Instant::now());
-        self.console.lines.push_back(message.into());
-        while self.console.lines.len() > 64 {
-            self.console.lines.pop_front();
-        }
+        self.console.push(message.into());
     }
     pub(super) fn broadcast_chat(&mut self, message: &str) {
         self.chat_line(message);
@@ -2431,27 +2427,56 @@ impl Game {
         self.chat_ui(ui);
     }
 
-    /// The last four chat lines over the hotbar: always in a LAN game, and
-    /// for 10 seconds after a line in a single-player one (v1.0 gap track
-    /// 6c: debug feedback, Java's `showDebugChat`).
+    /// The chat over the hotbar, as Java's unfocused `ChatComponent` draws
+    /// it: the last 10 lines (`chatHeightUnfocused`'s 90 pixels of 9-pixel
+    /// lines) up from 40 pixels above the bottom, on a 332-pixel band of
+    /// black at half opacity (`textBackgroundOpacity`), each line fading out
+    /// 10 seconds after it came ([`super::console::chat_alpha`]), in a LAN
+    /// game as in a single-player one (v1.0 gap track 6d; the debug
+    /// feedback of v1.0 gap track 6c, Java's `showDebugChat`). Debug
+    /// feedback starts with Java's yellow, bold `debug.prefix`.
     pub(super) fn chat_ui(&self, ui: &mut crate::render::ui::Ui) {
-        let lan = self.lan.host.is_some() || self.lan.client.is_some();
-        let recent = self.console.last_line.is_some_and(|t| t.elapsed().as_secs_f32() < 10.0);
+        if self.console.open || self.menu.is_open() || self.inventory_open {
+            return;
+        }
         let (_, sh) = ui.size();
-        if (lan || recent) && !self.console.open && !self.menu.is_open() && !self.inventory_open {
-            for (i, line) in self.console.lines.iter().rev().filter(|s| !s.is_empty()).take(4).enumerate() {
-                ui.rect(
-                    4.0,
-                    sh - 64.0 - i as f32 * 12.0,
-                    crate::render::ui::Ui::text_width(line) + 6.0,
-                    11.0,
-                    [0.0, 0.0, 0.0, 0.45],
-                );
-                ui.text(7.0, sh - 62.0 - i as f32 * 12.0, line, crate::render::ui::WHITE);
+        let bottom = sh - 40.0;
+        let lines = self.console.lines.iter().zip(&self.console.added).rev().filter(|(s, _)| !s.is_empty());
+        for (i, (line, added)) in lines.take(10).enumerate() {
+            let alpha = super::console::chat_alpha(added.elapsed().as_secs_f32());
+            if alpha <= 1e-5 {
+                continue;
             }
+            let entry_bottom = bottom - i as f32 * 9.0;
+            ui.rect(0.0, entry_bottom - 9.0, 332.0, 9.0, crate::render::ui::shade(alpha * 0.5));
+            // Java skips text whose alpha byte is 3 or less (`ARGB.alpha`).
+            if alpha * 255.0 <= 3.0 {
+                continue;
+            }
+            let y = entry_bottom - 8.0;
+            let mut x = 4.0;
+            let rest = match line.strip_prefix(DEBUG_PREFIX) {
+                Some(rest) => {
+                    // `ChatFormatting.YELLOW` (0xFFFF55), bold: each glyph
+                    // drawn again a pixel right and advanced a pixel more.
+                    let yellow = [1.0, 1.0, 85.0 / 255.0, alpha];
+                    for c in DEBUG_PREFIX.chars() {
+                        let s = c.to_string();
+                        ui.text(x + 1.0, y, &s, yellow);
+                        x += ui.text(x, y, &s, yellow) + 1.0;
+                    }
+                    rest
+                }
+                None => line.as_str(),
+            };
+            ui.text(x, y, rest, [1.0, 1.0, 1.0, alpha]);
         }
     }
 }
+
+/// Java's `debug.prefix`, which `KeyboardHandler.debugFeedbackComponent`
+/// puts before debug feedback.
+pub(super) const DEBUG_PREFIX: &str = "[Debug]:";
 
 /// A player on the desktop host: the host itself, or a controller or LAN
 /// player by agent profile name.
@@ -3009,6 +3034,24 @@ mod tests {
         assert_eq!(copy.player.pos, p.player.pos);
         assert_eq!(lite["swing"], 0.1);
         assert_eq!(lite["eat"], 0.5);
+    }
+    /// v1.0 gap track 6d: another player's held stack keeps what its
+    /// glint depends on (enchantments, a lodestone), so a LAN player's
+    /// enchanted item glints in their hand on every screen.
+    #[test]
+    fn other_players_held_stacks_keep_their_glint() {
+        let mut p = Agent::new(DVec3::ZERO);
+        let item = crate::item::Item::from_name("diamond sword").expect("the diamond sword is registered");
+        let mut sword = crate::inventory::Stack::new(item, 1);
+        sword.enchants.set(crate::enchant::Enchantment::Sharpness, 3);
+        assert!(sword.has_foil());
+        p.inventory.slots[0] = Some(sword);
+        p.inventory.offhand = Some(sword);
+        let mut copy = Agent::new(DVec3::ZERO);
+        apply(&mut copy, &state_lite(&p, "Remote", None, 0.0));
+        assert_eq!(copy.inventory.get(0), Some(sword));
+        assert!(copy.inventory.get(0).is_some_and(|s| s.has_foil()));
+        assert!(copy.inventory.offhand.is_some_and(|s| s.has_foil()));
     }
     #[test]
     fn player_snapshot_preserves_progression_and_movement() {

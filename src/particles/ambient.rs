@@ -117,6 +117,22 @@ impl System {
     pub fn animate_block(&mut self, world: &World, cell: IVec3, setting: Setting) {
         let Some(block) = world.get_block(cell) else { return };
         let base = cell.as_dvec3();
+        if let Some(fluid) = dripstone_drip(world, cell, block) {
+            // `PointedDripstoneBlock.animateTick`: 12% of a free-hanging tip's
+            // ticks find the fluid above its root; water or lava drips, and
+            // with nothing there 2% drip the dimension's default.
+            let roll = self.rng.next_f32();
+            if roll <= 0.12 && (roll < 0.02 || fluid.is_some_and(|(_, source)| source)) {
+                let nether = world.generator.dimension == crate::world::terrain::Dimension::Nether;
+                let lava = fluid.map_or(nether, |(lava, _)| lava);
+                // `spawnDripParticle`: from the tip's offset centre, 4/16 up
+                // (its shape's bottom, 5/16, less a pixel).
+                let offset = crate::world::offset::offset_of(crate::world::offset::Kind::XzSpeleothem, cell.x, cell.z);
+                let pos = base + DVec3::new(0.5 + offset.x, 0.25, 0.5 + offset.z);
+                self.burst(Burst::new(if lava { Kind::LavaDrip } else { Kind::WaterDrip }, pos, 1), setting);
+            }
+            return;
+        }
         if block == Block::TORCH || block == SOUL_TORCH {
             let pos = base + DVec3::new(0.5, 0.7, 0.5);
             let flame = if block == SOUL_TORCH { Kind::SoulFlame } else { Kind::Flame };
@@ -490,6 +506,38 @@ impl System {
     }
 }
 
+/// v1.0 gap track 6d: for a free-hanging pointed dripstone tip (pointing
+/// down, a tip, not waterlogged: `isFreeHangingStalactite`), the fluid
+/// above the block it hangs from (`getFluidAboveStalactite`: up the run of
+/// downward dripstone, at most 11 blocks): whether it is lava and whether
+/// it is a source (`canFillCauldron`; mud counts as a water source outside
+/// the Nether), or `None` with no fluid there. `None` outright for anything
+/// but such a tip.
+fn dripstone_drip(world: &World, cell: IVec3, block: Block) -> Option<Option<(bool, bool)>> {
+    use crate::world::overworld_blocks::{self as ob, Thickness};
+    if !matches!(ob::dripstone_of(block.canonical()), Some((true, Thickness::Tip))) || block.is_waterlogged() {
+        return None;
+    }
+    let mut root = cell + IVec3::Y;
+    for _ in 0..11 {
+        match world.get_block(root) {
+            Some(b) if matches!(ob::dripstone_of(b.canonical()), Some((true, _))) => root += IVec3::Y,
+            _ => break,
+        }
+    }
+    let above = world.get_block(root + IVec3::Y)?;
+    let nether = world.generator.dimension == crate::world::terrain::Dimension::Nether;
+    Some(if above.is_lava() {
+        Some((true, above == Block::LAVA))
+    } else if crate::world::waterlog::holds_source(above) || (above == ob::MUD && !nether) {
+        Some((false, true))
+    } else if above.holds_water() {
+        Some((false, false))
+    } else {
+        None
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -505,6 +553,45 @@ mod tests {
             assert!(std::time::Instant::now() < deadline);
             std::thread::sleep(std::time::Duration::from_millis(1));
         }
+    }
+
+    /// v1.0 gap track 6d: a hanging dripstone tip under water drips blue
+    /// drops 12% of its ticks from its offset tip, 4/16 up the cell; under
+    /// lava, lava drops; with nothing above, only 2% drip (water outside
+    /// the Nether); a tip pointing up never drips.
+    #[test]
+    fn hanging_dripstone_drips_from_its_offset_tip() {
+        use crate::world::overworld_blocks::{self as ob, Thickness};
+        let tip = IVec3::new(3, 150, 7);
+        let drips = |above: Block, tip_block: Block| {
+            let mut w = world();
+            w.set_block(tip + IVec3::Y * 3, above);
+            w.set_block(tip + IVec3::Y * 2, Block::STONE);
+            w.set_block(tip + IVec3::Y, ob::pointed_dripstone(true, Thickness::Frustum));
+            w.set_block(tip, tip_block);
+            let mut system = System::new(11);
+            let mut out = Vec::new();
+            for _ in 0..2000 {
+                system.animate_block(&w, tip, Setting::All);
+                out.extend(system.pool.iter().map(|p| (p.style, p.pos)));
+                system.clear();
+            }
+            out
+        };
+        let hanging = ob::pointed_dripstone(true, Thickness::Tip);
+        let offset = crate::world::offset::offset_of(crate::world::offset::Kind::XzSpeleothem, tip.x, tip.z);
+        let water = drips(Block::WATER, hanging);
+        assert!((180..300).contains(&water.len()), "{}", water.len());
+        for (style, pos) in &water {
+            assert_eq!(*style, Kind::WaterDrip);
+            let want = tip.as_dvec3() + DVec3::new(0.5 + offset.x, 0.25, 0.5 + offset.z);
+            assert!((*pos - want).length() < 1e-9, "{pos} {want}");
+        }
+        let lava = drips(Block::LAVA, hanging);
+        assert!(!lava.is_empty() && lava.iter().all(|(s, _)| *s == Kind::LavaDrip));
+        let dry = drips(Block::AIR, hanging);
+        assert!((15..70).contains(&dry.len()) && dry.iter().all(|(s, _)| *s == Kind::WaterDrip), "{}", dry.len());
+        assert!(drips(Block::WATER, ob::pointed_dripstone(false, Thickness::Tip)).is_empty());
     }
 
     #[test]

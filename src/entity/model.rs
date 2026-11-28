@@ -1700,14 +1700,17 @@ pub fn build(
             charged_aura(m, rel, time, out);
         }
         passive::tongue(m, camera, out, (light, torch));
-        copper_golem::cargo(m, origin, body, (light, torch), out);
-        allay::held(m, origin, body, (light, torch), out);
         let mut posed = pose(m, time, alpha as f32);
         aquatic::track_eye(m, camera, &mut posed);
         if matches!(m.kind, MobKind::Pig | MobKind::Strider) {
             mounts::equipment(m, &mut posed);
         }
         let model_scale = animals::model_scale(m);
+        // v1.0 gap track 6d: the allay's and the copper golem's items, as
+        // their `ItemInHandLayer`s hold them.
+        let grip_light = (f32::from(light[0]) / 255.0, f32::from(torch) / 255.0);
+        allay::held(m, &posed, origin, body, scale * model_scale, alpha as f32, grip_light, out);
+        copper_golem::cargo(m, &posed, origin, body, scale * model_scale, grip_light, out);
         for (pi, p) in posed.iter().enumerate() {
             let rot = body * p.rot;
             let xf = |v: Vec3| origin + body * ((p.pivot + p.rot * (p.stretch * v)) * model_scale) * scale / 16.0;

@@ -145,6 +145,53 @@ pub fn seed(x: i32, z: i32) -> i64 {
     seed >> 16
 }
 
+/// v1.0 gap track 6d: `Mth.getSeed(x, y, z)`, the seed of a block's model
+/// choice (`BlockState.getSeed`).
+pub fn block_seed(x: i32, y: i32, z: i32) -> i64 {
+    let mut seed = i64::from(x.wrapping_mul(3_129_871)) ^ i64::from(z).wrapping_mul(116_129_781) ^ i64::from(y);
+    seed = seed.wrapping_mul(seed).wrapping_mul(42_317_861).wrapping_add(seed.wrapping_mul(11));
+    seed >> 16
+}
+
+/// v1.0 gap track 6d: Java's `java.util.Random` linear congruential
+/// generator, as the block renderer's `SingleThreadedRandomSource` runs it.
+struct Lcg(u64);
+
+impl Lcg {
+    const MULTIPLIER: u64 = 0x5_DEEC_E66D;
+    const MASK: u64 = (1 << 48) - 1;
+
+    fn new(seed: i64) -> Self {
+        Self((seed as u64 ^ Self::MULTIPLIER) & Self::MASK)
+    }
+
+    fn next(&mut self, bits: u32) -> i32 {
+        self.0 = (self.0.wrapping_mul(Self::MULTIPLIER).wrapping_add(0xB)) & Self::MASK;
+        (self.0 >> (48 - bits)) as i64 as i32
+    }
+
+    fn next_long(&mut self) -> i64 {
+        (i64::from(self.next(32)) << 32).wrapping_add(i64::from(self.next(32)))
+    }
+
+    /// `nextInt(bound)` for a power-of-two bound.
+    fn next_int_pow2(&mut self, bound: i32) -> i32 {
+        ((i64::from(bound) * i64::from(self.next(31))) >> 31) as i32
+    }
+}
+
+/// v1.0 gap track 6d: which of its four stalk models (`bamboo1_age*` to
+/// `bamboo4_age*`, 0 to 3) Java draws bamboo with at (`x`, `y`, `z`):
+/// `ModelBlockRenderer` seeds its random source with the block's seed, the
+/// multipart model draws one long and reseeds with it for each part, and
+/// the stalk's four equally weighted variants take `nextInt(4)`.
+pub fn bamboo_model(x: i32, y: i32, z: i32) -> u8 {
+    let mut random = Lcg::new(block_seed(x, y, z));
+    let part = random.next_long();
+    let mut random = Lcg::new(part);
+    random.next_int_pow2(4) as u8
+}
+
 /// The offset of a `kind` model in column (`x`, `z`), in blocks, as Java's
 /// offset function computes it (float division, double arithmetic, clamped
 /// to the kind's limit).
@@ -226,6 +273,26 @@ pub fn bamboo_outline(b: Block) -> Option<(DVec3, DVec3)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// v1.0 gap track 6d: bamboo's stalk model at these positions, as
+    /// Java's `java.util.Random` (the algorithm of the block renderer's
+    /// `SingleThreadedRandomSource`) chooses it from `Mth.getSeed`: a
+    /// separate Java program's output on Boat.
+    #[test]
+    fn bamboo_takes_javas_stalk_model() {
+        for (x, y, z, model) in [
+            (0, 0, 0, 1),
+            (1, 64, 1, 1),
+            (-7, 70, 13, 0),
+            (100, -40, -3, 3),
+            (12345, 80, -6789, 1),
+            (-1, 0, -1, 0),
+            (31, 63, 31, 0),
+            (-30_000_000, 319, 29_999_999, 2),
+        ] {
+            assert_eq!(bamboo_model(x, y, z), model, "({x}, {y}, {z})");
+        }
+    }
 
     #[test]
     fn javas_seed_and_offsets() {

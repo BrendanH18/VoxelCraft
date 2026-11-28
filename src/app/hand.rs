@@ -147,6 +147,7 @@ impl HandAnim {
             glint: false,
             translucent: false,
             mesh: None,
+            stack: None,
         }
     }
 }

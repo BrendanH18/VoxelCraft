@@ -445,6 +445,9 @@ pub fn block_item_quads(block: Block) -> Vec<voxelcraft::world::colour_blocks::b
     let block = block.item_facing();
     let tex = block.info().tex;
     let head = crate::world::skulls::decode(block.canonical()).is_some();
+    if matches!(block.shaped(), Some(voxelcraft::world::block::Shaped::Fence)) {
+        return fence_inventory_quads(tex);
+    }
     let mut out = Vec::with_capacity(6);
     for (i, b) in shape::item_boxes(block).as_slice().iter().enumerate() {
         // Candle wicks, the beacon's plinth and core: their own layers.
@@ -466,14 +469,7 @@ pub fn block_item_quads(block: Block) -> Vec<voxelcraft::world::colour_blocks::b
             } else {
                 [corner(false, false), corner(false, true), corner(true, true), corner(true, false)]
             };
-            let uv = c.map(|p| match face {
-                0 => [1.0 - p.z, 1.0 - p.y],
-                1 => [p.z, 1.0 - p.y],
-                2 => [p.x, p.z],
-                3 => [p.x, 1.0 - p.z],
-                4 => [p.x, 1.0 - p.y],
-                _ => [1.0 - p.x, 1.0 - p.y],
-            });
+            let uv = c.map(|p| voxelcraft::mesh::face_uv(face, p.to_array()));
             let mut normal = Vec3::ZERO;
             normal[d] = if positive { 1.0 } else { -1.0 };
             out.push(voxelcraft::world::colour_blocks::banner::Quad {
@@ -486,6 +482,96 @@ pub fn block_item_quads(block: Block) -> Vec<voxelcraft::world::colour_blocks::b
         }
     }
     out
+}
+
+/// v1.0 gap track 6d: Java's `fence_inventory` model, element by element
+/// (from, to, and each face's explicit UV in texels, `None` for a face the
+/// model leaves out), faces +X, -X, +Y, -Y, +Z, -Z: two posts at z 0-4 and
+/// 12-16, and two bars from z -2 to 18 in three pieces each, reaching 2/16
+/// beyond the block.
+const FENCE_INVENTORY: [voxelcraft::content::item_models::Element; 8] = {
+    const fn f(u0: f32, v0: f32, u1: f32, v1: f32) -> Option<[f32; 4]> {
+        Some([u0, v0, u1, v1])
+    }
+    [
+        // Left post: east, west, up, down, south, north.
+        (
+            [6., 0., 0.],
+            [10., 16., 4.],
+            [
+                f(0., 0., 4., 16.),
+                f(0., 0., 4., 16.),
+                f(6., 0., 10., 4.),
+                f(6., 0., 10., 4.),
+                f(6., 0., 10., 16.),
+                f(6., 0., 10., 16.),
+            ],
+        ),
+        // Right post.
+        (
+            [6., 0., 12.],
+            [10., 16., 16.],
+            [
+                f(12., 0., 16., 16.),
+                f(12., 0., 16., 16.),
+                f(6., 12., 10., 16.),
+                f(6., 12., 10., 16.),
+                f(6., 0., 10., 16.),
+                f(6., 0., 10., 16.),
+            ],
+        ),
+        // Top bar, and its ends beyond the block.
+        (
+            [7., 12., 0.],
+            [9., 15., 16.],
+            [f(0., 1., 16., 4.), f(0., 1., 16., 4.), f(7., 0., 9., 16.), f(7., 0., 9., 16.), None, None],
+        ),
+        (
+            [7., 12., -2.],
+            [9., 15., 0.],
+            [f(0., 1., 2., 4.), f(14., 1., 16., 4.), f(7., 14., 9., 16.), f(7., 0., 9., 2.), None, f(7., 1., 9., 4.)],
+        ),
+        (
+            [7., 12., 16.],
+            [9., 15., 18.],
+            [f(14., 1., 16., 4.), f(0., 1., 2., 4.), f(7., 0., 9., 2.), f(7., 14., 9., 16.), f(7., 1., 9., 4.), None],
+        ),
+        // Lower bar, and its ends.
+        (
+            [7., 6., 0.],
+            [9., 9., 16.],
+            [f(0., 7., 16., 10.), f(0., 7., 16., 10.), f(7., 0., 9., 16.), f(7., 0., 9., 16.), None, None],
+        ),
+        (
+            [7., 6., -2.],
+            [9., 9., 0.],
+            [
+                f(0., 7., 2., 10.),
+                f(14., 7., 16., 10.),
+                f(7., 14., 9., 16.),
+                f(7., 0., 9., 2.),
+                None,
+                f(7., 7., 9., 10.),
+            ],
+        ),
+        (
+            [7., 6., 16.],
+            [9., 9., 18.],
+            [
+                f(14., 7., 16., 10.),
+                f(0., 7., 2., 10.),
+                f(7., 0., 9., 2.),
+                f(7., 14., 9., 16.),
+                f(7., 7., 9., 10.),
+                None,
+            ],
+        ),
+    ]
+};
+
+/// [`FENCE_INVENTORY`]'s quads with the fence's face layers.
+fn fence_inventory_quads(tex: [u16; 6]) -> Vec<voxelcraft::world::colour_blocks::banner::Quad> {
+    voxelcraft::content::item_models::element_quads(&FENCE_INVENTORY, tex)
 }
 
 #[cfg(test)]
@@ -631,6 +717,30 @@ mod scale_tests {
 #[cfg(test)]
 mod item_view_tests {
     use super::*;
+
+    /// v1.0 gap track 6d: a fence item is Java's `fence_inventory`: two
+    /// posts and two bars running north to south, the bars reaching 2/16
+    /// beyond the block, 40 faces, each with its explicit UV (the left
+    /// post's east face samples texels 0-4 across, its top 6-10).
+    #[test]
+    fn fence_items_are_javas_fence_inventory() {
+        let quads = block_item_quads(crate::world::block::Block::OAK_FENCE);
+        assert_eq!(quads.len(), 40);
+        let (lo, hi) = quads
+            .iter()
+            .flat_map(|q| q.corners)
+            .fold((glam::Vec3::MAX, glam::Vec3::MIN), |(lo, hi), c| (lo.min(c), hi.max(c)));
+        assert!((lo - glam::Vec3::new(6.0, 0.0, -2.0) / 16.0).abs().max_element() < 1e-6, "{lo}");
+        assert!((hi - glam::Vec3::new(10.0, 16.0, 18.0) / 16.0).abs().max_element() < 1e-6, "{hi}");
+        let east = &quads[0];
+        let us: Vec<f32> = east.uv.iter().map(|uv| uv[0] * 16.0).collect();
+        assert!(us.iter().all(|u| (*u - 0.0).abs() < 1e-4 || (*u - 4.0).abs() < 1e-4), "{us:?}");
+        // Seen from outside the east face runs unmirrored: u grows toward -z.
+        let at_north = east.corners.iter().zip(&east.uv).find(|(c, _)| c.z < 1e-6).unwrap().1[0];
+        assert!((at_north * 16.0 - 4.0).abs() < 1e-4);
+        let top = &quads[2];
+        assert!(top.uv.iter().all(|uv| (6.0 - 1e-4..=10.0 + 1e-4).contains(&(uv[0] * 16.0))), "{:?}", top.uv);
+    }
 
     /// The x (UI pixels) of the quads drawn with `layer`, by their vertices.
     fn xs(ui: &Ui, layer: u16) -> Vec<f32> {

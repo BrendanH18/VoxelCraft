@@ -1553,6 +1553,7 @@ impl World {
             min_y: self.min_y(),
             foliage,
             models,
+            origin: pos * CHUNK_SIZE_I,
         })
     }
 

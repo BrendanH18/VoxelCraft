@@ -17,10 +17,31 @@ pub(super) struct Console {
     pub history_index: Option<usize>,
     pub draft: String,
     pub lines: VecDeque<String>,
-    /// v1.0 gap track 6c: when the last chat line came, so a single-player
-    /// game shows its chat for Java's 10 seconds (`ChatComponent`'s 200
-    /// ticks) as a LAN game always does.
-    pub last_line: Option<std::time::Instant>,
+    /// v1.0 gap track 6d: when each of `lines` came (the same length), so
+    /// each fades out as Java's chat does (`ChatComponent.AlphaCalculator
+    /// .timeBased`, 200 ticks).
+    pub added: VecDeque<std::time::Instant>,
+}
+
+impl Console {
+    /// Adds a line to the scrollback and the chat, keeping the last 64.
+    pub fn push(&mut self, line: String) {
+        self.lines.push_back(line);
+        self.added.push_back(std::time::Instant::now());
+        while self.lines.len() > 64 {
+            self.lines.pop_front();
+            self.added.pop_front();
+        }
+    }
+}
+
+/// v1.0 gap track 6d: a chat line's opacity `seconds` after it came, as
+/// `ChatComponent.AlphaCalculator.timeBased` computes it from its 200-tick
+/// life: fully shown for 9 seconds, then fading over the last second as
+/// the square of what is left.
+pub(super) fn chat_alpha(seconds: f32) -> f32 {
+    let t = ((1.0 - seconds * 20.0 / 200.0) * 10.0).clamp(0.0, 1.0);
+    t * t
 }
 
 /// What a finished console command prints: failures always, successes only
@@ -70,7 +91,7 @@ impl Game {
                         self.console.history.remove(0);
                     }
                     self.console.history.push(input.clone());
-                    self.console.lines.push_back(input.clone());
+                    self.console.push(input.clone());
                     let words: Vec<&str> = input.trim_start_matches('/').split_whitespace().collect();
                     let result = if let Some(result) = self.lan_console(&input) {
                         result
@@ -89,10 +110,7 @@ impl Game {
                     // Java's `CommandSourceStack.sendSuccess` is silent without
                     // `send_command_feedback`; failures are always shown.
                     if let Some(line) = console_line(result, self.gamerules.bool("send_command_feedback")) {
-                        self.console.lines.push_back(line);
-                    }
-                    while self.console.lines.len() > 64 {
-                        self.console.lines.pop_front();
+                        self.console.push(line);
                     }
                 }
             }
@@ -522,6 +540,24 @@ impl Game {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// v1.0 gap track 6d: `ChatComponent.AlphaCalculator.timeBased`.
+    #[test]
+    fn chat_lines_fade_as_javas_do() {
+        assert_eq!(chat_alpha(0.0), 1.0);
+        assert_eq!(chat_alpha(9.0), 1.0);
+        assert!((chat_alpha(9.5) - 0.25).abs() < 1e-4);
+        // 195 ticks: (1 - 195/200) * 10 = 0.25, squared.
+        assert!((chat_alpha(9.75) - 0.0625).abs() < 1e-4);
+        assert_eq!(chat_alpha(10.0), 0.0);
+        assert_eq!(chat_alpha(60.0), 0.0);
+        let mut c = Console::default();
+        for i in 0..70 {
+            c.push(format!("line {i}"));
+        }
+        assert_eq!((c.lines.len(), c.added.len()), (64, 64));
+        assert_eq!(c.lines.front().map(String::as_str), Some("line 6"));
+    }
 
     #[test]
     fn send_command_feedback_silences_successes_but_never_failures() {

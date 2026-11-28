@@ -178,6 +178,21 @@ fn block_offset(kind: u32, x: i32, z: i32) -> vec3<f32> {
     return vec3<f32>(ox, oy, oz);
 }
 
+// v1.0 gap track 6d: Java's default face UVs (`FaceBakery`, a face's
+// texture upright and unmirrored seen from outside) as planar coordinates,
+// so merged quads tile: east (1 - z, 1 - y), west (z, 1 - y), up (x, z),
+// down (x, 1 - z), south (x, 1 - y), north (1 - x, 1 - y).
+fn face_uv(face: u32, p: vec3<f32>) -> vec2<f32> {
+    switch face {
+        case 0u: { return vec2<f32>(-p.z, -p.y); }
+        case 1u: { return vec2<f32>(p.z, -p.y); }
+        case 2u: { return p.xz; }
+        case 3u: { return vec2<f32>(p.x, -p.z); }
+        case 4u: { return vec2<f32>(p.x, -p.y); }
+        default: { return vec2<f32>(-p.x, -p.y); }
+    }
+}
+
 @vertex
 fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>, @location(2) origin: vec2<i32>) -> VsOut {
     let q = (vi >> 2u) * 3u;
@@ -209,6 +224,7 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>, @loca
 
     var local: vec3<f32>;
     var uv: vec2<f32>;
+    var mirror = false;
     if fine {
         // Fine quad: bounds and plane as codes ([`fine_coord`]), moved by
         // the stalk's offset. A leaf plane stretches its whole texture over
@@ -228,12 +244,28 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>, @loca
         t[u] += select(select(lo.x, hi.x, at_u), select(0.0, 1.0, at_u), leaf);
         t[v] += select(select(lo.y, hi.y, at_v), select(0.0, 1.0, at_v), leaf);
         local = p + block_offset(1u, column.x, column.y);
-        if d == 0u {
-            uv = vec2<f32>(t.z, -t.y);
-        } else if d == 1u {
-            uv = t.xz;
-        } else {
-            uv = vec2<f32>(t.x, -t.y);
+        uv = face_uv(real_face, t);
+        if !leaf {
+            // v1.0 gap track 6d: a stalk face samples Java's stalk model's
+            // part of the texture (`bamboo1_age0` to `bamboo4_age1`): the
+            // sides a column 3 texels apart by the model (bits 29-30), as
+            // wide as the stalk; the top the square at (13, 0), the bottom
+            // the one at (13, 4). Each starts at the face's lowest UV.
+            var c0 = vec3<f32>(0.0);
+            var c1 = vec3<f32>(0.0);
+            c0[u] = lo.x;
+            c0[v] = lo.y;
+            c1[u] = hi.x;
+            c1[v] = hi.y;
+            let low = min(face_uv(real_face, c0), face_uv(real_face, c1));
+            let at = vec3<f32>(t) - vec3<f32>(base);
+            var start = vec2<f32>(f32((w0 >> 29u) & 3u) * 3.0 / 16.0, 0.0);
+            if real_face == 2u {
+                start = vec2<f32>(13.0 / 16.0, 0.0);
+            } else if real_face == 3u {
+                start = vec2<f32>(13.0 / 16.0, 4.0 / 16.0);
+            }
+            uv = start + face_uv(real_face, at) - low;
         }
     } else if face >= 6u {
         // Cross-shaped block: a unit diagonal plane through the cell, (0,0)
@@ -263,7 +295,11 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>, @loca
             // and plane offset in 1/16 block.
             let tag = (w0 >> 21u) & 31u;
             let slope = face >= 2u && face <= 3u && tag >= 17u && tag <= 20u;
-            let lo = vec2<u32>(select(tag, 0u, slope), (w0 >> 26u) & 15u);
+            // v1.0 gap track 6d: on a side face the lower u bound is at most
+            // 15, so its top bit mirrors the texture (Java's door models).
+            let side = face < 2u || face >= 4u;
+            mirror = side && tag >= 16u;
+            let lo = vec2<u32>(select(select(tag, tag & 15u, side), 0u, slope), (w0 >> 26u) & 15u);
             let hi = vec2<u32>((w1 >> 16u) & 31u, (w1 >> 21u) & 31u);
             var p = vec3<f32>(base);
             p[d] += detail_coord((w1 >> 26u) & 31u);
@@ -302,12 +338,9 @@ fn vs_main(@builtin(vertex_index) vi: u32, @location(1) offset: vec3<f32>, @loca
         }
 
         // Planar UVs from the chunk-local position: merged quads tile the texture.
-        if face < 2u {
-            uv = vec2<f32>(local.z, -local.y);
-        } else if face < 4u {
-            uv = local.xz;
-        } else {
-            uv = vec2<f32>(local.x, -local.y);
+        uv = face_uv(face, local);
+        if mirror {
+            uv.x = -uv.x;
         }
     }
 
