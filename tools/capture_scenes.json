@@ -9644,6 +9644,153 @@
    ]
   },
   {
+   "name": "mobs-still-villager-professions",
+   "description": "v1.0 gap Track 7f: every profession on plains villagers at noon, pinned with --still-mobs and facing the camera; front row left to right on screen right to left: armorer (stone badge), butcher, cartographer, cleric, farmer, fisherman, fletcher; back row: leatherworker, librarian, mason, shepherd, toolsmith, weaponsmith, nitwit (no badge); levels cycle 1 to 5 along each row",
+   "pose": [
+    0.5,
+    155.0,
+    11.0,
+    90,
+    -16
+   ],
+   "fill": [
+    [
+     -12,
+     150,
+     13,
+     12,
+     150,
+     26,
+     "grass"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "villager,-9,151,17,plains:armorer:1",
+    "villager,-6,151,17,plains:butcher:2",
+    "villager,-3,151,17,plains:cartographer:3",
+    "villager,0,151,17,plains:cleric:4",
+    "villager,3,151,17,plains:farmer:5",
+    "villager,6,151,17,plains:fisherman:1",
+    "villager,9,151,17,plains:fletcher:2",
+    "villager,-9,151,21,plains:leatherworker:1",
+    "villager,-6,151,21,plains:librarian:2",
+    "villager,-3,151,21,plains:mason:3",
+    "villager,0,151,21,plains:shepherd:4",
+    "villager,3,151,21,plains:toolsmith:5",
+    "villager,6,151,21,plains:weaponsmith:1",
+    "villager,9,151,21,plains:nitwit"
+   ],
+   "group": "mobs",
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
+  },
+  {
+   "name": "mobs-still-zombie-villager-professions",
+   "description": "v1.0 gap Track 7f: the same professions and rows as mobs-still-villager-professions on snow zombie villagers (their clothes rotted), at noon, pinned with --still-mobs",
+   "pose": [
+    0.5,
+    155.0,
+    11.0,
+    90,
+    -16
+   ],
+   "fill": [
+    [
+     -12,
+     150,
+     13,
+     12,
+     150,
+     26,
+     "grass"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "zombie_villager,-9,151,17,snow:armorer:1",
+    "zombie_villager,-6,151,17,snow:butcher:2",
+    "zombie_villager,-3,151,17,snow:cartographer:3",
+    "zombie_villager,0,151,17,snow:cleric:4",
+    "zombie_villager,3,151,17,snow:farmer:5",
+    "zombie_villager,6,151,17,snow:fisherman:1",
+    "zombie_villager,9,151,17,snow:fletcher:2",
+    "zombie_villager,-9,151,21,snow:leatherworker:1",
+    "zombie_villager,-6,151,21,snow:librarian:2",
+    "zombie_villager,-3,151,21,snow:mason:3",
+    "zombie_villager,0,151,21,snow:shepherd:4",
+    "zombie_villager,3,151,21,snow:toolsmith:5",
+    "zombie_villager,6,151,21,snow:weaponsmith:1",
+    "zombie_villager,9,151,21,snow:nitwit"
+   ],
+   "group": "mobs",
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
+  },
+  {
+   "name": "mobs-still-villager-faces",
+   "description": "v1.0 gap Track 7f: close-up at noon, pinned with --still-mobs: front row (on screen right to left) a taiga armorer in its welding mask, a plains cartographer with its monocle, a desert weaponsmith with its eyepatch, a swamp cleric; back row a jungle leatherworker, an adult fox holding an emerald in its mouth, a fox kit holding a feather and a savanna toolsmith",
+   "pose": [
+    0.5,
+    152.9,
+    13.6,
+    90,
+    -12
+   ],
+   "fill": [
+    [
+     -6,
+     150,
+     13,
+     6,
+     150,
+     22,
+     "grass"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "villager,-2,151,16,taiga:armorer:5",
+    "villager,-1,151,16,plains:cartographer:3",
+    "villager,0,151,16,desert:weaponsmith:4",
+    "villager,1,151,16,swamp:cleric:2",
+    "villager,-2,151,18,jungle:leatherworker:2",
+    "fox,-1,151,18,emerald",
+    "fox,0,151,17,baby,feather",
+    "villager,1,151,18,savanna:toolsmith:1"
+   ],
+   "group": "mobs",
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
+  },
+  {
    "name": "mobs-still-villagers-plain",
    "group": "mobs",
    "description": "v1.0 gap Track 7e before/after: at noon, pinned with --still-mobs and facing the camera; front row a villager, a villager holding an emerald, a zombie villager, one in iron armor and a wandering trader; back row a villager child, a zombie villager cub, an adult fox and a fox kit (types from the capture world's biome)",
