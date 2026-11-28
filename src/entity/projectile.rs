@@ -53,6 +53,10 @@ pub struct Arrow {
     pub critical: bool,
     /// The bow's enchantments: power, punch and flame; a crossbow's piercing.
     pub enchants: crate::enchant::Enchants,
+    /// v1.0 gap Track 8: ticks of fire besides Flame's (`remainingFireTicks`),
+    /// from a perched dragon's scales (`AbstractDragonSittingPhase.onHurt`);
+    /// water puts it out. Not saved, like the arrow's flight.
+    fire: u16,
     /// Mobs (`Mob::uid`) this piercing arrow already passed through.
     pierced: Vec<u32>,
     /// Vehicles and decorations ([`ArrowTarget::key`]) it passed through.
@@ -121,6 +125,7 @@ impl Arrow {
             pickup: false,
             critical: false,
             enchants: Default::default(),
+            fire: 0,
             pierced: Vec::new(),
             pierced_other: Vec::new(),
             java_base: None,
@@ -152,6 +157,7 @@ impl Arrow {
             pickup,
             critical: power >= 1.0,
             enchants: Default::default(),
+            fire: 0,
             pierced: Vec::new(),
             pierced_other: Vec::new(),
             java_base: None,
@@ -217,6 +223,12 @@ impl Arrow {
         events: &mut Vec<EntityEvent>,
     ) -> bool {
         self.age += dt as f32;
+        // `Entity.baseTick` burns the fire down a tick at a time;
+        // `AbstractArrow.tick` puts it out in water.
+        self.fire = self.fire.saturating_sub((dt * 20.0).round() as u16);
+        if world.block(self.pos.floor().as_ivec3()).is_some_and(|b| b.holds_water()) {
+            self.fire = 0;
+        }
         if self.stuck {
             // Arrows fall out when the block they're in is broken.
             if !world.block(self.pos.floor().as_ivec3()).is_some_and(|b| b.is_solid()) {
@@ -315,7 +327,7 @@ impl Arrow {
                             struck: o.struck,
                             pos: from + step * t,
                             damage,
-                            burning: self.enchants.has(crate::enchant::Enchantment::Flame),
+                            burning: self.burning(),
                             arrow: true,
                             owner: if self.from_player { self.owner } else { None },
                             motion: self.vel,
@@ -338,13 +350,32 @@ impl Arrow {
                         // none), and only a player's arrow takes health; a
                         // skeleton's lands and is gone.
                         let by = if self.from_player { self.owner } else { None };
-                        if boss.strike(hit, super::dragon::Blow::arrow(damage, by.is_some()), by) {
+                        let blow = super::dragon::Blow::arrow(damage, by.is_some());
+                        // v1.0 gap Track 8: a perched dragon's scales set the
+                        // arrow alight for a second (`igniteForSeconds(1)`).
+                        let scorched = boss.scorches(hit, blow);
+                        if boss.strike(hit, blow, by) {
                             return false;
+                        }
+                        if scorched {
+                            self.fire = self.fire.max(20);
                         }
                         // Refused (a perched dragon's scales, or a dying
                         // dragon, which nothing hurts): `deflect(REVERSE,
-                        // .., 0.2)` sends it back at a tenth of its speed.
+                        // .., 0.2)` sends it back at a tenth of its speed,
+                        // from outside the part (Java leaves it where it met
+                        // the box) so it doesn't meet it again.
+                        self.pos = from;
                         self.vel = -self.vel * 0.1;
+                        // Left all but still (under 1e-7 blocks² a tick), it
+                        // drops as an item if it may be picked up, and goes.
+                        if (self.vel / crate::knockback::TICK_RATE).length_squared() < 1e-7 {
+                            if self.pickup {
+                                let pos = self.pos + DVec3::Y * 0.1;
+                                events.push(EntityEvent::DropEquipment { stack: self.pickup_stack(), pos });
+                            }
+                            return false;
+                        }
                         return true;
                     }
                     if let Some((i, _)) = mob {
@@ -389,7 +420,7 @@ impl Arrow {
                             // `onHitEntity` undoes Flame and skips `doPostHurtEffects`
                             // (the potion) when `hurtOrSimulate` refuses the hit.
                             let refused = mob.refuses_hit(damage);
-                            if self.enchants.has(Enchantment::Flame) && !refused {
+                            if self.burning() && !refused {
                                 mob.ignite(5.0);
                             }
                             if self.from_player {
@@ -455,7 +486,7 @@ impl Arrow {
                 let mut normal = glam::IVec3::ZERO;
                 normal[axis] = if local[axis] < 0.5 { -1 } else { 1 };
                 // `AbstractCandleBlock.onProjectileHit`: a burning arrow lights a candle.
-                let burning = self.enchants.has(crate::enchant::Enchantment::Flame);
+                let burning = self.burning();
                 if world.block(cell).is_some_and(|b| {
                     matches!(
                         crate::world::redstone_blocks::component(b),
@@ -488,12 +519,12 @@ impl Arrow {
                         damage += (rng.next_f32() * (damage / 2.0 + 1.0)).floor();
                     }
                     let punch = 1.0 + 3.0 * self.enchants.level(Enchantment::Punch) as f64;
-                    if self.enchants.has(Enchantment::Flame) {
+                    if self.burning() {
                         events.push(EntityEvent::Ignite { player: hit.id, secs: 5.0 });
                     }
                     (damage, DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 3.0 * punch + DVec3::Y * 3.0)
                 } else {
-                    if self.enchants.has(crate::enchant::Enchantment::Flame) {
+                    if self.burning() {
                         events.push(EntityEvent::Ignite { player: hit.id, secs: 5. });
                     }
                     (
@@ -529,6 +560,11 @@ impl Arrow {
     /// Current velocity in blocks per second.
     pub fn velocity(&self) -> DVec3 {
         self.vel
+    }
+
+    /// On fire (`isOnFire`): a Flame bow's, or set alight since it was shot.
+    pub fn burning(&self) -> bool {
+        self.fire > 0 || self.enchants.has(crate::enchant::Enchantment::Flame)
     }
 
     /// A piercing arrow needs the mobs' ids to remember what it passed through.

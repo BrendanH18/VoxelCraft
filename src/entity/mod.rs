@@ -183,8 +183,6 @@ pub enum MobSound {
     DragonGrowl,
     /// The dragon spitting a fireball or breathing fire.
     DragonShoot,
-    /// The dragon crashing through blocks.
-    DragonSmash,
     DragonDeath,
     CopperGolem(copper_golem::Sound, u8),
     Sniffer(sniffer::Cue),
@@ -456,6 +454,12 @@ pub enum EntityEvent {
     },
     /// The Ender Dragon flew through this block: remove it, without drops.
     BreakBlock {
+        cell: IVec3,
+    },
+    /// v1.0 gap Track 8: a dragon's part broke blocks this tick
+    /// (`EnderDragon.checkWalls`' level event 2008): one explosion particle
+    /// at the middle of `cell`.
+    DragonSmashed {
         cell: IVec3,
     },
     /// A trident faster than 0.6 blocks a tick hit pointed dripstone

@@ -78,6 +78,7 @@ impl Wild {
         ctx: &Ctx,
         rng: &mut Rng,
         crystals: &Crystals,
+        fight: Option<&super::Fight>,
         events: &mut Vec<EntityEvent>,
     ) {
         if self.is_empty() {
@@ -87,7 +88,7 @@ impl Wild {
         self.pending += dt;
         while self.pending >= TICK - 1e-9 {
             self.pending -= TICK;
-            self.tick(world, ctx, rng, crystals, events);
+            self.tick(world, ctx, rng, crystals, fight, events);
         }
     }
 
@@ -97,6 +98,7 @@ impl Wild {
         ctx: &Ctx,
         rng: &mut Rng,
         crystals: &Crystals,
+        fight: Option<&super::Fight>,
         events: &mut Vec<EntityEvent>,
     ) {
         let (floor, top) = (ctx.dimension.min_y(), ctx.dimension.max_y());
@@ -121,7 +123,8 @@ impl Wild {
             w.dragon.tick(&mut arena, world, ctx, rng, crystals, events)
         });
         if !self.fireballs.is_empty() {
-            let boxes = super::Boxes::new(None, self, crystals);
+            // The fight's dragon's parts too (v1.0 gap Track 8).
+            let boxes = super::Boxes::new(fight, self, crystals);
             self.fireballs.retain_mut(|f| f.tick(world, ctx, &boxes, &mut self.clouds));
         }
         self.clouds.retain_mut(|c| c.tick(ctx, events));
@@ -300,7 +303,7 @@ mod tests {
         let crystals = Crystals::default();
         let mut rng = Rng::new(9);
         for _ in 0..ticks {
-            wild.update(TICK, &Ground, ctx, &mut rng, &crystals, events);
+            wild.update(TICK, &Ground, ctx, &mut rng, &crystals, None, events);
         }
     }
 

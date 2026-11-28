@@ -277,7 +277,7 @@ fn with_mob_griefing_off_every_block_in_its_way_is_a_wall() {
         let cell = ((min + max) / 2.0).floor().as_ivec3();
         world.set(cell, block);
         let mut events = Vec::new();
-        d.check_walls(&world, griefing, &mut events);
+        d.check_walls(&world, griefing, &mut Rng::new(1), &mut events);
         let broke = events.iter().any(|e| matches!(e, EntityEvent::BreakBlock { cell: c } if *c == cell));
         assert_eq!((broke, d.in_wall), (breaks, wall), "{} griefing {griefing}", block.name());
     }
