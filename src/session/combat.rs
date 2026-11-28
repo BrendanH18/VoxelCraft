@@ -557,6 +557,27 @@ impl PlayerSession {
                 }
             }
         }
+        // v1.0 gap Track 2d: the dragon's parts in reach (`EnderDragonPart`
+        // is pickable): `stabAttack` hurts them with the spear's damage and
+        // its Sharpness (`hurtOrSimulate`, the dragon's part damage), and its
+        // knockback lands too, so a stab always counts.
+        let sharpness =
+            crate::enchant::damage_bonus(stack.active_enchants(), crate::enchant::Creature::Other) * strength;
+        for hit in entities.spear_dragon_parts(world, eye, look, range, along, block) {
+            if self.inventory.get(slot).is_none() {
+                break;
+            }
+            entities.strike_as(hit, base + sharpness, self.id, self.mode.is_creative());
+            hits = hits.saturating_add(1);
+            self.player.vel = knockback::slow_attacker(self.player.vel);
+            self.player.sprinting = false;
+            if self.mode.is_survival() {
+                self.vitals.hunger.exhaust(survival::EXHAUST_ATTACK);
+                if self.inventory.wear(slot, mining::wear(stack.item, true)) {
+                    tool_broken = Some(stack.item);
+                }
+            }
+        }
         let lunge = if self.inventory.get(slot).is_some() { self.lunge(slot) } else { None };
         if lunge.is_some() && self.inventory.get(slot).is_none() {
             tool_broken = Some(stack.item);

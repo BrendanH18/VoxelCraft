@@ -232,7 +232,19 @@ mod tests {
     /// rides it until the 200–600-tick memory runs out, then gets off.
     #[test]
     fn baby_piglins_ride_baby_hoglins_for_a_while() {
-        let world = Grid::flat(0);
+        // A pen (two blocks high) keeps the pair within `MAX_RIDE_DISTANCE`:
+        // a baby hoglin strolling more than 8 blocks off ends the ride target
+        // in Java too, and where its strolls end follows the random stream.
+        let mut world = Grid::flat(0);
+        for x in -3..=7 {
+            for z in -3..=4 {
+                if x == -3 || x == 7 || z == -3 || z == 4 {
+                    for y in 0..2 {
+                        world.set(glam::IVec3::new(x, y, z), crate::world::block::Block::STONE);
+                    }
+                }
+            }
+        }
         let mut e = Entities::new(21);
         let hoglin = baby(&mut e, MobKind::Hoglin, DVec3::new(3.5, 0.0, 0.5));
         let piglin = baby(&mut e, MobKind::Piglin, DVec3::new(0.5, 0.0, 0.5));

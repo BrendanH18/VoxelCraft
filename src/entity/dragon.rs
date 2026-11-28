@@ -1312,6 +1312,12 @@ impl Blow {
         Self::new(damage, true)
     }
 
+    /// v1.0 gap Track 2d: a mob's hit (a spear stab): it lands, but only a
+    /// player's or an explosion takes health.
+    pub const fn mob(damage: f32) -> Self {
+        Self::new(damage, false)
+    }
+
     /// An arrow's or a trident's hit; `player` when a player shot it.
     pub const fn arrow(damage: f32, player: bool) -> Self {
         Self { arrow: true, ..Self::new(damage, player) }

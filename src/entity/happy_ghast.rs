@@ -234,6 +234,10 @@ impl Mob {
                     self.move_ctl.speed = 1.0;
                 }
                 self.move_ctl.look = Some(eye);
+                // v1.0 gap Track 2d: `TemptGoal.setLookAt(player, yMax + 20,
+                // xMax)`, which `HappyGhastLookControl` turns at once.
+                let (y, x) = (self.max_head_y_rot() + 20.0, self.max_head_x_rot());
+                self.goal_look_at(eye, y, x);
                 return (None, 0.0);
             }
             self.move_ctl.look = None;

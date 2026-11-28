@@ -1879,6 +1879,33 @@ mod tests {
         }
         w
     }
+    /// v1.0 gap Track 2d: `RangedAttackGoal(1.25, 40, 20)`: an angry llama
+    /// looks at the player for its 40-tick `attackTime` and spits then, not
+    /// at once.
+    #[test]
+    fn an_angry_llama_aims_for_forty_ticks_before_it_spits() {
+        let mut e = Entities::new(5);
+        e.mobs.push(Mob::new(MobKind::Llama, DVec3::new(0.5, 64.0, 0.5), 0.0));
+        e.ensure_mob_ids();
+        e.mobs[0].angry_player = Some(PlayerId::HOST);
+        let ctx = crate::entity::Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::DAY,
+            players: vec![crate::entity::Target::new(PlayerId::HOST, DVec3::new(6.5, 64.0, 0.5), true)],
+            daylight: 1.0,
+            spawning: false,
+            raining: false,
+            dimension: crate::world::terrain::Dimension::Overworld,
+        };
+        let mut ticks = 0;
+        while e.thrown.is_empty() {
+            e.tick_llamas(&ctx);
+            assert!(e.mobs[0].look.looking(), "it looks at the player every tick");
+            ticks += 1;
+            assert!(ticks < 100);
+        }
+        assert_eq!(ticks, 41, "attackTime: 40 after the first tick");
+    }
+
     #[test]
     fn natural_packs_share_variants_and_follow_java_pack_baby_rules() {
         use crate::entity::monster_spawns::PackGroup;

@@ -599,7 +599,7 @@ impl Mob {
     /// The priority of the table goal holding `MOVE` (a running table goal,
     /// panic or a stroll) and whether it holds `LOOK` too, if the game
     /// knows it (`GoalSelector`'s locked flags).
-    fn table_holder(&self) -> Option<(u8, bool)> {
+    pub(super) fn table_holder(&self) -> Option<(u8, bool)> {
         use super::goals::Goal as G;
         // `ShulkerAttackGoal` (4, `MOVE` and `LOOK`).
         if self.shulker.as_ref().is_some_and(|s| s.attacking()) {

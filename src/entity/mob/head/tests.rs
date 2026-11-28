@@ -248,7 +248,9 @@ fn a_riding_baby_piglin_looks_around_from_its_hoglin() {
 #[test]
 fn villagers_mostly_look_at_cats() {
     let w = Grid::flat(64);
-    let near = ctx(&[DVec3::new(3.5, 64.0, 0.5)]);
+    // Beyond `SetLookAndInteract`'s 4 blocks (Track 2d), which would make a
+    // closer player the idle villager's look target first.
+    let near = ctx(&[DVec3::new(6.5, 64.0, 0.5)]);
     let (mut cats, mut players) = (0, 0);
     for seed in 0..40 {
         let mut rng = Rng::new(seed);
@@ -286,4 +288,172 @@ fn a_smooth_swimmer_swings_its_body_toward_its_head() {
     assert!((wrap_degrees(d.body_yrot() - body) - 4.0).abs() < 1e-3, "{}", d.body_yrot() - body);
     // Its heading (`yRot`) isn't turned by the look.
     assert_eq!(d.yrot(), body);
+}
+
+/// v1.0 gap Track 2d: each kind's own eye (`EntityTypes`' `eyeHeight`, the
+/// baby dimensions and the poses), where 2c took 0.85 of the box.
+#[test]
+fn mobs_look_from_their_own_eye_heights() {
+    let close = |a: f64, b: f32| (a - f64::from(b)).abs() < 1e-6;
+    assert!(close(mob(MobKind::Zombie).eye_height(), 1.74));
+    assert!(close(mob(MobKind::Spider).eye_height(), 0.65));
+    assert!(close(mob(MobKind::Enderman).eye_height(), 2.55));
+    let mut v = mob(MobKind::Villager);
+    assert!(close(v.eye_height(), 1.62));
+    v.baby = true;
+    v.age = -24000;
+    assert!(close(v.eye_height(), 0.63), "Villager.BABY_DIMENSIONS");
+    v.villager.as_mut().unwrap().sleeping = true;
+    assert!(close(v.eye_height(), 0.2), "SLEEPING_DIMENSIONS");
+    let mut slime = mob(MobKind::Slime);
+    slime.set_size(4);
+    assert!(close(slime.eye_height(), 1.3), "0.325 a size");
+    assert!((slime.look_eye().y - (64.0 + f64::from(0.325_f32 * 4.0))).abs() < 1e-6);
+}
+
+/// v1.0 gap Track 2d: `GoalSelector`'s strict priorities. The parrot's
+/// `LookAtPlayerGoal` (1) outranks `FollowOwnerGoal` (2, MOVE and LOOK),
+/// so while it runs the owner goal can't start; the witch's random look (3)
+/// holds MOVE against its patrol and village goals (4) but not the banner
+/// goal (1).
+#[test]
+fn parrot_and_witch_looks_take_flags_by_priority() {
+    let w = Grid::flat(64);
+    let near = ctx(&[DVec3::new(3.5, 64.0, 0.5)]);
+    let mut rng = Rng::new(2);
+    let mut p = mob(MobKind::Parrot);
+    // The owner goal holding LOOK at 2 doesn't stop the look goal at 1.
+    p.goals.running = Some(1);
+    assert!(!p.look_held(1), "FollowOwnerGoal is worse than the look");
+    let mut ticks = 0;
+    while p.head.running.is_none() {
+        p.head_goals(&w, &near, &mut rng, false);
+        ticks += 1;
+        assert!(ticks < 5000);
+    }
+    assert!(p.goals.running.is_none(), "the look interrupted FollowOwnerGoal");
+    assert!(!p.idle_look_allows(2, true), "and it can't start while the look runs");
+    let mut witch = mob(MobKind::Witch);
+    witch.head.running = Some((1, Running::Random { rel: (1.0, 0.0), left: 30 }));
+    assert_eq!(witch.idle_look_holds(), Some((3, true)));
+    assert!(!witch.idle_look_allows(4, false), "LongDistancePatrolGoal waits");
+    assert!(!witch.idle_look_allows(3, false), "PathfindToRaidGoal can't replace an equal priority");
+    assert!(witch.idle_look_allows(1, false), "ObtainRaidLeaderBannerGoal outranks it");
+}
+
+/// v1.0 gap Track 2d: the merchant's customer (`tradingPlayer`), not the
+/// nearest player, is who the trading sink and the trader's look follow.
+#[test]
+fn merchants_look_at_their_customer() {
+    let w = Grid::flat(64);
+    let players = ctx(&[DVec3::new(1.5, 64.0, 0.5), DVec3::new(-2.5, 64.0, 0.5)]);
+    let mut rng = Rng::new(4);
+    let mut v = mob(MobKind::Villager);
+    v.hurt_age = 100;
+    let s = v.villager.as_mut().unwrap();
+    // Resting: no interaction looks, only the trading sink writes.
+    s.activity = crate::entity::villager::Activity::Rest;
+    s.trading = true;
+    s.customer = Some(PlayerId(2));
+    v.head_goals(&w, &players, &mut rng, false);
+    assert_eq!(v.head.target, Some(Tracked::Player(PlayerId(2))));
+    let mut t = mob(MobKind::WanderingTrader);
+    let s = t.villager.as_mut().unwrap();
+    s.trading = true;
+    s.customer = Some(PlayerId(2));
+    t.head_goals(&w, &players, &mut rng, false);
+    t.head_goals(&w, &players, &mut rng, false);
+    assert!(matches!(t.head.running, Some((0, Running::LookAt { at: Tracked::Player(PlayerId(2)), .. }))));
+}
+
+/// v1.0 gap Track 2d: an idle adult villager sets a player within 4 blocks
+/// as `INTERACTION_TARGET` and looks at it (`SetLookAndInteract`); then
+/// `ShowTradesToPlayer` keeps looking for 40 ticks with nothing to show,
+/// erases the interaction, and the next tick it starts over.
+#[test]
+fn villagers_show_trades_to_players_close_by() {
+    let w = Grid::flat(64);
+    let near = ctx(&[DVec3::new(2.5, 64.0, 0.5)]);
+    let mut rng = Rng::new(6);
+    let mut v = mob(MobKind::Villager);
+    v.head_goals(&w, &near, &mut rng, false);
+    assert_eq!(v.head.interaction, Some(PlayerId(1)));
+    assert_eq!(v.head.target, Some(Tracked::Player(PlayerId(1))));
+    let mut ticks = 1;
+    while v.head.interaction.is_some() {
+        v.head_goals(&w, &near, &mut rng, false);
+        assert_eq!(v.head.target, Some(Tracked::Player(PlayerId(1))), "it keeps looking");
+        ticks += 1;
+        assert!(ticks < 100);
+    }
+    assert!((40..=42).contains(&ticks), "lookTime 40: {ticks}");
+    v.head_goals(&w, &near, &mut rng, false);
+    assert_eq!(v.head.interaction, Some(PlayerId(1)), "SetLookAndInteract again");
+    // A player 6 blocks off is out of its 4-block reach.
+    let far = ctx(&[DVec3::new(6.5, 64.0, 0.5)]);
+    let mut v = mob(MobKind::Villager);
+    v.head_goals(&w, &far, &mut rng, false);
+    assert_eq!(v.head.interaction, None);
+}
+
+/// v1.0 gap Track 2d: `ShulkerLookControl` turns the head in the shell's
+/// frame (a floor shulker's is the world's), never pitches it, and the
+/// shell's `yBodyRot` stays 0; its `LookAtPlayerGoal` (1) takes LOOK from
+/// a running `ShulkerAttackGoal` (4).
+#[test]
+fn shulkers_turn_their_heads_in_their_shells_frame() {
+    use crate::world::end_blocks::Dir;
+    let d = DVec3::new(-3.0, 1.0, 0.0);
+    assert!((shulker_yaw(Dir::Down, d).unwrap() - yaw_toward(d).unwrap()).abs() < 1e-3);
+    // On a wall facing east (clinging to its west face), "forward" is down.
+    assert!((shulker_yaw(Dir::West, DVec3::new(0.0, -2.0, 0.0)).unwrap()).abs() < 1e-3);
+    let mut s = mob(MobKind::Shulker);
+    s.look_ready();
+    let at = s.look_eye() + DVec3::new(0.0, 3.0, 4.0);
+    s.goal_look_at(at, 180.0, 180.0);
+    s.look_tick();
+    s.body_tick(DVec3::ZERO);
+    assert!(s.look.head.abs() < 1e-3, "south, in Java's degrees: {}", s.look.head);
+    assert_eq!(s.look.pitch, 0.0);
+    assert_eq!(s.head_pitch, 0.0);
+    assert!(s.body_yrot().abs() < 1e-3);
+    // Looking at a player interrupts the attack (priority 4 < 1 fails).
+    let w = Grid::flat(64);
+    let near = ctx(&[DVec3::new(3.5, 64.0, 0.5)]);
+    let mut rng = Rng::new(1);
+    assert_eq!(s.table_holder(), None);
+    let mut ticks = 0;
+    while !matches!(s.head.running, Some((0, _))) {
+        s.head_goals(&w, &near, &mut rng, false);
+        ticks += 1;
+        assert!(ticks < 5000);
+    }
+    assert!(!s.idle_look_allows(4, true), "ShulkerAttackGoal waits for it");
+}
+
+/// v1.0 gap Track 2d: a pollinating bee keeps its pitch (`BeeLookControl`'s
+/// `resetXRotOnTick`); the warden's `LOOK_TARGET` turns its head through the
+/// sink at the default speeds.
+#[test]
+fn bees_and_wardens_keep_their_own_look_rules() {
+    let mut b = mob(MobKind::Bee);
+    b.look_ready();
+    b.look.pitch = 30.0;
+    b.look_tick();
+    assert_eq!(b.look.pitch, 0.0, "not pollinating: level each tick");
+    b.bee.as_mut().unwrap().flower = Some([0, 63, 0]);
+    b.look.pitch = 30.0;
+    b.look_tick();
+    assert_eq!(b.look.pitch, 30.0, "pollinating: held");
+    let w = Grid::flat(64);
+    let none = ctx(&[]);
+    let mut rng = Rng::new(3);
+    let mut wd = mob(MobKind::Warden);
+    wd.look_ready();
+    let body = wd.body_yrot();
+    let side = super::super::spear::view_vector(0.0, body + 90.0);
+    wd.head.target = Some(Tracked::Point(wd.look_eye() + side * 5.0));
+    wd.head_goals(&w, &none, &mut rng, false);
+    wd.look_tick();
+    assert!((rel(&wd) - 10.0).abs() < 1e-3, "{}", rel(&wd));
 }

@@ -187,6 +187,26 @@ impl PlayerSession {
                 self.after_stab(slot, out.knocked);
             }
         }
+        // v1.0 gap Track 2d: the dragon's parts, remembered for the contact
+        // cooldown as the mobs are; a contact that hurts or knocks back lands.
+        let sharpness = crate::enchant::damage_bonus(stack.active_enchants(), crate::enchant::Creature::Other);
+        for hit in entities.spear_dragon_parts(world, eye, look, range, along / TICK_RATE, block) {
+            let key = dragon_key(hit);
+            if self.weapons.stabbed.iter().any(|&(u, at)| u == key && clock - at < u64::from(kinetic.contact_cooldown))
+            {
+                continue;
+            }
+            self.weapons.stabbed.retain(|&(u, _)| u != key);
+            self.weapons.stabbed.push((key, clock));
+            let Some(contact) = kinetic.contact(used, along, 0.0, 1.0, true) else { continue };
+            if contact.damage {
+                entities.strike_as(hit, contact.amount + sharpness, self.id, self.mode.is_creative());
+            }
+            if contact.damage || contact.knockback {
+                affected = affected.saturating_add(1);
+                self.after_stab(slot, contact.knockback);
+            }
+        }
         if affected == 0 {
             return None;
         }
@@ -408,6 +428,24 @@ impl PlayerSession {
     /// For tests and adapters: the player this session belongs to.
     pub fn weapon_owner(&self) -> PlayerId {
         self.id
+    }
+}
+
+/// v1.0 gap Track 2d: a dragon part's key in the charge's stabbed list
+/// (mob uids count up from 1; parts take the top of the range).
+fn dragon_key(hit: crate::entity::dragon::Hit) -> u32 {
+    use crate::entity::dragon::{Hit, Part};
+    let index = |part: Part| match part {
+        Part::Head => 0,
+        Part::Neck => 1,
+        Part::Body => 2,
+        Part::Tail(n) => 3 + u32::from(n),
+        Part::Wing(n) => 6 + u32::from(n),
+    };
+    match hit {
+        Hit::Dragon(part) => u32::MAX - index(part),
+        Hit::Wild(id, part) => u32::MAX - 16 - (id.wrapping_mul(16) + index(part)),
+        Hit::Crystal(id) => u32::MAX / 2 - id,
     }
 }
 

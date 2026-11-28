@@ -2541,6 +2541,16 @@ impl Entities {
         }
     }
 
+    /// v1.0 gap Track 2d: `blow` on a dragon part (fight or wild), as
+    /// `EnderDragonPart.hurtServer`; returns whether it landed.
+    pub fn strike_blow(&mut self, hit: dragon::Hit, blow: dragon::Blow) -> bool {
+        match hit {
+            dragon::Hit::Crystal(_) => false,
+            dragon::Hit::Dragon(_) => self.fight.as_mut().is_some_and(|f| f.strike(hit, blow)),
+            dragon::Hit::Wild(id, part) => self.wild_dragons.strike(id, part, blow),
+        }
+    }
+
     /// [`Entities::strike`] by a player who may be in Creative (whose hits
     /// get through the ritual crystals' invulnerability).
     pub fn strike_as(&mut self, hit: dragon::Hit, damage: f32, by: PlayerId, creative: bool) -> bool {
