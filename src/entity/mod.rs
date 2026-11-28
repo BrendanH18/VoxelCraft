@@ -4420,7 +4420,13 @@ mod tests {
         let EntityEvent::PlayerHit { player: id, damage, knockback, cause, .. } = hits[0] else { panic!("{hits:?}") };
         assert_eq!(id, PlayerId::HOST);
         assert!(damage > 0.0 && knockback.x > 0.0 && knockback.y > 0.0);
-        assert_eq!(cause, crate::simulation::damage::Cause::mob("was slain by a zombie"));
+        // v1.0 gap Track 8g: with the zombie as the attacker.
+        let uid = e.mobs[0].uid;
+        assert_eq!(
+            cause,
+            crate::simulation::damage::Cause::mob("was slain by a zombie")
+                .by(Some(crate::entity::trident::Owner::Mob(uid)))
+        );
 
         // Creative players are ignored.
         let c = Ctx { players: vec![Target::new(PlayerId::HOST, player, false)], ..c };
@@ -4632,7 +4638,9 @@ mod tests {
         let shots: Vec<_> = events
             .iter()
             .filter_map(|ev| match ev {
-                EntityEvent::PlayerHit { player, cause: crate::simulation::damage::Cause::SKELETON_ARROW, .. } => {
+                EntityEvent::PlayerHit { player, cause, .. }
+                    if cause.text == crate::simulation::damage::Cause::SKELETON_ARROW.text =>
+                {
                     Some(*player)
                 }
                 _ => None,
@@ -4841,7 +4849,9 @@ mod tests {
         let events = run(&mut e, &world, &night(DVec3::new(9.5, 10.0, 0.5)), 5.0);
         assert!(events.iter().any(|ev| matches!(ev, EntityEvent::Sound { sound: MobSound::Bow, .. })));
         let shot = |ev: &EntityEvent| {
-            matches!(ev, EntityEvent::PlayerHit { cause: crate::simulation::damage::Cause::SKELETON_ARROW, .. })
+            // v1.0 gap Track 8g: the skeleton is the arrow's attacker.
+            matches!(ev, EntityEvent::PlayerHit { cause, .. }
+                if cause.text == crate::simulation::damage::Cause::SKELETON_ARROW.text && cause.by.is_some())
         };
         assert!(events.iter().any(shot), "{events:?}");
 

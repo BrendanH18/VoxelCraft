@@ -1327,7 +1327,8 @@ impl Game {
         // v1.0 gap Track 8f: `ServerPlayer.die` names the killer and, with
         // `show_death_messages`, sends the message to every player's chat.
         // v1.0 gap Track 8g: any attacker, mob or player, as Java names them.
-        let attacker = self.session.vitals.killer.as_ref().and_then(|k| self.attacker(k.owner, &self.player_attackers()));
+        let attacker =
+            self.session.vitals.killer.as_ref().and_then(|k| self.attacker(k.owner, &self.player_attackers()));
         self.session.vitals.name_killer(|_| attacker);
         if self.gamerules.bool("show_death_messages") {
             let line = format!("{} {}", self.lan.profile, self.session.vitals.death.as_deref().unwrap_or("died"));

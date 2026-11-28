@@ -478,7 +478,6 @@ impl Vitals {
         self.credit_player.map(|(p, _)| Owner::Player(p)).or(self.credit_mob.map(|(m, _)| Owner::Mob(m)))
     }
 
-
     /// Whether a death cause has been recorded; damage and survival ticks respect this state.
     /// `setIgnoreFallDamageFromCurrentImpulse(true, position)`: a player's
     /// wind charge hit at feet height `y`.
@@ -644,7 +643,17 @@ impl Vitals {
             _ => {}
         }
         if lost > 0.0 {
-            let fall = if cause.is(Tag::IsFall) { std::mem::take(&mut self.last_fall) } else { 0.0 };
+            // A fall's damage that didn't come through this tick's landing
+            // (a ridden mount's) stands for a fall three blocks longer.
+            let fall = if cause.is(Tag::IsFall) {
+                match std::mem::take(&mut self.last_fall) {
+                    f if f > 0.0 => f,
+                    _ if cause.kind == super::damage::DamageType::Fall => amount + 3.0,
+                    _ => 0.0,
+                }
+            } else {
+                0.0
+            };
             self.combat.record(cause, fall);
         }
         if self.health <= 0.0 {

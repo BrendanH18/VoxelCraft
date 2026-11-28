@@ -2199,7 +2199,9 @@ mod tests {
             })
             .collect();
         assert!(!causes.is_empty(), "the crossbow hit the player");
-        assert!(causes.iter().all(|&c| c == crate::simulation::damage::Cause::PIGLIN_ARROW), "{causes:?}");
+        // v1.0 gap Track 8g: naming the piglin that shot it.
+        let piglin = |c: crate::simulation::damage::Cause| crate::simulation::damage::Cause { by: None, ..c };
+        assert!(causes.iter().all(|&c| piglin(c) == crate::simulation::damage::Cause::PIGLIN_ARROW), "{causes:?}");
     }
 
     /// One adult piglin with a golden sword at the origin of a flat floor.

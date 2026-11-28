@@ -151,7 +151,10 @@ pub const VARIANTS: &[(&str, &str)] = &[
     ("death.attack.outOfWorld.player", "didn't want to live in the same world as %2$s"),
     ("death.attack.outsideBorder.player", "left the confines of this world while fighting %2$s"),
     ("death.attack.player.item", "was slain by %2$s using %3$s"),
-    ("death.attack.sonic_boom.item", "was obliterated by a sonically-charged shriek while trying to escape %2$s wielding %3$s"),
+    (
+        "death.attack.sonic_boom.item",
+        "was obliterated by a sonically-charged shriek while trying to escape %2$s wielding %3$s",
+    ),
     ("death.attack.sonic_boom.player", "was obliterated by a sonically-charged shriek while trying to escape %2$s"),
     ("death.attack.spear.item", "was speared by %2$s using %3$s"),
     ("death.attack.stalagmite.player", "was impaled on a stalagmite while fighting %2$s"),
@@ -375,7 +378,10 @@ impl CombatTracker {
             let item = variant(&format!("{key}.item"));
             // Gone before the message was put together: no one to name.
             let fallback = variant("death.fell.killer");
-            return (text, Some(Pending { owner, shape: Shape::Named { name: at..at + PLAYER.len(), item, fallback } }));
+            return (
+                text,
+                Some(Pending { owner, shape: Shape::Named { name: at..at + PLAYER.len(), item, fallback } }),
+            );
         }
         // A fall under six blocks: Java's `death.attack.fall`, through
         // `getLocalizedDeathMessage`.

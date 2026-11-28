@@ -674,7 +674,8 @@ impl Cause {
     /// cloud, which `HealOrHarmMobEffect` types `indirect_magic`.
     /// v1.0 gap Track 8g: `indirectMagic(cloud, dragon)`, "was killed by
     /// Ender Dragon using magic".
-    pub const DRAGON_BREATH: Cause = Cause::new(DamageType::IndirectMagic, "was killed by the Ender Dragon using magic");
+    pub const DRAGON_BREATH: Cause =
+        Cause::new(DamageType::IndirectMagic, "was killed by the Ender Dragon using magic");
     pub const WARDEN: Cause = Cause::mob("was slain by a warden");
     pub const SONIC_BOOM: Cause = Cause::new(DamageType::SonicBoom, "was obliterated by a sonically-charged shriek");
 
@@ -791,9 +792,7 @@ impl Cause {
             .copied()
             .find(|c| c.text == text)
             .or_else(|| Self::RETIRED.iter().find(|(old, _)| *old == text).map(|&(_, c)| c))
-            .or_else(|| {
-                Self::KNOWN.iter().copied().find(|c| super::death_message::java_words(c.text).text == text)
-            })
+            .or_else(|| Self::KNOWN.iter().copied().find(|c| super::death_message::java_words(c.text).text == text))
     }
 
     /// The cause for a bare death message, for callers that still pass

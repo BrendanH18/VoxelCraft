@@ -466,7 +466,8 @@ fn death_message_variants_are_javas() {
     }
     // Every `.player` and `.item` variant whose victim comes first is there.
     for (key, java) in messages {
-        let variant = key.ends_with(".player") || key.ends_with(".item");
+        // `death.attack.player` is `player_attack`'s own message, not a variant.
+        let variant = (key.ends_with(".player") || key.ends_with(".item")) && key != "death.attack.player";
         if key.starts_with("death.attack.") && variant && java.as_str().is_some_and(|j| j.starts_with("%1$s ")) {
             assert!(voxelcraft::simulation::death_message::VARIANTS.iter().any(|(k, _)| k == key), "{key} missing");
         }

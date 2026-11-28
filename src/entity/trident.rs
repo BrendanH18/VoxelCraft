@@ -1225,7 +1225,10 @@ mod tests {
         );
         assert!(events.iter().any(|ev| matches!(
             ev,
-            EntityEvent::PlayerHit { cause: crate::simulation::damage::Cause::DROWNED_TRIDENT, .. }
+            // v1.0 gap Track 8g: naming the drowned that threw it.
+            EntityEvent::PlayerHit { cause, .. }
+                if cause.text == crate::simulation::damage::Cause::DROWNED_TRIDENT.text
+                    && matches!(cause.by, Some(super::Owner::Mob(_)))
         )));
     }
 }

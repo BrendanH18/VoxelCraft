@@ -95,7 +95,17 @@ impl ThrownPotion {
 
     /// A LAN client's copy: drawn only, never simulated.
     pub(super) fn replica(potion: Potion, pos: DVec3, previous_pos: DVec3) -> Self {
-        Self { potion, lingering: false, owner: None, thrower: None, pos, previous_pos, vel: DVec3::ZERO, age: 0.0, fire: 0 }
+        Self {
+            potion,
+            lingering: false,
+            owner: None,
+            thrower: None,
+            pos,
+            previous_pos,
+            vel: DVec3::ZERO,
+            age: 0.0,
+            fire: 0,
+        }
     }
 
     pub fn new(potion: Potion, owner: Option<PlayerId>, pos: DVec3, vel: DVec3) -> Self {
