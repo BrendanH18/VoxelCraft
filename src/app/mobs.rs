@@ -793,6 +793,12 @@ impl Game {
                             let landing = cue == voxelcraft::entity::animals::long_jump::Cue::Step;
                             (Sound::Goat(cue), if landing { 2.0 } else { 1.0 })
                         }
+                        // v1.0 gap Track 2h: `makeSound` at the villager's
+                        // volume, 1.
+                        MobSound::VillagerWork(job) => (Sound::VillagerWork(job), 1.0),
+                        // v1.0 gap Track 2h: the game's chewing stand-in for
+                        // `PANDA_EAT` (Java's volume is 0.5 or 1).
+                        MobSound::PandaEat => (Sound::Step(crate::audio::sounds::Material::Snow), 0.75),
                         MobSound::CopperGolem(action, stage) => (Sound::CopperGolem(action, stage), 0.7),
                         MobSound::Hurt(MobKind::CopperGolem) => {
                             (Sound::CopperGolem(voxelcraft::entity::copper_golem::Sound::Hurt, 0), 0.9)
@@ -917,13 +923,9 @@ impl Game {
                     }
                 }
                 EntityEvent::VillagerBonemeal { cell } => {
-                    // `BoneMealItem.growCrop`; level event 1505's sound as the
-                    // player's bone meal plays it.
-                    if self.world.apply_bone_meal(cell) {
-                        let centre = cell.as_dvec3() + DVec3::splat(0.5);
-                        let grass = crate::audio::sounds::Sound::Place(crate::audio::sounds::Material::Grass);
-                        self.audio.play(grass, Some(centre), 0.8, (1.2, 1.4));
-                    }
+                    // `BoneMealItem.growCrop` and level event 1505 (v1.0
+                    // gap Track 2h: its particles and sound are the world's).
+                    self.world.use_bone_meal(cell);
                 }
                 EntityEvent::VillagerCompost { cell, from, to } => self.world.villager_compost(cell, from, to),
                 EntityEvent::RingBell { pos, mob } => {
@@ -1283,13 +1285,24 @@ impl Game {
             let toward = Some(center - self.session.player.pos);
             if self.damage_player_from(self.difficulty.mob_damage(damage), cause, toward) > 0.0 {
                 self.session.player.hurt_from(push);
+                // v1.0 gap Track 2h: the blast's mob (a ghast's fireball, a
+                // creeper) is the player's `lastHurtByMob`.
+                if let Some(voxelcraft::entity::trident::Owner::Mob(uid)) = cause.by {
+                    self.mobs.entities.player_hurt_by_mob(voxelcraft::entity::PlayerId::HOST, uid);
+                }
             }
             self.session.player.vel += push;
         }
         if self.arrival.is_none() {
             for bot in self.agents.players.values_mut().filter(|b| b.active) {
                 if let Some((damage, push)) = bot.agent.session.blast(&self.world, center, power) {
-                    bot.agent.hurt(self.difficulty.mob_damage(damage), cause, DVec3::ZERO, &mut self.mobs.entities);
+                    let dealt =
+                        bot.agent.hurt(self.difficulty.mob_damage(damage), cause, DVec3::ZERO, &mut self.mobs.entities);
+                    if dealt > 0.0
+                        && let Some(voxelcraft::entity::trident::Owner::Mob(uid)) = cause.by
+                    {
+                        self.mobs.entities.player_hurt_by_mob(bot.agent.session.id, uid);
+                    }
                     bot.agent.session.player.vel += push;
                 }
             }

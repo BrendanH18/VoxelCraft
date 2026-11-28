@@ -1,6 +1,19 @@
 //! Entity tick coordination, lifetime and event collection.
 use super::*;
 impl Entities {
+    /// Mob `attacker` hurt `player` ([`EntityEvent::OwnerHurt`]). v1.0 gap
+    /// Track 2h: also called by the game for a blast a mob is behind (a
+    /// ghast's fireball, a creeper), as `hurtServer` records any living
+    /// source entity.
+    pub fn player_hurt_by_mob(&mut self, player: PlayerId, attacker: u32) {
+        // Java's OwnerHurtByTargetGoal: wolves go for whatever hurt their owner.
+        self.animals_defend_owner(attacker, player);
+        // v1.0 gap Track 2f: the player's `lastHurtByMob`, which
+        // foxes that trust it defend against.
+        self.player_hurts = self.player_hurts.wrapping_add(1);
+        self.player_hurt_by.insert(player, (fox::Attacker::Mob(attacker), self.player_hurts, 0));
+    }
+
     pub fn update<W: MobWorld + ?Sized>(&mut self, dt: f64, world: &W, ctx: &Ctx) -> Vec<EntityEvent> {
         self.update_difficulty(dt, world, ctx, crate::simulation::difficulty::Difficulty::Normal)
     }
@@ -630,14 +643,7 @@ impl Entities {
                         self.animals_owner_attack(i, owner);
                     }
                 }
-                EntityEvent::OwnerHurt { player, attacker } => {
-                    // Java's OwnerHurtByTargetGoal: wolves go for whatever hurt their owner.
-                    self.animals_defend_owner(attacker, player);
-                    // v1.0 gap Track 2f: the player's `lastHurtByMob`, which
-                    // foxes that trust it defend against.
-                    self.player_hurts = self.player_hurts.wrapping_add(1);
-                    self.player_hurt_by.insert(player, (fox::Attacker::Mob(attacker), self.player_hurts, 0));
-                }
+                EntityEvent::OwnerHurt { player, attacker } => self.player_hurt_by_mob(player, attacker),
                 EntityEvent::DragonXp { pos, points } => {
                     if self.mob_loot {
                         self.spawn_xp(pos, points);

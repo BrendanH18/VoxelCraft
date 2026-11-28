@@ -279,7 +279,7 @@ impl Actor<'_> {
         }
         self.session.tick_blocking(self.body.actions.selected, acting && self.body.right_held);
         self.session.tick_scoping(self.body.actions.selected, acting && self.body.right_held);
-        self.eat(acting, dt);
+        self.eat(acting);
         if let Some(shot) = self.session.tick_draw(self.body.actions.selected, acting, self.world, self.entities) {
             self.present_shot(shot);
         }
@@ -309,7 +309,7 @@ impl Actor<'_> {
     }
 
     /// Held use advances the shared fixed-tick consumption clock.
-    fn eat(&mut self, acting: bool, dt: f64) {
+    fn eat(&mut self, acting: bool) {
         let slot = self.body.actions.selected;
         // Java uses the off-hand only when the main hand's use passes: a
         // click that placed a block doesn't also eat off-hand food.
@@ -344,7 +344,8 @@ impl Actor<'_> {
         };
         // This field is presentation only; progress belongs to the session.
         self.body.actions.eat_timer = f64::from(step.progress) * EAT_TIME;
-        if (before / 0.25).floor() != ((before + dt) / 0.25).floor() {
+        // v1.0 gap Track 2h: on Java's rhythm (`shouldEmitParticlesAndSounds`).
+        if step.effects {
             let eye = self.session.player.eye();
             if held == Some(Item::HONEY_BOTTLE) {
                 self.audio.play(Sound::HoneyDrink, Some(eye), 0.7, (0.9, 1.1));
@@ -528,7 +529,8 @@ impl Actor<'_> {
                 audio.play_in(SoundSource::Blocks, Sound::Step(Material::Gravel), Some(centre(cell)), 1.0, (0.8, 0.9))
             }
             Used::Carved { cell } => audio.play(Sound::Break(Material::Wood), Some(centre(cell)), 0.8, (0.9, 1.1)),
-            Used::BoneMeal { cell } => audio.play(Sound::Place(Material::Grass), Some(centre(cell)), 0.8, (1.2, 1.4)),
+            // v1.0 gap Track 2h: level event 1505's sound is the world's.
+            Used::BoneMeal { .. } => {}
             Used::Utility { cell, effect } => {
                 super::utilities::feedback(audio, cell, effect);
                 self.requests.push(Request::Open(done.used));

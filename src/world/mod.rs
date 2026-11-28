@@ -72,7 +72,7 @@ pub mod furnace;
 pub mod gadgets;
 pub mod gen5_blocks;
 pub mod geode;
-mod growth;
+pub(crate) mod growth;
 pub mod heavy_core;
 mod honey;
 pub mod infested;
@@ -514,6 +514,10 @@ pub struct World {
     /// Songs that started (level event 1010): jukebox and song index.
     pub records_started: Vec<(IVec3, usize)>,
     compost_sequence: u64,
+    /// v1.0 gap Track 2h: composter sounds for the game to play.
+    composter_cues: Vec<(IVec3, composter::Cue)>,
+    /// v1.0 gap Track 2h: bone meal sounds (level event 1505) to play.
+    bone_meal_sounds: Vec<IVec3>,
     bell_rings: Vec<IVec3>,
     /// Whether it's raining (set by the game each frame).
     pub raining: bool,
@@ -915,6 +919,8 @@ impl World {
             records: Vec::new(),
             records_started: Vec::new(),
             compost_sequence: 0,
+            composter_cues: Vec::new(),
+            bone_meal_sounds: Vec::new(),
             bell_rings: Vec::new(),
             raining: false,
             mesh_uploads: Vec::new(),

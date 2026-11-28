@@ -54,10 +54,16 @@ pub enum Kind {
     /// (`DripstoneWaterHangProvider`): a blue drop hanging from a pointed
     /// dripstone's tip for 40 ticks, falling and splashing.
     WaterDrip,
+    /// v1.0 gap Track 2h: `SuspendedTownParticle.HappyVillagerProvider`
+    /// (`happy_villager`), from bone meal (level events 1505, 2011).
+    HappyVillager,
+    /// v1.0 gap Track 2h: `SuspendedTownParticle.ComposterFillProvider`
+    /// (`composter`), from a composter being filled (level event 1500).
+    Composter,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 30] = [
+    pub const ALL: [Kind; 32] = [
         Kind::Smoke,
         Kind::LargeSmoke,
         Kind::Rain,
@@ -88,6 +94,8 @@ impl Kind {
         Kind::Nautilus,
         Kind::Soul,
         Kind::WaterDrip,
+        Kind::HappyVillager,
+        Kind::Composter,
     ];
 
     pub fn sprite(self) -> u16 {
@@ -117,6 +125,8 @@ impl Kind {
             Self::Nautilus => 6,
             // The soul flame's sprite stands in for Java's soul wisp.
             Self::Soul => 14,
+            Self::HappyVillager => 16,
+            Self::Composter => 17,
         }
     }
 }
@@ -256,6 +266,8 @@ impl System {
                     self.fireworks.push_back(super::firework::Starter::new(pos, vel, &f.explosions));
                 }
             }
+            Request::Composter { cell } => self.composter_fill(cell, setting, world),
+            Request::Growth { cell, count, bone_meal } => self.growth(cell, count, bone_meal, setting, world),
             Request::Honey { pos, count, .. } => {
                 for _ in 0..count {
                     if self.accept(setting, false, false) {
@@ -263,6 +275,68 @@ impl System {
                         self.pool.spawn(p);
                     }
                 }
+            }
+        }
+    }
+
+    /// v1.0 gap Track 2h: `ComposterBlock.handleFill`'s ten `composter`
+    /// particles over the compost at the centre (the shape's top there,
+    /// plus half a pixel), within the inner 0.625 across, moving by a
+    /// gaussian 0.02 each way.
+    fn composter_fill(&mut self, cell: IVec3, setting: Setting, world: &World) {
+        let Some(level) = world.get_block(cell).and_then(crate::world::composter::level) else { return };
+        let centre = crate::world::composter::centre_height(level) + 0.03125;
+        let base = cell.as_dvec3();
+        for _ in 0..10 {
+            let v = DVec3::new(gaussian(&mut self.rng), gaussian(&mut self.rng), gaussian(&mut self.rng)) * 0.02;
+            let x = base.x + 0.1875 + 0.625 * f64::from(self.rng.next_f32());
+            let y = base.y + centre + f64::from(self.rng.next_f32()) * (1.0 - centre);
+            let z = base.z + 0.1875 + 0.625 * f64::from(self.rng.next_f32());
+            if self.accept(setting, false, false) {
+                let p = self.make(Kind::Composter, DVec3::new(x, y, z), v);
+                self.pool.spawn(p);
+            }
+        }
+    }
+
+    /// v1.0 gap Track 2h: bone meal's happy-villager particles.
+    /// `bone_meal` is level event 1505's `BoneMealItem.addGrowthParticles`:
+    /// a neighbour spreader (grass, nylium, netherrack, moss) or water
+    /// scatters `count * 3` over 3 blocks each way above it (only over a
+    /// block), any other bone-mealable block `count` within its cell up to
+    /// its shape's top (rooted dirt and mangrove leaves below them);
+    /// otherwise (level event 2011, a bee's growth) always within the cell
+    /// (`ParticleUtils.spawnParticleInBlock`).
+    fn growth(&mut self, cell: IVec3, count: u8, bone_meal: bool, setting: Setting, world: &World) {
+        let block = world.get_block(cell).unwrap_or(Block::AIR);
+        let count = u32::from(count);
+        let (at, count, width, height, floating) = match bone_meal.then(|| crate::world::growth::bone_meal_kind(block))
+        {
+            Some(None) => return,
+            Some(Some(crate::world::growth::BoneMealKind::Spreader)) => (cell + IVec3::Y, count * 3, 3.0, 1.0, false),
+            Some(Some(crate::world::growth::BoneMealKind::Water)) => (cell, count * 3, 3.0, 1.0, false),
+            Some(Some(crate::world::growth::BoneMealKind::GrowerBelow)) => {
+                let below = cell - IVec3::Y;
+                (below, count, 0.5, in_block_height(world, below), true)
+            }
+            Some(Some(crate::world::growth::BoneMealKind::Grower)) | None => {
+                (cell, count, 0.5, in_block_height(world, cell), true)
+            }
+        };
+        let base = at.as_dvec3();
+        for _ in 0..count.min(256) {
+            let v = DVec3::new(gaussian(&mut self.rng), gaussian(&mut self.rng), gaussian(&mut self.rng)) * 0.02;
+            let start = 0.5 - width;
+            let x = base.x + start + self.rng.next_f64() * width * 2.0;
+            let y = base.y + self.rng.next_f64() * height;
+            let z = base.z + start + self.rng.next_f64() * width * 2.0;
+            let pos = DVec3::new(x, y, z);
+            if !floating && world.get_block(pos.floor().as_ivec3() - IVec3::Y).is_none_or(|b| b == Block::AIR) {
+                continue;
+            }
+            if self.accept(setting, false, false) {
+                let p = self.make(Kind::HappyVillager, pos, v);
+                self.pool.spawn(p);
             }
         }
     }
@@ -560,6 +634,24 @@ impl System {
                 p.lifetime = 16;
                 p.color = if kind == Kind::Heart { [1.0, 0.1, 0.1, 1.0] } else { [1.0; 4] };
             }
+            Kind::HappyVillager | Kind::Composter => {
+                // v1.0 gap Track 2h: `SuspendedTownParticle`: the base
+                // random motion and the given one at a fiftieth, no
+                // collisions or gravity, 0.99 drag, 0.5 to 1.1 of the base
+                // size, white (the colour is the sprite's); a happy
+                // villager lives 20 / (0.2..1.0) ticks, a composter's
+                // particle 3 to 7 (`ComposterFillProvider`).
+                p.physics = false;
+                p.friction = 0.99;
+                p.velocity = java_velocity(rng, velocity) * 0.02;
+                p.size *= rng.range(0.5, 1.1);
+                p.color = [1.0; 4];
+                p.lifetime = if kind == Kind::Composter {
+                    3 + rng.next_int(5) as u16
+                } else {
+                    (20.0 / rng.range(0.2, 1.0)) as u16
+                };
+            }
             Kind::CrimsonSpore | Kind::WarpedSpore => {
                 // SuspendedParticle: hangs where it spawns (an eighth lower),
                 // no physics or gravity, lifetime 16 / (0.2..1.0) ticks.
@@ -709,6 +801,15 @@ impl System {
 
 pub fn random_vec(rng: &mut Rng) -> DVec3 {
     DVec3::new(rng.next_f32() as f64, rng.next_f32() as f64, rng.next_f32() as f64)
+}
+
+/// `spawnParticleInBlock`'s height: a whole block over air, else the
+/// block's shape's top.
+fn in_block_height(world: &World, cell: IVec3) -> f64 {
+    if world.get_block(cell).is_none_or(|b| b == Block::AIR) {
+        return 1.0;
+    }
+    f64::from(world.outline(cell).1[1])
 }
 
 fn java_velocity(rng: &mut Rng, supplied: DVec3) -> DVec3 {

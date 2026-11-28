@@ -12,7 +12,7 @@ use crate::world::{
     block::{Block, tex},
 };
 
-const SPRITES: usize = 16;
+const SPRITES: usize = 18;
 const FRAMES: usize = 8;
 
 #[repr(C)]
@@ -263,6 +263,10 @@ fn sprites() -> Vec<u8> {
                                 || dx > 1.0 && dx < 5.5 && (dy + 5.0 - (dx - 1.0) * 0.9).abs() < 1.2
                         }
                         9 => r < 6.0 && r > 3.0 && (dx > 0.0 || dy > 0.0) || (dy + 3.0).abs() < 1.5 && dx.abs() < 4.0,
+                        // v1.0 gap Track 2h: a happy villager's four-point
+                        // glint, and a composter's crumb of compost.
+                        16 => (dx.abs() < 1.0 && dy.abs() < 5.0) || (dy.abs() < 1.0 && dx.abs() < 5.0) || r < 2.0,
+                        17 => r < 2.6 && noise > 1.0,
                         _ => dx.abs() < 2.5 && dy.abs() < 4.0,
                     };
                     if !on {
@@ -272,6 +276,11 @@ fn sprites() -> Vec<u8> {
                         [255, (170.0 + dy * 10.0).clamp(70.0, 250.0) as u8, 35, 255]
                     } else if kind == 14 {
                         [60, (190.0 + dy * 8.0).clamp(120.0, 255.0) as u8, 255, 255]
+                    } else if kind == 16 {
+                        // Java's sprite is green; its particle is white.
+                        [(70.0 + noise * 4.0) as u8, (200.0 + noise * 4.0) as u8, 60, 255]
+                    } else if kind == 17 {
+                        [(110.0 + noise * 6.0) as u8, (92.0 + noise * 5.0) as u8, 40, 255]
                     } else {
                         let c = (220.0 + noise * 3.0).min(255.0) as u8;
                         [c, c, c, 255]

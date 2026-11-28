@@ -217,6 +217,12 @@ pub enum MobSound {
     Fox(fox::Cue),
     /// v1.0 gap Track 2g: the goat's long jump and landing.
     Goat(animals::long_jump::Cue),
+    /// v1.0 gap Track 2h: a panda eating what it holds
+    /// (`Panda.addEatingParticles`' `PANDA_EAT`).
+    PandaEat,
+    /// v1.0 gap Track 2h: a villager starting work at its job site
+    /// (`WorkAtPoi.start`'s `playWorkSound`).
+    VillagerWork(villager::Profession),
 }
 
 /// Something an entity did that the game needs to react to.

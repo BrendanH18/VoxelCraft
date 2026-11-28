@@ -1527,7 +1527,7 @@ impl PlayerSession {
                 return Some(Used::Carved { cell: pos });
             }
         }
-        if item == Item::BONE_MEAL && world.apply_bone_meal(pos) {
+        if item == Item::BONE_MEAL && world.use_bone_meal(pos) {
             if survival {
                 self.inventory.take_one(slot);
             }

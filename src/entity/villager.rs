@@ -51,6 +51,46 @@ impl Profession {
         Self::Leatherworker,
         Self::Mason,
     ];
+    /// v1.0 gap Track 2h: the professions with a job site and a work sound,
+    /// in [`Profession::ALL`]'s order.
+    pub const WORKERS: [Self; 13] = [
+        Self::Farmer,
+        Self::Fisherman,
+        Self::Shepherd,
+        Self::Fletcher,
+        Self::Librarian,
+        Self::Cartographer,
+        Self::Cleric,
+        Self::Armorer,
+        Self::Weaponsmith,
+        Self::Toolsmith,
+        Self::Butcher,
+        Self::Leatherworker,
+        Self::Mason,
+    ];
+
+    /// v1.0 gap Track 2h: `VillagerProfession.workSound`, which
+    /// `WorkAtPoi.start` plays (`Villager.playWorkSound`); none for the
+    /// unemployed and nitwits.
+    pub fn work_sound(self) -> Option<&'static str> {
+        Some(match self {
+            Self::None | Self::Nitwit => return None,
+            Self::Farmer => "entity.villager.work_farmer",
+            Self::Fisherman => "entity.villager.work_fisherman",
+            Self::Shepherd => "entity.villager.work_shepherd",
+            Self::Fletcher => "entity.villager.work_fletcher",
+            Self::Librarian => "entity.villager.work_librarian",
+            Self::Cartographer => "entity.villager.work_cartographer",
+            Self::Cleric => "entity.villager.work_cleric",
+            Self::Armorer => "entity.villager.work_armorer",
+            Self::Weaponsmith => "entity.villager.work_weaponsmith",
+            Self::Toolsmith => "entity.villager.work_toolsmith",
+            Self::Butcher => "entity.villager.work_butcher",
+            Self::Leatherworker => "entity.villager.work_leatherworker",
+            Self::Mason => "entity.villager.work_mason",
+        })
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             Self::None => "Unemployed",

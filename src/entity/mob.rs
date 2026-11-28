@@ -2703,6 +2703,7 @@ impl Mob {
                     FarmAct::Bonemeal(cell) => EntityEvent::VillagerBonemeal { cell },
                     FarmAct::Compost { cell, from, to } => EntityEvent::VillagerCompost { cell, from, to },
                     FarmAct::Item(stack, pos, vel) => EntityEvent::ThrowItem { stack, pos, vel },
+                    FarmAct::WorkSound(job) => EntityEvent::Sound { sound: MobSound::VillagerWork(job), pos: self.pos },
                 });
             }
         }
