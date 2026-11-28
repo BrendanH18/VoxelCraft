@@ -317,6 +317,10 @@ pub struct Vitals {
     /// v0.16 Track A: seconds before more chorus fruit can be eaten
     /// (`useCooldown(1.0F)`).
     pub chorus_cooldown: f32,
+    /// v1.0 final Track F4: seconds before a goat horn can be blown again
+    /// (`InstrumentItem.use`'s 140-tick cooldown on the `goat_horn` item,
+    /// which every instrument shares).
+    pub horn_cooldown: f32,
     /// Potion and other status effects.
     pub effects: super::effects::Effects,
     /// Seconds since the last damage (drives the hurt flash).
@@ -393,6 +397,7 @@ impl Default for Vitals {
             pearl_cooldown: 0.0,
             wind_charge_cooldown: 0.0,
             chorus_cooldown: 0.0,
+            horn_cooldown: 0.0,
             effects: Default::default(),
             since_damage: 1e3,
             death_time: 0.0,
@@ -703,6 +708,7 @@ impl Vitals {
         self.pearl_cooldown = (self.pearl_cooldown - dt).max(0.0);
         self.wind_charge_cooldown = (self.wind_charge_cooldown - dt).max(0.0);
         self.chorus_cooldown = (self.chorus_cooldown - dt).max(0.0);
+        self.horn_cooldown = (self.horn_cooldown - dt).max(0.0);
         if self.is_dead() {
             self.time_since_rest = 0;
             // `LivingEntity.baseTick` keeps counting effects down on the death

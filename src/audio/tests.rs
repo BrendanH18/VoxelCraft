@@ -200,6 +200,79 @@ fn mixer_master_and_distance() {
     assert!(out.iter().all(|s| s.abs() < 1e-3));
 }
 
+/// v1.0 final Track F4: a goat horn is heard linearly to 256 blocks and a
+/// jukebox's song to 64 (Java's `Attenuation.LINEAR` to `16 * volume`),
+/// where every other sound has gone quiet at [`FAR`].
+#[test]
+fn horns_and_discs_reach_java_s_linear_range() {
+    use super::mixer::linear_attenuation;
+    assert_eq!(Sound::Horn(3).java_range(), Some(256.0));
+    assert_eq!(Sound::Disc(Instrument::ALL[0]).java_range(), Some(64.0));
+    assert_eq!(Sound::Note(Instrument::ALL[0]).java_range(), None);
+    assert!((linear_attenuation(128.0, 256.0) - 0.5).abs() < 1e-6);
+    assert_eq!(linear_attenuation(300.0, 256.0), 0.0);
+    for (sound, dist) in [(Sound::Horn(0), 200.0f32), (Sound::Disc(Instrument::ALL[0]), 48.0)] {
+        let (mut mixer, tx) = test_mixer(vec![0.5; 48_000]);
+        tx.send(Command::Listener { pos: [0.0; 3], yaw: 0.0 }).unwrap();
+        let pos = Some([dist, 0.0, 0.0]);
+        tx.send(Command::Play { sound, variant: 0, gain: 1.0, pitch: 1.0, source: SoundSource::Records, pos }).unwrap();
+        let mut out = vec![0.0; 2 * 512];
+        mixer.render(&mut out, 2);
+        assert_eq!(mixer.active_voices(), 1, "{} heard at {dist} blocks", sound.name());
+        let expected = linear_attenuation(dist, sound.java_range().unwrap()) * 0.5;
+        let (pl, pr) = pan_gains([dist, 0.0, 0.0], 0.0);
+        assert!((out[1000] - pl * expected).abs() < 1e-4 && (out[1001] - pr * expected).abs() < 1e-4);
+    }
+    // A disc out of its range takes no voice.
+    let (mut mixer, tx) = test_mixer(vec![0.5; 48_000]);
+    tx.send(Command::Listener { pos: [0.0; 3], yaw: 0.0 }).unwrap();
+    let sound = Sound::Disc(Instrument::ALL[0]);
+    tx.send(Command::Play {
+        sound,
+        variant: 0,
+        gain: 1.0,
+        pitch: 1.0,
+        source: SoundSource::Records,
+        pos: Some([65.0, 0.0, 0.0]),
+    })
+    .unwrap();
+    mixer.render(&mut vec![0.0; 2 * 512], 2);
+    assert_eq!(mixer.active_voices(), 0);
+}
+
+/// v1.0 final Track F4: the eight horns are distinct, the disc's notes
+/// share the note block's buffers, and the mobs that borrowed a voice
+/// have their own.
+#[test]
+fn horns_discs_and_own_voices_have_their_own_buffers() {
+    let bank = bank();
+    let first = |s: Sound| bank.variants(s).0;
+    let horns: std::collections::BTreeSet<usize> = (0..8).map(|k| first(Sound::Horn(k))).collect();
+    assert_eq!(horns.len(), 8);
+    for i in Instrument::ALL {
+        assert_eq!(bank.variants(Sound::Disc(i)), bank.variants(Sound::Note(i)));
+    }
+    for k in 0..8 {
+        let (start, _) = bank.variants(Sound::Horn(k));
+        let secs = bank.buffers[start].len() as f32 / RATE;
+        assert!((3.0..9.0).contains(&secs), "horn {k} lasts {secs} s");
+    }
+    for v in [
+        Voice::IronGolem,
+        Voice::Llama,
+        Voice::Camel,
+        Voice::SnowGolem,
+        Voice::Phantom,
+        Voice::Silverfish,
+        Voice::Turtle,
+    ] {
+        assert_ne!(first(Sound::Mob(v, Call::Hurt)), first(Sound::Mob(Voice::Cow, Call::Hurt)));
+        assert_eq!(Sound::Mob(v, Call::Hurt).java_event().unwrap(), format!("entity.{}.hurt", v.name()));
+    }
+    assert_eq!(Sound::Mob(Voice::BabyTurtle, Call::Death).java_event().unwrap(), "entity.turtle.death_baby");
+    assert_eq!(Sound::Horn(7).java_event().unwrap(), "item.goat_horn.sound.7");
+}
+
 #[test]
 fn split_screen_players_hear_nearby_sounds() {
     let buf = vec![0.5; 48_000];

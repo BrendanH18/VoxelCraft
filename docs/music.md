@@ -75,6 +75,14 @@ the screen closes. In the Nether, `Generator::nether_biome` at the player's colu
 Nether Wastes, Crimson Forest, Warped Forest, Soul Sand Valley or Basalt
 Deltas palette. Silent biomes can call `set_info(MusicInfo { music: None, volume: 0.0 })`.
 
+`Audio::update_music` also sets the situational volume from Java 26.3's
+`EnvironmentAttributes.MUSIC_VOLUME` (`Minecraft.getMusicVolume`): 0 in
+the pale garden, so the current track fades out there and none plays, and 1
+elsewhere ([v1.0 final F4](verification/2026-11-28-v1.0-final-f4-sounds.md)).
+Java fades no music while a jukebox plays: `LevelEventHandler.playJukeboxSong`
+only starts the song, and nothing but that attribute (or a screen with menu
+music) moves `MusicManager`'s gain.
+
 ## Verification
 
 `cargo run --release -- --export-music --seed 42` renders nine full-length,
@@ -135,3 +143,31 @@ a LAN guest or a copper golem) has them open. The first viewer's arrival
 and the last one's leaving play the container's open and close sounds.
 Only containers in use or still moving are drawn as models; the chunk mesh
 leaves them out and is rebuilt once when one enters or leaves.
+
+## Goat horns, brushing, discs and mobs' own voices (v1.0 final F4)
+
+[Record](verification/2026-11-28-v1.0-final-f4-sounds.md), implemented,
+unverified; nobody has listened to these yet.
+
+- **Goat horns** play Java's eight instruments (`item.goat_horn.sound.0`
+  to `.7`, `src/audio/horns.rs`): original brassy calls, each with its own
+  melody, breath and a valley echo, in `RECORDS` and heard linearly to 256
+  blocks (`InstrumentItem.play`'s volume 16).
+- **Discs**: a jukebox's tune plays through the note voices as
+  `Sound::Disc`, heard linearly to 64 blocks (`forJukeboxSong`'s volume 4).
+  Only these two sounds use Java's linear `16 * volume` range
+  (`Sound::java_range`); every other sound keeps the mixer's 2 to 24 block
+  fade.
+- **Brushing** plays `item.brush.brushing.sand`, `.gravel` or `.generic`
+  each stroke (`BLOCKS`) and `.sand.complete` or `.gravel.complete` when
+  the find comes free (`PLAYERS`).
+- **Mobs' own voices** (`src/audio/creatures.rs`): iron golems (no ambient
+  call, as in Java), llamas, camels, snow golems, phantoms, silverfish,
+  turtles and baby turtles have their own recipes; husks, drowned, zombie
+  villagers, zombified piglins, strays, bogged, wither skeletons, magma
+  cubes, wandering traders, skeleton and zombie horses, donkeys, mules,
+  piglin brutes, zoglins, glow squid and elder guardians take their kin's
+  recipe transposed, filtered and layered with a texture of their own.
+  Iron golems, llamas, camels (with a sand step), silverfish and turtles
+  play their own footsteps every 1.67 blocks, as Java's `Entity.move`.
+  Fish still share one voice.

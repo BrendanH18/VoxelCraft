@@ -49,8 +49,14 @@ by day under cover, hunt, pick up ground items and eat carried food
 ([below](#foxes-v10-gap-tracks-2e-2f-and-2g-implemented-unverified)); bred foxes trust
 the two players who fed their parents. Rabbits hop and drop rabbit meat/hide, with a
 10% rabbit-foot chance on a player kill. Goats charge stationary players
-and lose one of their two horns when a ram hits stone, logs, packed ice, or
-iron/copper/emerald ore. Screaming goats have shorter ram cooldowns. Every
+and lose one of their two horns when a ram hits a block in Java's
+`snaps_goat_horn` (or the block above it does): stone, packed ice, iron,
+coal, copper and emerald ore, and the overworld woods' logs; babies keep
+theirs. The horn is one of the goat's group's four instruments, and a
+player blows it as Java's `InstrumentItem`: its own call heard to 256
+blocks, `instrument_play` for sculk, and a 7-second cooldown on every horn
+([v1.0 final F4](verification/2026-11-28-v1.0-final-f4-sounds.md),
+implemented, unverified). Screaming goats have shorter ram cooldowns. Every
 30 to 60 seconds an idle goat long jumps (Java's `LongJumpToRandomPos`,
 [Track 2g](verification/2026-11-28-v1.0-gap-track-02g-farmers-goats.md),
 implemented, unverified): it picks a spot within 5 blocks it can't walk to
@@ -314,3 +320,15 @@ replicates the model state. Shared actor use covers controller and CLI-agent
 paths. Jukebox playback/music discs and woodland mansions do not exist;
 survival dancing/duplication and mansion allays remain gaps. Sources and
 remaining differences are in the [allay record](verification/2026-11-05-v0.15-allays.md).
+
+## Voices and steps (v1.0 final F4, implemented, unverified)
+
+Llamas and trader llamas, camels, turtles (a hatchling has its own hurt and
+death cries and no call; an adult calls only on land), iron golems (no
+ambient call, as in Java), snow golems, skeleton and zombie horses, donkeys,
+mules, glow squid and wandering traders have their own original voices
+instead of a cow's, slime's, fish's, horse's, squid's or villager's.
+Iron golems, llamas, camels (`step_sand` on sand, red sand, suspicious sand
+and concrete powder), silverfish and turtles (`shamble`, `shamble_baby`)
+play their own footsteps every 1.67 blocks walked, as Java's
+`Entity.move` does. [Record](verification/2026-11-28-v1.0-final-f4-sounds.md).

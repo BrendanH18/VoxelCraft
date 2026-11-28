@@ -111,6 +111,12 @@ pub enum Used {
     WindChargeThrown {
         from: DVec3,
     },
+    /// v1.0 final Track F4: a goat horn blown (`InstrumentItem.use`): its
+    /// instrument (Java registry index) and the player's position.
+    HornPlayed {
+        instrument: u8,
+        from: DVec3,
+    },
     /// An item was used on an active vault: `unlocked` with a key, else
     /// refused (`rewarded`: this player already had the reward); `sound`
     /// is false inside the fail sound's 15-tick buffer.
@@ -510,6 +516,8 @@ impl PlayerSession {
             | Used::EyeReleased { from }
             | Used::RocketLaunched { from }
             | Used::WindChargeThrown { from } => (from, E::ProjectileShoot),
+            // `InstrumentItem.play`: `instrument_play` at the player.
+            Used::HornPlayed { from, .. } => (from, E::InstrumentPlay),
             Used::Rod { from, .. } => {
                 // `FishingRodItem.use`: a cast leaves a bobber out.
                 let cast = entities.bobbers.iter().any(|b| b.owner == self.id);
@@ -843,6 +851,16 @@ impl PlayerSession {
                 self.inventory.take_one(slot);
             }
             return Ok(Some(Used::WindChargeThrown { from: eye }));
+        }
+        // v1.0 final Track F4: `InstrumentItem.use` plays the instrument
+        // and puts every goat horn on its 140-tick cooldown.
+        if let Some(instrument) = crate::content::goat_horn::instrument(held) {
+            if self.vitals.horn_cooldown > 0.0 {
+                return Err("goat horn cooling down");
+            }
+            self.vitals.horn_cooldown = crate::content::goat_horn::cooldown_seconds();
+            self.start_tooting();
+            return Ok(Some(Used::HornPlayed { instrument, from: self.player.pos }));
         }
         if survival_items::throw_held(&self.player, &mut self.inventory, slot, creative, self.id, entities) {
             return Ok(Some(Used::ProjectileThrown { from: eye }));

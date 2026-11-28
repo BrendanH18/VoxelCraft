@@ -279,6 +279,7 @@ impl Actor<'_> {
         }
         self.session.tick_blocking(self.body.actions.selected, acting && self.body.right_held);
         self.session.tick_scoping(self.body.actions.selected, acting && self.body.right_held);
+        self.session.tick_tooting(self.body.actions.selected, acting && self.body.right_held);
         self.eat(acting);
         if let Some(shot) = self.session.tick_draw(self.body.actions.selected, acting, self.world, self.entities) {
             self.present_shot(shot);
@@ -465,6 +466,7 @@ impl Actor<'_> {
                 audio.play_in(SoundSource::Neutral, Sound::Bow, Some(from), throw.0, throw.1)
             }
             Used::PotionThrown { from } => audio.play(Sound::Bow, Some(from), throw.0, throw.1),
+            Used::HornPlayed { instrument, from } => super::items::horn_sound(audio, instrument, from),
             Used::WindChargeThrown { from } => {
                 let cue = Sound::Breeze(voxelcraft::entity::breeze::Cue::Throw);
                 audio.play_in(SoundSource::Neutral, cue, Some(from), 0.5, throw.1)
@@ -581,15 +583,23 @@ impl Actor<'_> {
 
 /// Buckets, snowballs, eggs and rods act once per click, not again while
 /// the button is held.
-/// Java `BrushItem` plays the block's brush sound each stroke and level
-/// event 3008 the completion sound. These are the nearest original shared
-/// sounds: a light, high scrape of the block's material, then its break.
-fn brush_sound(audio: &mut Audio, stroke: voxelcraft::session::Stroke) {
-    let material = crate::audio::sounds::material(stroke.block);
+/// Java `BrushItem.onUseTick` plays the brushed block's brush sound each
+/// stroke (`BrushableBlock.getBrushSound`, else `BRUSH_GENERIC`; `BLOCKS`,
+/// volume and pitch 1), and level event 3008 its completed sound
+/// (`PLAYERS`, volume and pitch 1) as the find comes free.
+pub(super) fn brush_sound(audio: &mut Audio, stroke: voxelcraft::session::Stroke) {
+    use crate::audio::horns::BrushCue;
     let at = Some(stroke.pos.as_dvec3() + DVec3::splat(0.5));
-    audio.play_in(SoundSource::Blocks, Sound::Step(material), at, 0.6, (1.4, 1.6));
+    let gravel = voxelcraft::world::archaeology::decode(stroke.block).map(|(gravel, _)| gravel);
+    let cue = match gravel {
+        Some(true) => BrushCue::Gravel,
+        Some(false) => BrushCue::Sand,
+        None => BrushCue::Generic,
+    };
+    audio.play_in(SoundSource::Blocks, Sound::Brush(cue), at, 1.0, (1.0, 1.0));
     if stroke.completed {
-        audio.play_in(SoundSource::Blocks, Sound::Break(material), at, 1.0, (0.85, 1.0));
+        let done = if gravel == Some(true) { BrushCue::GravelComplete } else { BrushCue::SandComplete };
+        audio.play_in(SoundSource::Players, Sound::Brush(done), at, 1.0, (1.0, 1.0));
     }
 }
 

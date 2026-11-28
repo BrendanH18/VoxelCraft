@@ -343,6 +343,8 @@ impl Game {
                     }
                     Event::EyeThrown(from) => super::items::eye_thrown_sound(&mut self.audio, from),
                     Event::FrameFilled(pos, opened) => super::items::frame_filled_sounds(&mut self.audio, pos, opened),
+                    Event::Brushed(stroke) => super::hands::brush_sound(&mut self.audio, stroke),
+                    Event::Horn(kind, from) => super::items::horn_sound(&mut self.audio, kind, from),
                     Event::BundleThrown(out) => {
                         use voxelcraft::content::bundle::Cue;
                         super::items::bundle_sound(&mut self.audio, Cue::RemoveOne, Some(out.at));

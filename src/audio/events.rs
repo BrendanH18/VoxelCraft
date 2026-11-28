@@ -164,6 +164,10 @@ impl Sound {
             Sound::Portal(c) => s(c.event()),
             Sound::DripstoneDrip(false) => s("block.pointed_dripstone.drip_water"),
             Sound::DripstoneDrip(true) => s("block.pointed_dripstone.drip_lava"),
+            Sound::Horn(kind) => Some(format!("item.goat_horn.sound.{}", kind.min(7))),
+            Sound::Disc(_) => s("music_disc.13"),
+            Sound::Brush(c) => s(c.event()),
+            Sound::MobStep(c) => s(c.event()),
         }
     }
 }
@@ -179,10 +183,18 @@ fn mob_event(v: Voice, c: Call) -> String {
         (Voice::Axolotl, Call::Ambient) => Some("entity.axolotl.idle_water"),
         (Voice::Bee, Call::Ambient) => Some("entity.bee.loop"),
         (Voice::Slime, Call::Ambient) => Some("entity.slime.squish"),
+        (Voice::MagmaCube, Call::Ambient) => Some("entity.magma_cube.squish"),
         (Voice::SulfurCube, Call::Ambient) => Some("entity.sulfur_cube.squish"),
         // The creeper's ambient voice stands in for its fuse hiss.
         (Voice::Creeper, Call::Ambient) => Some("entity.creeper.primed"),
         (Voice::Creaking, Call::Hurt) => Some("entity.creaking.twitch"),
+        // v1.0 final Track F4: the turtle's call is its land one; the
+        // hatchling has its own hurt and death and no call (Java plays none).
+        (Voice::Turtle | Voice::BabyTurtle, Call::Ambient) => Some("entity.turtle.ambient_land"),
+        (Voice::BabyTurtle, Call::Hurt) => Some("entity.turtle.hurt_baby"),
+        (Voice::BabyTurtle, Call::Death) => Some("entity.turtle.death_baby"),
+        // Java's iron golem has no ambient call; this buffer never plays.
+        (Voice::IronGolem, Call::Ambient) => Some("entity.iron_golem.repair"),
         _ => None,
     };
     special.map_or_else(|| format!("entity.{}.{}", voice_entity(v), c.name()), str::to_string)

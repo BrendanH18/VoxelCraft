@@ -196,7 +196,12 @@ pub fn sounds() -> impl Iterator<Item = Sound> {
 /// The sound whose buffers `sound` shares: a family's hit and fall play
 /// its step (Java's hit and fall events play the step files), and a cue no
 /// `SoundType` plays borrows one the family has, so it costs nothing.
+///
+/// v1.0 final Track F4: a disc's note shares the note block's buffers.
 pub fn shares(sound: Sound) -> Option<Sound> {
+    if let Sound::Disc(i) = sound {
+        return Some(Sound::Note(i));
+    }
     let Sound::Block(f, cue) = sound else { return None };
     let rendered = |c: BlockCue| f.has(c) && !(matches!(c, BlockCue::Hit | BlockCue::Fall) && f.has(BlockCue::Step));
     if rendered(cue) {

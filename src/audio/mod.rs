@@ -17,12 +17,14 @@ pub mod block_sounds;
 mod breeze;
 mod bundle;
 mod crafter;
+pub mod creatures;
 mod dsp;
 mod events;
 mod export;
 mod flight;
 mod fox;
 mod goat;
+pub mod horns;
 mod illager;
 mod minecart;
 pub mod mixer;
@@ -363,6 +365,14 @@ impl Audio {
                 .map_or(voxelcraft::music::Situation::NetherWastes, voxelcraft::music::Situation::nether),
             dragon,
         });
+        // v1.0 final Track F4: `Minecraft.getMusicVolume`, the camera's
+        // `EnvironmentAttributes.MUSIC_VOLUME` (26.3: 0 in the pale garden,
+        // `OverworldBiomes.darkForest(.., true)`, 1 elsewhere), which
+        // `MusicManager.fadePlaying` fades the current track towards.
+        // Nothing else (a playing jukebox included) changes it.
+        let pale = world.generator.dimension == crate::world::terrain::Dimension::Overworld
+            && column.biome == crate::world::terrain::Biome::PaleGarden;
+        self.music.set_gain(if pale { 0.0 } else { 1.0 });
     }
 
     /// Toggles mute; returns whether sound is now muted.

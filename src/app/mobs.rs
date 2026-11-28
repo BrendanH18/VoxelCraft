@@ -713,13 +713,6 @@ impl Game {
                     }
                 }
                 EntityEvent::Sound { sound, pos } => {
-                    // Brutes and zoglins are deeper takes on piglin and hoglin voices.
-                    let deep = matches!(
-                        sound,
-                        MobSound::Ambient(MobKind::PiglinBrute | MobKind::Zoglin)
-                            | MobSound::Hurt(MobKind::PiglinBrute | MobKind::Zoglin)
-                            | MobSound::Death(MobKind::PiglinBrute | MobKind::Zoglin)
-                    );
                     let source = mob_sound_source(sound);
                     let (sound, gain) = match sound {
                         MobSound::Thunder => {
@@ -842,6 +835,17 @@ impl Game {
                             self.audio.play_in(SoundSource::Neutral, Sound::VillagerNo, Some(pos), 1.0, pitch);
                             continue;
                         }
+                        // v1.0 final Track F4: mobs' own footsteps at their
+                        // `playStepSound` volume and pitch 1.
+                        MobSound::Step(cue) => {
+                            let sound = Sound::MobStep(cue);
+                            self.audio.play_in(sound.source(), sound, Some(pos), cue.volume(), (1.0, 1.0));
+                            continue;
+                        }
+                        MobSound::BabyTurtle(death) => {
+                            let call = if death { Call::Death } else { Call::Hurt };
+                            (Sound::Mob(Voice::BabyTurtle, call), 0.9)
+                        }
                         MobSound::Ambient(kind) => (Sound::Mob(voice(kind), Call::Ambient), 0.7 * mob_volume(kind)),
                         MobSound::Hurt(kind) => (Sound::Mob(voice(kind), Call::Hurt), 0.9 * mob_volume(kind)),
                         MobSound::Death(kind) => (Sound::Mob(voice(kind), Call::Death), 0.9 * mob_volume(kind)),
@@ -864,8 +868,6 @@ impl Game {
                     };
                     let pitch = if sound == Sound::Fireball && gain == 1.0 {
                         (0.6, 0.7)
-                    } else if deep {
-                        (0.72, 0.82)
                     } else {
                         (0.9, 1.1)
                     };
@@ -1054,10 +1056,6 @@ fn mob_sound_source(sound: MobSound) -> Option<SoundSource> {
         // Skeletons and pillagers shoot as hostile mobs, not as the player.
         MobSound::Bow => Some(SoundSource::Hostile),
         MobSound::Shulker(_) => Some(SoundSource::Hostile),
-        // The snow golem borrows the slime's voice but is a friendly mob.
-        MobSound::Ambient(MobKind::SnowGolem)
-        | MobSound::Hurt(MobKind::SnowGolem)
-        | MobSound::Death(MobKind::SnowGolem) => Some(SoundSource::Neutral),
         _ => None,
     }
 }
@@ -1129,34 +1127,50 @@ fn voice(kind: MobKind) -> Voice {
         MobKind::Tadpole => Voice::Fish,
         MobKind::Sheep => Voice::Sheep,
         MobKind::Chicken => Voice::Chicken,
-        MobKind::Zombie | MobKind::Husk | MobKind::Drowned | MobKind::ZombieVillager => Voice::Zombie,
-        MobKind::Phantom | MobKind::Skeleton | MobKind::Stray | MobKind::Bogged | MobKind::WitherSkeleton => {
-            Voice::Skeleton
-        }
+        MobKind::Zombie => Voice::Zombie,
+        MobKind::Husk => Voice::Husk,
+        MobKind::Drowned => Voice::Drowned,
+        MobKind::ZombieVillager => Voice::ZombieVillager,
+        MobKind::Phantom => Voice::Phantom,
+        MobKind::Skeleton => Voice::Skeleton,
+        MobKind::Stray => Voice::Stray,
+        MobKind::Bogged => Voice::Bogged,
+        MobKind::WitherSkeleton => Voice::WitherSkeleton,
         MobKind::Creeper => Voice::Creeper,
         MobKind::Spider | MobKind::CaveSpider => Voice::Spider,
-        MobKind::ZombifiedPiglin => Voice::Zombie,
+        MobKind::ZombifiedPiglin => Voice::ZombifiedPiglin,
         MobKind::Enderman => Voice::Enderman,
         MobKind::Blaze => Voice::Blaze,
-        MobKind::Silverfish => Voice::Spider,
-        MobKind::Slime | MobKind::MagmaCube => Voice::Slime,
+        MobKind::Silverfish => Voice::Silverfish,
+        MobKind::Slime => Voice::Slime,
+        MobKind::MagmaCube => Voice::MagmaCube,
         MobKind::Ghast => Voice::Ghast,
         MobKind::Witch => Voice::Witch,
-        MobKind::Villager | MobKind::WanderingTrader => Voice::Villager,
-        MobKind::TraderLlama | MobKind::Llama | MobKind::Camel => Voice::Cow,
-        MobKind::SkeletonHorse | MobKind::ZombieHorse | MobKind::Horse | MobKind::Donkey | MobKind::Mule => {
-            Voice::Horse
-        }
-        MobKind::IronGolem => Voice::Cow,
-        MobKind::SnowGolem => Voice::Slime,
-        MobKind::Piglin | MobKind::PiglinBrute => Voice::Piglin,
-        MobKind::Hoglin | MobKind::Zoglin => Voice::Hoglin,
+        MobKind::Villager => Voice::Villager,
+        MobKind::WanderingTrader => Voice::WanderingTrader,
+        // `TraderLlama` extends `Llama`.
+        MobKind::TraderLlama | MobKind::Llama => Voice::Llama,
+        MobKind::Camel => Voice::Camel,
+        MobKind::Horse => Voice::Horse,
+        MobKind::SkeletonHorse => Voice::SkeletonHorse,
+        MobKind::ZombieHorse => Voice::ZombieHorse,
+        MobKind::Donkey => Voice::Donkey,
+        MobKind::Mule => Voice::Mule,
+        MobKind::IronGolem => Voice::IronGolem,
+        MobKind::SnowGolem => Voice::SnowGolem,
+        MobKind::Piglin => Voice::Piglin,
+        MobKind::PiglinBrute => Voice::PiglinBrute,
+        MobKind::Hoglin => Voice::Hoglin,
+        MobKind::Zoglin => Voice::Zoglin,
         MobKind::Strider => Voice::Strider,
-        MobKind::Cod | MobKind::Salmon | MobKind::TropicalFish | MobKind::Pufferfish | MobKind::Turtle => Voice::Fish,
-        MobKind::Squid | MobKind::GlowSquid => Voice::Squid,
+        MobKind::Cod | MobKind::Salmon | MobKind::TropicalFish | MobKind::Pufferfish => Voice::Fish,
+        MobKind::Turtle => Voice::Turtle,
+        MobKind::Squid => Voice::Squid,
+        MobKind::GlowSquid => Voice::GlowSquid,
         MobKind::Dolphin => Voice::Dolphin,
         MobKind::Axolotl => Voice::Axolotl,
-        MobKind::Guardian | MobKind::ElderGuardian => Voice::Guardian,
+        MobKind::Guardian => Voice::Guardian,
+        MobKind::ElderGuardian => Voice::ElderGuardian,
         MobKind::Cat => Voice::Cat,
         MobKind::Pillager => Voice::Pillager,
         MobKind::Wolf => Voice::Wolf,

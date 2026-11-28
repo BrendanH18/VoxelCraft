@@ -30,6 +30,8 @@ struct LanUse {
     drawing: bool,
     /// v1.0 gap track 6: a bundle being emptied by holding use.
     bundle: bool,
+    /// v1.0 final Track F4: a blown goat horn held up.
+    horn: bool,
 }
 
 /// Largest view distance (in 32-block chunks) a LAN host streams to clients.
@@ -157,6 +159,11 @@ pub(super) struct Lan {
     /// v1.0 gap track 6: a bundle in use predicted for the selected slot,
     /// and the use ticks it has run (`BundleItem.getUseDuration` ends it).
     predicted_bundle: Option<(usize, u32)>,
+    /// v1.0 final Track F4: a blown goat horn predicted held up (its slot
+    /// and use ticks), and the ticks left of the horn cooldown as this
+    /// client predicts it (`InstrumentItem.use`).
+    predicted_horn: Option<(usize, u32)>,
+    horn_cooldown: u32,
     /// Whether the use button was held on the last client tick.
     use_was_held: bool,
     /// Use was pressed since the last client tick (it may also have been
@@ -221,7 +228,24 @@ impl Lan {
             _ => None,
         };
         let bundle = self.predicted_bundle.is_some();
-        LanUse { eating, drawing: self.predicted_draw == Some(slot), bundle }
+        // v1.0 final Track F4: `InstrumentItem.use` holds the horn up for
+        // its 140-tick use, and the press starts the item's cooldown.
+        use voxelcraft::content::goat_horn;
+        self.horn_cooldown = self.horn_cooldown.saturating_sub(1);
+        let holds_horn = main.is_some_and(|s| goat_horn::instrument(s.item).is_some());
+        self.predicted_horn = match self.predicted_horn {
+            _ if input.buttons & 16 == 0 || !holds_horn => None,
+            Some((s, ticks)) if !pressed && s == slot => {
+                (ticks + 1 < goat_horn::USE_TICKS).then_some((slot, ticks + 1))
+            }
+            _ if pressed && self.horn_cooldown == 0 && !session.block_takes_use(slot, world, sneaking) => {
+                self.horn_cooldown = goat_horn::USE_TICKS;
+                Some((slot, 0))
+            }
+            _ => None,
+        };
+        let horn = self.predicted_horn.is_some();
+        LanUse { eating, drawing: self.predicted_draw == Some(slot), bundle, horn }
     }
 
     /// The world's remembered session rules, `cheats,pvp` as `0` or `1`.
@@ -1680,6 +1704,8 @@ impl Game {
             // v1.0 final F6: the raid bar this guest's player is on, as
             // `ServerBossEvent.addPlayer` shows it to each raid player.
             snapshot["raid_bar"] = raid_bar_json(self.mobs.entities.raids.bar_for(bot.agent.session.id));
+            // v1.0 final Track F4: brushed finds rising out of their blocks.
+            snapshot["emerging"] = json!(self.world.emerging_near(here, crate::render::signs::RANGE));
             if let Some((open, serial)) = &peer.book_open
                 && (open["lectern"].is_array()
                     || open["slot"].as_u64().is_some_and(|slot| peer.inventory.held_matches(slot as usize, inventory)))
@@ -1726,6 +1752,7 @@ impl Game {
         self.lan.predictions.clear();
         self.lan.predicted_eating = None;
         self.lan.predicted_bundle = None;
+        self.lan.predicted_horn = None;
         self.lan.ready = false;
         self.mobs.entities = crate::entity::Entities::new(seed);
     }
@@ -1769,7 +1796,8 @@ impl Game {
     fn lan_movement(&self, input: &Input, use_state: LanUse) -> voxelcraft::player::MoveInput {
         voxelcraft::player::MoveInput {
             sprint_blocked: !self.session.vitals.may_sprint(self.session.mode.invulnerable()),
-            using_item: input.buttons & 16 != 0 && (use_state.eating || use_state.drawing || use_state.bundle),
+            using_item: input.buttons & 16 != 0
+                && (use_state.eating || use_state.drawing || use_state.bundle || use_state.horn),
             ..input.movement()
         }
     }
@@ -1976,6 +2004,7 @@ impl Game {
         self.world.apply_shulker_lids(&snapshot["shulker_lids"]);
         self.world.apply_lids(&snapshot["lids"]);
         self.lan.raid_bar = raid_bar_from(&snapshot["raid_bar"]);
+        self.world.apply_emerging(&snapshot["emerging"]);
         let edit = &snapshot["sign_edit"];
         if let (Some(serial), Some(p)) = (edit["serial"].as_u64(), vector(&edit["pos"]))
             && serial as u32 != self.lan.sign_serial
@@ -2843,7 +2872,9 @@ fn peer_sounds(
         if movement && pos.distance_squared(me) < 1.0 {
             return None;
         }
-        (pos.distance_squared(me) < 64.0 * 64.0)
+        // v1.0 final Track F4: horns and discs reach their Java range.
+        let range = sound.java_range().unwrap_or(64.0).max(64.0) as f64;
+        (pos.distance_squared(me) < range * range)
             .then(|| json!([sound.key(), pos.x, pos.y, pos.z, gain, lo, hi, source.index()]))
     });
     own.chain(heard).take(96).collect()
@@ -2900,6 +2931,21 @@ mod tests {
         assert_eq!(peer_sounds(&hurt, &[], guest, me, near).len(), 1);
     }
 
+    /// v1.0 final Track F4: a goat horn reaches guests to its 256-block
+    /// range and a jukebox's song to 64; other sounds stop at 64.
+    #[test]
+    fn goat_horns_reach_guests_256_blocks_away() {
+        use crate::audio::{SoundSource, sounds::Sound};
+        let me = DVec3::new(0.5, 64.0, 0.5);
+        let host = DVec3::new(200.5, 64.0, 0.5);
+        let horn = [(Sound::Horn(2), Some(host), 1.0, (1.0, 1.0), SoundSource::Records)];
+        let sent = peer_sounds(&horn, &[], voxelcraft::entity::PlayerId(2), me, host);
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0][0], json!(Sound::Horn(2).key()));
+        let hurt = [(Sound::Hurt, Some(host), 1.0, (1.0, 1.0), SoundSource::Players)];
+        assert!(peer_sounds(&hurt, &[], voxelcraft::entity::PlayerId(2), me, host).is_empty());
+    }
+
     #[test]
     fn statue_prediction_matches_block_use_priority() {
         use voxelcraft::{
@@ -2938,7 +2984,7 @@ mod tests {
             assert!(lan.sample_use(&session, &world, &input, true).eating);
             world.set_block(p, statue::item_block(Stage::Unaffected, false));
             assert!(lan.sample_use(&session, &world, &input, false).eating, "an existing bite continues");
-            lan.predictions.push_back((input, LanUse { eating: true, drawing: false, bundle: false }));
+            lan.predictions.push_back((input, LanUse { eating: true, drawing: false, bundle: false, horn: false }));
             lan.predictions.clear();
             assert!(lan.sample_use(&session, &world, &input, false).eating, "acknowledging inputs preserves a bite");
             assert!(!lan.sample_use(&session, &world, &Input { buttons: 0, ..input }, false).eating);

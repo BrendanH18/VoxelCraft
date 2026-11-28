@@ -366,6 +366,14 @@ pub(super) fn weapon_sound(audio: &mut Audio, cue: voxelcraft::weapons::Cue, at:
 }
 
 /// Java's eye launch whoosh, pitched down like a thrown pearl.
+/// v1.0 final Track F4: `InstrumentItem.play`, the instrument's sound at
+/// the player in `RECORDS`, volume `range / 16` (Java clamps the gain to 1
+/// and hears it linearly to 256 blocks, [`Sound::java_range`]), pitch 1.
+pub(super) fn horn_sound(audio: &mut Audio, instrument: u8, from: DVec3) {
+    // `playSound(player, player, ...)` plays at the player's feet.
+    audio.play_in(SoundSource::Records, Sound::Horn(instrument), Some(from), 1.0, (1.0, 1.0));
+}
+
 pub(super) fn eye_thrown_sound(audio: &mut Audio, from: DVec3) {
     audio.play_in(SoundSource::Neutral, Sound::Bow, Some(from), 0.5, (0.42, 0.62));
 }

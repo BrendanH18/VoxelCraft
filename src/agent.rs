@@ -39,6 +39,10 @@ pub enum Event {
     FrameFilled(IVec3, bool),
     /// v1.0 gap track 6: threw a stack out of the bundle in use.
     BundleThrown(crate::session::bundles::Emptied),
+    /// v1.0 final Track F4: a brush stroke (its sounds).
+    Brushed(crate::session::Stroke),
+    /// v1.0 final Track F4: blew a goat horn of this instrument from here.
+    Horn(u8, DVec3),
 }
 
 /// Unheard events kept per agent (a host without audio never drains them).
@@ -489,6 +493,9 @@ impl Agent {
                         return Err("that is your ender chest; use chest take/put".into());
                     }
                     _ => {}
+                }
+                if let Used::HornPlayed { instrument, from } = done.used {
+                    self.emit(Event::Horn(instrument, from));
                 }
                 if !matches!(done.used, Used::PearlThrown { .. } | Used::PotionThrown { .. } | Used::Bucket(_)) {
                     self.cooldown = 0.22;
@@ -1270,6 +1277,7 @@ impl Agent {
         }
         self.draw(world, entities);
         self.session.tick_blocking_unless_ticked(self.selected, self.eating && self.remaining > 0);
+        self.session.tick_tooting(self.selected, self.eating && self.remaining > 0);
         if self.session.bundle_in_use() {
             let using = self.eating && self.remaining > 0;
             if let Some(out) = self.session.tick_bundle_use(self.selected, using, entities) {
@@ -1277,7 +1285,9 @@ impl Agent {
                 self.emit(Event::BundleThrown(out));
             }
         } else if self.session.brushing() && self.eating && self.remaining > 0 {
-            self.session.tick_brushing(self.selected, true, world);
+            if let Some(stroke) = self.session.tick_brushing(self.selected, true, world) {
+                self.emit(Event::Brushed(stroke));
+            }
         } else {
             self.chew(world, entities);
         }
