@@ -58,8 +58,10 @@ Choose your download:
   keeping your view and speed. Spectators pass through without
   travelling, as in Java.
 - Mobs, items, projectiles, minecarts and boats go through portals, and
-  you can ride a horse, boat or minecart through one. Anything sent to
-  another dimension waits there, unchanged, until you next go there.
+  you can ride a horse, boat or minecart through one. The other
+  dimensions run as Java's do: a mob you send through a portal walks on
+  in its new dimension for 15 seconds, and an ender pearl keeps flying
+  there and brings you across when it lands.
 - End portals and gateways use Java's timing; gateways show their beams
   and cool down between trips.
 
@@ -822,9 +824,6 @@ new giant trees.
 - World generation is VoxelCraft's own: worlds aren't seed-compatible with
   Minecraft, and structures are VoxelCraft's own designs laid out the way
   Java lays them out, not Java's buildings.
-- Only the dimension you're in (or the LAN host is in) runs. Anything you
-  send to another dimension, an ender pearl included, waits there,
-  unchanged, until you next go there.
 - Generation 7's End islands, Nether, mineshaft carts, stronghold search,
   dry ancient cities and steep-ground villages appear only in worlds
   created with 1.0; trail-ruin archaeology only in worlds created with

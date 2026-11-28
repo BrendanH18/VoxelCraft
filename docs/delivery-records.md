@@ -439,7 +439,7 @@ the LAN and thumbnail fixes
 gap-closing build the owner chose on 2026-11-27 instead of tagging with 22
 Partial rows ([plan](roadmap.md#v10-gap-plan-2026-11-27)): tracks 1 to 8
 and their follow-ups, and a final wave (F1 to F10) for the Java
-differences an audit of 0.18's known limitations found. Version 1.0.0;
+differences an audit of 0.18's known limitations found, and F11 for FE-05. Version 1.0.0;
 release notes in `packaging/RELEASE-NOTES.md`. It is not tagged.
 
 - **Evidence:** every track's verification record under
@@ -455,9 +455,10 @@ release notes in `packaging/RELEASE-NOTES.md`. It is not tagged.
   approved ("all looks good": gap Tracks 6c, 6d, 6e, 6f, 7d, 7e, 7f, 8c's
   and 8d's flames, final F1's off-hand, F3's block variants, fire and
   bells, and F10's models); FE-05 (one running dimension) closed rather
-  than accepted, in final Track F11.
-- **Waiting:** F11 merged; the owner's play of the build, which verifies
-  rows; then the merge, the `1.0` tag and the published release.
+  than accepted, in [final Track F11](verification/2026-11-28-v1.0-final-f11-dimensions.md),
+  merged the same day: the other dimensions run on Java's chunk tickets.
+- **Waiting:** the owner's play of the build, which verifies rows; then
+  the merge, the `1.0` tag and the published release.
 - **Not run:** no frame-time runs (dropped by the owner, 2026-11-27);
   nobody has played the build since the gap-closing work began.
 
