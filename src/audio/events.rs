@@ -122,6 +122,7 @@ impl Sound {
             Sound::Geyser(c) => s(c.key()),
             Sound::Mount(c) => s(c.key()),
             Sound::Fox(c) => s(c.key()),
+            Sound::Goat(c) => s(c.key()),
             Sound::Minecart(c) => {
                 use crate::entity::minecart::Cue as C;
                 s(match c {

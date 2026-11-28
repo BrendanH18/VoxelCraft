@@ -6,6 +6,7 @@ use serde_json::{Value, json};
 use super::{Ctx, Entities, EntityEvent, Mob, MobKind, MobWorld, PlayerId, Rng};
 use crate::{color::DyeColor, inventory::Stack, item::Item, particles};
 mod lifecycle;
+pub mod long_jump;
 
 pub const BABY_AGE: i32 = -24000;
 pub const BREEDING_COOLDOWN: i32 = 6000;
@@ -50,6 +51,11 @@ pub struct State {
     /// v1.0 gap Track 2f: the goat's `Pose.LONG_JUMPING` (not saved:
     /// Java's `Pose` is written only as entity data the client reads).
     pub long_jumping: bool,
+    /// v1.0 gap Track 2g: a running `LongJumpToRandomPos` and the ticks
+    /// left of `LongJumpMidJump` (never saved, as Java's running behaviours
+    /// aren't; `jump_cooldown` is `LONG_JUMP_COOLDOWN_TICKS`, saved).
+    pub(crate) long_jump: Option<Box<long_jump::LongJump>>,
+    pub(crate) mid_jump_left: i32,
     pub horns: u8,
     pub horn_kind: u8,
     pub screaming: bool,
@@ -92,6 +98,8 @@ impl State {
             stationary: 0.0,
             jump_cooldown: 30.0,
             long_jumping: false,
+            long_jump: None,
+            mid_jump_left: 0,
             horns: 2,
             horn_kind: 0,
             screaming: false,
@@ -805,6 +813,8 @@ pub(super) fn on_spawn(m: &mut Mob, rng: &mut Rng) {
     if m.kind == MobKind::Goat {
         a.screaming = rng.chance(0.02);
         a.ram_cooldown = rng.range(30.0, 300.0);
+        // v1.0 gap Track 2g: `GoatAi.initMemories`' long-jump cooldown.
+        a.jump_cooldown = long_jump::cooldown_seconds(rng);
         a.horn_kind = rng.next_int(4) as u8 + if a.screaming { 4 } else { 0 };
     }
 }
@@ -893,6 +903,12 @@ impl Mob {
                 });
             }
             return Some((self.pursue(w, goal, 3.0, true, true, rng), 3.0));
+        }
+        // v1.0 gap Track 2g: a goat readying or flying a long jump stands
+        // (the jump carries it).
+        if self.kind == MobKind::Goat && self.goat_jump_busy() {
+            self.stop_goal(w);
+            return Some((None, 0.0));
         }
         if self.kind == MobKind::Goat && a.ramming > 0.0 {
             let goal = a.ram_goal?;
@@ -1039,6 +1055,23 @@ impl Entities {
                     a.mouth_time = 0.0;
                 } else if can_eat && a.mouth_time > 28.0 && self.rng.chance(0.1) {
                     events.push(EntityEvent::Sound { sound: super::MobSound::Fox(super::fox::Cue::Eat), pos: at });
+                    // v1.0 gap Track 2g: entity event 45: eight particles of
+                    // the mouth item, half a block ahead at its feet, up to
+                    // 0.05 aside and 0.15 to 0.25 up a tick (the client's
+                    // random; the fox doesn't pitch while eating).
+                    if let Some(item) = a.mouth.map(|s| s.item) {
+                        let yaw = (m.yaw.to_degrees() - 90.0).to_radians() as f64;
+                        let look = crate::entity::mob::spear::view_vector(0.0, m.yaw.to_degrees() - 90.0);
+                        let from = m.pos + DVec3::new(look.x / 2.0, 0.0, look.z / 2.0);
+                        let mut local = super::Rng::new(u64::from(m.uid) ^ u64::from(a.mouth_time.to_bits()) << 17);
+                        for _ in 0..8 {
+                            let dx = (f64::from(local.next_f32()) - 0.5) * 0.1;
+                            let dy = f64::from(local.next_f32()) * 0.1 + 0.1;
+                            // `Vec3.yRot(-yRot)` of (dx, dy, 0).
+                            let vel = DVec3::new(dx * (-yaw).cos(), dy + 0.05, -dx * (-yaw).sin());
+                            events.push(EntityEvent::ItemParticle { pos: from, vel, item });
+                        }
+                    }
                 }
             }
             if m.kind == MobKind::Parrot {

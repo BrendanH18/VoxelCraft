@@ -73,6 +73,22 @@ impl Actor<'_> {
         let eye = self.session.player.eye();
         // Java plays the item-break sound as the player (`PLAYERS`).
         self.audio.play_in(SoundSource::Players, Sound::Break(Material::Wood), Some(eye), 0.8, (1.3, 1.5));
+        // v1.0 gap Track 2g: `breakItem`'s five item particles.
+        let forward = self.session.player.forward().as_dvec3();
+        let seed = eye.x.to_bits() ^ eye.z.to_bits().rotate_left(21) ^ u64::from(item.0);
+        for p in crate::particles::living_item_particles(item, eye, forward, 5, seed) {
+            self.world.particles.push(p);
+        }
+    }
+
+    /// v1.0 gap Track 2g: `Consumable.emitParticlesAndSounds`' item particles
+    /// for food (drinks have none).
+    fn eating_particles(&mut self, item: Item, count: u32, seed: u64) {
+        let eye = self.session.player.eye();
+        let forward = self.session.player.forward().as_dvec3();
+        for p in crate::particles::living_item_particles(item, eye, forward, count, seed ^ eye.x.to_bits()) {
+            self.world.particles.push(p);
+        }
     }
 
     /// Attack/mine button pressed or released. `hit_player` is whether the
@@ -277,7 +293,7 @@ impl Actor<'_> {
             Ok(Outcome::Broken { cell, block, tool_broken, .. }) => {
                 self.audio.block_break(block, cell);
                 if let Some(item) = tool_broken {
-                    self.popup(format!("{} broke", capitalize(item.name())));
+                    self.tool_broke(item);
                 }
             }
             Ok(Outcome::TeleportedEgg { destination, .. }) => {
@@ -335,8 +351,14 @@ impl Actor<'_> {
             } else {
                 self.audio.play(Sound::Step(Material::Snow), Some(eye), 0.7, (1.4, 1.7));
             }
+            if let Some(item) = held.filter(|_| !drink) {
+                self.eating_particles(item, 5, before.to_bits());
+            }
         }
         if let Some(consumed) = step.completed {
+            if !drink {
+                self.eating_particles(consumed.item, 16, before.to_bits() ^ 0x16);
+            }
             // v0.16 Track A: chorus fruit teleports (`CHORUS_FRUIT_TELEPORT`, `PLAYERS`).
             if consumed.item == voxelcraft::content::chorus::CHORUS_FRUIT
                 && let Some(from) = self.session.chorus_teleport(self.world, self.entities)
@@ -387,7 +409,7 @@ impl Actor<'_> {
     fn present_shot(&mut self, shot: Shot) {
         items::shot_sound(self.audio, shot.ranged);
         if let Some(item) = shot.tool_broken {
-            self.popup(format!("{} broke", capitalize(item.name())));
+            self.tool_broke(item);
         }
     }
 

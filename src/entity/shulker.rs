@@ -769,6 +769,8 @@ impl Entities {
                     knockback: push.as_vec3(),
                     cause: BULLET_CAUSE,
                 });
+                // v1.0 gap Track 2g: the shulker is the player's `lastHurtByMob`.
+                events.push(EntityEvent::OwnerHurt { player, attacker: b.owner });
                 events.push(EntityEvent::PlayerEffect {
                     player,
                     effect: crate::simulation::effects::Effect::Levitation,

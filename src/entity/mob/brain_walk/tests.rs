@@ -23,7 +23,17 @@ fn mob(kind: MobKind) -> Mob {
 }
 
 fn seen(uid: u32, kind: MobKind, at: DVec3) -> Seen {
-    Seen { uid, kind, eye: at + DVec3::Y, pos: at, breedable: false, baby: false, chasing: None }
+    Seen {
+        uid,
+        kind,
+        eye: at + DVec3::Y,
+        pos: at,
+        breedable: false,
+        baby: false,
+        chasing: None,
+        farmer: false,
+        wants_food: false,
+    }
 }
 
 /// The idle `RunOne` sends a villager to a villager it sees within 8
@@ -293,8 +303,8 @@ fn farmers_harvest_the_ripe_crops_around_them() {
         v.pos = DVec3::new(1.5, 64.0, 0.5);
         for _ in 0..200 {
             v.head_goals(&w, &c, &mut rng, false);
-            if let Some(cell) = v.walking.harvest_now.take() {
-                assert_eq!(cell, ripe);
+            for act in std::mem::take(&mut v.walking.farm_acts) {
+                assert_eq!(act, FarmAct::Harvest(ripe));
                 harvested = true;
             }
             if let (Some(Hold::Harvest(_)), Some(walk)) = (v.walking.hold, v.walking.walk) {
@@ -314,6 +324,189 @@ fn farmers_harvest_the_ripe_crops_around_them() {
         assert!(!matches!(v.walking.hold, Some(Hold::Harvest(_))));
         v.walking.walk = None;
     }
+}
+
+/// Track 2g: `HarvestFarmland` plants the first `VILLAGER_PLANTABLE_SEEDS`
+/// stack on empty farmland (here a potato after the bone meal, which isn't
+/// a seed), one at a time; without seeds it plants nothing.
+#[test]
+fn farmers_plant_seeds_from_their_inventory() {
+    use crate::entity::villager::Profession;
+    let mut w = Grid::flat(64);
+    let job = IVec3::new(4, 64, 4);
+    w.set(job, Block::COMPOSTER);
+    let empty = IVec3::new(1, 64, 0);
+    w.set(empty - IVec3::Y, Block::FARMLAND);
+    let c = ctx(&[]);
+    let mut planted = 0;
+    for seed in 0..40 {
+        let mut rng = Rng::new(seed);
+        let mut v = worker(job, Profession::Farmer);
+        v.pos = DVec3::new(1.5, 64.0, 0.5);
+        let inv = v.villager.as_mut().unwrap();
+        inv.accept_food(Stack::new(Item::BONE_MEAL, 3));
+        inv.accept_food(Stack::new(Item::POTATO, 2));
+        for _ in 0..200 {
+            v.head_goals(&w, &c, &mut rng, false);
+            for act in std::mem::take(&mut v.walking.farm_acts) {
+                if let FarmAct::Plant(cell, block) = act {
+                    assert_eq!((cell, block), (empty, Block::crop(crate::world::block::Crop::Potato, 0)));
+                    planted += 1;
+                }
+            }
+            v.walking.walk = None;
+        }
+        // It never plants more than it carries.
+        assert!(v.villager.as_ref().unwrap().count_item(Item::POTATO) <= 2);
+    }
+    assert!(planted > 0);
+}
+
+/// Track 2g: `WorkAtComposter`: a farmer starting `WorkAtPoi` at its
+/// composter bakes up to three bread from three wheat each and composts
+/// the wheat and beetroot seeds beyond ten of each, at most 20, stopping at
+/// level 7; a full composter is emptied first, its bone meal dropped.
+#[test]
+fn farmers_bake_bread_and_compost_their_spare_seeds() {
+    use crate::entity::villager::Profession;
+    let mut w = Grid::flat(64);
+    let job = IVec3::new(0, 64, 0);
+    let c = ctx(&[]);
+    for (start, emptied) in [(crate::world::composter::state(0), false), (crate::world::composter::state(8), true)] {
+        w.set(job, start);
+        let mut done = false;
+        for seed in 0..20 {
+            let mut rng = Rng::new(seed);
+            let mut v = worker(job, Profession::Farmer);
+            v.pos = DVec3::new(0.5, 64.0, 1.5);
+            let inv = v.villager.as_mut().unwrap();
+            inv.accept_food(Stack::new(Item::WHEAT, 10));
+            inv.accept_food(Stack::new(Item::WHEAT_SEEDS, 40));
+            for _ in 0..400 {
+                v.head_goals(&w, &c, &mut rng, false);
+                let acts = std::mem::take(&mut v.walking.farm_acts);
+                if let Some(FarmAct::Compost { cell, from, to }) =
+                    acts.iter().find(|a| matches!(a, FarmAct::Compost { .. })).copied()
+                {
+                    assert_eq!((cell, from), (job, if emptied { 8 } else { 0 }));
+                    assert!((1..=7).contains(&to));
+                    let bone_meal =
+                        acts.iter().any(|a| matches!(a, FarmAct::Item(s, _, _) if s.item == Item::BONE_MEAL));
+                    assert_eq!(bone_meal, emptied);
+                    let v = v.villager.as_ref().unwrap();
+                    assert_eq!((v.count_item(Item::BREAD), v.count_item(Item::WHEAT)), (3, 1));
+                    // Seeds go in one at a time until level 7 or 20 are used;
+                    // ten or more always stay.
+                    let used = 40 - v.count_item(Item::WHEAT_SEEDS);
+                    assert!((1..=20).contains(&used) && (to == 7 || used == 20), "{used} {to}");
+                    done = true;
+                    break;
+                }
+                v.walking.walk = None;
+            }
+            if done {
+                break;
+            }
+        }
+        assert!(done);
+    }
+}
+
+/// Track 2g: `UseBonemeal`: a villager with bone meal walks to a growing
+/// crop round it (0.5, 1 short) and uses one on it, 40 ticks apart; with
+/// none, it never starts.
+#[test]
+fn farmers_use_bone_meal_on_growing_crops() {
+    use crate::entity::villager::Profession;
+    let mut w = Grid::flat(64);
+    let job = IVec3::new(4, 64, 4);
+    w.set(job, Block::COMPOSTER);
+    let crop = IVec3::new(1, 64, 0);
+    w.set(crop - IVec3::Y, Block::FARMLAND);
+    w.set(crop, Block::wheat(2));
+    let c = ctx(&[]);
+    let mut used = 0;
+    for seed in 0..40 {
+        let mut rng = Rng::new(seed);
+        let mut v = worker(job, Profession::Farmer);
+        v.pos = DVec3::new(1.5, 64.0, 0.5);
+        v.villager.as_mut().unwrap().accept_food(Stack::new(Item::BONE_MEAL, 4));
+        let mut last = None;
+        let mut here = 0;
+        for t in 0..400 {
+            v.head_goals(&w, &c, &mut rng, false);
+            for act in std::mem::take(&mut v.walking.farm_acts) {
+                if let FarmAct::Bonemeal(cell) = act {
+                    assert_eq!(cell, crop);
+                    assert!(v.using_bone_meal());
+                    if let Some(l) = last {
+                        assert!(t - l >= 40, "{t} {l}");
+                    }
+                    last = Some(t);
+                    used += 1;
+                    here += 1;
+                }
+            }
+            v.walking.walk = None;
+        }
+        assert_eq!(v.villager.as_ref().unwrap().count_item(Item::BONE_MEAL) + here, 4);
+    }
+    assert!(used > 0);
+    let mut rng = Rng::new(3);
+    let mut v = worker(job, Profession::Farmer);
+    v.pos = DVec3::new(1.5, 64.0, 0.5);
+    for _ in 0..400 {
+        v.head_goals(&w, &c, &mut rng, false);
+        assert!(!v.using_bone_meal());
+        v.walking.walk = None;
+    }
+}
+
+/// Track 2g: `TradeWithVillager`'s throws while the partner is within
+/// `sqrt(5)`: a farmer throws half its excess food and wheat beyond half a
+/// stack; a villager throws a farmer partner the seeds beyond 24 it
+/// requests, 0.3 a tick from 0.3 below its eyes toward the partner.
+#[test]
+fn trading_villagers_throw_food_wheat_and_seeds() {
+    use crate::entity::villager::Profession;
+    let at = DVec3::new(1.5, 64.0, 0.5);
+    let mut v = worker(IVec3::new(9, 64, 9), Profession::Farmer);
+    v.head.seen = vec![Seen { wants_food: false, ..seen(78, MobKind::Villager, at) }];
+    v.walking.interaction = Some(78);
+    let inv = v.villager.as_mut().unwrap();
+    inv.accept_food(Stack::new(Item::CARROT, 40));
+    inv.accept_food(Stack::new(Item::WHEAT, 40));
+    v.trade_gate();
+    let thrown: Vec<(Item, u8)> = v
+        .walking
+        .farm_acts
+        .iter()
+        .map(|a| match a {
+            FarmAct::Item(s, from, vel) => {
+                assert!((from.y - (64.0 + v.eye_height() - 0.3)).abs() < 1e-9);
+                assert!((vel.length() - 6.0).abs() < 1e-9 && vel.x > 0.0);
+                (s.item, s.count)
+            }
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    assert_eq!(thrown, [(Item::CARROT, 20), (Item::WHEAT, 20)]);
+    // A non-farmer keeps its food from a partner that has enough, and
+    // throws a farmer the seeds it requests.
+    let mut v = worker(IVec3::new(9, 64, 9), Profession::Mason);
+    v.head.seen = vec![Seen { farmer: true, wants_food: false, ..seen(78, MobKind::Villager, at) }];
+    v.walking.interaction = Some(78);
+    let inv = v.villager.as_mut().unwrap();
+    inv.accept_food(Stack::new(Item::CARROT, 40));
+    inv.accept_food(Stack::new(Item::WHEAT_SEEDS, 30));
+    v.trade_gate();
+    let thrown: Vec<(Item, u8)> = v
+        .walking
+        .farm_acts
+        .iter()
+        .filter_map(|a| if let FarmAct::Item(s, ..) = a { Some((s.item, s.count)) } else { None })
+        .collect();
+    assert_eq!(thrown, [(Item::WHEAT_SEEDS, 6)]);
 }
 
 fn baby_seen(uid: u32, at: DVec3, chasing: Option<u32>) -> Seen {

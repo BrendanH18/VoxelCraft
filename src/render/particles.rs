@@ -176,8 +176,10 @@ impl Renderer {
                     (layer as f32, 1.0)
                 }
                 Texture::Sprite(s) => ((s as usize * FRAMES + (t * (FRAMES - 1) as f32) as usize) as f32, 0.0),
+                // v1.0 gap Track 2g: the item icon array.
+                Texture::Item(layer) => (f32::from(layer), 4.0),
             };
-            let scale = if matches!(p.texture, Texture::Block(_)) {
+            let scale = if matches!(p.texture, Texture::Block(_) | Texture::Item(_)) {
                 1.0
             } else {
                 match p.style {

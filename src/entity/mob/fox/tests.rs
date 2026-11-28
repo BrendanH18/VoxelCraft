@@ -37,6 +37,7 @@ fn prey(at: DVec3) -> Prey {
         height: 0.5,
         hunt: Hunt::Land,
         priority: 4,
+        player: None,
     }
 }
 

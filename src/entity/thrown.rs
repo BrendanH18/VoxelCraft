@@ -471,6 +471,10 @@ impl Thrown {
                             crate::simulation::damage::Cause::WIND_CHARGE
                         },
                     });
+                    // v1.0 gap Track 2g: the breeze is the player's `lastHurtByMob`.
+                    if let Some(attacker) = self.shooter {
+                        events.push(EntityEvent::OwnerHurt { player: t.id, attacker });
+                    }
                 }
                 self.burst(self.pos, events);
                 return false;
@@ -490,6 +494,9 @@ impl Thrown {
                         knockback: (DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 0.5).as_vec3(),
                         cause: crate::simulation::damage::Cause::LLAMA_SPIT,
                     });
+                    if let Some(attacker) = self.shooter {
+                        events.push(EntityEvent::OwnerHurt { player: t.id, attacker });
+                    }
                 }
                 continue;
             }
@@ -660,6 +667,26 @@ impl Thrown {
         if self.kind.is_wind() {
             self.burst(pos, events);
             return;
+        }
+        // v1.0 gap Track 2g: entity event 3: eight `ItemParticleOption`
+        // particles of the thrown item (`Snowball` still, `ThrownEgg` up to
+        // 0.04 a tick each way), drawn from the client's own random.
+        let item = match self.kind {
+            Kind::Snowball => Some(Item::SNOWBALL),
+            Kind::Egg => Some(Item::EGG),
+            Kind::BlueEgg => Some(crate::content::farm_variant::BLUE_EGG),
+            Kind::BrownEgg => Some(crate::content::farm_variant::BROWN_EGG),
+            _ => None,
+        };
+        if let Some(item) = item {
+            let mut local =
+                Rng::new(pos.x.to_bits() ^ pos.y.to_bits().rotate_left(13) ^ pos.z.to_bits().rotate_left(29));
+            for _ in 0..8 {
+                let mut spread =
+                    || if item == Item::SNOWBALL { 0.0 } else { (f64::from(local.next_f32()) - 0.5) * 0.08 };
+                let vel = DVec3::new(spread(), spread(), spread());
+                events.push(EntityEvent::ItemParticle { pos, vel, item });
+            }
         }
         if let Some(variant) = self.kind.egg_variant()
             && let count = hatch_count(rng)

@@ -218,6 +218,11 @@ impl System {
         match request {
             Request::Particle(p) => self.pool.spawn(p),
             Request::Break { cell, block } => self.break_block(cell, block, world),
+            Request::Item { pos, vel, item } => {
+                if self.accept(setting, false, false) {
+                    self.item_particle(pos, vel, item);
+                }
+            }
             Request::Hit { cell, block, face } => self.hit_block(cell, block, face, world),
             Request::Burst(b) => self.burst(b, setting),
             Request::Tracking(burst) => {
@@ -615,6 +620,30 @@ impl System {
         p
     }
 
+    /// v1.0 gap Track 2g: `BreakingItemParticle` (`ItemParticleOption`):
+    /// the particle's own random velocity cut to a tenth plus `vel`,
+    /// gravity 1, half the usual size, white, and a random quarter of the
+    /// item's sprite (`uo`, `vo` up to 3 of 4); block items show their
+    /// block's particle texture.
+    fn item_particle(&mut self, pos: DVec3, vel: DVec3, item: crate::item::Item) {
+        let texture = match item.icon_layer() {
+            Some(layer) => Texture::Item(layer.saturating_sub(crate::world::block::tex::ITEM_BASE)),
+            None => match item.block() {
+                Some(b) if b != Block::AIR => Texture::Block(b),
+                _ => return,
+            },
+        };
+        let mut p = Particle::new(pos, texture);
+        p.gravity = 1.0;
+        p.size = 0.05 * self.rng.range(1.0, 2.0);
+        p.velocity = java_velocity(&mut self.rng, DVec3::ZERO) * 0.1 + vel;
+        p.lifetime = (4.0 / self.rng.range(0.1, 1.0)) as u16;
+        let u = self.rng.next_f32() * 3.0 / 4.0;
+        let v = self.rng.next_f32() * 3.0 / 4.0;
+        p.uv = [u + 0.25, v, u, v + 0.25];
+        self.pool.spawn(p);
+    }
+
     fn break_block(&mut self, cell: IVec3, block: Block, world: &World) {
         if block == Block::AIR || block.is_fluid() || block.is_nether_portal() {
             return;
@@ -698,6 +727,51 @@ mod tests {
     use super::*;
     fn world() -> World {
         World::new_headless(std::sync::Arc::new(crate::world::terrain::Generator::new(42)), Default::default(), 2)
+    }
+
+    /// v1.0 gap Track 2g: `BreakingItemParticle`: an item's sprite from the
+    /// item icon array, a quarter of it, gravity 1, half size, white, its
+    /// motion a tenth of the base plus the given velocity; a block item
+    /// shows its block; Minimal drops them.
+    #[test]
+    fn item_particles_take_a_quarter_of_the_sprite() {
+        let world = world();
+        let mut system = System::new(3);
+        let vel = DVec3::new(0.0, 0.2, 0.0);
+        for _ in 0..20 {
+            system.request(
+                Request::Item { pos: DVec3::new(0.0, 150.0, 0.0), vel, item: crate::item::Item::SNOWBALL },
+                Setting::All,
+                &world,
+            );
+        }
+        let layer = crate::item::Item::SNOWBALL.icon_layer().unwrap() - crate::world::block::tex::ITEM_BASE;
+        let mut n = 0;
+        for p in system.pool.iter() {
+            assert!(matches!(p.texture, Texture::Item(l) if l == layer));
+            assert_eq!((p.gravity, p.color), (1.0, [1.0; 4]));
+            assert!((0.05..=0.1).contains(&p.size));
+            assert!((p.uv[0] - p.uv[2] - 0.25).abs() < 1e-6 && (p.uv[3] - p.uv[1] - 0.25).abs() < 1e-6);
+            assert!(p.uv[2] >= 0.0 && p.uv[0] <= 1.0);
+            // A tenth of at most 0.06 across plus 0.1 up, and the given 0.2.
+            assert!((p.velocity - vel).length() <= 0.03, "{}", p.velocity);
+            n += 1;
+        }
+        assert_eq!(n, 20);
+        let mut system = System::new(3);
+        system.request(
+            Request::Item { pos: DVec3::new(0.0, 150.0, 0.0), vel, item: crate::item::Item::from(Block::STONE) },
+            Setting::All,
+            &world,
+        );
+        assert!(system.pool.iter().all(|p| matches!(p.texture, Texture::Block(Block::STONE))));
+        let mut system = System::new(3);
+        system.request(
+            Request::Item { pos: DVec3::ZERO, vel, item: crate::item::Item::SNOWBALL },
+            Setting::Minimal,
+            &world,
+        );
+        assert_eq!(system.pool.iter().count(), 0);
     }
 
     #[test]

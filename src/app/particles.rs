@@ -24,6 +24,8 @@ impl Game {
                 // v0.16 Track B: `ClientLevel.createFireworks` adds the burst whatever the distance.
                 Request::Firework { pos, .. } => (*pos, 256.0),
                 Request::EyeBreak { pos } | Request::Honey { pos, .. } => (*pos, 48.0),
+                // v1.0 gap Track 2g: an ordinary particle's 32 blocks.
+                Request::Item { pos, .. } => (*pos, 32.0),
             };
             centers.iter().any(|center| pos.distance_squared(*center) <= radius * radius)
         };

@@ -356,7 +356,7 @@ has the Java sources, checks and remaining differences. Code:
   the offers the player's item pays for, cycling every 40 ticks, and keeps
   looking for 900 ticks.
 - **Foxes** hunt, sleep, perch and eat berries by Java's goals; see
-  [Animals](animals.md#foxes-v10-gap-tracks-2e-and-2f-implemented-unverified).
+  [Animals](animals.md#foxes-v10-gap-tracks-2e-2f-and-2g-implemented-unverified).
 
 ## Work strolls, play tag, trading walks, the brute's idle, the fox's defence and the goat's long-jump pose (v1.0 gap Track 2f, implemented, unverified)
 
@@ -393,7 +393,41 @@ has the Java sources, checks and remaining differences. Code:
 - **Foxes** defend players they trust (`DefendTrustedTargetGoal`), stroll
   through villages at night, wake and take cover in thunderstorms, have
   their own sounds and kick up snow when faceplanted; see
-  [Animals](animals.md#foxes-v10-gap-tracks-2e-and-2f-implemented-unverified).
+  [Animals](animals.md#foxes-v10-gap-tracks-2e-2f-and-2g-implemented-unverified).
 - **Goats** take Java's `LONG_JUMPING` pose for the flight of their jump:
   the box at 0.7 of its size (`Mob::goat_long_jumping`).
+
+## Farmers' inventories, the brute's home, the fox's defence, item particles and the goat's long jump (v1.0 gap Track 2g, implemented, unverified)
+
+The [Track 2g record](verification/2026-11-28-v1.0-gap-track-02g-farmers-goats.md)
+has the Java sources, checks and remaining differences. Code:
+`src/entity/villager_breeding.rs`, `src/entity/mob/brain_walk.rs`,
+`src/entity/fox.rs`, `src/entity/mob/fox.rs`, `src/particles/`,
+`src/entity/animals/long_jump.rs` and `src/audio/goat.rs`.
+
+- **Villagers** carry Java's 8-slot inventory (saved as before under
+  `food`) and pick up, each tick with `mobGriefing`, what
+  `Villager.wantsToPickUp` wants: seeds, potatoes, carrots, beetroots,
+  bread and wheat, and a farmer's bone meal. Breeding eats only food.
+- **Farmers** break ripe crops and leave the drops to pick up, then plant
+  seeds from their inventory on empty farmland (`HarvestFarmland`); at
+  their composter they bake up to three bread from wheat and compost the
+  wheat and beetroot seeds beyond ten of each, emptying a full composter
+  first (`WorkAtComposter`); with bone meal they use it on growing crops
+  round them, 40 ticks apart (`UseBonemeal`).
+- **Trading villagers** throw each other half their excess food, a
+  farmer's spare wheat and the seeds and bone meal a farmer partner
+  requests (`TradeWithVillager`), in place of the game's direct sharing.
+- **Piglin brutes** get their home where they spawn (`finalizeSpawn`),
+  from spawn eggs and commands too.
+- **Foxes** defend a trusted player from another player (LAN PvP) and from
+  mobs' projectiles as well as melee; see
+  [Animals](animals.md#foxes-v10-gap-tracks-2e-2f-and-2g-implemented-unverified).
+- **Item particles** (`ItemParticleOption`): eating food, a tool breaking,
+  snowballs and eggs breaking, and a fox eating.
+- **Goats** long jump by Java's `LongJumpToRandomPos`: a spot within 5
+  blocks they can't walk to within 8, an arc at 65° to 80° that clears
+  their jumping box, 40 ticks looking at it, then the flight under Java's
+  gravity without drag, every 30 to 60 seconds, with the long-jump and
+  landing sounds; see [Animals](animals.md).
 

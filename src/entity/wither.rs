@@ -843,6 +843,10 @@ impl Entities {
                     java: None,
                     cause: if owner.is_some() { SKULL_CAUSE } else { Cause::MAGIC },
                 });
+                // v1.0 gap Track 2g: the Wither is the player's `lastHurtByMob`.
+                if let Some(attacker) = k.owner.filter(|_| owner.is_some()) {
+                    events.push(EntityEvent::OwnerHurt { player: id, attacker });
+                }
                 if wither_secs > 0 {
                     events.push(EntityEvent::PlayerEffect {
                         player: id,

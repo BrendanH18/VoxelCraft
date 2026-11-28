@@ -1606,7 +1606,7 @@ impl Mob {
             ))
         });
         let health = mount.as_ref().map_or(kind.max_health(), |s| s.max_health);
-        Self {
+        let mut m = Self {
             simulation_active: true,
             infested: 0,
             mount,
@@ -1789,7 +1789,16 @@ impl Mob {
             last_hurt: 0.0,
             ride_walk: None,
             bounces: 0,
+        };
+        // v1.0 gap Track 2g: `PiglinBrute.finalizeSpawn` (`PiglinBruteAi.initMemories`):
+        // a brute's `HOME` is where it spawns, however it spawns (a saved brute
+        // loads its own).
+        if kind == MobKind::PiglinBrute
+            && let Some(n) = m.nether.as_mut()
+        {
+            n.home = Some(pos);
         }
+        m
     }
 
     pub(super) fn melee_attack(&self) -> (f32, Cause) {
@@ -2684,9 +2693,17 @@ impl Mob {
         // after the mob's other goals took their flags.
         if self.dying.is_none() {
             self.head_goals(world, ctx, rng, wish.is_some());
-            // v1.0 gap Track 2f: `HarvestFarmland` breaking a ripe crop.
-            if let Some(cell) = self.walking.harvest_now.take() {
-                events.push(EntityEvent::VillagerHarvest { cell });
+            // v1.0 gap Track 2f: `HarvestFarmland` breaking a ripe crop;
+            // Track 2g: planting, bone meal, composting and items.
+            for act in std::mem::take(&mut self.walking.farm_acts) {
+                use brain_walk::FarmAct;
+                events.push(match act {
+                    FarmAct::Harvest(cell) => EntityEvent::VillagerHarvest { cell },
+                    FarmAct::Plant(cell, block) => EntityEvent::VillagerPlant { cell, block },
+                    FarmAct::Bonemeal(cell) => EntityEvent::VillagerBonemeal { cell },
+                    FarmAct::Compost { cell, from, to } => EntityEvent::VillagerCompost { cell, from, to },
+                    FarmAct::Item(stack, pos, vel) => EntityEvent::ThrowItem { stack, pos, vel },
+                });
             }
         }
 
@@ -4157,7 +4174,10 @@ impl Mob {
         } else {
             // Knockback isn't cancelled instantly: little control in the air.
             let k = (dt * if self.on_ground { 10.0 } else { 1.5 }).min(1.0);
-            if self.on_ground || wish.is_some() {
+            // v1.0 gap Track 2g: a long-jumping goat flies its arc
+            // (`setDiscardFriction`).
+            let long_jump = self.goat_long_jumping();
+            if (self.on_ground || wish.is_some()) && !long_jump {
                 self.vel.x += (target.x - self.vel.x) * k;
                 self.vel.z += (target.z - self.vel.z) * k;
             }
@@ -4168,6 +4188,10 @@ impl Mob {
                 let ticks = dt * 20.0;
                 let target = 0.05 * (f64::from(amplifier) + 1.0) * 20.0;
                 (target + (self.vel.y - target) * 0.8f64.powf(ticks)) * 0.98f64.powf(ticks)
+            } else if long_jump {
+                // v1.0 gap Track 2g: `LongJumpUtil`'s arc: Java's 0.08 a tick
+                // squared and, with friction discarded, no drag.
+                (self.vel.y - 32.0 * dt).max(-78.)
             } else if super::mounts::equine(self.kind) {
                 // Java: gravity 0.08 blocks/tick and vertical drag 0.98.
                 ((self.vel.y - 32.0 * dt) * 0.98f64.powf(dt * 20.)).max(-78.)

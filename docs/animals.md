@@ -46,11 +46,17 @@ may bring a gift after their owner sleeps through the night.
 Parrots imitate nearby hostile calls and perch on an owner's free shoulder;
 jumping or entering water releases them. Cookies kill parrots. Foxes sleep
 by day under cover, hunt, pick up ground items and eat carried food
-([below](#foxes-v10-gap-tracks-2e-and-2f-implemented-unverified)); bred foxes trust
+([below](#foxes-v10-gap-tracks-2e-2f-and-2g-implemented-unverified)); bred foxes trust
 the two players who fed their parents. Rabbits hop and drop rabbit meat/hide, with a
-10% rabbit-foot chance on a player kill. Goats jump, charge stationary players
+10% rabbit-foot chance on a player kill. Goats charge stationary players
 and lose one of their two horns when a ram hits stone, logs, packed ice, or
-iron/copper/emerald ore. Screaming goats have shorter ram cooldowns.
+iron/copper/emerald ore. Screaming goats have shorter ram cooldowns. Every
+30 to 60 seconds an idle goat long jumps (Java's `LongJumpToRandomPos`,
+[Track 2g](verification/2026-11-28-v1.0-gap-track-02g-farmers-goats.md),
+implemented, unverified): it picks a spot within 5 blocks it can't walk to
+within 8, over a solid block, with an arc at 65° to 80° its jumping box
+clears, looks at it for two seconds and leaps, landing with a hoof's step;
+the launch and landing sounds are original procedural stand-ins.
 
 Sheep graze grass for two seconds, restoring wool and accelerating baby growth
 by sixty seconds. `mobGriefing=false` preserves the grass while still restoring
@@ -66,7 +72,7 @@ Sources: [Wolf](https://minecraft.wiki/w/Wolf), [Cat](https://minecraft.wiki/w/C
 [Parrot](https://minecraft.wiki/w/Parrot), [Fox](https://minecraft.wiki/w/Fox),
 [Rabbit](https://minecraft.wiki/w/Rabbit), [Goat](https://minecraft.wiki/w/Goat).
 
-## Foxes (v1.0 gap Tracks 2e and 2f, implemented, unverified)
+## Foxes (v1.0 gap Tracks 2e, 2f and 2g, implemented, unverified)
 
 Java 26.3's `Fox` goals, from the
 [Track 2e record](verification/2026-11-27-v1.0-gap-track-02e-behaviours.md)
@@ -97,6 +103,13 @@ It has its own bite, sniff (on the way to berries), spit (dropping what it
 held for food), chewing, sleeping and night screech sounds, and a
 faceplanted fox kicks up the snow it is in. The aggro, bite, eat, screech,
 sleep, sniff and spit sounds are original procedural stand-ins.
+
+Since [Track 2g](verification/2026-11-28-v1.0-gap-track-02g-farmers-goats.md):
+the trusted player's attacker can be a mob's projectile (arrows, tridents,
+wind charges, llama spit, shulker bullets, Wither skulls) or, over LAN with
+PvP, another player, whom the fox bites unless it trusts that player too
+or the player is in Creative or spectating. A chewing fox sheds item
+particles of what it eats.
 
 ## Leads and name tags
 

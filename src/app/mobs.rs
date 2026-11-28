@@ -787,6 +787,12 @@ impl Game {
                             };
                             (Sound::Fox(cue), volume)
                         }
+                        // v1.0 gap Track 2g: the launch at volume 1, the
+                        // landing's step at 2.
+                        MobSound::Goat(cue) => {
+                            let landing = cue == voxelcraft::entity::animals::long_jump::Cue::Step;
+                            (Sound::Goat(cue), if landing { 2.0 } else { 1.0 })
+                        }
                         MobSound::CopperGolem(action, stage) => (Sound::CopperGolem(action, stage), 0.7),
                         MobSound::Hurt(MobKind::CopperGolem) => {
                             (Sound::CopperGolem(voxelcraft::entity::copper_golem::Sound::Hurt, 0), 0.9)
@@ -865,6 +871,8 @@ impl Game {
                 | EntityEvent::Hatched { .. }
                 | EntityEvent::ExperienceBurst { .. }
                 | EntityEvent::DropEquipment { .. }
+                | EntityEvent::ThrowItem { .. }
+                | EntityEvent::ItemParticle { .. }
                 // Applied by the entities within their tick.
                 | EntityEvent::DragonStruck { .. }
                 | EntityEvent::DragonHealed { .. }
@@ -884,17 +892,40 @@ impl Game {
                         && let Some((crop, age)) = block.as_crop()
                         && age == crop.max_age()
                     {
+                        // `HarvestFarmland`: `destroyBlock` (break particles
+                        // and sound, the drops for the farmer to pick up);
+                        // v1.0 gap Track 2g: the farmer replants from its seeds.
                         self.world.spill_block(cell, block);
-                        self.world.set_block(cell, crate::world::block::Block::crop(crop, 0));
-                        // `HarvestFarmland`: `destroyBlock` then the replanting's `block_place`.
+                        self.world.set_block(cell, crate::world::block::Block::AIR);
+                        self.world.particles.push(crate::particles::Request::Break { cell, block });
+                        self.audio.block_break(block, cell);
                         let none = crate::world::vibration::EventSource::NONE;
                         let destroy = crate::world::vibration::GameEvent::BlockDestroy;
                         self.world.emit_block_event(cell, destroy, none, Some(block));
-                        let replanted = self.world.get_block(cell);
-                        let place = crate::world::vibration::GameEvent::BlockPlace;
-                        self.world.emit_block_event(cell, place, none, replanted);
                     }
                 }
+                EntityEvent::VillagerPlant { cell, block } => {
+                    if self.world.get_block(cell) == Some(crate::world::block::Block::AIR)
+                        && self.world.get_block(cell - glam::IVec3::Y).is_some_and(|b| b.is_farmland())
+                        && self.world.set_block(cell, block)
+                    {
+                        // `setBlockAndUpdate`, `block_place`, `item.crop.plant`.
+                        let none = crate::world::vibration::EventSource::NONE;
+                        let place = crate::world::vibration::GameEvent::BlockPlace;
+                        self.world.emit_block_event(cell, place, none, Some(block));
+                        self.audio.block_place(block, cell);
+                    }
+                }
+                EntityEvent::VillagerBonemeal { cell } => {
+                    // `BoneMealItem.growCrop`; level event 1505's sound as the
+                    // player's bone meal plays it.
+                    if self.world.apply_bone_meal(cell) {
+                        let centre = cell.as_dvec3() + DVec3::splat(0.5);
+                        let grass = crate::audio::sounds::Sound::Place(crate::audio::sounds::Material::Grass);
+                        self.audio.play(grass, Some(centre), 0.8, (1.2, 1.4));
+                    }
+                }
+                EntityEvent::VillagerCompost { cell, from, to } => self.world.villager_compost(cell, from, to),
                 EntityEvent::RingBell { pos, mob } => {
                     self.world.ring_bell_by(pos, crate::world::vibration::EventSource::mob(mob));
                 }
