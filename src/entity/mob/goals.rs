@@ -326,6 +326,10 @@ pub(crate) fn movement_speed(kind: MobKind) -> f64 {
         K::ElderGuardian => 0.3,
         // `Mob.createMobAttributes` leaves the 0.7 default.
         K::WanderingTrader | K::Cod | K::Salmon | K::TropicalFish | K::Pufferfish | K::Squid | K::GlowSquid => 0.7,
+        // v1.0 gap Track 2e: `Villager.createAttributes` and
+        // `Piglin.createAttributes`, for their brains' walk targets.
+        K::Villager => 0.5,
+        K::Piglin => f64::from(0.35_f32),
         _ => 0.25,
     }
 }

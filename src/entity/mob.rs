@@ -12,6 +12,7 @@ use crate::world::terrain::Dimension;
 
 use super::{Ctx, EntityEvent, MobSound, MobWorld, Rng, path};
 
+mod brain_walk;
 mod breeze;
 pub(crate) mod chase;
 mod creaking;
@@ -1556,6 +1557,8 @@ pub struct Mob {
     /// v1.0 gap Track 2c: the idle look goals, brain look behaviours and
     /// `BodyRotationControl` (never saved).
     pub(crate) head: head::Head,
+    /// v1.0 gap Track 2e: a brain's `WALK_TARGET` and idle movement.
+    pub(crate) walking: brain_walk::Walking,
     /// A mount carrying a rider's spear charge: `hunt` at its
     /// `chargeSpeedModifier` (1.4 for zombie horses, 4 for camel husks).
     pub(crate) hunt_charge: bool,
@@ -1766,6 +1769,7 @@ impl Mob {
             spear_use: None,
             look: Default::default(),
             head: Default::default(),
+            walking: Default::default(),
             hunt_charge: false,
             mob_steered: false,
             hurt_age: u32::MAX,
@@ -2750,6 +2754,24 @@ impl Mob {
         }
     }
 
+    /// `InteractWithDoor`: open the closed wooden doors on the previous and
+    /// next nodes of the path.
+    fn open_path_doors<W: MobWorld + ?Sized>(&self, world: &W, events: &mut Vec<EntityEvent>) {
+        let Some(p) = &self.nav.path else { return };
+        for node in [p.previous_node(), p.next_node()].into_iter().flatten() {
+            if node.ty == path::PathType::WalkableDoor || node.ty == path::PathType::DoorWoodClosed {
+                for dy in 0..2 {
+                    let cell = node.pos + IVec3::Y * dy;
+                    if world.block(cell).is_some_and(|b| {
+                        matches!(b.shaped(), Some(crate::world::block::Shaped::Door { open: false, upper: false, .. }))
+                    }) {
+                        events.push(EntityEvent::VillagerDoor { cell });
+                    }
+                }
+            }
+        }
+    }
+
     /// Picks a movement direction and speed for this tick.
     fn think<W: MobWorld + ?Sized>(
         &mut self,
@@ -2926,7 +2948,15 @@ impl Mob {
             && self.fox.is_none()
             && let Some(wish) = self.run_goals(world, ctx, rng)
         {
+            if self.sniffer.is_some() {
+                self.walking.walk = None;
+            }
             return wish;
+        }
+        // v1.0 gap Track 2e: an idle sniffer walks its `RunOne`'s walk
+        // targets (`MoveToTargetSink(500, 700)`) instead of wandering.
+        if self.sniffer.is_some() && self.ai != Ai::Panic {
+            return self.walk_sink(world, ctx, rng, (500, 700)).unwrap_or((None, 0.0));
         }
         if self.kind == MobKind::Bee {
             return super::bee::steer(self, dt, world, ctx, rng, events);
@@ -2944,8 +2974,24 @@ impl Mob {
             && let Some(v) = &self.villager
         {
             if v.sleeping || v.trading && !v.fleeing {
+                self.walking.walk = None;
                 return (None, 0.0);
             }
+            if v.goal.is_some() {
+                // The game's own walks (home, job site, bell, crops, a
+                // partner, fleeing) take `WALK_TARGET`.
+                self.walking.walk = None;
+            } else if self.kind == MobKind::Villager {
+                // v1.0 gap Track 2e: the brain's idle movement replaces the
+                // wandering: `MoveToTargetSink` walks what the activity's
+                // `RunOne` set (the play package's own sink times out after
+                // 80 to 120 ticks).
+                let timeout = if self.age < 0 { (80, 120) } else { (150, 250) };
+                let Some(wish) = self.walk_sink(world, ctx, rng, timeout) else { return (None, 0.0) };
+                self.open_path_doors(world, events);
+                return wish;
+            }
+            let v = self.villager.as_ref().unwrap();
             if let Some(goal) = v.goal {
                 let speed = if v.fleeing { 4.0 } else { 2.0 };
                 let flat = (goal - self.pos) * DVec3::new(1.0, 0.0, 1.0);
@@ -2967,26 +3013,9 @@ impl Mob {
                         self.repath_in = if reaches { 0 } else { 20 };
                     }
                 }
-                // `InteractWithDoor`: open the closed wooden doors on the
-                // previous and next nodes of the path.
-                if let Some(p) = &self.nav.path {
-                    for node in [p.previous_node(), p.next_node()].into_iter().flatten() {
-                        if node.ty == path::PathType::WalkableDoor || node.ty == path::PathType::DoorWoodClosed {
-                            for dy in 0..2 {
-                                let cell = node.pos + IVec3::Y * dy;
-                                if world.block(cell).is_some_and(|b| {
-                                    matches!(
-                                        b.shaped(),
-                                        Some(crate::world::block::Shaped::Door { open: false, upper: false, .. })
-                                    )
-                                }) {
-                                    events.push(EntityEvent::VillagerDoor { cell });
-                                }
-                            }
-                        }
-                    }
-                }
-                return (self.follow_path(world, speed, false), speed);
+                let wish = (self.follow_path(world, speed, false), speed);
+                self.open_path_doors(world, events);
+                return wish;
             }
         }
         if self.trader.as_ref().is_some_and(|t| t.drink > 0.0) {

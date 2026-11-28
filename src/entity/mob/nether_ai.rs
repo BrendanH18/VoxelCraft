@@ -99,11 +99,21 @@ impl Mob {
             self.set_look_at(eye + ahead, super::head::HEAD_ROT_SPEED, super::head::MAX_HEAD_X_ROT);
             return Some((None, 0.0));
         }
+        if !matches!(n.goal, Goal::None) {
+            // The game's own walks, flights and fights take `WALK_TARGET`.
+            self.walking.walk = None;
+        }
         match n.goal {
             Goal::None => {
                 if self.ai == Ai::Chase {
                     self.ai = Ai::Idle;
                     self.ai_timer = 1.0;
+                }
+                // v1.0 gap Track 2e: an idle or celebrating piglin walks its
+                // movement `RunOne`'s walk targets (`MoveToTargetSink`)
+                // instead of wandering.
+                if self.kind == MobKind::Piglin {
+                    return Some(self.walk_sink(world, ctx, rng, (150, 250)).unwrap_or((None, 0.0)));
                 }
                 None
             }

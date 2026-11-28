@@ -684,6 +684,31 @@ impl VillageSections {
         self.close_to_village(pos, 1)
     }
 
+    /// `BehaviorUtils.findSectionClosestToVillage(level, sectionOf(pos), 2)`
+    /// as `VillageBoundRandomStroll` reads it: `None` inside a village or
+    /// when no section within two is closer to one, else the bottom centre
+    /// of the closest (the first in `SectionPos.cube`'s x, y, z order).
+    pub fn toward_village(&self, pos: IVec3) -> Option<glam::DVec3> {
+        if self.sections.is_empty() || self.is_village(pos) {
+            return None;
+        }
+        let s = Self::section(pos);
+        let here = self.sections_to_village(pos);
+        let mut best: Option<(i32, IVec3)> = None;
+        for dz in -2..=2 {
+            for dy in -2..=2 {
+                for dx in -2..=2 {
+                    let c = s + IVec3::new(dx, dy, dz);
+                    let d = self.sections_to_village(c * 16);
+                    if d < here && best.is_none_or(|(b, _)| d < b) {
+                        best = Some((d, c));
+                    }
+                }
+            }
+        }
+        best.map(|(_, c)| (c * 16 + IVec3::splat(8)).as_dvec3() + glam::DVec3::new(0.5, 0.0, 0.5))
+    }
+
     /// Marks `p`'s section as holding an occupied village POI (tests and
     /// the rebuild).
     pub fn insert(&mut self, p: IVec3) {
