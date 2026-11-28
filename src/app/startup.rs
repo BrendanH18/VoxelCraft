@@ -105,6 +105,9 @@ impl Game {
         for &(item, count) in &args.give {
             inventory.add(item, count);
         }
+        if let Some(item) = args.offhand {
+            inventory.offhand = Some(Stack::new(item, 1));
+        }
         for &item in &args.wear {
             if let Some((piece, _)) = item.as_armor() {
                 inventory.armor[piece as usize] = Some(Stack::new(item, 1));
@@ -304,6 +307,7 @@ impl Game {
             scroll: 0.0,
             bundle_selection: None,
             bundle_scroll: 0.0,
+            screen_mouse: Default::default(),
             frame_limit: Default::default(),
             distortion: Default::default(),
             modifiers: Default::default(),

@@ -151,7 +151,7 @@ fn takes_extra(item: Item) -> bool {
 }
 
 /// Whether the input slot `slot` takes `stack` (`Slot.mayPlace`).
-fn accepts(slot: SlotRef, stack: &Stack) -> bool {
+pub(super) fn accepts(slot: SlotRef, stack: &Stack) -> bool {
     match slot {
         SlotRef::CutInput => true,
         SlotRef::LoomBanner => bp::banner_color(stack.item).is_some(),

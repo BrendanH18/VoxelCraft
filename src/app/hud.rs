@@ -585,6 +585,25 @@ impl Game {
         hand.off_map = image(session.inventory.offhand);
         hand.map_small = session.inventory.offhand.is_some();
         hand.invisible = session.vitals.effects.has(effects::Effect::Invisibility);
+        // v1.0 final track F1: the off-hand's stack, drawn on the left
+        // (`ItemInHandRenderer.renderHandsWithItems`), raised.
+        hand.off = session.inventory.offhand.filter(|_| hand.off_map.is_none()).map(|off| {
+            Box::new(crate::render::hand::Hand {
+                item: Some(off.item),
+                block: voxelcraft::world::copper_golem_statue::item_model(off),
+                sky_light: hand.sky_light,
+                block_light: hand.block_light,
+                tint: Some(voxelcraft::entity::wolf_armor::item_tint_bytes(off)),
+                glint: off.has_foil(),
+                translucent: crate::item::translucent(&off),
+                mesh: Some(off).filter(|s| {
+                    voxelcraft::content::item_models::has_mesh(s.item)
+                        || voxelcraft::content::item_models::has_in_hand_mesh(s.item)
+                }),
+                stack: Some(off),
+                ..Default::default()
+            })
+        });
         hand
     }
 
@@ -1275,7 +1294,13 @@ impl Game {
                 style::big_slot(ui, x, y);
             }
             style::slot(ui, x, y);
-            let stack = self.slot_stack(r);
+            // v1.0 final track F1: a dragged slot shows what it will hold
+            // over Java's white highlight (`renderSlot` while quick crafting).
+            let dragged = self.screen_mouse.preview.as_ref().and_then(|(p, _)| p.iter().find(|(s, _)| *s == r));
+            if dragged.is_some() {
+                ui.rect(x + 1.0, y + 1.0, 16.0, 16.0, [1.0, 1.0, 1.0, 0.5]);
+            }
+            let stack = dragged.map(|(_, s)| *s).or_else(|| self.slot_stack(r));
             // Faint outline of what goes in an empty armor or lapis slot.
             let outline = match (r, stack) {
                 // v1.0 gap Track 3b: a mount's saddle and body slots
@@ -1402,7 +1427,14 @@ impl Game {
             }
         }
         // The held stack follows the mouse.
-        if let Some(stack) = self.session.inventory.cursor {
+        // v1.0 final track F1: during a drag it shows what will be left.
+        let cursor = match &self.screen_mouse.preview {
+            Some((_, left)) => {
+                self.session.inventory.cursor.and_then(|c| (*left > 0).then_some(Stack { count: *left, ..c }))
+            }
+            None => self.session.inventory.cursor,
+        };
+        if let Some(stack) = cursor {
             let scale = ui.scale;
             self.stack_ui(ui, self.cursor_px.0 / scale - 9.0, self.cursor_px.1 / scale - 9.0, stack);
         }

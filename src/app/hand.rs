@@ -88,6 +88,7 @@ impl HandAnim {
         alpha: f64,
         worn: [Option<crate::inventory::Stack>; 4],
         held: Option<crate::inventory::Stack>,
+        offhand: Option<crate::inventory::Stack>,
     ) -> crate::entity::model::PlayerAppearance {
         crate::entity::model::PlayerAppearance {
             held: self.shown,
@@ -106,6 +107,7 @@ impl HandAnim {
                 .filter(|s| Some(s.item) == self.shown)
                 .and_then(|s| voxelcraft::inventory::components::dye_tint(&s)),
             held_stack: held.filter(|s| Some(s.item) == self.shown),
+            off_stack: offhand,
             aim: self.aim(),
             glowing: vitals.effects.glowing() && vitals.death_time().is_none(),
             elytra: worn[1].is_some_and(|s| s.item == voxelcraft::content::elytra::ELYTRA),
@@ -155,6 +157,7 @@ impl HandAnim {
                 .draw
                 .filter(|_| self.shown == Some(voxelcraft::weapons::TRIDENT))
                 .map(|ticks| (ticks as f32 + self.tick_time / TICK - 1.0).max(0.0)),
+            off: None,
         }
     }
 }

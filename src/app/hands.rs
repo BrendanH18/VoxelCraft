@@ -193,7 +193,16 @@ impl Actor<'_> {
             if self.held().is_none_or(|i| i.food().is_none()) {
                 self.hand.swing();
             }
-            let did = self.use_held();
+            let mut did = self.use_held();
+            // v1.0 final track F1: a bow or crossbow in the off-hand draws
+            // when the main hand's use passed.
+            if !did
+                && let Some(shot) =
+                    self.session.start_offhand_draw(self.body.actions.selected, self.world, self.entities)
+            {
+                self.present_shot(shot);
+                did = true;
+            }
             // A click nothing answered raises a spyglass (`SpyglassItem.use`)
             // or a shield held in either hand.
             if !did && self.session.start_scoping(self.body.actions.selected) {

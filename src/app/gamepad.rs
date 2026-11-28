@@ -167,6 +167,22 @@ struct Seat {
     bundle: Option<(super::pad_menu::Slot, usize)>,
     /// The right stick's pick direction (down) and when it next repeats.
     pick: Option<(bool, Instant)>,
+    /// v1.0 final track F1: the last A or Y press on a slot (whether it was
+    /// Y, and when), for Java's double click, and the stack Y last moved
+    /// (`lastQuickMoved`).
+    last_click: Option<(super::hud::SlotRef, bool, Instant)>,
+    last_quick: Option<crate::inventory::Stack>,
+    /// v1.0 final track F1: a drag in progress: A (or X) held down with a
+    /// stack on the cursor, and the slots the cursor has crossed.
+    drag: Option<PadDrag>,
+}
+
+/// A controller drag: the button's kind, the screen and the slots crossed.
+#[derive(Clone, Debug)]
+struct PadDrag {
+    kind: crate::inventory::clicks::Drag,
+    container: Container,
+    slots: Vec<super::hud::SlotRef>,
 }
 
 /// What a seat asks of its agent for one tick.
@@ -199,6 +215,9 @@ impl Seat {
             sign_text: Default::default(),
             bundle: None,
             pick: None,
+            last_click: None,
+            last_quick: None,
+            drag: None,
         }
     }
 
@@ -502,6 +521,7 @@ impl Game {
         let mut joins = Vec::new();
         let mut popups = Vec::new();
         let mut navs = Vec::new();
+        let mut drag_ends = Vec::new();
         let mut picks = Vec::new();
         let mut host_navs = Vec::new();
         let mut closing = Vec::new();
@@ -532,6 +552,9 @@ impl Game {
                     _ => seat.presses.extend(press_for(button)),
                 },
                 (EventType::ButtonReleased(Button::East, _), Some(seat)) => seat.drop_since = None,
+                (EventType::ButtonReleased(Button::South | Button::West, _), Some(seat)) if seat.drag.is_some() => {
+                    drag_ends.push(seat.name.clone());
+                }
                 (EventType::Connected, None) => {
                     let uuid = gilrs.gamepad(event.id).uuid();
                     if let Some(seat) = self.pads.seats.iter_mut().find(|s| s.id.is_none() && s.uuid == uuid) {
@@ -617,6 +640,9 @@ impl Game {
             if self.pad_nav(&name, nav) {
                 popups.push(format!("{name} left the game"));
             }
+        }
+        for name in drag_ends {
+            self.pad_drag_end(&name);
         }
         for (name, down) in picks {
             self.pad_pick(&name, down);
@@ -760,6 +786,9 @@ impl Game {
             self.pads.seats[i].bundle = None;
         }
         let action = menu.press(nav, self.pad_lists(name, tab));
+        if matches!(nav, Nav::Up | Nav::Down | Nav::Left | Nav::Right) && self.pads.seats[i].drag.is_some() {
+            self.pad_drag_over(i, name, menu.slot(self.pad_lists(name, tab)));
+        }
         if action == Action::Leave {
             self.leave_pad(name);
             return true;
@@ -1100,6 +1129,103 @@ impl Game {
         let result = f(&mut screen);
         let requests = std::mem::take(&mut screen.requests);
         Some((result, requests))
+    }
+
+    /// v1.0 final track F1: a second A on the same slot within Java's
+    /// 250 ms with a stack held collects matching items (`PICKUP_ALL`); a
+    /// second Y moves every matching stack of that section (the shift
+    /// double-click). Returns whether the press was a double click.
+    pub(super) fn pad_double_click(
+        &mut self,
+        seat: usize,
+        name: &str,
+        container: Container,
+        slot: super::hud::SlotRef,
+        quick: bool,
+    ) -> bool {
+        let now = Instant::now();
+        let last = self.pads.seats[seat].last_click.replace((slot, quick, now));
+        let double = last.is_some_and(|(s, q, t)| s == slot && q == quick && now - t < Duration::from_millis(250));
+        let held = self.agents.players.get(name).and_then(|b| b.agent.session.inventory.cursor);
+        let mut container = container;
+        let mut no_grid = crate::crafting::Grid::new(2);
+        if double && super::clicks::real_slot(slot) && (quick || held.is_some()) {
+            self.pads.seats[seat].last_click = None;
+            let last_quick = self.pads.seats[seat].last_quick;
+            self.agent_screen(name, &mut container, &mut no_grid, |s| {
+                if quick {
+                    if let Some(last) = last_quick {
+                        s.move_all(slot, last);
+                    }
+                } else {
+                    s.pickup_all(slot, false);
+                }
+            });
+            self.pads.seats[seat].body.container = container;
+            return true;
+        }
+        if quick {
+            self.pads.seats[seat].last_quick =
+                self.agent_screen(name, &mut container, &mut no_grid, |s| s.stack_at(slot)).and_then(|(s, _)| s);
+        }
+        false
+    }
+
+    /// v1.0 final track F1: A (left drag, `Drag::Even`) or X (right drag,
+    /// one each) pressed with a stack held over a slot starts a drag; the
+    /// click waits for the release, as the mouse's does. Returns whether a
+    /// drag started.
+    pub(super) fn pad_begin_drag(
+        &mut self,
+        seat: usize,
+        name: &str,
+        container: Container,
+        slot: super::hud::SlotRef,
+        right: bool,
+    ) -> bool {
+        let held = self.agents.players.get(name).and_then(|b| b.agent.session.inventory.cursor);
+        if held.is_none() || !super::clicks::real_slot(slot) {
+            return false;
+        }
+        let kind = if right { crate::inventory::clicks::Drag::One } else { crate::inventory::clicks::Drag::Even };
+        self.pads.seats[seat].drag = Some(PadDrag { kind, container, slots: vec![slot] });
+        true
+    }
+
+    /// The cursor moved onto `slot` during a drag: it joins if it can.
+    fn pad_drag_over(&mut self, seat: usize, name: &str, slot: Option<super::pad_menu::Slot>) {
+        let Some(super::pad_menu::Slot::Ref(slot)) = slot else { return };
+        let Some(drag) = self.pads.seats[seat].drag.clone() else { return };
+        if drag.slots.contains(&slot) || !super::clicks::real_slot(slot) {
+            return;
+        }
+        let (mut container, mut no_grid) = (drag.container, crate::crafting::Grid::new(2));
+        let taken = drag.slots.len();
+        let ok = self
+            .agent_screen(name, &mut container, &mut no_grid, |s| s.drag_accepts(slot, drag.kind, taken))
+            .is_some_and(|(ok, _)| ok);
+        if ok && let Some(d) = &mut self.pads.seats[seat].drag {
+            d.slots.push(slot);
+        }
+    }
+
+    /// The drag's button came up: one slot is an ordinary click, more share
+    /// the held stack out (`QUICK_CRAFT`).
+    fn pad_drag_end(&mut self, name: &str) {
+        let Some(seat) = self.pads.seats.iter().position(|s| s.name == name) else { return };
+        let Some(drag) = self.pads.seats[seat].drag.take() else { return };
+        if self.pads.seats[seat].menu.is_none() {
+            return;
+        }
+        let right = drag.kind == crate::inventory::clicks::Drag::One;
+        if let [only] = drag.slots[..] {
+            self.pad_click(seat, name, drag.container, only, false, right);
+        } else {
+            let (mut container, mut no_grid) = (drag.container, crate::crafting::Grid::new(2));
+            self.agent_screen(name, &mut container, &mut no_grid, |s| s.drag(&drag.slots, drag.kind));
+            self.pads.seats[seat].body.container = container;
+        }
+        self.audio.ui_click();
     }
 
     /// A controller player's click (or quick move) on a slot of `container`.

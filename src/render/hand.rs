@@ -53,6 +53,10 @@ pub struct Hand {
     /// v1.0 gap track 6e: ticks a held trident has been charged
     /// (`ItemUseAnimation.TRIDENT`), drawn thrown back.
     pub trident_charge: Option<f32>,
+    /// v1.0 final track F1: the off-hand's item, drawn mirrored on the left
+    /// (`ItemInHandRenderer.renderArmWithItem` for `HumanoidArm.LEFT`);
+    /// its own `item`, `stack`, `mesh`, `glint` and `equip` apply.
+    pub off: Option<Box<Hand>>,
 }
 
 /// Minecraft draws the hand with this field of view, whatever the setting.
@@ -113,11 +117,17 @@ struct Builder<'a> {
     to_world: Mat4,
     light: (f32, f32),
     tint: [u8; 4],
+    /// The off-hand's pass: the view frame mirrored across x (Java's
+    /// `side = -1`). The item's display transform is mirrored too
+    /// (`ItemTransform.apply` with `leftHand`), so the item itself isn't
+    /// and the winding stands.
+    mirror: bool,
 }
 
 impl Builder<'_> {
     /// One quad; `corners` in the view frame, counter-clockwise from outside.
     fn quad(&mut self, corners: [Vec3; 4], uv: [[f32; 2]; 4], layer: u16) {
+        let corners = if self.mirror { corners.map(|c| Vec3::new(-c.x, c.y, c.z)) } else { corners };
         let n = (corners[1] - corners[0]).cross(corners[2] - corners[0]);
         let s = shade(n);
         for i in [0, 1, 2, 2, 3, 0] {
@@ -208,6 +218,25 @@ pub(super) fn vertices(
     view_effect: Mat4,
     masks: &mut SpriteMasks,
 ) -> Vec<BlockVertex> {
+    let mut out = build(hand, forward, fov_y, aspect, view_effect, masks, false);
+    // v1.0 final track F1: the off-hand item, unless a two-handed or
+    // off-hand map already took that side.
+    if let Some(off) = hand.off.as_deref().filter(|o| o.item.is_some() && hand.off_map.is_none()) {
+        let off = Hand { invisible: true, map: None, off_map: None, off: None, ..off.clone() };
+        out.extend(build(&off, forward, fov_y, aspect, view_effect, masks, true));
+    }
+    out
+}
+
+fn build(
+    hand: &Hand,
+    forward: Vec3,
+    fov_y: f32,
+    aspect: f32,
+    view_effect: Mat4,
+    masks: &mut SpriteMasks,
+    mirror: bool,
+) -> Vec<BlockVertex> {
     let mut out = Vec::new();
     // View frame -> camera-relative world, squeezed to the hand's FOV.
     let f = forward.normalize();
@@ -221,7 +250,7 @@ pub(super) fn vertices(
         * view_effect.inverse()
         * Mat4::from_scale(Vec3::new(k, k, 1.0))
         * view_effect;
-    let mut b = Builder { out: &mut out, to_world, light: (hand.sky_light, hand.block_light), tint: [255; 4] };
+    let mut b = Builder { out: &mut out, to_world, light: (hand.sky_light, hand.block_light), tint: [255; 4], mirror };
 
     let s = hand.swing;
     let root = s.sqrt();
@@ -415,12 +444,24 @@ pub(super) fn vertices(
         None => arm,
     };
 
+    // v1.0 final track F1: the left hand's display transform is the right
+    // one's mirror, about the model's centre (`half`), so with the view
+    // frame's mirror the item keeps its own handedness.
+    let left = |half: Vec3| {
+        if mirror {
+            Mat4::from_translation(half) * Mat4::from_scale(Vec3::new(-1.0, 1.0, 1.0)) * Mat4::from_translation(-half)
+        } else {
+            Mat4::IDENTITY
+        }
+    };
     let start = b.out.len();
     // v1.0 gap track 6b: a 3D item mesh with Java's first-person transform.
     if let Some(mesh) = hand.mesh.filter(|s| s.item == item).and_then(|s| {
         voxelcraft::content::item_models::mesh(&s).or_else(|| voxelcraft::content::item_models::in_hand_mesh(&s))
     }) {
-        let m = arm * voxelcraft::content::item_models::Context::FirstPersonRightHand.matrix(&mesh.display);
+        let m = arm
+            * voxelcraft::content::item_models::Context::FirstPersonRightHand.matrix(&mesh.display)
+            * left(Vec3::splat(0.5));
         for q in &mesh.quads {
             b.tint = q.tint.unwrap_or([255; 4]);
             b.quad(q.corners.map(|c| m.transform_point3(c)), q.uv, q.layer);
@@ -439,7 +480,9 @@ pub(super) fn vertices(
             let stack =
                 hand.stack.filter(|s| s.item == item).unwrap_or_else(|| voxelcraft::inventory::Stack::new(item, 1));
             let display = voxelcraft::content::item_display::drawn(&stack);
-            let m = arm * voxelcraft::content::item_display::Context::FirstPersonRightHand.matrix(&display);
+            let m = arm
+                * voxelcraft::content::item_display::Context::FirstPersonRightHand.matrix(&display)
+                * left(Vec3::splat(0.5));
             for q in super::ui::block_item_quads(block) {
                 b.quad(q.corners.map(|c| m.transform_point3(c)), q.uv, q.layer);
             }
@@ -457,7 +500,8 @@ pub(super) fn vertices(
                 * Mat4::from_scale(Vec3::new(1.0, 1.0, -1.0))
                 * Mat4::from_quat(Quat::from_euler(EulerRot::XYZ, 0.0, deg(-90.0), deg(25.0)))
                 * Mat4::from_scale(Vec3::splat(0.68))
-                * translate(-0.5, -0.5, -0.5 / 16.0);
+                * translate(-0.5, -0.5, -0.5 / 16.0)
+                * left(Vec3::new(0.5, 0.5, 0.5 / 16.0));
             b.tint = hand.tint.unwrap_or([255; 4]);
             b.sprite(arm * display, layer, masks.get(layer));
         }

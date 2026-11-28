@@ -5,11 +5,15 @@
 use crate::enchant::{self, Enchants};
 use crate::item::{ArmorPiece, Item};
 
+pub mod clicks;
 pub mod components;
 use components::{Payload, StackPayload, Trim};
 
 pub const HOTBAR_SLOTS: usize = 9;
 pub const SLOTS: usize = 36;
+/// Java's `Inventory.SLOT_OFFHAND`: the off-hand as a hand slot
+/// ([`Inventory::get`], [`Inventory::wear`], [`Inventory::slot_mut`]).
+pub const OFFHAND: usize = 40;
 /// Plain UTF-8 bytes kept inline so [`Stack`] remains cheap to copy.
 pub const STACK_NAME_MAX: usize = 64;
 
@@ -311,7 +315,16 @@ impl Inventory {
     }
 
     pub fn get(&self, slot: usize) -> Option<Stack> {
+        // v1.0 final track F1: Java's off-hand index (`Inventory.SLOT_OFFHAND`).
+        if slot == OFFHAND {
+            return self.offhand;
+        }
         self.slots[slot]
+    }
+
+    /// The stack in `slot`, the off-hand at [`OFFHAND`].
+    pub fn slot_mut(&mut self, slot: usize) -> &mut Option<Stack> {
+        if slot == OFFHAND { &mut self.offhand } else { &mut self.slots[slot] }
     }
 
     /// Java's swap-item-with-offhand action: the selected hotbar stack and
@@ -366,12 +379,12 @@ impl Inventory {
     /// `true` if that broke it (the slot is then empty). Non-tools are
     /// untouched.
     pub fn wear(&mut self, slot: usize, uses: u16) -> bool {
-        let Some(s) = &mut self.slots[slot] else { return false };
+        let Some(s) = self.slot_mut(slot) else { return false };
         let Some(max) = s.item.durability() else { return false };
         let uses = (0..uses).filter(|_| enchant::wears(s.enchants, false, enchant::roll())).count() as u16;
         s.damage = s.damage.saturating_add(uses);
         if s.damage >= max {
-            self.slots[slot] = None;
+            *self.slot_mut(slot) = None;
             return true;
         }
         false

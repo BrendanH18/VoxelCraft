@@ -108,6 +108,8 @@ pub const FIREWORK_BOLT: u32 = u32::MAX - 2;
 /// `CrossbowItem.getDurabilityUse`: a rocket wears a crossbow three uses.
 pub const FIREWORK_DURABILITY_USE: u16 = 3;
 
+use crate::inventory::OFFHAND;
+
 impl PlayerSession {
     /// `Player.getProjectile` for a crossbow: a rocket or arrow held in the
     /// off-hand (`ARROW_OR_FIREWORK`), else arrows as a bow finds them.
@@ -177,6 +179,26 @@ impl PlayerSession {
         Some(self.shot(Ranged::Drawing, None))
     }
 
+    /// v1.0 final track F1: `BowItem.use` and `CrossbowItem.use` for the
+    /// off-hand (`InteractionHand.OFF_HAND`), reached when the main hand's
+    /// use in hotbar slot `main` passed: a main hand that draws, eats,
+    /// drinks, scopes, blocks or charges keeps the use.
+    pub fn start_offhand_draw(&mut self, main: usize, world: &World, entities: &mut Entities) -> Option<Shot> {
+        let off = self.inventory.offhand?.item;
+        if !matches!(off, Item::BOW | Item::CROSSBOW | Item::CHARGED_CROSSBOW) || self.drawing() {
+            return None;
+        }
+        let holds = self.inventory.get(main).is_some_and(|s| {
+            matches!(s.item, Item::BOW | Item::CROSSBOW | Item::CHARGED_CROSSBOW | Item::SPYGLASS | Item::SHIELD)
+                || s.item.is_drink()
+                || s.item.food().is_some() && self.can_eat(s.item)
+        });
+        if holds || self.can_charge_weapon(main, world) {
+            return None;
+        }
+        self.start_draw(OFFHAND, world, entities)
+    }
+
     /// v1.0 Track 9: `ItemStack.causeUseVibration` from `startUsingItem`
     /// and `stopUsingItem`, queued from this player.
     pub fn use_vibration(&self, entities: &mut Entities, event: crate::world::vibration::GameEvent) {
@@ -191,6 +213,9 @@ impl PlayerSession {
             return self.tick_weapon_charge(slot, using, world, entities);
         }
         let (drawn_slot, ticks) = self.ranged.draw?;
+        // v1.0 final track F1: an off-hand draw goes on whatever the
+        // hotbar selects (`updatingUsingItem` watches the used hand).
+        let slot = if drawn_slot == OFFHAND { OFFHAND } else { slot };
         let held = self.inventory.get(slot).map(|s| s.item);
         if !using || drawn_slot != slot || !matches!(held, Some(Item::BOW | Item::CROSSBOW)) {
             self.ranged.draw = None;
@@ -215,6 +240,7 @@ impl PlayerSession {
         }
         let (drawn_slot, ticks) = self.ranged.draw.take()?;
         self.use_vibration(entities, crate::world::vibration::GameEvent::ItemInteractFinish);
+        let slot = if drawn_slot == OFFHAND { OFFHAND } else { slot };
         let power = power(ticks);
         if drawn_slot != slot || power < MIN_POWER || self.inventory.get(slot).map(|s| s.item) != Some(Item::BOW) {
             return None;
@@ -271,6 +297,7 @@ impl PlayerSession {
     /// crossbow doesn't zoom the view like a drawn bow.
     pub fn draw_power(&self, slot: usize) -> Option<f32> {
         let (drawn_slot, ticks) = self.ranged.draw?;
+        let slot = if drawn_slot == OFFHAND { OFFHAND } else { slot };
         (drawn_slot == slot && self.inventory.get(slot).map(|s| s.item) == Some(Item::BOW)).then(|| power(ticks))
     }
 
@@ -286,7 +313,7 @@ impl PlayerSession {
                 s.count -= 1;
                 self.inventory.offhand = (s.count > 0).then_some(s);
             }
-            if let Some(stack) = &mut self.inventory.slots[slot] {
+            if let Some(stack) = self.inventory.slot_mut(slot) {
                 stack.item = Item::CHARGED_CROSSBOW;
                 stack.entity_data = FIREWORK_BOLT;
                 stack.payload = rocket.payload;
@@ -298,7 +325,7 @@ impl PlayerSession {
         if self.mode.is_survival() {
             self.take_arrow()?;
         }
-        if let Some(stack) = &mut self.inventory.slots[slot] {
+        if let Some(stack) = self.inventory.slot_mut(slot) {
             stack.item = Item::CHARGED_CROSSBOW;
             stack.entity_data = potion.map_or_else(
                 || match ammo.map(|s| s.item) {
@@ -327,7 +354,7 @@ impl PlayerSession {
                 payload: loaded.payload,
                 ..crate::inventory::Stack::new(crate::content::fireworks::FIREWORK_ROCKET, 1)
             };
-            if let Some(stack) = &mut self.inventory.slots[slot] {
+            if let Some(stack) = self.inventory.slot_mut(slot) {
                 stack.item = Item::CROSSBOW;
                 stack.entity_data = 0;
                 stack.payload = None;
@@ -346,7 +373,7 @@ impl PlayerSession {
         let tipped = self.inventory.get(slot).is_some_and(|s| s.entity_data != 0) && !spectral;
         let potion = self.inventory.get(slot).and_then(|s| s.arrow_potion());
         let piercing = Enchants::NONE.with(Enchantment::Piercing, held.level(Enchantment::Piercing));
-        if let Some(stack) = &mut self.inventory.slots[slot] {
+        if let Some(stack) = self.inventory.slot_mut(slot) {
             stack.item = Item::CROSSBOW;
             stack.entity_data = 0;
         }

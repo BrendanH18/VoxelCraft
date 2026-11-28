@@ -930,6 +930,15 @@ impl Game {
                     return Err("Invalid item name".into());
                 }
             }
+            // v1.0 final track F1: a guest's drags, double clicks and
+            // number, swap-hands and drop keys over its screen's slots.
+            c if c.starts_with("drag ")
+                || c.starts_with("collect ")
+                || c.starts_with("slot_swap ")
+                || c.starts_with("slot_throw ") =>
+            {
+                self.remote_screen_click(peer, c)?
+            }
             "swap" => {
                 let name = peer.profile.clone().unwrap_or_default();
                 self.agent_hands(&name, &mut peer.body, |h| {
@@ -1115,6 +1124,71 @@ impl Game {
                 }
             }
             _ => return Err("Unknown recipe book command".into()),
+        }
+        Ok(())
+    }
+
+    /// v1.0 final track F1: the guest's `drag KIND SLOT...`, `collect SLOT
+    /// RIGHT`, `slot_swap SLOT KEY` (0..8 or 40) and `slot_throw SLOT WHOLE`
+    /// on the host's copy of its screen.
+    fn remote_screen_click(&mut self, peer: &mut Peer, command: &str) -> Result<(), String> {
+        let mut words = command.split_whitespace();
+        let verb = words.next().unwrap_or_default();
+        let kind = if verb == "drag" {
+            Some(super::clicks::parse_drag_word(words.next().unwrap_or_default()).ok_or("Bad drag")?)
+        } else {
+            None
+        };
+        let numbers: Vec<u16> =
+            words.map(|w| w.parse::<u16>().map_err(|_| "Bad slot".to_string())).collect::<Result<_, _>>()?;
+        if numbers.is_empty() || numbers.len() > 64 {
+            return Err("Bad slot".into());
+        }
+        if !peer.open {
+            return Ok(());
+        }
+        let Some(name) = peer.profile.clone() else { return Ok(()) };
+        let Some(session) = self.agents.players.get(&name).map(|b| &b.agent.session) else { return Ok(()) };
+        if !self.container_still_valid(session, peer.body.container) || session.vitals.is_dead() {
+            return Ok(());
+        }
+        let (container, mode, size) = (peer.body.container, session.mode, peer.grid.size);
+        let decode = |n: u16| decode_slot(n, container, mode, size);
+        let mut container = peer.body.container;
+        let done = match (verb, kind) {
+            ("drag", Some(kind)) => {
+                let slots: Vec<SlotRef> = numbers.iter().filter_map(|n| decode(*n)).collect();
+                self.agent_screen(&name, &mut container, &mut peer.grid, |s| s.drag(&slots, kind))
+            }
+            ("collect", _) => {
+                let Some(slot) = decode(numbers[0]) else { return Ok(()) };
+                let right = numbers.get(1) == Some(&1);
+                self.agent_screen(&name, &mut container, &mut peer.grid, |s| s.pickup_all(slot, right))
+            }
+            ("slot_swap", _) => {
+                let Some(slot) = decode(numbers[0]) else { return Ok(()) };
+                let key = match numbers.get(1) {
+                    Some(&k) if k < 9 => Some(k as usize),
+                    Some(40) => None,
+                    _ => return Err("Bad swap key".into()),
+                };
+                self.agent_screen(&name, &mut container, &mut peer.grid, |s| s.swap_slot(slot, key))
+            }
+            ("slot_throw", _) => {
+                let Some(slot) = decode(numbers[0]) else { return Ok(()) };
+                let whole = numbers.get(1) == Some(&1);
+                self.agent_screen(&name, &mut container, &mut peer.grid, |s| s.throw_slot(slot, whole))
+            }
+            _ => return Err("Bad screen click".into()),
+        };
+        peer.body.container = container;
+        for request in done.map(|(_, r)| r).unwrap_or_default() {
+            match request {
+                super::screen::Request::Popup(text) => {
+                    let _ = peer.connection.send(Packet::Chat(text));
+                }
+                super::screen::Request::Close => self.peer_close(peer),
+            }
         }
         Ok(())
     }

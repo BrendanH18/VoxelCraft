@@ -152,6 +152,14 @@ impl Game {
     /// Q: drops one of the selected item, or the whole stack with Ctrl.
     /// With the inventory open, drops from the slot under the mouse.
     pub(super) fn drop_selected(&mut self, whole_stack: bool) {
+        // v1.0 final track F1: a guest's drop key over a slot (`THROW`).
+        if self.lan.client.is_some()
+            && self.inventory_open
+            && let Some(code) = self.slot_under_cursor().and_then(super::lan::encode_slot)
+        {
+            self.lan_command(&format!("slot_throw {code} {}", whole_stack as u8));
+            return;
+        }
         if self.lan.client.is_some() {
             self.lan_command(if whole_stack { "drop_stack" } else { "drop" });
             return;
@@ -168,15 +176,10 @@ impl Game {
                     return;
                 }
                 // v0.17 Track D2: over a storage slot the drop key throws
-                // from it, with nothing held (`THROW`).
+                // from it, with nothing held (`THROW`); v1.0 final track
+                // F1: any slot of any screen.
                 Some(s) => {
-                    if let Some(slot) = super::screen::storage_slot(s) {
-                        self.with_screen(|screen| {
-                            if let Some(mut storage) = screen.storage() {
-                                storage.throw(slot, whole_stack);
-                            }
-                        });
-                    }
+                    self.with_screen(|screen| screen.throw_slot(s, whole_stack));
                     return;
                 }
                 None => return,
@@ -197,25 +200,12 @@ impl Game {
     /// swaps that slot with hotbar slot `hotbar` (`SWAP`). Returns whether
     /// a slot was under the mouse.
     pub(super) fn swap_under_cursor(&mut self, hotbar: usize) -> bool {
-        // v0.18 Track 4: `SWAP` on a creative cell puts a full stack of it
-        // in that hotbar slot; an empty cell does nothing.
-        match self.slot_under_cursor() {
-            Some(super::hud::SlotRef::Palette(s)) => {
-                self.session.inventory.slots[hotbar] = Some(Stack { count: s.max(), ..s });
-                return true;
-            }
-            Some(super::hud::SlotRef::PaletteEmpty | super::hud::SlotRef::Destroy) => return true,
-            _ => {}
+        // v1.0 final track F1: every slot of every screen, for the host
+        // and LAN guests (`clicks::swap_slot`).
+        if self.slot_under_cursor().is_none() {
+            return false;
         }
-        let Some(slot) = self.slot_under_cursor().and_then(super::screen::storage_slot) else { return false };
-        self.with_screen(|screen| match screen.storage() {
-            Some(mut storage) => storage.swap(slot, hotbar),
-            None => {
-                if let voxelcraft::session::storage::StorageSlot::Inventory(i) = slot {
-                    voxelcraft::session::storage::swap_in_inventory(&mut screen.session.inventory, i, hotbar);
-                }
-            }
-        });
+        self.swap_slot_under_cursor(Some(hotbar));
         true
     }
 
