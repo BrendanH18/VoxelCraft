@@ -821,7 +821,9 @@ impl Entities {
             Hit::Boss(struck) => {
                 let damage = if owner.is_some() { SKULL_DAMAGE } else { SKULL_MAGIC_DAMAGE };
                 if !struck.is_dragon() {
-                    let blow = super::dragon::Blow::projectile(damage, false);
+                    // v1.0 gap Track 8b: the crystal's blast names the Wither.
+                    let wither = owner.map(|_| super::MobKind::Wither);
+                    let blow = super::dragon::Blow::projectile(damage, false).blamed_on(wither);
                     events.push(EntityEvent::DragonStruck { hit: struck, blow, by: None });
                 }
             }

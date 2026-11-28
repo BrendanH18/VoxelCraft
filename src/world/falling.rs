@@ -361,7 +361,20 @@ impl World {
     /// Removes many blocks at once without drops (the dragon smashing
     /// through), remeshing on the workers and relighting once.
     pub fn break_blocks(&mut self, cells: &[IVec3]) {
-        let removed: Vec<IVec3> = cells.iter().copied().filter(|&p| self.edit(p, Block::AIR, false)).collect();
+        // `Level.removeBlock` leaves the cell's fluid: a waterlogged block's
+        // water ([`World::edit`]), and (v1.0 gap Track 8b) a bubble column's
+        // source, from which the column re-forms on the next bubble tick.
+        let to = |w: &Self, p: IVec3| {
+            if w.get_block(p).is_some_and(super::bubble::is_column) { Block::WATER } else { Block::AIR }
+        };
+        let removed: Vec<IVec3> = cells
+            .iter()
+            .copied()
+            .filter(|&p| {
+                let to = to(self, p);
+                self.edit(p, to, false)
+            })
+            .collect();
         for &p in &removed {
             self.settle(p);
         }

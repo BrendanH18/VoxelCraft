@@ -66,8 +66,10 @@ pub enum Blow {
     /// A player's melee hit or projectile. A creative player's hit gets
     /// through the ritual crystals' invulnerability (`isCreativePlayer`).
     Player { id: PlayerId, creative: bool },
-    /// Anything else that isn't a blast: a mob's arrow, a projectile with
-    /// no owner.
+    /// v1.0 gap Track 8b: a mob's projectile or blow: the blast names the
+    /// mob (`explosion(crystal, source.getEntity())`).
+    Mob(super::MobKind),
+    /// Anything else that isn't a blast: a projectile with no owner.
     Other,
     /// A blast (`#is_explosion`): the crystal goes without a blast of its own.
     Explosion,
@@ -80,6 +82,35 @@ impl Blow {
             _ => None,
         }
     }
+}
+
+/// v1.0 gap Track 8b: a crystal's blast that a mob set off is
+/// `explosion(crystal, mob)`, `PLAYER_EXPLOSION` (`explosion.player`: "was
+/// blown up by" the mob) for the mobs whose projectiles can break one.
+pub fn blame(kind: super::MobKind) -> crate::simulation::damage::Cause {
+    use super::MobKind as K;
+    use crate::simulation::damage::{Cause, DamageType::PlayerExplosion};
+    let text = match kind {
+        K::Llama => "was blown up by a llama",
+        K::TraderLlama => "was blown up by a trader llama",
+        K::Skeleton => "was blown up by a skeleton",
+        K::Stray => "was blown up by a stray",
+        K::Bogged => "was blown up by a bogged",
+        K::Parched => "was blown up by a parched",
+        K::Pillager => "was blown up by a pillager",
+        K::Piglin => "was blown up by a piglin",
+        K::Illusioner => "was blown up by an illusioner",
+        K::Drowned => "was blown up by a drowned",
+        K::SnowGolem => "was blown up by a snow golem",
+        K::Blaze => "was blown up by a blaze",
+        K::Ghast => "was blown up by a ghast",
+        K::Witch => "was blown up by a witch",
+        K::Breeze => "was blown up by a breeze",
+        K::Shulker => "was blown up by a shulker",
+        K::Wither => "was blown up by the Wither",
+        _ => return Cause::new(PlayerExplosion, "was blown up by a mob"),
+    };
+    Cause::new(PlayerExplosion, text)
 }
 
 /// A crystal that went this tick, for the fight (`onCrystalDestroyed`).
@@ -231,11 +262,16 @@ impl Crystals {
             let Some(i) = self.list.iter().position(|c| c.id == id) else { continue };
             let c = self.list.remove(i);
             if blow != Blow::Explosion {
-                // At its feet, credited to the player who hit it.
+                // At its feet, credited to the player who hit it, or named
+                // after the mob behind the blow.
+                let cause = match blow {
+                    Blow::Mob(kind) => blame(kind),
+                    _ => crate::simulation::damage::Cause::END_CRYSTAL,
+                };
                 events.push(EntityEvent::Explosion {
                     center: c.pos,
                     power: POWER,
-                    cause: crate::simulation::damage::Cause::END_CRYSTAL,
+                    cause,
                     credit_player: blow.player().is_some(),
                 });
             }

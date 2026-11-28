@@ -54,9 +54,20 @@ pub struct Arrow {
     /// The bow's enchantments: power, punch and flame; a crossbow's piercing.
     pub enchants: crate::enchant::Enchants,
     /// v1.0 gap Track 8: ticks of fire besides Flame's (`remainingFireTicks`),
-    /// from a perched dragon's scales (`AbstractDragonSittingPhase.onHurt`);
-    /// water puts it out. Not saved, like the arrow's flight.
+    /// from a perched dragon's scales (`AbstractDragonSittingPhase.onHurt`)
+    /// and (Track 8b) fire and lava it passes; water and rain put it out.
+    /// Not saved, like the arrow's flight.
     fire: u16,
+    /// v1.0 gap Track 8b: water or rain put out its fire, Flame's too
+    /// (Java's Flame is `igniteForSeconds(100)` at the shot, which
+    /// `clearFire` ends like any other).
+    doused: bool,
+    /// v1.0 gap Track 8b: Java's `yRot` and `xRot` (degrees: yaw from
+    /// `atan2(x, z)`, pitch up from level), which ease a fifth of the way
+    /// toward the motion each tick in flight and turn 170 to 190° on a
+    /// bounce; [`Arrow::dir`] points along them. `None` until the first
+    /// tick, when they take the launch motion (`Projectile.shoot`).
+    rot: Option<(f32, f32)>,
     /// Mobs (`Mob::uid`) this piercing arrow already passed through.
     pierced: Vec<u32>,
     /// Vehicles and decorations ([`ArrowTarget::key`]) it passed through.
@@ -126,6 +137,8 @@ impl Arrow {
             critical: false,
             enchants: Default::default(),
             fire: 0,
+            doused: false,
+            rot: None,
             pierced: Vec::new(),
             pierced_other: Vec::new(),
             java_base: None,
@@ -158,6 +171,8 @@ impl Arrow {
             critical: power >= 1.0,
             enchants: Default::default(),
             fire: 0,
+            doused: false,
+            rot: None,
             pierced: Vec::new(),
             pierced_other: Vec::new(),
             java_base: None,
@@ -211,7 +226,7 @@ impl Arrow {
 
     /// Moves the arrow; returns `false` once it should be removed.
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn update<W: BlockSource + ?Sized>(
+    pub(super) fn update<W: super::MobWorld + ?Sized>(
         &mut self,
         dt: f64,
         world: &W,
@@ -223,13 +238,14 @@ impl Arrow {
         events: &mut Vec<EntityEvent>,
     ) -> bool {
         self.age += dt as f32;
-        // `Entity.baseTick` burns the fire down a tick at a time;
-        // `AbstractArrow.tick` puts it out in water.
-        self.fire = self.fire.saturating_sub((dt * 20.0).round() as u16);
-        if world.block(self.pos.floor().as_ivec3()).is_some_and(|b| b.holds_water()) {
-            self.fire = 0;
+        // `AbstractArrow.tick`: `isInWaterOrRain` puts the fire out.
+        if in_water_or_rain(world, self.pos, ARROW_HALF, ARROW_HEIGHT) {
+            self.douse();
         }
         if self.stuck {
+            // `applyEffectsFromBlocks` each tick in the ground: the part of
+            // its box out of the block can touch fire, lava or water.
+            self.touch_blocks(world, self.pos, self.pos);
             // Arrows fall out when the block they're in is broken.
             if !world.block(self.pos.floor().as_ivec3()).is_some_and(|b| b.is_solid()) {
                 self.stuck = false;
@@ -244,13 +260,20 @@ impl Arrow {
             }
             return self.age < if self.from_player || self.pickup { PLAYER_STUCK_TIME } else { STUCK_TIME };
         }
+        // `AbstractArrow.tick`: the look eases toward the motion before it moves.
+        self.turn_toward_motion();
         self.vel.y -= GRAVITY * dt;
         let delta = self.vel * dt;
         let steps = (delta.length() / STEP).ceil().max(1.0) as u32;
+        // `Entity.baseTick` (in flight only) burns the fire down a tick at a time.
+        self.fire = self.fire.saturating_sub((dt * 20.0).round() as u16);
         for _ in 0..steps {
             let from = self.pos;
             let step = delta / steps as f64;
             self.pos += step;
+            // `stepMoveAndHit`: `applyEffectsFromBlocks` along the move,
+            // before what it hits.
+            self.touch_blocks(world, from, self.pos);
             // A block the step crosses (even at a corner) stops the arrow,
             // and hides anything behind it.
             let block = first_solid(world, from, step);
@@ -296,11 +319,11 @@ impl Arrow {
                         && boss_hit.as_ref().is_none_or(|(_, b)| t < *b)
                     {
                         if o.mob_proof && self.shooter.is_some() {
-                            // `hurtOrSimulate` refused: the arrow bounces back off it,
-                            // from outside its box so it doesn't hit it again.
+                            // `hurtOrSimulate` refused: the arrow bounces back off it
+                            // (`deflect(REVERSE, .., 0.2)`, a tenth of its speed), from
+                            // outside its box so it doesn't hit it again.
                             self.pos = from;
-                            self.vel = -self.vel * 0.2;
-                            return true;
+                            return self.bounce(rng, events);
                         }
                         // Piercing counts every entity passed through, mobs or not.
                         if pierce > 0 {
@@ -350,7 +373,12 @@ impl Arrow {
                         // none), and only a player's arrow takes health; a
                         // skeleton's lands and is gone.
                         let by = if self.from_player { self.owner } else { None };
-                        let blow = super::dragon::Blow::arrow(damage, by.is_some());
+                        // v1.0 gap Track 8b: a mob's arrow names its mob in
+                        // a crystal's blast.
+                        let shooter = self
+                            .shooter
+                            .and_then(|uid| mobs.iter().find(|m| m.uid == uid && m.alive()).map(|m| m.kind));
+                        let blow = super::dragon::Blow::arrow(damage, by.is_some()).blamed_on(shooter);
                         // v1.0 gap Track 8: a perched dragon's scales set the
                         // arrow alight for a second (`igniteForSeconds(1)`).
                         let scorched = boss.scorches(hit, blow);
@@ -366,17 +394,7 @@ impl Arrow {
                         // from outside the part (Java leaves it where it met
                         // the box) so it doesn't meet it again.
                         self.pos = from;
-                        self.vel = -self.vel * 0.1;
-                        // Left all but still (under 1e-7 blocks² a tick), it
-                        // drops as an item if it may be picked up, and goes.
-                        if (self.vel / crate::knockback::TICK_RATE).length_squared() < 1e-7 {
-                            if self.pickup {
-                                let pos = self.pos + DVec3::Y * 0.1;
-                                events.push(EntityEvent::DropEquipment { stack: self.pickup_stack(), pos });
-                            }
-                            return false;
-                        }
-                        return true;
+                        return self.bounce(rng, events);
                     }
                     if let Some((i, _)) = mob {
                         let mob = &mut mobs[i];
@@ -388,6 +406,7 @@ impl Arrow {
                         // `Breeze.deflection`: `ProjectileDeflection.REVERSE` before any damage.
                         if mob.kind == super::MobKind::Breeze {
                             self.vel *= -0.5;
+                            self.turn_back(rng);
                             self.deflector = Some(mob.uid);
                             events.push(EntityEvent::Sound {
                                 sound: super::MobSound::Breeze(super::breeze::Cue::Deflect),
@@ -485,7 +504,9 @@ impl Arrow {
                     .unwrap();
                 let mut normal = glam::IVec3::ZERO;
                 normal[axis] = if local[axis] < 0.5 { -1 } else { 1 };
-                // `AbstractCandleBlock.onProjectileHit`: a burning arrow lights a candle.
+                // `AbstractCandleBlock.onProjectileHit`: a burning arrow
+                // lights a candle; (v1.0 gap Track 8b) `CampfireBlock`'s and
+                // `TntBlock`'s light a campfire and prime TNT.
                 let burning = self.burning();
                 if world.block(cell).is_some_and(|b| {
                     matches!(
@@ -494,11 +515,18 @@ impl Arrow {
                     ) || matches!(
                         b.base(),
                         crate::world::block::Block::REDSTONE_ORE | crate::world::block::Block::DEEPSLATE_REDSTONE_ORE
-                    ) || burning && crate::world::colour_blocks::candle::can_light(b)
+                    ) || burning && lights(b)
                         // v0.16 Track A: `ChorusFlowerBlock.onProjectileHit`.
                         || crate::world::end_blocks::flower_age(b).is_some()
                 }) {
-                    events.push(EntityEvent::ProjectileBlockHit { cell, pos: hit, normal, arrow: true, burning });
+                    events.push(EntityEvent::ProjectileBlockHit {
+                        cell,
+                        pos: hit,
+                        normal,
+                        arrow: true,
+                        burning,
+                        mob_owned: self.shooter.is_some(),
+                    });
                 }
                 self.age = 0.0;
                 return true;
@@ -551,10 +579,66 @@ impl Arrow {
                 return false;
             }
         }
-        if self.vel.length_squared() > 1e-6 {
-            self.dir = self.vel.normalize().as_vec3();
-        }
         self.age < MAX_FLIGHT && self.pos.y > -64.0
+    }
+
+    /// `AbstractArrow.tick`'s `lerpRotation`s: a fifth of the way from the
+    /// look toward the motion (yaw by the short way round), which a
+    /// first tick takes outright.
+    fn turn_toward_motion(&mut self) {
+        if self.vel.length_squared() < 1e-12 {
+            return;
+        }
+        let (yaw, pitch) = rotation_of(self.vel);
+        let (y0, p0) = self.rot.unwrap_or((yaw, pitch));
+        self.rot = Some((lerp_rotation(y0, yaw), lerp_rotation(p0, pitch)));
+        self.point_along_rotation();
+    }
+
+    /// `ProjectileDeflection.REVERSE`'s turn: the yaw by 170 to 190°, the
+    /// pitch kept (the motion is the caller's).
+    fn turn_back(&mut self, rng: &mut Rng) {
+        let (yaw, pitch) = self.rot.unwrap_or_else(|| rotation_of(self.dir.as_dvec3()));
+        self.rot = Some((yaw + reverse_turn(rng), pitch));
+        self.point_along_rotation();
+    }
+
+    fn point_along_rotation(&mut self) {
+        if let Some(rot) = self.rot {
+            self.dir = pointing(rot);
+        }
+    }
+
+    /// `AbstractArrow.onHitEntity` on a hit refused: `deflect(REVERSE, ..,
+    /// 0.2)`, back at a tenth of its speed and turned about, and left all
+    /// but still (under 1e-7 blocks² a tick) it drops as an item if it may
+    /// be picked up, and goes. Returns whether it stays.
+    fn bounce(&mut self, rng: &mut Rng, events: &mut Vec<EntityEvent>) -> bool {
+        self.vel = -self.vel * 0.1;
+        self.turn_back(rng);
+        if (self.vel / crate::knockback::TICK_RATE).length_squared() < 1e-7 {
+            if self.pickup {
+                let pos = self.pos + DVec3::Y * 0.1;
+                events.push(EntityEvent::DropEquipment { stack: self.pickup_stack(), pos });
+            }
+            return false;
+        }
+        true
+    }
+
+    /// `clearFire` (water, rain): Flame's fire goes too.
+    fn douse(&mut self) {
+        self.fire = 0;
+        self.doused = true;
+    }
+
+    /// `Entity.applyEffectsFromBlocks` for the box moving `from` to `to`:
+    /// fire and lava set it alight, water then puts it out, and so does rain.
+    fn touch_blocks<W: super::MobWorld + ?Sized>(&mut self, world: &W, from: DVec3, to: DVec3) {
+        let touched = touched_blocks(world, from, to, ARROW_HALF, ARROW_HEIGHT);
+        if touched.apply(&mut self.fire) || in_rain(world, to, ARROW_HEIGHT) {
+            self.douse();
+        }
     }
 
     /// Current velocity in blocks per second.
@@ -562,9 +646,10 @@ impl Arrow {
         self.vel
     }
 
-    /// On fire (`isOnFire`): a Flame bow's, or set alight since it was shot.
+    /// On fire (`isOnFire`): a Flame bow's until water or rain puts it
+    /// out, or set alight since it was shot.
     pub fn burning(&self) -> bool {
-        self.fire > 0 || self.enchants.has(crate::enchant::Enchantment::Flame)
+        self.fire > 0 || !self.doused && self.enchants.has(crate::enchant::Enchantment::Flame)
     }
 
     /// A piercing arrow needs the mobs' ids to remember what it passed through.
@@ -575,6 +660,117 @@ impl Arrow {
     pub fn is_stuck(&self) -> bool {
         self.stuck
     }
+}
+
+/// v1.0 gap Track 8b: a block a burning projectile's hit lights or
+/// primes: a candle or candle cake, a campfire, TNT.
+pub(super) fn lights(b: crate::world::block::Block) -> bool {
+    crate::world::colour_blocks::candle::can_light(b)
+        || crate::world::utilities::campfire_of(b).is_some()
+        || b == crate::world::block::Block::TNT
+}
+
+/// `EntityTypes.ARROW`'s box: 0.5 × 0.5.
+const ARROW_HALF: f64 = 0.25;
+const ARROW_HEIGHT: f64 = 0.5;
+
+/// `Projectile.lerpRotation`: from `from` a fifth of the way to `to`, the
+/// short way round (`from` moved by whole turns first).
+pub(super) fn lerp_rotation(mut from: f32, to: f32) -> f32 {
+    while to - from < -180.0 {
+        from -= 360.0;
+    }
+    while to - from >= 180.0 {
+        from += 360.0;
+    }
+    from + 0.2 * (to - from)
+}
+
+/// An `AbstractArrow`'s `yRot` and `xRot` for motion `v`: Java degrees,
+/// yaw `atan2(x, z)`, pitch up from level.
+pub(super) fn rotation_of(v: DVec3) -> (f32, f32) {
+    (v.x.atan2(v.z).to_degrees() as f32, v.y.atan2(v.x.hypot(v.z)).to_degrees() as f32)
+}
+
+/// The way an `AbstractArrow` with `(yRot, xRot)` points.
+pub(super) fn pointing((yaw, pitch): (f32, f32)) -> Vec3 {
+    let (yaw, pitch) = (f64::from(yaw).to_radians(), f64::from(pitch).to_radians());
+    DVec3::new(yaw.sin() * pitch.cos(), pitch.sin(), yaw.cos() * pitch.cos()).as_vec3()
+}
+
+/// `ProjectileDeflection.REVERSE`'s turn of the yaw: 170 to 190°.
+pub(super) fn reverse_turn(rng: &mut Rng) -> f32 {
+    170.0 + rng.next_f32() * 20.0
+}
+
+/// v1.0 gap Track 8b: the fire-related blocks a projectile's box (`half`
+/// each way across, `height` tall) touched moving `from` to `to`
+/// (`checkInsideBlocks`, every cell is a full block to it: fire's, lava's
+/// and water's `getEntityInsideCollisionShape`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) struct Touched {
+    pub fire: bool,
+    pub lava: bool,
+    pub water: bool,
+}
+
+impl Touched {
+    /// The `InsideBlockEffectType`s in Java's order on `fire` ticks:
+    /// `FIRE_IGNITE` (`igniteForSeconds(8)`), `LAVA_IGNITE`
+    /// (`igniteForSeconds(15)`), then `EXTINGUISH`. Returns whether water
+    /// put it out.
+    pub fn apply(self, fire: &mut u16) -> bool {
+        if self.fire {
+            *fire = (*fire).max(160);
+        }
+        if self.lava {
+            *fire = (*fire).max(300);
+        }
+        if self.water {
+            *fire = 0;
+        }
+        self.water
+    }
+}
+
+/// The cells the box sweeps, sampled every quarter block along the move.
+pub(super) fn touched_blocks<W: BlockSource + ?Sized>(
+    world: &W,
+    from: DVec3,
+    to: DVec3,
+    half: f64,
+    height: f64,
+) -> Touched {
+    let mut out = Touched::default();
+    let samples = ((to - from).length() / 0.25).ceil().max(1.0) as u32;
+    for i in 0..=samples {
+        let at = from.lerp(to, f64::from(i) / f64::from(samples));
+        let (min, max) = (at - DVec3::new(half, 0.0, half), at + DVec3::new(half, height, half));
+        let (lo, hi) = (min.floor().as_ivec3(), (max - DVec3::splat(1e-7)).floor().as_ivec3());
+        for y in lo.y..=hi.y {
+            for z in lo.z..=hi.z {
+                for x in lo.x..=hi.x {
+                    let Some(b) = world.block(glam::IVec3::new(x, y, z)) else { continue };
+                    out.fire |= b.is_fire();
+                    out.lava |= b.is_lava();
+                    out.water |= b.holds_water();
+                }
+            }
+        }
+    }
+    out
+}
+
+/// `Entity.isInRain`: rain on its cell or the cell at the top of its box.
+pub(super) fn in_rain<W: super::MobWorld + ?Sized>(world: &W, pos: DVec3, height: f64) -> bool {
+    let cell = pos.floor().as_ivec3();
+    world.rains_on(cell) || world.rains_on(glam::IVec3::new(cell.x, (pos.y + height).floor() as i32, cell.z))
+}
+
+/// `Entity.isInWaterOrRain` at the start of a tick: its box touches
+/// water, or rain falls on it.
+pub(super) fn in_water_or_rain<W: super::MobWorld + ?Sized>(world: &W, pos: DVec3, half: f64, height: f64) -> bool {
+    touched_blocks(world, pos, pos, half, height).water || in_rain(world, pos, height)
 }
 
 /// How far along `step` (0..=1) from `from` it first enters a solid cell.
@@ -789,6 +985,176 @@ mod tests {
         assert!(mobs[0].health < MobKind::Pillager.max_health(), "the arrow hit");
         assert!(mobs[0].player_hit_left > 0.0);
         assert_eq!(mobs[0].illager.as_ref().unwrap().raider.last_player, Some(PlayerId::HOST));
+    }
+
+    fn sky_ctx() -> Ctx {
+        Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::DAY,
+            players: vec![Target::new(PlayerId::HOST, DVec3::new(50.0, 10.0, 0.0), true)],
+            daylight: 1.0,
+            spawning: false,
+            raining: false,
+            dimension: Dimension::Overworld,
+        }
+    }
+
+    /// A test world where rain falls everywhere.
+    struct Rainy(Grid);
+
+    impl BlockSource for Rainy {
+        fn block(&self, p: IVec3) -> Option<Block> {
+            self.0.block(p)
+        }
+    }
+
+    impl crate::entity::MobWorld for Rainy {
+        fn loaded(&self, _: IVec3) -> bool {
+            true
+        }
+        fn surface(&self, _: i32, _: i32) -> Option<i32> {
+            Some(self.0.floor_y - 1)
+        }
+        fn exposed(&self, p: IVec3) -> bool {
+            p.y >= self.0.floor_y
+        }
+        fn rains_on(&self, _: IVec3) -> bool {
+            true
+        }
+    }
+
+    /// v1.0 gap Track 8b: `AbstractArrow.tick`'s look eases a fifth of the
+    /// way toward the motion each tick in flight, so a falling arrow's
+    /// nose lags its path.
+    #[test]
+    fn an_arrows_look_eases_toward_its_motion() {
+        let world = Grid::flat(0);
+        let mut a = Arrow::shot(DVec3::new(0.5, 50.0, 0.5), DVec3::X, 1.0, true);
+        let (mut rng, mut events) = (Rng::new(1), Vec::new());
+        assert!(a.update(0.05, &world, &sky_ctx(), &mut [], &[], None, &mut rng, &mut events));
+        assert_eq!(a.rot, Some((90.0, 0.0)), "the first tick takes the launch motion");
+        for _ in 0..5 {
+            let (_, before) = a.rot.unwrap();
+            let (_, want) = rotation_of(a.velocity());
+            assert!(a.update(0.05, &world, &sky_ctx(), &mut [], &[], None, &mut rng, &mut events));
+            let (_, pitch) = a.rot.unwrap();
+            assert!((pitch - (before + 0.2 * (want - before))).abs() < 1e-4, "{pitch} from {before} toward {want}");
+        }
+        let (_, path) = rotation_of(a.velocity());
+        assert!(a.rot.unwrap().1 > path, "the nose lags the falling path");
+        assert!((a.dir.as_dvec3() - pointing(a.rot.unwrap()).as_dvec3()).length() < 1e-6);
+    }
+
+    /// v1.0 gap Track 8b: an arrow refused by what it hits
+    /// (`deflect(REVERSE, .., 0.2)`) goes back at a tenth of its speed with
+    /// its yaw turned 170 to 190°, then eases round toward its new motion.
+    #[test]
+    fn a_bounced_arrow_turns_about_and_eases_round() {
+        let world = Grid::flat(0);
+        let mut mobs = vec![Mob::new(MobKind::Skeleton, DVec3::new(-5.0, 49.0, 0.5), 0.0)];
+        mobs[0].uid = 9;
+        let painting = ArrowTarget {
+            struck: Struck::Decor(0),
+            key: 1,
+            riders: [None; 2],
+            min: DVec3::new(4.0, 49.0, 0.0),
+            max: DVec3::new(4.1, 51.0, 1.0),
+            mob_proof: true,
+        };
+        let cause = crate::simulation::damage::Cause::SKELETON_ARROW;
+        let (mut rng, mut events) = (Rng::new(3), Vec::new());
+        let mut a = Arrow::mob_shot(DVec3::new(0.5, 50.0, 0.5), DVec3::X * 30.0, cause, 9);
+        let mut before = a.velocity();
+        for _ in 0..10 {
+            before = a.velocity();
+            assert!(a.update(0.05, &world, &sky_ctx(), &mut mobs, &[painting], None, &mut rng, &mut events));
+            if a.velocity().x < 0.0 {
+                break;
+            }
+        }
+        assert!((a.velocity().x + before.x * 0.1).abs() < 1e-9, "a tenth of {before} back: {}", a.velocity());
+        let (yaw, _) = a.rot.unwrap();
+        assert!((90.0 + 170.0..=90.0 + 190.0).contains(&yaw), "turned about: {yaw}");
+        let (target, _) = rotation_of(a.velocity());
+        assert!(a.update(0.05, &world, &sky_ctx(), &mut mobs, &[painting], None, &mut rng, &mut events));
+        let (eased, _) = a.rot.unwrap();
+        let want = lerp_rotation(yaw, target);
+        assert!((eased - want).abs() < 1e-3, "eased from {yaw} toward {target}: {eased}");
+    }
+
+    /// v1.0 gap Track 8b: fire sets an arrow alight for 8 seconds and lava
+    /// for 15 (`FIRE_IGNITE`, `LAVA_IGNITE`); water puts it out, Flame's
+    /// fire too, and so does rain (`isInWaterOrRain`, `isInRain`).
+    #[test]
+    fn fire_and_lava_light_arrows_and_water_and_rain_put_them_out() {
+        let fly = |world: &dyn Fn(&mut Arrow, &mut Rng, &mut Vec<EntityEvent>), flame: bool| {
+            let mut a = Arrow::shot(DVec3::new(0.5, 50.2, 0.5), DVec3::X, 1.0, true);
+            if flame {
+                a.enchants.set(crate::enchant::Enchantment::Flame, 1);
+            }
+            let (mut rng, mut events) = (Rng::new(1), Vec::new());
+            world(&mut a, &mut rng, &mut events);
+            a
+        };
+        let through = |block: Block| {
+            move |a: &mut Arrow, rng: &mut Rng, events: &mut Vec<EntityEvent>| {
+                let mut world = Grid::flat(0);
+                world.set(IVec3::new(3, 50, 0), block);
+                for _ in 0..3 {
+                    a.update(0.05, &world, &sky_ctx(), &mut [], &[], None, rng, events);
+                }
+            }
+        };
+        let a = fly(&through(Block::FIRE), false);
+        assert!(a.burning() && (155..=160).contains(&a.fire), "fire: {}", a.fire);
+        let a = fly(&through(Block::LAVA), false);
+        assert!(a.burning() && (295..=300).contains(&a.fire), "lava: {}", a.fire);
+        let a = fly(&through(Block::WATER), true);
+        assert!(!a.burning(), "water puts out Flame");
+        let a = fly(&through(Block::STONE), true);
+        assert!(a.burning(), "Flame burns on otherwise");
+        let a = fly(
+            &|a: &mut Arrow, rng: &mut Rng, events: &mut Vec<EntityEvent>| {
+                a.update(0.05, &Rainy(Grid::flat(0)), &sky_ctx(), &mut [], &[], None, rng, events);
+            },
+            true,
+        );
+        assert!(!a.burning(), "rain puts out Flame");
+    }
+
+    /// v1.0 gap Track 8b: `CampfireBlock` and `TntBlock.onProjectileHit`:
+    /// a burning arrow's hit on a campfire or TNT is reported, with whether
+    /// a mob shot it (`mayInteract`); a cold arrow's isn't.
+    #[test]
+    fn burning_arrows_report_campfires_and_tnt() {
+        use crate::world::block::Facing;
+        use crate::world::utilities::{Campfire, campfire};
+        let fire = campfire(Campfire { soul: false, lit: false, signal: false, wet: false, facing: Facing::North });
+        for block in [Block::TNT, fire] {
+            for (flame, mob) in [(true, false), (true, true), (false, false)] {
+                let mut world = Grid::flat(0);
+                world.set(IVec3::new(4, 50, 0), block);
+                let mut a = Arrow::shot(DVec3::new(0.5, 50.2, 0.5), DVec3::X, 1.0, true);
+                if mob {
+                    a.shooter = Some(5);
+                }
+                if flame {
+                    a.enchants.set(crate::enchant::Enchantment::Flame, 1);
+                }
+                let (mut rng, mut events) = (Rng::new(1), Vec::new());
+                for _ in 0..4 {
+                    a.update(0.05, &world, &sky_ctx(), &mut [], &[], None, &mut rng, &mut events);
+                }
+                assert!(a.is_stuck());
+                let hit = events.iter().find_map(|e| match *e {
+                    EntityEvent::ProjectileBlockHit { cell, burning, mob_owned, .. } => {
+                        Some((cell, burning, mob_owned))
+                    }
+                    _ => None,
+                });
+                let want = flame.then_some((IVec3::new(4, 50, 0), true, mob));
+                assert_eq!(hit, want, "{block:?} flame {flame} mob {mob}");
+            }
+        }
     }
 
     #[test]

@@ -25,6 +25,8 @@ pub use wild::{SHAPE as WILD_SHAPE, Wild, WildDragon};
 mod track4c_tests;
 #[cfg(test)]
 mod track8_tests;
+#[cfg(test)]
+mod track8b_tests;
 
 pub const MAX_HEALTH: f32 = 200.0;
 /// Experience for the first kill, and for any later one.
@@ -1171,6 +1173,10 @@ pub struct Boxes {
     /// reach (its own 16 × 8 box at its feet), named by its body: a dragon
     /// hurt as a whole is hurt through its body (`EnderDragon.hurtServer`).
     pub dragons: Vec<(Hit, DVec3)>,
+    /// v1.0 gap Track 8b: the bodies of the dragons perched as the boxes
+    /// were taken, whose scales set arrow-like projectiles alight
+    /// ([`Dragon::scorches`]).
+    pub perched: Vec<Hit>,
 }
 
 impl Boxes {
@@ -1184,10 +1190,15 @@ impl Boxes {
             })
             .collect();
         let mut dragons = Vec::new();
+        let mut perched = Vec::new();
+        let scorching = |d: &Dragon| d.scorches(Blow::arrow(1.0, false));
         if let Some(d) = fight.and_then(|f| f.dragon.as_ref()) {
             list.extend(d.parts.iter().map(|&(part, min, max)| (Hit::Dragon(part), min, max)));
             if d.health > 0.0 {
                 dragons.push((Hit::Dragon(Part::Body), d.pos));
+            }
+            if scorching(d) {
+                perched.push(Hit::Dragon(Part::Body));
             }
         }
         for w in &wild.dragons {
@@ -1195,8 +1206,23 @@ impl Boxes {
             if w.dragon.health > 0.0 {
                 dragons.push((Hit::Wild(w.id, Part::Body), w.dragon.pos));
             }
+            if scorching(&w.dragon) {
+                perched.push(Hit::Wild(w.id, Part::Body));
+            }
         }
-        Self { list, dragons }
+        Self { list, dragons, perched }
+    }
+
+    /// v1.0 gap Track 8b: whether `blow` on `hit` sets the projectile
+    /// alight ([`Dragon::scorches`], as the dragons stood when the boxes
+    /// were taken).
+    pub fn scorches(&self, hit: Hit, blow: Blow) -> bool {
+        let body = match hit {
+            Hit::Crystal(_) => return false,
+            Hit::Dragon(_) => Hit::Dragon(Part::Body),
+            Hit::Wild(id, _) => Hit::Wild(id, Part::Body),
+        };
+        blow.arrow && !blow.fire && self.perched.contains(&body)
     }
 
     pub fn is_empty(&self) -> bool {
@@ -1308,7 +1334,8 @@ impl Targets<'_> {
     pub fn strike(&mut self, hit: Hit, blow: Blow, by: Option<PlayerId>) -> bool {
         match hit {
             Hit::Crystal(id) => {
-                let blow = by.map_or(CrystalBlow::Other, |id| CrystalBlow::Player { id, creative: false });
+                let other = blow.blame.map_or(CrystalBlow::Other, CrystalBlow::Mob);
+                let blow = by.map_or(other, |id| CrystalBlow::Player { id, creative: false });
                 self.crystals.hit(id, blow)
             }
             Hit::Dragon(_) => self.fight.as_deref_mut().is_some_and(|f| f.strike(hit, blow)),
@@ -1341,11 +1368,19 @@ pub struct Blow {
     /// `#is_fire` (fireballs): the dragon is fire immune
     /// (`isInvulnerableToBase`).
     pub fire: bool,
+    /// v1.0 gap Track 8b: the mob behind it (`source.getEntity()`), which an
+    /// End crystal's blast names ([`super::crystal::blame`]).
+    pub blame: Option<super::MobKind>,
 }
 
 impl Blow {
     const fn new(damage: f32, player: bool) -> Self {
-        Self { damage, player, explosion: false, arrow: false, fire: false }
+        Self { damage, player, explosion: false, arrow: false, fire: false, blame: None }
+    }
+
+    /// The same blow from mob `kind`, if any.
+    pub const fn blamed_on(self, kind: Option<super::MobKind>) -> Self {
+        Self { blame: kind, ..self }
     }
 
     /// A player's melee hit.
@@ -2191,7 +2226,11 @@ impl Dragon {
                         // An unloaded cell reads as void air.
                         let Some(b) = world.block(cell).filter(|&b| !transparent(b)) else { continue };
                         if griefing && !immune(b) {
-                            if !b.is_fluid() {
+                            // `removeBlock` sets `fluidState.createLegacyBlock()`:
+                            // water stays as it was (nothing removed), but
+                            // (v1.0 gap Track 8b) a bubble column turns into
+                            // a water source, which counts.
+                            if !b.is_fluid() || crate::world::bubble::is_column(b) {
                                 events.push(EntityEvent::BreakBlock { cell });
                                 broke = true;
                             }

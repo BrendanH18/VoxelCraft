@@ -160,12 +160,26 @@ pub struct Thrown {
     vel: DVec3,
     age: f32,
     origin: DVec3,
+    /// v1.0 gap Track 8b: who llama spit already hit on its way through
+    /// (mob uids, players as `u32::MAX - id`), standing in for their hurt
+    /// cooldown (`invulnerableTime`), which refuses the same spit's 1 again.
+    spat_on: [Option<u32>; 4],
 }
 
 impl Thrown {
     /// A LAN client's copy: drawn only, never simulated.
     pub(super) fn replica(kind: Kind, pos: DVec3, previous_pos: DVec3) -> Self {
-        Self { kind, owner: None, shooter: None, pos, previous_pos, vel: DVec3::ZERO, age: 0.0, origin: pos }
+        Self {
+            kind,
+            owner: None,
+            shooter: None,
+            pos,
+            previous_pos,
+            vel: DVec3::ZERO,
+            age: 0.0,
+            origin: pos,
+            spat_on: [None; 4],
+        }
     }
 
     /// A llama spits from `from` at `target` (Java: 1.5 blocks a tick, inaccuracy 10).
@@ -184,6 +198,7 @@ impl Thrown {
             vel: dir.normalize() * SPEED,
             age: 0.0,
             origin: from,
+            spat_on: [None; 4],
         }
     }
 
@@ -207,6 +222,7 @@ impl Thrown {
             vel: aim * super::wind::BREEZE_SPEED,
             age: 0.0,
             origin: from,
+            spat_on: [None; 4],
         }
     }
 
@@ -227,6 +243,7 @@ impl Thrown {
                 vel,
                 age: 0.0,
                 origin: pos,
+                spat_on: [None; 4],
             };
         }
         let mut wobble = || rng.range(-0.017, 0.017) as f64;
@@ -241,6 +258,7 @@ impl Thrown {
             vel: aim.normalize() * SPEED + carry,
             age: 0.0,
             origin: pos,
+            spat_on: [None; 4],
         }
     }
 
@@ -248,7 +266,17 @@ impl Thrown {
     /// along the facing `step`.
     pub fn dispensed(kind: Kind, pos: DVec3, step: DVec3, power: f64, uncertainty: f64, rng: &mut Rng) -> Self {
         let vel = shot_movement(step, power, uncertainty, rng) * 20.0;
-        Self { kind, owner: None, shooter: None, pos, previous_pos: pos, vel, age: 0.0, origin: pos }
+        Self {
+            kind,
+            owner: None,
+            shooter: None,
+            pos,
+            previous_pos: pos,
+            vel,
+            age: 0.0,
+            origin: pos,
+            spat_on: [None; 4],
+        }
     }
 
     /// Velocity in blocks per second.
@@ -338,17 +366,23 @@ impl Thrown {
                 self.burst(self.pos, events);
                 return false;
             }
+            // v1.0 gap Track 8b: `LlamaSpit.onHitEntity` hurts a player and
+            // never discards the spit, which flies on (only blocks stop it).
             if self.kind == Kind::LlamaSpit
-                && let Some(t) = players.iter().find(|t| t.targetable && t.contains(next))
+                && let Some(t) =
+                    players.iter().find(|t| t.targetable && t.contains(next) && !self.spat_on(u32::MAX - t.id.0))
             {
-                events.push(EntityEvent::PlayerHit {
-                    java: None,
-                    player: t.id,
-                    damage: 1.0,
-                    knockback: (DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 0.5).as_vec3(),
-                    cause: crate::simulation::damage::Cause::LLAMA_SPIT,
-                });
-                return false;
+                self.spit_on(u32::MAX - t.id.0);
+                if self.llama_lives(mobs) {
+                    events.push(EntityEvent::PlayerHit {
+                        java: None,
+                        player: t.id,
+                        damage: 1.0,
+                        knockback: (DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 0.5).as_vec3(),
+                        cause: crate::simulation::damage::Cause::LLAMA_SPIT,
+                    });
+                }
+                continue;
             }
             let mut hit = None;
             // All mob boxes are at most four blocks high/two blocks wide.
@@ -364,6 +398,7 @@ impl Thrown {
                 if m.alive()
                     && !source
                     && Some(m.uid) != self.shooter
+                    && !(self.kind == Kind::LlamaSpit && self.spat_on(m.uid))
                     && next.cmpge(min).all()
                     && next.cmple(max).all()
                     && hit.is_none_or(|j| i < j)
@@ -380,10 +415,13 @@ impl Thrown {
             if hit.is_none()
                 && self.kind == Kind::LlamaSpit
                 && let Some(crystal) = boss.crystal_at(next).filter(|&c| spat != Some(c))
-                && self.shooter.is_some_and(|uid| mobs.iter().any(|m| m.uid == uid && m.alive()))
+                && self.llama_lives(mobs)
             {
                 spat = Some(crystal);
-                let blow = super::dragon::Blow::projectile(1.0, false);
+                // v1.0 gap Track 8b: the crystal's blast names the llama
+                // (`explosion(crystal, llama)`).
+                let llama = mobs.iter().find(|m| Some(m.uid) == self.shooter).map(|m| m.kind);
+                let blow = super::dragon::Blow::projectile(1.0, false).blamed_on(llama);
                 events.push(EntityEvent::DragonStruck { hit: crystal, blow, by: None });
             }
             // v1.0 gap Track 4c: an End crystal or a dragon part
@@ -409,6 +447,11 @@ impl Thrown {
                     }
                     _ => super::dragon::Blow::projectile(0.0, self.owner.is_some()),
                 };
+                // v1.0 gap Track 8b: a mob's (a snow golem's snowball, a
+                // breeze's charge) names it in a crystal's blast.
+                let thrower =
+                    self.shooter.and_then(|uid| mobs.iter().find(|m| m.uid == uid && m.alive()).map(|m| m.kind));
+                let blow = blow.blamed_on(thrower);
                 if !struck.is_dragon() || blow.damage > 0.0 {
                     events.push(EntityEvent::DragonStruck { hit: struck, blow, by: self.owner });
                 }
@@ -446,7 +489,13 @@ impl Thrown {
                 };
                 let kind = mob.kind;
                 let pos = mob.pos;
-                let killed = mob.damage(damage, Some(push), rng);
+                // v1.0 gap Track 8b: spit hurts a mob only while its llama
+                // lives (`getOwner() instanceof LivingEntity`), and flies on.
+                let spit = self.kind == Kind::LlamaSpit;
+                let uid = mob.uid;
+                let lives = spit && self.shooter.is_some_and(|s| mobs.iter().any(|m| m.uid == s && m.alive()));
+                let mob = &mut mobs[i];
+                let killed = (!spit || lives) && mob.damage(damage, Some(push), rng);
                 if killed {
                     events.push(EntityEvent::MobKilled {
                         kind,
@@ -456,11 +505,29 @@ impl Thrown {
                         looting: 0,
                     });
                 }
+                if spit {
+                    self.spit_on(uid);
+                    continue;
+                }
                 self.impact(pos, rng, events);
                 return false;
             }
         }
         self.age < MAX_FLIGHT && self.pos.y > -128.0
+    }
+
+    /// Llama spit's llama is still there (`getOwner()` resolves).
+    fn llama_lives(&self, mobs: &[Mob]) -> bool {
+        self.shooter.is_some_and(|uid| mobs.iter().any(|m| m.uid == uid && m.alive()))
+    }
+
+    fn spat_on(&self, key: u32) -> bool {
+        self.spat_on.contains(&Some(key))
+    }
+
+    fn spit_on(&mut self, key: u32) {
+        self.spat_on.rotate_right(1);
+        self.spat_on[0] = Some(key);
     }
 
     fn burst(&self, pos: DVec3, events: &mut Vec<EntityEvent>) {

@@ -775,7 +775,9 @@ impl Entities {
             // player); a part isn't living, so nothing levitates.
             BulletHit::Boss(struck) => {
                 if !struck.is_dragon() {
-                    let blow = super::dragon::Blow::projectile(BULLET_DAMAGE, false);
+                    // v1.0 gap Track 8b: the crystal's blast names the shulker.
+                    let shulker = self.mobs.iter().any(|m| m.uid == b.owner && m.alive()).then_some(MobKind::Shulker);
+                    let blow = super::dragon::Blow::projectile(BULLET_DAMAGE, false).blamed_on(shulker);
                     events.push(EntityEvent::DragonStruck { hit: struck, blow, by: None });
                 }
             }

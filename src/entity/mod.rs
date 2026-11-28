@@ -230,8 +230,13 @@ pub enum EntityEvent {
         pos: DVec3,
         normal: IVec3,
         arrow: bool,
-        /// The projectile is on fire (a Flame arrow), which lights candles.
+        /// The projectile is on fire (a Flame arrow, or one set alight),
+        /// which lights candles and (v1.0 gap Track 8b) campfires and
+        /// primes TNT.
         burning: bool,
+        /// v1.0 gap Track 8b: a mob's projectile, which lights campfires
+        /// and primes TNT only with `mob_griefing` on (`Projectile.mayInteract`).
+        mob_owned: bool,
     },
     /// A mob or arrow hit `player`: apply `damage` and add `knockback` to
     /// their velocity; `cause` is the death message. A hit with `java` set
