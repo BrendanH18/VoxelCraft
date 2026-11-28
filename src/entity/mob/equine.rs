@@ -818,4 +818,64 @@ mod tests {
         // than its threefold.
         assert!(slow > 0.0 && fast > slow * 1.5, "{slow} {fast}");
     }
+
+    /// v1.0 gap Track 2c: `AbstractHorse.aiStep`'s grazing: a 1-in-300 start
+    /// a tick while nobody rides it on a grass block, ending after 50 ticks;
+    /// `isImmobile` meanwhile; `eatAnim` eases in and out; rearing ends it.
+    #[test]
+    fn horses_graze_on_grass_for_fifty_ticks() {
+        let mut rng = Rng::new(7);
+        let mut s = mounts::State::new(MobKind::Horse, &mut rng);
+        s.on_grass = true;
+        let mut ticks = 0;
+        while !s.eating {
+            s.eat_tick(MobKind::Horse, true, &mut rng);
+            ticks += 1;
+            assert!(ticks < 10_000);
+        }
+        assert!(s.immobile());
+        let mut held = 0;
+        while s.eating {
+            s.eat_tick(MobKind::Horse, true, &mut rng);
+            held += 1;
+        }
+        assert_eq!(held, 50, "eatingCounter > 50 ends it");
+        assert!(s.eat_anim > 0.0 && s.eat_anim < 1.0, "easing out: {}", s.eat_anim);
+        // Off grass, ridden, or a llama: never.
+        let mut off = mounts::State::new(MobKind::Horse, &mut rng);
+        let mut llama = mounts::State::new(MobKind::Llama, &mut rng);
+        llama.on_grass = true;
+        for _ in 0..3000 {
+            off.eat_tick(MobKind::Horse, true, &mut rng);
+            llama.eat_tick(MobKind::Llama, true, &mut rng);
+        }
+        assert!(!off.eating && !llama.eating);
+        // Rearing stops a meal (`setStanding`), and saves keep it only while set.
+        s.eating = true;
+        assert_eq!(s.save()["eating"], true);
+        s.stand_if_possible(MobKind::Horse);
+        assert!(!s.eating);
+        assert!(s.save().get("eating").is_none());
+    }
+
+    /// v1.0 gap Track 2c: `handleStartJump`'s `playJumpSound`: each horse's
+    /// own, a skeleton horse's `jump_water` in water.
+    #[test]
+    fn a_ridden_jump_plays_the_horses_jump_sound() {
+        use mounts::{Cue, Event};
+        assert_eq!(Cue::for_event(MobKind::Horse, false, Event::Jump { water: false }), Some(Cue::HorseJump));
+        assert_eq!(Cue::for_event(MobKind::Donkey, false, Event::Jump { water: true }), Some(Cue::DonkeyJump));
+        assert_eq!(Cue::for_event(MobKind::Mule, false, Event::Jump { water: false }), Some(Cue::MuleJump));
+        assert_eq!(
+            Cue::for_event(MobKind::SkeletonHorse, false, Event::Jump { water: true }),
+            Some(Cue::SkeletonHorseJumpWater)
+        );
+        assert_eq!(Cue::for_event(MobKind::SkeletonHorse, false, Event::Jump { water: false }), Some(Cue::HorseJump));
+        assert_eq!(Cue::for_event(MobKind::Camel, false, Event::Jump { water: false }), None);
+        let mut m = ridden(0.7, 0.2);
+        let s = m.mount.as_mut().unwrap();
+        s.started_jump_for_test(50);
+        s.start_jump(MobKind::Horse, false);
+        assert!(s.take_events().contains(&Event::Jump { water: false }));
+    }
 }

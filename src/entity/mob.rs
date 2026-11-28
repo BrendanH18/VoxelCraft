@@ -2523,6 +2523,12 @@ impl Mob {
             // Its goals run in `Entities::wither_tick`.
             (None, 0.)
         } else {
+            // v1.0 gap Track 2c: `AbstractHorse.aiStep` grazes on the grass
+            // block under its feet (`blockPosition().below()`).
+            if let Some(s) = self.mount.as_mut() {
+                let below = self.pos.floor().as_ivec3() - IVec3::Y;
+                s.on_grass = world.block(below) == Some(crate::world::block::Block::GRASS);
+            }
             super::mounts::control(self, dt, rng).unwrap_or_else(|| self.think(dtf, world, ctx, rng, events))
         };
         let (wish, speed) = self.camel_hold(world, wish, speed);

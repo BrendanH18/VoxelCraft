@@ -322,7 +322,14 @@ impl Entities {
                 let own_cart = self.mobs[i].riding.filter(|v| v & crate::entity::mounts::MOB_VEHICLE == 0);
                 for c in &self.minecarts {
                     let (min, max) = c.aabb();
-                    if Some(c.id) == own_cart || !crosses(min, max) || !fresh(&mut charge, Stabbed::Cart(c.id)) {
+                    // A cushion (`BlockAttachedEntity`) refuses a mob's damage
+                    // without mobGriefing.
+                    let refused = c.kind.cushion().is_some() && !self.villager_griefing;
+                    if Some(c.id) == own_cart
+                        || refused
+                        || !crosses(min, max)
+                        || !fresh(&mut charge, Stabbed::Cart(c.id))
+                    {
                         continue;
                     }
                     // Carts keep blocks a tick; mob speeds here are a second's.

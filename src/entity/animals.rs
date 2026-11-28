@@ -475,7 +475,8 @@ impl Entities {
         if !m.kind.breeding_food(food) {
             return None;
         }
-        if m.baby || m.age < 0 {
+        let baby = m.baby || m.age < 0;
+        if baby {
             m.feed_growth();
         } else {
             let a = m.animal.as_mut()?;
@@ -493,7 +494,11 @@ impl Entities {
         if super::mounts::camel_like(m.kind) {
             self.post_mob_event(index, crate::world::vibration::GameEvent::Eat);
         }
-        self.animal_hearts(index);
+        // v1.0 gap Track 2c: hearts only for love (`setInLove`); a fed
+        // baby shows the forced growth's particles instead.
+        if !baby {
+            self.animal_hearts(index);
+        }
         Some(true)
     }
     pub(super) fn animal_hearts(&mut self, index: usize) {
@@ -1711,6 +1716,34 @@ mod tests {
                 let ours = kind.loot().iter().find(|(i, ..)| *i == drop).unwrap_or_else(|| panic!("{kind:?} {id}"));
                 assert_eq!((i64::from(ours.1), i64::from(ours.2)), count, "{kind:?} {id}");
             }
+        }
+    }
+
+    /// v1.0 gap Track 2c: `Animal.mobInteract` feeds a baby with
+    /// `ageUp(getSpeedUpSecondsWhenFeeding(-age), true)`: the skipped time
+    /// is kept as `forcedAge` (and saved), with the 40 ticks of particles,
+    /// for every animal fed its food, not only calves.
+    #[test]
+    fn fed_babies_keep_their_forced_age() {
+        let mut e = Entities::new(3);
+        for (i, (kind, food)) in
+            [(MobKind::Cow, Item::WHEAT), (MobKind::Pig, Item::CARROT), (MobKind::Chicken, Item::WHEAT_SEEDS)]
+                .into_iter()
+                .enumerate()
+        {
+            e.spawn(kind, DVec3::new(i as f64 * 4.0 + 0.5, 64.0, 0.5));
+            let j = e.mobs.len() - 1;
+            e.mobs[j].baby = true;
+            e.mobs[j].age = -24000;
+            assert_eq!(e.feed_for_love(j, Some(food), PlayerId::HOST), Some(true), "{kind:?}");
+            let m = &e.mobs[j];
+            assert_eq!((m.age, m.forced_age, m.forced_age_timer), (-21600, 2400, 40), "{kind:?}");
+            assert_eq!(super::super::nether::save_mob(m)["forced_age"], 2400);
+            let m = &mut e.mobs[j];
+            for _ in 0..40 {
+                m.advance_animal_age(0.05);
+            }
+            assert_eq!(m.forced_sparkles, 10, "{kind:?}");
         }
     }
 

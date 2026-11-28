@@ -248,3 +248,45 @@ has the Java sources and checks. Code: `src/entity/mob/spear.rs`.
   lower it for 289 ticks while charging and running on past the target,
   retreat 9–11 blocks for up to 100 ticks) and never swing it in melee;
   zombified piglins use `SpearUseGoal`.
+
+## Heads, bodies and idle looks (v1.0 gap Track 2c, implemented, unverified)
+
+The [Track 2c record](verification/2026-11-27-v1.0-gap-track-02c-looks.md)
+has the Java sources, checks and remaining differences. Code:
+`src/entity/mob/head.rs`.
+
+- **Every mob keeps Java's `yHeadRot` and `xRot`** and turns them with its
+  `LookControl` a tick after its goals ran: a request turns the head by
+  the asking goal's speed for two ticks (attack goals 30°, Breed and
+  FollowOwner 10°, Tempt the head limit plus 20°, the brain's sink the
+  mob's own speed, 10° unless Java overrides it: breeze 25°, frog 35°),
+  the pitch from level by its limit; without one the head turns back 10°
+  a tick, and it stays within `getMaxHeadYRot` of the body while a path
+  runs (ravager 45°, breeze and camels 30°, goat 15°, frog 5°, sniffer
+  50°, armadillo 32° or 0 rolled up, axolotl and dolphin 1°). Dolphins,
+  tadpoles, nautiluses and axolotls use `SmoothSwimmingLookControl`.
+  The game's own eased head code is gone; shulkers, bats, phantoms,
+  ghasts, happy ghasts and wardens keep their own heads.
+- **`BodyRotationControl`** turns a separate drawn body (`Mob::body_yaw`,
+  Java's `yBodyRot`) apart from the heading movement follows (`yRot`): a
+  moving body faces its travel with the head held within the limit; a
+  still one follows a head that moved over 15°, and after ten still ticks
+  turns to face it over ten more. A mob carrying a mob passenger doesn't
+  turn while still. The move control turns the heading 90° a tick.
+- **Idle look goals** in each kind's `registerGoals` priorities and flags:
+  `LookAtPlayerGoal` (players, `Mob.class`, striders, guardians; 2% a full
+  update, 20 to 39 full updates), `InteractGoal` and
+  `LookAtTradingPlayerGoal` (wandering trader) and `RandomLookAroundGoal`
+  (2% a full update, 20 to 39 ticks, only while nothing better holds
+  MOVE). Attack, tempt, breed and follow-owner goals hold LOOK; a mob
+  steered by a mob passenger loses MOVE and LOOK (`updateControlFlags`).
+- **Brain looks**: `LookAtTargetSink(45, 90)` with each activity's
+  writers: villagers' full and minimal look behaviours by their schedule
+  and the trading player within 4 blocks; piglins' idle, avoid, celebrate
+  and ride looks; brutes', hoglins', zoglins', creakings', allays', copper
+  golems', armadillos', goats', frogs', axolotls', tadpoles' and sniffers'.
+  `NEAREST_VISIBLE_LIVING_ENTITIES` is sensed every 20 ticks for the kinds
+  whose looks pick mobs.
+- **Spears**: the margin hit's block check toward the box's centre (for
+  players' stabs too); mob stabs on minecarts and boats, decorations and
+  End crystals; the body turns at the move control's 90° a tick.

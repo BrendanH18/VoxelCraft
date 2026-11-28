@@ -524,6 +524,11 @@ impl Entities {
                 m.leash_spin += spin;
                 // `onElasticLeashPull` (v1.0 gap Track 3b: a seated camel stands).
                 m.camel_leash_pull(w);
+                // v1.0 gap Track 2c: `AbstractHorse.onElasticLeashPull`
+                // ends a horse's grazing.
+                if let Some(s) = m.mount.as_mut() {
+                    s.eating = false;
+                }
             } else {
                 m.leash_close = true;
             }

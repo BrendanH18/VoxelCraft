@@ -808,6 +808,10 @@ impl State {
     pub fn grazes(kind: MobKind) -> bool {
         rears(kind)
     }
+    #[cfg(test)]
+    pub(crate) fn started_jump_for_test(&mut self, amount: i32) {
+        self.started_jump = Some(amount);
+    }
     /// v1.0 gap Track 2c: `AbstractHorse.isImmobile`: grazing or rearing.
     pub fn immobile(&self) -> bool {
         self.eating || self.standing()
@@ -1569,6 +1573,10 @@ impl Entities {
                 consume = true;
             } else if !consume {
                 return false;
+            }
+            // v1.0 gap Track 2c: `AbstractHorse.eating` opens the mouth.
+            if rears(kind) {
+                s.open_mouth();
             }
             // v1.0 Track 9: `AbstractHorse.handleEating` posts `eat` once the
             // food did something.

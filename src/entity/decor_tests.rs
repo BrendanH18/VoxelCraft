@@ -467,3 +467,26 @@ fn a_framed_item_is_culled_with_its_frame() {
         assert_eq!((frame, items), (shown, usize::from(shown)), "{far} blocks away");
     }
 }
+
+/// v1.0 gap Track 2c: a mob's spear stab (`DamageTypes.SPEAR`, in
+/// `#can_break_armor_stand`) on an armor stand: nothing without
+/// mobGriefing (`ArmorStand.hurtServer` refuses a mob's damage); with it a
+/// wobble, and a second hit within five ticks breaks it.
+#[test]
+fn mob_stabs_wobble_and_break_armor_stands_only_with_mob_griefing() {
+    let w = world();
+    let mut e = Entities::new(1);
+    let ground = IVec3::new(3, GROUND, 3);
+    assert!(e.place_decor(&w, Item::ARMOR_STAND, ground, IVec3::Y, 0.0, &[]).unwrap().is_some());
+    let source = EventSource::mob(1);
+    e.villager_griefing = false;
+    e.mob_hurt_decor(0, source);
+    assert_eq!((e.decor.len(), e.decor[0].wobble), (1, 0), "refused without mobGriefing");
+    e.villager_griefing = true;
+    e.mob_hurt_decor(0, source);
+    assert_eq!((e.decor.len(), e.decor[0].wobble), (1, WOBBLE_TICKS), "a first hit wobbles");
+    e.tick_decor(&w);
+    e.mob_hurt_decor(0, source);
+    assert!(e.decor.is_empty(), "a second within five ticks breaks it");
+    assert!(e.items.iter().any(|i| i.stack.item == Item::ARMOR_STAND));
+}
