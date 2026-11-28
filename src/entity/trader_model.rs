@@ -1,18 +1,5 @@
-//! Original trader clothing and llama geometry; fixed arrays keep posing allocation-free.
+//! Original trader llama geometry (v1.0 gap Track 7e: the trader's clothes moved to `villager_outfit`); fixed arrays keep posing allocation-free.
 use super::{Cuboid, cube};
-pub(super) const BODY: &[Cuboid] = &[
-    cube([-4.0, 8.0, -3.0], [4.0, 24.0, 3.0], [35, 70, 151], 16),
-    cube([-4.1, 8.0, 3.0], [4.1, 19.0, 3.1], [51, 96, 176], 12),
-    cube([-4.2, 11.0, 3.1], [4.2, 12.0, 3.2], [218, 173, 67], 8),
-    cube([-8.0, 15.0, -3.0], [8.0, 19.0, 3.0], [35, 70, 151], 14),
-    cube([-2.0, 15.0, 3.0], [2.0, 19.0, 4.0], [158, 115, 83], 12),
-];
-pub(super) const HOOD: &[Cuboid] = &[
-    cube([-4.5, 0.0, -4.5], [4.5, 8.5, -3.0], [35, 70, 151], 12),
-    cube([-4.5, 7.0, -4.5], [4.5, 8.5, 4.5], [35, 70, 151], 12),
-    cube([-4.5, 0.0, -3.0], [-3.5, 8.0, 4.5], [35, 70, 151], 12),
-    cube([3.5, 0.0, -3.0], [4.5, 8.0, 4.5], [35, 70, 151], 12),
-];
 pub(super) const LLAMA_Y: f32 = 1.87 * 16.0 / 41.0;
 const fn llama_cube(mut lo: [f32; 3], mut hi: [f32; 3], color: [u8; 3], noise: u8) -> Cuboid {
     lo[1] *= LLAMA_Y;

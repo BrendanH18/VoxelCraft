@@ -164,6 +164,9 @@ impl Mob {
             v["villager"] = json!({
                 "profession": Profession::ALL.iter().position(|p| *p == villager.profession).unwrap_or(0),
                 "sleeping": villager.sleeping,
+                // v1.0 gap Track 7e: the type and level the outfit layers draw.
+                "type": villager.variant(),
+                "level": villager.level,
             });
         }
         if let Some(n) = &self.nether {
@@ -379,6 +382,12 @@ impl Mob {
                 .and_then(|i| Profession::ALL.get(i as usize).copied())
                 .unwrap_or(villager.profession);
             villager.sleeping = w["sleeping"] == true;
+            if let Some(t) = w["type"].as_str().filter(|t| t.len() <= 16) {
+                villager.map_variant = Some(t.to_owned());
+            }
+            if let Some(level) = w["level"].as_u64() {
+                villager.level = level.clamp(1, 5) as u8;
+            }
         }
         if let (Some(n), Some(w)) = (self.nether.as_mut(), v["weapon"].as_str()) {
             n.weapon = Weapon::from_name(w);

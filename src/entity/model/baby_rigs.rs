@@ -639,52 +639,25 @@ pub(super) mod fox {
     ];
 
     /// `FoxModel` with `BabyFoxModel`'s poses: the walk keyframes
-    /// (`FOX_BABY_WALK`, `applyWalk(pos, speed, 1, 2.5)`), the head looking
-    /// (tilted while it begs), sitting up and curled asleep (legs hidden).
-    pub fn pose(m: &Mob, time: f32) -> Parts {
+    /// (`FOX_BABY_WALK`, `applyWalk(pos, speed, 1, 2.5)`) and (v1.0 gap
+    /// Track 7e) Track 2e's states, as [`super::super::fox_model::setup`]
+    /// poses them with the kit's overrides.
+    pub fn pose(m: &Mob, time: f32, alpha: f32) -> Parts {
+        use super::super::fox_model as f;
+        let s = f::state(m, alpha);
         let mut r = Rig::new(BONES);
-        let a = m.animal.as_deref();
-        let (sitting, sleeping) = (a.is_some_and(|a| a.sit_pose), a.is_some_and(|a| a.sleeping));
-        if a.is_some_and(|a| a.begging) {
-            r.z_rot(HEAD, 0.11 * PI);
-        }
-        FOX_BABY_WALK.apply_walk(&mut r, m.limb_phase, m.limb_amp, 1.0, 2.5);
-        if sleeping {
-            r.rot[BODY] = [-PI / 18.0, 0.0, -FRAC_PI_2];
-            r.at[BODY][0] -= 1.0;
-            r.at[BODY][1] += 1.0;
-            r.at[BODY][2] -= 1.0;
-            r.x_rot(TAIL, -2.181_661_6);
-            r.at[TAIL][0] -= 0.7;
-            r.at[TAIL][1] += 0.9;
-            r.at[TAIL][2] += 0.6;
-            r.at[HEAD][0] -= 2.0;
-            r.at[HEAD][1] += 2.8;
-            r.at[HEAD][2] -= 4.0;
-            for leg in [RIGHT_HIND_LEG, LEFT_HIND_LEG, RIGHT_FRONT_LEG, LEFT_FRONT_LEG] {
-                r.shown[leg] = false;
-            }
-            r.rot[HEAD] = [0.0, -PI * 2.0 / 3.0, (age_ticks(time) * 0.027).cos() / 22.0];
-        } else {
-            if sitting {
-                r.x_rot(BODY, -0.959_931);
-                r.at[BODY][2] -= 4.5 * AGE_SCALE;
-                r.at[BODY][1] += 3.0 * AGE_SCALE;
-                r.at[TAIL][1] -= 0.6;
-                r.at[TAIL][2] -= 2.0 * AGE_SCALE;
-                r.x_rot(TAIL, 0.959_931_14);
-                r.at[HEAD][1] -= 0.75;
-                r.x_rot(RIGHT_FRONT_LEG, -PI / 12.0);
-                r.x_rot(LEFT_FRONT_LEG, -PI / 12.0);
-                r.at[RIGHT_FRONT_LEG][2] -= 1.0;
-                r.at[LEFT_FRONT_LEG][2] -= 1.0;
-                r.at[RIGHT_HIND_LEG][2] -= 3.75;
-                r.at[LEFT_HIND_LEG][2] -= 3.75;
-            }
-            r.x_rot(HEAD, head_x(m));
-            r.y_rot(HEAD, m.head_yaw);
-        }
-        r.parts()
+        let ids = f::Ids {
+            head: HEAD,
+            body: BODY,
+            legs: [RIGHT_HIND_LEG, LEFT_HIND_LEG, RIGHT_FRONT_LEG, LEFT_FRONT_LEG],
+            tail: TAIL,
+        };
+        f::setup(&mut r, &ids, &s, m, time, true, |r| {
+            FOX_BABY_WALK.apply_walk(r, m.limb_phase, m.limb_amp, 1.0, 2.5);
+        });
+        let mut p = r.parts();
+        f::pitch(&mut p, &s, m);
+        p
     }
 }
 
@@ -1868,18 +1841,21 @@ pub(super) mod zombie_villager {
     const HEAD: usize = 5;
 
     const SKIN: Rgb = [92, 148, 78];
-    const ROBE: Rgb = [114, 78, 51];
+    /// v1.0 gap Track 7e: the robe, belt and legs take the villager type's
+    /// colours, rotted (`villager_outfit::colour`).
+    const ROBE: Rgb = super::super::villager_outfit::ROBE;
     const ARM: &[Cuboid] = &[
         jbox([-1.0, -0.5, -1.0], [2.0, 2.5, 2.0], ROBE, 30).with(Pattern::Cloth),
         jbox([-1.0, 2.0, -1.0], [2.0, 2.5, 2.0], SKIN, 24).with(Pattern::Rot),
     ];
-    const LEG: &[Cuboid] = &[jbox([-1.0, -0.5, -1.0], [2.0, 3.0, 2.0], [68, 49, 36], 28).with(Pattern::Cloth)];
+    const LEG: &[Cuboid] =
+        &[jbox([-1.0, -0.5, -1.0], [2.0, 3.0, 2.0], super::super::villager_outfit::LEGS, 28).with(Pattern::Cloth)];
     static BONES: &[Bone] = &[
         bone(
             &[
                 jbox([-2.0, -2.75, -1.5], [4.0, 5.0, 3.0], ROBE, 30).with(Pattern::Cloth),
                 jboxg([-2.0, -2.75, -1.5], [4.0, 6.0, 3.0], 0.1, ROBE, 30).with(Pattern::Cloth),
-                jbox([-2.15, 1.0, -1.65], [4.3, 0.5, 3.3], [66, 44, 28], 10),
+                jbox([-2.15, 1.0, -1.65], [4.3, 0.5, 3.3], super::super::villager_outfit::BELT, 10),
             ],
             ROOT,
             [0.0, 18.75, 0.0],
@@ -1918,6 +1894,9 @@ pub(super) mod zombie_villager {
         r.rot[LEFT_ARM] = [h.left_arm.x, h.left_arm.y, h.left_arm.z];
         r.rot[RIGHT_ARM] = [h.right_arm.x, h.right_arm.y, h.right_arm.z];
         let mut p = r.parts();
+        // v1.0 gap Track 7e: the type's baby outfit (`baby/<type>`).
+        let head = p[HEAD];
+        super::super::villager_outfit::dress_baby(m, &mut p, head);
         if m.convert_left > 0.0 {
             p.transform(Vec3::new((time * 18.0).sin() * 1.5, 0.0, 0.0), Quat::IDENTITY);
         }
