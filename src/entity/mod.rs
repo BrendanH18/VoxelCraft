@@ -3462,7 +3462,8 @@ mod tests {
         let world = Grid::flat(0);
         let mut e = Entities::new(3);
         e.spawn(MobKind::Creeper, DVec3::new(0.5, 0.0, 0.5));
-        let uid = e.mobs[0].uid;
+        let uid = 42;
+        e.mobs[0].uid = uid;
         e.mobs[0].name = crate::inventory::StackName::new("Boom").unwrap();
         e.mobs[0].health = 0.0;
         e.mobs[0].dying = Some(mob::DEATH_TIME);
