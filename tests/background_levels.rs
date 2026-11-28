@@ -176,8 +176,8 @@ fn a_pearl_flies_on_under_its_own_tickets_and_lands_for_its_owner() {
     // The ticket its last tick near its owner left.
     level.tickets.add_with_radius(TicketKind::EnderPearl, start, 2);
     level.settle(start);
-    let eye = DVec3::new(8.5, f64::from(level.world.surface_height(8, 8).unwrap()) + 12.0, 8.5);
-    level.entities.throw_pearl(PlayerId::HOST, eye, DVec3::new(1.0, 0.6, 0.0).normalize(), DVec3::ZERO);
+    let eye = DVec3::new(8.5, f64::from(level.world.surface_height(8, 8).unwrap()) + 100.0, 8.5);
+    level.entities.throw_pearl(PlayerId::HOST, eye, DVec3::X, DVec3::ZERO);
     let mut chunks = std::collections::BTreeSet::new();
     let deadline = Instant::now() + Duration::from_secs(120);
     let landed = loop {
@@ -194,7 +194,8 @@ fn a_pearl_flies_on_under_its_own_tickets_and_lands_for_its_owner() {
         // Its next chunks generate on the workers.
         std::thread::sleep(Duration::from_millis(1));
     };
-    assert!(landed.x > 8.0 + 32.0, "it flew on across chunks: landed at {landed}");
+    let ground = level.world.surface_height(landed.x.floor() as i32, landed.z.floor() as i32);
+    assert!(landed.x > 8.0 + 32.0, "it flew on across chunks: landed at {landed} (ground {ground:?})");
     assert!(chunks.len() >= 3, "its tickets followed it: {chunks:?}");
     assert!(level.entities.pearls.is_empty());
 }
