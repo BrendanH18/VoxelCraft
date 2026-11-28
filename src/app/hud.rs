@@ -551,6 +551,7 @@ impl Game {
         hand.glint = held.is_some_and(|s| s.has_foil());
         hand.translucent = held.as_ref().is_some_and(crate::item::translucent);
         hand.mesh = held.filter(|s| voxelcraft::content::item_models::has_mesh(s.item));
+        hand.stack = held;
         let image = |stack: Option<Stack>| {
             let stack = stack.filter(|s| s.item.is_map() && s.item != Item::MAP)?;
             let mut map = self.world.maps.maps.get(&stack.map_id?)?.clone();

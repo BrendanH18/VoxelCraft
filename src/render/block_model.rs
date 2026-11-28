@@ -209,15 +209,11 @@ fn model_vertices(
                 min + Vec3::new(x * cos - z * sin + 0.5, c.y, x * sin + z * cos + 0.5) * s
             }
         };
-        // UVs as in `chunk.wgsl`: sides map (horizontal, down), tops map (x, z).
-        let mut quad = |corners: [Vec3; 4], layer: u16, shade: f32, axis: usize| {
+        // v1.0 gap track 6d: Java's face UVs, as `chunk.wgsl` maps them.
+        let mut quad = |corners: [Vec3; 4], layer: u16, shade: f32, face: usize| {
             for i in [0, 1, 2, 2, 3, 0] {
                 let c = corners[i];
-                let uv = match axis {
-                    0 => [c.z, 1.0 - c.y],
-                    1 => [c.x, c.z],
-                    _ => [c.x, 1.0 - c.y],
-                };
+                let uv = crate::mesh::face_uv(face, c.to_array());
                 out.push(BlockVertex {
                     pos: place(c).to_array(),
                     uv,
@@ -257,10 +253,11 @@ fn model_vertices(
             return;
         }
         if m.block.kind() == RenderKind::Cross {
-            // Both diagonal planes run 0 -> 1 in z, so z works as u.
+            // Both diagonal planes run 0 -> 1 in z, so z works as u (a west
+            // face's mapping).
             let v = |x: f32, y: f32, z: f32| Vec3::new(x, y, z);
-            quad([v(0., 0., 0.), v(1., 0., 1.), v(1., 1., 1.), v(0., 1., 0.)], tex[0], 0.9, 0);
-            quad([v(1., 0., 0.), v(0., 0., 1.), v(0., 1., 1.), v(1., 1., 0.)], tex[0], 0.9, 0);
+            quad([v(0., 0., 0.), v(1., 0., 1.), v(1., 1., 1.), v(0., 1., 0.)], tex[0], 0.9, 1);
+            quad([v(1., 0., 0.), v(0., 0., 1.), v(0., 1., 1.), v(1., 1., 0.)], tex[0], 0.9, 1);
             return;
         }
         // Falling blocks and every item model share the item's boxes.
@@ -289,7 +286,7 @@ fn model_vertices(
                 } else {
                     [corner(false, false), corner(false, true), corner(true, true), corner(true, false)]
                 };
-                quad(c, layer, shade, d);
+                quad(c, layer, shade, face);
             }
         }
     }
@@ -346,35 +343,10 @@ fn transformed_vertices(
         }
         return;
     }
-    for (i, bx) in shape::item_boxes(block).as_slice().iter().enumerate() {
-        // Candle wicks, the beacon's plinth and core: their own layers.
-        let tex = shape::item_box_layer(block, i).map_or(tex, |l| [l; 6]);
-        let (lo, hi) = (bx.min.map(|c| c as f32 / 16.0), bx.max.map(|c| c as f32 / 16.0));
-        for (face, &layer) in tex.iter().enumerate() {
-            let (d, positive) = (face / 2, face % 2 == 0);
-            let (u, v) = ((d + 1) % 3, (d + 2) % 3);
-            let corner = |a: bool, b: bool| {
-                let mut p = [0.0f32; 3];
-                p[d] = if positive { hi[d] } else { lo[d] };
-                p[u] = if a { hi[u] } else { lo[u] };
-                p[v] = if b { hi[v] } else { lo[v] };
-                Vec3::from_array(p)
-            };
-            let c = if positive {
-                [corner(false, false), corner(true, false), corner(true, true), corner(false, true)]
-            } else {
-                [corner(false, false), corner(false, true), corner(true, true), corner(true, false)]
-            };
-            // UVs as the other block models map them (and `chunk.wgsl`).
-            let uv = c.map(|c| match d {
-                0 => [c.z, 1.0 - c.y],
-                1 => [c.x, c.z],
-                _ => [c.x, 1.0 - c.y],
-            });
-            let mut normal = Vec3::ZERO;
-            normal[d] = if positive { 1.0 } else { -1.0 };
-            push(c, normal, uv, layer, m.tint);
-        }
+    // v1.0 gap track 6d: the block item's model as a slot draws it (Java's
+    // face UVs, a head's skull box), so every context shows the same model.
+    for q in super::ui::block_item_quads(block) {
+        push(q.corners, q.normal, q.uv, q.layer, m.tint);
     }
 }
 
@@ -386,16 +358,7 @@ pub fn extent_y(stack: &voxelcraft::inventory::Stack, block: Option<Block>, loca
     if let Some(mesh) = voxelcraft::content::item_models::mesh(stack) {
         corners.extend(mesh.quads.iter().flat_map(|q| q.corners));
     } else if let Some(block) = block {
-        for bx in shape::item_boxes(block.item_facing()).as_slice() {
-            let (lo, hi) = (bx.min.map(|c| c as f32 / 16.0), bx.max.map(|c| c as f32 / 16.0));
-            for i in 0..8 {
-                corners.push(Vec3::new(
-                    if i & 1 == 0 { lo[0] } else { hi[0] },
-                    if i & 2 == 0 { lo[1] } else { hi[1] },
-                    if i & 4 == 0 { lo[2] } else { hi[2] },
-                ));
-            }
-        }
+        corners.extend(super::ui::block_item_quads(block).iter().flat_map(|q| q.corners));
     } else {
         for i in 0..8 {
             let z = if i & 4 == 0 { 7.5 } else { 8.5 } / 16.0;

@@ -379,6 +379,26 @@ fn open_door_side(facing: Facing, hinge_right: bool) -> Facing {
     if hinge_right { facing.clockwise().clockwise().clockwise() } else { facing.clockwise() }
 }
 
+/// v1.0 gap track 6d: which broad face of a door Java's door models draw
+/// mirrored (`door_bottom_left` and the rest give one of the two an explicit
+/// reversed UV, so the door reads as one panel seen from either side):
+/// `Some(true)` the face on the cell's edge, `Some(false)` the inner one.
+/// A right hinge and an open door each swap it. `below` is the block under
+/// the door, whose lower half an upper half reads.
+pub fn door_mirrors_edge_face(block: Block, below: Block) -> Option<bool> {
+    let Some(Shaped::Door { open, upper, .. }) = block.shaped() else { return None };
+    let (open, hinge_right) = if upper {
+        let open = match below.shaped() {
+            Some(Shaped::Door { open, upper: false, .. }) => open,
+            _ => open,
+        };
+        (open, super::mount_states::is_right_hinge(below))
+    } else {
+        (open, super::mount_states::is_right_hinge(block))
+    };
+    Some(hinge_right != open)
+}
+
 /// The visible boxes of `block`; `neighbour(f)` is the block on side `f`
 /// (fences, gates and walls look at it). `below` is the block under this
 /// one: a wood door's upper half stores no facing, so it copies the lower

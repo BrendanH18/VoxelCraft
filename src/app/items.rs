@@ -234,7 +234,7 @@ impl Game {
     /// Spinning, bobbing models for nearby dropped items: a small cube for
     /// blocks, a flat icon for everything else, with extra copies for
     /// bigger stacks.
-    pub(super) fn item_models(&self, alpha: f64) -> Vec<BlockModel> {
+    pub(super) fn item_models(&self, alpha: f64, camera: DVec3) -> Vec<BlockModel> {
         let mut out = Vec::new();
         for item in &self.mobs.entities.items {
             if item.pos.distance_squared(self.session.player.pos) > DRAW_DIST * DRAW_DIST {
@@ -243,11 +243,11 @@ impl Game {
             let pos = item.previous_pos.lerp(item.pos, alpha);
             // `ItemEntityRenderer`: `sin(ageInTicks / 10 + bobOffs) * 0.1 + 0.1`.
             let bob = 0.1 + 0.1 * (item.age * 2.0 + item.phase).sin() as f64;
-            self.dropped_models(item.stack, pos, item.age + item.phase, bob, &mut out);
+            self.dropped_models(item.stack, pos, item.age + item.phase, bob, camera, &mut out);
         }
         // v1.0 gap track 6: `--item-review`'s staged item, at rest.
         if let Some((stack, pos, spin)) = self.item_review_drop() {
-            self.dropped_models(stack, pos, spin, 0.0, &mut out);
+            self.dropped_models(stack, pos, spin, 0.0, camera, &mut out);
         }
         out
     }
@@ -256,7 +256,7 @@ impl Game {
     /// raised `bob` (with copies for bigger stacks). As Java's
     /// `ItemEntityRenderer` places them, the model's lowest point (its
     /// bounding box's) hovers 1/16 above the item's feet before the bob.
-    fn dropped_models(&self, stack: Stack, pos: DVec3, spin: f32, bob: f64, out: &mut Vec<BlockModel>) {
+    fn dropped_models(&self, stack: Stack, pos: DVec3, spin: f32, bob: f64, camera: DVec3, out: &mut Vec<BlockModel>) {
         // v1.0 gap track 6b: beds, banners, the shield and two plants
         // drawn with their 3D model's ground transform.
         let mesh = voxelcraft::content::item_models::mesh(&stack)
@@ -269,13 +269,17 @@ impl Game {
                 .dial_layer(self.dial_of(&self.session.player).for_stack(&stack))
                 .or_else(|| stack.item.flat_layer()),
         };
-        let size = block.map_or(0.5, |b| 0.25 * crate::world::shape::item_scale(b).ground as f64);
-        // `ITEM_MIN_HOVER_HEIGHT` less the model's own lowest point (a
-        // flat icon's quad starts at its bottom edge).
-        let lowest = block.map_or(0.0, |b| {
-            crate::world::shape::item_boxes(b).as_slice().iter().map(|bx| bx.min[1]).min().unwrap_or(0) as f64 / 16.0
+        let size = if block.is_some() { 1.0 } else { 0.5 };
+        // v1.0 gap track 6d: a block item through its whole `ground`
+        // transform, raised so its lowest point (`getModelBoundingBox`)
+        // hovers `ITEM_MIN_HOVER_HEIGHT` over the feet.
+        let ground = block.filter(|_| mesh.is_none()).map(|b| {
+            let local = voxelcraft::content::item_display::Context::Ground
+                .matrix(&voxelcraft::content::item_display::drawn(&stack));
+            (local, crate::render::extent_y(&stack, Some(b), local).0 as f64)
         });
-        let lift = HOVER - lowest * size;
+        // `ITEM_MIN_HOVER_HEIGHT` (a flat icon's quad starts at its bottom edge).
+        let lift = HOVER;
         let sky_light = crate::entity::sky_light(&self.world, pos + DVec3::Y * 0.25);
         let block_light = self.torch_light(pos + DVec3::Y * 0.25);
         let copies = match stack.count {
@@ -289,10 +293,13 @@ impl Game {
             let k = i as f64;
             let offset = DVec3::new((k * 2.3).sin(), 0.0, (k * 1.7).cos()) * 0.06 * k.min(1.0);
             let mut min = pos + offset + DVec3::new(-size / 2.0, lift + bob + k * 0.03, -size / 2.0);
-            if let Some(lowest) = mesh {
-                // The mesh's origin, its lowest point hovering as a block's does.
+            if let Some(lowest) = mesh.or(ground.map(|g| g.1)) {
+                // The model's origin, its lowest point hovering.
                 min = pos + offset + DVec3::new(0.0, HOVER - lowest + bob + k * 0.03, 0.0);
             }
+            let transform = ground.map(|(local, _)| {
+                glam::Mat4::from_translation((min - camera).as_vec3()) * glam::Mat4::from_rotation_y(-spin) * local
+            });
             out.push(BlockModel {
                 patterns: None,
                 lid: None,
@@ -308,7 +315,7 @@ impl Game {
                 glint: stack.has_foil(),
                 translucent: crate::item::translucent(&stack),
                 mesh: mesh.map(|_| (stack, voxelcraft::content::item_models::Context::Ground)),
-                transform: None,
+                transform,
             });
         }
     }

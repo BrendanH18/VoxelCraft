@@ -39,6 +39,12 @@
 //! All passes address 4096 texture layers. Detail upper/plane coordinate
 //! code 31 represents 1.5/16 (frogspawn); ordinary shape coordinates remain
 //! integer sixteenths. The code is decoded only in the detail vertex path.
+//! A side face's lower u bound is at most 15 too, so its top bit (word 0
+//! bit 25) mirrors the face's texture (v1.0 gap track 6d: a door's broad
+//! face, as Java's door models' reversed UVs draw it).
+//!
+//! UVs follow Java's default face UVs ([`face_uv`], v1.0 gap track 6d):
+//! every face's texture upright and unmirrored seen from outside.
 //!
 //! v1.0 gap track 6c: a detail quad whose face is 6 or 7 is a *fine* quad
 //! (bamboo, whose stalk and leaf planes sit off the sixteenth grid). Word 0
@@ -49,7 +55,12 @@
 //! word 1 the layer, ambient occlusion and the lower and upper u and v
 //! codes in bits 16-27 (3 bits each). The codes are sixteenths 0, 0.8,
 //! 6.5, 7, 9, 9.5, 15.2 and 16 (and 8 for a plane). The shader moves a fine
-//! quad by Java's bamboo offset for its column.
+//! quad by Java's bamboo offset for its column. v1.0 gap track 6d: a stalk
+//! quad's word 0 bits 29-30 name Java's stalk model for the cell
+//! ([`crate::world::offset::bamboo_model`]); the shader maps its sides to
+//! that model's texture column (3 texels apart from 0, as wide as the
+//! stalk) and its ends to the texture's corner squares, as `bamboo1_age0`
+//! to `bamboo4_age1` do.
 //!
 //! Faces 6 and 7 are the two diagonal planes of a cross-shaped block
 //! (plants, torches) at the cell `(x, y, z)`: face 6 runs from (0, 0) to
@@ -84,6 +95,23 @@ pub fn side_cross(b: Block) -> Option<u32> {
     }
 }
 
+/// v1.0 gap track 6d: Java's default UV of the point `p` (block units) on
+/// a face (0 +X, 1 -X, 2 +Y, 3 -Y, 4 +Z, 5 -Z), as `FaceBakery` maps an
+/// element's face without explicit UVs: each texture upright and
+/// unmirrored seen from outside. The terrain shader's `face_uv` is the same
+/// mapping in planar form (`1 - c` as `-c`, which tiles identically).
+pub fn face_uv(face: usize, p: [f32; 3]) -> [f32; 2] {
+    let [x, y, z] = p;
+    match face {
+        0 => [1.0 - z, 1.0 - y],
+        1 => [z, 1.0 - y],
+        2 => [x, z],
+        3 => [x, 1.0 - z],
+        4 => [x, 1.0 - y],
+        _ => [1.0 - x, 1.0 - y],
+    }
+}
+
 /// Margin for adjacent face/corner light, AO and connected shape samples.
 pub const MARGIN: usize = 1;
 /// Region edge length.
@@ -114,6 +142,9 @@ pub struct MeshInput {
     /// v0.18 Track 9: local cells drawn as block-entity models instead (a
     /// chest whose lid is open or moving, a barrel in use); usually empty.
     pub models: Vec<glam::IVec3>,
+    /// v1.0 gap track 6d: the world position of the chunk's first block,
+    /// for model choices seeded by position (bamboo's stalk models).
+    pub origin: glam::IVec3,
 }
 
 impl MeshInput {
@@ -422,7 +453,7 @@ pub fn build(input: &MeshInput, region: &mut Region) -> MeshData {
         region.blocks[ridx(x, y, z)] = Block::AIR;
     }
     region.copy_light(&input.light);
-    let mesh = mesh_region(region, &input.foliage);
+    let mesh = mesh_region(region, &input.foliage, input.origin);
     #[cfg(test)]
     let mesh = MeshData {
         block_light: Region::centre_light(&region.block_light),
@@ -433,7 +464,7 @@ pub fn build(input: &MeshInput, region: &mut Region) -> MeshData {
 }
 
 /// Greedy-meshes the centre chunk of a lit region.
-fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData {
+fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE], origin: glam::IVec3) -> MeshData {
     let blocks = &r.blocks[..];
     let (sky, blk) = (&r.sky[..], &r.block_light[..]);
     let mut out: [Vec<[u32; 3]>; PASSES] = Default::default();
@@ -709,7 +740,13 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                 if let Some((front, plane, r)) = stalk {
                     let (ao, light) = shade_corners(blocks, sky, blk, front, su, sv, true);
                     let (ao, light) = (ao as u32, light as u32);
-                    out[pass].push(fine_quad([x, y, z], face as u32, stalk_layer, plane, r, false, ao, light));
+                    // v1.0 gap track 6d: Java's stalk model for the cell, in
+                    // word 0 bits 29-30 (its texture column).
+                    let at = origin + glam::IVec3::new(x as i32, y as i32, z as i32);
+                    let model = u32::from(crate::world::offset::bamboo_model(at.x, at.y, at.z));
+                    let mut q = fine_quad([x, y, z], face as u32, stalk_layer, plane, r, false, ao, light);
+                    q[0] |= model << 29;
+                    out[pass].push(q);
                 }
                 // The leaf planes: x across at z 8 (faces +-Z) and z across
                 // at x 8 (faces +-X), lit flat by the cell, no occlusion.
@@ -725,6 +762,7 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                 }
                 continue;
             }
+            let door_mirror = b.is_door().then(|| shape::door_mirrors_edge_face(b, blocks[i - D * D])).flatten();
             for (j, bx) in boxes.as_slice().iter().enumerate() {
                 // Candle wax and wicks have layers of their own.
                 let layer = crate::world::colour_blocks::box_layer(b, j)
@@ -763,8 +801,17 @@ fn mesh_region(r: &Region, foliage: &[u8; CHUNK_SIZE * CHUNK_SIZE]) -> MeshData 
                         u32::from(value)
                     }
                 };
-                let r = [coord(r[0], u), coord(r[1], u), coord(r[2], v), coord(r[3], v)];
+                let mut r = [coord(r[0], u), coord(r[1], u), coord(r[2], v), coord(r[3], v)];
                 let depth = coord(depth, d);
+                // v1.0 gap track 6d: a door's mirrored broad face (bit 4 of a
+                // side face's lower u, which is at most 15).
+                if let Some(edge) = door_mirror
+                    && d != 1
+                    && bx.max[d] - bx.min[d] < 16
+                    && edge == on_edge
+                {
+                    r[0] |= 16;
+                }
                 out[pass].push([
                     (x | y << 6 | z << 12) as u32
                         | (layer >> 8 & 1) << 5
@@ -1366,10 +1413,79 @@ mod tests {
         }
     }
 
-    /// A detail quad's texture layer, decoded as `chunk.wgsl` does.
+    /// v1.0 gap track 6d: a door draws exactly one broad face mirrored, as
+    /// Java's door models do: the face on the cell's edge when hinged right
+    /// or open (not both), the inner one otherwise. No other quad of a cube
+    /// or a stair sets the mirror bit.
+    #[test]
+    fn doors_mirror_one_broad_face_as_javas_models() {
+        let mirrored = |q: &[u32; 3]| q[1] >> 31 == 1 && (q[0] >> 18 & 7) < 6 && (q[0] >> 25 & 1) == 1;
+        let mut checked = 0;
+        for id in 0..crate::world::block::STATE_CAPACITY as u16 {
+            let lower = Block(id);
+            if !matches!(lower.shaped(), Some(crate::world::block::Shaped::Door { upper: false, .. }))
+                || crate::world::mount_states::is_right_hinge(lower)
+            {
+                continue;
+            }
+            let Some(right) = crate::world::mount_states::right_of(lower) else { continue };
+            for b in [lower, right] {
+                let m = mesh_blocks(&[([5, 5, 5], b)]);
+                let broad: Vec<_> = m.quads.iter().filter(|q| q[1] >> 31 == 1 && (q[1] >> 26 & 31) != 16).collect();
+                let flipped: Vec<_> = m.quads.iter().filter(|q| mirrored(q)).collect();
+                assert_eq!(flipped.len(), 1, "{b:?}: {broad:?}");
+                let depth = flipped[0][1] >> 26 & 31;
+                let on_edge = depth == 0 || depth == 16;
+                assert_eq!(Some(on_edge), crate::world::shape::door_mirrors_edge_face(b, Block::AIR), "{b:?}");
+                checked += 1;
+            }
+        }
+        assert!(checked >= 2 * 8 * 13, "{checked} doors");
+        for b in [Block::STONE, Block::STONE_STAIRS] {
+            assert!(!mesh_blocks(&[([5, 5, 5], b)]).quads.iter().any(mirrored), "{b:?}");
+        }
+    }
+
+    /// v1.0 gap track 6d: Java's default face UVs, every face's texture
+    /// unmirrored seen from outside: texture right (u) cross texture down
+    /// (v) points into the block.
+    #[test]
+    fn face_uvs_are_javas_unmirrored_from_outside() {
+        let normals = [[1., 0., 0.], [-1., 0., 0.], [0., 1., 0.], [0., -1., 0.], [0., 0., 1.], [0., 0., -1.]];
+        for (face, n) in normals.iter().enumerate() {
+            let at = |p: [f32; 3]| face_uv(face, p);
+            let o = at([0.25, 0.25, 0.25]);
+            let du = |axis: usize| {
+                let mut p = [0.25f32; 3];
+                p[axis] += 0.5;
+                let q = at(p);
+                [q[0] - o[0], q[1] - o[1]]
+            };
+            // The surface direction of +u and +v.
+            let (mut right, mut down) = ([0f32; 3], [0f32; 3]);
+            for axis in 0..3 {
+                let d = du(axis);
+                right[axis] = d[0] * 2.0;
+                down[axis] = d[1] * 2.0;
+            }
+            let cross = [
+                right[1] * down[2] - right[2] * down[1],
+                right[2] * down[0] - right[0] * down[2],
+                right[0] * down[1] - right[1] * down[0],
+            ];
+            assert_eq!(cross.map(|c| c.round()), n.map(|c: f32| -c), "face {face}");
+        }
+        // The south face is Java's (x, 1 - y); the north mirrors it.
+        assert_eq!(face_uv(4, [0.25, 0.75, 1.0]), [0.25, 0.25]);
+        assert_eq!(face_uv(5, [0.25, 0.75, 0.0]), [0.75, 0.25]);
+    }
+
+    /// A detail quad's texture layer, decoded as `chunk.wgsl` does (a fine
+    /// quad keeps layer bit 11 in word 0 bit 18).
     fn detail_layer(q: [u32; 3]) -> u16 {
-        ((q[1] & 255) | (q[0] >> 5 & 1) << 8 | (q[0] >> 11 & 1) << 9 | (q[0] >> 17 & 1) << 10 | (q[0] >> 30 & 1) << 11)
-            as u16
+        let fine = (q[0] >> 18 & 7) >= 6;
+        let top = if fine { q[0] >> 18 & 1 } else { q[0] >> 30 & 1 };
+        ((q[1] & 255) | (q[0] >> 5 & 1) << 8 | (q[0] >> 11 & 1) << 9 | (q[0] >> 17 & 1) << 10 | top << 11) as u16
     }
 
     /// v1.0 gap Track 7: leafy bamboo draws its leaves on two crossed planes

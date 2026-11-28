@@ -76,7 +76,7 @@ impl Game {
             voxelcraft::world::maps::has_map_id(s) && s.map_id.is_some_and(|id| maps.maps.contains_key(&id))
         };
         decor::framed_items(&self.mobs.entities.decor, camera, view).filter(move |f| !shows_map(&f.2)).map(
-            |(centre, orient, stack, sky, torch)| {
+            move |(centre, orient, stack, sky, torch)| {
                 let block = crate::item::model_block(&stack);
                 // v1.0 gap track 6b: a 3D item mesh, at Java's frame scale
                 // (0.5) and `fixed` transform; the frame's turn faces model
@@ -101,33 +101,50 @@ impl Game {
                         transform: None,
                     };
                 }
-                let size = if block.is_some() { 0.375 } else { 0.5 };
-                let icon = match block {
-                    Some(_) => None,
-                    None => stack
-                        .item
-                        .dial_layer(self.dial_of(&self.session.player).for_stack(&stack))
-                        .or_else(|| stack.item.flat_layer()),
-                };
-                // v1.0 gap track 6c: fences, walls and anvils turn a quarter
-                // in a frame (their `fixed` transforms' 90 degrees about y), so
-                // a fence, which runs north to south as Java's
-                // `fence_inventory` does, lies across the frame.
-                let fixed = voxelcraft::content::item_display::of(&stack).fixed.rotation;
-                let orient = if block.is_some() && fixed[0] == 0.0 && fixed[2] == 0.0 && fixed[1] % 180.0 == 90.0 {
-                    orient * glam::Quat::from_rotation_y(fixed[1].to_radians())
-                } else {
-                    orient
-                };
-                // A block sits on the frame's backing rather than in the wall.
-                let out =
-                    if block.is_some() { (orient * glam::Vec3::Z).as_dvec3() * (size / 2.0) } else { DVec3::ZERO };
+                // v1.0 gap track 6d: a block item through `ItemFrameRenderer`'s
+                // chain and its whole `fixed` transform (`block/block`: half
+                // size; chests and heads turned half about y, fences, walls
+                // and anvils a quarter): Java's model +Z points into the
+                // wall, and its plane is 7/16 out from the cell's centre, 0.03
+                // behind the game's flat icons.
+                if let Some(block) = block {
+                    let out = (orient * glam::Vec3::Z).as_dvec3();
+                    let at = centre - out * 0.03 - camera;
+                    let local = voxelcraft::content::item_display::Context::Fixed
+                        .matrix(&voxelcraft::content::item_display::drawn(&stack));
+                    let transform = glam::Mat4::from_translation(at.as_vec3())
+                        * glam::Mat4::from_quat(orient * glam::Quat::from_rotation_y(std::f32::consts::PI))
+                        * glam::Mat4::from_scale(glam::Vec3::splat(0.5))
+                        * local;
+                    return crate::render::BlockModel {
+                        patterns: None,
+                        lid: None,
+                        min: DVec3::ZERO,
+                        size: 1.0,
+                        block,
+                        sky_light: sky,
+                        block_light: torch,
+                        yaw: 0.0,
+                        icon: None,
+                        orient: None,
+                        tint: voxelcraft::entity::wolf_armor::item_tint_bytes(stack),
+                        glint: stack.has_foil(),
+                        translucent: crate::item::translucent(&stack),
+                        mesh: None,
+                        transform: Some(transform),
+                    };
+                }
+                let size = 0.5;
+                let icon = stack
+                    .item
+                    .dial_layer(self.dial_of(&self.session.player).for_stack(&stack))
+                    .or_else(|| stack.item.flat_layer());
                 crate::render::BlockModel {
                     patterns: None,
                     lid: None,
-                    min: centre + out - DVec3::splat(size / 2.0),
+                    min: centre - DVec3::splat(size / 2.0),
                     size: size as f32,
-                    block: block.unwrap_or(voxelcraft::world::block::Block::AIR),
+                    block: voxelcraft::world::block::Block::AIR,
                     sky_light: sky,
                     block_light: torch,
                     yaw: 0.0,

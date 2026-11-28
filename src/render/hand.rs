@@ -16,7 +16,6 @@ use rustc_hash::FxHashMap;
 use super::block_model::BlockVertex;
 use crate::item::Item;
 use crate::world::block::tex;
-use crate::world::shape;
 
 /// Everything about the hand this frame.
 #[derive(Clone, Debug, Default)]
@@ -49,6 +48,8 @@ pub struct Hand {
     /// v1.0 gap track 6b: the held stack, when it is drawn with a 3D item
     /// mesh (`content::item_models`: beds, banners, the shield, two plants).
     pub mesh: Option<voxelcraft::inventory::Stack>,
+    /// v1.0 gap track 6d: the held stack (its display transforms).
+    pub stack: Option<voxelcraft::inventory::Stack>,
 }
 
 /// Minecraft draws the hand with this field of view, whatever the setting.
@@ -145,12 +146,8 @@ impl Builder<'_> {
             } else {
                 [corner(false, false), corner(false, true), corner(true, true), corner(true, false)]
             };
-            // As in `block_model`: sides map (horizontal, down), tops (x, z).
-            let uv = c.map(|p| match d {
-                0 => [p.z, 1.0 - p.y],
-                1 => [p.x, p.z],
-                _ => [p.x, 1.0 - p.y],
-            });
+            // Java's face UVs, as in `block_model` (v1.0 gap track 6d).
+            let uv = c.map(|p| crate::mesh::face_uv(face, p.to_array()));
             self.quad(c.map(|p| m.transform_point3(p)), uv, layer);
         }
     }
@@ -410,16 +407,15 @@ pub(super) fn vertices(
     let block = hand.block.or_else(|| item.block()).filter(|b| !b.flat_icon());
     match block {
         Some(block) => {
-            // Block models: turned 45 degrees and shrunk to 0.4, centred.
-            let block = block.item_facing();
-            let k = 0.4 * shape::item_scale(block).hand;
-            let m = arm * rot_y(45.0) * Mat4::from_scale(Vec3::splat(k)) * translate(-0.5, -0.5, -0.5);
-            let tex = block.info().tex;
-            let boxes = shape::item_boxes(block);
-            for (i, bx) in boxes.as_slice().iter().enumerate() {
-                let (lo, hi) = (Vec3::from_array(bx.min.map(f32::from)), Vec3::from_array(bx.max.map(f32::from)));
-                let tex = shape::item_box_layer(block, i).map_or(tex, |l| [l; 6]);
-                b.cuboid(m, lo / 16.0, hi / 16.0, tex);
+            // v1.0 gap track 6d: the block item's model through its whole
+            // `firstperson_righthand` transform (`block/block`: 45 degrees
+            // about y at 0.4; an orientable block 135, a chest 315).
+            let stack =
+                hand.stack.filter(|s| s.item == item).unwrap_or_else(|| voxelcraft::inventory::Stack::new(item, 1));
+            let display = voxelcraft::content::item_display::drawn(&stack);
+            let m = arm * voxelcraft::content::item_display::Context::FirstPersonRightHand.matrix(&display);
+            for q in super::ui::block_item_quads(block) {
+                b.quad(q.corners.map(|c| m.transform_point3(c)), q.uv, q.layer);
             }
         }
         None => {

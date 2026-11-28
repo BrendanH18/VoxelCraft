@@ -2754,7 +2754,7 @@ impl Game {
                     transform: None,
                 },
             ))
-            .chain(self.item_models(alpha))
+            .chain(self.item_models(alpha, camera))
             .chain(self.banner_models(camera))
             .chain(self.shulker_models(camera, alpha))
             .chain(self.lid_models(alpha))

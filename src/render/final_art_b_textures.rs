@@ -627,6 +627,48 @@ fn bamboo(leaves: u8) -> Tile {
     img.tile()
 }
 
+/// v1.0 gap track 6d: the stalk in the layout Java's stalk models sample
+/// (`bamboo1_age0` to `bamboo4_age1`, original art): four canes side by
+/// side, three texels wide from columns 0, 3, 6 and 9 (a thin stalk shows
+/// the first two of its cane's columns), each lit down its left with its
+/// nodes at its own rows; the cut end at (13, 0) for the top and (13, 4)
+/// for the bottom, three texels square (a thin stalk shows the top-left
+/// two). The rest is clear.
+fn bamboo_stalk() -> Tile {
+    let s = five([116, 160, 52]);
+    let mut img = Img::new();
+    // Each cane's node rows: a dark groove over a lit bulge.
+    const NODES: [[i32; 2]; 4] = [[2, 12], [6, 15], [0, 9], [4, 11]];
+    for (cane, nodes) in NODES.iter().enumerate() {
+        let x0 = cane as i32 * 3;
+        for y in 0..N as i32 {
+            for i in 0..3 {
+                let col = [3, 2, 1][i as usize];
+                let k = if nodes.contains(&y) {
+                    0
+                } else if nodes.contains(&(y - 1)) && i < 2 {
+                    4
+                } else if hu(1567 + cane as u32, i as usize, y as usize, 101).is_multiple_of(9) {
+                    col - 1
+                } else {
+                    col
+                };
+                img.set(x0 + i, y, s[k]);
+            }
+        }
+    }
+    // The cut ends: a pale pith ringed by the cane's wall.
+    for (y0, pith) in [(0, 4), (4, 3)] {
+        for y in 0..3 {
+            for x in 0..3 {
+                let k = if (x, y) == (1, 1) || (x, y) == (0, 0) { pith } else { 2 };
+                img.set(13 + x, y0 + y, s[k]);
+            }
+        }
+    }
+    img.tile()
+}
+
 // ---- Potted torchflower and the ender chest -----------------------------------
 
 /// The potted torchflower: the pot drawn as every other potted plant's pot
@@ -715,7 +757,7 @@ pub(super) fn build(put: &mut impl FnMut(u16, Tile)) {
             }
         }
     }
-    put(ob::BAMBOO, bamboo(0));
+    put(ob::BAMBOO, bamboo_stalk());
     put(ob::BAMBOO_SMALL_LEAVES, bamboo(1));
     put(ob::BAMBOO_LARGE_LEAVES, bamboo(2));
     put(crate::world::sniffer_plants::t::POTTED, potted_torchflower());
@@ -868,18 +910,20 @@ mod tests {
         }
     }
 
-    /// The bamboo post's columns are opaque on every row. (The leafy
-    /// tiles drawn here are redrawn by gap Track 7 as leaves for the
-    /// crossed planes; the leafy bamboo's post now shows this bare stalk.)
+    /// v1.0 gap track 6d: every texel Java's stalk models sample is
+    /// opaque: the four canes' columns 0-11 on every row and the two end
+    /// squares at (13, 0) and (13, 4).
     #[test]
     fn bamboo_keeps_a_solid_cane() {
-        for layer in [ob::BAMBOO] {
-            let t = tile(layer);
-            for y in 0..N {
-                for x in 6..10 {
-                    assert_eq!(t[y * N + x][3], 255, "layer {layer}: cane texel {x},{y} is see-through");
-                }
+        let t = tile(ob::BAMBOO);
+        let solid = |x: usize, y: usize| t[y * N + x][3] == 255;
+        for y in 0..N {
+            for x in 0..12 {
+                assert!(solid(x, y), "cane texel {x},{y} is see-through");
             }
+        }
+        for (x, y) in (13..16).flat_map(|x| (0..3).chain(4..7).map(move |y| (x, y))) {
+            assert!(solid(x, y), "end texel {x},{y} is see-through");
         }
     }
 

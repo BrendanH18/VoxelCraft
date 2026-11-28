@@ -109,14 +109,7 @@ fn cuboid(out: &mut Vec<Quad>, lo: Vec3, hi: Vec3, origin: Vec3, layers: [u16; 6
         } else {
             [corner(false, false), corner(false, true), corner(true, true), corner(true, false)]
         };
-        let uv = c.map(|p| {
-            let l = p - origin;
-            match d {
-                0 => [l.z, 1.0 - l.y],
-                1 => [l.x, l.z],
-                _ => [l.x, 1.0 - l.y],
-            }
-        });
+        let uv = c.map(|p| crate::mesh::face_uv(face, (p - origin).to_array()));
         let mut normal = Vec3::ZERO;
         normal[d] = if positive { 1.0 } else { -1.0 };
         out.push(Quad { corners: c, uv, layer, normal, tint: None });

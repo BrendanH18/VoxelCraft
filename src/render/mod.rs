@@ -40,7 +40,7 @@ use winit::window::Window;
 use crate::mesh::{CROSS, CUTOUT, FACE_ORDER, MeshData, OPAQUE, PASSES, TRANSLUCENT};
 use crate::world::block::tex;
 use crate::world::chunk::{CHUNK_SIZE, CHUNK_SIZE_I};
-pub use block_model::BlockModel;
+pub use block_model::{BlockModel, extent_y};
 
 /// A chunk draw's instance: its origin relative to the camera, and its world
 /// origin's x and z in blocks (v1.0 gap track 6c: the seed of the model

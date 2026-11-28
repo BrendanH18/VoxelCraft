@@ -139,11 +139,7 @@ pub fn vertices(models: &[SignModel], camera: DVec3, out: &mut Vec<BlockVertex>)
                 for i in [0, 1, 2, 2, 3, 0] {
                     let p = c[i];
                     // UVs as the chunk shader's planar mapping, in the sign's frame.
-                    let uv = match d {
-                        0 => [p.z, 1.0 - p.y],
-                        1 => [p.x, p.z],
-                        _ => [p.x, 1.0 - p.y],
-                    };
+                    let uv = crate::mesh::face_uv(face, p.to_array());
                     out.push(BlockVertex {
                         pos: place(p).to_array(),
                         uv,
