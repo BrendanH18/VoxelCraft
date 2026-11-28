@@ -2302,6 +2302,12 @@ approval and reverted if the owner rejects it), resolves fidelity
 questions by matching Java and approves no exception, then prepares
 1.0.0's version, notes, inventory and §8 in a pull request with CI green.
 Merging to `main`, tagging and publishing wait for the owner's play.
+On 2026-11-28 an audit of 0.18's known limitations against the merged
+build found Java differences outside the 22 rows (portal travel for
+entities, inventory drag and double-click, the off-hand item, goat horns,
+random block variants, mob voices, structure details, options); following
+the match-Java rule, the integrator started a final wave of seven tracks
+(F1–F7) for them, each due by 06:45.
 
 1. **Effects and mob damage** (PLY-03b, MOB-02d): Darkness darkening the
    lightmap, not only the fog; Smite and Bane of Arthropods on mobs'
