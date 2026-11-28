@@ -2278,7 +2278,8 @@ behaviour against the Java 26.3 jar, runs its targeted checks on Boat and
 writes a verification record; the integrator applies the inventory
 changes. Generation changes go into a new world generation, so the golden
 chunk hashes of generations 3 to 6 don't move. Tracks 6 and 7 merge only
-once the owner approves their look (Track 7's approved on 2026-11-27).
+once the owner approves their look (Track 7's and Track 6's approved on 2026-11-27; for the items Java
+draws differently, flat or 3D, the owner chose to match Java the same day).
 
 1. **Effects and mob damage** (PLY-03b, MOB-02d): Darkness darkening the
    lightmap, not only the fog; Smite and Bane of Arthropods on mobs'
