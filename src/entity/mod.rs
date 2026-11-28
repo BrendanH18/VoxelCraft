@@ -226,6 +226,9 @@ pub enum MobSound {
     /// v1.0 gap Track 2h: a villager starting work at its job site
     /// (`WorkAtPoi.start`'s `playWorkSound`).
     VillagerWork(villager::Profession),
+    /// v1.0 final F9: an item frame or painting a piston broke
+    /// (`ITEM_FRAME_BREAK`, `GLOW_ITEM_FRAME_BREAK` or `PAINTING_BREAK`).
+    DecorBroken(decor::Kind),
 }
 
 /// Something an entity did that the game needs to react to.

@@ -736,6 +736,11 @@ impl Game {
                                 F::Grow => (Sound::Pop, 0.15),
                             }
                         }
+                        MobSound::DecorBroken(kind) => {
+                            let effect = voxelcraft::entity::decor::Effect::Broken(kind);
+                            super::utilities::decor_feedback(&mut self.audio, pos, effect);
+                            continue;
+                        }
                         MobSound::Allay(action) => (Sound::Allay(action), 0.8),
                         MobSound::Warden(cue) => (Sound::Warden(cue), warden_volume(cue)),
                         MobSound::Hurt(MobKind::Warden) => (Sound::Warden(voxelcraft::entity::warden::Cue::Hurt), 1.0),

@@ -191,7 +191,7 @@ pub struct Thrown {
     pub shooter: Option<u32>,
     pub pos: DVec3,
     pub previous_pos: DVec3,
-    vel: DVec3,
+    pub(super) vel: DVec3,
     age: f32,
     origin: DVec3,
     /// v1.0 gap Track 8b: who llama spit already hit on its way through

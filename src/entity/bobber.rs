@@ -30,7 +30,7 @@ pub struct Bobber {
     pub owner: PlayerId,
     pub pos: DVec3,
     pub previous_pos: DVec3,
-    vel: DVec3,
+    pub(super) vel: DVec3,
     state: State,
     on_ground: bool,
     ground_time: f32,

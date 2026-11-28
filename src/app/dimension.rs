@@ -71,7 +71,7 @@ pub(super) fn parse_owed_portals(text: &str) -> Vec<OwedPortal> {
 }
 
 /// Level properties that belong to one dimension rather than the player.
-pub(super) const DIMENSION_KEYS: [&str; 40] = [
+pub(super) const DIMENSION_KEYS: [&str; 41] = [
     "furnaces",
     "chests",
     "items",
@@ -120,6 +120,8 @@ pub(super) const DIMENSION_KEYS: [&str; 40] = [
     "ender_dragons",
     // v1.0 review fixes: the level file's save generation.
     "save_generation",
+    // v1.0 final F9: legacy walls waiting for a neighbouring chunk.
+    "legacy_walls",
 ];
 /// How far around the arrival point to look for an existing portal.
 const SEARCH_RADIUS: i32 = 16;
@@ -352,6 +354,11 @@ impl Game {
         props.insert("conduits".to_string(), self.world.conduits_to_string());
         props.insert("potent_sulfur".to_string(), self.world.potent_sulfur_to_string());
         props.insert("crafters".to_string(), self.world.crafters_to_string());
+        // v1.0 final F9: only while some legacy wall waits, so other
+        // worlds' level files don't change.
+        if self.world.has_legacy_walls() {
+            props.insert("legacy_walls".to_string(), self.world.legacy_walls_to_string());
+        }
         self.mobs.entities.save_props(&mut props);
         // v1.0 Track 3b: what region storage needs from the level file.
         if self.world.writes_records() {
@@ -435,6 +442,9 @@ impl Game {
         }
         if let Some(g) = props.get("potent_sulfur") {
             self.world.load_potent_sulfur(g);
+        }
+        if let Some(w) = props.get("legacy_walls") {
+            self.world.load_legacy_walls(w);
         }
         if let Some(f) = props.get(crate::world::FLUID_TICKS_KEY) {
             self.world.load_fluid_ticks(f);

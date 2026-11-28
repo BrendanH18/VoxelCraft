@@ -27,7 +27,7 @@ pub struct Fireball {
     pub pos: DVec3,
     /// Position at the start of the last simulation step, for rendering.
     pub previous_pos: DVec3,
-    vel: DVec3,
+    pub(super) vel: DVec3,
     /// Unit heading it accelerates along.
     dir: DVec3,
     age: f32,

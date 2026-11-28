@@ -29,17 +29,19 @@ pub struct PrimedTnt {
     /// whoever was behind the blast that set it off; nobody for fire,
     /// redstone and dispensers. Saved as Java's `owner`.
     pub owner: Option<Owner>,
+    /// v1.0 final F9: `Entity.fallDistance` (not saved), for powder snow.
+    fall_distance: f64,
 }
 
 impl PrimedTnt {
     /// A LAN client's copy: drawn only, never simulated.
     pub(super) fn replica(pos: DVec3, previous_pos: DVec3, fuse: f32) -> Self {
-        Self { pos, previous_pos, vel: DVec3::ZERO, fuse, power: POWER, owner: None }
+        Self { pos, previous_pos, vel: DVec3::ZERO, fuse, power: POWER, owner: None, fall_distance: 0.0 }
     }
 
     /// Create a moving charge with a fuse in seconds and coincident interpolation positions.
     pub fn new(pos: DVec3, vel: DVec3, fuse: f32) -> Self {
-        Self { pos, previous_pos: pos, vel, fuse, power: POWER, owner: None }
+        Self { pos, previous_pos: pos, vel, fuse, power: POWER, owner: None, fall_distance: 0.0 }
     }
 
     /// v1.0 gap Track 8e: the level file's copy (`PrimedTnt`'s `fuse`,
@@ -66,6 +68,7 @@ impl PrimedTnt {
             // `Mth.clamp(explosion_power, 0, 128)`.
             power: s::read_f32(v, "power", POWER).clamp(0.0, 128.0),
             owner: s::read_owner(&v["owner"]),
+            fall_distance: 0.0,
         })
     }
 
@@ -102,8 +105,10 @@ impl PrimedTnt {
         }
         self.vel.y -= GRAVITY * dt;
         let delta = self.vel * dt;
-        let context = Some(physics::CollisionContext::entity(self.pos.y, 0.0, false));
+        let context = Some(physics::CollisionContext::entity(self.pos.y, self.fall_distance, false));
+        let start_y = self.pos.y;
         let on_ground = physics::move_box_context(world, &mut self.pos, &mut self.vel, delta, SHAPE, context).on_ground;
+        self.fall_distance = super::item::fallen(self.fall_distance, on_ground, start_y, self.pos.y);
         if on_ground {
             let k = (1.0 - dt * 8.0).max(0.0);
             self.vel.x *= k;
@@ -148,6 +153,38 @@ pub fn blast_cause(owner: Option<Owner>, mob: impl Fn(u32) -> Option<super::MobK
 mod tests {
     use super::*;
     use crate::entity::{MobKind, PlayerId};
+
+    /// v1.0 final F9: primed TNT counts its fall (`Entity.fallDistance`),
+    /// so after more than 2.5 blocks powder snow's 0.9 shape holds it for
+    /// the tick it lands (which resets the count), and it sinks in after.
+    #[test]
+    fn primed_tnt_rests_a_tick_on_powder_snow_after_a_long_fall_then_sinks() {
+        use crate::world::{World, block::Block, chunk::ChunkData, scaffolding::POWDER_SNOW, terrain::Generator};
+        use glam::IVec3;
+        use std::sync::Arc;
+        let p = IVec3::new(8, 140, 8);
+        let mut w = World::new_headless(Arc::new(Generator::new(7)), Default::default(), 2);
+        w.insert_chunk(IVec3::new(0, 4, 0), Arc::new(ChunkData::Uniform(Block::AIR)), false);
+        w.set_block(p - IVec3::Y, Block::STONE);
+        w.set_block(p, POWDER_SNOW);
+        let fall = |from: f64| {
+            let mut t = PrimedTnt::new(p.as_dvec3() + DVec3::new(0.5, from, 0.5), DVec3::ZERO, 100.0);
+            let mut ys = Vec::new();
+            for _ in 0..60 {
+                t.update(0.05, &w, &mut Vec::new(), true, |_| None);
+                ys.push(t.pos.y - p.y as f64);
+            }
+            ys
+        };
+        let snow_top = f64::from(0.9_f32);
+        let long = fall(6.0);
+        let rested = long.iter().filter(|&&y| (y - snow_top).abs() < 1e-6).count();
+        assert_eq!(rested, 1, "one tick on the 0.9 shape: {long:?}");
+        assert!(long.last().unwrap().abs() < 1e-6, "then down to the stone: {long:?}");
+        let short = fall(1.5);
+        assert!(short.iter().all(|&y| (y - snow_top).abs() > 1e-6), "a short fall never rests: {short:?}");
+        assert!(short.last().unwrap().abs() < 1e-6);
+    }
 
     #[test]
     fn the_blast_names_whoever_lit_the_tnt_while_they_are_in_the_level() {

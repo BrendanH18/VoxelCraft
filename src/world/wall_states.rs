@@ -246,11 +246,39 @@ impl World {
         out.map_or(data, std::sync::Arc::new)
     }
 
+    /// v1.0 final F9: the `legacy_walls` level file key (and chunk record
+    /// entry): the walls still waiting for a neighbouring chunk, as
+    /// `x,y,z` joined by `;`, sorted. Written only when some wait, so a
+    /// world without them saves as before.
+    pub fn legacy_walls_to_string(&self) -> String {
+        let mut walls: Vec<IVec3> = self.legacy_walls.iter().copied().collect();
+        walls.sort_unstable_by_key(|p| (p.x, p.y, p.z));
+        walls.iter().map(|p| format!("{},{},{}", p.x, p.y, p.z)).collect::<Vec<_>>().join(";")
+    }
+
+    /// Reads [`World::legacy_walls_to_string`] into the wait list; damaged
+    /// entries are skipped.
+    pub fn load_legacy_walls(&mut self, text: &str) {
+        let one = |e: &str| {
+            let mut it = e.split(',').map(|v| v.trim().parse::<i32>());
+            let p = IVec3::new(it.next()?.ok()?, it.next()?.ok()?, it.next()?.ok()?);
+            it.next().is_none().then_some(p)
+        };
+        self.legacy_walls.extend(text.split(';').filter_map(one));
+    }
+
+    /// Whether any legacy wall waits for a neighbouring chunk.
+    pub fn has_legacy_walls(&self) -> bool {
+        !self.legacy_walls.is_empty()
+    }
+
     /// v1.0 final F7: the legacy walls [`World::migrate_legacy_wall_posts`]
     /// couldn't settle, next to the chunk at `pos` that just loaded, take
     /// their post now, as an ordinary shape update (which walks down a
-    /// stack). The list isn't saved: a wall still waiting when its chunk
-    /// is saved keeps its post until a neighbour changes.
+    /// stack). v1.0 final F9: the list is saved (the `legacy_walls` key,
+    /// and the chunk record of a wall's chunk when that unloads), so a
+    /// wall still waiting when the game saves or its chunk unloads is
+    /// settled when its neighbours load in a later session.
     pub(super) fn retry_legacy_wall_posts(&mut self, pos: IVec3) {
         use super::chunk::chunk_of;
         if self.legacy_walls.is_empty() {

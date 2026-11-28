@@ -273,7 +273,7 @@ impl Minecart {
             self.boat.water_level = self.pos.y + HEIGHT;
             let target = self.water_level_above(world) as f64 - HEIGHT + 0.101;
             let (min, max) = self.shape().aabb(DVec3::new(self.pos.x, target, self.pos.z));
-            if physics::no_collision_context(world, min, max, None) {
+            if physics::no_collision_context(world, min, max, Some(self.collision_context())) {
                 self.pos.y = target;
                 self.vel.y = 0.0;
                 self.boat.last_yd = 0.0;
@@ -342,7 +342,8 @@ impl Minecart {
         let delta = self.vel;
         let (min, max) = self.aabb();
         let mut colliders: Vec<Collider> = Vec::new();
-        physics::colliders(world, min.min(min + delta), max.max(max + delta), &mut colliders);
+        let (lo, hi, context) = (min.min(min + delta), max.max(max + delta), Some(self.collision_context()));
+        physics::colliders_context(world, lo, hi, context, &mut colliders);
         let moved = physics::collide_with(&colliders, min, max, delta);
         self.pos += moved;
         let (x, z) = (moved.x != delta.x, moved.z != delta.z);
