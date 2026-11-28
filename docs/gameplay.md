@@ -290,6 +290,24 @@ compact counter.
 - Ladders (7 sticks in an H: 3) hang on the side of a solid block and fall
   off when it's removed. Walk into one or hold Space to climb, hold Shift
   to hold on; ladders break falls
+- Scaffolding and powder snow treat mobs, dropped items, experience orbs,
+  primed TNT and armor stands as Java's `EntityCollisionContext` does
+  (v1.0 final F7): anything whose feet are above a scaffolding block
+  stands on it, and inside one it sinks to the top of the block below (or
+  an unstable bottom block's rim), so an item dropped in a scaffolding
+  tower settles a level down instead of popping out of the top. Powder
+  snow holds up only rabbits, endermites, silverfish and foxes
+  (`powder_snow_walkable_mobs`), mobs and armor stands wearing leather
+  boots, falling blocks, and anything that has fallen more than 2.5 blocks
+  (for a moment, on a 0.9-high shape); other mobs and items sink through
+  it. Items track their fall distance for this (not saved); orbs, TNT and
+  armor stands count it as zero, so they sink straight in after a long
+  fall where Java first rests them a tick on the 0.9 shape
+- Walls saved before posts were stored (v0.8 and older loaded every wall
+  with its post up) get the post Java's `WallBlock` gives them as their
+  chunk is first read from an old world's `chunks.bin`, without waiting
+  for a neighbour to change (v1.0 final F7). A wall beside a never-edited
+  chunk that hasn't loaded yet keeps its post until a neighbour changes
 - TNT (5 gunpowder and 4 sand in a checkerboard): light it with flint and
   steel and it hops out of its block, flashing white and swelling for 4
   seconds before a blast stronger than a creeper's (power 4). TNT caught in
