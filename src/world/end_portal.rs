@@ -91,7 +91,12 @@ pub fn block_pos_long(p: IVec3) -> i64 {
 /// of radius 4–6 shrinking by 0.5–1.5 per layer down.
 pub fn java_island(origin: IVec3) -> Vec<IVec3> {
     let mut rng = crate::enchant::JavaRandom::new(block_pos_long(origin));
-    let mut size = rng.next_bounded(3) as f32 + 4.0;
+    island_with(origin, &mut |n| rng.next_bounded(n))
+}
+
+/// `EndIslandFeature.place` at `origin` drawing from `int` (`nextInt`).
+pub fn island_with(origin: IVec3, int: &mut impl FnMut(i32) -> i32) -> Vec<IVec3> {
+    let mut size = int(3) as f32 + 4.0;
     let mut out = Vec::new();
     let mut y = 0;
     while size > 0.5 {
@@ -103,7 +108,7 @@ pub fn java_island(origin: IVec3) -> Vec<IVec3> {
                 }
             }
         }
-        size -= rng.next_bounded(2) as f32 + 0.5;
+        size -= int(2) as f32 + 0.5;
         y -= 1;
     }
     out

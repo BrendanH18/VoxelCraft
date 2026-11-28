@@ -677,6 +677,10 @@ impl Game {
                         MobSound::EyeDeath => (Sound::EyeDeath, 0.8),
                         MobSound::DragonFlap => (Sound::DragonFlap, 1.0),
                         MobSound::DragonGrowl => (Sound::DragonGrowl, 1.0),
+                        MobSound::DragonRoar => {
+                            self.audio.play_in(SoundSource::Hostile, Sound::DragonGrowl, Some(pos), 2.5, (0.8, 1.1));
+                            continue;
+                        }
                         MobSound::DragonShoot => (Sound::Fireball, 1.0),
                         MobSound::DragonSmash => (Sound::Explosion, 0.25),
                         // Java plays the death to the whole dimension.

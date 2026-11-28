@@ -560,17 +560,29 @@ impl Game {
                 at.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)
             }
             Arrival::EndSpawn => {
+                // `EndPortalBlock.getPortalDestination`:
+                // `EndPlatformFeature.createEndPlatform(.., true)` replaces
+                // every block of the platform that isn't obsidian (its
+                // floor) or air (the three layers above) with
+                // `destroyBlock(pos, true)`, dropping what was there. The
+                // player faces west (`Direction.WEST.toYRot()`) and keeps
+                // their pitch (`Relative.X_ROT`).
                 let spawn = crate::world::end::SPAWN;
                 for z in -2..=2 {
                     for x in -2..=2 {
-                        self.world.set_block(spawn + IVec3::new(x, -1, z), Block::OBSIDIAN);
-                        for y in 0..3 {
-                            self.world.set_block(spawn + IVec3::new(x, y, z), Block::AIR);
+                        for y in -1..3 {
+                            let cell = spawn + IVec3::new(x, y, z);
+                            let want = if y == -1 { Block::OBSIDIAN } else { Block::AIR };
+                            let Some(was) = self.world.get_block(cell).filter(|&b| b != want) else { continue };
+                            if was != Block::AIR {
+                                self.world.spill_block(cell, was);
+                                self.world.particles.push(crate::particles::Request::Break { cell, block: was });
+                            }
+                            self.world.set_block(cell, want);
                         }
                     }
                 }
                 self.session.player.yaw = std::f32::consts::PI;
-                self.session.player.pitch = 0.0;
                 spawn.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)
             }
             Arrival::Respawn => {

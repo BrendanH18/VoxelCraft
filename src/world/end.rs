@@ -6,6 +6,9 @@ use super::noise::{Perlin, hash3};
 use glam::{IVec2, IVec3};
 use std::sync::{Arc, Mutex};
 
+mod decoration;
+pub use decoration::RETURN_EXIT;
+
 pub const SPAWN: IVec3 = IVec3::new(100, 49, 0);
 const OUTER_START: f64 = 1024.0;
 
@@ -135,6 +138,11 @@ pub struct EndGen {
     /// Generation 7's end stone per 16-block chunk (see
     /// [`super::end_islands::EndNoise::chunk`]), cached.
     terrain: Mutex<rustc_hash::FxHashMap<IVec2, Terrain>>,
+    /// Generation 7 (v1.0 gap Track 4b): `BiomeManager`'s zoom, which the
+    /// decoration's `biome` filters read through.
+    zoom: super::biome_zoom::BiomeZoom,
+    /// Generation 7's islands and return gateways per chunk, cached.
+    decoration: decoration::Caches,
 }
 
 /// One 16 x 16 chunk's end stone: bit y of `[z * 16 + x]`.
@@ -208,6 +216,8 @@ impl EndGen {
             chorus: Mutex::new(rustc_hash::FxHashMap::default()),
             noise: (generation >= super::terrain::Generation::V7).then(|| super::end_islands::EndNoise::new(seed)),
             terrain: Mutex::new(rustc_hash::FxHashMap::default()),
+            zoom: super::biome_zoom::BiomeZoom::new(seed as i64),
+            decoration: decoration::Caches::default(),
         }
     }
 
@@ -355,15 +365,19 @@ impl EndGen {
     /// 16-block chunk `chunk` (generation 5): `count` uniform 0..=4,
     /// `in_square`, `heightmap MOTION_BLOCKING`, End highlands only; each
     /// plant (`ChorusPlantFeature`) needs air with End stone below and grows
-    /// with `ChorusFlowerBlock.generatePlant(.., 8)`. The draws come from a
-    /// seeded `JavaRandom` per chunk, not Java's decoration seed (the
-    /// terrain is original, so Java's positions can't carry over).
+    /// with `ChorusFlowerBlock.generatePlant(.., 8)`. In generations 5 and
+    /// 6 the draws come from a seeded `JavaRandom` per chunk, not Java's
+    /// decoration seed (the terrain is original, so Java's positions can't
+    /// carry over); generation 7 grows them as Java does
+    /// ([`decoration`]).
     pub fn chorus_plants(&self, chunk: IVec2) -> Arc<Vec<(IVec3, Block)>> {
         if let Some(found) = self.chorus.lock().unwrap().get(&chunk) {
             return Arc::clone(found);
         }
         let mut out: Vec<(IVec3, Block)> = Vec::new();
-        if self.biome(chunk.x * 16, chunk.y * 16) == EndBiome::Highlands {
+        if self.noise.is_some() {
+            out = self.chorus_v7(chunk);
+        } else if self.biome(chunk.x * 16, chunk.y * 16) == EndBiome::Highlands {
             let salt = hash3(chunk.x, 0x0C40, chunk.y, self.seed ^ 0x0C40_5E50);
             let mut rng = crate::enchant::JavaRandom::new(salt as i64);
             let count = rng.next_bounded(5);
@@ -444,7 +458,11 @@ impl EndGen {
         if base.y < 0 || base.y > terrain_top {
             if self.v5() && base.y >= 0 {
                 let mut blocks = ChunkData::new_dense(Block::AIR);
-                self.paint_v5(&mut blocks[..], base);
+                if self.noise.is_some() {
+                    self.paint_v7(&mut blocks[..], base);
+                } else {
+                    self.paint_v5(&mut blocks[..], base);
+                }
                 return ChunkData::from_dense(blocks);
             }
             return ChunkData::Uniform(Block::AIR);
@@ -493,7 +511,9 @@ impl EndGen {
                 }
             }
         }
-        if self.v5() {
+        if self.noise.is_some() {
+            self.paint_v7(&mut blocks[..], base);
+        } else if self.v5() {
             self.paint_v5(&mut blocks[..], base);
         }
         ChunkData::from_dense(blocks)
