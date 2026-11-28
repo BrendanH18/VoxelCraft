@@ -226,9 +226,9 @@ pub const fn is_potted_bamboo(b: Block) -> bool {
 
 /// v1.0 gap Track 7: the potted bamboo's leaf plane, drawn after its pot
 /// and post (box [`POTTED_BAMBOO_LEAF_BOX`]): Java's `potted_bamboo`
-/// element from (0, 2, 8) to (16, 18, 8), cut at the top of the cell.
-/// It is drawn only, never collided with or outlined.
-pub const POTTED_BAMBOO_LEAF_PLANE: Box16 = bx([0, 2, 8], [16, 16, 8]);
+/// element from (0, 2, 8) to (16, 18, 8) (Track 7b: no longer cut at the
+/// top of the cell). It is drawn only, never collided with or outlined.
+pub const POTTED_BAMBOO_LEAF_PLANE: Box16 = bx([0, 2, 8], [16, 18, 8]);
 /// The leaf plane's place among the potted bamboo's mesh boxes.
 pub const POTTED_BAMBOO_LEAF_BOX: usize = POT_BOXES.len() + 1;
 
@@ -951,7 +951,8 @@ pub fn boxes(b: Block) -> Boxes {
         POT_BOXES.iter().for_each(|&x| out.push(x));
         match potted_plant(b).map(|_| b.0.wrapping_sub(POTTED_FIRST) as usize) {
             Some(POTTED_CACTUS) => out.push(bx([6, 4, 6], [10, 16, 10])),
-            Some(POTTED_BAMBOO) => out.push(bx([7, 4, 7], [9, 16, 9])),
+            // Java's post starts at the pot's floor (v1.0 gap Track 7b).
+            Some(POTTED_BAMBOO) => out.push(bx([7, 0, 7], [9, 16, 9])),
             Some(_) => {
                 // The cross model, as two planes along the axes.
                 out.push(bx([3, 4, 8], [13, 16, 8]));

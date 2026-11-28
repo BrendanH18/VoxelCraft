@@ -552,6 +552,8 @@ pub(super) fn control(mob: &mut Mob, dt: f64, rng: &mut Rng) -> Option<(Option<D
             } else {
                 s.temper = (s.temper + 5).min(max_temper(mob.kind));
                 s.rider = None;
+                // v1.0 gap Track 7b: `makeMad` rears as it throws its rider.
+                mob.rear();
             }
         }
         return Some((Some(DVec3::new(mob.yaw.cos() as f64, 0., mob.yaw.sin() as f64)), 2.4));

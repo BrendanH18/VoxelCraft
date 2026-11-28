@@ -158,9 +158,14 @@ fn potted_bamboo() -> Tile {
     })
 }
 
-/// The potted bamboo's single leaf, on the plane through the cane (rows
-/// 0-13 show; the plane rises from 2 to 16): one long leaf arching out to
-/// the right from the cane and a short one to the left.
+/// The potted bamboo's single leaf, on the plane through the cane: one
+/// long leaf arching out to the right from the cane and a short one to the
+/// left. v1.0 gap Track 7b: the plane runs from 2 to 18 as Java's
+/// `potted_bamboo` element does, its full height carrying the sprite as
+/// Java's texture spans it: rows are read from the world height, so the
+/// drawing moves up two rows, its top two wrapping round to rows 14 and
+/// 15, which show above the cell (rows 12 and 13, the plane's foot, stay
+/// clear).
 fn potted_bamboo_leaf() -> Tile {
     let l = shades([74, 136, 44]);
     let mut img = Img::new();
@@ -168,7 +173,8 @@ fn potted_bamboo_leaf() -> Tile {
     leaf(&mut img, (7, 7), -1, 3, 1, &l);
     img.set(8, 4, l[1]);
     img.set(7, 7, l[1]);
-    img.tile()
+    let drawn = img.tile();
+    std::array::from_fn(|i| drawn[((i / N + 2) % N) * N + i % N])
 }
 
 /// Draws every tile of this round through `put`.
@@ -258,6 +264,8 @@ mod tests {
         }
         let leaf = tile(crate::world::utilities::POTTED_BAMBOO_LEAF);
         assert!(leaf.iter().filter(|p| p[3] > 0).count() > 12);
-        assert!((14..N).all(|y| (0..N).all(|x| leaf[y * N + x][3] == 0)), "rows 14-15 are above the plane");
+        // Track 7b: drawn two rows up, wrapping: rows 12-13 (the plane's
+        // foot) are clear and rows 14-15 carry the drawing's top.
+        assert!((12..14).all(|y| (0..N).all(|x| leaf[y * N + x][3] == 0)), "rows 12-13 are the foot");
     }
 }

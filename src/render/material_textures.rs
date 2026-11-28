@@ -3880,7 +3880,7 @@ mod tests {
         (1568, 0x432c26bbd75ed7d1),
         (1569, 0x7771636c9a6e06cc),
         (2612, 0xe65da621fafeaf54),
-        (4066, 0xdb07423eb14c3776),
+        (4066, 0x97d0452fd8f75976),
     ];
 
     /// The measurable rules of `docs/art-and-ui.md` for natural materials.

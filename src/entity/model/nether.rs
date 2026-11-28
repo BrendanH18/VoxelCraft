@@ -169,6 +169,20 @@ fn piglin_ears(m: &Mob, age: f32) -> (f32, f32) {
     (rest + freq.cos() * amp, -rest - (freq * 1.2).cos() * amp)
 }
 
+/// A piglin's ears on its head at `head_at` turned by `head`: Java's
+/// right ear (`right_flop`, its z turn) on the head's -X and the left on
+/// its +X, z turns negated as [`super::Part::on_java_side`] sets them.
+fn push_ears(parts: &mut Parts, head_at: [f32; 3], head: Quat, (right_flop, left_flop): (f32, f32)) {
+    for (side, flop) in [(-1.0f32, right_flop), (1.0, left_flop)] {
+        let e = head * glam::Vec3::new(5.0 * side, 6.0, 0.0);
+        parts.push(part(
+            EAR,
+            [head_at[0] + e.x, head_at[1] + e.y, head_at[2] + e.z],
+            head * Quat::from_rotation_z(-flop),
+        ));
+    }
+}
+
 /// Animated parts for the mobs this module draws.
 pub(super) fn pose(m: &Mob, time: f32) -> Parts {
     let head = Quat::from_rotation_y(-m.head_yaw) * Quat::from_rotation_x(-m.head_pitch);
@@ -216,6 +230,8 @@ pub(super) fn pose(m: &Mob, time: f32) -> Parts {
             } else if attacking && m.swing.anim == 0.0 {
                 h.right_arm.x = -1.8;
             } else if weapon == Weapon::Crossbow && fighting {
+                // Java's `head.yRot` is the head yaw on Java's sides.
+                let hy = m.head_yaw;
                 h.right_arm = Limb { x: -FRAC_PI_2 + hx + 0.1, y: -0.3 + hy, z: h.right_arm.z };
                 h.left_arm = Limb { x: -1.5 + hx, y: 0.6 + hy, z: h.left_arm.z };
             } else if admiring {
@@ -238,20 +254,11 @@ pub(super) fn pose(m: &Mob, time: f32) -> Parts {
             parts.push(part(left, [lx, ly + arm_y[1], lz], h.left_arm.quat()));
             let [rx_, ry_, rz_] = h.arm_at([6.0, 22.0, 0.0]);
             parts.push(part(right, [rx_, ry_ + arm_y[0], rz_], h.right_arm.quat()));
-            parts.push(part(HEAD, head_at, head_rot));
-            let ear = |side: f32| head_rot * glam::Vec3::new(5.0 * side, 6.0, 0.0);
-            let e = ear(-1.0);
-            parts.push(part(
-                EAR,
-                [head_at[0] + e.x, head_at[1] + e.y, e.z],
-                head_rot * Quat::from_rotation_z(left_ear),
-            ));
-            let e = ear(1.0);
-            parts.push(part(
-                EAR,
-                [head_at[0] + e.x, head_at[1] + e.y, e.z],
-                head_rot * Quat::from_rotation_z(right_ear),
-            ));
+            // v1.0 gap Track 7b: the body and limbs on Java's sides, the
+            // dancing head's sway with them; the head keeps its own turn.
+            parts.push(part(HEAD, [-head_at[0], head_at[1], head_at[2]], head_rot));
+            parts.java_side(0..5);
+            push_ears(&mut parts, [-head_at[0], head_at[1], head_at[2]], head_rot, (right_ear, left_ear));
             parts
         }
         MobKind::PiglinBrute => {
@@ -280,10 +287,8 @@ pub(super) fn pose(m: &Mob, time: f32) -> Parts {
             parts.push(part(ARM, h.arm_at([-6.0, 22.0, 0.0]), h.left_arm.quat()));
             parts.push(part(AXE_ARM, h.arm_at([6.0, 22.0, 0.0]), h.right_arm.quat()));
             parts.push(part(HEAD, [0.0, 24.0, 0.0], head));
-            for (side, flop) in [(-1.0f32, left_ear), (1.0, right_ear)] {
-                let e = head * glam::Vec3::new(5.0 * side, 6.0, 0.0);
-                parts.push(part(EAR, [e.x, 24.0 + e.y, e.z], head * Quat::from_rotation_z(flop)));
-            }
+            parts.java_side(0..5);
+            push_ears(&mut parts, [0.0, 24.0, 0.0], head, (right_ear, left_ear));
             parts
         }
         MobKind::Hoglin | MobKind::Zoglin => {

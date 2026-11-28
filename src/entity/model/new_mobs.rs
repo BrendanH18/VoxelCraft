@@ -236,7 +236,7 @@ mod tests {
 
     fn mesh(m: &Mob) -> Vec<[f32; 3]> {
         let mut out = EntityMesh::flat();
-        build(std::slice::from_ref(m), DVec3::new(0.0, 64.0, 0.0), Vec3::X, 100.0, 1.0, 1.0, &mut out);
+        build(std::slice::from_ref(m), DVec3::new(0.0, 64.0, 0.0), Vec3::X, 100.0, 1.0, &mut out);
         out.iter().map(|v| v.pos).collect()
     }
 
@@ -268,12 +268,12 @@ mod tests {
         let mut z = Mob::new(MobKind::ZombieNautilus, DVec3::new(10.0, 64.0, 0.0), 0.0);
         let temperate = {
             let mut out = EntityMesh::flat();
-            build(std::slice::from_ref(&z), DVec3::new(0.0, 64.0, 0.0), Vec3::X, 100.0, 1.0, 1.0, &mut out);
+            build(std::slice::from_ref(&z), DVec3::new(0.0, 64.0, 0.0), Vec3::X, 100.0, 1.0, &mut out);
             out.iter().map(|v| v.color).collect::<Vec<_>>()
         };
         z.mount.as_mut().unwrap().variant = 1;
         let mut out = EntityMesh::flat();
-        build(std::slice::from_ref(&z), DVec3::new(0.0, 64.0, 0.0), Vec3::X, 100.0, 1.0, 1.0, &mut out);
+        build(std::slice::from_ref(&z), DVec3::new(0.0, 64.0, 0.0), Vec3::X, 100.0, 1.0, &mut out);
         assert_ne!(out.iter().map(|v| v.color).collect::<Vec<_>>(), temperate);
     }
 }

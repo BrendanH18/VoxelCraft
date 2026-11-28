@@ -271,6 +271,17 @@ fn overworld_light(sky_level: f32, block_level: f32, normal: vec3<f32>, shade: f
     return from_srgb(night_vision(java, raw)) * shade * sun;
 }
 
+// v1.0 gap Track 7b: `overworld_light`'s light-map colour alone, with no
+// face shade or sun-facing tint: what Java's hurt overlay red is lit by.
+fn overworld_light_map(sky_level: f32, block_level: f32) -> vec3<f32> {
+    let sky = (sky_level / (4.0 - 3.0 * sky_level)) * g.params.z * g.sky_light.rgb;
+    let p = (2.0 * block_level - 1.0) * (2.0 * block_level - 1.0);
+    let hue = mix(vec3<f32>(1.0, 0.847, 0.549), vec3<f32>(1.0), 0.9 * p);
+    let block = hue * (block_level / (4.0 - 3.0 * block_level)) * 1.4;
+    let raw = g.ambient.rgb + sky + block;
+    return from_srgb(night_vision(clamp(raw, vec3<f32>(0.0), vec3<f32>(1.0)), raw));
+}
+
 // Java 26.3 adds the environment ambient colour to sky and block light.
 // The Overworld retains its existing daylight presentation in this scoped fix.
 fn dimension_light(sky: vec3<f32>, torch: vec3<f32>) -> vec3<f32> {
@@ -349,11 +360,18 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     // Hurt (v1.0 gap Track 7): Java's `OverlayTexture` red row is
     // (255, 0, 0) at alpha 0xB2, and entity.fsh mixes it in sRGB over the
     // face-shaded texel before the light map: `mix(red, texel * shade,
-    // 178 / 255) * light`. `lit` is the light times the face shade.
+    // 178 / 255) * light`. Track 7b: the red takes the light map's colour
+    // alone; the texel keeps all of this game's face lighting (the shade
+    // and the sun-facing tint, `lit` over the light map's colour).
     if in.light.z > 0.0 {
-        let shade = max(in.light.y, 1e-3);
-        let red = from_srgb(mix(vec3<f32>(1.0, 0.0, 0.0), to_srgb(base * shade), 178.0 / 255.0));
-        c = mix(c, red * (lit / shade), in.light.z);
+        var light = lightmap(dimension_light(vec3<f32>(curve(in.light.x) * g.params.z), torch));
+        if g.ambient.w <= 0.0 {
+            light = overworld_light_map(in.light.x, in.torch);
+        }
+        light = mix(light, vec3<f32>(1.0), in.light.w);
+        let face = lit / max(light, vec3<f32>(1e-3));
+        let red = from_srgb(mix(vec3<f32>(1.0, 0.0, 0.0), to_srgb(base * face), 178.0 / 255.0));
+        c = mix(c, red * light, in.light.z);
     }
     // Enchantment glint: a scrolling band, cheap enough to stay in this pass.
     if in.material == 3u && in.color.a > 0.5 {

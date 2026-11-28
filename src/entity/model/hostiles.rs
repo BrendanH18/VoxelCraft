@@ -26,7 +26,8 @@ const MUSHROOMS: &[Cuboid] = &[
 pub(super) fn skeleton_limbs(m: &Mob, time: f32, sword: bool) -> Humanoid {
     let mut h = Humanoid::walk(m, 1.0);
     let aggressive = m.ai == Ai::Chase;
-    let (hx, hy) = (head_x(m), -m.head_yaw);
+    // Java's `head.yRot` (Track 7b: on Java's sides, see `Part::on_java_side`).
+    let (hx, hy) = (head_x(m), m.head_yaw);
     if aggressive && !sword {
         h.right_arm = Limb { x: -FRAC_PI_2 + hx, y: -0.1 + hy, z: 0.0 };
         h.left_arm = Limb { x: -FRAC_PI_2 + hx, y: 0.1 + hy + 0.4, z: 0.0 };
@@ -59,6 +60,7 @@ pub(super) fn pose(m: &Mob, time: f32, head: Quat) -> Parts {
         part(SKELETON_BOW_ARM, [5., 22., 0.], h.right_arm.quat()),
         part(SKELETON_HEAD, [0., 24., 0.], head),
     ];
+    p.java_side(0..5);
     p.push(part(
         match m.kind {
             MobKind::Stray => FROST,
@@ -119,7 +121,8 @@ pub(super) fn endermite(time: f32) -> Parts {
             let phase = age * 0.9 + i as f32 * 0.15 * PI;
             let k = (i as f32 - 2.0).abs();
             let turn = phase.cos() * PI * 0.01 * (1.0 + k);
-            part(boxes, [phase.sin() * PI * 0.1 * k, 0.0, z], Quat::from_rotation_y(turn))
+            // v1.0 gap Track 7b: Java's `yRot` on this model's sides.
+            part(boxes, [phase.sin() * PI * 0.1 * k, 0.0, z], Quat::from_rotation_y(-turn))
         })
         .collect()
 }
@@ -128,28 +131,30 @@ pub(super) fn endermite(time: f32) -> Parts {
 mod tests {
     use super::*;
 
-    fn mesh(m: &Mob, time: f32) -> Vec<[f32; 3]> {
+    /// `m` drawn at `time` seconds of its own clock (`tickCount`).
+    fn mesh(m: &mut Mob, time: f32) -> Vec<[f32; 3]> {
         let mut out = EntityMesh::flat();
-        build(std::slice::from_ref(m), DVec3::new(0.0, 64.0, 0.0), Vec3::X, 100.0, time, 1.0, &mut out);
+        m.tick_count = (time * 20.0) as u32;
+        build(std::slice::from_ref(m), DVec3::new(0.0, 64.0, 0.0), Vec3::X, 100.0, 1.0, &mut out);
         out.iter().map(|v| v.pos).collect()
     }
 
     #[test]
     fn the_endermite_turns_as_one_body_and_its_segments_sway() {
         let mut m = Mob::new(MobKind::Endermite, DVec3::new(6.0, 64.0, 0.0), 0.4);
-        let still = mesh(&m, 1.0);
+        let still = mesh(&mut m, 1.0);
         assert!(!still.is_empty());
         // `Endermite.tick` keeps the body on its own rotation and the model
         // draws no head: looking around changes nothing.
         m.head_yaw = 1.1;
         m.head_pitch = -0.4;
-        assert_eq!(mesh(&m, 1.0), still);
+        assert_eq!(mesh(&mut m, 1.0), still);
         // Turning the body turns every segment.
         m.yaw += 1.0;
-        assert_ne!(mesh(&m, 1.0), still);
+        assert_ne!(mesh(&mut m, 1.0), still);
         // `setupAnim` sways the segments over time.
         m.yaw -= 1.0;
-        assert_ne!(mesh(&m, 1.3), still);
+        assert_ne!(mesh(&mut m, 1.3), still);
         // It sits on the ground, 4 pixels tall at the middle segment.
         let (lo, hi) = still.iter().fold((f32::MAX, f32::MIN), |(lo, hi), p| (lo.min(p[1]), hi.max(p[1])));
         assert!(lo.abs() < 1e-4 && (hi - 4.01 / 16.0).abs() < 1e-3, "{lo} {hi}");
