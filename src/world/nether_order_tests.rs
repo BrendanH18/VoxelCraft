@@ -281,3 +281,228 @@ fn generation_7_springs_are_scheduled_to_flow() {
     }
     assert!(total > 20, "{total} springs");
 }
+
+/// Java's decoration steps (`GenerationStep.Decoration`), in order.
+const DECORATION_STEPS: [&str; 11] = [
+    "raw_generation",
+    "lakes",
+    "local_modifications",
+    "underground_structures",
+    "surface_structures",
+    "strongholds",
+    "underground_ores",
+    "underground_decoration",
+    "fluid_springs",
+    "vegetal_decoration",
+    "top_layer_modification",
+];
+
+/// v1.0 gap Track 5b: each step places its structures (in the registry's
+/// order: `RegistryLoadTask` registers entries sorted by id) and then its
+/// features, as `applyBiomeDecoration` does.
+#[test]
+fn structures_go_before_their_steps_features_in_registry_order() {
+    let structures = fixture()["structures"].as_object().unwrap();
+    let mut names: Vec<&String> = structures.keys().collect();
+    names.sort();
+    let java_structures: Vec<(usize, &str)> = names
+        .iter()
+        .map(|n| {
+            let step = structures[n.as_str()]["step"].as_str().unwrap();
+            (DECORATION_STEPS.iter().position(|s| *s == step).unwrap(), n.as_str())
+        })
+        .collect();
+    assert_eq!(STRUCTURES.map(|s| (usize::from(s.1), s.0)).to_vec(), java_structures);
+    let features =
+        feature_sorter(&["nether_wastes", "soul_sand_valley", "crimson_forest", "warped_forest", "basalt_deltas"]);
+    let mut java = Vec::new();
+    for step in 0..DECORATION_STEPS.len() {
+        java.extend(java_structures.iter().filter(|s| s.0 == step).map(|s| s.1.to_string()));
+        java.extend(features.iter().filter(|f| f.0 == step).map(|f| f.1.clone()));
+    }
+    let ours: Vec<String> = decoration()
+        .iter()
+        .map(|s| match *s {
+            Step::Structure(st) => STRUCTURES.iter().find(|x| x.2 == st).unwrap().0.to_string(),
+            Step::Feature(i) => PLACED[i].name.to_string(),
+        })
+        .collect();
+    assert_eq!(ours, java);
+}
+
+/// The cells around a fortress's start, a bastion's middle and a fossil
+/// near the origin of seed 12345.
+fn structure_cells(g: &NetherGen) -> Vec<(&'static str, IVec2)> {
+    let regions: Vec<IVec2> = (-3..=3).flat_map(|z| (-3..=3).map(move |x| IVec2::new(x, z))).collect();
+    let fortress = regions.iter().find_map(|&r| g.fortresses.get(r)).expect("a fortress");
+    let bastion = regions.iter().find_map(|&r| g.fortresses.bastions.get(r)).expect("a bastion");
+    let fossil = (0..=80)
+        .flat_map(|r| (-r..=r).flat_map(move |z| (-r..=r).map(move |x| IVec2::new(x, z))))
+        .find_map(|r| g.fossils.get(g, r))
+        .expect("a fossil");
+    let cell = |p: IVec3| IVec2::new(p.x, p.z).div_euclid(IVec2::splat(CELL));
+    let b = bastion.bounds;
+    let mut out = Vec::new();
+    for (name, at) in [
+        ("fortress", cell(fortress.pieces[0].bounds.min)),
+        ("bastion", cell((b.min + b.max) / 2)),
+        ("fossil", cell(fossil.bounds.min)),
+    ] {
+        out.extend((-1..=1).flat_map(|z| (-1..=1).map(move |x| (name, at + IVec2::new(x, z)))));
+    }
+    out
+}
+
+/// Structures change only the columns of the cell being decorated, from
+/// y 1 (`getWritableArea`), and where regions overlap their blocks win:
+/// every block a cell's structures changed is in the generated chunks as
+/// the cell left it.
+#[test]
+fn structures_change_only_their_cell_and_win_where_regions_overlap() {
+    let g = NetherGen::with_generation(12345, Generation::V7);
+    let mut chunks = HashMap::new();
+    let mut claimed: HashMap<&str, usize> = HashMap::new();
+    for (name, c) in structure_cells(&g) {
+        let portal = !g.ruined_portals.nether_layouts(&g, c * CELL, c * CELL + CELL - 1).is_empty();
+        assert!(!portal, "{name} cell {c}: a ruined portal's middle (pick another seed)");
+        let diff = decorate_cell(&g, c);
+        let min = region_min(c);
+        for &(k, b) in diff.rows.iter().flatten().filter(|(k, _)| k & CLAIMED != 0) {
+            *claimed.entry(name).or_default() += 1;
+            let l = unkey(k);
+            assert!((CELL..2 * CELL).contains(&l.x) && (CELL..2 * CELL).contains(&l.z) && l.y >= 1, "{name} {c}: {l}");
+            let p = IVec3::new(min.x, 0, min.y) + l;
+            let cpos = p.div_euclid(IVec3::splat(CHUNK_SIZE_I));
+            let chunk = chunks.entry(cpos).or_insert_with(|| g.generate(cpos));
+            let at = p - cpos * CHUNK_SIZE_I;
+            assert_eq!(chunk.get(at.x as usize, at.y as usize, at.z as usize), b, "{name} {c}: {p}");
+        }
+    }
+    for name in ["fortress", "bastion", "fossil"] {
+        assert!(claimed.get(name).is_some_and(|&n| n > 0), "the {name}'s cells have structure blocks: {claimed:?}");
+    }
+}
+
+/// Later features see the structures placed before them: glowstone hangs
+/// from bastion blackstone where the terrain was open (in generation 6 the
+/// bastion was painted afterwards, so nothing could hang from it).
+#[test]
+fn later_features_build_on_structures() {
+    let g = NetherGen::with_generation(12345, Generation::V7);
+    let mut hanging = 0;
+    for r in (-3..=3).flat_map(|z| (-3..=3).map(move |x| IVec2::new(x, z))) {
+        let Some(bastion) = g.fortresses.bastions.get(r) else { continue };
+        let b = bastion.bounds;
+        for cz in b.min.z.div_euclid(CELL)..=b.max.z.div_euclid(CELL) {
+            for cx in b.min.x.div_euclid(CELL)..=b.max.x.div_euclid(CELL) {
+                let c = IVec2::new(cx, cz);
+                let diff = decorate_cell(&g, c);
+                let min = region_min(c);
+                let at = |k: u32| IVec3::new(min.x, 0, min.y) + unkey(k);
+                let claimed: HashMap<IVec3, Block> =
+                    diff.rows.iter().flatten().filter(|(k, _)| k & CLAIMED != 0).map(|&(k, b)| (at(k), b)).collect();
+                for &(k, _) in diff.rows.iter().flatten().filter(|&&(k, b)| k & CLAIMED == 0 && b == Block::GLOWSTONE) {
+                    let above = at(k) + IVec3::Y;
+                    if claimed.get(&above) == Some(&Block::BLACKSTONE) && g.base_block_at(above) == Block::AIR {
+                        hanging += 1;
+                    }
+                }
+            }
+        }
+    }
+    assert!(hanging > 0, "glowstone hanging from bastion blackstone over open terrain");
+}
+
+/// A generation 7 Nether ruined portal goes whole into the cell holding
+/// its middle (`RuinedPortalPiece.postProcess`), none into its neighbours,
+/// and its frame is in the generated chunks with its chests.
+#[test]
+fn generation_7_ruined_portals_go_whole_into_their_middles_cell() {
+    let g = NetherGen::with_generation(12345, Generation::V7);
+    let layout = (-2..=2)
+        .flat_map(|z| (-2..=2).map(move |x| IVec2::new(x, z)))
+        .find_map(|r| {
+            let s = g.ruined_portals.start(r) * 16;
+            g.ruined_portals.nether_layouts(&g, s - 32, s + 32).into_iter().next()
+        })
+        .expect("a portal");
+    let centre = layout.centre();
+    let c = IVec2::new(centre.x, centre.z).div_euclid(IVec2::splat(CELL));
+    let frame = |c: IVec2| {
+        let min = region_min(c);
+        decorate_cell(&g, c)
+            .rows
+            .iter()
+            .flatten()
+            .filter(|&&(k, b)| k & CLAIMED != 0 && (b == Block::OBSIDIAN || b == Block::CRYING_OBSIDIAN))
+            .map(|&(k, _)| IVec3::new(min.x, 0, min.y) + unkey(k))
+            .collect::<Vec<_>>()
+    };
+    let own = frame(c);
+    assert!(own.len() > 3, "the portal's frame: {own:?}");
+    for d in [IVec2::X, IVec2::NEG_X, IVec2::Y, IVec2::NEG_Y, IVec2::ONE, IVec2::NEG_ONE] {
+        assert!(frame(c + d).is_empty(), "cell {} places none of it", c + d);
+    }
+    for p in own {
+        let cpos = p.div_euclid(IVec3::splat(CHUNK_SIZE_I));
+        let l = p - cpos * CHUNK_SIZE_I;
+        let b = g.generate(cpos).get(l.x as usize, l.y as usize, l.z as usize);
+        assert!(b == Block::OBSIDIAN || b == Block::CRYING_OBSIDIAN, "{p}: {}", b.name());
+    }
+}
+
+/// A level of one block everywhere but where something was placed.
+struct Fill(HashMap<IVec3, Block>, Block);
+
+impl Level for Fill {
+    fn block(&self, p: IVec3) -> Block {
+        self.0.get(&p).copied().unwrap_or(self.1)
+    }
+
+    fn place(&mut self, p: IVec3, b: Block) {
+        self.0.insert(p, b);
+    }
+}
+
+/// Ancient debris is Java's `scattered_ore`: 0 to `size` tries, each
+/// within `min(i, 7)` of the origin, into `#base_stone_nether` with no air
+/// beside it.
+#[test]
+fn ancient_debris_is_javas_scattered_ore() {
+    for stone in [Block::NETHERRACK, Block::BASALT, Block::BLACKSTONE] {
+        for size in [2, 3] {
+            let mut none = 0;
+            for seed in 0..4000u64 {
+                let mut level = Fill(HashMap::new(), stone);
+                let placed = scattered_debris(&mut level, &mut Rng(seed), IVec3::ZERO, size);
+                assert!(placed <= size as u32);
+                none += i32::from(placed == 0);
+                for (p, b) in &level.0 {
+                    assert_eq!(*b, Block::ANCIENT_DEBRIS);
+                    assert!(p.abs().max_element() < size, "{p} from size {size}");
+                }
+            }
+            // `nextInt(size + 1)` tries; in solid stone the first always
+            // lands (a later one may land on debris and fail).
+            let even = 4000 / (size + 1);
+            assert!((none - even).abs() < even / 5, "{stone:?} {size}: {none} without tries");
+        }
+    }
+    // Other blocks, and stone beside air, refuse it.
+    for seed in 0..500u64 {
+        let mut sand = Fill(HashMap::new(), Block::SOUL_SAND);
+        assert_eq!(scattered_debris(&mut sand, &mut Rng(seed), IVec3::ZERO, 3), 0);
+        let mut pocket = Fill(HashMap::new(), Block::NETHERRACK);
+        for d in [IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y, IVec3::Z, IVec3::NEG_Z, IVec3::ZERO] {
+            pocket.0.insert(d * 2, Block::AIR);
+        }
+        let before = pocket.0.clone();
+        scattered_debris(&mut pocket, &mut Rng(seed), IVec3::ZERO, 3);
+        for (p, _) in pocket.0.iter().filter(|(p, b)| **b == Block::ANCIENT_DEBRIS) {
+            assert!(!before.contains_key(p));
+            for d in [IVec3::X, IVec3::NEG_X, IVec3::Y, IVec3::NEG_Y, IVec3::Z, IVec3::NEG_Z] {
+                assert_ne!(pocket.block(*p + d), Block::AIR, "debris at {p} beside air");
+            }
+        }
+    }
+}

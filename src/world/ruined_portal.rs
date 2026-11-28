@@ -1001,7 +1001,12 @@ mod tests {
         }
         assert_eq!(found.len(), 5, "{found:?}");
         for dim in [Dimension::Overworld, Dimension::Nether] {
-            let g = Generator::for_dimension(12345, dim);
+            // Generation 7 places the Nether's portals while it decorates
+            // (`nether_order_tests` checks them); this is the older paint.
+            let g = match dim {
+                Dimension::Nether => Generator::with_generation(12345, dim, Generation::V6),
+                _ => Generator::for_dimension(12345, dim),
+            };
             let regions =
                 if dim == Dimension::Nether { vec![IVec2::ZERO] } else { found.iter().map(|(_, r)| *r).collect() };
             for region in regions {
@@ -1043,6 +1048,20 @@ mod tests {
             for x in -2..=2 {
                 if let Some(p) = g.ruined_portals.get(&g, IVec2::new(x, 0)) {
                     features.extend(p.features.iter().copied());
+                    // Generation 7 places the Nether's portals, chests and
+                    // all, while it decorates their middle's Java chunk.
+                    if dim == Dimension::Nether {
+                        let (lo, hi) = (chunk_of(p.bounds.min - 16), chunk_of(p.bounds.max + 16));
+                        for cz in lo.z..=hi.z {
+                            for cy in lo.y..=hi.y {
+                                for cx in lo.x..=hi.x {
+                                    features.extend(g.structure_features(IVec3::new(cx, cy, cz)).into_iter().filter(
+                                        |(_, f)| matches!(f, Feature::TempleChest(_, LootTable::RuinedPortal)),
+                                    ));
+                                }
+                            }
+                        }
+                    }
                 }
             }
             if dim == Dimension::Overworld {

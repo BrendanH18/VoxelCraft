@@ -822,6 +822,7 @@ impl NetherGen {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::world::terrain::Generation;
 
     fn column(chunks: &[ChunkData], x: usize, z: usize) -> Vec<Block> {
         (0..=ROOF as usize).map(|y| chunks[y / CHUNK_SIZE].get(x, y % CHUNK_SIZE, z)).collect()
@@ -981,7 +982,13 @@ mod tests {
 
     #[test]
     fn ancient_debris_stays_underground_and_rare() {
-        let g = NetherGen::new(7);
+        // Generation 7 places it as a step 7 feature (`nether_order`).
+        for generation in [Generation::V6, Generation::V7] {
+            debris_stays_underground_and_rare(NetherGen::with_generation(7, generation));
+        }
+    }
+
+    fn debris_stays_underground_and_rare(g: NetherGen) {
         let mut debris = 0usize;
         let mut netherrack = 0usize;
         for cx in -2..=2 {
@@ -1013,7 +1020,12 @@ mod tests {
 
     #[test]
     fn ancient_debris_rejects_air_exposure() {
-        let g = NetherGen::new(4242);
+        for generation in [Generation::V6, Generation::V7] {
+            debris_rejects_air_exposure(NetherGen::with_generation(4242, generation));
+        }
+    }
+
+    fn debris_rejects_air_exposure(g: NetherGen) {
         let mut cache = std::collections::HashMap::new();
         for cx in -2..=2 {
             for cz in -2..=2 {

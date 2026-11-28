@@ -149,6 +149,28 @@ fn order() -> &'static [usize] {
     })
 }
 
+/// One thing `applyBiomeDecoration` places.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Step {
+    Structure(Structure),
+    /// A placed feature, by its index in [`PLACED`].
+    Feature(usize),
+}
+
+/// What decorating a cell places, in order: step by step, the step's
+/// structures and then its features ([`JAVA_ORDER`]).
+pub fn decoration() -> &'static [Step] {
+    static STEPS: OnceLock<Vec<Step>> = OnceLock::new();
+    STEPS.get_or_init(|| {
+        let mut out = Vec::new();
+        for step in 0..=LAST_STEP {
+            out.extend(STRUCTURES.iter().filter(|s| s.1 == step).map(|s| Step::Structure(s.2)));
+            out.extend(order().iter().filter(|&&i| PLACED[i].step == step).map(|&i| Step::Feature(i)));
+        }
+        out
+    })
+}
+
 /// What decorating one cell changed: per 32-block row of heights, each
 /// changed block as its position in the region ([`CLAIMED`] set where a
 /// structure changed it) and its new block, where its lava springs went
@@ -442,27 +464,22 @@ fn decorate_cell(nether: &NetherGen, c: IVec2) -> CellDiff {
         chests: Vec::new(),
     };
     let origin = IVec3::new(c.x * CELL, 0, c.y * CELL);
-    let features = order();
-    let mut next = 0;
-    for step in 0..=LAST_STEP {
-        // `applyBiomeDecoration`: a step's structures, then its features.
-        for &(_, at, structure) in &STRUCTURES {
-            if at == step {
+    for &step in decoration() {
+        let i = match step {
+            Step::Structure(structure) => {
                 place_structure(nether, &mut region, c, structure);
-            }
-        }
-        while let Some(&i) = features.get(next).filter(|&&i| PLACED[i].step == step) {
-            next += 1;
-            let entry = &PLACED[i];
-            let runs = entry.feature.runs() || matches!(entry.feature, Feature::Debris { .. });
-            if !runs || !entry.biomes.iter().any(|&b| present[b as usize]) {
                 continue;
             }
-            let mut rng = Rng(hash3(c.x, i32::from(entry.step) << 8 | i as i32, c.y, nether.seed() ^ SALT));
-            place_with_modifiers(&mut region, entry, origin, &mut rng);
+            Step::Feature(i) => i,
+        };
+        let entry = &PLACED[i];
+        let runs = entry.feature.runs() || matches!(entry.feature, Feature::Debris { .. });
+        if !runs || !entry.biomes.iter().any(|&b| present[b as usize]) {
+            continue;
         }
+        let mut rng = Rng(hash3(c.x, i32::from(entry.step) << 8 | i as i32, c.y, nether.seed() ^ SALT));
+        place_with_modifiers(&mut region, entry, origin, &mut rng);
     }
-    debug_assert_eq!(next, features.len(), "JAVA_ORDER runs by step");
     let mut rows: [Vec<(u32, Block)>; 5] = Default::default();
     let mut written = std::mem::take(&mut region.written);
     written.sort_unstable_by_key(|&(k, _)| k);
