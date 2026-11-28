@@ -493,6 +493,28 @@ impl City {
         }
     }
 
+    /// The block [`City::paint`] leaves at `p`, or `None` where the city
+    /// leaves what is there.
+    pub fn block_at(&self, p: IVec3) -> Option<Block> {
+        if !self.bounds.contains(p) {
+            return None;
+        }
+        if let Some((cell, facing)) = self.dragon_head
+            && cell == p
+        {
+            return Some(super::skulls::wall(super::skulls::Kind::Dragon, facing));
+        }
+        let mut out = None;
+        for piece in self.pieces.iter().filter(|piece| piece.bounds.contains(p)) {
+            let Some(cell) = template(piece.template).cell(piece.local(p)) else { continue };
+            if !piece.overwrite && cell == templates::Cell::Air {
+                continue;
+            }
+            out = Some(cell.resolve(piece.rotation));
+        }
+        out
+    }
+
     /// The city's chests in the chunk at `cpos`.
     pub fn features_in(&self, cpos: IVec3) -> impl Iterator<Item = (IVec3, Feature)> + '_ {
         let base = cpos * CHUNK_SIZE_I;

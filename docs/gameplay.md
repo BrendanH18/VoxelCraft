@@ -528,8 +528,12 @@ isn't. You come out where you stood in the portal you entered (across it,
 up it and in front of it, scaled to the exit portal's size), nudged clear
 of any block in the way, still looking and moving the way you were, and
 turned a quarter if the two portals face different ways. Nothing is placed
-or found beyond the world border, 29,999,984 blocks out. Breaking any part
-of a frame puts its portal out.
+or found beyond the world border, 29,999,984 blocks out. A spectator only
+travels to a portal already on the other side; with none there, nothing
+happens and no portal is built. Each portal block remembers which way its
+portal stands (Java's `axis`), and breaking the frame along that way (or
+above or below) puts the portal out; portals from saves made before
+remember it from their frames when their chunk loads.
 
 The Nether is a cavern world between a bedrock floor and roof: netherrack
 cliffs and islands over a lava sea at y = 31, soul sand shores that drag
@@ -619,8 +623,9 @@ hovers for four seconds, then drops back as an item four times in five and
 shatters otherwise. Right click an empty End portal frame to put an eye in
 it; when twelve frames with eyes ring a 3x3 hole, all facing in, the portal
 opens with a deep rumble. Falling into an End portal takes you to the End's
-obsidian platform at once; one in the End takes you back to your bed or
-the world spawn. Agents use eyes with `place`.
+obsidian platform at once (rebuilt as you arrive: whatever stands in it
+breaks and drops, as Java's `createEndPlatform` does); one in the End takes
+you back to your bed or the world spawn. Agents use eyes with `place`.
 
 Inventory search filters creative items by name. Type in the search field
 (automatically focused in creative), or press Ctrl+F. In survival and containers,
@@ -634,7 +639,12 @@ It includes a seeded central end-stone island, ten obsidian pillars, an arrival 
 In worlds made since the v1.0 gap-closing build (generation 7) the islands
 are Java 26.3's own: the same seed gives the same island shapes, End
 biomes, chorus highlands and End city spots as Java
-([gap Track 4](verification/2026-11-27-v1.0-gap-track-04-the-end.md));
+([gap Track 4](verification/2026-11-27-v1.0-gap-track-04-the-end.md)),
+and so is their decoration: the small floating islands among the
+`small_end_islands`, the chorus plants of the highlands and, now and then
+in the highlands, a return gateway that takes you straight back to the
+arrival platform
+([gap Track 4b](verification/2026-11-27-v1.0-gap-track-04b-end-leftovers.md));
 older worlds keep their islands. It has
 a static violet sky, no weather or natural Overworld/Nether mob spawning, and
 its own `end/` save folder. Water works; beds explode. End stone is mineable
@@ -651,15 +661,18 @@ once no crystal is left;
 [v1.0 Track 7b](verification/2026-11-25-v1.0-track-07b-end-fight-seats.md)), sometimes
 swoops at a player to spit a fireball that leaves a spreading cloud of
 harmful breath, and sometimes lands on the exit portal's pillar. Perched, it
-looks about for a player within 20 blocks and level with it, roars at them,
+looks about for a player within 20 blocks and level with it, roars at them
+(a growl every tick of the two-second roar, as Java's client plays it),
 breathes fire, and looks again; after four flames, or with no one about for
 five seconds, it takes off (or charges a player within 150). A player it has
 chosen to strafe stays its target even after switching to creative, as in
 Java. Its wings shove
 and hurt players, its head bites for 10, and it smashes through any block but
 end stone, obsidian, bedrock, iron bars and portals. Head hits do full damage,
-anywhere else a quarter (plus up to one); arrows glance off a perched dragon,
-and bed or TNT blasts hurt it. The boss bar shows within 192 blocks of the
+anywhere else a quarter (plus up to one); arrows glance off a perched dragon
+and off a dying one, and bed or TNT blasts hurt it. Between its targets it
+flies exactly as Java's `aiStep` moves it, checked tick for tick against
+the Java server. The boss bar shows within 192 blocks of the
 island's centre. Killed in flight, it first flies to the exit portal (at
 one health, untouchable), as Java's does; then, or at once if killed while
 perched, it rises for ten seconds in beams of light,

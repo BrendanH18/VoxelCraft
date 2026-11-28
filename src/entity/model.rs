@@ -620,6 +620,14 @@ const PIGLIN_SWORD_ARM: &[Cuboid] = &[
     cube([-1.5, -10.0, 3.0], [1.5, -9.0, 3.5], GOLD, 10),
     cube([-0.5, -10.0, 3.5], [0.5, -9.0, 11.0], GOLD, 10),
 ];
+/// v1.0 gap Track 2b: the zombified piglin's golden spear (see
+/// `nether::SPEAR_ARM`).
+const PIGLIN_SPEAR_ARM: &[Cuboid] = &[
+    cube([-2.0, -10.0, -2.0], [2.0, 2.0, 2.0], PIGLIN_SKIN, 36),
+    cube([-0.5, -10.0, -7.0], [0.5, -9.0, 13.0], [137, 103, 39], 10),
+    cube([-1.0, -10.5, 13.0], [1.0, -8.5, 15.0], GOLD, 10),
+    cube([-0.5, -10.0, 15.0], [0.5, -9.0, 18.0], GOLD, 10),
+];
 const PIGLIN_HEAD: &[Cuboid] = &[
     cube([-5.0, 0.0, -4.0], [5.0, 8.0, 4.0], PIGLIN_SKIN, 36),
     cube([-2.0, 0.0, 4.0], [2.0, 3.0, 5.0], [236, 168, 160], 14),
@@ -1017,6 +1025,7 @@ mod aquatic;
 mod babies;
 mod bee;
 mod breeze;
+mod camel_anim;
 mod conduit;
 mod copper_golem;
 mod creaking;
@@ -1461,11 +1470,16 @@ fn pose(m: &Mob, time: f32, alpha: f32) -> Parts {
             // `animateZombieArms` (raised, higher while angry) and the
             // idle bob. A converted piglin keeps its own main hand.
             let held = m.held.unwrap_or(Weapon::GoldenSword);
-            let h = zombie_limbs(m, time, held == Weapon::None);
+            let mut h = zombie_limbs(m, time, held == Weapon::None);
+            // v1.0 gap Track 2b: a charging spear is couched level.
+            if held == Weapon::GoldenSpear && m.spear_use.is_some() {
+                h.right_arm = Limb { x: -0.35 - m.head_pitch * 0.5, y: 0.0, z: h.right_arm.z };
+            }
             let right = match held {
                 Weapon::GoldenSword => PIGLIN_SWORD_ARM,
                 Weapon::GoldenAxe => nether::AXE_ARM,
                 Weapon::Crossbow => nether::CROSSBOW_ARM,
+                Weapon::GoldenSpear => PIGLIN_SPEAR_ARM,
                 Weapon::None => PIGLIN_ARM,
             };
             let mut parts = parts![
@@ -1686,6 +1700,10 @@ pub fn build(
                     0.6
                 } else if m.kind == MobKind::HappyGhast {
                     super::happy_ghast::BABY_SCALE as f32
+                } else if m.kind == MobKind::Dolphin {
+                    // v1.0 gap Track 3: `DolphinRenderer` draws babies with
+                    // their own smaller model (`BabyDolphinModel`) at full scale.
+                    1.0
                 } else {
                     0.5
                 }
@@ -1895,20 +1913,7 @@ fn draw_held(
         uv: [0.0; 2],
     };
     if let Some(block) = item.block().filter(|b| !b.flat_icon()) {
-        held.min = [-3.2; 3];
-        held.max = [3.2; 3];
-        super::player_model::textured_box(
-            out,
-            &held,
-            0.0,
-            origin,
-            body,
-            light,
-            2,
-            block.info().tex[0],
-            scale,
-            [255, 255, 255, 0],
-        );
+        super::player_model::held_block(out, &held, origin, body, light, block, 3.2, scale, [255, 255, 255, 0]);
         return;
     }
     held.rot *= Quat::from_rotation_y(-FRAC_PI_2) * Quat::from_rotation_z(55f32.to_radians());

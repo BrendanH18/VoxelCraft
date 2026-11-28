@@ -77,9 +77,7 @@ impl Game {
         };
         decor::framed_items(&self.mobs.entities.decor, camera, view).filter(move |f| !shows_map(&f.2)).map(
             |(centre, orient, stack, sky, torch)| {
-                let block = crate::world::copper_golem_statue::item_model(stack)
-                    .or_else(|| stack.item.block())
-                    .filter(|b| !b.flat_icon());
+                let block = crate::item::model_block(&stack);
                 let size = if block.is_some() { 0.375 } else { 0.5 };
                 let icon = match block {
                     Some(_) => None,

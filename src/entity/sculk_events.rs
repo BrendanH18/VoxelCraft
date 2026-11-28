@@ -184,7 +184,7 @@ impl Entities {
                 hurt: m.hurt,
                 next_step: 1.0,
                 armadillo: m.armadillo.as_ref().map_or(0, |a| a.pose),
-                sitting: m.mount.as_ref().is_some_and(|s| s.sit_ticks > 0),
+                sitting: m.mount.as_ref().is_some_and(|s| s.camel_sitting),
                 dash_cooldown: m.mount.as_ref().map_or(0, |s| s.dash_cooldown),
                 dashing: m.nautilus.as_ref().is_some_and(|n| n.dashing),
                 primed: m.sulfur_cube.as_ref().is_some_and(|c| c.primed()),
@@ -311,7 +311,7 @@ fn mob_actions(w: &mut World, m: &super::Mob, source: EventSource, watch: &mut W
     }
     if let Some(s) = &m.mount {
         // `Camel.sitDown`, `standUp` and `standUpInstantly`.
-        let sitting = s.sit_ticks > 0;
+        let sitting = s.camel_sitting;
         if sitting != watch.sitting && super::mounts::camel_like(m.kind) {
             post(GameEvent::EntityAction);
         }

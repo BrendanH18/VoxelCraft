@@ -228,6 +228,12 @@ impl Game {
     pub(super) fn update_mobs(&mut self, dt: f64) {
         // Entities leave the level with their chunk and return when it loads.
         self.mobs.entities.sync_chunk_entities(&mut self.world);
+        // Return gateways generated since: new block entities, age 0.
+        for g in std::mem::take(&mut self.world.generated_gateways) {
+            if let Some(fight) = &mut self.mobs.entities.fight {
+                fight.gateway_entities.placed(g);
+            }
+        }
         self.mobs.entities.moon_brightness =
             [1.0, 0.75, 0.5, 0.25, 0.0, 0.25, 0.5, 0.75][self.day_count.rem_euclid(8) as usize];
         self.mobs.entities.clock_time =
@@ -345,6 +351,32 @@ impl Game {
                         };
                         arrow_effects
                             .record_hit(player, if bot.agent.session.vitals.is_dead() { 0. } else { accepted });
+                    }
+                }
+                // v1.0 gap Track 2b: a mob's spear contact that knocks back
+                // or dismounts without (or besides) damage.
+                EntityEvent::PlayerShove { player, pushes } => {
+                    let entities = &mut self.mobs.entities;
+                    if player == PlayerId::HOST {
+                        self.session.shoved(pushes, &mut || f64::from(entities.roll_range(0.0, 1.0)));
+                    } else if let Some(bot) = self.agents.by_id_mut(player) {
+                        bot.agent.session.shoved(pushes, &mut || f64::from(entities.roll_range(0.0, 1.0)));
+                    }
+                }
+                EntityEvent::PlayerDismount { player } => {
+                    if player == PlayerId::HOST {
+                        if self.session.player.vehicle.take().is_some()
+                            && let Some(pos) = self.mobs.entities.dismount(&self.world, PlayerId::HOST)
+                        {
+                            self.session.player.pos = pos;
+                            self.session.player.vel = DVec3::ZERO;
+                        }
+                    } else if let Some(bot) = self.agents.by_id_mut(player)
+                        && bot.agent.session.player.vehicle.take().is_some()
+                        && let Some(pos) = self.mobs.entities.dismount(&self.world, player)
+                    {
+                        bot.agent.session.player.pos = pos;
+                        bot.agent.session.player.vel = DVec3::ZERO;
                     }
                 }
                 EntityEvent::PlayerSonicBoom { player: PlayerId::HOST, damage, push, from } => {
@@ -686,6 +718,8 @@ impl Game {
                             }
                         }
                         MobSound::SulfurCube(cue) => (Sound::SulfurCube(cue), 0.8),
+                        // v1.0 gap Track 3b: `makeSound` at volume 1.
+                        MobSound::Mount(cue) => (Sound::Mount(cue), 1.0),
                         MobSound::CopperGolem(action, stage) => (Sound::CopperGolem(action, stage), 0.7),
                         MobSound::Hurt(MobKind::CopperGolem) => {
                             (Sound::CopperGolem(voxelcraft::entity::copper_golem::Sound::Hurt, 0), 0.9)
@@ -729,6 +763,10 @@ impl Game {
                         MobSound::EyeDeath => (Sound::EyeDeath, 0.8),
                         MobSound::DragonFlap => (Sound::DragonFlap, 1.0),
                         MobSound::DragonGrowl => (Sound::DragonGrowl, 1.0),
+                        MobSound::DragonRoar => {
+                            self.audio.play_in(SoundSource::Hostile, Sound::DragonGrowl, Some(pos), 2.5, (0.8, 1.1));
+                            continue;
+                        }
                         MobSound::DragonShoot => (Sound::Fireball, 1.0),
                         MobSound::DragonSmash => (Sound::Explosion, 0.25),
                         // Java plays the death to the whole dimension.
@@ -753,6 +791,7 @@ impl Game {
                 EntityEvent::Shoot { .. }
                 | EntityEvent::LingeringCloud { .. }
                 | EntityEvent::MobHit { .. }
+                | EntityEvent::MobStab(_)
                 | EntityEvent::OwnerHurt { .. }
                 | EntityEvent::DragonXp { .. }
                 | EntityEvent::MobKilled { .. }

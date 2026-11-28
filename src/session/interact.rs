@@ -37,6 +37,8 @@ pub enum Used {
     /// A lead, name tag, food or taming item was used on an animal.
     Animal,
     BrushStarted,
+    /// v1.0 gap track 6: a bundle is now in use (`BundleItem.use`).
+    BundleStarted,
     /// The player now rides this vehicle.
     Mounted(u32),
     CartPlaced,
@@ -338,6 +340,9 @@ impl PlayerSession {
             self.inventory.swap_offhand(slot);
             if result.as_ref().is_ok_and(|u| *u == Some(Used::BrushStarted)) {
                 self.brushing.off = true;
+            }
+            if result.as_ref().is_ok_and(|u| *u == Some(Used::BundleStarted)) {
+                self.bundle_use.off = true;
             }
             match result {
                 Ok(u) => {
@@ -697,6 +702,13 @@ impl PlayerSession {
         if self.inventory.get(slot).is_some_and(|s| matches!(s.item, Item::WRITABLE_BOOK | Item::WRITTEN_BOOK)) {
             return Ok(Some(Used::OpenBook { slot }));
         }
+        // v1.0 gap track 6: `BundleItem.use` starts using the bundle; held
+        // use then throws its contents out (`session::bundles`).
+        if self.inventory.get(slot).is_some_and(|s| crate::content::bundle::is_bundle(s.item))
+            && self.start_bundle_use(slot, entities)
+        {
+            return Ok(Some(Used::BundleStarted));
+        }
         if self.inventory.get(slot).is_some_and(|s| s.item == Item::MAP) {
             let pos = self.player.pos.floor().as_ivec3();
             let data = crate::world::maps::MapData::fresh(pos.x, pos.z, 0, world.generator.dimension, true, false);
@@ -976,7 +988,7 @@ impl PlayerSession {
             // `FlintAndSteelItem` / `FireChargeItem.useOn`: lighting a candle,
             // candle cake or campfire changes it; fire beside is placed.
             Used::Ignited { cell, .. } => {
-                let fire = world.get_block(cell).is_some_and(|b| b.is_fire() || b == Block::NETHER_PORTAL);
+                let fire = world.get_block(cell).is_some_and(|b| b.is_fire() || b.is_nether_portal());
                 (cell, if fire { E::BlockPlace } else { E::BlockChange }, source, None)
             }
             // `BlockTransformer.transformBlock` (shovels, axes, hoes) and
@@ -1321,7 +1333,7 @@ impl PlayerSession {
                 return Ok(Some(Used::FlintFizzled));
             }
             wear(self, 1, tool_broken);
-            let portal = world.get_block(at) == Some(Block::NETHER_PORTAL);
+            let portal = world.get_block(at).is_some_and(Block::is_nether_portal);
             return Ok(Some(Used::Ignited { cell: at, portal }));
         }
         if let Some(used) = self.use_item_on(slot, world, entities, pos, normal, tool_broken) {

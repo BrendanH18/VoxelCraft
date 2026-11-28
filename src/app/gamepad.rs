@@ -1033,7 +1033,11 @@ impl Game {
         let mut container = container;
         let mut no_grid = crate::crafting::Grid::new(2);
         let done = self.agent_screen(name, &mut container, &mut no_grid, |s| {
-            if quick { s.quick_move(slot) } else { s.click_slot(slot, right) }
+            if quick {
+                s.quick_move(slot)
+            } else {
+                s.click_slot_selected(slot, right, None);
+            }
         });
         self.pads.seats[seat].body.container = container;
         for request in done.map(|(_, r)| r).unwrap_or_default() {

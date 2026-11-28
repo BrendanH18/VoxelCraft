@@ -329,6 +329,12 @@ impl Game {
                     }
                     Event::EyeThrown(from) => super::items::eye_thrown_sound(&mut self.audio, from),
                     Event::FrameFilled(pos, opened) => super::items::frame_filled_sounds(&mut self.audio, pos, opened),
+                    Event::BundleThrown(out) => {
+                        use voxelcraft::content::bundle::Cue;
+                        super::items::bundle_sound(&mut self.audio, Cue::RemoveOne, Some(out.at));
+                        let block = out.at.floor() + glam::DVec3::splat(0.5);
+                        super::items::bundle_sound(&mut self.audio, Cue::DropContents, Some(block));
+                    }
                 }
             }
         }

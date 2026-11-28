@@ -120,6 +120,7 @@ impl Sound {
                 })
             }
             Sound::Geyser(c) => s(c.key()),
+            Sound::Mount(c) => s(c.key()),
             Sound::Minecart(c) => {
                 use crate::entity::minecart::Cue as C;
                 s(match c {
@@ -154,6 +155,7 @@ impl Sound {
                 ContainerCue::CopperChestOxidizedClose => "block.copper_chest_oxidized.close",
             }),
             Sound::SoulEscape => s("particle.soul_escape"),
+            Sound::Bundle(c) => s(c.event()),
         }
     }
 }

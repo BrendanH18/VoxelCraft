@@ -297,6 +297,8 @@ src/
     nether_features.rs  huge fungi, vines, deltas, basalt columns (Java ports)
     nether_decoration.rs  per-chunk feature placement across chunk borders
     end.rs           the End: islands, pillars, podium, biomes, chorus, cities
+    end/decoration.rs  generation 7's End decoration (Java's small islands,
+                     return gateways and chorus on its decoration seed)
     end_islands.rs   Java's End noise router (generation 7's islands)
     nether_flora.rs  nylium, vine growth and Nether bone meal
     fortress.rs      Nether fortress layouts (Java's pieces), painted per chunk
@@ -1509,7 +1511,7 @@ makes appended orderings contiguous in landing order.
 | 13974–13989 | 1962–1966 | — | 2. Hostile AI |
 | 13990–14005 | 1967–1971 | — | 3. Mounts and water |
 | 14006–14021 | 1972–1976 | — | 4. The End |
-| 14022–14037 | — | — | 5. Nether generation and portals |
+| 14022–14037 | — | — | 5. Nether generation and portals (5b used 14022–14023: Nether portal `axis=x`, `axis=z`) |
 | 14038–14053 | 1977–1981 | 4080–4087 | 6. Items and utilities |
 | 14054–14069 | — | 4066–4079 | 7. Art and motion |
 | 14070–14335 | 1938–1949, 1982–2199 | 4088–4095 | Integrator |

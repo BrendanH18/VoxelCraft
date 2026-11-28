@@ -236,6 +236,7 @@ impl Actor<'_> {
             && !self.session.scoping()
             && !self.session.consuming()
             && !self.session.brushing()
+            && !self.session.bundle_in_use()
             // Buckets, snowballs, eggs and rods act once per click, in either hand.
             && !self.held().is_some_and(once_per_click)
             && !self.body.used_once
@@ -253,6 +254,12 @@ impl Actor<'_> {
         {
             self.hand.swing();
             brush_sound(self.audio, stroke);
+        }
+        // v1.0 gap track 6: held use throws a bundle's contents out.
+        if let Some(out) =
+            self.session.tick_bundle_use(self.body.actions.selected, acting && self.body.right_held, self.entities)
+        {
+            bundle_thrown(self.hand, self.audio, out);
         }
         self.session.tick_blocking(self.body.actions.selected, acting && self.body.right_held);
         self.session.tick_scoping(self.body.actions.selected, acting && self.body.right_held);
@@ -479,7 +486,7 @@ impl Actor<'_> {
             // Nearest shared sound for `item.axe.scrape`: a high, scratchy stone step.
             Used::Waxed { cell } => audio.play(Sound::Place(Material::Snow), Some(centre(cell)), 1.0, (0.9, 1.1)),
             Used::Scraped { cell } => audio.play(Sound::Step(Material::Stone), Some(centre(cell)), 1.0, (1.5, 1.8)),
-            Used::Statue { .. } | Used::BrushStarted => {}
+            Used::Statue { .. } | Used::BrushStarted | Used::BundleStarted => {}
             // `CANDLE_EXTINGUISH` and `CAKE_ADD_CANDLE`, from the shared sound set.
             Used::CandleExtinguished { cell } => {
                 audio.play_in(SoundSource::Blocks, Sound::Fuse, Some(centre(cell)), 0.3, (1.8, 2.0))
@@ -557,4 +564,16 @@ fn once_per_click(i: Item) -> bool {
     (i != Item::GLASS_BOTTLE && voxelcraft::survival_items::bucket::handles(i))
         || matches!(i, Item::SNOWBALL | Item::FISHING_ROD)
         || voxelcraft::content::farm_variant::is_egg(i)
+}
+
+/// v1.0 gap track 6: a stack thrown out of a bundle in use. `Player.drop`
+/// swings the main hand; `removeOneItemFromBundle` plays the remove sound
+/// at the player and `dropContent` the drop-contents sound at the player's
+/// block.
+pub(super) fn bundle_thrown(hand: &mut HandAnim, audio: &mut Audio, out: voxelcraft::session::bundles::Emptied) {
+    use voxelcraft::content::bundle::Cue;
+    hand.swing();
+    items::bundle_sound(audio, Cue::RemoveOne, Some(out.at));
+    let block = out.at.floor() + DVec3::splat(0.5);
+    items::bundle_sound(audio, Cue::DropContents, Some(block));
 }

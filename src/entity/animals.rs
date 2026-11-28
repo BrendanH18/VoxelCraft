@@ -170,6 +170,11 @@ impl MobKind {
         self == other || matches!((self, other), (Self::Horse, Self::Donkey) | (Self::Donkey, Self::Horse))
     }
 }
+/// `AgeableMob.getSpeedUpSecondsWhenFeeding`: `(int)(ticks / 20 * 0.1F)`.
+pub(crate) fn speed_up_seconds(ticks_left: i32) -> i32 {
+    ((ticks_left / 20) as f32 * 0.1) as i32
+}
+
 impl Mob {
     pub fn ready_to_breed(&self) -> bool {
         self.alive()
@@ -195,7 +200,48 @@ impl Mob {
             self.baby = self.age < 0;
         }
     }
+    /// v1.0 gap Track 3b: `AgeableMob.ageUp(seconds, forced)`: older by
+    /// `seconds`, at most to adulthood; forced growth adds to
+    /// [`Mob::forced_age`] and starts 40 ticks of particles; coming of age
+    /// this way, the adult takes the forced age as its age (counting down).
+    pub fn age_up(&mut self, seconds: i32, forced: bool) {
+        let old = self.age;
+        let age = (old + seconds * 20).min(0);
+        self.age = age;
+        if forced {
+            self.forced_age += age - old;
+            if self.forced_age_timer == 0 {
+                self.forced_age_timer = 40;
+            }
+        }
+        if self.age == 0 {
+            self.age = self.forced_age;
+        }
+        self.baby = self.age < 0;
+    }
     pub(super) fn advance_animal_age(&mut self, dt: f32) {
+        // v1.0 gap Track 3b: `AgeableMob.aiStep` for a dolphin (no animal
+        // state): the forced-growth particle every fourth tick, then a
+        // baby a tick older a tick (unless age-locked) and a forced adult
+        // a tick younger, down to 0.
+        if self.kind == MobKind::Dolphin && self.alive() && (self.age != 0 || self.forced_age_timer > 0) {
+            self.grow += dt * 20.0;
+            let ticks = self.grow.floor() as i32;
+            self.grow -= ticks as f32;
+            for _ in 0..ticks {
+                if self.forced_age_timer > 0 {
+                    if self.forced_age_timer.is_multiple_of(4) {
+                        self.forced_sparkles = self.forced_sparkles.saturating_add(1);
+                    }
+                    self.forced_age_timer -= 1;
+                }
+            }
+            if !(self.age_locked && self.baby) {
+                self.age = if self.age < 0 { (self.age + ticks).min(0) } else { (self.age - ticks).max(0) };
+            }
+            self.baby = self.age < 0;
+            return;
+        }
         // `AgeableMob.canAgeUp`: an age-locked baby stays one.
         if !self.alive() || self.kind == MobKind::Turtle && self.baby || self.age_locked && self.baby {
             return;
@@ -224,7 +270,7 @@ impl Entities {
         let m = self.mobs.get_mut(index)?;
         if !m.alive()
             || !m.baby
-            || (m.animal.is_none() && m.kind != MobKind::SulfurCube)
+            || (m.animal.is_none() && !matches!(m.kind, MobKind::SulfurCube | MobKind::Dolphin))
             || matches!(m.kind, MobKind::ZombieHorse | MobKind::SkeletonHorse | MobKind::Villager)
         {
             return None;
@@ -1640,5 +1686,35 @@ mod tests {
                 assert_eq!((i64::from(ours.1), i64::from(ours.2)), count, "{kind:?} {id}");
             }
         }
+    }
+
+    /// v1.0 gap Track 3b: `AgeableMob.ageUp(seconds, forced)` and
+    /// `forcedAge`: a fed calf keeps the time it was forced through (and
+    /// saves it); coming of age through `ageUp` makes that its age; 40
+    /// ticks of particles, one every fourth.
+    #[test]
+    fn forced_growth_is_kept_saved_and_given_back_on_coming_of_age() {
+        let mut m = Mob::new(MobKind::Dolphin, DVec3::ZERO, 0.0);
+        m.baby = true;
+        m.age = -24000;
+        m.age_up(speed_up_seconds(24000), true);
+        assert_eq!((m.age, m.forced_age, m.forced_age_timer), (-21600, 2400, 40));
+        // A feeding is a tenth of the time left, so it never reaches 0
+        // itself; a bigger, unforced `ageUp` does, and gives the forced age.
+        let saved = super::super::nether::save_mob(&m);
+        assert_eq!(saved["forced_age"], 2400);
+        let loaded = super::super::nether::load_mob(&saved).unwrap();
+        assert_eq!((loaded.forced_age, loaded.age), (2400, -21600));
+        m.age_up(1200, false);
+        assert_eq!(m.age, 2400);
+        assert!(!m.baby);
+        for _ in 0..40 {
+            m.advance_animal_age(0.05);
+        }
+        assert_eq!(m.forced_sparkles, 10);
+        assert_eq!(m.age, 2360, "an adult's positive age counts down");
+        // Unforced, untouched mobs still save as before.
+        let plain = Mob::new(MobKind::Dolphin, DVec3::ZERO, 0.0);
+        assert!(super::super::nether::save_mob(&plain).get("forced_age").is_none());
     }
 }

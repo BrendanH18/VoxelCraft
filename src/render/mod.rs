@@ -381,6 +381,10 @@ pub struct Renderer {
     /// frames so drawing allocates nothing once it has grown.
     instance_scratch: Vec<[f32; 3]>,
     capture: Option<std::path::PathBuf>,
+    /// v1.0 gap track 6: the next frame is read back into memory instead
+    /// (`--item-review`), and the last one read.
+    readback_requested: bool,
+    readback: Option<(u32, u32, Vec<u8>)>,
     /// v0.18 Track 7: the next frame's first view is copied for a world icon.
     icon_requested: bool,
     /// v0.18 Track 7: why the requested icon couldn't be copied, for
@@ -1013,6 +1017,8 @@ impl Renderer {
             visible: Vec::new(),
             instance_scratch: Vec::new(),
             capture: None,
+            readback_requested: false,
+            readback: None,
             icon_requested: false,
             icon_error: None,
             icon_cancels: 0,
@@ -1263,7 +1269,19 @@ impl Renderer {
     }
 
     pub fn capture_pending(&self) -> bool {
-        self.capture.is_some()
+        self.capture.is_some() || self.readback_requested
+    }
+
+    /// v1.0 gap track 6: reads the next rendered frame back as RGBA rows
+    /// for [`Renderer::take_readback`] (the item review's contact sheets).
+    pub fn request_readback(&mut self) {
+        self.readback_requested = true;
+    }
+
+    /// The frame [`Renderer::request_readback`] asked for: width, height and
+    /// RGBA pixels, once rendered.
+    pub fn take_readback(&mut self) -> Option<(u32, u32, Vec<u8>)> {
+        self.readback.take()
     }
 
     /// Saves the next rendered frame as a PNG.
@@ -1272,6 +1290,22 @@ impl Renderer {
     }
 
     fn save_capture(&self, texture: &wgpu::Texture, encoder: wgpu::CommandEncoder, path: &std::path::Path) {
+        let (w, h, pixels) = self.read_target(texture, encoder);
+        let result = std::fs::File::create(path).map_err(|e| e.to_string()).and_then(|f| {
+            let mut enc = png::Encoder::new(std::io::BufWriter::new(f), w, h);
+            enc.set_color(png::ColorType::Rgba);
+            enc.set_depth(png::BitDepth::Eight);
+            enc.write_header().and_then(|mut wr| wr.write_image_data(&pixels)).map_err(|e| e.to_string())
+        });
+        match result {
+            Ok(()) => log::info!("saved screenshot {}", path.display()),
+            Err(e) => log::error!("screenshot failed: {e}"),
+        }
+    }
+
+    /// Copies `texture` (the frame) to the CPU, waiting for the GPU: width,
+    /// height and opaque RGBA rows.
+    fn read_target(&self, texture: &wgpu::Texture, encoder: wgpu::CommandEncoder) -> (u32, u32, Vec<u8>) {
         let (w, h) = (self.config.width, self.config.height);
         let row = (w * 4).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
         let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
@@ -1302,16 +1336,9 @@ impl Renderer {
                 pixels.extend_from_slice(&if bgra { [px[2], px[1], px[0], 255] } else { [px[0], px[1], px[2], 255] });
             }
         }
-        let result = std::fs::File::create(path).map_err(|e| e.to_string()).and_then(|f| {
-            let mut enc = png::Encoder::new(std::io::BufWriter::new(f), w, h);
-            enc.set_color(png::ColorType::Rgba);
-            enc.set_depth(png::BitDepth::Eight);
-            enc.write_header().and_then(|mut wr| wr.write_image_data(&pixels)).map_err(|e| e.to_string())
-        });
-        match result {
-            Ok(()) => log::info!("saved screenshot {}", path.display()),
-            Err(e) => log::error!("screenshot failed: {e}"),
-        }
+        drop(mapped);
+        buffer.unmap();
+        (w, h, pixels)
     }
 
     fn present_mode(vsync: bool) -> wgpu::PresentMode {
@@ -1575,7 +1602,7 @@ impl Renderer {
         // benchmarks still render offscreen; otherwise back off instead of
         // spinning.
         if frame.is_none() {
-            if !self.force_offscreen && self.capture.is_none() {
+            if !self.force_offscreen && !self.capture_pending() {
                 self.skipped_frames += 1;
                 // Chunk meshes keep uploading while the window is hidden;
                 // their staged copies are freed only after a submit, so
@@ -2010,6 +2037,14 @@ impl Renderer {
             }
             Some(_) => log::error!("surface doesn't support COPY_SRC; can't take screenshots"),
             None => {}
+        }
+        if std::mem::take(&mut self.readback_requested) {
+            if target.usage().contains(wgpu::TextureUsages::COPY_SRC) {
+                let encoder = self.device.create_command_encoder(&Default::default());
+                self.readback = Some(self.read_target(target, encoder));
+            } else {
+                log::error!("surface doesn't support COPY_SRC; can't read frames back");
+            }
         }
         if let Some(timer) = &mut self.gpu_timer
             && let Some(commands) = timer.resolve(&self.device)

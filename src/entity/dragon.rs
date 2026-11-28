@@ -173,6 +173,10 @@ pub struct Dragon {
     parts: [(Part, DVec3, DVec3); 8],
     /// Ticks until the next growl.
     growl: u32,
+    /// `inWall`: the last `checkWalls` found a block it can't break.
+    in_wall: bool,
+    /// `tickCount`: ticks since it was made or loaded.
+    ticks: u32,
 }
 
 /// A dragon fireball (Java's `DragonFireball`): speeds up like a blaze's and
@@ -634,7 +638,6 @@ impl Fight {
                 podium: self.podium,
                 fireballs: &mut self.fireballs,
                 clouds: &mut self.clouds,
-                ceiling: crate::world::terrain::Dimension::End.max_y() as f64 + 16.0,
                 top: crate::world::terrain::Dimension::End.max_y(),
                 floor: crate::world::terrain::Dimension::End.min_y(),
             };
@@ -883,9 +886,14 @@ impl Fight {
         }
     }
 
-    /// The dragon or its part a ray hits within `max_dist`.
+    /// The dragon or its part a ray hits within `max_dist`. In `DYING`
+    /// (the flight to the portal and the death that follows) the parts
+    /// are still there to hit: Java's `EnderDragonPart` stays pickable and
+    /// alive until the dragon is removed, and `EnderDragon.hurt` refuses
+    /// the hit, so an arrow bounces off (`ProjectileDeflection.REVERSE`)
+    /// rather than flying through.
     pub fn raycast(&self, origin: DVec3, dir: DVec3, max_dist: f64) -> Option<(Hit, f64)> {
-        let parts = self.dragon.iter().filter(|d| d.phase != Phase::Dying).flat_map(|d| {
+        let parts = self.dragon.iter().flat_map(|d| {
             d.parts.iter().filter_map(|&(part, min, max)| {
                 physics::ray_aabb(origin, dir, min, max).map(|t| (Hit::Dragon(part), t))
             })
@@ -896,7 +904,7 @@ impl Fight {
     /// The dragon part `p` is inside of.
     pub fn hit_at(&self, p: DVec3) -> Option<Hit> {
         let inside = |(min, max): (DVec3, DVec3)| p.cmpge(min).all() && p.cmple(max).all();
-        let d = self.dragon.as_ref().filter(|d| d.phase != Phase::Dying)?;
+        let d = self.dragon.as_ref()?;
         d.parts.iter().find(|&&(_, min, max)| inside((min, max))).map(|&(part, ..)| Hit::Dragon(part))
     }
 
@@ -936,9 +944,7 @@ pub(super) struct Arena<'a> {
     pub(super) podium: IVec3,
     pub(super) fireballs: &'a mut Vec<DragonFireball>,
     pub(super) clouds: &'a mut Vec<BreathCloud>,
-    /// The highest the dragon flies, and the dimension's top and floor
-    /// (for its node heights).
-    pub(super) ceiling: f64,
+    /// The dimension's top and floor (for its node heights).
     pub(super) top: i32,
     pub(super) floor: i32,
 }
@@ -1152,9 +1158,76 @@ fn part_center(d: &Dragon, part: Part) -> DVec3 {
     d.parts.iter().find(|p| p.0 == part).map_or(d.pos, |&(_, min, max)| (min + max) / 2.0)
 }
 
-/// Java's `Mth.wrapDegrees`.
+/// Java's `Mth.wrapDegrees(float)`.
 fn wrap_degrees(a: f32) -> f32 {
-    (a + 180.0).rem_euclid(360.0) - 180.0
+    let mut a = a % 360.0;
+    if a >= 180.0 {
+        a -= 360.0;
+    }
+    if a < -180.0 {
+        a += 360.0;
+    }
+    a
+}
+
+/// `(float) (Math.PI / 180.0)`.
+const DEGREES: f32 = (std::f64::consts::PI / 180.0) as f32;
+
+/// `Vec3.normalize`: nothing below a length of 1e-5.
+fn normalize(v: DVec3) -> DVec3 {
+    let length = (v.x * v.x + v.y * v.y + v.z * v.z).sqrt();
+    if length < f64::from(1.0e-5f32) { DVec3::ZERO } else { DVec3::new(v.x / length, v.y / length, v.z / length) }
+}
+
+/// `Mth.atan2`: Java's table-driven arctangent.
+fn mth_atan2(mut y: f64, mut x: f64) -> f64 {
+    use std::sync::OnceLock;
+    static TABLES: OnceLock<([f64; 257], [f64; 257])> = OnceLock::new();
+    let (asin, cos) = TABLES.get_or_init(|| {
+        let asin: [f64; 257] = std::array::from_fn(|i| (i as f64 / 256.0).asin());
+        (asin, asin.map(f64::cos))
+    });
+    let d2 = x * x + y * y;
+    if d2.is_nan() {
+        return f64::NAN;
+    }
+    let neg_y = y < 0.0;
+    if neg_y {
+        y = -y;
+    }
+    let neg_x = x < 0.0;
+    if neg_x {
+        x = -x;
+    }
+    let steep = y > x;
+    if steep {
+        std::mem::swap(&mut x, &mut y);
+    }
+    // `fastInvSqrt`.
+    let half = 0.5 * d2;
+    let guess = f64::from_bits((6_910_469_410_427_058_090_i64 - ((d2.to_bits() as i64) >> 1)) as u64);
+    let rinv = guess * (1.5 - half * guess * guess);
+    x *= rinv;
+    y *= rinv;
+    // `FRAC_BIAS`, 2^44: the sum's low bits are `y` in 256ths.
+    let bias = f64::from_bits(4_805_340_802_404_319_232);
+    let yp = bias + y;
+    let index = yp.to_bits() as i32 as usize;
+    let (phi, c_phi) = (asin[index], cos[index]);
+    let s_phi = yp - bias;
+    let sd = y * c_phi - x * s_phi;
+    let d = (6.0 + sd * sd) * sd * 0.166_666_666_666_666_66;
+    let mut theta = phi + d;
+    if steep {
+        theta = std::f64::consts::FRAC_PI_2 - theta;
+    }
+    if neg_x {
+        theta = std::f64::consts::PI - theta;
+    }
+    if neg_y {
+        theta = -theta;
+    }
+    theta
 }
 
 /// The horizontal unit heading of a Java yaw.
@@ -1220,6 +1293,8 @@ impl Dragon {
             history_at: 0,
             parts: [(Part::Body, pos, pos); 8],
             growl: 100,
+            in_wall: false,
+            ticks: 0,
         };
         d.place_parts();
         d
@@ -1331,13 +1406,16 @@ impl Dragon {
         if self.immune.0 > 0 {
             self.immune.0 -= 1;
         }
-        self.history_at = (self.history_at + 1) % 64;
-        self.history[self.history_at] = (self.yaw, self.pos.y);
+        self.ticks += 1;
         // `isDeadOrDying`: `tickDeath` runs and `aiStep` does nothing else.
         if self.health <= 0.0 {
             return self.tick_death(arena, events);
         }
         self.phase_ticks += 1;
+        // `EnderDragon.aiStep` from here, in its order: `checkCrystals`,
+        // the wing beat, the yaw wrapped and recorded with the height, the
+        // phase, the flight, the parts, then `checkWalls`.
+        self.heal(crystals, rng);
 
         // Wing beats: slower the faster it flies, quicker while climbing.
         let flap = if self.phase.sitting() {
@@ -1351,21 +1429,35 @@ impl Dragon {
         if before.cos_turns() > -0.3 && self.flap.cos_turns() <= -0.3 && !self.phase.sitting() {
             events.push(EntityEvent::Sound { sound: MobSound::DragonFlap, pos: self.pos });
         }
-        self.growl = self.growl.saturating_sub(1);
-        if self.growl == 0 {
-            self.growl = 200 + (rng.next_f32() * 200.0) as u32;
-            events.push(EntityEvent::Sound { sound: MobSound::DragonGrowl, pos: self.head() });
+        // `EnderDragon.aiStep` on the client: unless sitting (hovering
+        // counts), `--growlTime < 0` growls at the dragon and waits
+        // `200 + nextInt(200)` more.
+        if !self.phase.sitting() {
+            if self.growl == 0 {
+                self.growl = 200 + (rng.next_f32() * 200.0) as u32;
+                events.push(EntityEvent::Sound { sound: MobSound::DragonRoar, pos: self.pos });
+            } else {
+                self.growl -= 1;
+            }
         }
 
+        self.yaw = wrap_degrees(self.yaw);
+        self.history_at = (self.history_at + 1) % 64;
+        self.history[self.history_at] = (self.yaw, self.pos.y);
         self.think(arena, world, ctx, rng, events);
-        self.fly(world, arena.ceiling);
+        // `DragonSittingAttackingPhase.doClientTick`: the roar is a growl
+        // every tick of the phase.
+        if self.phase == Phase::SittingAttacking {
+            events.push(EntityEvent::Sound { sound: MobSound::DragonRoar, pos: self.pos });
+        }
+        self.fly();
         self.place_parts();
-        self.heal(crystals, rng);
         // Java's `checkWalls` runs in every phase; perched on the exit
         // portal the fight's dragon only meets blocks it can't break.
         if !self.phase.deflects_arrows() {
             self.smash(world, events);
         }
+        self.check_walls(world);
         self.hit_players(ctx, events);
         true
     }
@@ -1530,7 +1622,6 @@ impl Dragon {
                 if let Some(t) = scanned {
                     if self.phase_ticks > 25 {
                         self.set_phase(Phase::SittingAttacking);
-                        events.push(EntityEvent::Sound { sound: MobSound::DragonGrowl, pos: self.head() });
                     } else {
                         // Turn to face them: the angle from the body, the
                         // turn toward them from the head.
@@ -1709,7 +1800,7 @@ impl Dragon {
 
     /// Fly speed and turn rate of the phase (Java's `getFlySpeed` and
     /// `getTurnSpeed`).
-    fn flight(&self) -> (f64, f32) {
+    fn flight(&self) -> (f32, f32) {
         let speed = self.vel.with_y(0.0).length() as f32 + 1.0;
         let default_turn = 0.7 / speed.min(40.0) / speed;
         match self.phase {
@@ -1723,48 +1814,68 @@ impl Dragon {
         }
     }
 
-    /// Java's `EnderDragon.aiStep` movement toward the target.
-    fn fly<W: BlockSource + ?Sized>(&mut self, world: &W, ceiling: f64) {
-        // A hovering dragon still flies toward where it appeared.
+    /// `EnderDragon.aiStep`'s movement toward the phase's target, in
+    /// Java's arithmetic: its floats where it uses floats (the yaw, its
+    /// turn, `Mth.sin`, `Mth.cos` and `Mth.atan2` tables), its doubles
+    /// elsewhere, in the same order. With no target (`getFlyTargetLocation`
+    /// is null while sitting, the hover aside) the dragon doesn't move and
+    /// keeps its motion for when it flies again. `inWall` is the last
+    /// tick's `checkWalls` of the head, neck and body: blocks it can't
+    /// break slow it to 0.8.
+    fn fly(&mut self) {
         if self.phase.sitting() && self.phase != Phase::Hovering {
-            self.vel = DVec3::ZERO;
             return;
         }
-        let Some(target) = self.target else {
-            self.vel *= 0.8;
-            self.pos += self.vel;
-            return;
-        };
+        let Some(target) = self.target else { return };
         let (fly_speed, turn_speed) = self.flight();
-        let d = target - self.pos;
-        let horizontal = d.with_y(0.0).length();
-        let climb = if horizontal > 0.0 { (d.y / horizontal).clamp(-fly_speed, fly_speed) } else { d.y };
-        self.vel.y += climb * 0.01;
+        let (xdd, mut ydd, zdd) = (target.x - self.pos.x, target.y - self.pos.y, target.z - self.pos.z);
+        let dist = xdd * xdd + ydd * ydd + zdd * zdd;
+        let max = f64::from(fly_speed);
+        let horizontal = (xdd * xdd + zdd * zdd).sqrt();
+        if horizontal > 0.0 {
+            ydd = (ydd / horizontal).clamp(-max, max);
+        }
+        self.vel.y += ydd * 0.01;
         self.yaw = wrap_degrees(self.yaw);
-        let to_target = d.normalize_or_zero();
-        let facing = DVec3::new(heading(self.yaw).x, self.vel.y, heading(self.yaw).z).normalize_or_zero();
-        let align = ((facing.dot(to_target) as f32 + 0.5) / 1.5).max(0.0);
-        if d.x.abs() > 1e-5 || d.z.abs() > 1e-5 {
-            let want = 180.0 - (d.x.atan2(d.z) as f32).to_degrees();
+        let aim = normalize(target - self.pos);
+        let r = f64::from(self.yaw * DEGREES);
+        let dir = normalize(DVec3::new(
+            f64::from(crate::knockback::mth_sin(r)),
+            self.vel.y,
+            -f64::from(crate::knockback::mth_cos(r)),
+        ));
+        let dot = ((dir.dot(aim) as f32 + 0.5) / 1.5).max(0.0);
+        if xdd.abs() > f64::from(1.0e-5f32) || zdd.abs() > f64::from(1.0e-5f32) {
+            let want = 180.0 - mth_atan2(xdd, zdd) as f32 * (180.0f32 / std::f32::consts::PI);
             let turn = wrap_degrees(want - self.yaw).clamp(-50.0, 50.0);
-            self.yaw_speed = self.yaw_speed * 0.8 + turn * turn_speed;
+            self.yaw_speed *= 0.8;
+            self.yaw_speed += turn * turn_speed;
             self.yaw += self.yaw_speed * 0.1;
         }
-        let near = 2.0 / (d.length_squared() as f32 + 1.0);
-        let thrust = 0.06 * (align * near + (1.0 - near)) as f64;
-        self.vel += heading(self.yaw) * thrust;
-        // Java slows it inside solid blocks it can't break.
-        let in_wall = self.parts[..3].iter().any(|&(_, min, max)| {
+        let span = (2.0 / (dist + 1.0)) as f32;
+        // `moveRelative(0.06F * .., (0, 0, -1))`.
+        let speed = f64::from(0.06f32 * (dot * span + (1.0 - span)));
+        let r = f64::from(self.yaw * DEGREES);
+        let (sin, cos) = (f64::from(crate::knockback::mth_sin(r)), f64::from(crate::knockback::mth_cos(r)));
+        let (mx, mz) = (0.0 * speed, -speed);
+        self.vel += DVec3::new(mx * cos - mz * sin, 0.0, mz * cos + mx * sin);
+        self.pos += if self.in_wall { self.vel * f64::from(0.8f32) } else { self.vel };
+        let actual = normalize(self.vel);
+        let slide = 0.8 + 0.15 * (actual.dot(dir) + 1.0) / 2.0;
+        self.vel = DVec3::new(self.vel.x * slide, self.vel.y * f64::from(0.91f32), self.vel.z * slide);
+    }
+
+    /// `checkWalls` over the head, neck and body as they now stand: whether
+    /// any holds a block the dragon can't break (Java's `hitWall`, under
+    /// `mobGriefing`), slowing its next move.
+    fn check_walls<W: BlockSource + ?Sized>(&mut self, world: &W) {
+        self.in_wall = [3, 0, 4].iter().any(|&i| {
+            let (_, min, max) = self.parts[i];
             let (lo, hi) = (min.floor().as_ivec3(), max.floor().as_ivec3());
-            (lo.y..=hi.y).any(|y| {
-                (lo.z..=hi.z).any(|z| (lo.x..=hi.x).any(|x| world.block(IVec3::new(x, y, z)).is_some_and(immune_solid)))
+            (lo.x..=hi.x).any(|x| {
+                (lo.y..=hi.y).any(|y| (lo.z..=hi.z).any(|z| world.block(IVec3::new(x, y, z)).is_some_and(walls)))
             })
         });
-        self.pos += if in_wall { self.vel * 0.8 } else { self.vel };
-        self.pos.y = self.pos.y.min(ceiling);
-        let along = (self.vel.normalize_or_zero().dot(facing) as f32 + 1.0) / 2.0;
-        let keep = 0.8 + 0.15 * along as f64;
-        self.vel *= DVec3::new(keep, 0.91, keep);
     }
 
     /// Head position (centre of its box).
@@ -1819,7 +1930,7 @@ impl Dragon {
         let dying = self.phase == Phase::Dying;
         if self.healer.is_some_and(|id| crystals.get(id).is_none()) {
             self.healer = None;
-        } else if self.healer.is_some() && self.phase_ticks.is_multiple_of(10) && self.health < MAX_HEALTH && !dying {
+        } else if self.healer.is_some() && self.ticks.is_multiple_of(10) && self.health < MAX_HEALTH && !dying {
             self.health = (self.health + 1.0).min(MAX_HEALTH);
         }
         if rng.next_f32() < 0.1 {
@@ -1929,9 +2040,10 @@ impl Dragon {
     }
 }
 
-/// Blocks the dragon can't break and is slowed by.
-fn immune_solid(b: Block) -> bool {
-    b.is_solid() && !breakable(b)
+/// Blocks the dragon can't break and is slowed by: `#dragon_immune`, not
+/// air and not `#dragon_transparent`.
+fn walls(b: Block) -> bool {
+    !breakable(b) && !(b == Block::AIR || b.is_fluid() || b.base() == Block::FIRE)
 }
 
 /// Java's `#dragon_immune` and `#dragon_transparent`: the End's own blocks,
@@ -1947,7 +2059,7 @@ fn breakable(b: Block) -> bool {
         || b == Block::IRON_BARS
         || base == Block::END_PORTAL_FRAME
         || b == Block::END_PORTAL
-        || b == Block::NETHER_PORTAL
+        || b.is_nether_portal()
         || b == crate::world::jukebox::REINFORCED_DEEPSLATE)
 }
 
@@ -2035,6 +2147,52 @@ impl CosTurns for f32 {
 mod tests {
     use super::*;
     use crate::world::terrain::Dimension;
+
+    /// v1.0 gap Track 4b: `EnderDragon.aiStep`'s flight against the pinned
+    /// Java 26.3 server's own, tick for tick
+    /// (`tests/fixtures/java/26.3/dragon_flight.json`, written by
+    /// `tools/extract_java_dragon_flight_fixtures.py`): a hovering dragon
+    /// summoned moving and turned away coming back to where it stood, and
+    /// a dying dragon with no fight flying (speed 3) to the top of (0, 0)
+    /// on a superflat world, the grass at y -60, until within 10 blocks.
+    #[test]
+    fn the_dragon_flies_as_javas_ai_step() {
+        let f: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/java/26.3/dragon_flight.json")).unwrap();
+        let v3 =
+            |v: &serde_json::Value| DVec3::new(v[0].as_f64().unwrap(), v[1].as_f64().unwrap(), v[2].as_f64().unwrap());
+        for (name, sc) in f["scenarios"].as_object().unwrap() {
+            let ticks = sc["ticks"].as_array().unwrap();
+            assert!(ticks.len() > 20, "{name}: {}", ticks.len());
+            let first = &ticks[0];
+            let mut d = Dragon::new(v3(&first["pos"]));
+            d.vel = v3(&first["motion"]);
+            d.yaw = first["yaw"].as_f64().unwrap() as f32;
+            let dying = name == "dying";
+            d.phase = if dying { Phase::Dying } else { Phase::Hovering };
+            // `DragonHoverPhase`: where it stood on its first tick;
+            // `DragonDeathPhase`: the bottom centre of the top of (0, 0).
+            d.target = Some(if dying { DVec3::new(0.5, -60.0, 0.5) } else { d.pos });
+            for (i, t) in ticks.iter().enumerate().skip(1) {
+                d.fly();
+                let (pos, vel, yaw) = (v3(&t["pos"]), v3(&t["motion"]), t["yaw"].as_f64().unwrap() as f32);
+                assert!(
+                    d.pos.distance(pos) < 1e-9 && d.vel.distance(vel) < 1e-9 && (d.yaw - yaw).abs() < 1e-4,
+                    "{name} tick {i}: {:?} {:?} {} against Java's {pos:?} {vel:?} {yaw}",
+                    d.pos,
+                    d.vel,
+                    d.yaw
+                );
+                // `DragonDeathPhase` let it die within 10 blocks.
+                if dying && t["health"].as_f64().unwrap() <= 0.0 {
+                    let target = DVec3::new(0.5, -60.0, 0.5);
+                    assert!(
+                        ticks[i - 1]["pos"].is_array() && v3(&ticks[i - 1]["pos"]).distance_squared(target) < 100.0
+                    );
+                }
+            }
+        }
+    }
 
     struct Air;
     impl BlockSource for Air {
@@ -2359,6 +2517,97 @@ mod tests {
         }
         assert!(fight.dragon.is_none());
         assert!(events.contains(&EntityEvent::DragonKilled { first: true }));
+    }
+
+    /// v1.0 gap Track 4b: in `DYING`, in the flight to the portal and in
+    /// the death that follows, the parts are still there to hit, and
+    /// nothing hurts them: an arrow bounces off (Java's `EnderDragon.hurt`
+    /// refuses the hit and the arrow is deflected) rather than flying on
+    /// through.
+    #[test]
+    fn a_dying_dragon_is_hit_but_not_hurt() {
+        let end = EndGen::new(5);
+        let island = Island(*end.pillars());
+        let (mut fight, mut crystals) = fresh(&end);
+        crystals.list.clear();
+        let mut rng = Rng::new(2);
+        let mut events = Vec::new();
+        fight.update(TICK, &island, &ctx(Vec::new()), &mut rng, &mut crystals, &mut events);
+        let d = fight.dragon.as_mut().unwrap();
+        d.pos = DVec3::new(80.0, 100.0, 30.0);
+        d.place_parts();
+        d.hurt_by(Part::Head, 500.0, true);
+        assert_eq!((d.phase, d.health), (Phase::Dying, 1.0));
+        let head = part_center(d, Part::Head);
+        let from = head + DVec3::new(0.0, 0.0, -20.0);
+        let (hit, t) = fight.raycast(from, DVec3::Z, 40.0).expect("the dying dragon's parts are hit");
+        assert!(t < 20.0);
+        assert!(fight.hit_at(head).is_some());
+        assert!(!fight.strike(hit, 9.0, true), "nothing hurts a dying dragon");
+        assert!(!fight.strike(hit, 9.0, false));
+        assert_eq!(fight.dragon.as_ref().unwrap().health, 1.0);
+        // Nor once it has died and rises (`tickDeath`).
+        fight.dragon.as_mut().unwrap().health = 0.0;
+        let head = part_center(fight.dragon.as_ref().unwrap(), Part::Head);
+        let (hit, _) = fight.raycast(head + DVec3::new(0.0, 0.0, -20.0), DVec3::Z, 40.0).unwrap();
+        assert!(!fight.strike(hit, 9.0, true));
+    }
+
+    /// v1.0 gap Track 4b: the roar (`SITTING_ATTACKING`) is Java's client
+    /// growl every tick of the phase; the growl now and then
+    /// (`growlTime`) is only for a dragon not sitting, first after 101
+    /// ticks.
+    #[test]
+    fn the_roar_growls_every_tick_and_the_perched_dragon_is_otherwise_quiet() {
+        let roars = |events: &[EntityEvent]| {
+            events.iter().filter(|e| matches!(e, EntityEvent::Sound { sound: MobSound::DragonRoar, .. })).count()
+        };
+        let end = EndGen::new(5);
+        let island = Island(*end.pillars());
+        let (mut fight, mut crystals) = fresh(&end);
+        let mut rng = Rng::new(4);
+        let mut events = Vec::new();
+        fight.update(TICK, &island, &ctx(Vec::new()), &mut rng, &mut crystals, &mut events);
+        let d = fight.dragon.as_mut().unwrap();
+        d.set_phase(Phase::SittingScanning);
+        d.growl = 0;
+        events.clear();
+        for _ in 0..20 {
+            fight.update(TICK, &island, &ctx(Vec::new()), &mut rng, &mut crystals, &mut events);
+        }
+        assert_eq!(roars(&events), 0, "a sitting dragon doesn't growl by itself");
+        fight.dragon.as_mut().unwrap().set_phase(Phase::SittingAttacking);
+        events.clear();
+        let mut ticks = 0;
+        while fight.dragon.as_ref().unwrap().phase == Phase::SittingAttacking {
+            fight.update(TICK, &island, &ctx(Vec::new()), &mut rng, &mut crystals, &mut events);
+            ticks += 1;
+        }
+        assert_eq!(roars(&events), ticks - 1, "one growl a tick of the roar");
+        // In flight: the first growl on the 101st tick.
+        let mut d = Dragon::new(DVec3::new(0.0, 100.0, 0.0));
+        let mut events = Vec::new();
+        let mut arena_fireballs = Vec::new();
+        let mut arena_clouds = Vec::new();
+        let mut arena = Arena {
+            fight: false,
+            alive_crystals: 0,
+            previously_killed: true,
+            podium: IVec3::ZERO,
+            fireballs: &mut arena_fireballs,
+            clouds: &mut arena_clouds,
+            top: 256,
+            floor: 0,
+        };
+        d.phase = Phase::HoldingPattern;
+        let first = (1..=200)
+            .find(|_| {
+                events.clear();
+                d.tick(&mut arena, &Air, &ctx(Vec::new()), &mut rng, &Crystals::default(), &mut events);
+                roars(&events) > 0
+            })
+            .unwrap();
+        assert_eq!(first, 101);
     }
 
     /// v1.0 gap Track 4: `DragonLandingPhase` comes down on the bottom

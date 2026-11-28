@@ -232,15 +232,7 @@ impl PlayerSession {
     /// How far along `look` from `eye` the first block collision box is,
     /// within `max` (`ClipContext.Block.COLLIDER`).
     pub(super) fn spear_block_distance(&self, world: &World, eye: DVec3, look: DVec3, max: f64) -> Option<f64> {
-        let step = look.normalize_or_zero() * max;
-        let to = eye + step;
-        let mut boxes = Vec::new();
-        crate::physics::colliders(world, eye.min(to), eye.max(to), &mut boxes);
-        boxes
-            .iter()
-            .filter_map(|c| crate::physics::ray_aabb(eye, step, c.min, c.max).filter(|t| *t <= 1.0))
-            .min_by(f64::total_cmp)
-            .map(|t| t * max)
+        spear::block_distance(world, eye, look, max)
     }
 
     /// Releasing use with a trident (`TridentItem.releaseUsing`): after at

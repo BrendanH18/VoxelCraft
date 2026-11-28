@@ -103,17 +103,46 @@ pub(super) enum Arrival {
     /// Through an End gateway at `from` to the one at `exit`, which is
     /// built (after the `EndIslandFeature` island at `island`, if any) and
     /// linked back if it's new. The traveller keeps `vel` (Java's
-    /// `Relative.DELTA`).
+    /// `Relative.DELTA`). An `exact` exit (a generation 7 return gateway's,
+    /// `end_gateway_return`) is a spot, not a gateway: the traveller
+    /// arrives at its bottom centre and nothing is built.
     Gateway {
         exit: IVec3,
         from: IVec3,
         island: Option<IVec3>,
         link: bool,
         vel: DVec3,
+        exact: bool,
     },
 }
 
 /// Where a dimension's save lives inside the world folder.
+/// v1.0 gap Track 5b: whether the save of dimension `to` (its saved chunks
+/// and region records, read without loading it) holds a portal block that
+/// an arrival's search from `target` finds (`PortalForcer.findClosestPortalPosition`:
+/// 16 blocks into the Nether, 128 out of it).
+pub(super) fn saved_portal_near(root: &Storage, to: Dimension, target: IVec3) -> bool {
+    use crate::world::region::{REGION_DIR, RegionStore};
+    let storage = storage_for(root, to);
+    let chunks = storage.load_chunks().unwrap_or_default();
+    let store = RegionStore::open(storage.dir().join(REGION_DIR), false).ok().map(|(store, _)| store);
+    // A record with blocks is newer than `chunks.bin` (`World::attach_regions`).
+    let section = |c: IVec3| {
+        let record = store.as_ref().and_then(|s| s.read(c)).and_then(|r| r.blocks);
+        record.or_else(|| chunks.get(&c).cloned())
+    };
+    let radius = match to {
+        Dimension::Nether => crate::world::portal::NETHER_PORTAL_RADIUS,
+        _ => crate::world::portal::OVERWORLD_PORTAL_RADIUS,
+    };
+    crate::world::portal::find_portal_in(section, target, radius, to.min_y(), to.max_y()).is_some()
+}
+
+/// Whether `b` is `block`, a Nether portal counting along either axis.
+fn same_block(b: Block, block: Block) -> bool {
+    b == block || (block == Block::NETHER_PORTAL && b.is_nether_portal())
+}
+
 pub(super) fn storage_for(root: &Storage, dim: Dimension) -> Storage {
     match dim {
         Dimension::Overworld => Storage::new(root.dir()),
@@ -494,6 +523,18 @@ impl Game {
             trip.offset = crate::world::portal::relative_position(rect, along_x, player.pos, width, height);
         }
         trip.vel = player.vel;
+        // v1.0 gap Track 5b, `getExitPortal`: a spectator with no portal to
+        // arrive in doesn't travel (`getPortalDestination` gives no
+        // transition) and no portal is built. They try again on stepping in.
+        if self.session.mode == voxelcraft::rules::GameMode::Spectator
+            && self.lan.client.is_none()
+            && !saved_portal_near(&self.storage, to, target)
+        {
+            log::info!("a spectator's trip to the {} found no portal there: cancelled", to.name());
+            self.portal_locked = true;
+            self.portal_time = 0.0;
+            return;
+        }
         self.switch_dimension(to, Arrival::Portal(trip));
     }
 
@@ -557,6 +598,9 @@ impl Game {
                                 return true;
                             }
                             Some(at) => Some(self.world.portal_rect(at)),
+                            // `travel` checked that a spectator has a portal
+                            // to arrive in: Java never builds them one.
+                            None if self.session.mode == voxelcraft::rules::GameMode::Spectator => None,
                             None => self.world.create_portal(trip.target, trip.along_x).map(|r| (r, trip.along_x)),
                         }
                     }
@@ -587,17 +631,29 @@ impl Game {
                 }
             }
             Arrival::EndSpawn => {
+                // `EndPortalBlock.getPortalDestination`:
+                // `EndPlatformFeature.createEndPlatform(.., true)` replaces
+                // every block of the platform that isn't obsidian (its
+                // floor) or air (the three layers above) with
+                // `destroyBlock(pos, true)`, dropping what was there. The
+                // player faces west (`Direction.WEST.toYRot()`) and keeps
+                // their pitch (`Relative.X_ROT`).
                 let spawn = crate::world::end::SPAWN;
                 for z in -2..=2 {
                     for x in -2..=2 {
-                        self.world.set_block(spawn + IVec3::new(x, -1, z), Block::OBSIDIAN);
-                        for y in 0..3 {
-                            self.world.set_block(spawn + IVec3::new(x, y, z), Block::AIR);
+                        for y in -1..3 {
+                            let cell = spawn + IVec3::new(x, y, z);
+                            let want = if y == -1 { Block::OBSIDIAN } else { Block::AIR };
+                            let Some(was) = self.world.get_block(cell).filter(|&b| b != want) else { continue };
+                            if was != Block::AIR {
+                                self.world.spill_block(cell, was);
+                                self.world.particles.push(crate::particles::Request::Break { cell, block: was });
+                            }
+                            self.world.set_block(cell, want);
                         }
                     }
                 }
                 self.session.player.yaw = std::f32::consts::PI;
-                self.session.player.pitch = 0.0;
                 spawn.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)
             }
             Arrival::Respawn => {
@@ -625,6 +681,11 @@ impl Game {
                     return false;
                 }
             },
+            Arrival::Gateway { exit, exact: true, .. } => {
+                self.audio.play_in(SoundSource::Ambient, Sound::Teleport, None, 0.8, (0.9, 1.0));
+                self.portal_cooldown = PORTAL_COOLDOWN;
+                exit.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)
+            }
             Arrival::Gateway { exit, from, island, link, .. } => {
                 if let Some(origin) = island {
                     self.world.build_end_island(origin);
@@ -657,13 +718,13 @@ impl Game {
         false
     }
 
-    /// A cell of `block` the player overlaps.
+    /// A cell of `block` (any of its states) the player overlaps.
     fn touched(&self, block: Block) -> Option<IVec3> {
         let (min, max) = self.session.player.collision_shape().aabb(self.session.player.pos);
         let (lo, hi) = (min.floor().as_ivec3(), (max - DVec3::splat(1e-6)).floor().as_ivec3());
         (lo.y..=hi.y)
             .flat_map(|y| (lo.z..=hi.z).flat_map(move |z| (lo.x..=hi.x).map(move |x| IVec3::new(x, y, z))))
-            .find(|&p| self.world.get_block(p) == Some(block))
+            .find(|&p| self.world.get_block(p).is_some_and(|b| same_block(b, block)))
     }
 
     /// Takes the player through the End gateway at `cell`: to its known
@@ -673,11 +734,14 @@ impl Game {
         // `EndGatewayBlock.getPortalDestination`: players keep their motion
         // and facing (`Relative.DELTA`, `ROTATION`).
         let vel = self.session.player.vel;
-        let arrival = match fight.gateway_exit(cell) {
-            Some(exit) => Arrival::Gateway { exit, from: cell, island: None, link: false, vel },
-            None => {
+        let arrival = match (fight.gateway_exit(cell), self.world.return_gateway_exit(cell)) {
+            (Some(exit), _) => Arrival::Gateway { exit, from: cell, island: None, link: false, vel, exact: false },
+            // A return gateway's exact exit (`getPortalPosition` with
+            // `exactTeleport`).
+            (None, Some(exit)) => Arrival::Gateway { exit, from: cell, island: None, link: false, vel, exact: true },
+            (None, None) => {
                 let Some(found) = self.world.find_gateway_exit(cell) else { return };
-                Arrival::Gateway { exit: found.exit, from: cell, island: found.island, link: true, vel }
+                Arrival::Gateway { exit: found.exit, from: cell, island: found.island, link: true, vel, exact: false }
             }
         };
         self.audio.play_in(SoundSource::Ambient, Sound::Teleport, None, 0.8, (0.7, 0.8));
@@ -694,8 +758,10 @@ impl Game {
         (lo.y..=hi.y).any(|y| {
             min.y < y as f64 + top
                 && max.y > y as f64 + bottom
-                && (lo.z..=hi.z)
-                    .any(|z| (lo.x..=hi.x).any(|x| self.world.get_block(IVec3::new(x, y, z)) == Some(portal)))
+                && (lo.z..=hi.z).any(|z| {
+                    (lo.x..=hi.x)
+                        .any(|x| self.world.get_block(IVec3::new(x, y, z)).is_some_and(|b| same_block(b, portal)))
+                })
         })
     }
 
@@ -934,6 +1000,42 @@ mod tests {
         let (loaded, p, notice) = load_dimension(&root, Dimension::Nether, &none);
         assert_eq!((loaded.len(), p.len()), (2, 0));
         assert!(notice.unwrap().contains("containers and entities are lost"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// v1.0 gap Track 5b: a spectator goes only to a portal already in the
+    /// destination's save, in `chunks.bin` or a region record, within the
+    /// arrival's search (16 blocks into the Nether, 128 out of it).
+    #[test]
+    fn spectators_find_saved_exit_portals_without_loading_them() {
+        use crate::world::chunk::index;
+        use crate::world::portal::{AXIS_X, AXIS_Z};
+        use crate::world::region::{ChunkRecord, Patch, REGION_DIR, RegionStore};
+        let dir = std::env::temp_dir().join(format!("voxelcraft-dims-spectator-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let root = Storage::new(&dir);
+        let with_portal = |portal: Block| {
+            let mut blocks = ChunkData::new_dense(Block::AIR);
+            blocks[index(10, 6, 12)] = portal;
+            Arc::new(ChunkData::from_dense(blocks))
+        };
+        // The portal block is at (42, 70, 44).
+        let near = IVec3::new(40, 70, 40);
+        assert!(!saved_portal_near(&root, Dimension::Nether, near), "no save, no portal");
+        let nether = storage_for(&root, Dimension::Nether);
+        let level = LevelInfo { seed: 9, player: None, props: BTreeMap::new() };
+        nether.save(&level, &[(IVec3::new(1, 2, 1), with_portal(AXIS_Z))]).unwrap();
+        assert!(saved_portal_near(&root, Dimension::Nether, near));
+        assert!(!saved_portal_near(&root, Dimension::Nether, near + IVec3::new(20, 0, 0)), "16 into the Nether");
+        assert!(!saved_portal_near(&root, Dimension::Overworld, near), "each dimension its own");
+        {
+            let (store, _) = RegionStore::open(dir.join(REGION_DIR), true).unwrap();
+            let record = ChunkRecord { blocks: Some(with_portal(AXIS_X)), ..Default::default() };
+            store.queue([(IVec3::new(1, 2, 1), Patch::replace(record))]);
+            store.flush().unwrap();
+        }
+        assert!(saved_portal_near(&root, Dimension::Overworld, near + IVec3::new(120, 0, 0)), "128 out of it");
+        assert!(!saved_portal_near(&root, Dimension::Overworld, near + IVec3::new(140, 0, 0)));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -48,7 +48,7 @@ use glam::{IVec2, IVec3};
 use rustc_hash::FxHashMap;
 
 use super::block::{Block, Facing};
-use super::chunk::{CHUNK_SIZE_I, CHUNK_VOLUME, index};
+use super::chunk::{CHUNK_SIZE_I, CHUNK_VOLUME};
 use super::noise::hash3;
 use super::structure::{Bounds, Rng};
 
@@ -1121,12 +1121,10 @@ impl Canvas<'_> {
         if p.cmplt(self.base).any() || p.cmpgt(self.top).any() {
             return None;
         }
-        let l = p - self.base;
-        Some(if self.blocks.len() == CHUNK_VOLUME {
-            index(l.x as usize, l.y as usize, l.z as usize)
-        } else {
-            l.y as usize
-        })
+        // X fastest, then Z, then Y: a chunk's order for a 32-block cube
+        // (`chunk::index`), and just the height for one column.
+        let (l, size) = (p - self.base, self.top - self.base + IVec3::ONE);
+        Some(((l.y * size.z + l.z) * size.x + l.x) as usize)
     }
 }
 
@@ -1320,6 +1318,7 @@ pub fn markers<'a>(lib: &'a Library, pieces: &'a [Placed], surface: &dyn Fn(i32,
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::world::chunk::index;
 
     #[test]
     fn rotations_turn_clockwise_like_java() {

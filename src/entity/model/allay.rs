@@ -81,5 +81,9 @@ pub(super) fn held(m: &Mob, origin: Vec3, body: Quat, light: ([u8; 4], u8), out:
         rot: Quat::IDENTITY,
     };
     let tint = crate::inventory::components::dye_tint_bytes(stack);
-    super::super::player_model::textured_box(out, &limb, 0., origin, body, light, 2, layer, 1., tint);
+    // v1.0 gap track 6: a block keeps its item shape and face textures.
+    match block {
+        Some(b) => super::super::player_model::held_block(out, &limb, origin, body, light, b, 1.2, 1., tint),
+        None => super::super::player_model::textured_box(out, &limb, 0., origin, body, light, 2, layer, 1., tint),
+    }
 }

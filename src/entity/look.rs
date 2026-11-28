@@ -126,10 +126,19 @@ impl Mob {
                 "chest": s.chest,
                 "saddle": s.saddled(),
                 "armor": s.slots[1].map_or(0, |a| a.item.0),
-                "sitting": s.sit_ticks > 0,
+                "sitting": s.camel_sitting,
+                "pose_time": s.pose_time,
                 "max_health": s.max_health,
                 "jump": s.jump_charge,
             });
+            // v1.0 gap Track 3b: what the camel's dash animation and head
+            // tilt, and the rearing animation, draw from.
+            if super::mounts::camel_like(self.kind) {
+                v["mount"]["dash"] = json!([s.dashing, s.dash_ticks, s.dash_cooldown]);
+            }
+            if super::mounts::rears(self.kind) {
+                v["mount"]["stand"] = json!([s.stand_anim_o, s.stand_anim]);
+            }
         }
         if let Some(a) = &self.aquatic {
             v["aquatic"] = json!({"variant": a.variant, "puff": a.puff});
@@ -287,8 +296,17 @@ impl Mob {
             s.variant = small(&w["variant"]).unwrap_or(0).min(6);
             s.marking = small(&w["marking"]).unwrap_or(0).min(4);
             s.chest = w["chest"] == true;
-            s.sit_ticks = u32::from(w["sitting"] == true);
+            s.camel_sitting = w["sitting"] == true;
+            s.pose_time = w["pose_time"].as_u64().map_or(super::mounts::camel::FULL_STAND, |t| {
+                t.min(u64::from(super::mounts::camel::POSE_TIME_CAP)) as u32
+            });
             s.jump_charge = w["jump"].as_f64().map_or(0.0, |j| j.clamp(0.0, 1.0) as f32);
+            s.dashing = w["dash"][0] == true;
+            s.dash_ticks = w["dash"][1].as_u64().map_or(0, |t| t.min(u64::from(u16::MAX)) as u16);
+            s.dash_cooldown =
+                w["dash"][2].as_u64().map_or(0, |t| t.min(u64::from(super::mounts::DASH_COOLDOWN)) as u16);
+            let stand = |i: usize| w["stand"][i].as_f64().map_or(0.0, |a| a.clamp(0.0, 1.0) as f32);
+            (s.stand_anim_o, s.stand_anim) = (stand(0), stand(1));
             if let Some(h) = w["max_health"].as_f64().filter(|h| h.is_finite() && (1.0..=100.0).contains(h)) {
                 s.max_health = h as f32;
             }
@@ -354,6 +372,7 @@ mod tests {
         s.marking = 2;
         s.slots[0] = Some(crate::inventory::Stack::new(Item::SADDLE, 1));
         s.slots[1] = Some(crate::inventory::Stack::new(Item::DIAMOND_HORSE_ARMOR, 1));
+        s.stand_anim = 0.6;
         horse.name = StackName::new("Spirit").unwrap();
         horse.leash_pos = Some(DVec3::new(1.5, 2.7, 3.5));
         horse.leash = Some(super::super::leash::Leash::Fence(glam::IVec3::new(1, 2, 3)));
@@ -364,6 +383,8 @@ mod tests {
         assert!(c.saddled());
         assert_eq!(c.slots[1].unwrap().item, Item::DIAMOND_HORSE_ARMOR);
         assert_eq!(copy.name.as_str(), Some("Spirit"));
+        // v1.0 gap Track 3b: the rearing animation's progress.
+        assert_eq!(c.stand_anim, 0.6);
         assert_eq!(copy.leash_pos, horse.leash_pos);
         assert!(matches!(copy.leash, Some(super::super::leash::Leash::Fence(_))));
 

@@ -1281,6 +1281,67 @@ scripts/boat-check.sh -- 'cargo test --profile ci --locked --lib world::end_isla
 bit and every column block for block
 ([record](../../../../docs/verification/2026-11-27-v1.0-gap-track-04-the-end.md)).
 
+## The End's decoration (v1.0 gap-closing Track 4b)
+
+`end_decoration.json` holds what Java 26.3 builds in the outer End for
+seeds 0 and 42, written by `tools/extract_java_end_decoration_fixtures.py`,
+which runs the pinned dedicated server itself (SHA-1 checked) on a new
+world per seed, force-loads End chunks (`execute in minecraft:the_end run
+forceload add`), saves and reads the region files back (26.3's chunk
+format, palettes included):
+
+- `chunks`: every chunk of a 34 x 34 grid out past the void (the interior
+  of the 36 x 36 force-loaded, so every neighbour was decorated too), with
+  the biome Java stored at its middle, the count and an FNV-1a hash of its
+  end stone (the terrain and `end_island_decorated`), the count and hash of
+  its chorus blocks, and whether any other block (an End city) is there
+  (none is);
+- `chorus_bases`: the grid's chorus plants standing on end stone;
+- `gateways`: every `end_gateway` in the grid and in `gateway_chunks`, the
+  fully generated chunks within 128 of the centre where
+  `end_gateway_return`'s rarity filter passes (computed by the tool with
+  `WorldgenRandom`).
+
+Regenerate and compare with (JDK 25 on `PATH`, 10 GB of memory, a few
+minutes):
+
+```sh
+python3 tools/extract_java_end_decoration_fixtures.py /path/to/server.jar --output target/java-end-decoration.json
+diff tests/fixtures/java/26.3/end_decoration.json target/java-end-decoration.json
+scripts/boat-check.sh -- 'cargo test --profile ci --locked --lib world::end::decoration'
+```
+
+Generation 7 must match every chunk's end stone and every return gateway,
+and the chorus of every chunk whose plants can't meet a neighbour's (where
+they can, Java's result depends on the order its server decorated the two
+chunks; the test reports those). See the
+[record](../../../../docs/verification/2026-11-27-v1.0-gap-track-04b-end-leftovers.md).
+
+## The Ender Dragon's flight (v1.0 gap-closing Track 4b)
+
+`dragon_flight.json` holds Java 26.3's `EnderDragon.aiStep` flight, tick by
+tick, written by `tools/extract_java_dragon_flight_fixtures.py`, which runs
+the pinned server on a new superflat world with ticking frozen (and
+`pause-when-empty-seconds=-1`, so the empty server keeps ticking), summons
+dragons with a `DragonPhase`, `Motion` and `Rotation`, and after each `tick
+step 1` reads their `Pos`, `Motion`, `Rotation` and `Health`:
+
+- `hover`: `HOVERING` (fly speed 1), summoned moving and turned away,
+  flying back to where it stood on its first tick, 400 ticks;
+- `dying`: `DYING` (fly speed 3) with no fight, flying to the top of
+  (0, 0) (the grass, y -60) until it dies within 10 blocks, 379 ticks.
+
+Regenerate and compare with:
+
+```sh
+python3 tools/extract_java_dragon_flight_fixtures.py /path/to/server.jar --output target/java-dragon-flight.json
+diff tests/fixtures/java/26.3/dragon_flight.json target/java-dragon-flight.json
+scripts/boat-check.sh -- 'cargo test --profile ci --locked --lib entity::dragon::tests::the_dragon_flies_as_javas_ai_step'
+```
+
+The flight must match every tick's position and motion within 1e-9 and yaw
+within 1e-4 degrees.
+
 ## Generation 5 Overworld (v0.16 Track D)
 
 `gen5_overworld.json` holds the generation 5 facts v0.16 Track D follows:
@@ -1794,3 +1855,28 @@ scripts/boat-check.sh -- 'cargo test --profile ci --locked --lib structure_catal
 Java's pools; `structure_catalogue_tests` checks both against this file,
 and the painted templates' counts and connector positions against the
 piece lines ([record](../../../../docs/verification/2026-11-25-v1.0-track-08-generation.md)).
+
+## Item models
+
+`item_models.json` records how Java 26.3 draws every item in a slot with
+no components set: the GUI leaf of its item model definition
+(`assets/minecraft/items/<id>.json`, following a `select`'s `gui` case or
+fallback, a `condition`'s `on_false`, a `range_dispatch`'s fallback and a
+`composite`'s first model), as `flat` (its `models/` parent chain reaches
+`builtin/generated`, with the `layer0` texture), `block` (it reaches a model
+with elements) or `special` (a special renderer: chests, beds' heads,
+banners, shields, heads, shulker boxes, the conduit, the decorated pot,
+copper golem statues). The extractor reads only the pinned client jar
+([record](../../../../docs/verification/2026-11-27-v1.0-gap-track-06-items-utilities.md)).
+
+```sh
+python3 tools/extract_java_item_model_fixtures.py /path/to/client.jar --output target/item-models.json
+diff tests/fixtures/java/26.3/item_models.json target/item-models.json
+```
+
+`tests/java_item_models.rs` checks every Java item id the game resolves
+against it: each is a sprite or 3D exactly as in Java, except the listed
+items that still differ (doors, lanterns, chains and a dozen more Java
+draws as sprites of item textures the game doesn't have; beds, banners,
+the shield and two plants Java draws in 3D), and the list stays exact.
+

@@ -155,9 +155,12 @@ fn natural_husks_bring_camel_husks_with_a_parched_and_spears() {
         let husk = &e.mobs[0];
         assert_eq!(husk.equipment.main_hand().map(|s| s.item), Some(crate::weapons::spear(crate::item::Tier::Iron)));
         assert!(!e.mobs[c].persistent);
-        // Front and back seats, half a block either side of the camel's middle.
+        // Front and back seats: `Camel.getPassengerAttachmentPoint` puts
+        // the driver half a block forward and the second rider 0.7 back
+        // (v1.0 gap Track 3).
         let parched = e.mobs.iter().find(|m| m.kind == MobKind::Parched).unwrap();
-        assert!((husk.pos.distance(parched.pos) - 1.0).abs() < 1e-6);
+        let apart = (husk.pos - parched.pos).with_y(0.0).length();
+        assert!((apart - 1.2).abs() < 1e-6, "{apart}");
     }
     assert!((20..=65).contains(&jockeys), "{jockeys} of 400");
     // No room for a camel husk: no try.

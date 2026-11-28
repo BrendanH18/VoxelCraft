@@ -70,12 +70,46 @@ The retained v0.7 implementation adds turtle breeding, nesting, egg hatching and
 Spawning follows Java's water spawn categories (see the
 [spawn categories evidence](verification/2026-10-15-spawn-categories.md)).
 Turtles travel far through the sea, head home to lay their eggs, walk back
-into the water from land, and run for water when hurt. Movement differences
-that remain include baby dolphins, guardians targeting squid and axolotls,
-and water currents, which don't push swimmers. The
+into the water from land, and run for water when hurt. The
 [movement evidence](verification/2026-10-19-swimmer-flyer-movement.md) and
 [dolphin and turtle goal evidence](verification/2026-10-19-dolphin-turtle-goals.md)
-list every remaining difference.
+list the remaining differences.
+
+Since v1.0 gap Track 3
+([record](verification/2026-11-27-v1.0-gap-track-03-mounts-water.md)):
+
+- **Baby dolphins.** After the first dolphin of a natural pack, one in ten
+  is a calf (`AgeableMobGroupData(0.1)`); a dolphin spawn egg used on a
+  dolphin also makes one. Calves have their own smaller model and a box
+  0.65 of the adult's, grow up in 20 minutes, and a fish takes a tenth off
+  the time left instead of sending them after treasure. A golden dandelion
+  stops (or restarts) a calf's growing. Calves don't fight back when hit.
+- **Guardians** beam squid, glow squid and axolotls as well as players
+  (`GuardianAttackSelector`): the nearest one more than 3 blocks away
+  within 16, in sight and inside an elder's home. The beam hits a mob for
+  6 (an elder's for 8) after the same charge.
+- **Currents.** Flowing water pushes the mobs Java pushes: guardians and
+  elder guardians, drowned that aren't swimming, and every land mob in the
+  water, 0.014 blocks a tick along the flow (`CurrentAccumulator`). Fish,
+  tadpoles, squid, dolphins, turtles, axolotls, frogs and nautiluses aren't
+  pushed in Java 26.3 (`isPushedByFluid` is false for them), and aren't
+  here.
+
+Since v1.0 gap Track 3b
+([record](verification/2026-11-27-v1.0-gap-track-03b-mounts-water.md)):
+
+- **Baby dolphins** remember the growth they were fed through (Java's
+  `ForcedAge`, saved) and sparkle green for two seconds after a fish. A
+  calf breathes at its own eyes, just above its feet, so it needs a little
+  more of the surface than an adult; it dries out by its whole body.
+- **Guardians** don't spot a target at once: with none, they look every
+  other tick and then only one time in five, about half a second on
+  average. A beam that reaches a squid or axolotl hits it twice, as in
+  Java: the magic part with a push, then only what the guardian's attack
+  adds over it.
+- **Currents** build up over a few ticks for land mobs, as in Java, to a
+  steady 0.07 blocks a tick in water (Track 3 used 0.056), and flowing lava
+  pushes mobs too, 0.0023 blocks a tick (0.007 in the Nether).
 
 ## References
 

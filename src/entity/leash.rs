@@ -522,6 +522,8 @@ impl Entities {
             if let Some((pull, spin)) = pull {
                 m.vel += pull * 20.0 * ticks;
                 m.leash_spin += spin;
+                // `onElasticLeashPull` (v1.0 gap Track 3b: a seated camel stands).
+                m.camel_leash_pull(w);
             } else {
                 m.leash_close = true;
             }
@@ -706,6 +708,30 @@ mod tests {
         e.tick_leashes(0.05, &w, &ctx(DVec3::new(12.5, 1.0, 0.0)));
         assert_eq!(e.mobs[0].leash, None);
         assert_eq!(leads(&e), 1);
+    }
+
+    /// v1.0 gap Track 3b: `Camel.onElasticLeashPull` stands a seated camel
+    /// up once it has sat down, and makes it sound so.
+    #[test]
+    fn a_taut_lead_stands_a_seated_camel_up() {
+        let mut e = Entities::new(1);
+        e.spawn(MobKind::Camel, DVec3::new(0.5, 1.0, 0.5));
+        e.use_animal(0, Some(Stack::new(Item::LEAD, 1)), PlayerId(3));
+        assert!(e.mobs[0].leash.is_some());
+        let s = e.mobs[0].mount.as_mut().unwrap();
+        s.sit_down();
+        let w = Flat(Grid::flat(0));
+        // Still sitting down: the pull doesn't stand it.
+        e.tick_leashes(0.05, &w, &ctx(DVec3::new(9.0, 1.0, 0.5)));
+        assert!(e.mobs[0].mount.as_ref().unwrap().camel_sitting);
+        e.mobs[0].mount.as_mut().unwrap().pose_time = 40;
+        // Within the elastic reach it stays down.
+        e.tick_leashes(0.05, &w, &ctx(DVec3::new(3.0, 1.0, 0.5)));
+        assert!(e.mobs[0].mount.as_ref().unwrap().camel_sitting);
+        e.tick_leashes(0.05, &w, &ctx(DVec3::new(9.0, 1.0, 0.5)));
+        let s = e.mobs[0].mount.as_mut().unwrap();
+        assert!(!s.camel_sitting && s.in_pose_transition());
+        assert_eq!(s.take_events(), [super::super::mounts::Event::Sit, super::super::mounts::Event::Stand]);
     }
 
     /// `computeDampenedSpringInteraction`: displacement past the slack,

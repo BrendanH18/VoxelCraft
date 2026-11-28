@@ -10,8 +10,12 @@
 
 use super::loot::Xoroshiro;
 
+/// `GenerationStep.Decoration.RAW_GENERATION.ordinal()`.
+pub const RAW_GENERATION: i32 = 0;
 /// `GenerationStep.Decoration.SURFACE_STRUCTURES.ordinal()`.
 pub const SURFACE_STRUCTURES: i32 = 4;
+/// `GenerationStep.Decoration.VEGETAL_DECORATION.ordinal()`.
+pub const VEGETAL_DECORATION: i32 = 9;
 
 /// `RandomSupport.mixStafford13`.
 fn mix(mut z: u64) -> u64 {
@@ -61,6 +65,11 @@ impl WorldgenRandom {
                 return modulo;
             }
         }
+    }
+
+    /// `BitRandomSource.nextFloat`.
+    pub fn next_float(&mut self) -> f32 {
+        self.next(24) as f32 * 5.960_464_5E-8
     }
 
     pub fn next_bool(&mut self) -> bool {

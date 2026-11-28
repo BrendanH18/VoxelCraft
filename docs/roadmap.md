@@ -349,7 +349,13 @@ the first by z then x keeps a block both changed (GEN-04a,
 [v1.0 gap Track 5](verification/2026-11-27-v1.0-gap-track-05-nether-portals.md)).
 Following one Java load order would mean decorating about 16 chunks out
 around every chunk. Player impact: none visible beyond Java's own
-load-order variation.
+load-order variation. In the overlap a structure's block wins over a
+neighbouring chunk's feature (v1.0 gap Track 5b, the same rule). The owner extended FE-04 to the End on 2026-11-27:
+where two chunks' chorus plants meet, generation 7 decorates west to east,
+then north to south (GEN-04b,
+[v1.0 gap Track 4b](verification/2026-11-27-v1.0-gap-track-04b-end-leftovers.md);
+140 of the 148 such test chunks match Java's run, the rest of the 2,312 all
+do).
 
 The End's islands are not covered by FE-01: the owner chose on 2026-11-27
 to port Java's `EndIslandFunction` for new worlds
@@ -2278,7 +2284,8 @@ behaviour against the Java 26.3 jar, runs its targeted checks on Boat and
 writes a verification record; the integrator applies the inventory
 changes. Generation changes go into a new world generation, so the golden
 chunk hashes of generations 3 to 6 don't move. Tracks 6 and 7 merge only
-once the owner approves their look (Track 7's approved on 2026-11-27).
+once the owner approves their look (Track 7's and Track 6's approved on 2026-11-27; for the items Java
+draws differently, flat or 3D, the owner chose to match Java the same day).
 
 1. **Effects and mob damage** (PLY-03b, MOB-02d): Darkness darkening the
    lightmap, not only the fog; Smite and Bane of Arthropods on mobs'

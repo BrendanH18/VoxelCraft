@@ -25,6 +25,24 @@ pub struct Stab {
     pub owner: PlayerId,
 }
 
+/// v1.0 gap Track 2b: what a mob's spear contact does to a mob
+/// (`LivingEntity.stabAttack`), applied with the mob hits.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MobStab {
+    pub target: u32,
+    pub attacker: u32,
+    /// Damage before the target's Smite or Bane of Arthropods, when the
+    /// contact deals damage.
+    pub damage: Option<f32>,
+    /// The attacker's feet (the hurt push's source) and Java yaw.
+    pub origin: DVec3,
+    pub yaw: f32,
+    /// The 0.4 push along `yaw`, and the attack knockback after it.
+    pub knockback: bool,
+    pub extra: f32,
+    pub dismount: bool,
+}
+
 /// What a stab did.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Stabbed {

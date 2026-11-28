@@ -28,6 +28,8 @@ mod inventory;
 struct LanUse {
     eating: bool,
     drawing: bool,
+    /// v1.0 gap track 6: a bundle being emptied by holding use.
+    bundle: bool,
 }
 
 /// Largest view distance (in 32-block chunks) a LAN host streams to clients.
@@ -152,6 +154,9 @@ pub(super) struct Lan {
     /// Ongoing consumption predicted for the selected slot, reconciled with
     /// host snapshots even after every queued input has been acknowledged.
     predicted_eating: Option<usize>,
+    /// v1.0 gap track 6: a bundle in use predicted for the selected slot,
+    /// and the use ticks it has run (`BundleItem.getUseDuration` ends it).
+    predicted_bundle: Option<(usize, u32)>,
     /// Whether the use button was held on the last client tick.
     use_was_held: bool,
     /// Use was pressed since the last client tick (it may also have been
@@ -197,7 +202,23 @@ impl Lan {
             && !statue_use
             && (drink || !composting);
         self.predicted_eating = eating.then_some(slot);
-        LanUse { eating, drawing: self.predicted_draw == Some(slot) }
+        // v1.0 gap track 6: `BundleItem.use` in the main hand, or in the
+        // off hand behind an empty one; it runs while use stays held.
+        use voxelcraft::content::bundle::is_bundle;
+        let main = session.inventory.get(slot);
+        let holds_bundle = main.is_some_and(|s| is_bundle(s.item))
+            || main.is_none() && session.inventory.offhand.is_some_and(|s| is_bundle(s.item));
+        let sneaking = input.buttons & 2 != 0;
+        self.predicted_bundle = match self.predicted_bundle {
+            _ if input.buttons & 16 == 0 || !holds_bundle => None,
+            Some((s, ticks)) if !pressed && s == slot => {
+                (ticks + 1 < voxelcraft::session::bundles::USE_TICKS).then_some((slot, ticks + 1))
+            }
+            _ if pressed && !session.block_takes_use(slot, world, sneaking) => Some((slot, 0)),
+            _ => None,
+        };
+        let bundle = self.predicted_bundle.is_some();
+        LanUse { eating, drawing: self.predicted_draw == Some(slot), bundle }
     }
 
     /// The world's remembered session rules, `cheats,pvp` as `0` or `1`.
@@ -478,7 +499,9 @@ impl Game {
     pub(super) fn lan_command(&mut self, command: &str) {
         self.lan_send(Packet::Command(command.into()));
     }
-    pub(super) fn lan_click(&mut self, slot: u16, right: bool, shift: bool) {
+    /// A click on the host's copy of this guest's screen; `selected` is the
+    /// clicked bundle's selected stack.
+    pub(super) fn lan_click(&mut self, slot: u16, right: bool, shift: bool, selected: Option<usize>) {
         let grid_size = self.lan.inventory.grid.map_or(0, |grid| grid.size as u8);
         if (100..=109).contains(&slot) && usize::from(grid_size) != self.craft.size {
             return;
@@ -486,7 +509,9 @@ impl Game {
         if slot != LAN_OUTSIDE_SLOT {
             self.audio.ui_click();
         }
-        self.lan_send(Packet::Click { slot, right, shift, revision: self.lan.inventory_revision, grid_size });
+        let selected = selected.and_then(|i| u8::try_from(i).ok());
+        let revision = self.lan.inventory_revision;
+        self.lan_send(Packet::Click { slot, right, shift, revision, grid_size, selected });
     }
     pub(super) fn chat_line(&mut self, message: &str) {
         self.console.lines.push_back(message.into());
@@ -709,9 +734,10 @@ impl Game {
                             let _ = peer.connection.send(Packet::Chat(format!("Error: {e}")));
                         }
                     }
-                    Packet::Click { slot, right, shift, revision, grid_size } => {
+                    Packet::Click { slot, right, shift, revision, grid_size, selected } => {
                         if !(100..=109).contains(&slot) || peer.grid.size == usize::from(grid_size) {
-                            self.remote_click(peer, slot, right, shift, revision);
+                            let selected = selected.map(usize::from);
+                            self.remote_click(peer, slot, right, shift, revision, selected);
                         }
                     }
                     Packet::Book { pages, title, offhand } => {
@@ -1040,7 +1066,15 @@ impl Game {
         Ok(())
     }
 
-    fn remote_click(&mut self, peer: &mut Peer, encoded: u16, right: bool, shift: bool, revision: u32) {
+    fn remote_click(
+        &mut self,
+        peer: &mut Peer,
+        encoded: u16,
+        right: bool,
+        shift: bool,
+        revision: u32,
+        selected: Option<usize>,
+    ) {
         if !peer.open {
             return;
         }
@@ -1078,7 +1112,11 @@ impl Game {
             shift && (session.inventory.cursor.is_none() || matches!(slot, SlotRef::Palette(_) | SlotRef::Destroy));
         let mut container = peer.body.container;
         let done = self.agent_screen(&name, &mut container, &mut peer.grid, |s| {
-            if quick { s.quick_move(slot) } else { s.click_slot(slot, right) }
+            if quick {
+                s.quick_move(slot)
+            } else {
+                s.click_slot_selected(slot, right, selected);
+            }
         });
         peer.body.container = container;
         for request in done.map(|(_, r)| r).unwrap_or_default() {
@@ -1281,7 +1319,7 @@ impl Game {
                 if self
                     .world
                     .get_block(p)
-                    .is_some_and(|b| b == Block::NETHER_PORTAL || b == Block::END_PORTAL || b == Block::END_GATEWAY)
+                    .is_some_and(|b| b.is_nether_portal() || b == Block::END_PORTAL || b == Block::END_GATEWAY)
                     && peer.last_portal_message.elapsed() > Duration::from_secs(5)
                 {
                     peer.last_portal_message = Instant::now();
@@ -1628,6 +1666,7 @@ impl Game {
         );
         self.lan.predictions.clear();
         self.lan.predicted_eating = None;
+        self.lan.predicted_bundle = None;
         self.lan.ready = false;
         self.mobs.entities = crate::entity::Entities::new(seed);
     }
@@ -1671,7 +1710,7 @@ impl Game {
     fn lan_movement(&self, input: &Input, use_state: LanUse) -> voxelcraft::player::MoveInput {
         voxelcraft::player::MoveInput {
             sprint_blocked: !self.session.vitals.may_sprint(self.session.mode.invulnerable()),
-            using_item: input.buttons & 16 != 0 && (use_state.eating || use_state.drawing),
+            using_item: input.buttons & 16 != 0 && (use_state.eating || use_state.drawing || use_state.bundle),
             ..input.movement()
         }
     }
@@ -2740,7 +2779,7 @@ mod tests {
             assert!(lan.sample_use(&session, &world, &input, true).eating);
             world.set_block(p, statue::item_block(Stage::Unaffected, false));
             assert!(lan.sample_use(&session, &world, &input, false).eating, "an existing bite continues");
-            lan.predictions.push_back((input, LanUse { eating: true, drawing: false }));
+            lan.predictions.push_back((input, LanUse { eating: true, drawing: false, bundle: false }));
             lan.predictions.clear();
             assert!(lan.sample_use(&session, &world, &input, false).eating, "acknowledging inputs preserves a bite");
             assert!(!lan.sample_use(&session, &world, &Input { buttons: 0, ..input }, false).eating);

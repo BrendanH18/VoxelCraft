@@ -36,6 +36,15 @@ impl HandAnim {
         self.swing = t.filter(|t| t.is_finite() && (0.0..SWING_TIME).contains(t));
     }
 
+    /// v1.0 gap track 6: shows `item` raised at once, with no swing (the
+    /// item review's held models).
+    pub(super) fn show_now(&mut self, item: Option<Item>) {
+        self.shown = item;
+        self.height = 1.0;
+        self.previous_height = 1.0;
+        self.swing = None;
+    }
+
     pub(super) fn swing(&mut self) {
         if self.swing.is_none_or(|t| t >= SWING_TIME * 0.5) {
             self.swing = Some(0.0);

@@ -101,6 +101,8 @@ impl Entities {
         self.sense_dolphins(world, &moved);
         // v0.16 Track C: the Wither's server AI before the mobs move.
         self.wither_tick(dt, world, ctx, &mut events);
+        // v1.0 gap Track 2b: lowered mob spears stab before the mobs move.
+        self.mob_spear_stabs(world, ctx, &mut events);
         if self.still.is_some() {
             self.still_ticks = self.still_ticks.saturating_add(1);
         }
@@ -633,7 +635,21 @@ impl Entities {
                     | EntityEvent::DropEquipment { .. }
             )
         });
-        self.items.retain_mut(|item| !world.entity_ticking(item.pos.floor().as_ivec3()) || item.update(dt, world));
+        let mut destroyed = Vec::new();
+        self.items.retain_mut(|item| {
+            if !world.entity_ticking(item.pos.floor().as_ivec3()) {
+                return true;
+            }
+            let alive = item.update(dt, world);
+            // Burnt, not despawned: a bundle spills what it holds.
+            if !alive && item.age < item::LIFETIME {
+                destroyed.push(*item);
+            }
+            alive
+        });
+        for item in destroyed {
+            self.spill_destroyed(&item);
+        }
         self.orbs.retain_mut(|orb| !world.entity_ticking(orb.pos.floor().as_ivec3()) || orb.update(dt, world, ctx));
         let tnt_explodes = self.tnt_explodes;
         self.tnt.retain_mut(|t| {

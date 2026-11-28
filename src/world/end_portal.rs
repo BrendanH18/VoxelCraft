@@ -91,7 +91,12 @@ pub fn block_pos_long(p: IVec3) -> i64 {
 /// of radius 4–6 shrinking by 0.5–1.5 per layer down.
 pub fn java_island(origin: IVec3) -> Vec<IVec3> {
     let mut rng = crate::enchant::JavaRandom::new(block_pos_long(origin));
-    let mut size = rng.next_bounded(3) as f32 + 4.0;
+    island_with(origin, &mut |n| rng.next_bounded(n))
+}
+
+/// `EndIslandFeature.place` at `origin` drawing from `int` (`nextInt`).
+pub fn island_with(origin: IVec3, int: &mut impl FnMut(i32) -> i32) -> Vec<IVec3> {
+    let mut size = int(3) as f32 + 4.0;
     let mut out = Vec::new();
     let mut y = 0;
     while size > 0.5 {
@@ -103,7 +108,7 @@ pub fn java_island(origin: IVec3) -> Vec<IVec3> {
                 }
             }
         }
-        size -= rng.next_bounded(2) as f32 + 0.5;
+        size -= int(2) as f32 + 0.5;
         y -= 1;
     }
     out
@@ -285,6 +290,31 @@ impl World {
                     {
                         self.set_block(p, b);
                     }
+                }
+            }
+        }
+    }
+
+    /// Generation 7: where the return gateway at `cell` leads
+    /// (`end_gateway_return`'s exact exit), if it is one.
+    pub fn return_gateway_exit(&self, cell: IVec3) -> Option<IVec3> {
+        self.generator.end()?.return_gateway_at(cell)
+    }
+
+    /// Notes the return gateways a newly generated section holds.
+    pub(super) fn register_return_gateways(&mut self, pos: IVec3, data: &super::chunk::ChunkData) {
+        let Some(end) = self.generator.end() else { return };
+        let base = pos * super::chunk::CHUNK_SIZE_I;
+        let size = super::chunk::CHUNK_SIZE_I;
+        for cz in (base.z..base.z + size).step_by(16) {
+            for cx in (base.x..base.x + size).step_by(16) {
+                let Some(g) = end.return_gateway_at_chunk(glam::IVec2::new(cx >> 4, cz >> 4)) else { continue };
+                let l = g - base;
+                if l.cmpge(IVec3::ZERO).all()
+                    && l.cmplt(IVec3::splat(size)).all()
+                    && data.get(l.x as usize, l.y as usize, l.z as usize) == Block::END_GATEWAY
+                {
+                    self.generated_gateways.push(g);
                 }
             }
         }

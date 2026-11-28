@@ -6,8 +6,9 @@
 //! `Parrot.calculateFlapping` (`flap`, `flapSpeed`), `Squid.aiStep`
 //! (`tentacleAngle`, `xBodyRot`, `zBodyRot`), `Guardian.aiStep`
 //! (`clientSideTailAnimation`, `clientSideSpikesAnimation`),
-//! `Bee.updateRollAmount`, `AbstractHorse.tick` (`tailCounter`,
-//! `standAnim`) and `aiStep`, `LivingEntity.updateSwimAmount`, the
+//! `Bee.updateRollAmount`, `AbstractHorse.aiStep`'s `moveTail` and
+//! `tick`'s `tailCounter` (rearing, `standAnim`, is Track 3b's
+//! `mounts::State`), `LivingEntity.updateSwimAmount`, the
 //! `AnimationState`s of `Rabbit`, `Bat` and `Breeze`, and
 //! `Rabbit.jumpTicks`. Not saved, as in Java. The record is
 //! `docs/verification/2026-11-27-v1.0-gap-track-07b-mob-animations.md`.
@@ -46,14 +47,8 @@ pub struct Anim {
     /// `Bee.rollAmount` and its last tick's value.
     pub roll: f32,
     pub o_roll: f32,
-    /// `AbstractHorse.tailCounter` (0: still; 1..8 the tail swishes),
-    /// `standCounter` (ticks left rearing) and `standAnim`.
+    /// `AbstractHorse.tailCounter` (0: still; 1..8 the tail swishes).
     pub tail_counter: u8,
-    stand_counter: u8,
-    /// `RandomStandGoal.nextStand`.
-    next_stand: i32,
-    pub stand: f32,
-    pub o_stand: f32,
     /// `LivingEntity.swimAmount` and its last tick's value.
     pub swim: f32,
     pub o_swim: f32,
@@ -102,10 +97,6 @@ impl Default for Anim {
             roll: 0.0,
             o_roll: 0.0,
             tail_counter: 0,
-            stand_counter: 0,
-            next_stand: -STAND_INTERVAL,
-            stand: 0.0,
-            o_stand: 0.0,
             swim: 0.0,
             o_swim: 0.0,
             jump_ticks: 0,
@@ -125,11 +116,6 @@ impl Default for Anim {
             was_on_ground: true,
         }
     }
-}
-
-/// `AbstractHorse.canPerformRearing`: every horse but the llamas.
-pub fn rears(kind: MobKind) -> bool {
-    super::mounts::equine(kind) && !matches!(kind, MobKind::Llama | MobKind::TraderLlama)
 }
 
 impl Anim {
@@ -157,22 +143,10 @@ fn roll(uid: u32, tick: u32, salt: u32) -> f32 {
     (x >> 40) as f32 / (1u64 << 24) as f32
 }
 
-/// `AbstractHorse.standIfPossible`: rear for 20 ticks.
-pub const REAR_TICKS: u8 = 20;
-/// `AbstractHorse.getAmbientStandInterval` (its ambient sound interval).
-pub const STAND_INTERVAL: i32 = 400;
 /// `Rabbit.jumpDuration` for every hop.
 pub const RABBIT_JUMP: u8 = 15;
 
 impl Mob {
-    /// v1.0 gap Track 7b: `AbstractHorse.standIfPossible` (an untamed
-    /// horse throwing its rider, a hit one time in three): it rears.
-    pub(crate) fn rear(&mut self) {
-        if rears(self.kind) && self.alive() {
-            self.anim.stand_counter = REAR_TICKS;
-        }
-    }
-
     /// v1.0 gap Track 7b: one tick of the client animations after the mob
     /// moved by `moved`.
     pub(crate) fn tick_anim(&mut self, moved: DVec3) {
@@ -248,21 +222,8 @@ impl Mob {
                 };
             }
             k if super::mounts::equine(k) => {
-                // `RandomStandGoal`: from 400 ticks after the last try, a
-                // growing chance to try, and one try in ten rears (not
-                // while ridden or already rearing).
-                let ridden = self.mount.as_ref().is_some_and(|s| s.rider.is_some());
-                if rears(k) && alive && !ridden {
-                    a.next_stand += 1;
-                    if a.next_stand > 0 && roll(uid, tick, 4) * 1000.0 < a.next_stand as f32 {
-                        a.next_stand = -STAND_INTERVAL;
-                        if a.stand_counter == 0 && roll(uid, tick, 5) < 0.1 {
-                            a.stand_counter = REAR_TICKS;
-                        }
-                    }
-                }
                 // `AbstractHorse.aiStep`'s `moveTail` (one tick in 200)
-                // and `tick`'s counters and `standAnim`.
+                // and `tick`'s count.
                 if a.tail_counter == 0 && roll(uid, tick, 2) < 1.0 / 200.0 {
                     a.tail_counter = 1;
                 }
@@ -272,15 +233,6 @@ impl Mob {
                         a.tail_counter = 0;
                     }
                 }
-                if a.stand_counter > 0 {
-                    a.stand_counter -= 1;
-                }
-                a.o_stand = a.stand;
-                a.stand = if a.stand_counter > 0 {
-                    (a.stand + (1.0 - a.stand) * 0.4 + 0.05).min(1.0)
-                } else {
-                    (a.stand + (0.8 * a.stand * a.stand * a.stand - a.stand) * 0.6 - 0.05).max(0.0)
-                };
             }
             MobKind::Drowned => {
                 // `updateSwimAmount`: `Drowned.updateSwimming` swims (is
@@ -406,25 +358,17 @@ mod tests {
         assert!(close(m.anim.x_body_rot, -1.8), "{}", m.anim.x_body_rot);
     }
 
-    /// `AbstractHorse.tick`: rearing eases `standAnim` up by `(1 - s) *
-    /// 0.4 + 0.05` a tick for 20 ticks, then lets it fall.
+    /// `AbstractHorse.tick`: a swish lasts until `tailCounter` passes 8.
     #[test]
-    fn a_thrown_rider_makes_the_horse_rear_for_twenty_ticks() {
+    fn a_horse_s_tail_swishes_for_eight_ticks() {
         let mut m = Mob::new(MobKind::Horse, DVec3::ZERO, 0.0);
-        m.rear();
-        m.tick_anim(DVec3::ZERO);
-        assert!(close(m.anim.stand, 0.45));
-        for _ in 0..18 {
+        m.anim.tail_counter = 1;
+        for _ in 0..7 {
             m.tick_anim(DVec3::ZERO);
+            assert!(m.anim.tail_counter > 0);
         }
-        assert!(m.anim.stand > 0.99);
         m.tick_anim(DVec3::ZERO);
-        m.tick_anim(DVec3::ZERO);
-        assert!(m.anim.stand < 0.99);
-        for _ in 0..20 {
-            m.tick_anim(DVec3::ZERO);
-        }
-        assert_eq!(m.anim.stand, 0.0);
+        assert_eq!(m.anim.tail_counter, 0);
     }
 
     /// `KeyframeAnimation.apply`'s clock: whole milliseconds since the
