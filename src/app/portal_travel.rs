@@ -4,14 +4,17 @@
 //!
 //! [`crate::entity::portal_travel`] takes an entity that goes out of the
 //! level. Through an End gateway it stays in the End and arrives at once.
-//! Bound for another dimension, which doesn't run while the host is away,
-//! it waits as a [`PortalArrival`] in the root level file until that
-//! dimension next loads. Arriving there, before the host does, each one
-//! makes the arrival Java made at the time of the trip (the other
-//! dimension hasn't changed meanwhile, so the same `PortalForcer` search
-//! finds, or `createPortal` builds, the same exit portal) and joins the
-//! level; if its chunk unloads it goes to the chunk's region record as any
-//! other entity does.
+//! Bound for another dimension it is a [`PortalArrival`] until it gets
+//! there. v1.0 final F11: the destination runs whether or not the host is
+//! in it ([`super::levels`]), so that is at once, or as soon as the ground
+//! around its arrival has streamed in (held by a loading ticket; Java loads
+//! it at once): it makes the arrival Java makes (`PortalForcer`'s search
+//! finds, or `createPortal` builds, the exit portal), joins the level with
+//! a `PORTAL` ticket that keeps it moving there for 300 ticks, and if its
+//! chunk unloads it goes to the chunk's region record as any other entity
+//! does. A traveller in transit when the game saves is kept in the root
+//! level file (`portal_arrivals`), as Track F2's waiting travellers were;
+//! one from an older save arrives once its dimension loads.
 
 use glam::{DVec3, IVec3};
 
@@ -232,12 +235,12 @@ impl Game {
     /// entities' portal steps ([`crate::entity::Entities::portal_departures`]),
     /// and the trips of those that go. A LAN client's entities are the host's.
     pub(super) fn entity_portals(&mut self) {
-        if self.lan.client.is_some() || self.arrival.is_some() || self.credits.is_some() {
+        // v1.0 final F11: a background level's entities go whatever the
+        // host is doing.
+        if self.lan.client.is_some() || (!self.unattended && (self.arrival.is_some() || self.credits.is_some())) {
             return;
         }
-        if self.portal_arrivals.iter().any(|a| a.to == self.dimension) {
-            self.resolve_portal_arrivals(false);
-        }
+        self.resolve_waiting();
         let nether_allowed = self.gamerules.portal_allows_trip_from(self.dimension);
         let in_end = self.dimension == Dimension::End;
         let mut fight = self.mobs.entities.fight.take();
@@ -353,6 +356,8 @@ impl Game {
             _ => return stay(self, &d),
         };
         self.mobs.entities.arrive(&d.batch, pos, Some(d.vel), 0.0, false);
+        // v1.0 final F11: `PLACE_PORTAL_TICKET` where it comes out.
+        self.place_portal_ticket(pos.floor().as_ivec3());
     }
 
     /// Arriving in a dimension, the travellers waiting for it come first,
@@ -383,20 +388,27 @@ impl Game {
             Route::WorldSpawn { .. } => (self.world_spawn, 0),
             Route::At { pos, .. } => (pos.floor().as_ivec3(), 0),
         };
-        let ready = [(-r, -r), (r, -r), (-r, r), (r, r), (0, 0)]
-            .iter()
-            .all(|&(dx, dz)| self.world.column_loaded(target.x + dx, target.z + dz));
-        if !ready {
+        if !self.ground_loaded(target, r) {
+            // v1.0 final F11: Java loads the destination at once; here a
+            // loading ticket holds it while it streams in.
+            self.hold_ground(target, r);
             if hold {
                 self.session.player.pos = target.as_dvec3() + DVec3::new(0.5, 0.0, 0.5);
                 self.session.player.vel = DVec3::ZERO;
             }
             return Some(false);
         }
+        // v1.0 final F11: the `PORTAL` ticket of the arrival: at the exit
+        // portal the search found, else where it comes out
+        // (`PLACE_PORTAL_TICKET`); none for a carried vehicle's spot.
+        let mut ticket_at: Option<IVec3> = None;
         let (pos, vel, turn) = match a.route {
             Route::Nether(trip) | Route::NetherAt(_, trip) => {
                 let exit = match a.route {
-                    Route::NetherAt(at, _) => Some(self.world.portal_rect(at)),
+                    Route::NetherAt(at, _) => {
+                        ticket_at = Some(at);
+                        Some(self.world.portal_rect(at))
+                    }
                     _ => {
                         let radius = if self.dimension == Dimension::Nether {
                             crate::world::portal::NETHER_PORTAL_RADIUS
@@ -408,7 +420,10 @@ impl Game {
                                 self.portal_arrivals[i].route = Route::NetherAt(at, trip);
                                 return Some(false);
                             }
-                            Some(at) => Some(self.world.portal_rect(at)),
+                            Some(at) => {
+                                ticket_at = Some(at);
+                                Some(self.world.portal_rect(at))
+                            }
                             None => self.world.create_portal(trip.target, trip.along_x).map(|r| (r, trip.along_x)),
                         }
                     }
@@ -424,6 +439,13 @@ impl Game {
         };
         self.portal_arrivals.remove(i);
         self.mobs.entities.arrive(&a.batch, pos, Some(vel), turn, false);
+        match (ticket_at, a.route) {
+            (Some(at), _) => self.place_portal_ticket(at),
+            (None, Route::At { .. }) => {}
+            (None, _) => self.place_portal_ticket(pos.floor().as_ivec3()),
+        }
+        // `teleportCrossDimension`: `resetEmptyTime` in the new level.
+        self.empty_time.reset();
         Some(true)
     }
 

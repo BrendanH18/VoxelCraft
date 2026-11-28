@@ -4,6 +4,21 @@ impl Game {
     /// One fixed gameplay step. Rendering and worker polling never
     /// change the amount of simulation time advanced here.
     pub(super) fn tick(&mut self) {
+        // v1.0 final F11: every level ticks each game tick, in Java's order
+        // (the Overworld, the Nether, the End): first those before the
+        // host's, then the host's, then those after it ([`super::levels`]).
+        self.tick_levels(true);
+        self.tick_attended();
+        self.tick_levels(false);
+        self.take_pearl_trip();
+        self.open_waiting_levels();
+    }
+
+    /// The host's level's tick, with the host's own.
+    fn tick_attended(&mut self) {
+        // v1.0 final F11: its tickets (portals, pearls far away) load and
+        // tick chunks beyond the players' own.
+        self.update_level_tickets();
         // v1.0 gap Track 8f: a host watching the End credits has left the
         // level with their chunk tickets (`showEndCredits`), so only the
         // other players keep chunks ticking.
@@ -371,6 +386,7 @@ impl Game {
         self.tick_potent_sulfur();
         self.tick_raid_omens();
         self.update_mobs(dt);
+        self.take_pearl_tickets();
         self.apply_raid_outcomes();
         self.update_items();
         self.tick_particles();

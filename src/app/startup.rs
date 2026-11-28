@@ -431,6 +431,11 @@ impl Game {
                 .get(super::portal_travel::PORTAL_ARRIVALS_KEY)
                 .map_or_else(Vec::new, |t| super::portal_travel::parse_arrivals(t)),
             carried_vehicle: None,
+            levels: Vec::new(),
+            tickets: Default::default(),
+            empty_time: Default::default(),
+            unattended: false,
+            pearl_trip: None,
             terrain_version: existing
                 .as_ref()
                 .map_or(2, |l| l.props.get("terrain").and_then(|v| v.parse().ok()).unwrap_or(1)),
@@ -452,6 +457,11 @@ impl Game {
             root_props.get("maps").and_then(|s| crate::world::maps::MapStorage::load(s)).unwrap_or_default();
         game.restore_dimension(&dimension_props);
         game.load_owned_pearls(&root_props);
+        // v1.0 final F11: the other dimensions whose tickets are still
+        // running, or that something waits for, run in the background.
+        if args.join.is_none() {
+            game.open_ticketed_levels();
+        }
         // v0.18 Track 0's capture flags: `--open-recipe-book` opens the
         // crafting book (Track 5), `--creative-tab` selects a creative tab
         // (Track 4; the operator tab isn't shown, so it stays on the default).

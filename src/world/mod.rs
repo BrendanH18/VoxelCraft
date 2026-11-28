@@ -148,6 +148,7 @@ pub mod sugar_cane;
 pub mod sulfur_springs;
 pub mod temples;
 pub mod terrain;
+pub mod tickets;
 pub mod trail_ruins;
 pub mod trees;
 pub mod trial;
@@ -366,6 +367,13 @@ pub struct World {
     simulation_spectators: Vec<bool>,
     region: Option<Box<Region>>,
     meshes_enabled: bool,
+    /// v1.0 final F11: a level nobody is in (see [`tickets`]): no host
+    /// view to stream, mesh or keep; only what its tickets reach loads.
+    background: bool,
+    /// Whether meshing was on before [`World::set_background`] turned it off.
+    meshes_when_viewed: bool,
+    /// v1.0 final F11: the level's loading tickets (Java chunk, level).
+    ticket_loads: Vec<(IVec2, i32)>,
     remote: bool,
     light_updates: lighting::LightUpdates,
     sky_updates: lighting::LightUpdates,
@@ -854,6 +862,9 @@ impl World {
             simulation_spectators: Vec::new(),
             region: None,
             meshes_enabled,
+            background: false,
+            meshes_when_viewed: meshes_enabled,
+            ticket_loads: Vec::new(),
             remote: false,
             light_updates: Default::default(),
             sky_updates: Default::default(),
@@ -1052,6 +1063,11 @@ impl World {
     }
 
     fn priority(&self, pos: IVec3) -> i32 {
+        if self.background {
+            // v1.0 final F11: nearest ticket first.
+            let d = self.ticket_loads.iter().map(|&(c, _)| (IVec2::new(pos.x, pos.z) * 2 - c).abs().max_element());
+            return d.min().unwrap_or(0);
+        }
         let c = self.center.unwrap_or(IVec3::ZERO);
         let dy = (pos.y - c.y) * 3 / 2;
         self.horizontal_dist2(pos) * 2 + dy * dy
@@ -1059,29 +1075,103 @@ impl World {
 
     /// Chunks within this radius are meshed and drawn.
     fn in_mesh_range(&self, pos: IVec3) -> bool {
-        self.meshes_enabled && self.horizontal_dist2(pos) <= self.render_distance * self.render_distance
+        self.meshes_enabled
+            && !self.background
+            && self.horizontal_dist2(pos) <= self.render_distance * self.render_distance
     }
 
     /// Loaded radius is one ring larger than the mesh radius so every meshed
     /// chunk has all of its neighbours.
     fn in_load_range(&self, pos: IVec3) -> bool {
         let r = self.render_distance as f32 + 1.5;
-        (self.horizontal_dist2(pos) as f32) <= r * r
+        (!self.background && (self.horizontal_dist2(pos) as f32) <= r * r)
             || self.agent_centers.iter().any(|c| {
                 let d = (pos - *c).with_y(0);
                 d.length_squared() <= self.agent_radius * self.agent_radius
             })
+            || self.ticket_loaded(pos)
     }
 
     /// Extra hysteresis before unloading so walking back and forth across a
     /// chunk border doesn't thrash.
     fn in_keep_range(&self, pos: IVec3) -> bool {
         let r = self.render_distance + 3;
-        self.horizontal_dist2(pos) <= r * r
+        (!self.background && self.horizontal_dist2(pos) <= r * r)
             || self.agent_centers.iter().any(|c| {
                 let d = (pos - *c).with_y(0);
                 d.length_squared() <= (self.agent_radius + 1) * (self.agent_radius + 1)
             })
+            || self.ticket_loaded(pos)
+    }
+
+    /// v1.0 final F11: whether a loading ticket reaches one of the four
+    /// Java chunks of the storage column at `pos` (level 33, `FULL`, or less).
+    fn ticket_loaded(&self, pos: IVec3) -> bool {
+        !self.ticket_loads.is_empty()
+            && (0..2).any(|dx| {
+                (0..2).any(|dz| {
+                    let c = IVec2::new(pos.x * 2 + dx, pos.z * 2 + dz);
+                    tickets::level_at(&self.ticket_loads, c) <= tickets::FULL
+                })
+            })
+    }
+
+    /// v1.0 final F11: makes this a level nobody is in (`true`): the host's
+    /// view no longer loads, keeps or meshes anything, so only what its
+    /// tickets ([`World::set_tickets`]) reach stays loaded, and nothing is
+    /// meshed. `false` makes it the viewed level again: every loaded chunk
+    /// is meshed afresh for the renderer, which kept none of it.
+    pub fn set_background(&mut self, background: bool) {
+        if background == self.background {
+            return;
+        }
+        self.background = background;
+        if background {
+            self.meshes_when_viewed = self.meshes_enabled;
+            self.meshes_enabled = false;
+            self.dirty.clear();
+            self.sync_meshes.clear();
+            self.mesh_uploads.clear();
+            self.mesh_removals.clear();
+        } else {
+            self.meshes_enabled = self.meshes_when_viewed;
+            for slot in self.chunks.values_mut() {
+                slot.meshed_version = None;
+            }
+        }
+        self.center = None;
+    }
+
+    /// Whether this is a level nobody is in ([`World::set_background`]).
+    pub fn is_background(&self) -> bool {
+        self.background
+    }
+
+    /// v1.0 final F11: the level's tickets: their simulation levels make
+    /// chunks entity- and block-ticking with or without players
+    /// ([`World::is_entity_ticking`]), their loading levels keep chunks
+    /// loaded ([`World::update_players`], [`World::update_background`]).
+    pub fn set_tickets(&mut self, tickets: &tickets::Tickets) {
+        let loads = tickets.loading();
+        let sims = tickets.simulation();
+        if loads != self.ticket_loads {
+            self.ticket_loads = loads;
+            self.center = None;
+        }
+        if sims != self.activity.tickets {
+            self.activity.tickets = sims;
+            self.refresh_redstone_activity();
+        }
+    }
+
+    /// v1.0 final F11: streams a level nobody is in: what its tickets reach
+    /// loads (from its region records, or generated), what they no longer
+    /// reach unloads into its records, and nothing is meshed.
+    pub fn update_background(&mut self) {
+        if self.center.is_none() {
+            self.recenter(IVec3::ZERO);
+        }
+        self.stream();
     }
 
     /// 16-block columns of every fully loaded storage column, for generation herds.
@@ -1712,7 +1802,12 @@ impl World {
 
         let r = self.render_distance + 2;
         self.load_list.clear();
-        for c in std::iter::once(center).chain(self.view_centers.clone()) {
+        let views: Vec<IVec3> = if self.background {
+            Vec::new()
+        } else {
+            std::iter::once(center).chain(self.view_centers.iter().copied()).collect()
+        };
+        for c in views {
             for dz in -r..=r {
                 for dx in -r..=r {
                     for y in self.generator.dimension.chunk_rows() {
@@ -1733,6 +1828,23 @@ impl World {
                     }
                     for y in self.generator.dimension.chunk_rows() {
                         self.load_list.push(IVec3::new(c.x + dx, y, c.z + dz));
+                    }
+                }
+            }
+        }
+        // v1.0 final F11: what the level's loading tickets reach.
+        for &(c, level) in &self.ticket_loads {
+            let r = tickets::FULL - level;
+            if r < 0 {
+                continue;
+            }
+            for x in (c.x - r) >> 1..=(c.x + r) >> 1 {
+                for z in (c.y - r) >> 1..=(c.y + r) >> 1 {
+                    for y in self.generator.dimension.chunk_rows() {
+                        let p = IVec3::new(x, y, z);
+                        if self.ticket_loaded(p) {
+                            self.load_list.push(p);
+                        }
                     }
                 }
             }
@@ -1947,7 +2059,13 @@ impl World {
         if self.center != Some(center) {
             self.recenter(center);
         }
+        self.stream();
+    }
 
+    /// Collects finished jobs, starts the nearest missing chunks, settles
+    /// light and queues meshes, for [`World::update_players`] and
+    /// [`World::update_background`].
+    fn stream(&mut self) {
         let cap = self.workers.threads * 3;
 
         // Collect finished work.
@@ -1977,6 +2095,11 @@ impl World {
                     let in_range = self.in_mesh_range(pos);
                     let Some(slot) = self.chunks.get_mut(&pos) else { continue };
                     slot.mesh_in_flight = false;
+                    // v1.0 final F11: a mesh finished after its level went
+                    // into the background is dropped.
+                    if self.background {
+                        continue;
+                    }
                     if slot.version == version {
                         slot.meshed_version = Some(version);
                         self.mesh_uploads.push((pos, mesh));

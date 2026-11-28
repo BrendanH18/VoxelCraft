@@ -240,10 +240,19 @@ impl OwnedPearls {
         dimension: crate::world::terrain::Dimension,
         owner: PlayerId,
     ) -> Option<Value> {
-        let list: Vec<Value> = entities
-            .pearls
-            .iter()
-            .map(|p| (dimension, p))
+        self.save_levels(std::iter::once((dimension, entities)), owner)
+    }
+
+    /// v1.0 final F11: [`OwnedPearls::save`] over every loaded level
+    /// (dimension and entities), in order, then those waiting.
+    pub fn save_levels<'a>(
+        &self,
+        levels: impl IntoIterator<Item = (crate::world::terrain::Dimension, &'a Entities)>,
+        owner: PlayerId,
+    ) -> Option<Value> {
+        let list: Vec<Value> = levels
+            .into_iter()
+            .flat_map(|(d, e)| e.pearls.iter().map(move |p| (d, p)))
             .chain(self.away.iter().map(|(d, p)| (*d, p)))
             .filter(|(_, p)| p.owner == owner)
             .map(|(d, p)| {
@@ -274,6 +283,15 @@ impl OwnedPearls {
     /// Pearls waiting for their owners.
     pub fn waiting(&self) -> usize {
         self.away.len()
+    }
+
+    /// v1.0 final F11: the dimensions where pearls of players in the game
+    /// (`online`) wait for their level to load (Java's
+    /// `loadAndSpawnEnderPearls` spawns them and places their tickets).
+    pub fn waiting_in(&self, online: impl Fn(PlayerId) -> bool) -> Vec<crate::world::terrain::Dimension> {
+        let mut out: Vec<_> = self.away.iter().filter(|(_, p)| online(p.owner)).map(|(d, _)| *d).collect();
+        out.dedup();
+        out
     }
 }
 

@@ -36,6 +36,7 @@ mod item_review;
 mod items;
 mod keys;
 mod lan;
+mod levels;
 mod menu;
 mod mobs;
 mod options;
@@ -375,6 +376,19 @@ struct Game {
     /// v1.0 final Track F2: the vehicle the host rides through a portal to
     /// another dimension, out of the level until the host arrives.
     carried_vehicle: Option<voxelcraft::entity::portal_travel::Departure>,
+    /// v1.0 final F11: the other dimensions that have been loaded, run in
+    /// the background as Java runs them ([`levels`]).
+    levels: Vec<levels::Level>,
+    /// v1.0 final F11: the current level's chunk tickets and empty time
+    /// (a background level carries its own).
+    tickets: voxelcraft::world::tickets::Tickets,
+    empty_time: voxelcraft::world::tickets::EmptyTime,
+    /// v1.0 final F11: a background level is swapped in and ticking: the
+    /// host and the other players aren't in it.
+    unattended: bool,
+    /// v1.0 final F11: the host's pearl landed in another level (its
+    /// dimension and where): the host goes there after the levels tick.
+    pearl_trip: Option<(Dimension, DVec3)>,
 }
 
 pub struct App {

@@ -243,6 +243,11 @@ impl Game {
         if self.arrival.is_none() {
             players.extend(self.agents.targets());
         }
+        // v1.0 final F11: nobody is in a background level, and nothing
+        // spawns there (natural and custom spawning need a player near).
+        if self.unattended {
+            players.clear();
+        }
         for p in &mut players {
             p.difficulty = self.difficulty;
         }
@@ -261,7 +266,7 @@ impl Game {
                 0.0
             },
             raining: self.weather.is_raining() && self.dimension.has_sky(),
-            spawning: self.gamerules.bool("spawn_mobs"),
+            spawning: self.gamerules.bool("spawn_mobs") && !self.unattended,
             dimension: self.dimension,
         }
     }
@@ -303,18 +308,22 @@ impl Game {
         // v1.0 gap Track 2d: each merchant's customer (`tradingPlayer`): the
         // host, a controller player or a LAN player with its screen open.
         let mut customers: Vec<(u64, crate::entity::PlayerId)> = Vec::new();
-        if self.inventory_open
+        let attended = !self.unattended;
+        if attended
+            && self.inventory_open
             && let super::Container::Trading(id) = self.body.container
         {
             customers.push((id, crate::entity::PlayerId::HOST));
         }
         let agent = |name: &str| self.agents.players.get(name).map(|b| b.agent.session.id);
-        customers.extend(self.pads.trading_seats().filter_map(|(id, name)| Some((id, agent(name)?))));
-        customers.extend(self.lan_trading().filter_map(|(id, name)| Some((id, agent(name)?))));
+        if attended {
+            customers.extend(self.pads.trading_seats().filter_map(|(id, name)| Some((id, agent(name)?))));
+            customers.extend(self.lan_trading().filter_map(|(id, name)| Some((id, agent(name)?))));
+        }
         for m in &mut self.mobs.entities.mobs {
             if let Some(v) = &mut m.villager {
                 v.customer = customers.iter().find(|c| c.0 == v.id).map(|c| c.1);
-                v.trading = v.customer.is_some() || self.pads.trading(v.id);
+                v.trading = v.customer.is_some() || (attended && self.pads.trading(v.id));
             }
         }
         // Java keeps the hook while a rod is in either hand.
@@ -322,9 +331,11 @@ impl Game {
         if !(self.held_item() == Some(crate::item::Item::FISHING_ROD) || off_rod) || self.session.vitals.is_dead() {
             self.mobs.entities.drop_bobber(self.session.id);
         }
-        super::seat_rider(&self.mobs.entities, &mut self.session.player, crate::entity::PlayerId::HOST);
-        for bot in self.agents.players.values_mut().filter(|b| b.active) {
-            super::seat_rider(&self.mobs.entities, &mut bot.agent.session.player, bot.agent.session.id);
+        if attended {
+            super::seat_rider(&self.mobs.entities, &mut self.session.player, crate::entity::PlayerId::HOST);
+            for bot in self.agents.players.values_mut().filter(|b| b.active) {
+                super::seat_rider(&self.mobs.entities, &mut bot.agent.session.player, bot.agent.session.id);
+            }
         }
         if self.difficulty == crate::simulation::difficulty::Difficulty::Peaceful {
             self.mobs.entities.despawn_hostiles();
@@ -638,6 +649,11 @@ impl Game {
                 }
                 EntityEvent::WitherBreak { min, max, pos } => self.wither_break(min, max, pos),
                 EntityEvent::WitherRose { pos } => self.wither_rose(pos),
+                // v1.0 final F11: its owner is in another level, and goes
+                // there (`ThrownEnderpearl.onHit`).
+                EntityEvent::PearlLanded { owner, pos } if self.unattended => {
+                    self.pearl_owner_away(owner, pos);
+                }
                 EntityEvent::PearlLanded { owner, pos } => {
                     let mut burst = crate::particles::Burst::new(crate::particles::Kind::Portal, pos + DVec3::Y, 32);
                     burst.spread = DVec3::Y;
@@ -991,6 +1007,11 @@ impl Game {
                     }
                 }
                 EntityEvent::BuildGateway { pos } => self.world.build_gateway(pos),
+                // v1.0 final F11: the owner is in another level; the pearl
+                // lands at the gateway's mouth.
+                EntityEvent::PearlGateway { owner, pos, .. } if self.unattended => {
+                    self.pearl_owner_away(owner, pos);
+                }
                 EntityEvent::PearlGateway { owner, cell, pos } => {
                     if owner == PlayerId::HOST {
                         if !self.session.vitals.is_dead() {
@@ -1318,8 +1339,10 @@ impl Game {
             Some(crate::entity::trident::Owner::Mob(uid)) => Some(uid),
             _ => None,
         };
-        // A player watching the credits isn't in the level (v1.0 gap Track 8e).
+        // A player watching the credits isn't in the level (v1.0 gap Track 8e),
+        // and nobody is in a background one (v1.0 final F11).
         if self.credits.is_none()
+            && !self.unattended
             && let Some((damage, push)) = self.session.blast(&self.world, center, power)
         {
             let toward = Some(center - self.session.player.pos);
@@ -1331,7 +1354,7 @@ impl Game {
             }
             self.session.player.vel += push;
         }
-        if self.arrival.is_none() {
+        if self.arrival.is_none() && !self.unattended {
             for bot in self.agents.players.values_mut().filter(|b| b.active) {
                 if let Some((damage, push)) = bot.agent.session.blast(&self.world, center, power) {
                     let taken =

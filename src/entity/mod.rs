@@ -1339,6 +1339,10 @@ pub struct Entities {
     pub particles: crate::particles::Requests,
     pub arrows: Vec<Arrow>,
     pub pearls: Vec<pearl::Pearl>,
+    /// v1.0 final F11: Java chunks where a pearl renewed its owner's
+    /// `ENDER_PEARL` ticket this tick ([`pearl::Pearl::ticket`]); the game
+    /// takes them into its level's tickets.
+    pub pearl_tickets: Vec<glam::IVec2>,
     pub potions: Vec<potion::ThrownPotion>,
     pub clouds: Vec<lingering::Cloud>,
     pub thrown: Vec<thrown::Thrown>,
@@ -1518,8 +1522,9 @@ impl Entities {
 
 impl Entities {
     /// Creates an empty entity simulation with deterministic randomness from `seed`.
-    /// Drops sounds no frame will play (the headless harness has no audio).
-    pub(crate) fn clear_pending_sounds(&mut self) {
+    /// Drops sounds no frame will play (the headless harness has no audio,
+    /// and nobody hears a background level, v1.0 final F11).
+    pub fn clear_pending_sounds(&mut self) {
         self.pending_sounds.clear();
     }
 
@@ -1534,6 +1539,7 @@ impl Entities {
             particles: Default::default(),
             arrows: Vec::new(),
             pearls: Vec::new(),
+            pearl_tickets: Vec::new(),
             potions: Vec::new(),
             clouds: Vec::new(),
             thrown: Vec::new(),
