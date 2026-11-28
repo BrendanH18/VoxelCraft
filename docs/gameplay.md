@@ -72,6 +72,20 @@ cursor hides other items' tooltips, as in Java; a bundle's still shows. The surv
 inventory now uses Java's layout too: armour down the left, the player
 beside it, the off-hand under the player and the 2 x 2 grid to the right.
 
+Every container screen takes Java's other clicks
+([v1.0 final F1 record](verification/2026-11-28-v1.0-final-f1-inventory.md)):
+hold a stack and drag across slots with the left button to share it out
+evenly, with the right button to put one in each, or (creative) with the
+middle button to fill each with a full stack; double-click to gather
+matching items onto the cursor; Shift + double-click to move every
+matching stack of that part of the screen across. Over a slot, a number
+key swaps it with that hotbar slot, F with the off-hand and Q throws one
+(Ctrl+Q the stack), on every screen, with nothing held. The middle button
+clones a slot's stack in creative on any screen. LAN guests do all of
+these; a controller player double-presses A to gather or Y to move every
+matching stack. A bow or crossbow in the off-hand draws when the main
+hand's item doesn't use the click.
+
 The world autosaves every two minutes and on exit. Switching away from
 the window also pauses offline play. See [save backups and version compatibility](releases.md#player-data-and-old-saves)
 before upgrading or returning to an older build.

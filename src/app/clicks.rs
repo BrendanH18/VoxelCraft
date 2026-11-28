@@ -233,6 +233,11 @@ impl Screen<'_> {
         }
     }
 
+    /// The stack in `slot` (the stack a quick move is about to move).
+    pub(super) fn stack_at(&mut self, slot: SlotRef) -> Option<Stack> {
+        self.slot_now(slot)
+    }
+
     fn slot_now(&mut self, slot: SlotRef) -> Option<Stack> {
         match slot {
             SlotRef::CraftResult => self.craft_result(),
@@ -499,7 +504,7 @@ const DOUBLE_CLICK: std::time::Duration = std::time::Duration::from_millis(250);
 
 /// Whether a slot can be dragged over or collected from at all (a menu
 /// slot, not a creative cell, button or result).
-fn real_slot(slot: SlotRef) -> bool {
+pub(super) fn real_slot(slot: SlotRef) -> bool {
     !is_result(slot)
         && !matches!(
             slot,
@@ -639,9 +644,6 @@ impl super::Game {
         } else if drag.kind != Drag::Clone {
             self.inventory_click(button == B::Right);
         }
-        if self.session.inventory.cursor.is_none() {
-            self.screen_mouse.last_click = None;
-        }
     }
 
     /// The shift double-click's quick moves, slot by slot as Java's client
@@ -680,7 +682,7 @@ impl super::Game {
         let Some(slot) = self.slot_under_cursor() else { return };
         if self.lan.client.is_some() {
             if let Some(code) = super::lan::encode_slot(slot) {
-                self.lan_command(&format!("slot_swap {code} {}", hotbar.map_or(40, |h| h)));
+                self.lan_command(&format!("slot_swap {code} {}", hotbar.unwrap_or(40)));
             }
             return;
         }

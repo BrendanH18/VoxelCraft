@@ -631,6 +631,10 @@ impl Game {
                 return true;
             }
         };
+        if !right && self.pad_double_click(seat, name, tab.container(), slot, quick) {
+            self.audio.ui_click();
+            return true;
+        }
         self.pad_click(seat, name, tab.container(), slot, quick, right);
         self.audio.ui_click();
         true

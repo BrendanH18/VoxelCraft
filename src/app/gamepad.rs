@@ -167,6 +167,11 @@ struct Seat {
     bundle: Option<(super::pad_menu::Slot, usize)>,
     /// The right stick's pick direction (down) and when it next repeats.
     pick: Option<(bool, Instant)>,
+    /// v1.0 final track F1: the last A or Y press on a slot (whether it was
+    /// Y, and when), for Java's double click, and the stack Y last moved
+    /// (`lastQuickMoved`).
+    last_click: Option<(super::hud::SlotRef, bool, Instant)>,
+    last_quick: Option<crate::inventory::Stack>,
 }
 
 /// What a seat asks of its agent for one tick.
@@ -199,6 +204,8 @@ impl Seat {
             sign_text: Default::default(),
             bundle: None,
             pick: None,
+            last_click: None,
+            last_quick: None,
         }
     }
 
@@ -1100,6 +1107,46 @@ impl Game {
         let result = f(&mut screen);
         let requests = std::mem::take(&mut screen.requests);
         Some((result, requests))
+    }
+
+    /// v1.0 final track F1: a second A on the same slot within Java's
+    /// 250 ms with a stack held collects matching items (`PICKUP_ALL`); a
+    /// second Y moves every matching stack of that section (the shift
+    /// double-click). Returns whether the press was a double click.
+    pub(super) fn pad_double_click(
+        &mut self,
+        seat: usize,
+        name: &str,
+        container: Container,
+        slot: super::hud::SlotRef,
+        quick: bool,
+    ) -> bool {
+        let now = Instant::now();
+        let last = self.pads.seats[seat].last_click.replace((slot, quick, now));
+        let double = last.is_some_and(|(s, q, t)| s == slot && q == quick && now - t < Duration::from_millis(250));
+        let held = self.agents.players.get(name).and_then(|b| b.agent.session.inventory.cursor);
+        let mut container = container;
+        let mut no_grid = crate::crafting::Grid::new(2);
+        if double && super::clicks::real_slot(slot) && (quick || held.is_some()) {
+            self.pads.seats[seat].last_click = None;
+            let last_quick = self.pads.seats[seat].last_quick;
+            self.agent_screen(name, &mut container, &mut no_grid, |s| {
+                if quick {
+                    if let Some(last) = last_quick {
+                        s.move_all(slot, last);
+                    }
+                } else {
+                    s.pickup_all(slot, false);
+                }
+            });
+            self.pads.seats[seat].body.container = container;
+            return true;
+        }
+        if quick {
+            self.pads.seats[seat].last_quick =
+                self.agent_screen(name, &mut container, &mut no_grid, |s| s.stack_at(slot)).and_then(|(s, _)| s);
+        }
+        false
     }
 
     /// A controller player's click (or quick move) on a slot of `container`.

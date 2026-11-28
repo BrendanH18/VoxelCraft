@@ -32,6 +32,9 @@ impl Drag {
 /// One screen's slots, indexed in its menu order.
 pub trait Cells {
     fn len(&self) -> usize;
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
     fn get(&mut self, i: usize) -> Option<Stack>;
     /// `Slot.setByPlayer`.
     fn set(&mut self, i: usize, stack: Option<Stack>);
