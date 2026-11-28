@@ -8,7 +8,9 @@
 //!   `SetWalkTargetFromLookTarget`, `JumpOnBed`, `DoNothing(30, 60)`), the
 //!   babies' play package (5, after the look `RunOne`) and the meet
 //!   package's `TriggerGate` of `StrollAroundPoi(MEETING_POINT, 0.4, 40)`
-//!   and `SocializeAtBell` (2);
+//!   and `SocializeAtBell` (2), and the rest package's `RunOne` for a
+//!   villager without a home (`SetClosestHomeAsWalkTarget`,
+//!   `InsideBrownianWalk`, `GoToClosestVillage`, `DoNothing(20, 40)`);
 //! - piglins' idle movement (`RandomStroll.stroll(0.6)`, `InteractWith` a
 //!   piglin within 8, `SetWalkTargetFromLookTarget(0.6, 3)` unless a player
 //!   holds a loved item, `DoNothing(30, 60)`) after their look `RunOne`, and
@@ -80,6 +82,8 @@ pub(crate) struct Walking {
     hold: Option<Hold>,
     /// `StrollAroundPoi`'s `nextOkStartTime` (in the mob's ticks).
     stroll_ok: u32,
+    /// `SetClosestHomeAsWalkTarget`'s `lastUpdate` (in the mob's ticks).
+    home_next: u32,
     ticks: u32,
     /// Sensed by the entity pass for `VillageBoundRandomStroll`: whether the
     /// mob is in a village, and the section centre it heads for otherwise.
@@ -120,6 +124,12 @@ enum Opt {
     },
     /// `JumpOnBed(speed)`.
     JumpOnBed(f32),
+    /// `SetClosestHomeAsWalkTarget.create(speed)`.
+    ClosestHome(f32),
+    /// `InsideBrownianWalk.create(speed)`.
+    InsideBrownian(f32),
+    /// `GoToClosestVillage.create(speed, closeEnough)`.
+    ToVillage(f32, i32),
     /// `SetEntityLookTarget.create(sel, range)`.
     Look(Sel, f32),
     Scenting,
@@ -142,6 +152,12 @@ const VILLAGER_PLAY: &[(Opt, u8)] = &[
     (Opt::VillageStroll(0.5), 1),
     (Opt::FromLook { speed: 0.5, close: 2, loved: false }, 1),
     (Opt::JumpOnBed(0.5), 2),
+    (Opt::Nothing(20, 40), 2),
+];
+const VILLAGER_REST: &[(Opt, u8)] = &[
+    (Opt::ClosestHome(0.5), 1),
+    (Opt::InsideBrownian(0.5), 4),
+    (Opt::ToVillage(0.5, 4), 2),
     (Opt::Nothing(20, 40), 2),
 ];
 const PIGLIN_IDLE: &[(Opt, u8)] = &[
@@ -170,6 +186,8 @@ pub(crate) enum Movement {
     VillagerIdle,
     VillagerPlay,
     VillagerMeet,
+    /// The rest package's `RunOne` (`HOME` absent).
+    VillagerHomeless,
     PiglinIdle,
     PiglinCelebrate,
     SnifferIdle,
@@ -301,6 +319,7 @@ impl Mob {
             Movement::VillagerMeet => self.meet_gate(world, ctx, rng),
             Movement::VillagerIdle => self.run_one(world, ctx, rng, VILLAGER_IDLE),
             Movement::VillagerPlay => self.run_one(world, ctx, rng, VILLAGER_PLAY),
+            Movement::VillagerHomeless => self.run_one(world, ctx, rng, VILLAGER_REST),
             Movement::PiglinIdle => self.run_one(world, ctx, rng, PIGLIN_IDLE),
             Movement::PiglinCelebrate => self.run_one(world, ctx, rng, PIGLIN_CELEBRATE),
             Movement::SnifferIdle => self.run_one(world, ctx, rng, SNIFFER_IDLE),
@@ -503,6 +522,75 @@ impl Mob {
                     speed,
                     close: 0,
                 }));
+                true
+            }
+            Opt::ClosestHome(speed) => {
+                // At most every 20 ticks (plus up to 19 more after a search):
+                // the closest bed within 48, claimed or not, more than two
+                // blocks off, that a path reaches.
+                if walking || self.walking.ticks < self.walking.home_next {
+                    return false;
+                }
+                let here = self.pos.floor().as_ivec3();
+                let mut best: Option<(i32, IVec3)> = None;
+                world.village_pois(&mut |p, b| {
+                    let d = (p - here).length_squared();
+                    if b.is_bed_head() && d <= 48 * 48 && best.is_none_or(|(e, _)| d < e) {
+                        best = Some((d, p));
+                    }
+                });
+                let Some((d, bed)) = best.filter(|&(d, _)| d > 4) else { return false };
+                let _ = d;
+                self.walking.home_next = self.walking.ticks + 20 + rng.next_int(20);
+                let speed_now = self.walk_speed(speed);
+                if self.walk_to(world, bed, 1, speed_now, false) {
+                    self.set_walk(Some(Walk {
+                        to: WalkTo::Point(bed.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)),
+                        speed,
+                        close: 1,
+                    }));
+                }
+                self.stop_navigation();
+                true
+            }
+            Opt::InsideBrownian(speed) => {
+                let here = self.pos.floor().as_ivec3();
+                if walking || world.exposed(here) {
+                    return false;
+                }
+                let mut cells: Vec<IVec3> = (-1..=1)
+                    .flat_map(|y| (-1..=1).flat_map(move |z| (-1..=1).map(move |x| here + IVec3::new(x, y, z))))
+                    .collect();
+                // `Collections.shuffle`.
+                for i in (1..cells.len()).rev() {
+                    cells.swap(i, rng.next_int(i as u32 + 1) as usize);
+                }
+                if let Some(p) =
+                    cells.into_iter().find(|&p| !world.exposed(p) && world.block(p).is_some_and(|b| b.is_solid()))
+                {
+                    self.set_walk(Some(Walk {
+                        to: WalkTo::Point(p.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)),
+                        speed,
+                        close: 0,
+                    }));
+                }
+                true
+            }
+            Opt::ToVillage(speed, close) => {
+                if walking || self.walking.in_village {
+                    return false;
+                }
+                if let Some(at) = self
+                    .walking
+                    .toward_village
+                    .and_then(|c| self.pos_towards(world, ctx, rng, 15, 7, c, std::f64::consts::FRAC_PI_2))
+                {
+                    self.set_walk(Some(Walk {
+                        to: WalkTo::Point(at.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)),
+                        speed,
+                        close,
+                    }));
+                }
                 true
             }
             Opt::Scenting => {

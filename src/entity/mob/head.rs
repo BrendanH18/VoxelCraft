@@ -1114,7 +1114,7 @@ impl Mob {
         if v.fleeing || v.bell_hide > 0.0 || raiding {
             return None;
         }
-        match v.activity {
+        match self.villager_activity() {
             Activity::Idle => Some(Package::Idle),
             Activity::Work | Activity::Meet => Some(Package::WorkOrMeet),
             Activity::Rest | Activity::Play => None,
@@ -1133,11 +1133,26 @@ impl Mob {
         if v.fleeing || v.bell_hide > 0.0 || raiding || v.trading || v.sleeping || v.goal.is_some() {
             return None;
         }
-        match v.activity {
+        match self.villager_activity() {
             Activity::Idle => Some(Movement::VillagerIdle),
             Activity::Play => Some(Movement::VillagerPlay),
-            Activity::Meet if self.age >= 0 && v.meeting.is_some() => Some(Movement::VillagerMeet),
+            Activity::Meet => Some(Movement::VillagerMeet),
+            Activity::Rest if v.home.is_none() => Some(Movement::VillagerHomeless),
             _ => None,
+        }
+    }
+
+    /// Track 2e: the villager's brain activity: its schedule's, except
+    /// that work needs a job site and meeting a bell (Java's activity
+    /// requirements), without which `setActiveActivityIfPossible` falls back
+    /// to idle (as for a nitwit at work time).
+    pub(crate) fn villager_activity(&self) -> crate::entity::villager::Activity {
+        use crate::entity::villager::Activity;
+        let Some(v) = &self.villager else { return Activity::Idle };
+        match v.activity {
+            Activity::Work if v.job.is_none() || self.age < 0 => Activity::Idle,
+            Activity::Meet if v.meeting.is_none() || self.age < 0 => Activity::Idle,
+            a => a,
         }
     }
 
@@ -1269,7 +1284,7 @@ impl Mob {
                 if v.fleeing || v.bell_hide > 0.0 || raiding {
                     return MINIMAL;
                 }
-                match v.activity {
+                match self.villager_activity() {
                     Activity::Work | Activity::Rest => MINIMAL,
                     Activity::Idle | Activity::Meet | Activity::Play => FULL,
                 }
