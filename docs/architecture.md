@@ -1511,7 +1511,7 @@ makes appended orderings contiguous in landing order.
 | 13974–13989 | 1962–1966 | — | 2. Hostile AI |
 | 13990–14005 | 1967–1971 | — | 3. Mounts and water |
 | 14006–14021 | 1972–1976 | — | 4. The End |
-| 14022–14037 | — | — | 5. Nether generation and portals |
+| 14022–14037 | — | — | 5. Nether generation and portals (5b used 14022–14023: Nether portal `axis=x`, `axis=z`) |
 | 14038–14053 | 1977–1981 | 4080–4087 | 6. Items and utilities |
 | 14054–14069 | — | 4066–4079 | 7. Art and motion |
 | 14070–14335 | 1938–1949, 1982–2199 | 4088–4095 | Integrator |

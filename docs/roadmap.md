@@ -349,7 +349,8 @@ the first by z then x keeps a block both changed (GEN-04a,
 [v1.0 gap Track 5](verification/2026-11-27-v1.0-gap-track-05-nether-portals.md)).
 Following one Java load order would mean decorating about 16 chunks out
 around every chunk. Player impact: none visible beyond Java's own
-load-order variation. The owner extended FE-04 to the End on 2026-11-27:
+load-order variation. In the overlap a structure's block wins over a
+neighbouring chunk's feature (v1.0 gap Track 5b, the same rule). The owner extended FE-04 to the End on 2026-11-27:
 where two chunks' chorus plants meet, generation 7 decorates west to east,
 then north to south (GEN-04b,
 [v1.0 gap Track 4b](verification/2026-11-27-v1.0-gap-track-04b-end-leftovers.md);
