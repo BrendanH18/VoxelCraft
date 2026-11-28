@@ -654,10 +654,13 @@ impl Cause {
         Cause::BLAZE_FIREBALL,
         Cause::CREEPER,
         Cause::GHAST_FIREBALL,
-        Cause::TNT,
-        Cause::END_CRYSTAL,
+        // TNT's and an ownerless End crystal's blasts are worded as the plain
+        // `explosion` (v1.0 gap Tracks 8c and 8d), which stands for all
+        // three when a saved text is looked up.
         Cause::PLAYER_EXPLOSION,
         Cause::EXPLOSION,
+        Cause::DRY_OUT,
+        Cause::GUARDIAN_MAGIC,
         Cause::BAD_RESPAWN_POINT,
         Cause::GUARDIAN_SPIKES,
         Cause::GUARDIAN_BEAM,
