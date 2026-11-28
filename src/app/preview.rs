@@ -303,7 +303,7 @@ mod tests {
         let m = Mob::new(MobKind::Horse, glam::DVec3::new(0.5, 64.0, 0.5), 0.0);
         let mut mesh = crate::entity::model::EntityMesh::flat();
         let forward = glam::Vec3::new(m.yaw.cos(), 0.0, m.yaw.sin());
-        crate::entity::model::build(std::slice::from_ref(&m), m.pos, forward, 64.0, 0.0, 1.0, &mut mesh);
+        crate::entity::model::build(std::slice::from_ref(&m), m.pos, forward, 64.0, 1.0, &mut mesh);
         let triangles = mesh.len() / 3;
         let mut ui = Ui::with_scale(400.0, 300.0, 1.0);
         mob(&mut ui, &m, (26.0, 18.0, 78.0, 70.0), 17.0, 0.25, (52.0, 44.0), 0.0);
