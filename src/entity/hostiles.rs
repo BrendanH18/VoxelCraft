@@ -140,6 +140,22 @@ impl Entities {
         else {
             return;
         };
+        // A zombified piglin's spawn golden sword or spear, or a converted
+        // piglin's weapon, is its main hand (`nether::Weapon`): it drops
+        // like any main-hand item at the default chance, worn at random.
+        let held = (kind == MobKind::ZombifiedPiglin && self.mobs[i].equipment.main_hand().is_none())
+            .then(|| self.mobs[i].held.unwrap_or(super::nether::Weapon::GoldenSword).item())
+            .flatten();
+        if let Some(item) = held
+            && player_kill
+            && self.rng.next_f32() < super::equipment::looting_chance(super::equipment::DEFAULT_DROP_CHANCE, looting)
+        {
+            let mut stack = Stack::new(item, 1);
+            if let Some(max) = item.durability() {
+                stack.damage = super::equipment::reroll_wear(max, &mut self.rng);
+            }
+            self.scatter(stack, pos);
+        }
         let drops = self.mobs[i].equipment.death_drops(player_kill, looting, &mut self.rng);
         for stack in drops {
             self.scatter(stack, pos);

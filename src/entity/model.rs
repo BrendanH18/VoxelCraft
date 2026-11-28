@@ -620,6 +620,14 @@ const PIGLIN_SWORD_ARM: &[Cuboid] = &[
     cube([-1.5, -10.0, 3.0], [1.5, -9.0, 3.5], GOLD, 10),
     cube([-0.5, -10.0, 3.5], [0.5, -9.0, 11.0], GOLD, 10),
 ];
+/// v1.0 gap Track 2b: the zombified piglin's golden spear (see
+/// `nether::SPEAR_ARM`).
+const PIGLIN_SPEAR_ARM: &[Cuboid] = &[
+    cube([-2.0, -10.0, -2.0], [2.0, 2.0, 2.0], PIGLIN_SKIN, 36),
+    cube([-0.5, -10.0, -7.0], [0.5, -9.0, 13.0], [137, 103, 39], 10),
+    cube([-1.0, -10.5, 13.0], [1.0, -8.5, 15.0], GOLD, 10),
+    cube([-0.5, -10.0, 15.0], [0.5, -9.0, 18.0], GOLD, 10),
+];
 const PIGLIN_HEAD: &[Cuboid] = &[
     cube([-5.0, 0.0, -4.0], [5.0, 8.0, 4.0], PIGLIN_SKIN, 36),
     cube([-2.0, 0.0, 4.0], [2.0, 3.0, 5.0], [236, 168, 160], 14),
@@ -1359,11 +1367,16 @@ fn pose(m: &Mob, time: f32, alpha: f32) -> Parts {
             // `animateZombieArms` (raised, higher while angry) and the
             // idle bob. A converted piglin keeps its own main hand.
             let held = m.held.unwrap_or(Weapon::GoldenSword);
-            let h = zombie_limbs(m, time, held == Weapon::None);
+            let mut h = zombie_limbs(m, time, held == Weapon::None);
+            // v1.0 gap Track 2b: a charging spear is couched level.
+            if held == Weapon::GoldenSpear && m.spear_use.is_some() {
+                h.right_arm = Limb { x: -0.35 - m.head_pitch * 0.5, y: 0.0, z: h.right_arm.z };
+            }
             let right = match held {
                 Weapon::GoldenSword => PIGLIN_SWORD_ARM,
                 Weapon::GoldenAxe => nether::AXE_ARM,
                 Weapon::Crossbow => nether::CROSSBOW_ARM,
+                Weapon::GoldenSpear => PIGLIN_SPEAR_ARM,
                 Weapon::None => PIGLIN_ARM,
             };
             parts![

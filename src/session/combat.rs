@@ -198,6 +198,15 @@ impl PlayerSession {
         self.player.vel = motion * knockback::TICK_RATE;
     }
 
+    /// v1.0 gap Track 2b: `causeExtraKnockback` pushes on this player with
+    /// no damage, or after a hit whatever it did (a mob's spear contact).
+    pub fn shoved(&mut self, pushes: [Option<knockback::Push>; 2], jitter: &mut dyn FnMut() -> f64) {
+        let hit = knockback::Hit { pushes, punch: None, throw: None };
+        let resistance = f64::from(self.inventory.knockback_resistance()).clamp(-2.0, 1.0);
+        let motion = hit.apply(self.player.vel / knockback::TICK_RATE, resistance, self.player.on_ground, jitter);
+        self.player.vel = motion * knockback::TICK_RATE;
+    }
+
     /// Restart the charge, as an attack or a swing at nothing does.
     pub fn reset_attack_strength(&mut self) {
         self.combat.ticker = 0;

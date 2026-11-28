@@ -75,32 +75,39 @@ const FOLLOW_ADULT: f64 = 5.0;
 /// Most stacks a piglin's pocket holds (Java's inventory has 8 slots).
 const POCKET_SLOTS: usize = 8;
 
-/// What a nether mob holds in its main hand.
+/// What a nether mob holds in its main hand. Saved by [`Weapon::name`];
+/// new weapons are appended (v1.0 gap Track 2b: the golden spear).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Weapon {
     None,
     GoldenSword,
     Crossbow,
     GoldenAxe,
+    /// `Items.GOLDEN_SPEAR`: Java's piglins roll it in one of ten melee
+    /// weapons (`Piglin.createSpawnWeapon`), zombified piglins in one of
+    /// twenty (`ZombifiedPiglin.populateDefaultEquipmentSlots`).
+    GoldenSpear,
 }
 
 impl Weapon {
-    fn item(self) -> Option<Item> {
+    pub(super) fn item(self) -> Option<Item> {
         match self {
             Weapon::None => None,
             Weapon::GoldenSword => Some(Item::tool(crate::item::ToolKind::Sword, Tier::Gold)),
             Weapon::Crossbow => Some(Item::CROSSBOW),
             Weapon::GoldenAxe => Some(Item::tool(crate::item::ToolKind::Axe, Tier::Gold)),
+            Weapon::GoldenSpear => Some(crate::weapons::spear(Tier::Gold)),
         }
     }
 
     /// Attack added to the holder's base (Java's `minecraft:attack_damage`
-    /// modifier: sword 3, axe 6; a crossbow adds nothing).
+    /// modifier: sword 3, axe 6; a crossbow adds nothing, and a golden
+    /// spear's `0 + attackDamageBonus` is 0).
     pub(super) fn attack_bonus(self) -> f32 {
         match self {
             Weapon::GoldenSword => 3.0,
             Weapon::GoldenAxe => 6.0,
-            Weapon::None | Weapon::Crossbow => 0.0,
+            Weapon::None | Weapon::Crossbow | Weapon::GoldenSpear => 0.0,
         }
     }
 
@@ -110,11 +117,12 @@ impl Weapon {
             Weapon::GoldenSword => "golden_sword",
             Weapon::Crossbow => "crossbow",
             Weapon::GoldenAxe => "golden_axe",
+            Weapon::GoldenSpear => "golden_spear",
         }
     }
 
     pub(super) fn from_name(name: &str) -> Self {
-        [Weapon::GoldenSword, Weapon::Crossbow, Weapon::GoldenAxe]
+        [Weapon::GoldenSword, Weapon::Crossbow, Weapon::GoldenAxe, Weapon::GoldenSpear]
             .into_iter()
             .find(|w| w.name() == name)
             .unwrap_or(Weapon::None)
@@ -218,6 +226,9 @@ pub struct NetherMob {
     pub(super) prey: Option<(DVec3, bool)>,
     /// v1.0 gap Track 2: a baby piglin's riding memories (not saved).
     pub(super) ride: super::piglin_ride::Ride,
+    /// v1.0 gap Track 2b: the piglin's spear behaviours and `SPEAR_*`
+    /// memories (not saved, as in Java).
+    pub(crate) spear: super::mob::spear::PiglinSpear,
 }
 
 impl NetherMob {
@@ -261,6 +272,7 @@ impl NetherMob {
                     dancing: false,
                     prey: None,
                     ride: Default::default(),
+                    spear: Default::default(),
                 })
             })
     }
@@ -506,8 +518,29 @@ pub(super) struct Seen {
     pub huntable: bool,
 }
 
+/// `Piglin.createSpawnWeapon` and `ZombifiedPiglin.populateDefaultEquipmentSlots`
+/// draw a golden spear instead of a golden sword one time in 10 and 20.
+const PIGLIN_SPEAR_ONE_IN: u32 = 10;
+const ZOMBIFIED_SPEAR_ONE_IN: u32 = 20;
+
+/// The spear roll's own random draw, seeded by the spawn, so the shared
+/// stream (and every seeded spawn sequence) is unchanged, as for
+/// `CanPickUpLoot`.
+fn spear_roll(mob: &Mob, one_in: u32) -> bool {
+    let seed = mob.pos.x.to_bits().rotate_left(29) ^ mob.pos.z.to_bits() ^ u64::from(mob.yaw.to_bits()) ^ 0x5bea;
+    Rng::new(seed).next_int(one_in) == 0
+}
+
 /// Gear a freshly spawned piglin rolls (Java's `finalizeSpawn`).
 pub(super) fn on_spawn(mob: &mut Mob, rng: &mut Rng) {
+    if mob.kind == MobKind::ZombifiedPiglin {
+        // `populateDefaultEquipmentSlots`: a golden spear one time in 20,
+        // else the golden sword (babies too, as in Java).
+        let spear = spear_roll(mob, ZOMBIFIED_SPEAR_ONE_IN);
+        mob.held = Some(if spear { Weapon::GoldenSpear } else { Weapon::GoldenSword });
+        return;
+    }
+    let spear = spear_roll(mob, PIGLIN_SPEAR_ONE_IN);
     let Some(n) = mob.nether.as_mut() else { return };
     if mob.kind == MobKind::Hoglin {
         // Java: a fifth of spawned hoglins are babies.
@@ -525,7 +558,15 @@ pub(super) fn on_spawn(mob: &mut Mob, rng: &mut Rng) {
         mob.baby = true;
         return;
     }
-    n.weapon = if rng.next_f32() < CROSSBOW_CHANCE { Weapon::Crossbow } else { Weapon::GoldenSword };
+    // `createSpawnWeapon`: a crossbow half the time, else a golden spear
+    // one time in 10 and a golden sword otherwise.
+    n.weapon = if rng.next_f32() < CROSSBOW_CHANCE {
+        Weapon::Crossbow
+    } else if spear {
+        Weapon::GoldenSpear
+    } else {
+        Weapon::GoldenSword
+    };
     for piece in ArmorPiece::ALL {
         if rng.chance(ARMOR_CHANCE) {
             mob.equipment.wear(piece, super::armor::ArmorKind::Gold, crate::enchant::Enchants::NONE);
@@ -638,17 +679,35 @@ impl Entities {
 
     /// Mob melee and projectile hits share retaliation and kill attribution.
     pub(super) fn resolve_mob_hits(&mut self, events: &mut Vec<EntityEvent>) {
+        // v1.0 gap Track 2b: a mob's spear contact that deals damage is a
+        // melee hit (`hurtServer` with the weapon's damage source, pushed
+        // away from the attacker); its facing push and dismount follow.
+        let stab_push = |s: &super::weapon_hits::MobStab, pos: Option<DVec3>| {
+            let away = pos.map_or(DVec3::ZERO, |p| (p - s.origin).with_y(0.0).normalize_or_zero());
+            away * 6.0 + DVec3::Y * 5.0
+        };
         let hits: Vec<_> = events
             .iter()
-            .filter_map(|e| match *e {
-                EntityEvent::MobHit { target, attacker, damage, knockback, melee } => {
+            .filter_map(|e| match e {
+                &EntityEvent::MobHit { target, attacker, damage, knockback, melee } => {
                     Some((target, attacker, damage, knockback, melee))
                 }
+                EntityEvent::MobStab(s) => s.damage.map(|damage| {
+                    let pos = self.mobs.iter().find(|m| m.uid == s.target).map(|m| m.pos);
+                    (s.target, s.attacker, damage, stab_push(s, pos), true)
+                }),
                 _ => None,
             })
             .collect();
-        if !hits.is_empty() {
-            events.retain(|e| !matches!(e, EntityEvent::MobHit { .. }));
+        let stabs: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                EntityEvent::MobStab(s) => Some(*s),
+                _ => None,
+            })
+            .collect();
+        if !hits.is_empty() || !stabs.is_empty() {
+            events.retain(|e| !matches!(e, EntityEvent::MobHit { .. } | EntityEvent::MobStab(_)));
             for (target, attacker, damage, knockback, melee) in hits {
                 let Some(i) = self.mobs.iter().position(|m| m.uid == target && m.alive()) else { continue };
                 let (kind, pos, burning) = (self.mobs[i].kind, self.mobs[i].pos, self.mobs[i].burning);
@@ -705,6 +764,9 @@ impl Entities {
                     self.drop_loot_with_fire(kind, pos, 0, burning, wolf_kill);
                     self.creeper_disc(kind, pos, attacker);
                 }
+            }
+            for stab in stabs {
+                self.finish_mob_stab(stab);
             }
         }
     }

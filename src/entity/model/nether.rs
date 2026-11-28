@@ -84,6 +84,16 @@ pub(super) const AXE_ARM: &[Cuboid] = &[
     cube([-0.6, -9.0, 6.5], [0.6, -5.0, 10.0], GOLD, 10),
 ];
 
+/// v1.0 gap Track 2b: a golden spear gripped in the fist, its shaft
+/// through the hand and the gold head forward (an original stand-in for
+/// the item model).
+pub(super) const SPEAR_ARM: &[Cuboid] = &[
+    cube([-2.0, -10.0, -2.0], [2.0, 2.0, 2.0], SKIN, 36),
+    cube([-0.5, -10.0, -7.0], [0.5, -9.0, 13.0], [137, 103, 39], 10),
+    cube([-1.0, -10.5, 13.0], [1.0, -8.5, 15.0], GOLD, 10),
+    cube([-0.5, -10.0, 15.0], [0.5, -9.0, 18.0], GOLD, 10),
+];
+
 /// Hoglin and zoglin boxes in one palette each: body, mane, legs, head.
 macro_rules! tusker {
     ($body:ident, $front:ident, $back:ident, $head:ident, $fur:expr, $mane:expr, $snout:expr, $eye:expr) => {
@@ -223,10 +233,16 @@ pub(super) fn pose(m: &Mob, time: f32) -> Parts {
                 h.left_arm.y = 0.5;
                 h.left_arm.x = -0.9;
             }
+            // v1.0 gap Track 2b: a charging piglin couches its spear level
+            // under the arm, pointing where it looks.
+            if weapon == Weapon::GoldenSpear && m.spear_use.is_some() && !dancing {
+                h.right_arm = Limb { x: -0.35 - m.head_pitch * 0.5, y: 0.0, z: h.right_arm.z };
+            }
             let right = match weapon {
                 Weapon::GoldenSword => SWORD_ARM,
                 Weapon::GoldenAxe => AXE_ARM,
                 Weapon::Crossbow => CROSSBOW_ARM,
+                Weapon::GoldenSpear => SPEAR_ARM,
                 Weapon::None => ARM,
             };
             let left = if admiring && !dancing { GOLD_ARM } else { ARM };

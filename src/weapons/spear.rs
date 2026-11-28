@@ -181,6 +181,26 @@ pub fn mob_range() -> Range {
     }
 }
 
+/// How far along `look` from `eye` the first block collision box is, within
+/// `max` (`ProjectileUtil.getHitEntitiesAlong`'s `ClipContext.Block.COLLIDER`
+/// clip, which ends the spear's reach there).
+pub fn block_distance<W: crate::physics::BlockSource + ?Sized>(
+    world: &W,
+    eye: glam::DVec3,
+    look: glam::DVec3,
+    max: f64,
+) -> Option<f64> {
+    let step = look.normalize_or_zero() * max;
+    let to = eye + step;
+    let mut boxes = Vec::new();
+    crate::physics::colliders(world, eye.min(to), eye.max(to), &mut boxes);
+    boxes
+        .iter()
+        .filter_map(|c| crate::physics::ray_aabb(eye, step, c.min, c.max).filter(|t| *t <= 1.0))
+        .min_by(f64::total_cmp)
+        .map(|t| t * max)
+}
+
 /// Lunge's `post_piercing_attack` impulse: the look direction with its
 /// vertical part dropped (`coordinate_scale [1, 0, 1]`), times 0.458 per
 /// level, in blocks per tick. Not normalized: looking down lunges less.

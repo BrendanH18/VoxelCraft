@@ -286,9 +286,12 @@ fn spear_zombies_use_the_spear_goal() {
 /// `KineticWeapon.damageEntities` for a mob: a lowered iron spear charging
 /// at 4 blocks a second into a standing player hits for the base 3 plus
 /// `floor(4 × 0.95)`, once per 10-tick contact cooldown, and not before
-/// the 12-tick delay.
+/// the 12-tick delay (v1.0 gap Track 2b: now in `Entities::mob_spear_stabs`,
+/// along the head's look).
 #[test]
 fn a_charging_spear_stabs_the_player_in_front() {
+    let world = Grid::flat(0);
+    let mut e = Entities::new(4);
     let mut m = Mob::new(MobKind::Zombie, DVec3::new(0.5, 0.0, 0.5), 0.0);
     m.equipment.set(
         crate::entity::equipment::Slot::MainHand,
@@ -297,15 +300,21 @@ fn a_charging_spear_stabs_the_player_in_front() {
     m.chase_target = Some(PlayerId(1));
     m.vel = DVec3::new(4.0, 0.0, 0.0);
     m.spear_use = Some(SpearCharge::default());
+    m.set_look_at(DVec3::new(2.0, 1.62, 0.5), 30.0, 30.0);
+    m.look_tick();
+    e.mobs.push(m);
     let c = ctx(vec![Target::new(PlayerId(1), DVec3::new(2.0, 0.0, 0.5), true)]);
     let mut hits = Vec::new();
     for tick in 0..40u32 {
-        m.goals.ticks = tick;
+        // Still running at 4 blocks a second (each knockback contact slows
+        // it by `causeExtraKnockback`'s 0.6, which its travel makes up).
+        e.mobs[0].vel = DVec3::new(4.0, 0.0, 0.0);
         let mut events = Vec::new();
-        m.spear_charge_tick(&c, &mut events);
+        e.mob_spear_stabs(&world, &c, &mut events);
         for ev in events {
             if let EntityEvent::PlayerHit { damage, .. } = ev {
                 hits.push((tick, damage));
+                assert!((e.mobs[0].vel.x - 2.4).abs() < 1e-9, "slowed by the push");
             }
         }
     }

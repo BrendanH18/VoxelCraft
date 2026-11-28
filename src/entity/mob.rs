@@ -31,6 +31,7 @@ mod ocelot;
 mod polar_bear;
 mod raider;
 pub(crate) mod selector;
+pub(crate) mod spear;
 mod sulfur_cube;
 pub(crate) mod swim;
 pub(crate) mod turtle;
@@ -1513,6 +1514,9 @@ pub struct Mob {
     pub(crate) chase_goals: selector::Selector,
     pub(crate) spear: Option<chase::SpearUse>,
     pub(crate) spear_use: Option<chase::SpearCharge>,
+    /// v1.0 gap Track 2b: Java's head yaw and pitch while aiming a spear
+    /// (`LookControl`; never saved).
+    pub(crate) look: spear::JavaLook,
     /// A mount carrying a rider's spear charge: `hunt` at its
     /// `chargeSpeedModifier` (1.4 for zombie horses, 4 for camel husks).
     pub(crate) hunt_charge: bool,
@@ -1713,6 +1717,7 @@ impl Mob {
             chase_goals: Default::default(),
             spear: None,
             spear_use: None,
+            look: Default::default(),
             hunt_charge: false,
             mob_steered: false,
             hurt_age: u32::MAX,
@@ -2497,6 +2502,9 @@ impl Mob {
             let target = (dir.z as f32).atan2(dir.x as f32);
             self.yaw = turn_toward(self.yaw, target, 8.0 * dtf);
         }
+        // v1.0 gap Track 2b: `LookControl.tick` after the move control, for
+        // a mob aiming a spear.
+        self.look_tick();
 
         if std::mem::take(&mut self.jump) && self.on_ground && wish.is_some() && !controlled && self.alive() {
             self.vel.y = JUMP_VELOCITY;
@@ -2985,11 +2993,9 @@ impl Mob {
         } else {
             target
         };
-        // A lowered spear stabs every tick (`updatingUsingItem`), and the
-        // flagless door goal runs beside everything else.
-        if self.spear_use.is_some() {
-            self.spear_charge_tick(ctx, events);
-        }
+        // A lowered spear stabs every tick (`updatingUsingItem`) in
+        // `Entities::mob_spear_stabs`, before the mobs move; the flagless
+        // door goal runs beside everything else.
         if self.kind != MobKind::Vindicator && self.has_door_goal() {
             self.door_goal(world, full, rng, events);
         } else {
