@@ -166,6 +166,8 @@ pub struct Args {
     pub give: Vec<(item::Item, u8)>,
     /// Armor worn at startup (`--wear`).
     pub wear: Vec<item::Item>,
+    /// v1.0 final track F1: the off-hand stack at startup (`--offhand`).
+    pub offhand: Option<item::Item>,
     /// Enchantments put on the first stack given (`--enchant`).
     pub enchants: Vec<(enchant::Enchantment, u8)>,
     /// Dyes mixed into the first hotbar stack and the worn armor (`--dye`).
@@ -256,6 +258,7 @@ voxelcraft [options]
   --drop item[,n]   throw n of an item in front of the player once loaded
                     (repeatable; like --give)
   --wear item       put on a piece of armor at startup (repeatable)
+  --offhand item    hold one of an item in the off-hand at startup
   --enchant e[,l]   enchant the first hotbar stack (or a book there) with
                     level l (default 1) of enchantment e (repeatable)
   --dye c[,c...]    dye the first hotbar stack and the worn armor, when
@@ -410,6 +413,7 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
         orbs: Vec::new(),
         give: Vec::new(),
         wear: Vec::new(),
+        offhand: None,
         enchants: Vec::new(),
         dyes: Vec::new(),
         drop: Vec::new(),
@@ -810,6 +814,10 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
                     args.dyes.push(colour);
                 }
             }
+            "--offhand" => {
+                let v = value("--offhand")?;
+                args.offhand = Some(item::Item::from_name(v.trim()).ok_or(format!("--offhand: unknown item {v}"))?);
+            }
             "--wear" => {
                 let v = value("--wear")?;
                 let item = item::Item::from_name(v.trim()).filter(|i| i.as_armor().is_some());
@@ -926,6 +934,7 @@ impl Args {
         self.orbs.clear();
         self.give.clear();
         self.wear.clear();
+        self.offhand = None;
         self.enchants.clear();
         self.drop.clear();
     }

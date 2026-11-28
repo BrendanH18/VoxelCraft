@@ -15,7 +15,7 @@ use crate::simulation::{self, TICK_SECONDS};
 use crate::world::{World, block::Block};
 use command::CartographyAction;
 
-pub const HELP: &str = "observe [0..2] | catalog [query] (catalog tabs lists the creative tabs; catalog tab:<id> [query] one tab in Java's order) | hotbar save|load 1..9 (creative: the saved hotbars, as C/X + a number key) | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink, or hold a brush for 200 ticks) | draw [ticks] (hold use with a bow or crossbow: a bow shoots at that draw, a crossbow loads after 25 ticks; a charged crossbow fires at once) | sleep | place (throws a selected ender pearl, splash potion or eye of ender, puts the eye in a targeted End portal frame, or launches a firework rocket, which boosts a glide; a fresh jump in mid-air with elytra worn glides) | attack | select 1..9 | fly on/off | craft item | recipe id [max] (the recipe book's click on an unlocked recipe: fills the 2x2 grid, or an aimed crafting table's 3x3, from the inventory, one set or every set with max, and takes the results) | recipes [all|craftable] [query] (the unlocked recipes the book shows, craftable and new marked) | chest take/put slot (an aimed ender chest holds your own items) | bundle slot [stack] (take a stack out of the bundle in inventory slot 0..35, the front one or tooltip cell 0..11 as the wheel picks it) | crafter toggle 0..8 (turn an empty slot of an aimed crafter off or on; observe shows its slots, result and power) | sign x y z front|back [\"line\", ...] (write one side of a sign within reach) | furnace take/put input/fuel/output | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | grindstone [1..9] (disenchant or combine held gear) | trade [1..10] (inspect or buy a targeted villager offer) | smithing (upgrade held diamond gear using a template and ingot) | stonecut item (cut the held stack at an aimed stonecutter) | loom pattern dye (weave onto the held banner at an aimed loom) | cartography copy|zoom|lock (the held map at an aimed cartography table) | book write [offhand] [\"page\", ...] | book sign [offhand] \"title\" [\"page\", ...] (the book and quill in the selected slot, or the off-hand) | lectern x y z page n|take | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp|teleport [@s] x y z, tp @s x y z yaw pitch|facing x y z|facing entity @s [eyes|feet], rotate @s yaw pitch|facing x y z|facing entity @s [eyes|feet] (Java degrees: yaw 0 south, 90 west; pitch -90 up; ~ is relative), spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
+pub const HELP: &str = "observe [0..2] | catalog [query] (catalog tabs lists the creative tabs; catalog tab:<id> [query] one tab in Java's order) | hotbar save|load 1..9 (creative: the saved hotbars, as C/X + a number key) | players | look yaw pitch | move forward right ticks [jump sprint sneak] | wait ticks | mine ticks | eat (or drink, or hold a brush for 200 ticks) | draw [ticks] (hold use with a bow or crossbow: a bow shoots at that draw, a crossbow loads after 25 ticks; a charged crossbow fires at once) | sleep | place (throws a selected ender pearl, splash potion or eye of ender, puts the eye in a targeted End portal frame, or launches a firework rocket, which boosts a glide; a fresh jump in mid-air with elytra worn glides) | attack | select 1..9 | fly on/off | craft item | recipe id [max] (the recipe book's click on an unlocked recipe: fills the 2x2 grid, or an aimed crafting table's 3x3, from the inventory, one set or every set with max, and takes the results) | recipes [all|craftable] [query] (the unlocked recipes the book shows, craftable and new marked) | chest take/put slot (an aimed ender chest holds your own items) | bundle slot [stack] (take a stack out of the bundle in inventory slot 0..35, the front one or tooltip cell 0..11 as the wheel picks it) | crafter toggle 0..8 (turn an empty slot of an aimed crafter off or on; observe shows its slots, result and power) | sign x y z front|back [\"line\", ...] (write one side of a sign within reach) | furnace take/put input/fuel/output | enchanting 1..3 (an aimed enchanting table's offer for the held item) | anvil 1..9 (combine the held stack with that hotbar slot on an aimed anvil) | grindstone [1..9] (disenchant or combine held gear) | trade [1..10] (inspect or buy a targeted villager offer) | smithing (upgrade held diamond gear using a template and ingot) | stonecut item (cut the held stack at an aimed stonecutter) | loom pattern dye (weave onto the held banner at an aimed loom) | cartography copy|zoom|lock (the held map at an aimed cartography table) | book write [offhand] [\"page\", ...] | book sign [offhand] \"title\" [\"page\", ...] (the book and quill in the selected slot, or the off-hand) | lectern x y z page n|take | slot click N [right] | slot drag even|one|clone N... | slot collect N | slot swap N 1..9|offhand | slot throw N [all] | slot toss [one] (Java's inventory clicks on your own inventory screen, by Java slot: 0..35 hotbar first, 36..39 armour from the boots up, 40 off-hand; drag shares the held stack out, collect gathers matching items as a double click does) | drop | respawn | leave. Cheats: give [@s|@p] item [count], clear, kill, summon mob [x y z], gamemode mode [@s|@p], tp|teleport [@s] x y z, tp @s x y z yaw pitch|facing x y z|facing entity @s [eyes|feet], rotate @s yaw pitch|facing x y z|facing entity @s [eyes|feet] (Java degrees: yaw 0 south, 90 west; pitch -90 up; ~ is relative), spawnpoint [x y z], setblock x y z block, time set/add/query, weather clear/rain/thunder, xp|experience add/set/query, effect give/clear, enchant name [level], say message. Host console only: difficulty, gamerule, seed, setworldspawn, locate structure|biome, dimension overworld/nether/end.";
 
 /// Something an agent did that players nearby should hear.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -524,6 +524,7 @@ impl Agent {
             }
             Command::Craft(item) => self.craft(item, world, entities)?,
             Command::Bundle(slot, pick) => self.bundle_take(slot, pick, entities)?,
+            Command::Slot(action) => self.slot_action(action, entities)?,
             Command::Recipe(id, max) => self.craft_recipe(id, max, world, entities)?,
             Command::Furnace(take, slot) => self.furnace_transfer(take, slot, world, entities)?,
             Command::Chest(take, slot) => {
@@ -1733,6 +1734,103 @@ impl Agent {
     /// of the contents tooltip, `shown_count` of them; the front stack
     /// without a pick) comes out of the bundle onto the cursor, and from
     /// there into the inventory (what doesn't fit is dropped).
+    /// v1.0 final track F1: Java's container clicks on the agent's own
+    /// inventory screen (`InventoryMenu` without its crafting grid).
+    fn slot_action(&mut self, action: command::SlotAction, entities: &mut Entities) -> Result<(), String> {
+        use crate::inventory::clicks::{self, Cells, InventoryCells};
+        use command::SlotAction as A;
+        let creative = self.session.mode.is_creative();
+        let index = |s: usize| InventoryCells::index(s).ok_or_else(|| "no such slot".to_string());
+        let mut cursor = self.session.inventory.cursor.take();
+        let inv = &mut self.session.inventory;
+        let result = match action {
+            A::Click(s, right) => {
+                index(s)?;
+                inv.cursor = cursor.take();
+                match s {
+                    36..=39 => {
+                        use crate::item::ArmorPiece as P;
+                        let piece = [P::Boots, P::Leggings, P::Chestplate, P::Helmet][s - 36];
+                        inv.click_armor(piece, right, creative);
+                    }
+                    crate::inventory::OFFHAND => inv.click_offhand(right),
+                    s => inv.click(s, right),
+                }
+                cursor = inv.cursor.take();
+                Ok(())
+            }
+            A::Drag(kind, slots) => {
+                if cursor.is_none() {
+                    Err("no stack held".to_string())
+                } else if !kind.allowed(creative) {
+                    Err("only creative drags fill slots".to_string())
+                } else {
+                    let mut unique: Vec<usize> = Vec::new();
+                    for s in slots {
+                        let i = index(s)?;
+                        if !unique.contains(&i) {
+                            unique.push(i);
+                        }
+                    }
+                    let mut cells = InventoryCells { inventory: inv, creative };
+                    if let [only] = unique[..] {
+                        let mut cell = cells.get(only);
+                        if cells.may_place(only, cursor.as_ref().unwrap()) {
+                            crate::inventory::click_slot(&mut cell, &mut cursor, kind != clicks::Drag::Even);
+                            cells.set(only, cell);
+                        }
+                    } else {
+                        clicks::finish_drag(&mut cells, &unique, kind, &mut cursor);
+                    }
+                    Ok(())
+                }
+            }
+            A::Collect(s) => {
+                let i = index(s)?;
+                clicks::pickup_all(&mut InventoryCells { inventory: inv, creative }, i, false, &mut cursor);
+                Ok(())
+            }
+            A::Swap(s, key) => {
+                let (i, src) = (index(s)?, index(key.unwrap_or(crate::inventory::OFFHAND))?);
+                if cursor.is_some() {
+                    Err("the cursor holds a stack".to_string())
+                } else {
+                    if let Some(left) = clicks::swap(&mut InventoryCells { inventory: inv, creative }, i, src) {
+                        let n = inv.add_stack(left);
+                        if n > 0 {
+                            crate::session::storage::toss(&self.session, entities, Stack { count: n, ..left });
+                        }
+                    }
+                    Ok(())
+                }
+            }
+            A::Throw(s, all) => {
+                let i = index(s)?;
+                if cursor.is_some() {
+                    Err("the cursor holds a stack".to_string())
+                } else {
+                    let mut cells = InventoryCells { inventory: inv, creative };
+                    let thrown = match cells.get(i) {
+                        Some(st) if cells.may_pickup(i) => cells.take(i, if all { st.count } else { 1 }),
+                        _ => None,
+                    };
+                    if let Some(t) = thrown {
+                        crate::session::storage::toss(&self.session, entities, t);
+                    }
+                    Ok(())
+                }
+            }
+            A::Toss(one) => {
+                inv.cursor = cursor.take();
+                let tossed = crate::session::storage::toss_cursor(&mut self.session, entities, one);
+                cursor = self.session.inventory.cursor.take();
+                if tossed { Ok(()) } else { Err("no stack held".to_string()) }
+            }
+        };
+        self.session.inventory.cursor = cursor;
+        result
+    }
+
     fn bundle_take(&mut self, slot: usize, pick: Option<usize>, entities: &mut Entities) -> Result<(), String> {
         use crate::content::bundle;
         let inv = &mut self.session.inventory;
@@ -2652,6 +2750,34 @@ mod tests {
         let lost = b.inventory.get(0).unwrap();
         assert_eq!(lost.lodestone.map(|l| l.target), Some(None));
         assert_eq!(stack_from_str(&stack_to_string(Some(lost))), Some(Some(lost)));
+    }
+
+    #[test]
+    fn slot_commands_drag_collect_swap_and_throw_on_the_own_inventory() {
+        use crate::inventory::clicks::Drag;
+        assert!(matches!(
+            Command::parse("slot drag even 9 10 11"),
+            Ok(Command::Slot(command::SlotAction::Drag(Drag::Even, ref s))) if *s == [9, 10, 11]
+        ));
+        assert!(Command::parse("slot drag sideways 9").is_err());
+        assert!(Command::parse("slot swap 41 1").is_err());
+        let mut world = world();
+        let mut entities = Entities::new(1);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        let stone = Item::DIAMOND;
+        a.session.inventory.slots[0] = Some(Stack::new(stone, 9));
+        a.execute(Command::parse("slot click 0").unwrap(), &mut world, &mut entities, &[]).unwrap();
+        a.execute(Command::parse("slot drag even 9 10 11").unwrap(), &mut world, &mut entities, &[]).unwrap();
+        assert_eq!(a.session.inventory.slots[9..12], [Some(Stack::new(stone, 3)); 3]);
+        assert_eq!(a.session.inventory.cursor, None);
+        a.execute(Command::parse("slot click 9").unwrap(), &mut world, &mut entities, &[]).unwrap();
+        a.execute(Command::parse("slot collect 9").unwrap(), &mut world, &mut entities, &[]).unwrap();
+        assert_eq!(a.session.inventory.cursor, Some(Stack::new(stone, 9)));
+        a.execute(Command::parse("slot click 4").unwrap(), &mut world, &mut entities, &[]).unwrap();
+        a.execute(Command::parse("slot swap 4 offhand").unwrap(), &mut world, &mut entities, &[]).unwrap();
+        assert_eq!(a.session.inventory.offhand, Some(Stack::new(stone, 9)));
+        a.execute(Command::parse("slot throw 40").unwrap(), &mut world, &mut entities, &[]).unwrap();
+        assert_eq!(a.session.inventory.offhand, Some(Stack::new(stone, 8)));
     }
 
     #[test]

@@ -207,6 +207,129 @@ pub fn move_all_targets(
     out
 }
 
+/// `SWAP` between slot `i` and the key's inventory slot `src` (a hotbar
+/// slot or the off-hand), as far as slot `i` allows. Returns a stack
+/// displaced when the key's stack was larger than the slot takes, for the
+/// caller to add to the inventory or drop (`Inventory.add`, else `drop`).
+pub fn swap(cells: &mut impl Cells, i: usize, src: usize) -> Option<Stack> {
+    if i == src {
+        return None;
+    }
+    match (cells.get(src), cells.get(i)) {
+        (None, Some(t)) if cells.may_pickup(i) => {
+            let taken = cells.take(i, t.count);
+            cells.set(src, taken);
+        }
+        (Some(s), None) if cells.may_place(i, &s) => {
+            let max = cells.max(i, &s);
+            if s.count > max {
+                cells.set(i, s.with_count(max));
+                cells.set(src, s.with_count(s.count - max));
+            } else {
+                cells.set(src, None);
+                cells.set(i, Some(s));
+            }
+        }
+        (Some(s), Some(t)) if cells.may_pickup(i) && cells.may_place(i, &s) => {
+            let max = cells.max(i, &s);
+            if s.count > max {
+                cells.set(i, s.with_count(max));
+                cells.set(src, s.with_count(s.count - max));
+                return Some(t);
+            }
+            cells.set(src, Some(t));
+            cells.set(i, Some(s));
+        }
+        _ => {}
+    }
+    None
+}
+
+/// The player's own inventory screen without its crafting grid, in
+/// `InventoryMenu`'s order (armour, the main grid, the hotbar, the
+/// off-hand), addressed by Java's `Inventory` indices: 0..35 (hotbar first),
+/// 36..39 the armour from the boots up, 40 the off-hand. The CLI agent's
+/// `slot` commands use it.
+pub struct InventoryCells<'a> {
+    pub inventory: &'a mut super::Inventory,
+    /// Creative players take off bound armour (`ArmorSlot.mayPickup`).
+    pub creative: bool,
+}
+
+impl InventoryCells<'_> {
+    /// The menu order as Java `Inventory` indices.
+    pub const ORDER: [usize; 41] = {
+        let mut order = [0; 41];
+        // Helmet, chestplate, leggings, boots.
+        order[0] = 39;
+        order[1] = 38;
+        order[2] = 37;
+        order[3] = 36;
+        let mut i = 0;
+        while i < 27 {
+            order[4 + i] = 9 + i;
+            i += 1;
+        }
+        let mut i = 0;
+        while i < 9 {
+            order[31 + i] = i;
+            i += 1;
+        }
+        order[40] = super::OFFHAND;
+        order
+    };
+
+    /// The menu index of Java `Inventory` index `slot`.
+    pub fn index(slot: usize) -> Option<usize> {
+        Self::ORDER.iter().position(|&s| s == slot)
+    }
+
+    fn piece(slot: usize) -> Option<crate::item::ArmorPiece> {
+        use crate::item::ArmorPiece as P;
+        match slot {
+            36 => Some(P::Boots),
+            37 => Some(P::Leggings),
+            38 => Some(P::Chestplate),
+            39 => Some(P::Helmet),
+            _ => None,
+        }
+    }
+}
+
+impl Cells for InventoryCells<'_> {
+    fn len(&self) -> usize {
+        Self::ORDER.len()
+    }
+
+    fn get(&mut self, i: usize) -> Option<Stack> {
+        let slot = Self::ORDER[i];
+        match Self::piece(slot) {
+            Some(p) => self.inventory.armor[p as usize],
+            None => self.inventory.get(slot),
+        }
+    }
+
+    fn set(&mut self, i: usize, stack: Option<Stack>) {
+        let slot = Self::ORDER[i];
+        match Self::piece(slot) {
+            Some(p) => self.inventory.armor[p as usize] = stack,
+            None => *self.inventory.slot_mut(slot) = stack,
+        }
+    }
+
+    fn may_place(&mut self, i: usize, stack: &Stack) -> bool {
+        Self::piece(Self::ORDER[i]).is_none_or(|p| stack.item.wear_slot() == Some(p))
+    }
+
+    fn may_pickup(&mut self, i: usize) -> bool {
+        Self::piece(Self::ORDER[i]).is_none_or(|p| self.inventory.can_unequip(p, self.creative))
+    }
+
+    fn max(&mut self, i: usize, stack: &Stack) -> u8 {
+        if Self::piece(Self::ORDER[i]).is_some() { 1 } else { stack.max() }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -340,6 +463,22 @@ mod tests {
         r.locked = Some(0);
         pickup_all(&mut r, 0, false, &mut cursor);
         assert_eq!(cursor, Some(st(stone(), 4)));
+    }
+
+    #[test]
+    fn the_inventory_screen_runs_in_java_menu_order() {
+        let mut inv = crate::inventory::Inventory::default();
+        inv.slots[0] = Some(st(stone(), 10));
+        inv.slots[20] = Some(st(stone(), 10));
+        inv.offhand = Some(st(stone(), 10));
+        let mut cells = InventoryCells { inventory: &mut inv, creative: false };
+        let mut cursor = Some(st(stone(), 1));
+        // From the first slot: the main grid (slot 20) before the hotbar.
+        pickup_all(&mut cells, InventoryCells::index(5).unwrap(), false, &mut cursor);
+        assert_eq!(cursor, Some(st(stone(), 31)));
+        assert_eq!(InventoryCells::index(40), Some(40));
+        assert_eq!(InventoryCells::index(39), Some(0));
+        assert!(!cells.may_place(0, &st(stone(), 1)));
     }
 
     #[test]
