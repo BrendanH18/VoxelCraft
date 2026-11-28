@@ -2,6 +2,15 @@
 //! exit portal, like Java's win screen: a skippable scroll of credits, then
 //! the player respawns. Java's End Poem is copyrighted, so the text here is
 //! original. Which players have seen it is saved as `credits_seen`.
+//!
+//! v1.0 gap Track 8e: as Java's `ServerPlayer.showEndCredits` takes the
+//! player out of the level (`removePlayerImmediately`) while `WinScreen`
+//! rolls, and that screen isn't a pause screen (`isPauseScreen` is
+//! `!poem`), the world runs on during the credits with the player gone
+//! from it: they don't move, mobs and projectiles don't see them, blasts
+//! and wind don't reach them, they pick nothing up and LAN guests don't
+//! see them. Their own tick (`ServerPlayer.doTick`: effects, hunger,
+//! burning) runs on, as Java's does.
 
 use super::Game;
 use crate::audio::SoundSource;

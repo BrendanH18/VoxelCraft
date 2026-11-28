@@ -96,7 +96,7 @@ impl Pearl {
                 return false;
             }
             if world.block(cell).is_some_and(|b| b.is_solid()) {
-                events.push(super::projectile::block_hit(cell, self.pos, self.burning(), false));
+                events.push(super::projectile::block_hit(cell, self.pos, self.burning(), false, Some(super::trident::Owner::Player(self.owner))));
                 // Land just outside the block it hit.
                 events.push(EntityEvent::PearlLanded { owner: self.owner, pos: self.pos });
                 return false;

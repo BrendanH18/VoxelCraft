@@ -539,6 +539,7 @@ impl Arrow {
                         arrow: true,
                         burning,
                         mob_owned: self.shooter.is_some(),
+                        by: owner_of(self.owner, self.shooter),
                     });
                 }
                 self.age = 0.0;
@@ -841,12 +842,26 @@ pub(super) fn in_rain<W: super::MobWorld + ?Sized>(world: &W, pos: DVec3, height
 /// projectile other than an arrow or trident that entered the solid
 /// `cell` from `from`: target blocks and redstone ore react, and a burning
 /// one lights a candle or campfire or primes TNT.
-pub(super) fn block_hit(cell: glam::IVec3, from: DVec3, burning: bool, mob_owned: bool) -> EntityEvent {
+/// `by` is its owner (v1.0 gap Track 8e).
+pub(super) fn block_hit(
+    cell: glam::IVec3,
+    from: DVec3,
+    burning: bool,
+    mob_owned: bool,
+    by: Option<super::trident::Owner>,
+) -> EntityEvent {
     let d = from.floor().as_ivec3() - cell;
     let axis = (0..3).max_by_key(|&a| d[a].abs()).unwrap_or(1);
     let mut normal = glam::IVec3::ZERO;
     normal[axis] = d[axis].signum();
-    EntityEvent::ProjectileBlockHit { cell, pos: from, normal, arrow: false, burning, mob_owned }
+    EntityEvent::ProjectileBlockHit { cell, pos: from, normal, arrow: false, burning, mob_owned, by }
+}
+
+/// v1.0 gap Track 8e: a projectile's owner from its player owner and the
+/// mob that shot it, the mob first.
+pub(super) fn owner_of(player: Option<PlayerId>, mob: Option<u32>) -> Option<super::trident::Owner> {
+    use super::trident::Owner;
+    mob.map(Owner::Mob).or(player.map(Owner::Player))
 }
 
 /// v1.0 gap Track 8d: a projectile's `remainingFireTicks` over a tick's

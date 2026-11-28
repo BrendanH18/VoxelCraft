@@ -3653,7 +3653,7 @@ impl Mob {
                     let spread = d2.sqrt().sqrt() * 0.5 * 2.297;
                     let dir = DVec3::new(rng.triangle(xd, spread), yd, rng.triangle(zd, spread)).normalize_or(DVec3::X);
                     let from = DVec3::new(self.pos.x, mid + 0.5, self.pos.z);
-                    events.push(EntityEvent::Fireball { from, dir, large: false });
+                    events.push(EntityEvent::Fireball { from, dir, large: false, shooter: self.uid });
                     events.push(EntityEvent::Sound { sound: MobSound::Fireball, pos: eye });
                 }
             }
@@ -3717,7 +3717,7 @@ impl Mob {
                     let view = yaw_dir(self.yaw);
                     let from = DVec3::new(self.pos.x + view.x * 4.0, mid.y + 0.5, self.pos.z + view.z * 4.0);
                     let aim = DVec3::new(target.pos.x - from.x, target_mid.y - (0.5 + mid.y), target.pos.z - from.z);
-                    events.push(EntityEvent::Fireball { from, dir: aim.normalize_or(view), large: true });
+                    events.push(EntityEvent::Fireball { from, dir: aim.normalize_or(view), large: true, shooter: self.uid });
                     events.push(EntityEvent::Sound { sound: MobSound::Fireball, pos: mid });
                     c.charge = -40;
                 }
@@ -4024,7 +4024,9 @@ impl Mob {
             events.push(EntityEvent::Explosion {
                 center,
                 power: CREEPER_POWER * if self.lightning_charged { 2. } else { 1. },
-                cause: Cause::CREEPER,
+                // `explosion(creeper, creeper)`: TNT it sets off is the
+                // creeper's, who is gone by the time that goes off.
+                cause: Cause::CREEPER.by(Some(super::trident::Owner::Mob(self.uid))),
                 credit_player: false,
             });
             // Gone in the blast: no death animation, no loot.

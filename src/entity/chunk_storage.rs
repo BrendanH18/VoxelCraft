@@ -760,7 +760,7 @@ mod tests {
         e.drop_from_block(Stack::new(Item::DIAMOND, 3), IVec3::new(78, GROUND + 1, 4));
         e.spawn_xp(at(74.5, 14.5), 17);
         e.arrows.push(super::super::Arrow::shot(at(70.5, 18.5), DVec3::X, 0.0, true));
-        e.prime_tnt(IVec3::new(94, GROUND + 1, 2), false);
+        e.prime_tnt(IVec3::new(94, GROUND + 1, 2), false, None);
         e.mobs.len() + e.items.len() + e.orbs.len() + e.minecarts.len() + e.arrows.len() + e.tnt.len()
     }
 

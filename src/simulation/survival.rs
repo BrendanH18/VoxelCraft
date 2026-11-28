@@ -421,11 +421,14 @@ impl Vitals {
         }
     }
 
-    /// Restores saved values; zero health means the player died.
+    /// Restores saved values; zero health means the player died. A death
+    /// message the game has since reworded ([`super::damage::Cause::RETIRED`])
+    /// comes back in today's words (v1.0 gap Track 8e).
     pub fn restore(health: f32, air: f32, death: Option<String>) -> Self {
         let mut v = Self { health: health.clamp(0.0, MAX_HEALTH), air: air.clamp(0.0, MAX_AIR), ..Self::default() };
         if v.health <= 0.0 {
-            v.death = Some(death.unwrap_or_else(|| "died".into()));
+            let death = death.unwrap_or_else(|| "died".into());
+            v.death = Some(super::damage::Cause::saved(&death).map_or(death, |c| c.text.to_string()));
         }
         v
     }

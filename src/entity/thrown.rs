@@ -368,6 +368,7 @@ impl Thrown {
                         arrow: false,
                         burning: self.burning(),
                         mob_owned: self.shooter.is_some(),
+                        by: super::projectile::owner_of(self.owner, self.shooter),
                     });
                 }
                 if self.kind == Kind::ExperienceBottle {

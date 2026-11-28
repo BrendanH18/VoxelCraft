@@ -311,7 +311,7 @@ impl Entities {
                         movement.with_y(0.0).normalize_or_zero() * (SHAPE.half_width + 0.05)
                     };
                     let cell = (pos + toward).floor().as_ivec3();
-                    events.push(super::projectile::block_hit(cell, pos, true, r.shooter.is_some()));
+                    events.push(super::projectile::block_hit(cell, pos, true, r.shooter.is_some(), super::projectile::owner_of(r.owner, r.shooter)));
                 }
                 r.pos = pos;
                 // `setDeltaMovement(movement)`: the move doesn't slow it.

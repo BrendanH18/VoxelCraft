@@ -98,7 +98,7 @@ impl ThrownPotion {
             let next = self.pos + delta / steps as f64;
             if world.block(next.floor().as_ivec3()).is_some_and(|b| b.is_solid()) {
                 let cell = next.floor().as_ivec3();
-                events.push(super::projectile::block_hit(cell, self.pos, self.burning(), self.owner.is_none()));
+                events.push(super::projectile::block_hit(cell, self.pos, self.burning(), self.owner.is_none(), self.owner.map(super::trident::Owner::Player)));
                 self.pos = next;
                 self.shatter(ctx, mobs, boss, rng, events);
                 return false;

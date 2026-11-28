@@ -238,6 +238,9 @@ pub enum EntityEvent {
         /// v1.0 gap Track 8b: a mob's projectile, which lights campfires
         /// and primes TNT only with `mob_griefing` on (`Projectile.mayInteract`).
         mob_owned: bool,
+        /// v1.0 gap Track 8e: the projectile's owner, whom TNT it primes
+        /// names (`TntBlock.onProjectileHit`).
+        by: Option<trident::Owner>,
     },
     /// A mob or arrow hit `player`: apply `damage` and add `knockback` to
     /// their velocity; `cause` is the death message. A hit with `java` set
@@ -393,6 +396,8 @@ pub enum EntityEvent {
         from: DVec3,
         dir: DVec3,
         large: bool,
+        /// v1.0 gap Track 8e: the blaze or ghast (`Mob::uid`), its owner.
+        shooter: u32,
     },
     /// A fireball set `player` alight for `secs`.
     Ignite {
@@ -614,6 +619,8 @@ pub enum EntityEvent {
         center: DVec3,
         power: f32,
         dangerous: bool,
+        /// v1.0 gap Track 8e: the Wither behind the blast (`Mob::uid`).
+        owner: Option<u32>,
     },
     /// v0.16 Track C: a hurt Wither breaks every breakable block in the box
     /// (`destroyBlocksTick`, under `mobGriefing`), with drops.
@@ -2555,10 +2562,10 @@ impl Entities {
         Some(i)
     }
 
-    /// Punches the ghast fireball under the crosshair back along `dir`.
-    pub fn punch_fireball(&mut self, eye: DVec3, dir: DVec3, max_dist: f64) -> bool {
+    /// Player `by` punches the ghast fireball under the crosshair back along `dir`.
+    pub fn punch_fireball(&mut self, eye: DVec3, dir: DVec3, max_dist: f64, by: PlayerId) -> bool {
         let Some(i) = self.large_fireball(eye, dir, max_dist) else { return false };
-        self.fireballs[i].deflect(dir);
+        self.fireballs[i].deflect(dir, by);
         true
     }
 
@@ -2642,11 +2649,15 @@ impl Entities {
 
     /// Lights the TNT block at `cell` (now gone from the world): a short
     /// random fuse if a blast `chained` it, the full four seconds otherwise.
-    pub fn prime_tnt(&mut self, cell: IVec3, chained: bool) {
+    /// v1.0 gap Track 8e: `owner` is who lit it (`PrimedTnt.owner`), whom
+    /// its blast names.
+    pub fn prime_tnt(&mut self, cell: IVec3, chained: bool, owner: Option<trident::Owner>) {
         let fuse = if chained { self.rng.range(0.5, 1.5) } else { tnt::FUSE };
         let a = self.rng.range(0.0, TAU);
         let vel = DVec3::new(a.cos() as f64 * 0.4, 2.0, a.sin() as f64 * 0.4);
-        self.tnt.push(tnt::PrimedTnt::new(cell.as_dvec3() + DVec3::new(0.5, 0.0, 0.5), vel, fuse));
+        let mut primed = tnt::PrimedTnt::new(cell.as_dvec3() + DVec3::new(0.5, 0.0, 0.5), vel, fuse);
+        primed.owner = owner;
+        self.tnt.push(primed);
     }
 
     /// `ThrownEnderpearl.tick` under `ender_pearls_vanish_on_death`: pearls
@@ -3793,7 +3804,7 @@ mod tests {
         let ball = e.fireballs[0].pos;
         let heading = e.fireballs[0].heading().as_dvec3();
         let eye = ball + heading * 3.0;
-        assert!(e.punch_fireball(eye, -heading, 6.0));
+        assert!(e.punch_fireball(eye, -heading, 6.0, PlayerId::HOST));
         assert!(e.fireballs[0].heading().dot((-heading).as_vec3()) > 0.9);
 
         let mut e = Entities::new(6);
@@ -5422,7 +5433,7 @@ mod tests {
     fn tnt_blows_after_its_fuse() {
         let world = Grid::flat(10);
         let mut e = Entities::new(14);
-        e.prime_tnt(IVec3::new(0, 10, 0), false);
+        e.prime_tnt(IVec3::new(0, 10, 0), false, None);
         let c = ctx(DVec3::new(30.0, 10.0, 0.0));
         let early = run(&mut e, &world, &c, 3.5);
         assert!(!early.iter().any(|ev| matches!(ev, EntityEvent::Explosion { .. })));
@@ -5442,7 +5453,7 @@ mod tests {
         for explodes in [true, false] {
             let mut e = Entities::new(14);
             e.tnt_explodes = explodes;
-            e.prime_tnt(IVec3::new(0, 10, 0), false);
+            e.prime_tnt(IVec3::new(0, 10, 0), false, None);
             let events = run(&mut e, &world, &c, 5.0);
             let booms = events
                 .iter()

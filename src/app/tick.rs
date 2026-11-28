@@ -29,11 +29,15 @@ impl Game {
         // v1.0 gap Track 8b: `handlePortal` comes before the player moves,
         // and a trip it sets off holds them until they arrive.
         let arriving = self.update_arrival() || self.process_portal();
-        let input = self.movement_input(arriving);
+        // v1.0 gap Track 8e: a player watching the End credits has left the
+        // level (`showEndCredits`) and doesn't move; their own tick
+        // (`ServerPlayer.doTick`: effects, hunger, burning) runs on.
+        let away = self.credits.is_some();
+        let input = self.movement_input(arriving || away);
         self.jump_pressed = false;
         self.previous_eye = self.session.player.eye();
         let before = self.session.player.pos;
-        if !arriving {
+        if !arriving && !away {
             let on_cushion = self
                 .session
                 .player

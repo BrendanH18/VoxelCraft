@@ -421,9 +421,10 @@ impl Entities {
                     self.thrown.push(thrown::Thrown::breeze_charge(from, dir, inaccuracy, shooter, &mut self.rng));
                 }
                 EntityEvent::ChargedBlast { center } => self.charged_blasts.push(center),
-                EntityEvent::Fireball { from, dir, large } => {
-                    let ball =
+                EntityEvent::Fireball { from, dir, large, shooter } => {
+                    let mut ball =
                         if large { fireball::Fireball::large(from, dir) } else { fireball::Fireball::new(from, dir) };
+                    ball.owner = Some(super::trident::Owner::Mob(shooter));
                     if large {
                         let mut burst = crate::particles::Burst::new(crate::particles::Kind::LargeSmoke, from, 6);
                         burst.spread = DVec3::splat(0.4);
@@ -547,7 +548,7 @@ impl Entities {
                     // v1.0 gap Track 8d: the block its flight hit.
                     let b = &mut self.bobbers[i];
                     if let Some(cell) = b.struck.take() {
-                        events.push(super::projectile::block_hit(cell, b.pos, b.burning(), false));
+                        events.push(super::projectile::block_hit(cell, b.pos, b.burning(), false, Some(super::trident::Owner::Player(b.owner))));
                     }
                     i += 1;
                 } else {
@@ -679,8 +680,10 @@ impl Entities {
         }
         self.orbs.retain_mut(|orb| !world.entity_ticking(orb.pos.floor().as_ivec3()) || orb.update(dt, world, ctx));
         let tnt_explodes = self.tnt_explodes;
+        let mobs = &self.mobs;
+        let alive = |uid| mobs.iter().find(|m| m.uid == uid && m.alive()).map(|m| m.kind);
         self.tnt.retain_mut(|t| {
-            !world.entity_ticking(t.pos.floor().as_ivec3()) || t.update(dt, world, &mut events, tnt_explodes)
+            !world.entity_ticking(t.pos.floor().as_ivec3()) || t.update(dt, world, &mut events, tnt_explodes, alive)
         });
         self.merge_timer -= dt as f32;
         if self.merge_timer <= 0.0 {

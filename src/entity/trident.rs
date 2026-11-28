@@ -14,8 +14,9 @@ use crate::inventory::Stack;
 use crate::weapons::{Cue, trident as tr};
 use crate::world::block::Block;
 
-/// Who threw it (`Projectile.owner`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Who threw it (`Projectile.owner`); v1.0 gap Track 8e: also who lit
+/// primed TNT (`PrimedTnt.owner`) and who is behind a blast.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Owner {
     Player(PlayerId),
     /// A mob, by [`Mob::uid`].
@@ -607,6 +608,7 @@ impl Trident {
                 arrow: true,
                 burning: true,
                 mob_owned: matches!(self.owner, Some(Owner::Mob(_))),
+                by: self.owner,
             });
         }
         self.last_block = block;

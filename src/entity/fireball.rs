@@ -35,6 +35,10 @@ pub struct Fireball {
     large: bool,
     /// A player punched this fireball, so the blast counts as their kill.
     deflected: bool,
+    /// v1.0 gap Track 8e: its owner (`Projectile.owner`): the blaze or ghast
+    /// that shot it, the player who punched it back (`deflect` hands it to
+    /// them), none from a dispenser. TNT it primes or sets off names them.
+    pub owner: Option<super::trident::Owner>,
 }
 
 impl Fireball {
@@ -46,7 +50,16 @@ impl Fireball {
     /// Launches from `from` with a normalized heading, falling back to +X for zero.
     pub fn new(from: DVec3, dir: DVec3) -> Self {
         let dir = dir.normalize_or(DVec3::X);
-        Self { pos: from, previous_pos: from, vel: dir * LAUNCH_SPEED, dir, age: 0.0, large: false, deflected: false }
+        Self {
+            pos: from,
+            previous_pos: from,
+            vel: dir * LAUNCH_SPEED,
+            dir,
+            age: 0.0,
+            large: false,
+            deflected: false,
+            owner: None,
+        }
     }
 
     /// A ghast's explosive fireball.
@@ -64,12 +77,14 @@ impl Fireball {
         if self.large { 1.0 } else { 0.3125 }
     }
 
-    /// Sends a ghast fireball back along the puncher's look direction.
-    pub fn deflect(&mut self, look: DVec3) {
+    /// Sends a ghast fireball back along the puncher's look direction; it
+    /// is `by`'s now (`Projectile.deflect` sets the owner).
+    pub fn deflect(&mut self, look: DVec3, by: super::PlayerId) {
         let dir = look.normalize_or(DVec3::X);
         self.dir = dir;
         self.vel = dir * 10.0;
         self.deflected = true;
+        self.owner = Some(super::trident::Owner::Player(by));
         self.age = 0.0;
     }
 
@@ -100,7 +115,8 @@ impl Fireball {
                 // (`AbstractHurtingProjectile.shouldBurn`), so it lights a
                 // candle or campfire or primes TNT.
                 let cell = next.floor().as_ivec3();
-                events.push(super::projectile::block_hit(cell, self.pos, true, !self.deflected));
+                let mob_owned = matches!(self.owner, Some(super::trident::Owner::Mob(_)));
+                events.push(super::projectile::block_hit(cell, self.pos, true, mob_owned, self.owner));
                 self.impact(None, events);
                 return false;
             }
@@ -173,7 +189,7 @@ impl Fireball {
             events.push(EntityEvent::Explosion {
                 center: self.pos,
                 power: GHAST_POWER,
-                cause: crate::simulation::damage::Cause::GHAST_FIREBALL,
+                cause: crate::simulation::damage::Cause::GHAST_FIREBALL.by(self.owner),
                 credit_player: self.deflected,
             });
             return;
@@ -308,7 +324,7 @@ mod tests {
     fn ghast_fireballs_explode_and_remember_a_deflection() {
         let world = Grid::flat(10);
         let mut f = Fireball::large(DVec3::new(0.5, 16.0, 0.5), DVec3::X);
-        f.deflect(DVec3::NEG_Y);
+        f.deflect(DVec3::NEG_Y, super::PlayerId::HOST);
         assert!(f.heading().y < 0.0);
         let mut events = Vec::new();
         while f.update(0.05, &world, &ctx(vec![]), &[], &[], &Default::default(), &mut events) {}
@@ -317,10 +333,10 @@ mod tests {
             EntityEvent::Explosion {
                 credit_player: true,
                 power: GHAST_POWER,
-                cause: crate::simulation::damage::Cause::GHAST_FIREBALL,
+                cause,
                 ..
-            }
-        )));
+            } if *cause == crate::simulation::damage::Cause::GHAST_FIREBALL.by(Some(crate::entity::trident::Owner::Player(super::PlayerId::HOST)))
+        )), "the punched fireball is the player's (`deflect`): {events:?}");
         assert!(!events.iter().any(|e| matches!(e, EntityEvent::IgniteBlock { .. } | EntityEvent::PlayerHit { .. })));
     }
 }

@@ -1380,8 +1380,12 @@ impl Game {
         host.vitals = self.session.vitals.clone();
         host.sleeping = self.session.sleeping;
         let host_eating = (self.body.actions.eat_timer / super::EAT_TIME) as f32;
+        // v1.0 gap Track 8e: a host watching the credits has left the level
+        // (`ServerPlayer.showEndCredits`), so guests don't see them.
+        let host_here = self.credits.is_none();
         let players: Vec<_> =
             std::iter::once(state_lite(&host, &self.lan.profile, self.hand.swing_time(), host_eating))
+                .filter(|_| host_here)
                 .chain(self.agents.players.iter().filter(|(_, b)| b.active).map(|(n, b)| {
                     let eating = self
                         .pad_view(n)

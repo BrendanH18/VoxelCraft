@@ -1321,13 +1321,25 @@ impl PlayerSession {
             }
             return Ok(Some(Used::Ignited { cell: pos, portal: false }));
         }
-        if held == Some(Item::FLINT_AND_STEEL) {
-            if world.get_block(pos) == Some(Block::TNT) && world.rules.tnt_explodes {
-                world.set_block(pos, Block::AIR);
-                entities.prime_tnt(pos, false);
+        // `TntBlock.useItemOn`: flint and steel or a fire charge primes TNT
+        // in the player's name (`prime(level, pos, player, ..)`, v1.0 gap
+        // Track 8e), the charge used up outside creative.
+        if matches!(held, Some(Item::FLINT_AND_STEEL | Item::FIRE_CHARGE))
+            && world.get_block(pos) == Some(Block::TNT)
+            && world.rules.tnt_explodes
+        {
+            world.set_block(pos, Block::AIR);
+            entities.prime_tnt(pos, false, Some(crate::entity::trident::Owner::Player(self.id)));
+            if held == Some(Item::FIRE_CHARGE) {
+                if survival {
+                    self.inventory.take_one(slot);
+                }
+            } else {
                 wear(self, 1, tool_broken);
-                return Ok(Some(Used::TntPrimed { cell: pos }));
             }
+            return Ok(Some(Used::TntPrimed { cell: pos }));
+        }
+        if held == Some(Item::FLINT_AND_STEEL) {
             let at = pos + normal;
             if !world.ignite(at) {
                 return Ok(Some(Used::FlintFizzled));

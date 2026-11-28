@@ -41,7 +41,9 @@ impl Game {
         for stack in self.session.inventory.take_spill() {
             self.mobs.entities.throw(stack, self.session.player.eye(), self.session.player.forward().as_dvec3());
         }
-        if !self.session.vitals.is_dead() {
+        // A player watching the End credits isn't in the level to touch
+        // items (v1.0 gap Track 8e).
+        if !self.session.vitals.is_dead() && self.credits.is_none() {
             self.pick_up_items();
         }
         let session = &self.session;
