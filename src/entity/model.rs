@@ -987,6 +987,7 @@ mod animals;
 mod aquatic;
 mod bee;
 mod breeze;
+mod camel_anim;
 mod conduit;
 mod copper_golem;
 mod creaking;

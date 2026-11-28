@@ -263,6 +263,9 @@ pub enum Sound {
     /// v1.0 gap track 6: a bundle taking, refusing, giving up or emptying
     /// out a stack (`SoundEvents.BUNDLE_*`).
     Bundle(voxelcraft::content::bundle::Cue),
+    /// v1.0 gap Track 3b: camels sitting, standing and dashing, and mounts
+    /// made mad.
+    Mount(crate::entity::mounts::Cue),
 }
 
 /// v0.18 Track 9: the five events of a Java `SoundType`.
@@ -342,7 +345,8 @@ impl Sound {
     const BLOCK_END: usize = Self::CRAFTER_END + super::block_sounds::FAMILY_COUNT * BlockCue::ALL.len();
     const CONTAINER_END: usize = Self::BLOCK_END + ContainerCue::ALL.len();
     const SOUL_ESCAPE_END: usize = Self::CONTAINER_END + 1;
-    pub const COUNT: usize = Self::SOUL_ESCAPE_END + voxelcraft::content::bundle::Cue::ALL.len();
+    const BUNDLE_END: usize = Self::SOUL_ESCAPE_END + voxelcraft::content::bundle::Cue::ALL.len();
+    pub const COUNT: usize = Self::BUNDLE_END + crate::entity::mounts::Cue::ALL.len();
 
     /// Dense index in `0..COUNT`.
     pub fn key(self) -> usize {
@@ -370,6 +374,7 @@ impl Sound {
             Sound::Container(cue) => Self::BLOCK_END + cue as usize,
             Sound::SoulEscape => Self::CONTAINER_END,
             Sound::Bundle(cue) => Self::SOUL_ESCAPE_END + cue as usize,
+            Sound::Mount(cue) => Self::BUNDLE_END + cue as usize,
             Sound::Note(i) => 3 * M + 27 + Voice::ALL.len() * CALLS + i as usize,
             Sound::Thunder => Self::BASE_COUNT - 1,
             Sound::Bell => Self::BASE_COUNT - 4,
@@ -503,6 +508,7 @@ impl Sound {
             .chain(ContainerCue::ALL.map(Sound::Container))
             .chain([Sound::SoulEscape])
             .chain(voxelcraft::content::bundle::Cue::ALL.map(Sound::Bundle))
+            .chain(crate::entity::mounts::Cue::ALL.map(Sound::Mount))
     }
 
     /// Stable sound name used when exporting or identifying samples.
@@ -529,6 +535,7 @@ impl Sound {
             Sound::Container(c) => format!("container_{c:?}").to_lowercase(),
             Sound::SoulEscape => "particle_soul_escape".into(),
             Sound::Bundle(c) => c.event().replace('.', "_"),
+            Sound::Mount(c) => c.key().replace('.', "_"),
             Sound::Thunder => "lightning_thunder".into(),
             Sound::HoneySlide => "honey_block_slide".into(),
             Sound::HoneyDrink => "honey_drink".into(),
@@ -678,6 +685,9 @@ impl Sound {
             // `Entity.playSound` by the player, and `BUNDLE_DROP_CONTENTS`
             // played as `PLAYERS`.
             Sound::Bundle(_) => SoundSource::Players,
+            // `Camel` and `AbstractHorse` play in their own category
+            // (`NEUTRAL`; the dash-ready cue's `level().playSound` too).
+            Sound::Mount(_) => SoundSource::Neutral,
             Sound::Mob(voice, _) => voice.source(),
         }
     }
@@ -703,6 +713,7 @@ impl Sound {
             Sound::Container(_) => 2,
             Sound::SoulEscape => 2,
             Sound::Bundle(_) => 2,
+            Sound::Mount(_) => 2,
             Sound::Warden(_) | Sound::Sculk(_) => 2,
             Sound::Sniffer(_) | Sound::Weapon(_) => 2,
             Sound::Step(_) => 4,
@@ -763,6 +774,7 @@ impl Sound {
             Sound::Container(c) => super::block_sounds::render_container(c, &mut rng),
             Sound::SoulEscape => soul_escape(&mut rng),
             Sound::Bundle(c) => super::bundle::render(c, &mut rng),
+            Sound::Mount(c) => super::mounts::render(c, &mut rng),
             Sound::Thunder => thunder(&mut rng),
             Sound::HoneySlide => honey_sound(&mut rng, 0.35),
             Sound::HoneyDrink => honey_sound(&mut rng, 0.22),

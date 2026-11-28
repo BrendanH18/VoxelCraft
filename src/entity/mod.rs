@@ -208,6 +208,9 @@ pub enum MobSound {
     /// v0.16 Track D: sulfur cube squishes, swallowed and ejected blocks,
     /// hits, pushes and buckets.
     SulfurCube(sulfur_cube::Cue),
+    /// v1.0 gap Track 3b: camels sitting, standing and dashing, and
+    /// horses, donkeys, mules, zombie horses and llamas made mad.
+    Mount(mounts::Cue),
 }
 
 /// Something an entity did that the game needs to react to.

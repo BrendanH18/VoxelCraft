@@ -225,13 +225,66 @@ impl Mob {
         crate::player::fluid::contact(world, min, max, eye, pushed)
     }
 
-    /// `Entity.updateFluidInteraction`'s push from flowing water this tick
-    /// (blocks a tick), for a pushed mob; `dm` is its movement before it.
+    /// `Entity.updateFluidInteraction`'s push from flowing water and (v1.0
+    /// gap Track 3b) lava this tick (blocks a tick), for a pushed mob; `dm`
+    /// is its movement before it. Lava pushes 0.0023 a tick, the Nether's
+    /// `FAST_LAVA` 0.007.
     pub(crate) fn water_current<W: BlockSource + ?Sized>(&self, world: &W, dm: DVec3, swimming: bool) -> DVec3 {
-        if !self.pushed_by_fluid(swimming) || !self.touching_water(world) {
+        if !self.pushed_by_fluid(swimming) || !self.touching_water(world) && !self.touching_lava(world) {
             return DVec3::ZERO;
         }
-        self.fluid_contact(world, true).entity_water_impulse(dm)
+        self.fluid_contact(world, true).entity_current_impulse(dm, self.fast_lava)
+    }
+
+    /// `getWaterSlowDown`: 0.8, a polar bear's 0.98, a skeleton horse's
+    /// 0.96; Dolphin's Grace makes it 0.96 (`travelInWater`).
+    pub(crate) fn water_slow_down(&self) -> f64 {
+        let own = match self.kind {
+            MobKind::PolarBear => 0.98_f32,
+            MobKind::SkeletonHorse => 0.96,
+            _ => 0.8,
+        };
+        let own = if self.effects.has(crate::simulation::effects::Effect::DolphinsGrace) { 0.96 } else { own };
+        f64::from(own)
+    }
+
+    /// v1.0 gap Track 3b: the current's share of a land mob's motion in
+    /// the continuous fluid model, a Java tick at a time (`dt` of one;
+    /// fractions of a tick interpolate). Java adds `CurrentAccumulator`'s
+    /// push to the motion before the move and drags the whole motion
+    /// after it (`travelInWater`'s `getWaterSlowDown` and 0.8, or
+    /// `travelInLava`'s 0.5, its 0.8 upward in shallow lava); the drag is
+    /// linear, so the current's part is kept apart from the walking
+    /// ([`Mob::current`]): this tick the mob moves by that part plus the
+    /// push, and the part becomes their dragged sum. From rest the push
+    /// builds up tick by tick (`p`, `1.8 p`, ...) toward Java's steady
+    /// `5 p` a tick in water (`p / (1 - 0.8) `) and `2 p` in lava. Out of
+    /// both fluids it joins the ordinary motion. Returns the velocity
+    /// (blocks a second) to move by on top of the walking.
+    pub(crate) fn fluid_current_flow<W: BlockSource + ?Sized>(&mut self, world: &W, dt: f64) -> DVec3 {
+        if !self.pushed_by_fluid(false) {
+            self.current = DVec3::ZERO;
+            return DVec3::ZERO;
+        }
+        let contact = self.fluid_contact(world, true);
+        if !contact.in_water() && !contact.in_lava() {
+            self.vel += std::mem::take(&mut self.current) * 20.0;
+            return DVec3::ZERO;
+        }
+        let push = contact.entity_current_impulse(self.vel * TICK + self.current, self.fast_lava);
+        let moving = self.current + push;
+        let drag = if contact.in_water() {
+            let slow = self.water_slow_down();
+            DVec3::new(slow, f64::from(0.8_f32), slow)
+        } else if contact.lava_height <= if self.shape().height * 0.85 < 0.4 { 0.0 } else { 0.4 } {
+            // `isInShallowFluid`: up to `getFluidJumpThreshold`.
+            DVec3::new(0.5, f64::from(0.8_f32), 0.5)
+        } else {
+            DVec3::splat(0.5)
+        };
+        let f = (dt * 20.0).min(1.0);
+        self.current += (moving * drag - self.current) * f;
+        moving * 20.0
     }
 
     /// `isInWater`: the box touches water.
@@ -934,5 +987,66 @@ mod tests {
         }
         // (0.7 v + 0.01) * 0.98 settles at 0.0098 / 0.314.
         assert!((m.vel.y / 20.0 - 0.0098 / 0.314).abs() < 1e-3, "{}", m.vel.y / 20.0);
+    }
+
+    /// v1.0 gap Track 3b: a land mob's current builds up as Java's does:
+    /// it moves by the motion the current built so far plus this tick's
+    /// push (0.014), and keeps 0.8 of that, toward 5 × 0.014 a tick.
+    #[test]
+    fn currents_start_up_tick_by_tick_for_land_mobs() {
+        let w = channel(false);
+        let mut m = Mob::new(MobKind::Zombie, DVec3::new(-1.5, 0.0, 0.5), 0.0);
+        m.on_ground = true;
+        let (p, drag) = (0.014, f64::from(0.8_f32));
+        let mut c = 0.0;
+        for tick in 0..4 {
+            let x = m.pos.x;
+            m.physics_step(TICK, &w, None, 0.0);
+            assert!((m.pos.x - x - (c + p)).abs() < 1e-6, "tick {tick}: {} vs {}", m.pos.x - x, c + p);
+            c = (c + p) * drag;
+        }
+        // Lava pushes 0.0023 a tick (0.007 in the Nether) under its 0.5
+        // drag: a steady 2 × push. `CurrentAccumulator.applyTo` raises a
+        // push under 0.0045 to 0.0045 while the mob is nearly still (both
+        // horizontal motions under 0.003), as the Overworld's is at first.
+        let mut w = Grid::flat(0);
+        for (x, b) in [(-4, Block::LAVA), (-3, Block(38)), (-2, Block(39)), (-1, Block(40))] {
+            for z in -3..=3 {
+                w.set(IVec3::new(x, 0, z), b);
+            }
+        }
+        for (fast, first, second) in [(false, 0.0045, 0.0045 * 1.5), (true, 0.007, 0.007 * 1.5)] {
+            let mut m = Mob::new(MobKind::Zombie, DVec3::new(-2.5, 0.0, 0.5), 0.0);
+            m.on_ground = true;
+            m.fast_lava = fast;
+            let x = m.pos.x;
+            m.physics_step(TICK, &w, None, 0.0);
+            assert!((m.pos.x - x - first).abs() < 1e-6, "{fast}: {}", m.pos.x - x);
+            let x = m.pos.x;
+            m.physics_step(TICK, &w, None, 0.0);
+            assert!((m.pos.x - x - second).abs() < 1e-6, "{fast}: {}", m.pos.x - x);
+        }
+    }
+
+    /// v1.0 gap Track 3b: `AbstractHorse.onClimbable` is false: a horse
+    /// in twisting vines against a wall doesn't climb them; a pig does.
+    #[test]
+    fn horses_never_climb() {
+        let mut w = Grid::flat(0);
+        w.set(IVec3::new(0, 0, 0), crate::world::nether_biome_blocks::TWISTING_VINES_PLANT);
+        for y in 0..4 {
+            w.set(IVec3::new(1, y, 0), Block::STONE);
+        }
+        for (kind, x, climbs) in [(MobKind::Pig, 0.5, true), (MobKind::Horse, 0.3, false)] {
+            let mut m = Mob::new(kind, DVec3::new(x, 0.0, 0.5), 0.0);
+            m.on_ground = true;
+            // `handleOnClimbable`'s 0.2 a tick up (4 blocks a second).
+            let mut lift: f64 = 0.0;
+            for _ in 0..20 {
+                m.physics_step(TICK, &w, Some(DVec3::X), 2.0);
+                lift = lift.max(m.vel.y);
+            }
+            assert_eq!(lift >= 4.0, climbs, "{kind:?}: {lift}");
+        }
     }
 }

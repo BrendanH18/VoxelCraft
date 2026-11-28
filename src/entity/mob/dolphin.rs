@@ -75,6 +75,12 @@ pub const BABY_SPAWN_CHANCE: f32 = 0.1;
 /// `Dolphin.BABY_SCALE`: a baby's box is the adult's times this.
 pub const BABY_SCALE: f64 = 0.65;
 
+/// v1.0 gap Track 3b: `EntityTypes.DOLPHIN`'s `eyeHeight(0.3)` and
+/// `BABY_DIMENSIONS.withEyeHeight(0.09375)`.
+pub fn eye_height(baby: bool) -> f64 {
+    if baby { f64::from(0.093_75_f32) } else { f64::from(0.3_f32) }
+}
+
 /// Air (seconds) below which `BreathAirGoal` runs: 140 ticks.
 const BREATH_AIR: f32 = 7.0;
 /// `DolphinSwimToTreasureGoal` needs 100 ticks of air.
@@ -687,7 +693,8 @@ impl Entities {
         // (`ageUp(getSpeedUpSecondsWhenFeeding(-age), true)`); otherwise the
         // fish sends it looking for treasure.
         if m.baby && !m.age_locked {
-            m.feed_growth();
+            // `ageUp(getSpeedUpSecondsWhenFeeding(-age), true)`: forced.
+            m.age_up(crate::entity::animals::speed_up_seconds(-m.age), true);
         } else {
             m.dolphin_mut()?.got_fish = true;
         }
@@ -801,6 +808,21 @@ impl Entities {
                 continue;
             }
             let (pos, yrot, pitch, shape, alive) = (m.pos, m.yrot(), m.move_ctl.pitch, m.shape(), m.alive());
+            // v1.0 gap Track 3b: `AgeableMob.aiStep`'s happy-villager
+            // particle every fourth tick of a forced growth's 40, one at a
+            // time somewhere over the dolphin (`getRandomX(1)`,
+            // `getRandomY() + 0.5`), with the treasure goal's stand-in.
+            let sparkles = std::mem::take(&mut m.forced_sparkles);
+            for _ in 0..sparkles {
+                let mut b = crate::particles::Burst::new(
+                    crate::particles::Kind::Effect,
+                    pos + DVec3::Y * (shape.height * 0.5 + 0.5),
+                    1,
+                );
+                b.color = Some([0.35, 0.85, 0.3, 1.0]);
+                b.spread = DVec3::new(shape.half_width * 2.0, shape.height, shape.half_width * 2.0);
+                self.particles.push(crate::particles::Request::Burst(b));
+            }
             let Some(d) = m.dolphin_mut() else { continue };
             if std::mem::take(&mut d.happy) {
                 let mut b = crate::particles::Burst::new(

@@ -869,6 +869,11 @@ impl Game {
                 .and_then(|m| m.villager.as_ref())
                 .map_or(46.0, |v| 26.0 + if v.wandering { 60.0 } else { v.level as f32 * 20.0 });
         }
+        // v1.0 gap Track 3b: a mount's screen has the survival
+        // inventory's height (`imageHeight` 166, the inventory at y 84).
+        if self.mount_screen().is_some() {
+            return SURVIVAL_TOP;
+        }
         match self.open_container_count() {
             5 => return SLOT + 14.0,
             // A double chest's six rows (`ContainerScreen`, 54 slots).
@@ -880,6 +885,15 @@ impl Game {
             // v0.18 Track 4: `InventoryScreen`'s main grid starts at y 84.
             (true, true) => SURVIVAL_TOP,
             (true, false) => CRAFT_H,
+        }
+    }
+
+    /// v1.0 gap Track 3b: the open mount's screen layout (Java's
+    /// `HorseInventoryScreen` or `NautilusInventoryScreen`).
+    pub(super) fn mount_screen(&self) -> Option<crate::entity::mounts::MountScreen> {
+        match self.body.container {
+            Container::Minecart(id) => self.mobs.entities.mount_screen(id),
+            _ => None,
         }
     }
 
@@ -945,6 +959,15 @@ impl Game {
             for i in 0..crate::world::crafter::SLOTS {
                 let (x, y) = super::crafter::grid_slot(i);
                 out.push((SlotRef::Chest(i), px + x, py + y));
+            }
+            self.top_h()
+        } else if let Some(screen) = self.mount_screen() {
+            // v1.0 gap Track 3b: `HorseInventoryMenu`'s and
+            // `NautilusInventoryMenu`'s slots (frames a pixel up and left of
+            // Java's corners): saddle and body down the left, the chest's
+            // columns right of the mount.
+            for (i, x, y) in screen.slots() {
+                out.push((SlotRef::Chest(i), px + x - 1.0, py + y - 1.0));
             }
             self.top_h()
         } else if matches!(self.body.container, Container::Chest(_) | Container::Minecart(_)) {
@@ -1114,7 +1137,13 @@ impl Game {
         }
         let py = py + self.search_h();
         let top_py = py;
+        // v1.0 gap Track 3b: Java titles a mount's screen with its name.
+        let mount_name = match self.body.container {
+            Container::Minecart(id) if self.mount_screen().is_some() => self.mobs.entities.mount_name(id),
+            _ => None,
+        };
         let title = match (self.body.container, self.session.mode) {
+            _ if mount_name.is_some() => mount_name.as_deref().unwrap_or_default(),
             (Container::CraftingTable, _) => "Crafting",
             (Container::Furnace(_), _) => "Furnace",
             (Container::Chest(p), _) if self.world.chest_partner(p).is_some() => "Large Chest",
@@ -1191,6 +1220,26 @@ impl Game {
             ui.rect(px + 25.0, top_py + 7.0, 50.0, 71.0, style::srgb(token::OUTLINE));
             super::preview::player(ui, (px + 26.0, top_py + 8.0, px + 75.0, top_py + 78.0), 30.0, 0.0625, mouse);
         }
+        if let (Some(_), Container::Minecart(id)) = (self.mount_screen(), self.body.container) {
+            // v1.0 gap Track 3b: `AbstractMountInventoryScreen`'s mount in
+            // the dark box (26, 18) to (78, 70), size 17, turning toward the
+            // pointer.
+            let mouse = (self.cursor_px.0 / ui.scale, self.cursor_px.1 / ui.scale);
+            ui.rect(px + 25.0, top_py + 17.0, 54.0, 54.0, style::srgb(token::OUTLINE));
+            ui.rect(px + 26.0, top_py + 18.0, 52.0, 52.0, style::srgb(0x000000));
+            if let Some(m) = self.mobs.entities.mount(id) {
+                let time = self.started.elapsed().as_secs_f32();
+                super::preview::mob(
+                    ui,
+                    m,
+                    (px + 26.0, top_py + 18.0, px + 78.0, top_py + 70.0),
+                    17.0,
+                    0.25,
+                    mouse,
+                    time,
+                );
+            }
+        }
         self.slots_ui(ui, px, top_py);
     }
 
@@ -1200,6 +1249,7 @@ impl Game {
     pub(super) fn slots_ui(&self, ui: &mut Ui, px: f32, top_py: f32) {
         let (sw, sh) = ui.size();
         let hovered = self.slot_under_cursor();
+        let mount = self.mount_screen();
         for (r, x, y) in self.inventory_slots((sw, sh)) {
             // v0.18 Track 2: Java's slot frame, and the bigger frame of a
             // crafting or furnace result.
@@ -1210,6 +1260,10 @@ impl Game {
             let stack = self.slot_stack(r);
             // Faint outline of what goes in an empty armor or lapis slot.
             let outline = match (r, stack) {
+                // v1.0 gap Track 3b: a mount's saddle and body slots
+                // (`container/slot/saddle`, `horse_armor`, `llama_armor`,
+                // `nautilus_armor_inventory`).
+                (SlotRef::Chest(i @ (0 | 1)), None) if mount.is_some() => mount_slot_sprite(mount, i),
                 (SlotRef::Armor(p), None) => Item::armor(p, ArmorMaterial::Iron).icon_layer(),
                 (SlotRef::Offhand, None) => Item::SHIELD.icon_layer(),
                 (SlotRef::EnchantLapis, None) => Item::LAPIS_LAZULI.icon_layer(),
@@ -1756,6 +1810,21 @@ fn hash(a: u32, b: u32) -> u32 {
     h ^= h >> 15;
     h = h.wrapping_mul(0x2C1B_3C6D);
     h ^ (h >> 12)
+}
+
+/// v1.0 gap Track 3b: the empty sprite of a mount screen's saddle (`slot`
+/// 0) or body slot (1), as the item it takes, drawn as the armor slots' are.
+pub(super) fn mount_slot_sprite(screen: Option<crate::entity::mounts::MountScreen>, slot: usize) -> Option<u16> {
+    use crate::entity::mounts::MountArmor;
+    let item = match (slot, screen?.armor) {
+        (0, _) => Item::SADDLE,
+        (_, Some(MountArmor::Horse)) => Item::IRON_HORSE_ARMOR,
+        // White carpet (block 576), the shape of Java's `llama_armor` sprite.
+        (_, Some(MountArmor::Llama)) => Item::from_block(crate::world::block::Block(576)),
+        (_, Some(MountArmor::Nautilus)) => voxelcraft::equipment::IRON_NAUTILUS_ARMOR,
+        (_, None) => return None,
+    };
+    item.icon_layer()
 }
 
 fn capitalize(s: &str) -> String {

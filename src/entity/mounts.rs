@@ -66,6 +66,180 @@ pub fn max_temper(kind: MobKind) -> u8 {
 pub fn is_carpet(item: Item) -> bool {
     item.block().is_some_and(|b| b.carpet_color().is_some())
 }
+/// v1.0 gap Track 3b: what Java's mount inventory screen shows
+/// (`AbstractMountInventoryScreen` with `HorseInventoryMenu` or
+/// `NautilusInventoryMenu`): the saddle slot at (8, 18), the body slot at
+/// (8, 36) with its sprite, and `columns` columns of three chest slots from
+/// (80, 18). The vehicle's slots keep their order: 0 the saddle, 1 the body,
+/// then the chest.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MountScreen {
+    pub saddle: bool,
+    pub armor: Option<MountArmor>,
+    pub columns: usize,
+}
+
+/// The body slot's empty sprite: `container/slot/horse_armor`,
+/// `llama_armor` or `nautilus_armor_inventory`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MountArmor {
+    Horse,
+    Llama,
+    Nautilus,
+}
+
+impl MountScreen {
+    /// Java's slot corners (screen pixels from the panel's top left) for
+    /// each of the vehicle's slots the screen shows, by slot index.
+    pub fn slots(&self) -> Vec<(usize, f32, f32)> {
+        let mut out = Vec::with_capacity(2 + self.columns * 3);
+        if self.saddle {
+            out.push((0, 8.0, 18.0));
+        }
+        if self.armor.is_some() {
+            out.push((1, 8.0, 36.0));
+        }
+        for i in 0..self.columns * 3 {
+            let (x, y) = (i % self.columns, i / self.columns);
+            out.push((2 + i, 80.0 + 18.0 * x as f32, 18.0 + 18.0 * y as f32));
+        }
+        out
+    }
+}
+
+/// v1.0 gap Track 3b: Java's `AbstractHorse.canPerformRearing`: every horse,
+/// donkey, mule and undead horse rears; llamas, trader llamas and camels
+/// (and camel husks) don't.
+pub fn rears(kind: MobKind) -> bool {
+    equine(kind) && !matches!(kind, MobKind::Llama | MobKind::TraderLlama) && !camel_like(kind)
+}
+
+/// v1.0 gap Track 3b: a mount sound Java plays from `Camel` (`CAMEL_SIT`,
+/// `CAMEL_STAND`, `CAMEL_DASH`, `CAMEL_DASH_READY`, and `CamelHusk`'s own)
+/// or `AbstractHorse.makeMad` (`getAngrySound`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Cue {
+    CamelSit,
+    CamelStand,
+    CamelDash,
+    CamelDashReady,
+    CamelHuskSit,
+    CamelHuskStand,
+    CamelHuskDash,
+    CamelHuskDashReady,
+    HorseAngry,
+    HorseAngryBaby,
+    DonkeyAngry,
+    MuleAngry,
+    ZombieHorseAngry,
+    LlamaAngry,
+}
+
+impl Cue {
+    pub const ALL: [Cue; 14] = [
+        Cue::CamelSit,
+        Cue::CamelStand,
+        Cue::CamelDash,
+        Cue::CamelDashReady,
+        Cue::CamelHuskSit,
+        Cue::CamelHuskStand,
+        Cue::CamelHuskDash,
+        Cue::CamelHuskDashReady,
+        Cue::HorseAngry,
+        Cue::HorseAngryBaby,
+        Cue::DonkeyAngry,
+        Cue::MuleAngry,
+        Cue::ZombieHorseAngry,
+        Cue::LlamaAngry,
+    ];
+
+    /// The Java sound event.
+    pub fn key(self) -> &'static str {
+        match self {
+            Cue::CamelSit => "entity.camel.sit",
+            Cue::CamelStand => "entity.camel.stand",
+            Cue::CamelDash => "entity.camel.dash",
+            Cue::CamelDashReady => "entity.camel.dash_ready",
+            Cue::CamelHuskSit => "entity.camel_husk.sit",
+            Cue::CamelHuskStand => "entity.camel_husk.stand",
+            Cue::CamelHuskDash => "entity.camel_husk.dash",
+            Cue::CamelHuskDashReady => "entity.camel_husk.dash_ready",
+            Cue::HorseAngry => "entity.horse.angry",
+            Cue::HorseAngryBaby => "entity.baby_horse.angry",
+            Cue::DonkeyAngry => "entity.donkey.angry",
+            Cue::MuleAngry => "entity.mule.angry",
+            Cue::ZombieHorseAngry => "entity.zombie_horse.angry",
+            Cue::LlamaAngry => "entity.llama.angry",
+        }
+    }
+
+    /// The cue `kind` (a `baby` or not) plays for `event`, if it has one:
+    /// a skeleton horse has no angry sound, and only camels sit and dash.
+    pub fn for_event(kind: MobKind, baby: bool, event: Event) -> Option<Cue> {
+        let husk = kind == MobKind::CamelHusk;
+        Some(match (event, kind) {
+            (Event::Sit, MobKind::Camel | MobKind::CamelHusk) => {
+                if husk {
+                    Cue::CamelHuskSit
+                } else {
+                    Cue::CamelSit
+                }
+            }
+            (Event::Stand, MobKind::Camel | MobKind::CamelHusk) => {
+                if husk {
+                    Cue::CamelHuskStand
+                } else {
+                    Cue::CamelStand
+                }
+            }
+            (Event::Dash, MobKind::Camel | MobKind::CamelHusk) => {
+                if husk {
+                    Cue::CamelHuskDash
+                } else {
+                    Cue::CamelDash
+                }
+            }
+            (Event::DashReady, MobKind::Camel | MobKind::CamelHusk) => {
+                if husk {
+                    Cue::CamelHuskDashReady
+                } else {
+                    Cue::CamelDashReady
+                }
+            }
+            (Event::Angry, MobKind::Horse) => {
+                if baby {
+                    Cue::HorseAngryBaby
+                } else {
+                    Cue::HorseAngry
+                }
+            }
+            (Event::Angry, MobKind::Donkey) => Cue::DonkeyAngry,
+            (Event::Angry, MobKind::Mule) => Cue::MuleAngry,
+            (Event::Angry, MobKind::ZombieHorse) => Cue::ZombieHorseAngry,
+            (Event::Angry, MobKind::Llama | MobKind::TraderLlama) => Cue::LlamaAngry,
+            _ => return None,
+        })
+    }
+}
+
+/// v1.0 gap Track 3b: what a mount did that makes a sound, before the
+/// mount's kind picks the cue ([`Cue::for_event`]). `Ambient` is
+/// `RandomStandGoal`'s `getAmbientStandSound` (the ordinary ambient call).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Event {
+    Sit,
+    Stand,
+    Dash,
+    DashReady,
+    Angry,
+    Ambient,
+}
+
+/// v1.0 gap Track 3b: `AbstractHorse`'s rearing (`setStanding(20)`).
+pub const STAND_TICKS: u8 = 20;
+/// `Mob.getAmbientSoundInterval`, `RandomStandGoal`'s reset (`getAmbientStandInterval`).
+pub const AMBIENT_STAND_INTERVAL: i32 = 80;
+
 /// `Avatar.DEFAULT_VEHICLE_ATTACHMENT`: a riding player's feet are this far
 /// below the seat a vehicle offers.
 pub const PLAYER_VEHICLE_ATTACHMENT: f64 = 0.6;
@@ -94,6 +268,8 @@ pub mod camel {
     pub const RUNNING_SPEED_BONUS: f32 = 0.1;
     pub const DASH_HORIZONTAL: f32 = 22.2222;
     pub const DASH_VERTICAL: f32 = 1.4285;
+    /// `MAX_HEAD_Y_ROT`, degrees.
+    pub const MAX_HEAD_Y_ROT: f32 = 30.0;
     /// `SITTING_HEIGHT_DIFFERENCE` and `BABY_SCALE`.
     pub const SITTING_HEIGHT_DIFFERENCE: f32 = 1.43;
     pub const BABY_SCALE: f32 = 0.6;
@@ -252,6 +428,33 @@ pub struct State {
     /// whether a mob rider steers this camel husk (`isMobControlled`).
     pub(super) idle_wait: u16,
     pub(super) mob_controlled: bool,
+    /// v1.0 gap Track 3b: the camel brain's `LOOK_TARGET` memory (a player
+    /// within 6 blocks, set by `SetEntityLookTargetSometimes` and erased by
+    /// `LookAtTargetSink` after 45 to 89 ticks), its ticker, and the sink's
+    /// ticks left.
+    pub(super) look_target: Option<(PlayerId, DVec3)>,
+    pub(super) look_ticker: i32,
+    pub(super) look_left: u16,
+    /// v1.0 gap Track 3b: `BodyRotationControl`'s `headStableTime` and
+    /// `lastStableYHeadRot` (radians, VoxelCraft's yaw).
+    pub(super) head_stable: u8,
+    pub(super) last_stable_head: f32,
+    /// v1.0 gap Track 3b: ticks since `Camel.DASH` turned on, for the dash
+    /// animation (`dashAnimationState`), and a released jump the server's
+    /// `handleStartJump` still has to see (`floor(charge × 100)`).
+    pub dash_ticks: u16,
+    started_jump: Option<i32>,
+    /// v1.0 gap Track 3b: `AbstractHorse`'s rearing: the `FLAG_STANDING`
+    /// countdown (`standCounter`), `allowStandSliding`, `RandomStandGoal`'s
+    /// `nextStand`, and the client's `standAnim` (now and a tick ago),
+    /// which lifts and shifts the rider and drives the rearing animation.
+    pub stand_counter: u8,
+    allow_stand_sliding: bool,
+    next_stand: i32,
+    pub stand_anim: f32,
+    pub stand_anim_o: f32,
+    /// v1.0 gap Track 3b: sounds this mount made since the last update.
+    pub(super) events: Vec<Event>,
     /// A nautilus's dash cooldown as the rider's jump charge sees it
     /// (`PlayerRideableJumping.getJumpCooldown`), and whether the mount
     /// stood on the ground when the rider let go of jump.
@@ -352,6 +555,19 @@ impl State {
             pose_time: camel::FULL_STAND,
             idle_wait: 0,
             mob_controlled: false,
+            look_target: None,
+            look_ticker: 0,
+            look_left: 0,
+            head_stable: 0,
+            last_stable_head: 0.0,
+            dash_ticks: 0,
+            started_jump: None,
+            stand_counter: 0,
+            allow_stand_sliding: false,
+            next_stand: -AMBIENT_STAND_INTERVAL,
+            stand_anim: 0.0,
+            stand_anim_o: 0.0,
+            events: Vec::new(),
             jump_cooldown: 0,
             vehicle_on_ground: true,
             slots: [None; 17],
@@ -463,9 +679,20 @@ impl State {
             }
             if self.jump_held && !input.jump {
                 self.jump_ticks = -10;
-                // `onPlayerJump`: a camel dashes only from the ground.
+                let amount = (self.jump_charge * 100.0).floor() as i32;
+                // `onPlayerJump`: a camel dashes only from the ground; a
+                // saddled horse rears (`standIfPossible`, sliding allowed).
                 if !camel || self.vehicle_on_ground {
                     self.pending_jump = Some(self.jump_charge);
+                }
+                if !camel && self.saddled() && rears(kind) {
+                    self.allow_stand_sliding = true;
+                    self.stand_if_possible(kind);
+                }
+                // `sendRidingJump`: the server's `handleStartJump` runs
+                // when the vehicle `canJump` and the amount is above 0.
+                if amount > 0 {
+                    self.started_jump = Some(amount);
                 }
             } else if !self.jump_held && input.jump {
                 self.jump_ticks = 0;
@@ -486,7 +713,104 @@ impl State {
         if self.dashing && self.dash_cooldown < 50 && settled {
             self.dashing = false;
         }
-        self.dash_cooldown = self.dash_cooldown.saturating_sub(1);
+        // `Camel.tick`: the dash-ready sound as the cooldown runs out.
+        if self.dash_cooldown > 0 {
+            self.dash_cooldown -= 1;
+            if self.dash_cooldown == 0 {
+                self.events.push(Event::DashReady);
+            }
+        }
+        self.dash_ticks = if self.dashing { self.dash_ticks.saturating_add(1) } else { 0 };
+    }
+    /// v1.0 gap Track 3b: `Camel.handleStartJump` for a released jump the
+    /// camel `canJump` from (saddled, not sitting or changing pose): the
+    /// dash sound and `DASH`, whose change sets a 55-tick cooldown when
+    /// none is running (`onSyncedDataUpdated`), even for a release in the
+    /// air that didn't dash. `AbstractHorse.handleStartJump` rears.
+    pub(super) fn start_jump(&mut self, kind: MobKind) {
+        let Some(_amount) = self.started_jump.take() else { return };
+        if !self.saddled() {
+            return;
+        }
+        if camel_like(kind) {
+            if self.refuses_to_move() {
+                return;
+            }
+            self.events.push(Event::Dash);
+            if !self.dashing {
+                self.dashing = true;
+                if self.dash_cooldown == 0 {
+                    self.dash_cooldown = DASH_COOLDOWN;
+                }
+            }
+        } else if rears(kind) {
+            self.allow_stand_sliding = true;
+            self.stand_if_possible(kind);
+        }
+    }
+    /// `AbstractHorse.standIfPossible`: rear for 20 ticks (`setStanding`).
+    pub fn stand_if_possible(&mut self, kind: MobKind) {
+        if rears(kind) {
+            self.stand_counter = STAND_TICKS;
+        }
+    }
+    /// `AbstractHorse.makeMad`: rear (if it can) and play the angry sound,
+    /// unless it already rears.
+    pub fn make_mad(&mut self, kind: MobKind) {
+        if !self.standing() {
+            self.stand_if_possible(kind);
+            self.events.push(Event::Angry);
+        }
+    }
+    /// `AbstractHorse.isStanding` (`FLAG_STANDING`): rearing. The rearing
+    /// animation reads [`State::stand_anim`].
+    pub fn standing(&self) -> bool {
+        self.stand_counter > 0
+    }
+    /// `AbstractHorse.getStandAnim`: the rearing animation's progress at
+    /// `partial` of the way through the tick, 0 to 1.
+    pub fn stand_anim(&self, partial: f32) -> f32 {
+        self.stand_anim_o + (self.stand_anim - self.stand_anim_o) * partial
+    }
+    /// `AbstractHorse.getRiddenInput` holds a rearing horse on the ground
+    /// unless a jump is pending or `allowStandSliding`.
+    pub(super) fn rearing_holds(&self, on_ground: bool) -> bool {
+        on_ground && self.pending_jump.is_none() && self.standing() && !self.allow_stand_sliding
+    }
+    /// One tick of `AbstractHorse.tick`'s standing countdown and
+    /// `standAnim`, and `RandomStandGoal` (every tick, `requiresUpdateEveryTick`)
+    /// for an AI that runs: `nextStand` counts up from -80, and once past 0
+    /// a `nextStand`-in-1000 roll resets it and, one time in ten, rears
+    /// with the ambient call. `immobile` is `isImmobile` (eating or rearing).
+    pub(super) fn rear_tick(&mut self, kind: MobKind, ai: bool, rng: &mut Rng) {
+        if !rears(kind) {
+            return;
+        }
+        if ai {
+            self.next_stand += 1;
+            if self.next_stand > 0 && (rng.next_int(1000) as i32) < self.next_stand {
+                self.next_stand = -AMBIENT_STAND_INTERVAL;
+                if !self.standing() && rng.next_int(10) == 0 {
+                    self.stand_if_possible(kind);
+                    self.events.push(Event::Ambient);
+                }
+            }
+        }
+        if self.stand_counter > 0 {
+            self.stand_counter -= 1;
+        }
+        self.stand_anim_o = self.stand_anim;
+        if self.standing() {
+            self.stand_anim = (self.stand_anim + ((1.0 - self.stand_anim) * 0.4 + 0.05)).min(1.0);
+        } else {
+            self.allow_stand_sliding = false;
+            let a = self.stand_anim;
+            self.stand_anim = (a + ((0.8 * a * a * a - a) * 0.6 - 0.05)).max(0.0);
+        }
+    }
+    /// The sounds since the last call, oldest first.
+    pub(super) fn take_events(&mut self) -> Vec<Event> {
+        std::mem::take(&mut self.events)
     }
     /// The controlling rider's forward key (`zza`) and sprinting.
     pub fn rider_forward(&self) -> f32 {
@@ -504,16 +828,19 @@ impl State {
         self.camel_sitting || self.in_pose_transition()
     }
     /// `Camel.sitDown` and `standUp`: the pose changes and its clock restarts.
+    /// v1.0 gap Track 3b: with Java's `CAMEL_SIT` and `CAMEL_STAND` sounds.
     pub fn sit_down(&mut self) {
         if !self.camel_sitting {
             self.camel_sitting = true;
             self.pose_time = 0;
+            self.events.push(Event::Sit);
         }
     }
     pub fn stand_up(&mut self) {
         if self.camel_sitting {
             self.camel_sitting = false;
             self.pose_time = 0;
+            self.events.push(Event::Stand);
         }
     }
     /// `Camel.standUpInstantly`: standing, with no transition left.
@@ -723,6 +1050,12 @@ pub(super) fn control(mob: &mut Mob, dt: f64, rng: &mut Rng) -> Option<(Option<D
         mob.health = (mob.health + 1.).min(s.max_health);
         s.regen_ticks = 0.;
     }
+    // v1.0 gap Track 3b: `AbstractHorse`'s rearing a tick at a time;
+    // `RandomStandGoal` runs while the AI does (not while it rears).
+    for _ in 0..ticks {
+        let ai = !s.standing();
+        s.rear_tick(mob.kind, ai, rng);
+    }
     if camel_like(mob.kind) {
         // v1.0 gap Track 3: the pose clock, and `Camel.tick` standing a
         // sitting camel up in water. Sitting and standing otherwise come
@@ -739,6 +1072,11 @@ pub(super) fn control(mob: &mut Mob, dt: f64, rng: &mut Rng) -> Option<(Option<D
         }
     } else {
         s.dash_cooldown = s.dash_cooldown.saturating_sub(ticks as u16);
+    }
+    // `LivingEntity.aiStep`: a rearing horse is immobile (`isImmobile`):
+    // its AI doesn't run and it walks nowhere.
+    if s.standing() && !s.controlled() {
+        return Some((None, 0.));
     }
     // A caravan llama walks after the one ahead, keeping about two blocks back.
     if s.rider.is_none()
@@ -757,8 +1095,11 @@ pub(super) fn control(mob: &mut Mob, dt: f64, rng: &mut Rng) -> Option<(Option<D
                 s.tame = true;
                 s.owner = Some(rider);
             } else {
+                // `RunAroundLikeCrazyGoal.tick`: more temper, the rider
+                // thrown off, then `makeMad` (v1.0 gap Track 3b).
                 s.temper = (s.temper + 5).min(max_temper(mob.kind));
                 s.rider = None;
+                s.make_mad(mob.kind);
             }
         }
         return Some((Some(DVec3::new(mob.yaw.cos() as f64, 0., mob.yaw.sin() as f64)), 2.4));
@@ -964,6 +1305,12 @@ impl Entities {
             return (s.rider == Some(player)).then(|| super::nautilus::seat(m));
         }
         if !camel_like(m.kind) {
+            // v1.0 gap Track 3b: `AbstractHorse.getPassengerAttachmentPoint`
+            // lifts the rider 0.15 and moves them 0.7 back as it rears
+            // (`standAnimO`).
+            let rear = f64::from(s.stand_anim_o) * if m.baby { 0.5 } else { 1.0 };
+            let forward = DVec3::new(f64::from(m.yaw.cos()), 0.0, f64::from(m.yaw.sin()));
+            let seat = seat + DVec3::Y * (0.15 * rear) - forward * (0.7 * rear);
             return (s.rider == Some(player)).then_some(seat);
         }
         // v1.0 gap Track 3: `Camel.getPassengerAttachmentPoint`, less the
@@ -1124,6 +1471,17 @@ impl Entities {
         {
             // A camel's rear seat.
             s.passenger = Some(player);
+        } else if !m.baby
+            && !s.tame
+            && held.is_some()
+            && matches!(kind, MobKind::Horse | MobKind::Donkey | MobKind::Mule | MobKind::Llama | MobKind::ZombieHorse)
+        {
+            // v1.0 gap Track 3b: `Horse`, `ZombieHorse` and
+            // `AbstractChestedHorse.mobInteract`: any item that isn't food
+            // makes an untamed animal mad (it rears, if it can, and plays
+            // its angry sound) instead of letting the player on.
+            s.make_mad(kind);
+            return true;
         } else {
             return false;
         }
@@ -1252,6 +1610,53 @@ impl Entities {
             }
         }
         Some(stack)
+    }
+    /// v1.0 gap Track 3b: the layout of Java's mount inventory screen for
+    /// mob vehicle `id` (`HorseInventoryMenu`, `NautilusInventoryMenu`), or
+    /// `None` for carts, boats and mobs without one.
+    pub fn mount_screen(&self, id: u32) -> Option<MountScreen> {
+        let m = self.mount(id)?;
+        let s = m.mount.as_ref()?;
+        if !equine(m.kind) && !super::nautilus::is_nautilus(m.kind) {
+            return None;
+        }
+        // `inventoryColumns`: a donkey's or mule's chest is 5 wide, a
+        // llama's 3 slots a strength point.
+        let columns = match m.kind {
+            MobKind::Llama if s.chest => usize::from(s.strength),
+            _ if s.chest => 5,
+            _ => 0,
+        };
+        Some(MountScreen {
+            // `#can_equip_saddle` (not llamas) and `canUseSlot(SADDLE)`.
+            saddle: m.kind != MobKind::Llama,
+            // `#can_wear_horse_armor` or a llama, or a nautilus's body slot.
+            armor: match m.kind {
+                MobKind::Horse | MobKind::ZombieHorse => Some(MountArmor::Horse),
+                MobKind::Llama => Some(MountArmor::Llama),
+                k if super::nautilus::is_nautilus(k) => Some(MountArmor::Nautilus),
+                _ => None,
+            },
+            columns,
+        })
+    }
+    /// v1.0 gap Track 3b: the mount screen's title, Java's
+    /// `getDisplayName`: the custom name, else the kind's.
+    pub fn mount_name(&self, id: u32) -> Option<String> {
+        let m = self.mount(id)?;
+        Some(m.name.as_str().map_or_else(
+            || {
+                let name = m.kind.name();
+                let mut out = String::with_capacity(name.len());
+                let mut up = true;
+                for ch in name.chars().map(|c| if c == '_' { ' ' } else { c }) {
+                    out.extend(if up { ch.to_uppercase().collect::<Vec<_>>() } else { vec![ch] });
+                    up = ch == ' ';
+                }
+                out
+            },
+            str::to_string,
+        ))
     }
     pub fn vehicle_title(&self, id: u32) -> &'static str {
         if let Some(m) = self.mount(id) {

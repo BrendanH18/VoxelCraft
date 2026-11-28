@@ -292,17 +292,17 @@ impl Call {
 /// A voiced utterance: `f0(t)` is the pitch, `env(t)` the loudness,
 /// `formants` the vowel as (frequency, Q, gain), scaled over time by
 /// `shift(t)` (1 = unchanged). `breath` mixes in aspiration noise.
-struct Utterance<'a> {
-    secs: f32,
-    f0: &'a dyn Fn(f32) -> f32,
-    env: &'a dyn Fn(f32) -> f32,
-    formants: [(f32, f32, f32); 3],
-    shift: &'a dyn Fn(f32) -> f32,
-    jitter: f32,
-    breath: f32,
+pub(super) struct Utterance<'a> {
+    pub(super) secs: f32,
+    pub(super) f0: &'a dyn Fn(f32) -> f32,
+    pub(super) env: &'a dyn Fn(f32) -> f32,
+    pub(super) formants: [(f32, f32, f32); 3],
+    pub(super) shift: &'a dyn Fn(f32) -> f32,
+    pub(super) jitter: f32,
+    pub(super) breath: f32,
 }
 
-fn utter(rng: &mut Rng, u: &Utterance) -> Vec<f32> {
+pub(super) fn utter(rng: &mut Rng, u: &Utterance) -> Vec<f32> {
     let len = samples(u.secs);
     let mut filters: Vec<Biquad> = u.formants.iter().map(|&(f, q, _)| Biquad::bandpass(f, q)).collect();
     let mut phase = 0.0f32;
@@ -339,17 +339,17 @@ fn utter(rng: &mut Rng, u: &Utterance) -> Vec<f32> {
 }
 
 /// A smooth rise over `a` seconds and fall over the last `r` of `len`.
-fn swell(t: f32, a: f32, r: f32, len: f32) -> f32 {
+pub(super) fn swell(t: f32, a: f32, r: f32, len: f32) -> f32 {
     let up = (t / a).min(1.0);
     let down = ((len - t) / r).clamp(0.0, 1.0);
     up * up * (3.0 - 2.0 * up) * down * down * (3.0 - 2.0 * down)
 }
 
-fn lerp(a: f32, b: f32, t: f32) -> f32 {
+pub(super) fn lerp(a: f32, b: f32, t: f32) -> f32 {
     a + (b - a) * t.clamp(0.0, 1.0)
 }
 
-const FLAT: &dyn Fn(f32) -> f32 = &|_| 1.0;
+pub(super) const FLAT: &dyn Fn(f32) -> f32 = &|_| 1.0;
 
 pub fn render(voice: Voice, call: Call, rng: &mut Rng) -> Vec<f32> {
     match voice {

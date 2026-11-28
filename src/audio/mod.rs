@@ -24,6 +24,7 @@ mod flight;
 mod illager;
 mod minecart;
 pub mod mixer;
+mod mounts;
 mod raid;
 mod sniffer;
 pub mod sounds;

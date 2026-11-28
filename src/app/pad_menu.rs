@@ -989,6 +989,14 @@ impl Game {
                         None
                     }
                 };
+                // v1.0 gap Track 3b: a mount's empty saddle and body slots
+                // show the item they take, as on the mount screen.
+                if let (None, Tab::Vehicle(id), Slot::Ref(SlotRef::Chest(i @ (0 | 1)))) =
+                    (stack, tab, slot(tab, c, r, lists))
+                    && let Some(layer) = super::hud::mount_slot_sprite(self.mobs.entities.mount_screen(id), i)
+                {
+                    ui.icon_shape(x, y, 16.0, layer, [0.0, 0.0, 1.0, 1.0], style::srgba(0xE0E0E0, 0.5));
+                }
                 if let Some(stack) = stack {
                     draw_stack(ui, x - 0.5, y - 0.5, stack, true, dial);
                 }

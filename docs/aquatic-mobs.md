@@ -95,6 +95,22 @@ Since v1.0 gap Track 3
   pushed in Java 26.3 (`isPushedByFluid` is false for them), and aren't
   here.
 
+Since v1.0 gap Track 3b
+([record](verification/2026-11-27-v1.0-gap-track-03b-mounts-water.md)):
+
+- **Baby dolphins** remember the growth they were fed through (Java's
+  `ForcedAge`, saved) and sparkle green for two seconds after a fish. A
+  calf breathes at its own eyes, just above its feet, so it needs a little
+  more of the surface than an adult; it dries out by its whole body.
+- **Guardians** don't spot a target at once: with none, they look every
+  other tick and then only one time in five, about half a second on
+  average. A beam that reaches a squid or axolotl hits it twice, as in
+  Java: the magic part with a push, then only what the guardian's attack
+  adds over it.
+- **Currents** build up over a few ticks for land mobs, as in Java, to a
+  steady 0.07 blocks a tick in water (Track 3 used 0.056), and flowing lava
+  pushes mobs too, 0.0023 blocks a tick (0.007 in the Nether).
+
 ## References
 
 - [Java 1.21.5 biome spawn data](https://github.com/misode/mcmeta/tree/1.21.5-data/data/minecraft/worldgen/biome).

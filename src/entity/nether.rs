@@ -1719,6 +1719,10 @@ pub(crate) fn save_mob(m: &Mob) -> Value {
     if m.age_locked {
         v["age_locked"] = true.into();
     }
+    // v1.0 gap Track 3b: `ForcedAge`, written only once a feeding forced it.
+    if m.forced_age != 0 {
+        v["forced_age"] = m.forced_age.into();
+    }
 
     // Optional additions preserve legacy records byte-for-byte when absent.
     // v0.15 Track D: a chicken's, cow's or pig's variant by registry name.
@@ -1880,8 +1884,11 @@ pub(crate) fn load_mob(v: &Value) -> Option<Mob> {
     m.age_locked = v["age_locked"] == true;
     // Snifflets take twice as long as other babies to grow up.
     let youngest = if kind == MobKind::Sniffer { -48000 } else { -24000 };
-    m.age = v["age"].as_i64().unwrap_or(if m.baby && kind.is_breedable() { -24000 } else { 0 }).clamp(youngest, 6000)
+    // A forced dolphin comes of age at up to 24000 (v1.0 gap Track 3b).
+    let oldest = if kind == MobKind::Dolphin { 24000 } else { 6000 };
+    m.age = v["age"].as_i64().unwrap_or(if m.baby && kind.is_breedable() { -24000 } else { 0 }).clamp(youngest, oldest)
         as i32;
+    m.forced_age = v["forced_age"].as_i64().unwrap_or(0).clamp(0, 24000) as i32;
     if matches!(kind, MobKind::Frog | MobKind::Tadpole) {
         m.baby = false;
         m.age = m.age.max(0);
