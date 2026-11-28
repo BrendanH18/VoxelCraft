@@ -324,3 +324,37 @@ has the Java sources, checks and remaining differences. Code:
 - **Spears** reach the dragon's parts: a mob's stab lands and does nothing
   (only players and explosions hurt the dragon); a player's jab or charge
   deals the part damage.
+
+## Brain idle movement, the fox's hunting, baby boxes and shown trades (v1.0 gap Track 2e, implemented, unverified)
+
+The [Track 2e record](verification/2026-11-27-v1.0-gap-track-02e-behaviours.md)
+has the Java sources, checks and remaining differences. Code:
+`src/entity/mob/brain_walk.rs`, `src/entity/fox.rs`,
+`src/entity/mob/fox.rs`, `src/entity/mob/eyes.rs` and
+`src/entity/mob/head.rs`.
+
+- **Brains walk `WALK_TARGET`** with `MoveToTargetSink` (150 to 250 ticks,
+  babies at play 80 to 120, sniffers 500 to 700) instead of wandering.
+  Villagers run the idle package's movement `RunOne` (`InteractWith` a
+  villager, a breedable villager or a cat within 8, `VillageBoundRandomStroll`,
+  `SetWalkTargetFromLookTarget`, `JumpOnBed`, `DoNothing`), the babies' play
+  `RunOne`, the meet gate at the bell (`StrollAroundPoi`, `SocializeAtBell`)
+  and, without a home at night, the rest `RunOne`
+  (`SetClosestHomeAsWalkTarget`, `InsideBrownianWalk`, `GoToClosestVillage`);
+  work without a job site and meeting without a bell fall back to idle.
+  Piglins run their idle movement `RunOne` (stroll, `InteractWith` a
+  piglin, follow the look target unless a loved item is in sight) and,
+  celebrating, a look, a 2-block stroll or nothing. The sniffer's idle
+  `RunOne` starts its scent (also during the sniff cooldown) and sniff and
+  walks and looks.
+- **Baby boxes** are each kind's `BABY_DIMENSIONS` (villagers and zombie
+  kinds and piglins 0.49 by 0.98, chickens 0.3 by 0.4, rabbits 0.24 by
+  0.4, hoglins and zoglins 0.75 by 0.85, squid 0.5 by 0.5, foxes and
+  armadillos 0.6 of the adult, horses 0.7, turtles 0.3), for collision,
+  hits and navigation.
+- **Shown trades**: a villager showing its trades holds up the results of
+  the offers the player's item pays for, cycling every 40 ticks, and keeps
+  looking for 900 ticks.
+- **Foxes** hunt, sleep, perch and eat berries by Java's goals; see
+  [Animals](animals.md#foxes-v10-gap-track-2e-implemented-unverified).
+

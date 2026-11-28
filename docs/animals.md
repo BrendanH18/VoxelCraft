@@ -45,8 +45,9 @@ may bring a gift after their owner sleeps through the night.
 
 Parrots imitate nearby hostile calls and perch on an owner's free shoulder;
 jumping or entering water releases them. Cookies kill parrots. Foxes sleep
-by day, pick up ground items and eat carried food; bred foxes trust the two
-players who fed their parents. Rabbits hop and drop rabbit meat/hide, with a
+by day under cover, hunt, pick up ground items and eat carried food
+([below](#foxes-v10-gap-track-2e-implemented-unverified)); bred foxes trust
+the two players who fed their parents. Rabbits hop and drop rabbit meat/hide, with a
 10% rabbit-foot chance on a player kill. Goats jump, charge stationary players
 and lose one of their two horns when a ram hits stone, logs, packed ice, or
 iron/copper/emerald ore. Screaming goats have shorter ram cooldowns.
@@ -64,6 +65,26 @@ nest and drop a scute on growing up. Egg clusters have individual shell boxes.
 Sources: [Wolf](https://minecraft.wiki/w/Wolf), [Cat](https://minecraft.wiki/w/Cat),
 [Parrot](https://minecraft.wiki/w/Parrot), [Fox](https://minecraft.wiki/w/Fox),
 [Rabbit](https://minecraft.wiki/w/Rabbit), [Goat](https://minecraft.wiki/w/Goat).
+
+## Foxes (v1.0 gap Track 2e, implemented, unverified)
+
+Java 26.3's `Fox` goals, from the
+[Track 2e record](verification/2026-11-27-v1.0-gap-track-02e-behaviours.md)
+(code: `src/entity/fox.rs`, `src/entity/mob/fox.rs`). Red foxes target the
+nearest chicken, rabbit or baby turtle on land within 32 blocks, then
+schooling fish; snow foxes fish first. Farther than 6 blocks from a chicken
+or rabbit a fox stalks it at 1.5, then crouches with its head tilted; fully
+crouched with a clear path it pounces, biting within 2 blocks, and a pounce
+landing nose down in snow leaves it faceplanted for 40 ticks. Other prey it
+chases and bites (`FoxMeleeAttackGoal`), or leaps at within 4 blocks. By
+day a fox under open sky looks for a dark covered spot, and sleeps under
+cover once nothing alerts it within 12 blocks (prey, monsters, untamed pets,
+untrusted players who aren't sneaking, other mobs awake); at night with
+nothing around it sometimes sits and looks around. It walks to ripe sweet
+berry bushes and glow berries within 12 blocks and, with `mobGriefing`,
+picks them, keeping one in its mouth. It doesn't look at players while
+faceplanted or interested, and keeps its head's pitch while crouching or
+pouncing. Sleeping, sitting and crouching are saved.
 
 ## Leads and name tags
 
