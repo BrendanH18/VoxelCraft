@@ -11,20 +11,55 @@
 
 use super::*;
 
-/// The kinds Java 26.3 gives a baby model of its own that this game
-/// draws (the rest still draw their adult halved).
+/// The kinds Java 26.3 gives a baby model of its own (every baby layer in
+/// `LayerDefinitions`), drawn at full scale. v1.0 gap Track 7c added the
+/// other kinds' ([`super::baby_rigs`]). The ghastling is Java's adult happy
+/// ghast scaled by 0.2375 (`HappyGhastModel.BABY_TRANSFORMER`), as this
+/// game draws it; other babies (none in Java 26.3) draw their adult halved.
 pub(super) fn has_model(kind: MobKind) -> bool {
+    use MobKind::*;
     matches!(
         kind,
-        MobKind::Chicken
-            | MobKind::Pig
-            | MobKind::Cow
-            | MobKind::Sheep
-            | MobKind::Wolf
-            | MobKind::Villager
-            | MobKind::Zombie
-            | MobKind::Husk
-            | MobKind::Drowned
+        Chicken
+            | Pig
+            | Cow
+            | Mooshroom
+            | Sheep
+            | Wolf
+            | Villager
+            | Zombie
+            | Husk
+            | Drowned
+            | Armadillo
+            | Axolotl
+            | Bee
+            | Camel
+            | Cat
+            | Ocelot
+            | Dolphin
+            | Donkey
+            | Mule
+            | Horse
+            | SkeletonHorse
+            | ZombieHorse
+            | Fox
+            | Goat
+            | Llama
+            | TraderLlama
+            | Panda
+            | PolarBear
+            | Rabbit
+            | Squid
+            | GlowSquid
+            | Turtle
+            | Hoglin
+            | Zoglin
+            | Piglin
+            | ZombifiedPiglin
+            | Strider
+            | ZombieVillager
+            | Sniffer
+            | Nautilus
     )
 }
 
@@ -256,7 +291,32 @@ pub(super) fn pose(m: &Mob, time: f32, alpha: f32, head: Quat) -> Option<Parts> 
     let rz = Quat::from_rotation_z;
     // `QuadrupedModel` and the humanoids: `cos(pos * 0.6662) * 1.4 * speed`.
     let swing = walk_cos(m) * motion::LEG_SWING;
+    use super::baby_rigs as b;
     Some(match m.kind {
+        // v1.0 gap Track 7c.
+        MobKind::Hoglin | MobKind::Zoglin => b::hoglin::pose(m),
+        MobKind::Goat => b::goat::pose(m),
+        MobKind::PolarBear => b::polar_bear::pose(m),
+        MobKind::Panda => b::panda::pose(m, time),
+        MobKind::Llama | MobKind::TraderLlama => b::llama::pose(m),
+        MobKind::Camel => b::camel::pose(m, alpha),
+        MobKind::Fox => b::fox::pose(m, time),
+        MobKind::Cat | MobKind::Ocelot => b::feline::pose(m),
+        MobKind::Rabbit => b::rabbit::pose(m, alpha),
+        MobKind::Horse | MobKind::SkeletonHorse | MobKind::ZombieHorse | MobKind::Donkey | MobKind::Mule => {
+            b::equine::pose(m, time, alpha)
+        }
+        MobKind::Turtle => b::turtle::pose(m),
+        MobKind::Axolotl => b::axolotl::pose(m, alpha),
+        MobKind::Bee => b::bee::pose(m, time, alpha),
+        MobKind::Squid | MobKind::GlowSquid => b::squid::pose(m, alpha),
+        MobKind::Dolphin => b::dolphin::pose(m, time),
+        MobKind::Armadillo => b::armadillo::pose(m),
+        MobKind::Piglin | MobKind::ZombifiedPiglin => b::piglin::pose(m, time),
+        MobKind::Strider => b::strider::pose(m, time),
+        MobKind::ZombieVillager => b::zombie_villager::pose(m, time),
+        MobKind::Sniffer => b::snifflet::pose(m, time),
+        MobKind::Nautilus => b::nautilus::pose(m, time),
         MobKind::Chicken => {
             // `ChickenModel.setupAnim`; the baby's head is its body, which
             // doesn't turn to look. Its wings (Java's right one on +X)
@@ -280,7 +340,9 @@ pub(super) fn pose(m: &Mob, time: f32, alpha: f32, head: Quat) -> Option<Parts> 
             [2.5, 2.0, 3.0, -4.0],
             swing,
         ),
-        MobKind::Cow => {
+        // `MushroomCowRenderer` draws the calf model (no mushrooms on a
+        // baby); `passive::colour` paints its hide.
+        MobKind::Cow | MobKind::Mooshroom => {
             quadruped(CALF_BODY, [0.0; 3], CALF_HEAD, [0.0, 10.5, 5.0], head, CALF_LEG, [2.5, 6.0, 3.5, -3.5], swing)
         }
         MobKind::Sheep => quadruped(
@@ -437,22 +499,30 @@ mod tests {
     }
 
     /// The babies draw their own models at full scale, standing on the
-    /// ground and about their (halved) boxes' height, with heads larger
-    /// for their bodies than their adults' halved.
+    /// ground (a squid calf hangs below its feet, as Java's does; a bee
+    /// hovers; an axolotl's idle keyframes settle it), smaller than their
+    /// adults though Java's big-headed foals and kits stand about as tall.
     #[test]
     fn babies_draw_their_own_models_on_the_ground() {
+        let mut wrong = Vec::new();
         for kind in MobKind::ALL.into_iter().filter(|&k| has_model(k)) {
             let mut m = Mob::new(kind, DVec3::new(10.0, 64.0, 0.0), 0.0);
             m.baby = true;
             m.age = crate::entity::animals::BABY_AGE;
             let (lo, hi) = bounds(&m);
-            assert!(lo.y.abs() < 1e-3, "{kind:?} feet at {}", lo.y);
             let height = hi.y - lo.y;
             let adult = kind.shape().height as f32;
-            assert!(height > adult * 0.3 && height < adult * 0.75, "{kind:?} {height} vs adult {adult}");
+            let off_ground = matches!(kind, MobKind::Squid | MobKind::GlowSquid | MobKind::Bee | MobKind::Axolotl);
+            // (Java's baby turtle stands a tenth of a pixel up; the squid
+            // calf's tentacles reach a block.)
+            let tall = (adult * 1.2).max(if off_ground { 1.1 } else { 0.9 });
+            if (!off_ground && lo.y.abs() > 0.01) || !(height > adult * 0.25 && height < tall) {
+                wrong.push(format!("{kind:?}: feet {:.3}, {height:.3} high vs adult {adult:.3}", lo.y));
+            }
             let parts = pose(&m, 0.0, 1.0, Quat::IDENTITY).unwrap();
-            assert!(parts.len() >= 5, "{kind:?}");
+            assert!(parts.len() >= 2, "{kind:?}");
         }
+        assert!(wrong.is_empty(), "{wrong:#?}");
     }
 
     /// A baby zombie's sword hand is its right (on -X), like the adult's.

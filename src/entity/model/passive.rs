@@ -15,10 +15,10 @@ pub(super) fn mooshroom(m: &Mob) -> Parts {
     let rx = Quat::from_rotation_x;
     let mut p = parts![
         part(COW_BODY, [0.0; 3], Quat::IDENTITY),
-        part(COW_LEG, [-4.0, 12.0, 6.0], rx(swing)),
-        part(COW_LEG, [4.0, 12.0, 6.0], rx(-swing)),
-        part(COW_LEG, [-4.0, 12.0, -6.0], rx(-swing)),
-        part(COW_LEG, [4.0, 12.0, -6.0], rx(swing)),
+        part(COW_LEG, [-4.0, 12.0, 6.0], rx(-swing)),
+        part(COW_LEG, [4.0, 12.0, 6.0], rx(swing)),
+        part(COW_LEG, [-4.0, 12.0, -6.0], rx(swing)),
+        part(COW_LEG, [4.0, 12.0, -6.0], rx(-swing)),
         part(COW_HEAD, [0.0, 18.0, 9.0], head),
     ];
     if !m.baby && m.age >= 0 {
@@ -174,48 +174,6 @@ pub(super) fn tongue(m: &Mob, camera: DVec3, out: &mut EntityMesh, light: ([u8; 
     let from = (from - camera).as_vec3();
     push_cuboid(out, &c, &|v| from + rot * v / 16.0, rot, light, (FIRE, 0.0), 0.0);
 }
-const BAT_BODY: &[Cuboid] = &[
-    cube([-1.8, 0.0, -0.8], [1.8, 3.0, 0.8], [55, 43, 35], 18),
-    cube([-2.0, 3.0, -1.5], [2.0, 10.0, 1.5], [83, 60, 48], 32),
-    cube([-2.5, 9.0, -1.7], [2.5, 13.0, 2.0], [101, 75, 57], 28),
-    cube([-2.5, 12.0, -0.7], [-1.1, 14.4, 0.5], [128, 87, 70], 20),
-    cube([1.1, 12.0, -0.7], [2.5, 14.4, 0.5], [128, 87, 70], 20),
-    cube([-1.8, 10.5, 2.0], [-0.9, 11.5, 2.1], [24, 20, 17], 0),
-    cube([0.9, 10.5, 2.0], [1.8, 11.5, 2.1], [24, 20, 17], 0),
-    cube([-0.6, 9.5, 2.0], [0.6, 10.3, 2.6], [176, 115, 102], 16),
-    // v0.18 Track 6: eye glints, inner ears and two small fangs.
-    cube([-1.5, 11.1, 2.1], [-1.2, 11.4, 2.15], [214, 208, 196], 0),
-    cube([1.2, 11.1, 2.1], [1.5, 11.4, 2.15], [214, 208, 196], 0),
-    cube([-2.2, 12.4, 0.5], [-1.4, 14.0, 0.55], [150, 96, 86], 0),
-    cube([1.4, 12.4, 0.5], [2.2, 14.0, 0.55], [150, 96, 86], 0),
-    cube([-0.55, 9.1, 2.0], [-0.25, 9.5, 2.05], [236, 232, 222], 0),
-    cube([0.25, 9.1, 2.0], [0.55, 9.5, 2.05], [236, 232, 222], 0),
-];
-const BAT_WING: &[Cuboid] = &[
-    cube([0.0, -3.0, -0.4], [5.0, 1.0, 0.4], [79, 51, 43], 25),
-    cube([5.0, -5.0, -0.3], [10.0, 0.0, 0.3], [95, 61, 51], 30),
-    cube([5.0, 0.0, -0.5], [10.0, 0.5, 0.5], [134, 91, 69], 18),
-];
-/// v1.0 gap Track 7b: the bat's wings beat round `BatAnimation.BAT_FLYING`'s
-/// half-second loop, run from the tick it took off (`Bat.setupAnimationStates`
-/// starts each loop as the bat takes off or hangs up); this game's own
-/// drawn beat on that clock.
-pub(super) fn bat(m: &Mob, alpha: f32) -> Parts {
-    let resting = m.bat.as_ref().is_some_and(|s| s.resting);
-    let flip = if resting { Quat::from_rotation_z(PI) } else { Quat::IDENTITY };
-    let body_y = if resting { 14.4 } else { 0.0 };
-    let beat = m.loop_time(m.anim.bat_start, 0.5, alpha).unwrap_or(0.0);
-    let flap = if resting { 1.3 } else { (beat * std::f32::consts::TAU).sin() * 0.8 };
-    let mut p = parts![part(BAT_BODY, [0.0, body_y, 0.0], flip)];
-    for side in [-1.0, 1.0] {
-        let pivot = Vec3::new(side * 2.0, 9.0, 0.0);
-        let pivot = Vec3::new(0.0, body_y, 0.0) + flip * pivot;
-        let mirror = if side < 0.0 { Quat::from_rotation_y(PI) } else { Quat::IDENTITY };
-        p.push(part(BAT_WING, pivot.to_array(), flip * mirror * Quat::from_rotation_y(flap)));
-    }
-    p
-}
-
 const BEAR_FUR: Rgb = [227, 225, 208];
 const BEAR_BODY: &[Cuboid] = &[cube([-7.0, -1.0, -4.0], [7.0, 11.0, 18.0], BEAR_FUR, 20)];
 const BEAR_HEAD: &[Cuboid] = &[
@@ -243,8 +201,9 @@ pub(super) fn polar_bear(m: &Mob) -> Parts {
     let rot = Quat::from_rotation_x(-1.2 * stand);
     let hip = Vec3::new(0.0, 9.0, -8.0);
     let at = |v: [f32; 3]| (hip + rot * (Vec3::from_array(v) - hip)).to_array();
-    // `PolarBearModel` walks as a `QuadrupedModel`, standing or not.
-    let swing = -walk_cos(m) * motion::LEG_SWING;
+    // `PolarBearModel` walks as a `QuadrupedModel`, standing or not (v1.0
+    // gap Track 7c: the right hind leg, on -X, on the walk's cosine).
+    let swing = walk_cos(m) * motion::LEG_SWING;
     parts![
         part(BEAR_BODY, hip.to_array(), rot),
         part(
@@ -322,8 +281,9 @@ pub(super) fn panda(m: &Mob, time: f32) -> Parts {
     };
     let center = Vec3::new(0.0, 10.0, 0.0);
     let at = |p: [f32; 3]| (center + rot * (Vec3::from_array(p) - center)).to_array();
-    // `PandaModel` walks as a `QuadrupedModel`.
-    let swing = -walk_cos(m) * motion::LEG_SWING;
+    // `PandaModel` walks as a `QuadrupedModel` (v1.0 gap Track 7c: on
+    // Java's sides).
+    let swing = walk_cos(m) * motion::LEG_SWING;
     let head = Quat::from_rotation_y(-m.head_yaw)
         * Quat::from_rotation_x(
             -m.head_pitch
@@ -499,10 +459,11 @@ pub(super) fn ocelot(m: &Mob) -> Parts {
     parts![
         part(OCELOT_BODY, [0.0, low, 0.0], Quat::IDENTITY),
         part(OCELOT_HEAD, [0.0, 9.0 + low, 6.0], head),
-        part(OCELOT_LEG, [-2.0, 5.0, 4.0], rx(lf)),
-        part(OCELOT_LEG, [2.0, 5.0, 4.0], rx(rf)),
-        part(OCELOT_LEG, [-2.0, 5.0, -5.0], rx(lh)),
-        part(OCELOT_LEG, [2.0, 5.0, -5.0], rx(rh)),
+        // v1.0 gap Track 7c: Java's right legs on -X.
+        part(OCELOT_LEG, [-2.0, 5.0, 4.0], rx(rf)),
+        part(OCELOT_LEG, [2.0, 5.0, 4.0], rx(lf)),
+        part(OCELOT_LEG, [-2.0, 5.0, -5.0], rx(rh)),
+        part(OCELOT_LEG, [2.0, 5.0, -5.0], rx(lh)),
         part(OCELOT_TAIL, [0.0, 7.0 + low, -7.0], rx(if s.sprinting { -0.4 } else { 0.15 }))
     ]
 }

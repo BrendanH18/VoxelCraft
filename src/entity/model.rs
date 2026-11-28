@@ -967,12 +967,12 @@ impl Part {
 
 // Fixed-capacity poses keep every mob, including villagers, allocation-free per frame.
 struct Parts {
-    data: [Part; 16],
+    data: [Part; 24],
     len: usize,
 }
 impl Parts {
     fn new() -> Self {
-        Self { data: [Part { boxes: &[], pivot: Vec3::ZERO, rot: Quat::IDENTITY }; 16], len: 0 }
+        Self { data: [Part { boxes: &[], pivot: Vec3::ZERO, rot: Quat::IDENTITY }; 24], len: 0 }
     }
     fn push(&mut self, p: Part) {
         self.data[self.len] = p;
@@ -1023,6 +1023,7 @@ mod allay;
 mod animals;
 mod aquatic;
 mod babies;
+mod baby_rigs;
 mod bee;
 mod breeze;
 mod camel_anim;
@@ -1031,10 +1032,13 @@ mod copper_golem;
 mod creaking;
 mod hostiles;
 mod illager;
+mod keyframes;
 mod mounts;
 mod new_mobs;
 mod passive;
 mod phantom;
+mod rig;
+mod rigged;
 mod shulker;
 mod sniffer;
 mod warden;
@@ -1234,14 +1238,14 @@ fn pose(m: &Mob, time: f32, alpha: f32) -> Parts {
         }
         MobKind::Pig => parts![
             part(PIG_BODY, [0.0; 3], Quat::IDENTITY),
-            part(PIG_LEG_BOX, [-3.0, 6.0, 5.0], rx(swing)),
-            part(PIG_LEG_BOX, [3.0, 6.0, 5.0], rx(-swing)),
-            part(PIG_LEG_BOX, [-3.0, 6.0, -5.0], rx(-swing)),
-            part(PIG_LEG_BOX, [3.0, 6.0, -5.0], rx(swing)),
+            part(PIG_LEG_BOX, [-3.0, 6.0, 5.0], rx(-swing)),
+            part(PIG_LEG_BOX, [3.0, 6.0, 5.0], rx(swing)),
+            part(PIG_LEG_BOX, [-3.0, 6.0, -5.0], rx(swing)),
+            part(PIG_LEG_BOX, [3.0, 6.0, -5.0], rx(-swing)),
             part(PIG_HEAD, [0.0, 12.0, 8.0], head),
         ],
         MobKind::Mooshroom => passive::mooshroom(m),
-        MobKind::Bat => passive::bat(m, alpha),
+        MobKind::Bat => rigged::bat::pose(m, alpha),
         MobKind::Frog => passive::frog(m),
         MobKind::PolarBear => passive::polar_bear(m),
         MobKind::Panda => passive::panda(m, time),
@@ -1258,18 +1262,18 @@ fn pose(m: &Mob, time: f32, alpha: f32) -> Parts {
         MobKind::Tadpole => passive::tadpole(m, time),
         MobKind::Cow => parts![
             part(COW_BODY, [0.0; 3], Quat::IDENTITY),
-            part(COW_LEG, [-4.0, 12.0, 6.0], rx(swing)),
-            part(COW_LEG, [4.0, 12.0, 6.0], rx(-swing)),
-            part(COW_LEG, [-4.0, 12.0, -6.0], rx(-swing)),
-            part(COW_LEG, [4.0, 12.0, -6.0], rx(swing)),
+            part(COW_LEG, [-4.0, 12.0, 6.0], rx(-swing)),
+            part(COW_LEG, [4.0, 12.0, 6.0], rx(swing)),
+            part(COW_LEG, [-4.0, 12.0, -6.0], rx(swing)),
+            part(COW_LEG, [4.0, 12.0, -6.0], rx(-swing)),
             part(COW_HEAD, [0.0, 18.0, 9.0], head),
         ],
         MobKind::Sheep => parts![
             part(if m.sheared { SHEARED_BODY } else { SHEEP_BODY }, [0.0; 3], Quat::IDENTITY),
-            part(if m.sheared { SHEARED_LEG } else { SHEEP_LEG }, [-3.0, 12.0, 5.0], rx(swing)),
-            part(if m.sheared { SHEARED_LEG } else { SHEEP_LEG }, [3.0, 12.0, 5.0], rx(-swing)),
-            part(if m.sheared { SHEARED_LEG } else { SHEEP_LEG }, [-3.0, 12.0, -5.0], rx(-swing)),
-            part(if m.sheared { SHEARED_LEG } else { SHEEP_LEG }, [3.0, 12.0, -5.0], rx(swing)),
+            part(if m.sheared { SHEARED_LEG } else { SHEEP_LEG }, [-3.0, 12.0, 5.0], rx(-swing)),
+            part(if m.sheared { SHEARED_LEG } else { SHEEP_LEG }, [3.0, 12.0, 5.0], rx(swing)),
+            part(if m.sheared { SHEARED_LEG } else { SHEEP_LEG }, [-3.0, 12.0, -5.0], rx(swing)),
+            part(if m.sheared { SHEARED_LEG } else { SHEEP_LEG }, [3.0, 12.0, -5.0], rx(-swing)),
             part(if m.sheared { SHEARED_HEAD } else { SHEEP_HEAD }, [0.0, 16.0, 7.0], head),
         ],
         MobKind::Chicken => {
@@ -1358,10 +1362,10 @@ fn pose(m: &Mob, time: f32, alpha: f32) -> Parts {
         MobKind::TraderLlama => parts![
             part(trader_model::LLAMA_BODY, [0.0; 3], Quat::IDENTITY),
             part(trader_model::LLAMA_HEAD, [0.0, 20.0 * trader_model::LLAMA_Y, 5.0], head),
-            part(trader_model::LLAMA_LEG, [-3.0, 14.0 * trader_model::LLAMA_Y, 5.0], rx(swing)),
-            part(trader_model::LLAMA_LEG, [3.0, 14.0 * trader_model::LLAMA_Y, 5.0], rx(-swing)),
-            part(trader_model::LLAMA_LEG, [-3.0, 14.0 * trader_model::LLAMA_Y, -5.0], rx(-swing)),
-            part(trader_model::LLAMA_LEG, [3.0, 14.0 * trader_model::LLAMA_Y, -5.0], rx(swing))
+            part(trader_model::LLAMA_LEG, [-3.0, 14.0 * trader_model::LLAMA_Y, 5.0], rx(-swing)),
+            part(trader_model::LLAMA_LEG, [3.0, 14.0 * trader_model::LLAMA_Y, 5.0], rx(swing)),
+            part(trader_model::LLAMA_LEG, [-3.0, 14.0 * trader_model::LLAMA_Y, -5.0], rx(swing)),
+            part(trader_model::LLAMA_LEG, [3.0, 14.0 * trader_model::LLAMA_Y, -5.0], rx(-swing))
         ],
         MobKind::IronGolem => {
             // Cracks at Java's 75 / 50 / 25 percent health.
@@ -1420,10 +1424,10 @@ fn pose(m: &Mob, time: f32, alpha: f32) -> Parts {
         }
         MobKind::Creeper => parts![
             part(CREEPER_BODY, [0.0; 3], Quat::IDENTITY),
-            part(CREEPER_LEG, [-2.0, 6.0, 4.0], rx(swing)),
-            part(CREEPER_LEG, [2.0, 6.0, 4.0], rx(-swing)),
-            part(CREEPER_LEG, [-2.0, 6.0, -4.0], rx(-swing)),
-            part(CREEPER_LEG, [2.0, 6.0, -4.0], rx(swing)),
+            part(CREEPER_LEG, [-2.0, 6.0, 4.0], rx(-swing)),
+            part(CREEPER_LEG, [2.0, 6.0, 4.0], rx(swing)),
+            part(CREEPER_LEG, [-2.0, 6.0, -4.0], rx(swing)),
+            part(CREEPER_LEG, [2.0, 6.0, -4.0], rx(-swing)),
             part(CREEPER_HEAD, [0.0, 18.0, 0.0], head),
         ],
         MobKind::MagmaCube => {
@@ -1692,18 +1696,11 @@ pub fn build(
                 0.8 + m.aquatic.as_ref().map_or(0.0, |a| a.puff as f32 * 0.4)
             } else if m.baby || m.age < 0 {
                 if babies::has_model(m.kind) {
-                    // v1.0 gap Track 7b: drawn at full scale.
+                    // v1.0 gap Tracks 7b and 7c: Java's baby models, drawn at
+                    // full scale.
                     1.0
-                } else if super::undead_mounts::undead(m.kind) {
-                    0.7
-                } else if m.kind == MobKind::Armadillo {
-                    0.6
                 } else if m.kind == MobKind::HappyGhast {
                     super::happy_ghast::BABY_SCALE as f32
-                } else if m.kind == MobKind::Dolphin {
-                    // v1.0 gap Track 3: `DolphinRenderer` draws babies with
-                    // their own smaller model (`BabyDolphinModel`) at full scale.
-                    1.0
                 } else {
                     0.5
                 }
@@ -1748,6 +1745,7 @@ pub fn build(
         copper_golem::cargo(m, origin, body, (light, torch), out);
         allay::held(m, origin, body, (light, torch), out);
         let mut posed = pose(m, time, alpha as f32);
+        aquatic::track_eye(m, camera, &mut posed);
         if matches!(m.kind, MobKind::Pig | MobKind::Strider) {
             mounts::equipment(m, &mut posed);
         }
@@ -1766,6 +1764,9 @@ pub fn build(
                 let mut cuboid = *c;
                 animals::colour(m, &mut cuboid);
                 mounts::colour(m, &mut cuboid);
+                if m.is_baby() {
+                    baby_rigs::colour(m, &mut cuboid);
+                }
                 if matches!(m.kind, MobKind::Stray | MobKind::Bogged) {
                     hostiles::colour(m, &mut cuboid);
                 }
@@ -2840,10 +2841,23 @@ mod tests {
                 // pixels above the feet.
                 || kind == MobKind::Blaze && (0.24..0.38).contains(&lo.y)
                 // and the ghast's tentacles trail back, lifting their tips.
-                || kind == MobKind::Ghast && (0.0..0.1).contains(&lo.y);
+                || kind == MobKind::Ghast && (0.0..0.1).contains(&lo.y)
+                // v1.0 gap Track 7c: the phantom's wing tips beat on their
+                // bases' angle again, reaching further below.
+                || kind == MobKind::Phantom && (-0.4..0.0).contains(&lo.y)
+                // and Java's rabbit's front paws dip a fraction of a pixel
+                // below its feet.
+                || kind == MobKind::Rabbit && (-0.01..0.0).contains(&lo.y);
             assert!(lo.y.abs() < 1e-4 || floats && lo.y.abs() < 0.25 || hovers, "{kind:?} feet at {}", lo.y);
             // The mooshroom cap layer extends above its cow collision box.
-            let h = kind.shape().height as f32 + if kind == MobKind::Mooshroom { 0.4 } else { 0.0 };
+            // (v1.0 gap Track 7c: Java's adult rabbit's ears stand about a
+            // block up, above its half-block box.)
+            let h = kind.shape().height as f32
+                + match kind {
+                    MobKind::Mooshroom => 0.4,
+                    MobKind::Rabbit => 0.55,
+                    _ => 0.0,
+                };
             assert!((hi.y - h).abs() < 0.15, "{kind:?} top {} vs box {h}", hi.y);
             assert!(
                 // A sulfur cube is a plain cube with no head to lead; the vex's

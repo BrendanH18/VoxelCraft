@@ -386,6 +386,33 @@ impl Mob {
     /// Java's `attack_knockback` attribute (`combat.json`): 1 for hoglins and zoglins, 0 otherwise.
     /// v0.15 Track A: the ravager's 1.5, and the main-hand weapon's
     /// Knockback level, which `Mob.getKnockback` adds.
+    /// v1.0 gap Track 7c: while a crossbow piglin loads its crossbow (the
+    /// first 25 ticks of `charge`, `isChargingCrossbow`), the ticks it has
+    /// been drawing (`getTicksUsingItem`), which `PiglinModel`'s
+    /// `CROSSBOW_CHARGE` pose draws from.
+    pub fn crossbow_draw(&self) -> Option<f32> {
+        let n = self.nether.as_ref().filter(|n| n.weapon == Weapon::Crossbow && self.ai == Ai::Chase)?;
+        (n.charge < CROSSBOW_CHARGE).then_some(n.charge / crate::entity::motion::TICK)
+    }
+
+    /// The draw a LAN host sent: `ticks` drawn so far, or none. A guest
+    /// doesn't run the piglin's fight, so a draw marks it fighting while it
+    /// lasts.
+    pub fn set_crossbow_draw(&mut self, ticks: Option<f32>) {
+        let Some(n) = self.nether.as_mut().filter(|n| n.weapon == Weapon::Crossbow) else { return };
+        match ticks.filter(|t| t.is_finite()) {
+            Some(t) => {
+                n.charge = (t * crate::entity::motion::TICK).clamp(0.0, CROSSBOW_CHARGE - 1e-3);
+                self.ai = Ai::Chase;
+            }
+            None if n.charge < CROSSBOW_CHARGE => {
+                n.charge = CROSSBOW_CHARGE;
+                self.ai = Ai::Idle;
+            }
+            None => {}
+        }
+    }
+
     pub(crate) fn attack_knockback(&self) -> f64 {
         let base = match self.kind {
             MobKind::Hoglin | MobKind::Zoglin => 1.0,

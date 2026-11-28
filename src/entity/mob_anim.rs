@@ -72,6 +72,24 @@ pub struct Anim {
     /// `Breeze.idle`: when the idle loop started.
     pub idle_start: Option<u32>,
     was_on_ground: bool,
+    /// v1.0 gap Track 7c: the axolotl's one running animation
+    /// (`Axolotl.setupAnimationStates`' `soloAnimation`) and its start
+    /// tick.
+    pub axolotl: AxolotlAnim,
+    pub axolotl_start: Option<u32>,
+}
+
+/// v1.0 gap Track 7c: which of the axolotl's `AnimationState`s runs.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum AxolotlAnim {
+    PlayDead,
+    Swim,
+    Walk,
+    WalkUnderWater,
+    IdleUnderWater,
+    IdleFloorUnderWater,
+    #[default]
+    IdleFloor,
 }
 
 impl Default for Anim {
@@ -114,6 +132,8 @@ impl Default for Anim {
             o_spin: 0.0,
             idle_start: None,
             was_on_ground: true,
+            axolotl: AxolotlAnim::IdleFloor,
+            axolotl_start: None,
         }
     }
 }
@@ -290,6 +310,30 @@ impl Mob {
             MobKind::Breeze => {
                 a.idle_start.get_or_insert(tick);
             }
+            MobKind::Axolotl => {
+                // v1.0 gap Track 7c: `Axolotl.setupAnimationStates`; a new
+                // state starts its animation, the others stop.
+                use AxolotlAnim::*;
+                let moving = self.limb_amp > 1e-5;
+                let now = if self.aquatic.as_ref().is_some_and(|s| s.play_dead > 0.0) {
+                    PlayDead
+                } else if moving {
+                    match (in_water, on_ground) {
+                        (true, false) => Swim,
+                        (false, true) => Walk,
+                        _ => WalkUnderWater,
+                    }
+                } else {
+                    match (in_water, on_ground) {
+                        (true, false) => IdleUnderWater,
+                        (true, true) => IdleFloorUnderWater,
+                        _ => IdleFloor,
+                    }
+                };
+                if a.axolotl_start.is_none() || now != a.axolotl {
+                    (a.axolotl, a.axolotl_start) = (now, Some(tick));
+                }
+            }
             _ => {}
         }
         a.was_on_ground = on_ground;
@@ -380,6 +424,24 @@ mod tests {
         assert_eq!(m.loop_time(None, 0.5, 0.0), None);
         assert!(close(m.loop_time(Some(10), 0.5, 0.0).unwrap(), 0.3));
         assert!(close(m.loop_time(Some(3), 0.5, 0.5).unwrap(), 0.05));
+    }
+
+    /// v1.0 gap Track 7c: `Axolotl.setupAnimationStates` runs one
+    /// animation at a time, restarting it when the state changes.
+    #[test]
+    fn an_axolotl_plays_one_animation_at_a_time() {
+        let mut m = Mob::new(MobKind::Axolotl, DVec3::ZERO, 0.0);
+        (m.in_water, m.on_ground, m.limb_amp) = (true, false, 0.3);
+        m.tick_count = 5;
+        m.tick_anim(DVec3::ZERO);
+        assert_eq!((m.anim.axolotl, m.anim.axolotl_start), (AxolotlAnim::Swim, Some(5)));
+        m.tick_count = 6;
+        m.tick_anim(DVec3::ZERO);
+        assert_eq!(m.anim.axolotl_start, Some(5), "the same state keeps its clock");
+        (m.in_water, m.on_ground, m.limb_amp) = (false, true, 0.0);
+        m.tick_count = 7;
+        m.tick_anim(DVec3::ZERO);
+        assert_eq!((m.anim.axolotl, m.anim.axolotl_start), (AxolotlAnim::IdleFloor, Some(7)));
     }
 
     /// `LivingEntity.updateSwimAmount`: 0.09 a tick toward swimming.

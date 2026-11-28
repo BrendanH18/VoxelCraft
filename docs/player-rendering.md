@@ -265,5 +265,39 @@ partial tick; the models are in `src/entity/model*`.
   rider and now and then at rest.
 - **Babies.** Chickens, pigs, cows, sheep, wolves, villagers, zombies,
   husks and drowned draw Java 26.3's own baby proportions (large heads,
-  short legs) at full scale, with this game's own art; other babies are
-  still their adults halved.
+  short legs) at full scale, with this game's own art; Track 7c gave
+  every other kind its baby model (below).
+
+## Mob models on Java's parts (v1.0 gap Track 7c)
+
+Checked against the Java 26.3 client
+([record](verification/2026-11-27-v1.0-gap-track-07c-mob-models.md)).
+
+- **Rigs.** `src/entity/model/rig.rs` holds a model as Java's part tree
+  (each part's `PartPose` offset and rotation in Java's axes, its boxes
+  written from Java's `addBox` numbers) and composes it as `ModelPart`
+  does, onto this game's axes by Track 7b's half turn about X.
+  `src/entity/model/keyframes.rs` runs Java's keyframe animations on a
+  rig (linear and Catmull-Rom keys, loops, `applyWalk`); the tables in
+  `src/entity/model/keyframe_defs/` hold the numbers of Java's
+  definitions. Colours and details stay this game's own.
+- **Babies.** Every kind Java 26.3 gives a baby layer draws it at full
+  scale (`src/entity/model/baby_rigs.rs` and Track 7b's `babies.rs`),
+  animated by its Java model, with the baby keyframes Java's babies run
+  (camel calf, fox kit, rabbit kit, armadillo pup, axolotl, nautilus).
+  The ghastling is Java's adult happy ghast scaled by 0.2375, as before.
+- **Joints.** The guardian's three tail joints and twelve edge spikes, the
+  phantom's wing tips and two-joint tail, the pufferfish's blue fins and
+  the parrot's legs move as Java's do; the adult rabbit and bat are
+  rebuilt on Java's parts and run `RabbitAnimation` and `BatAnimation`
+  per part.
+- **Horses.** Rearing places the body, front legs and head as
+  `AbstractEquineModel` does; grazing (`eatAnim`) lowers and turns the
+  head down, chewing (`mouthAnim`) shakes it.
+- **Sides.** Every quadruped's walk has Java's right hind leg (-X) on the
+  walk's cosine.
+- **Eyes and arms.** The guardian's eye slides toward its target (else
+  the viewer); a crossbow piglin draws its crossbow over the 25 ticks it
+  loads; admiring piglins draw `ADMIRING_ITEM`.
+- **LAN.** Squid tentacle cycles, bee rolls and piglin draws reach guests
+  with every tick's pose.

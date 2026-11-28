@@ -9191,6 +9191,166 @@
    "args": [
     "--still-mobs"
    ]
+  },
+  {
+   "name": "mobs-still-babies-all",
+   "group": "mobs",
+   "description": "v1.0 gap Track 7c: a baby of every kind Java 26.3 draws with a baby model of its own, at noon, pinned with --still-mobs and facing the camera; rows front to back: chicken, pig, cow, mooshroom, sheep, wolf, cat, ocelot, fox, rabbit, armadillo; villager, zombie, husk, drowned, zombie villager, piglin, zombified piglin, hoglin, zoglin, strider, bee; horse, donkey, mule, skeleton and zombie horse, llama, trader llama, camel; panda, polar bear, sniffer, goat, the ghastling and turtle, then in the pool dolphin, squid, glow squid, axolotl and nautilus",
+   "pose": [
+    0.5,
+    156.0,
+    10.0,
+    90,
+    -24
+   ],
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "fill": [
+    [
+     -12,
+     150,
+     13,
+     12,
+     150,
+     33,
+     "grass"
+    ],
+    [
+     2,
+     148,
+     28,
+     12,
+     148,
+     31,
+     "stone"
+    ],
+    [
+     2,
+     149,
+     28,
+     12,
+     150,
+     31,
+     "water"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "chicken,-10,151,19,baby",
+    "pig,-8,151,19,baby",
+    "cow,-6,151,19,baby",
+    "mooshroom,-4,151,19,baby",
+    "sheep,-2,151,19,baby",
+    "wolf,0,151,19,baby",
+    "cat,2,151,19,baby",
+    "ocelot,4,151,19,baby",
+    "fox,6,151,19,baby",
+    "rabbit,8,151,19,baby",
+    "armadillo,10,151,19,baby",
+    "villager,-10,151,22,baby",
+    "zombie,-8,151,22,baby",
+    "husk,-6,151,22,baby",
+    "drowned,-4,151,22,baby",
+    "zombie_villager,-2,151,22,baby",
+    "piglin,0,151,22,baby",
+    "zombified_piglin,2,151,22,baby",
+    "hoglin,4,151,22,baby",
+    "zoglin,6,151,22,baby",
+    "strider,8,151,22,baby",
+    "bee,10,151,22,baby",
+    "horse,-10,151,25,baby",
+    "donkey,-7,151,25,baby",
+    "mule,-4,151,25,baby",
+    "skeleton_horse,-1,151,25,baby",
+    "zombie_horse,2,151,25,baby",
+    "llama,5,151,25,baby",
+    "trader_llama,7,151,25,baby",
+    "camel,10,151,25,baby",
+    "panda,-10,151,29,baby",
+    "polar_bear,-8,151,29,baby",
+    "sniffer,-5,151,29,baby",
+    "goat,-2,151,29,baby",
+    "happy_ghast,0,152,29,baby",
+    "turtle,1,151,29,baby",
+    "dolphin,3,150,29,baby",
+    "squid,5,150,29,baby",
+    "glow_squid,7,150,29,baby",
+    "axolotl,9,150,29,baby",
+    "nautilus,11,150,29,baby"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
+  },
+  {
+   "name": "mobs-still-joints",
+   "group": "mobs",
+   "description": "v1.0 gap Track 7c: the adults whose models gained Java's joints, at noon, pinned with --still-mobs: rabbit, bat, parrot, horse, donkey and a phantom on land and in the air, then in the pool a guardian, an elder guardian and a pufferfish",
+   "pose": [
+    0.5,
+    155.0,
+    11.0,
+    90,
+    -20
+   ],
+   "hud": false,
+   "wait": 2.0,
+   "time": 0.25,
+   "gamerules": [
+    "advance_time=false",
+    "advance_weather=false",
+    "spawn_mobs=false"
+   ],
+   "fill": [
+    [
+     -10,
+     150,
+     13,
+     10,
+     150,
+     30,
+     "grass"
+    ],
+    [
+     1,
+     146,
+     20,
+     10,
+     146,
+     28,
+     "stone"
+    ],
+    [
+     1,
+     147,
+     20,
+     10,
+     150,
+     28,
+     "water"
+    ]
+   ],
+   "place": [],
+   "spawn": [
+    "rabbit,-8,151,17",
+    "bat,-6,153,17",
+    "parrot,-4,151,17",
+    "horse,-7,151,22",
+    "donkey,-3,151,22",
+    "phantom,-5,154,26",
+    "guardian,3,148,22",
+    "elder_guardian,7,148,24",
+    "pufferfish,4,149,18"
+   ],
+   "args": [
+    "--still-mobs"
+   ]
   }
  ]
 }
