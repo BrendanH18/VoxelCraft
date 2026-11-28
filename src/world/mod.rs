@@ -1769,6 +1769,8 @@ impl World {
         record: Option<region::ChunkRecord>,
         generated: Option<GeneratedFeatures>,
     ) {
+        // Saved portal blocks from before the `axis` state get theirs.
+        let data = if modified { self.axis_legacy_portals(pos, data) } else { data };
         let heights = mesh::chunk_heights(&data, pos.y * CHUNK_SIZE_I);
         let workers = &self.workers;
         let col = self.columns.entry(column_of(pos)).or_insert_with(|| {

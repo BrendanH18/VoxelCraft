@@ -528,8 +528,12 @@ isn't. You come out where you stood in the portal you entered (across it,
 up it and in front of it, scaled to the exit portal's size), nudged clear
 of any block in the way, still looking and moving the way you were, and
 turned a quarter if the two portals face different ways. Nothing is placed
-or found beyond the world border, 29,999,984 blocks out. Breaking any part
-of a frame puts its portal out.
+or found beyond the world border, 29,999,984 blocks out. A spectator only
+travels to a portal already on the other side; with none there, nothing
+happens and no portal is built. Each portal block remembers which way its
+portal stands (Java's `axis`), and breaking the frame along that way (or
+above or below) puts the portal out; portals from saves made before
+remember it from their frames when their chunk loads.
 
 The Nether is a cavern world between a bedrock floor and roof: netherrack
 cliffs and islands over a lava sea at y = 31, soul sand shores that drag

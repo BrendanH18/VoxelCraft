@@ -988,7 +988,7 @@ impl PlayerSession {
             // `FlintAndSteelItem` / `FireChargeItem.useOn`: lighting a candle,
             // candle cake or campfire changes it; fire beside is placed.
             Used::Ignited { cell, .. } => {
-                let fire = world.get_block(cell).is_some_and(|b| b.is_fire() || b == Block::NETHER_PORTAL);
+                let fire = world.get_block(cell).is_some_and(|b| b.is_fire() || b.is_nether_portal());
                 (cell, if fire { E::BlockPlace } else { E::BlockChange }, source, None)
             }
             // `BlockTransformer.transformBlock` (shovels, axes, hoes) and
@@ -1333,7 +1333,7 @@ impl PlayerSession {
                 return Ok(Some(Used::FlintFizzled));
             }
             wear(self, 1, tool_broken);
-            let portal = world.get_block(at) == Some(Block::NETHER_PORTAL);
+            let portal = world.get_block(at).is_some_and(Block::is_nether_portal);
             return Ok(Some(Used::Ignited { cell: at, portal }));
         }
         if let Some(used) = self.use_item_on(slot, world, entities, pos, normal, tool_broken) {

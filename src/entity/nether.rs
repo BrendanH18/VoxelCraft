@@ -479,7 +479,7 @@ pub fn is_hoglin_repellent(block: Block) -> bool {
     let named = NAMED.get_or_init(|| {
         ["warped fungus", "potted warped fungus", "respawn anchor"].into_iter().filter_map(Block::from_name).collect()
     });
-    block == Block::NETHER_PORTAL || named.iter().any(|b| b.base() == block.base())
+    block.is_nether_portal() || named.iter().any(|b| b.base() == block.base())
 }
 
 /// Nearest hoglin repellent around `cell`, scanning Java's box.

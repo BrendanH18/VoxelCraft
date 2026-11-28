@@ -261,7 +261,7 @@ impl Bastions {
         }
         Some(cache.entry(region).or_insert(b).clone())
     }
-    fn near(&self, min: IVec2, max: IVec2) -> Vec<Arc<Bastion>> {
+    pub(super) fn near(&self, min: IVec2, max: IVec2) -> Vec<Arc<Bastion>> {
         let reach = if self.generation >= super::terrain::Generation::V3 { 100 } else { 65 };
         let lo = (min - START_MAX - reach).div_euclid(IVec2::splat(REGION));
         let hi = (max + reach).div_euclid(IVec2::splat(REGION));
@@ -312,7 +312,9 @@ impl Bastions {
         self.generation >= super::terrain::Generation::V6 || (hi >= 33 && lo <= 70)
     }
 
-    fn paint_region(&self, blocks: &mut [Block], base: IVec3, top: IVec3) {
+    /// Paints the bastions in the box from `base` to `top` (inclusive),
+    /// held X fastest, then Z, then Y.
+    pub(super) fn paint_region(&self, blocks: &mut [Block], base: IVec3, top: IVec3) {
         if !self.reaches_height(base.y, top.y) {
             return;
         }

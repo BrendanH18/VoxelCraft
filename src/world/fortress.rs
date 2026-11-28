@@ -529,7 +529,13 @@ impl Fortresses {
     /// a column open (air or lava) from `top` down to `bottom`, for
     /// pillars that start above the chunk.
     pub fn paint(&self, blocks: &mut [Block; CHUNK_VOLUME], base: IVec3, open: &dyn Fn(i32, i32, i32, i32) -> bool) {
-        let top = base + IVec3::splat(CHUNK_SIZE_I - 1);
+        self.paint_box(blocks, base, base + IVec3::splat(CHUNK_SIZE_I - 1), open);
+    }
+
+    /// [`Fortresses::paint`] into the box from `base` to `top` (inclusive),
+    /// held X fastest, then Z, then Y. Generation 7 paints each fortress
+    /// clipped to the Java chunk being decorated (v1.0 gap Track 5b).
+    pub fn paint_box(&self, blocks: &mut [Block], base: IVec3, top: IVec3, open: &dyn Fn(i32, i32, i32, i32) -> bool) {
         for fortress in self.near(IVec2::new(base.x, base.z), IVec2::new(top.x, top.z)) {
             for piece in &fortress.pieces {
                 let b = &piece.bounds;

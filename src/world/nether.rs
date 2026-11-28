@@ -14,7 +14,8 @@
 //! Full-height grid columns (density and biome) are shared between chunks
 //! in a bounded cache, so the four chunks of a column and the features that
 //! reach across chunk borders sample each one once.
-//! Fortresses (see `world::fortress`) are painted over the terrain. In
+//! Fortresses (see `world::fortress`) are painted over the terrain (in
+//! generation 7, in their decoration step: `world::nether_order`). In
 //! generation 3, Nether fossils adapt the terrain first: their `beard_thin`
 //! kernel is added to the density, as Java's beardifier is.
 
@@ -173,6 +174,10 @@ pub struct NetherGen {
     surface: Option<super::nether_surface::SurfaceNoises>,
     /// Generation 7: decorated 16 × 16 chunks (see `world::nether_order`).
     pub(super) cells: super::nether_order::CellCache,
+    /// Generation 7: the Nether's ruined portals, placed in decoration
+    /// step 4 (the generator's own [`super::ruined_portal::RuinedPortals`]
+    /// paints them over older generations' chunks).
+    pub(super) ruined_portals: super::ruined_portal::RuinedPortals,
 }
 
 #[inline]
@@ -251,6 +256,7 @@ impl NetherGen {
             surface: (generation >= super::terrain::Generation::V7)
                 .then(|| super::nether_surface::SurfaceNoises::new(seed ^ 0x4E45_5448)),
             cells: Default::default(),
+            ruined_portals: super::ruined_portal::RuinedPortals::new(seed),
         }
     }
 
@@ -798,6 +804,11 @@ impl NetherGen {
             }
         }
         super::nether_decoration::decorate(self, &mut blocks, base);
+        // Generation 7 places structures and ancient debris in their
+        // decoration steps (`world::nether_order`).
+        if self.generation >= super::terrain::Generation::V7 {
+            return ChunkData::from_dense(blocks);
+        }
         let cache = RefCell::new(FxHashMap::default());
         let open = |x, z, top, bottom| self.column_open(x, z, top, bottom, &mut cache.borrow_mut());
         self.fortresses.paint(&mut blocks, base, &open);
@@ -811,6 +822,7 @@ impl NetherGen {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::world::terrain::Generation;
 
     fn column(chunks: &[ChunkData], x: usize, z: usize) -> Vec<Block> {
         (0..=ROOF as usize).map(|y| chunks[y / CHUNK_SIZE].get(x, y % CHUNK_SIZE, z)).collect()
@@ -970,7 +982,13 @@ mod tests {
 
     #[test]
     fn ancient_debris_stays_underground_and_rare() {
-        let g = NetherGen::new(7);
+        // Generation 7 places it as a step 7 feature (`nether_order`).
+        for generation in [Generation::V6, Generation::V7] {
+            debris_stays_underground_and_rare(NetherGen::with_generation(7, generation));
+        }
+    }
+
+    fn debris_stays_underground_and_rare(g: NetherGen) {
         let mut debris = 0usize;
         let mut netherrack = 0usize;
         for cx in -2..=2 {
@@ -1002,7 +1020,12 @@ mod tests {
 
     #[test]
     fn ancient_debris_rejects_air_exposure() {
-        let g = NetherGen::new(4242);
+        for generation in [Generation::V6, Generation::V7] {
+            debris_rejects_air_exposure(NetherGen::with_generation(4242, generation));
+        }
+    }
+
+    fn debris_rejects_air_exposure(g: NetherGen) {
         let mut cache = std::collections::HashMap::new();
         for cx in -2..=2 {
             for cz in -2..=2 {

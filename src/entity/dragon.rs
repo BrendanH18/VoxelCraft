@@ -2059,7 +2059,7 @@ fn breakable(b: Block) -> bool {
         || b == Block::IRON_BARS
         || base == Block::END_PORTAL_FRAME
         || b == Block::END_PORTAL
-        || b == Block::NETHER_PORTAL
+        || b.is_nether_portal()
         || b == crate::world::jukebox::REINFORCED_DEEPSLATE)
 }
 
