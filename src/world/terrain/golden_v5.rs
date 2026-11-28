@@ -79,7 +79,7 @@ fn overworld(g: &Generator) -> Vec<Place> {
             chunks_of(built.bounds, 8).collect()
         })
     };
-    let stronghold = g.strongholds.nearest(IVec3::ZERO);
+    let stronghold = g.strongholds.nearest(g, IVec3::ZERO);
     let (mesa, _, _) = mesa_mineshaft(g);
     let spring = sulfur_spring(g);
     vec![
@@ -92,7 +92,7 @@ fn overworld(g: &Generator) -> Vec<Place> {
         located("mineshaft", g.mineshafts.nearest(g, IVec3::ZERO), |at| near(at, 1).collect()),
         located("stronghold", stronghold, |at| {
             let column = IVec2::new(at.x, at.z);
-            let built = g.strongholds.near(column, column).into_iter().next().expect("the located stronghold");
+            let built = g.strongholds.near(g, column, column).into_iter().next().expect("the located stronghold");
             chunks_of(built.bounds, 4).collect()
         }),
         temple("monument", Kind::Monument, 12_800, true),

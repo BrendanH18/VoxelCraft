@@ -60,6 +60,15 @@ impl World {
             }
         }
     }
+    /// v1.0 final F5: generation 7 mineshaft chest minecarts whose rail
+    /// cell is loaded, with their loot seeds.
+    pub fn visit_mineshaft_carts(&self, visit: &mut dyn FnMut(IVec3, u64)) {
+        for (&p, &seed) in &self.mineshaft_carts {
+            if self.is_loaded(p) {
+                visit(p, seed)
+            }
+        }
+    }
     pub fn visit_village_pois(&self, visit: &mut dyn FnMut(IVec3, Block)) {
         for (&p, &b) in &self.village_pois {
             if self.is_loaded(p) {

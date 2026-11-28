@@ -161,10 +161,10 @@ fn generation_5_corpus(g: &Generator) -> Vec<IVec3> {
         let built = g.temples.near(g, at, 16).into_iter().find(|b| b.kind == kind).expect("the located build");
         chunks.extend(chunks_of(built.bounds, 8));
     }
-    let stronghold = g.strongholds.nearest(IVec3::ZERO).expect("a stronghold");
+    let stronghold = g.strongholds.nearest(g, IVec3::ZERO).expect("a stronghold");
     let stronghold = g
         .strongholds
-        .near(IVec2::new(stronghold.x, stronghold.z), IVec2::new(stronghold.x, stronghold.z))
+        .near(g, IVec2::new(stronghold.x, stronghold.z), IVec2::new(stronghold.x, stronghold.z))
         .into_iter()
         .next()
         .expect("the located stronghold");

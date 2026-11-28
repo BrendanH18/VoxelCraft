@@ -170,6 +170,23 @@ whose pools and processors leave zombie villagers, cobwebs and no doors or
 torches. Generation 3's templates below stay as they are for generation 3
 worlds. See the [Track G record](verification/2026-11-18-v0.15-catalogues.md).
 
+## Generation 7: Java's terrain adaptation
+
+Generation 7 worlds (v1.0) place villages, pillager outposts and
+abandoned camps the way Java 26.3's `JigsawPlacement` does, with no
+generation 3 envelope ([v1.0 final F5 record](verification/2026-11-28-v1.0-final-f5-structures.md)).
+The start's floor is projected to the `WORLD_SURFACE_WG` heightmap at the
+centre of its box; a rigid piece joined to a terrain-matching piece (a
+house off a street) stands at the heightmap at the street's connector
+(`getFirstFreeHeight`), whichever way the connector faces; rigid-to-rigid
+joins keep their parent's plane. Nothing is dropped for steep ground:
+only the free-space checks reject a piece, and the `beard_thin` density
+contribution then raises or cuts the ground round each rigid piece and
+junction. The fallback foundation under rigid pieces is gone, as Java has
+none, so on a slope steeper than the beard's 12-block kernel a house
+overhangs or sinks into the hill as Java's does. Generations 3 to 6 keep
+the envelope and foundations below.
+
 ## Residents and trading
 
 Each generated house registers one resident and a permanent birth receipt.

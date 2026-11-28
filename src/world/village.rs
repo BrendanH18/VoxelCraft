@@ -407,14 +407,14 @@ impl Village {
         if g.generation >= Generation::V4 {
             let lib = catalogue::library();
             let settings = jigsaw::Settings { start_pool: style.start_pool(), max_depth: 6, max_distance: 80 };
-            let placed = jigsaw::assemble_enveloped(
-                lib,
-                &settings,
-                IVec2::new(center.x, center.z),
-                &|x, z| surface(g, x, z),
-                seed,
-                &|ps, p| g.beard_fit(lib, ps, p),
-            );
+            let at = IVec2::new(center.x, center.z);
+            let placed = if g.generation >= Generation::V7 {
+                jigsaw::assemble_adapted(lib, &settings, at, &|x, z| surface(g, x, z), seed)
+            } else {
+                jigsaw::assemble_enveloped(lib, &settings, at, &|x, z| surface(g, x, z), seed, &|ps, p| {
+                    g.beard_fit(lib, ps, p)
+                })
+            };
             let bounds = placed
                 .iter()
                 .map(|p| p.bounds)
@@ -532,7 +532,10 @@ impl Village {
             let surface = |x: i32, z: i32| g.terrain_column(x, z).height.max(SEA_LEVEL - 1);
             let solid = |x: i32, z: i32| g.terrain_column(x, z).height;
             let ground = jigsaw::Ground { surface: &surface, solid: &solid };
-            jigsaw::paint(catalogue::library(), &self.placed, &V4Palette(self.style), &ground, blocks, base);
+            let palette = V4Palette(self.style);
+            let palette: &dyn jigsaw::Palette =
+                if g.generation >= Generation::V7 { &jigsaw::NoFoundation(&palette) } else { &palette };
+            jigsaw::paint(catalogue::library(), &self.placed, palette, &ground, blocks, base);
             return;
         }
         if !self.placed.is_empty() {

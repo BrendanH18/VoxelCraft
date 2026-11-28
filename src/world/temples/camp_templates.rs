@@ -295,7 +295,11 @@ pub(super) fn build(g: &Generator, start: IVec2, seed: u64) -> Option<Built> {
     let pool = format!("abandoned_camp/tent/{}", camp.biome.name());
     let settings = jigsaw::Settings { start_pool: &pool, max_depth: SETTINGS_DEPTH, max_distance: MAX_DISTANCE };
     let at = start * 16;
-    let placed = jigsaw::assemble_enveloped(lib, &settings, at, &surface, seed, &|ps, p| g.beard_fit(lib, ps, p));
+    let placed = if g.generation >= crate::world::terrain::Generation::V7 {
+        jigsaw::assemble_adapted(lib, &settings, at, &surface, seed)
+    } else {
+        jigsaw::assemble_enveloped(lib, &settings, at, &surface, seed, &|ps, p| g.beard_fit(lib, ps, p))
+    };
     // `Structure.isValidBiome`: the biome at the start piece's centre.
     let first = placed.first()?;
     let centre = (first.bounds.min + first.bounds.max) / 2;
@@ -344,7 +348,11 @@ pub(super) fn paint(g: &Generator, built: &Built, blocks: &mut [Block; CHUNK_VOL
     jigsaw::paint(
         jigsaw::abandoned_camps(),
         &built.placed,
-        &CampPalette,
+        if g.generation >= crate::world::terrain::Generation::V7 {
+            &jigsaw::NoFoundation(&CampPalette)
+        } else {
+            &CampPalette
+        },
         &jigsaw::Ground {
             surface: &|x, z| g.terrain_column(x, z).height.max(SEA_LEVEL - 1),
             solid: &|x, z| g.terrain_column(x, z).height,

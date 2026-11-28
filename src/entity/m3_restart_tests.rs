@@ -140,7 +140,7 @@ fn generation_5_overworld_structures_stay_cleared_after_a_restart() {
     let camp_chest =
         find(&g, camp, 2, |f| matches!(f, Feature::StructureLoot(_, t) if t.starts_with("abandoned_camp")))
             .expect("an abandoned camp chest");
-    let stronghold = g.strongholds.nearest(IVec3::ZERO).expect("a stronghold");
+    let stronghold = g.strongholds.nearest(&*g, IVec3::ZERO).expect("a stronghold");
     let cage = find(&g, stronghold, 4, |f| matches!(f, Feature::Spawner(MobKind::Silverfish))).expect("a portal room");
     let library = find(&g, stronghold, 4, |f| matches!(f, Feature::StrongholdChest(_))).expect("a stronghold chest");
     let monument = g.temples.nearest(&g, Kind::Monument, IVec2::ZERO, 12_800).expect("a monument");

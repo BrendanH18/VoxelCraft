@@ -544,11 +544,14 @@ pub(super) mod tests {
 
     /// Final generated blocks, including surface rules, caves, decoration,
     /// structure painting and fallback foundations (not predicted heights).
+    /// Generations 3 to 6's envelope contract; generation 7 places pieces
+    /// as Java does, without the envelope, so steep ground can leave
+    /// ledges and overhangs as in Java (see `jigsaw::assemble_adapted`).
     #[test]
     fn sloped_villages_and_outposts_meet_blended_soil() {
         let mut failures = Vec::new();
         for seed in [42, 12345, 2024] {
-            let g = Generator::new(seed);
+            let g = Generator::with_generation(seed, Dimension::Overworld, Generation::V6);
             let mut chunks = FxHashMap::default();
             let mut terrain_chunks = FxHashMap::default();
             // Generate the actual pre-structure terrain blocks, including

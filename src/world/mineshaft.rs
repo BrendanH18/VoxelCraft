@@ -5,8 +5,9 @@
 //! crossings and stairs within 80 blocks and depth 8, then the whole
 //! layout sinks so its top sits below sea level (offset 10), like
 //! `moveBelowSeaLevel`. Oak planks and fences, cobwebs, and rails are
-//! painted per chunk so seams match. Chest-minecarts become plain chests
-//! filled from `abandoned_mineshaft.json` mapped onto items we have.
+//! painted per chunk so seams match. Generation 7 places Java's chest
+//! minecarts on a rail (`MineShaftCorridor.createChest`) with the
+//! `abandoned_mineshaft` table; earlier generations place plain chests.
 //! Spider corridors hold one cave-spider spawner, as in Java.
 
 use std::sync::{Arc, Mutex};
@@ -64,6 +65,9 @@ pub struct Piece {
     incoming: Facing,
     /// v0.16 Track E: a `mineshaft_mesa` piece (dark oak), generation 5.
     mesa: bool,
+    /// v1.0 final F5: generation 7 places Java's chest minecarts
+    /// (`MineShaftCorridor.createChest`) instead of plain chests.
+    carts: bool,
 }
 
 impl Oriented for Piece {
@@ -121,6 +125,7 @@ impl Builder {
                 two_floor: two,
                 incoming: facing,
                 mesa: false,
+                carts: false,
             });
         }
         if roll >= 70 {
@@ -140,6 +145,7 @@ impl Builder {
                 two_floor: false,
                 incoming: facing,
                 mesa: false,
+                carts: false,
             });
         }
         let want = self.rng.below(3) as i32 + 2;
@@ -163,6 +169,7 @@ impl Builder {
                 two_floor: false,
                 incoming: facing,
                 mesa: false,
+                carts: false,
             });
         }
         None
@@ -450,6 +457,7 @@ impl Mineshaft {
             two_floor: false,
             incoming: Facing::South,
             mesa: false,
+            carts: false,
         };
         let mut b = Builder { rng, pieces: vec![room], start, entrances: Vec::new() };
         b.add_children(0);
@@ -511,6 +519,7 @@ impl JavaBuilder {
             two_floor: false,
             incoming: facing,
             mesa: self.mesa,
+            carts: false,
         }
     }
 
@@ -805,7 +814,13 @@ impl Mineshafts {
             return found.clone();
         }
         let shaft = if self.java() {
-            self.frequency_hit(chunk16).then(|| Mineshaft::start_java(self.seed, chunk16, t)).flatten().map(Arc::new)
+            let carts = self.generation >= super::terrain::Generation::V7;
+            self.frequency_hit(chunk16).then(|| Mineshaft::start_java(self.seed, chunk16, t)).flatten().map(
+                |mut shaft| {
+                    shaft.pieces.iter_mut().for_each(|p| p.carts = carts);
+                    Arc::new(shaft)
+                },
+            )
         } else {
             self.frequency_hit(chunk16).then(|| {
                 let rng = Rng(hash3(chunk16.x, 0, chunk16.y, self.seed ^ SALT));
@@ -902,7 +917,11 @@ impl Mineshafts {
                         }
                         let at = p.world(lx, 0, lz);
                         if chunk.contains(at) && hash3(at.x, at.y, at.z, p.variant ^ 0x4348).is_multiple_of(100) {
-                            out.push((at, Feature::MineshaftChest(p.variant ^ at.x as u64 ^ at.z as u64)));
+                            let seed = p.variant ^ at.x as u64 ^ at.z as u64;
+                            out.push((
+                                at,
+                                if p.carts { Feature::MineshaftCart(seed) } else { Feature::MineshaftChest(seed) },
+                            ));
                         }
                     }
                 }
@@ -1118,7 +1137,19 @@ impl Paint<'_, Piece> {
                 if hash3(at.x, at.y, at.z, self.piece.variant ^ 0x4348).is_multiple_of(100) {
                     let below = self.get(lx, -1, lz).or_else(|| self.get(lx, 0, lz));
                     if self.get(lx, 0, lz) == Some(AIR) && below.is_none_or(|b| b.is_solid()) {
-                        self.set(lx, 0, lz, Block::CHEST);
+                        if self.piece.carts {
+                            // Java's `createChest` lays a rail of a random axis
+                            // (`nextBoolean`: north-south or east-west) under
+                            // the chest minecart it spawns.
+                            let shape = if hash3(at.x, at.y, at.z, self.piece.variant ^ 0x5241).is_multiple_of(2) {
+                                RailShape::NorthSouth
+                            } else {
+                                RailShape::EastWest
+                            };
+                            self.set(lx, 0, lz, Block::rail(shape));
+                        } else {
+                            self.set(lx, 0, lz, Block::CHEST);
+                        }
                     }
                 }
             }
@@ -1345,6 +1376,57 @@ mod tests {
         }
         assert!(planks > 0, "mineshaft should place oak planks or fences");
         assert!(rails > 0, "a has_rails corridor should place rail blocks, found {rails}");
+    }
+
+    /// v1.0 final F5: generation 7 lays a rail and records a chest
+    /// minecart where earlier generations place a chest.
+    #[test]
+    fn generation_7_mineshafts_place_chest_minecarts_on_rails() {
+        let generator = Generator::new(11);
+        assert_eq!(generator.generation, super::super::terrain::Generation::V7);
+        let mut carts = 0;
+        'search: for i in 0..2000 {
+            let Some(shaft) = generator.mineshafts.get(&generator, IVec2::new(i, 2)) else { continue };
+            for piece in shaft.pieces.iter().filter(|p| p.kind == Kind::Corridor) {
+                let lo = piece.bounds.min.div_euclid(IVec3::splat(CHUNK_SIZE_I));
+                let hi = piece.bounds.max.div_euclid(IVec3::splat(CHUNK_SIZE_I));
+                for y in lo.y..=hi.y {
+                    for z in lo.z..=hi.z {
+                        for x in lo.x..=hi.x {
+                            let cpos = IVec3::new(x, y, z);
+                            let features = generator.mineshafts.features(&generator, cpos);
+                            assert!(!features.iter().any(|(_, f)| matches!(f, Feature::MineshaftChest(_))));
+                            if !features.iter().any(|(_, f)| matches!(f, Feature::MineshaftCart(_))) {
+                                continue;
+                            }
+                            let generated = generator.generate(cpos);
+                            let mut world =
+                                super::super::World::new_headless(Arc::new(Generator::new(11)), Default::default(), 1);
+                            world.register_structure_features(cpos, &generated);
+                            for (p, feature) in features {
+                                let Feature::MineshaftCart(seed) = feature else { continue };
+                                let l = p - cpos * CHUNK_SIZE_I;
+                                let block = generated.get(l.x as usize, l.y as usize, l.z as usize);
+                                assert_ne!(block, Block::CHEST);
+                                if block.is_rail() {
+                                    assert!(matches!(
+                                        block.rail_shape(),
+                                        Some(RailShape::NorthSouth | RailShape::EastWest)
+                                    ));
+                                    assert_eq!(world.mineshaft_carts.get(&p), Some(&seed));
+                                    assert!(world.chest(p).is_none());
+                                    carts += 1;
+                                }
+                            }
+                            if carts >= 3 {
+                                break 'search;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert!(carts > 0, "no generation 7 mineshaft placed a chest minecart");
     }
 
     #[test]

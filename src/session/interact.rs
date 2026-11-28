@@ -819,7 +819,11 @@ impl PlayerSession {
                 return Err("eyes of ender only find strongholds in the overworld");
             }
             let from = self.player.pos + DVec3::Y * (crate::player::SHAPE.height * 0.5);
-            let stronghold = world.generator.strongholds.nearest(from.floor().as_ivec3()).ok_or("no stronghold")?;
+            let stronghold = world
+                .generator
+                .strongholds
+                .nearest(&*world.generator, from.floor().as_ivec3())
+                .ok_or("no stronghold")?;
             entities.release_eye(from, stronghold.as_dvec3());
             if survival {
                 self.inventory.take_one(slot);
