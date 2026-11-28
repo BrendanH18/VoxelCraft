@@ -172,7 +172,7 @@ impl Game {
         // player had walked through one where they stood.
         let arrival = (dimension != saved_dimension && args.pose.is_none()).then(|| {
             if dimension == Dimension::End {
-                return dimension::Arrival::EndSpawn;
+                return dimension::Arrival::EndSpawn { vel: DVec3::ZERO };
             }
             let scale = if dimension == Dimension::Nether { 1.0 / 8.0 } else { 8.0 };
             let p = (player.pos * DVec3::new(scale, 0.0, scale)).floor().as_ivec3();
