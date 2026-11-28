@@ -224,8 +224,28 @@ fn dimension_light(sky: vec3<f32>, torch: vec3<f32>) -> vec3<f32> {
     return max(sky, torch) * 0.96 + max(ambient_light(), vec3<f32>(0.04));
 }
 
-@fragment
-fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+// v1.0 gap track 6b: the enchantment glint (`ItemStack.hasFoil`), added
+// over a flagged vertex's colour. Java scrolls its glint texture along two
+// periods (110 s and 30 s of `millis * glintSpeed 0.5 * 8`, so 27.5 s and
+// 7.5 s), turned 10 degrees; this original pattern drifts two soft purple
+// streaks on those periods instead of sampling Java's texture.
+const GLINT_FLAG: u32 = 0x80000000u;
+fn glint(uv: vec2<f32>) -> vec3<f32> {
+    let t = g.sun.w;
+    let a = uv.x * 0.985 + uv.y * 0.174;
+    let b = uv.y * 0.985 - uv.x * 0.174;
+    let s1 = 0.5 + 0.5 * sin(6.2832 * (a * 0.7 - t / 27.5) + b * 2.0);
+    let s2 = 0.5 + 0.5 * sin(6.2832 * (a * 1.3 + b * 0.6 + t / 7.5));
+    let streak = pow(s1, 6.0) * 0.55 + pow(s2, 8.0) * 0.45;
+    return vec3<f32>(0.5, 0.25, 0.8) * (0.16 + streak * 0.7);
+}
+
+struct Shaded {
+    color: vec3<f32>,
+    alpha: f32,
+}
+
+fn shade_fragment(in: VsOut) -> Shaded {
     let area_normal = cross(dpdx(in.rel), dpdy(in.rel));
     let length_sq = dot(area_normal, area_normal);
     var face_normal = vec3<f32>(0.0, 1.0, 0.0);
@@ -233,13 +253,11 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         face_normal = area_normal * inverseSqrt(length_sq);
     }
     let normal = select(face_normal, -face_normal, dot(face_normal, -in.rel) < 0.0);
+    let layer = in.layer & ~GLINT_FLAG;
     // Both arrays are sampled so derivatives stay in uniform control flow.
-    let block = sample_block(in.uv, min(in.layer, 4095u));
-    let icon = textureSample(items, blocks_sampler, in.uv, max(in.layer, 4096u) - 4096u);
-    let tex = select(block, icon, in.layer >= 4096u);
-    if tex.a < 0.5 {
-        discard;
-    }
+    let block = sample_block(in.uv, min(layer, 4095u));
+    let icon = textureSample(items, blocks_sampler, in.uv, max(layer, 4096u) - 4096u);
+    let tex = select(block, icon, layer >= 4096u);
     let l = in.light.xz / (4.0 - 3.0 * in.light.xz);
     let torch = l.y * vec3<f32>(1.0, 0.86, 0.66);
     let sky = l.x * g.params.z * daylight_tint(normal);
@@ -247,6 +265,31 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     if g.ambient.w <= 0.0 {
         lit = overworld_light(in.light.x, in.light.z, normal, in.light.y);
     }
-    let c = apply_fog(tex.rgb * in.tint * lit, in.dist);
-    return vec4<f32>(c, 1.0);
+    var c = tex.rgb * in.tint * lit;
+    if (in.layer & GLINT_FLAG) != 0u {
+        c = c + glint(in.uv);
+    }
+    var out: Shaded;
+    out.color = apply_fog(c, in.dist);
+    out.alpha = tex.a;
+    return out;
+}
+
+@fragment
+fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+    let s = shade_fragment(in);
+    if s.alpha < 0.5 {
+        discard;
+    }
+    return vec4<f32>(s.color, 1.0);
+}
+
+// v1.0 gap track 6b: translucent items (stained glass), blended.
+@fragment
+fn fs_translucent(in: VsOut) -> @location(0) vec4<f32> {
+    let s = shade_fragment(in);
+    if s.alpha < 0.004 {
+        discard;
+    }
+    return vec4<f32>(s.color, s.alpha);
 }

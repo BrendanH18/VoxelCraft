@@ -42,6 +42,13 @@ pub struct Hand {
     /// Invisibility hides the bare arm, as Java's `renderHandsWithItems`
     /// does; a held item still draws.
     pub invisible: bool,
+    /// v1.0 gap track 6b: the held stack has the enchantment glint.
+    pub glint: bool,
+    /// v1.0 gap track 6b: the held stack draws blended (stained glass).
+    pub translucent: bool,
+    /// v1.0 gap track 6b: the held stack, when it is drawn with a 3D item
+    /// mesh (`content::item_models`: beds, banners, the shield, two plants).
+    pub mesh: Option<voxelcraft::inventory::Stack>,
 }
 
 /// Minecraft draws the hand with this field of view, whatever the setting.
@@ -60,7 +67,7 @@ const ARM_PIVOT: Vec3 = Vec3::new(-5.0, 2.0, 0.0);
 pub(super) struct SpriteMasks(FxHashMap<u16, [u16; 16]>);
 
 impl SpriteMasks {
-    fn get(&mut self, layer: u16) -> [u16; 16] {
+    pub(super) fn get(&mut self, layer: u16) -> [u16; 16] {
         *self.0.entry(layer).or_insert_with(|| {
             std::array::from_fn(|y| {
                 (0..16).fold(0u16, |row, x| row | ((super::textures::texel(layer, x, y)[3] >= 128) as u16) << x)
@@ -148,36 +155,44 @@ impl Builder<'_> {
         }
     }
 
-    /// A flat icon extruded 1/16 deep: front and back faces, plus a strip
-    /// along every pixel edge between solid and clear.
+    /// A flat icon extruded 1/16 deep (see [`extrude`]).
     fn sprite(&mut self, m: Mat4, layer: u16, mask: [u16; 16]) {
-        let solid = |x: i32, y: i32| (0..16).contains(&x) && (0..16).contains(&y) && mask[y as usize] >> x & 1 == 1;
-        let p = |x: f32, y: f32, z: f32| m.transform_point3(Vec3::new(x / 16.0, 1.0 - y / 16.0, z / 16.0));
-        let full = [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]];
-        self.quad([p(0., 16., 1.), p(16., 16., 1.), p(16., 0., 1.), p(0., 0., 1.)], full, layer);
-        let back = [[1.0, 1.0], [0.0, 1.0], [0.0, 0.0], [1.0, 0.0]];
-        self.quad([p(16., 16., 0.), p(0., 16., 0.), p(0., 0., 0.), p(16., 0., 0.)], back, layer);
-        for y in 0..16 {
-            for x in 0..16 {
-                if !solid(x, y) {
-                    continue;
-                }
-                let uv = [[(x as f32 + 0.5) / 16.0, (y as f32 + 0.5) / 16.0]; 4];
-                let (fx, fy) = (x as f32, y as f32);
-                if !solid(x - 1, y) {
-                    self.quad([p(fx, fy, 0.), p(fx, fy + 1., 0.), p(fx, fy + 1., 1.), p(fx, fy, 1.)], uv, layer);
-                }
-                if !solid(x + 1, y) {
-                    let x1 = fx + 1.0;
-                    self.quad([p(x1, fy, 1.), p(x1, fy + 1., 1.), p(x1, fy + 1., 0.), p(x1, fy, 0.)], uv, layer);
-                }
-                if !solid(x, y - 1) {
-                    self.quad([p(fx, fy, 1.), p(fx + 1., fy, 1.), p(fx + 1., fy, 0.), p(fx, fy, 0.)], uv, layer);
-                }
-                if !solid(x, y + 1) {
-                    let y1 = fy + 1.0;
-                    self.quad([p(fx, y1, 0.), p(fx + 1., y1, 0.), p(fx + 1., y1, 1.), p(fx, y1, 1.)], uv, layer);
-                }
+        extrude(mask, |c, uv| self.quad(c.map(|p| m.transform_point3(p)), uv, layer));
+    }
+}
+
+/// A flat icon extruded as Java's `ItemModelGenerator` extrudes it: front
+/// and back faces over the whole 16 × 16, plus a strip along every pixel
+/// edge between solid and clear. Corners are in the model's unit square
+/// (x right, y up) and 1/16 deep (z from 0 to 1/16), counter-clockwise from
+/// outside, with their UVs.
+pub(super) fn extrude(mask: [u16; 16], mut quad: impl FnMut([Vec3; 4], [[f32; 2]; 4])) {
+    let solid = |x: i32, y: i32| (0..16).contains(&x) && (0..16).contains(&y) && mask[y as usize] >> x & 1 == 1;
+    let p = |x: f32, y: f32, z: f32| Vec3::new(x / 16.0, 1.0 - y / 16.0, z / 16.0);
+    let full = [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]];
+    quad([p(0., 16., 1.), p(16., 16., 1.), p(16., 0., 1.), p(0., 0., 1.)], full);
+    let back = [[1.0, 1.0], [0.0, 1.0], [0.0, 0.0], [1.0, 0.0]];
+    quad([p(16., 16., 0.), p(0., 16., 0.), p(0., 0., 0.), p(16., 0., 0.)], back);
+    for y in 0..16 {
+        for x in 0..16 {
+            if !solid(x, y) {
+                continue;
+            }
+            let uv = [[(x as f32 + 0.5) / 16.0, (y as f32 + 0.5) / 16.0]; 4];
+            let (fx, fy) = (x as f32, y as f32);
+            if !solid(x - 1, y) {
+                quad([p(fx, fy, 0.), p(fx, fy + 1., 0.), p(fx, fy + 1., 1.), p(fx, fy, 1.)], uv);
+            }
+            if !solid(x + 1, y) {
+                let x1 = fx + 1.0;
+                quad([p(x1, fy, 1.), p(x1, fy + 1., 1.), p(x1, fy + 1., 0.), p(x1, fy, 0.)], uv);
+            }
+            if !solid(x, y - 1) {
+                quad([p(fx, fy, 1.), p(fx + 1., fy, 1.), p(fx + 1., fy, 0.), p(fx, fy, 0.)], uv);
+            }
+            if !solid(x, y + 1) {
+                let y1 = fy + 1.0;
+                quad([p(fx, y1, 0.), p(fx + 1., y1, 0.), p(fx + 1., y1, 1.), p(fx, y1, 1.)], uv);
             }
         }
     }
@@ -379,6 +394,19 @@ pub(super) fn vertices(
         * rot_x((root * PI).sin() * -80.0)
         * rot_y(-45.0);
 
+    let start = b.out.len();
+    // v1.0 gap track 6b: a 3D item mesh with Java's first-person transform.
+    if let Some(mesh) = hand.mesh.filter(|s| s.item == item).and_then(|s| voxelcraft::content::item_models::mesh(&s)) {
+        let m = arm * voxelcraft::content::item_models::Context::FirstPersonRightHand.matrix(&mesh.display);
+        for q in &mesh.quads {
+            b.tint = q.tint.unwrap_or([255; 4]);
+            b.quad(q.corners.map(|c| m.transform_point3(c)), q.uv, q.layer);
+        }
+        if hand.glint {
+            b.out[start..].iter_mut().for_each(|v| v.layer |= super::block_model::GLINT);
+        }
+        return out;
+    }
     let block = hand.block.or_else(|| item.block()).filter(|b| !b.flat_icon());
     match block {
         Some(block) => {
@@ -397,9 +425,10 @@ pub(super) fn vertices(
         None => {
             // Flat items: Minecraft's first-person "handheld" transform.
             let layer = match item.block() {
-                Some(block) => block.info().tex[0],
-                None => hand.icon.or_else(|| item.icon_layer()).unwrap_or(tex::ITEM_BASE),
-            };
+                Some(_) => item.flat_layer(),
+                None => hand.icon.or_else(|| item.icon_layer()),
+            }
+            .unwrap_or(tex::ITEM_BASE);
             // Mirrored front to back, so the icon's right (a sword's tip)
             // points away from the eye and the handle sits in the hand.
             let display = translate(1.13 / 16.0, 3.2 / 16.0, 1.13 / 16.0)
@@ -410,6 +439,9 @@ pub(super) fn vertices(
             b.tint = hand.tint.unwrap_or([255; 4]);
             b.sprite(arm * display, layer, masks.get(layer));
         }
+    }
+    if hand.glint {
+        b.out[start..].iter_mut().for_each(|v| v.layer |= super::block_model::GLINT);
     }
     out
 }

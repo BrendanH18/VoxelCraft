@@ -454,10 +454,11 @@ pub fn build_player(
         } else {
             // The default thirdperson_righthand display for handheld items.
             held.rot *= Quat::from_rotation_y(-FRAC_PI_2) * Quat::from_rotation_z(55f32.to_radians());
-            let layer = item.block().map_or_else(
-                || appearance.held_icon.or_else(|| item.icon_layer()).unwrap_or(crate::world::block::tex::ITEM_BASE),
-                |b| b.info().tex[0],
-            );
+            let layer = match item.block() {
+                Some(_) => item.flat_layer(),
+                None => appearance.held_icon.or_else(|| item.icon_layer()),
+            }
+            .unwrap_or(crate::world::block::tex::ITEM_BASE);
             let tint = appearance
                 .held_tint
                 .or_else(|| crate::inventory::components::undyed_tint(item))

@@ -78,15 +78,35 @@ impl Game {
         decor::framed_items(&self.mobs.entities.decor, camera, view).filter(move |f| !shows_map(&f.2)).map(
             |(centre, orient, stack, sky, torch)| {
                 let block = crate::item::model_block(&stack);
+                // v1.0 gap track 6b: a 3D item mesh, at Java's frame scale
+                // (0.5) and `fixed` transform; the frame's turn faces model
+                // +Z out of the wall where Java's faces -Z, so it turns once
+                // more.
+                if voxelcraft::content::item_models::has_mesh(stack.item) {
+                    return crate::render::BlockModel {
+                        patterns: None,
+                        lid: None,
+                        min: centre,
+                        size: 0.5,
+                        block: voxelcraft::world::block::Block::AIR,
+                        sky_light: sky,
+                        block_light: torch,
+                        yaw: 0.0,
+                        icon: None,
+                        orient: Some(orient * glam::Quat::from_rotation_y(std::f32::consts::PI)),
+                        tint: [255; 4],
+                        glint: stack.has_foil(),
+                        translucent: false,
+                        mesh: Some((stack, voxelcraft::content::item_models::Context::Fixed)),
+                    };
+                }
                 let size = if block.is_some() { 0.375 } else { 0.5 };
                 let icon = match block {
                     Some(_) => None,
                     None => stack
                         .item
-                        .block()
-                        .map(|b| b.info().tex[0])
-                        .or_else(|| stack.item.dial_layer(self.dial_of(&self.session.player).for_stack(&stack)))
-                        .or_else(|| stack.item.icon_layer()),
+                        .dial_layer(self.dial_of(&self.session.player).for_stack(&stack))
+                        .or_else(|| stack.item.flat_layer()),
                 };
                 // A block sits on the frame's backing rather than in the wall.
                 let out =
@@ -103,6 +123,9 @@ impl Game {
                     icon,
                     orient: Some(orient),
                     tint: voxelcraft::entity::wolf_armor::item_tint_bytes(stack),
+                    glint: stack.has_foil(),
+                    translucent: crate::item::translucent(&stack),
+                    mesh: None,
                 }
             },
         )

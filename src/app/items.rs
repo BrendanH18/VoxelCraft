@@ -257,15 +257,17 @@ impl Game {
     /// `ItemEntityRenderer` places them, the model's lowest point (its
     /// bounding box's) hovers 1/16 above the item's feet before the bob.
     fn dropped_models(&self, stack: Stack, pos: DVec3, spin: f32, bob: f64, out: &mut Vec<BlockModel>) {
+        // v1.0 gap track 6b: beds, banners, the shield and two plants
+        // drawn with their 3D model's ground transform.
+        let mesh = voxelcraft::content::item_models::mesh(&stack)
+            .map(|m| m.lowest(voxelcraft::content::item_models::Context::Ground) as f64);
         let block = crate::item::model_block(&stack);
         let icon = match block {
             Some(_) => None,
             None => stack
                 .item
-                .block()
-                .map(|b| b.info().tex[0])
-                .or_else(|| stack.item.dial_layer(self.dial_of(&self.session.player).for_stack(&stack)))
-                .or_else(|| stack.item.icon_layer()),
+                .dial_layer(self.dial_of(&self.session.player).for_stack(&stack))
+                .or_else(|| stack.item.flat_layer()),
         };
         let size = block.map_or(0.5, |b| 0.25 * crate::world::shape::item_scale(b).ground as f64);
         // `ITEM_MIN_HOVER_HEIGHT` less the model's own lowest point (a
@@ -286,12 +288,16 @@ impl Game {
             // Copies sit a little apart, the same way every frame.
             let k = i as f64;
             let offset = DVec3::new((k * 2.3).sin(), 0.0, (k * 1.7).cos()) * 0.06 * k.min(1.0);
-            let min = pos + offset + DVec3::new(-size / 2.0, lift + bob + k * 0.03, -size / 2.0);
+            let mut min = pos + offset + DVec3::new(-size / 2.0, lift + bob + k * 0.03, -size / 2.0);
+            if let Some(lowest) = mesh {
+                // The mesh's origin, its lowest point hovering as a block's does.
+                min = pos + offset + DVec3::new(0.0, HOVER - lowest + bob + k * 0.03, 0.0);
+            }
             out.push(BlockModel {
                 patterns: None,
                 lid: None,
                 min,
-                size: size as f32,
+                size: if mesh.is_some() { 1.0 } else { size as f32 },
                 block: block.unwrap_or(Block::AIR),
                 sky_light,
                 block_light,
@@ -299,6 +305,9 @@ impl Game {
                 icon,
                 orient: None,
                 tint: voxelcraft::entity::wolf_armor::item_tint_bytes(stack),
+                glint: stack.has_foil(),
+                translucent: crate::item::translucent(&stack),
+                mesh: mesh.map(|_| (stack, voxelcraft::content::item_models::Context::Ground)),
             });
         }
     }

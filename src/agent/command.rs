@@ -44,6 +44,11 @@ pub enum Command {
     /// `recipes [all|craftable] [query]`: the known recipes the book shows.
     Recipes(Option<bool>, String),
     Chest(bool, usize),
+    /// v1.0 gap track 6b: `bundle <slot> [stack]`: the right click with an
+    /// empty cursor on the bundle in inventory slot 0..36 (hotbar first),
+    /// with tooltip cell `stack` picked as the wheel picks it (0 the front;
+    /// none takes the front), the stack going into the inventory.
+    Bundle(usize, Option<usize>),
     /// `sign x y z front|back ["line", ...]`: one side's text, as the sign
     /// edit screen's Done sends it (`ServerboundSignUpdatePacket`).
     Sign(IVec3, bool, [String; 4]),
@@ -828,6 +833,11 @@ impl Command {
             ["chest", action @ ("take" | "put"), slot] => {
                 Self::Chest(*action == "take", slot.parse::<usize>().ok().filter(|n| *n < 27).ok_or_else(bad)?)
             }
+            ["bundle", slot] => Self::Bundle(slot.parse::<usize>().ok().filter(|n| *n < 36).ok_or_else(bad)?, None),
+            ["bundle", slot, pick] => Self::Bundle(
+                slot.parse::<usize>().ok().filter(|n| *n < 36).ok_or_else(bad)?,
+                Some(pick.parse::<usize>().ok().filter(|n| *n < crate::content::bundle::SHOWN_MAX).ok_or_else(bad)?),
+            ),
             ["drop"] => Self::Drop,
             ["respawn"] => Self::Respawn,
             ["leave"] => Self::Leave,

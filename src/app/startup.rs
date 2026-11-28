@@ -353,6 +353,7 @@ impl Game {
             fps: 0.0,
             cpu_ms: 0.0,
             show_debug: args.debug_overlay,
+            debug_key_used: false,
             popup: (String::new(), now - Duration::from_secs(10)),
             save_error: None,
             screenshot: args.screenshot.clone(),

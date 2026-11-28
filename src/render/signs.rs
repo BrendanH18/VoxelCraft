@@ -430,14 +430,19 @@ pub fn shelf_items(world: &World, camera: DVec3, out: &mut Vec<BlockModel>) {
             let block = crate::item::model_block(stack);
             let icon = match block {
                 Some(_) => None,
-                None => stack.item.block().map(|b| b.info().tex[0]).or_else(|| stack.item.icon_layer()),
+                None => stack.item.flat_layer(),
             };
             let size = 0.25;
+            // v1.0 gap track 6b: a 3D item mesh stands at the anchor with
+            // its ground transform (the dropped model, as other shelved
+            // items use).
+            let mesh = voxelcraft::content::item_models::has_mesh(stack.item)
+                .then_some((*stack, voxelcraft::content::item_models::Context::Ground));
             out.push(BlockModel {
                 patterns: None,
                 lid: None,
-                min: cell.as_dvec3() + anchor - DVec3::splat(size / 2.0),
-                size: size as f32,
+                min: cell.as_dvec3() + anchor - if mesh.is_some() { DVec3::ZERO } else { DVec3::splat(size / 2.0) },
+                size: if mesh.is_some() { 1.0 } else { size as f32 },
                 block: block.unwrap_or(Block::AIR),
                 sky_light,
                 block_light,
@@ -445,6 +450,9 @@ pub fn shelf_items(world: &World, camera: DVec3, out: &mut Vec<BlockModel>) {
                 icon,
                 orient: None,
                 tint: crate::inventory::components::dye_tint_bytes(*stack),
+                glint: stack.has_foil(),
+                translucent: crate::item::translucent(stack),
+                mesh,
             });
         }
     }

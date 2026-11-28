@@ -32,6 +32,9 @@ impl Game {
                     icon: None,
                     orient: None,
                     tint: [255; 4],
+                    glint: false,
+                    translucent: false,
+                    mesh: None,
                     patterns: self.world.banner_entity(cell).and_then(|e| e.patterns),
                     lid: None,
                 }

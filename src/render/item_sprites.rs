@@ -16,24 +16,24 @@ const HANDLE: [u8; 3] = [137, 103, 39];
 const HANDLE_DARK: [u8; 3] = [86, 64, 26];
 
 /// Pixel centre, so shapes are symmetric on the 16x16 grid.
-fn centre(x: i32, y: i32) -> (f32, f32) {
+pub(super) fn centre(x: i32, y: i32) -> (f32, f32) {
     (x as f32 + 0.5, y as f32 + 0.5)
 }
 
 /// Deterministic sprite noise; `variation` picks an independent pattern.
 /// A procedural graphics helper with no cryptographic purpose.
-fn noise(x: i32, y: i32, variation: u64) -> f32 {
+pub(super) fn noise(x: i32, y: i32, variation: u64) -> f32 {
     hash_f(x, y, 0, 0x17E3 ^ variation)
 }
 
-fn tint(c: [u8; 3], f: f32) -> Rgba {
+pub(super) fn tint(c: [u8; 3], f: f32) -> Rgba {
     let s = |v: u8| (v as f32 * f).clamp(0.0, 255.0) as u8;
     [s(c[0]), s(c[1]), s(c[2]), 255]
 }
 
 /// Shades a pixel of a filled shape: a highlight where the shape's top or
 /// left edge is, a dark rim on its bottom and right edges.
-fn shaded(inside: &dyn Fn(i32, i32) -> bool, x: i32, y: i32, c: [u8; 3], grain: f32) -> Option<Rgba> {
+pub(super) fn shaded(inside: &dyn Fn(i32, i32) -> bool, x: i32, y: i32, c: [u8; 3], grain: f32) -> Option<Rgba> {
     if !inside(x, y) {
         return None;
     }

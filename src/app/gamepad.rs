@@ -159,6 +159,14 @@ struct Seat {
     message: Option<(String, Instant)>,
     /// The lines of the sign side open in [`Menu::Sign`].
     sign_text: [String; 4],
+    /// v1.0 gap track 6b: the stack picked in the bundle under the screen
+    /// cursor (the slot and its index), as the desktop wheel picks one
+    /// (`BundleMouseActions`). Java 26.3 has no controller input; the
+    /// right stick, which screens don't otherwise use, picks: down the next
+    /// stack, up the previous, as the wheel's notches do.
+    bundle: Option<(super::pad_menu::Slot, usize)>,
+    /// The right stick's pick direction (down) and when it next repeats.
+    pick: Option<(bool, Instant)>,
 }
 
 /// What a seat asks of its agent for one tick.
@@ -189,6 +197,8 @@ impl Seat {
             body: Body::default(),
             message: None,
             sign_text: Default::default(),
+            bundle: None,
+            pick: None,
         }
     }
 
@@ -201,6 +211,30 @@ impl Seat {
         self.drop_since = None;
         self.toggled = (false, false);
         self.body.let_go();
+    }
+
+    /// v1.0 gap track 6b: a bundle pick from the right stick's vertical
+    /// axis (`true` down, the wheel's next stack): one on a flick, then
+    /// repeating like the menu moves.
+    fn stick_pick(&mut self, y: f32, now: Instant) -> Option<bool> {
+        let dir = (y.abs() >= 0.6).then_some(y < 0.0);
+        match (dir, self.pick) {
+            (None, _) => {
+                self.pick = None;
+                None
+            }
+            (Some(d), Some((held, at))) if d == held => {
+                if now < at {
+                    return None;
+                }
+                self.pick = Some((d, now + NAV_REPEAT));
+                Some(d)
+            }
+            (Some(d), _) => {
+                self.pick = Some((d, now + NAV_DELAY));
+                Some(d)
+            }
+        }
     }
 
     /// Menu moves from the left stick: one on a flick, then repeating.
@@ -459,6 +493,7 @@ impl Game {
         let mut joins = Vec::new();
         let mut popups = Vec::new();
         let mut navs = Vec::new();
+        let mut picks = Vec::new();
         let mut host_navs = Vec::new();
         let mut closing = Vec::new();
         let mut skip_credits = false;
@@ -533,6 +568,7 @@ impl Game {
             if seat.menu.is_some() {
                 let stick = Vec2::new(pad.value(Axis::LeftStickX), pad.value(Axis::LeftStickY));
                 navs.extend(seat.stick_nav(stick, now).map(|n| (seat.name.clone(), n)));
+                picks.extend(seat.stick_pick(pad.value(Axis::RightStickY), now).map(|d| (seat.name.clone(), d)));
                 continue;
             }
             if seat.drop_since.is_some_and(|t| now - t >= DROP_STACK_HOLD) {
@@ -572,6 +608,9 @@ impl Game {
             if self.pad_nav(&name, nav) {
                 popups.push(format!("{name} left the game"));
             }
+        }
+        for (name, down) in picks {
+            self.pad_pick(&name, down);
         }
         for nav in host_navs {
             if let Some(action) = self.menu_nav(nav) {
@@ -668,6 +707,37 @@ impl Game {
         }
     }
 
+    /// v1.0 gap track 6b: controller player `name`'s bundle pick, while
+    /// the bundle it was made in is under their cursor and still holds it
+    /// (`onStopHovering` otherwise).
+    pub(super) fn pad_bundle_pick(&self, name: &str) -> Option<usize> {
+        let seat = self.pads.seats.iter().find(|s| s.name == name)?;
+        let (slot, i) = seat.bundle?;
+        let Some(Menu::Items { tab, .. }) = seat.menu else { return None };
+        let menu = seat.menu?;
+        (menu.slot(self.pad_lists(name, tab)) == Some(slot)).then_some(())?;
+        let stack = self.pad_slot_stack(name, tab, slot)?;
+        (voxelcraft::content::bundle::is_bundle(stack.item) && i < stack.bundle_contents().len()).then_some(i)
+    }
+
+    /// v1.0 gap track 6b: the right stick over a bundle that shows stacks
+    /// moves controller player `name`'s pick, as a wheel notch does
+    /// (`ScrollWheelHandler.getNextScrollWheelSelection`).
+    fn pad_pick(&mut self, name: &str, down: bool) {
+        let Some(i) = self.pads.seats.iter().position(|s| s.name == name) else { return };
+        let Some(menu @ Menu::Items { tab, .. }) = self.pads.seats[i].menu else { return };
+        let Some(slot) = menu.slot(self.pad_lists(name, tab)) else { return };
+        let Some(stack) =
+            self.pad_slot_stack(name, tab, slot).filter(|s| voxelcraft::content::bundle::is_bundle(s.item))
+        else {
+            return;
+        };
+        let limit = voxelcraft::content::bundle::shown_count(stack.bundle_contents().len());
+        let current = self.pad_bundle_pick(name);
+        let next = voxelcraft::content::bundle::next_selection(if down { -1.0 } else { 1.0 }, current, limit);
+        self.pads.seats[i].bundle = next.map(|n| (slot, n));
+    }
+
     /// One menu press. Returns whether the player left the game.
     fn pad_nav(&mut self, name: &str, nav: Nav) -> bool {
         let Some(i) = self.pads.seats.iter().position(|s| s.name == name) else { return false };
@@ -676,6 +746,10 @@ impl Game {
             Menu::Items { tab, .. } => tab,
             Menu::Pause { .. } | Menu::Sign { .. } | Menu::Rename { .. } => Tab::Inventory,
         };
+        // Moving off the bundle drops the pick (`onStopHovering`).
+        if self.pad_bundle_pick(name).is_none() {
+            self.pads.seats[i].bundle = None;
+        }
         let action = menu.press(nav, self.pad_lists(name, tab));
         if action == Action::Leave {
             self.leave_pad(name);
@@ -1032,13 +1106,22 @@ impl Game {
         // Controller crafting uses recipe slots, so their screens have no grid of their own.
         let mut container = container;
         let mut no_grid = crate::crafting::Grid::new(2);
+        // v1.0 gap track 6b: the bundle pick under the cursor goes with the
+        // click, as the desktop's wheel pick does; anything but putting a
+        // stack in clears it.
+        let selected = self.pad_bundle_pick(name);
         let done = self.agent_screen(name, &mut container, &mut no_grid, |s| {
             if quick {
-                s.quick_move(slot)
+                s.quick_move(slot);
+                None
             } else {
-                s.click_slot_selected(slot, right, None);
+                s.click_slot_selected(slot, right, selected)
             }
         });
+        if !done.as_ref().and_then(|(click, _)| *click).is_some_and(voxelcraft::content::bundle::Click::keeps_selection)
+        {
+            self.pads.seats[seat].bundle = None;
+        }
         self.pads.seats[seat].body.container = container;
         for request in done.map(|(_, r)| r).unwrap_or_default() {
             match request {
@@ -1317,5 +1400,17 @@ mod tests {
         assert_eq!(s.stick_nav(right, t + NAV_DELAY + NAV_REPEAT), Some(Nav::Right));
         assert_eq!(s.stick_nav(Vec2::ZERO, t + NAV_DELAY * 2), None);
         assert_eq!(s.stick_nav(Vec2::new(0.0, -0.8), t + NAV_DELAY * 2), Some(Nav::Down));
+    }
+
+    #[test]
+    fn the_right_stick_picks_bundle_stacks_once_then_repeats() {
+        // v1.0 gap track 6b: down (negative y) picks the next stack.
+        let mut s = seat();
+        let t = Instant::now();
+        assert_eq!(s.stick_pick(-0.9, t), Some(true));
+        assert_eq!(s.stick_pick(-0.9, t + Duration::from_millis(100)), None);
+        assert_eq!(s.stick_pick(-0.9, t + NAV_DELAY), Some(true));
+        assert_eq!(s.stick_pick(0.1, t + NAV_DELAY), None);
+        assert_eq!(s.stick_pick(0.8, t + NAV_DELAY), Some(false));
     }
 }

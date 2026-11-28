@@ -518,11 +518,22 @@ pub fn take_one(bundle: &mut Stack) -> Option<Stack> {
     Some(out)
 }
 
-/// `BundleItem.onDestroyed`: what a bundle lying as an item spills when it
-/// burns or is blown up (`ItemUtils.onContainerDestroyed`), each stack as it
-/// was inside, front first. Nothing for any other item.
-pub fn destroyed_contents(stack: &Stack) -> &'static [Stack] {
-    if is_bundle(stack.item) { stack.bundle_contents() } else { &[] }
+/// `Item.onDestroyed`: what an item lying on the ground spills when it
+/// burns or is blown up (`ItemUtils.onContainerDestroyed`): a bundle's
+/// stacks front first (`BundleItem.onDestroyed`), or a block item's
+/// `container` contents in slot order, empty slots skipped
+/// (`BlockItem.onDestroyed`, v1.0 gap track 6b: shulker boxes). Nothing for
+/// any other item.
+pub fn destroyed_contents(stack: &Stack) -> Vec<Stack> {
+    if is_bundle(stack.item) {
+        return stack.bundle_contents().to_vec();
+    }
+    match stack.payload() {
+        Some(crate::inventory::components::Payload::Container(slots)) if stack.item.block().is_some() => {
+            slots.iter().flatten().copied().collect()
+        }
+        _ => Vec::new(),
+    }
 }
 
 /// The sixteen `crafting_transmute` recipes (`<colour>_bundle.json`): any

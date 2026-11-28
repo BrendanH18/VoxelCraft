@@ -40,7 +40,7 @@ Sprint can be set to Toggle there.
 | M | Mute / unmute sound (`--mute` starts muted, `--volume 0..1` sets the master volume) |
 | V | Toggle vsync |
 | F1 | Toggle HUD |
-| F3 | Debug screen |
+| F3 | Debug screen (on release; F3 + H toggles advanced item tooltips: durability, id and component count) |
 | F5 | Cycle first-person, behind and front views |
 | F11 | Toggle fullscreen; Options → Fullscreen chooses Borderless (macOS native fullscreen Space) or Exclusive (native resolution), and it is remembered |
 | Esc | Pause menu (the game pauses): Back to Game, Options..., Save and Quit to Title; Esc again goes back |
@@ -64,7 +64,11 @@ Saved Hotbars shows the nine hotbars saved with C + a number key (X + the
 number loads one); they are kept per install in `saves/hotbars.txt`.
 Controllers page through the item tabs and Saved Hotbars with LB/RB (Y
 loads a saved row, X saves it); the CLI agent's `catalog tabs`,
-`catalog tab:<id>` and `hotbar save|load 1..9` do the same. The survival
+`catalog tab:<id>` and `hotbar save|load 1..9` do the same. Over a bundle
+the mouse wheel picks one of its stacks to take out with a right click; on
+a controller the right stick picks it (down the next, up the previous) for
+X, and the CLI's `bundle <slot> [stack]` takes one out. A stack held on the
+cursor hides other items' tooltips, as in Java; a bundle's still shows. The survival
 inventory now uses Java's layout too: armour down the left, the player
 beside it, the off-hand under the player and the 2 x 2 grid to the right.
 

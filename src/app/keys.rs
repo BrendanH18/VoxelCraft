@@ -90,9 +90,12 @@ pub(super) enum Action {
     /// `keyLoadHotbarActivator`), appended so saved bindings keep their order.
     SaveHotbar,
     LoadHotbar,
+    /// v1.0 gap track 6b: Java's `keyDebugShowAdvancedTooltips` (H, with
+    /// the debug modifier held), appended so saved bindings keep their order.
+    AdvancedTooltips,
 }
 
-pub(super) const COUNT: usize = Action::LoadHotbar as usize + 1;
+pub(super) const COUNT: usize = Action::AdvancedTooltips as usize + 1;
 
 /// One row of the table: save name, label, category and default.
 struct Spec {
@@ -154,6 +157,7 @@ const SPECS: [Spec; COUNT] = [
     // `Options`: HID usage 6 (C) and 27 (X), `KeyMapping.Category.CREATIVE`.
     spec("key.saveToolbarActivator", "Save Hotbar Activator", C::Creative, key(KeyCode::KeyC)),
     spec("key.loadToolbarActivator", "Load Hotbar Activator", C::Creative, key(KeyCode::KeyX)),
+    spec("key.debug.showAdvancedTooltips", "Show Advanced Tooltips", C::Debug, key(KeyCode::KeyH)),
 ];
 
 impl Action {
@@ -197,6 +201,7 @@ impl Action {
             SwapHands,
             SaveHotbar,
             LoadHotbar,
+            AdvancedTooltips,
         ]
     };
 

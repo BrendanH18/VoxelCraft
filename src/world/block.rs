@@ -381,13 +381,15 @@ pub mod tex {
         ];
         // v0.15 Track D's frosted ice (layers 4000..4004) and Track F's
         // explorer maps (4056..4066) set the count.
-        const ENDS2: [u32; 4] = [
+        const ENDS2: [u32; 5] = [
             super::super::frosted_ice::TEX_END as u32,
             super::super::explorer_maps::TEX_END as u32,
             // v0.16 Track A (layers 529..541).
             super::super::end_blocks::TEX_END as u32,
             // v1.0 gap Track 7: the potted bamboo's leaf (4066).
             super::super::utilities::GAP_TEX_END as u32,
+            // v1.0 gap track 6b: the item models' plant layers (4080..4084).
+            crate::content::item_models::TEX_END as u32,
         ];
         let mut max = 0;
         let mut i = 0;
@@ -1182,6 +1184,19 @@ impl Block {
             || super::colour_blocks::flat_icon(self)
             || super::cave_blocks::multiface_of(self).is_some()
             || java_flat_block_item(self)
+            || crate::content::block_item_sprites::is_item_block(self)
+    }
+
+    /// v1.0 gap track 6b: an item of this block draws blended, as Java's
+    /// translucent chunk layer does (`ItemBlockRenderTypes`): stained glass
+    /// and stained panes, and the translucent blocks that aren't fluids
+    /// (ice, tinted glass, slime and honey blocks).
+    pub fn item_translucent(self) -> bool {
+        self.stained_glass_color().is_some()
+            || self.stained_pane_color().is_some()
+            || (self.kind() == RenderKind::Translucent && self.fluid().is_none())
+            || super::stone_blocks::translucent_solid(self.0)
+            || self == Block::HONEY_BLOCK
     }
 
     /// v1.0 gap track 6: the state an item of this block is drawn as. Java's
