@@ -374,7 +374,7 @@ impl Entities {
     /// Takes `chunks`' stored entities out of memory as level file entity
     /// keys ([`RECORD_KEYS`]), one batch per chunk. Arrows, thrown items,
     /// fireballs and primed TNT stay in memory, and the level file saves
-    /// them with the dimension (v1.0 gap Track 8e; eyes of ender aren't saved).
+    /// them with the dimension (v1.0 gap Track 8e; eyes of ender since 8f).
     /// Villagers' claims and heart-bound creakings stay indexed.
     fn serialize_stored(&mut self, mut chunks: Vec<IVec3>) -> Vec<(IVec3, Props)> {
         if chunks.is_empty() {

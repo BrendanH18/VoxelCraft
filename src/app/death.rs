@@ -26,7 +26,7 @@ use crate::render::ui::{Ui, WHITE};
 pub(super) trait DeathHost: gui::Host<Out = MenuAction> {
     /// Respawn, or in Hardcore Spectate World.
     fn respawn_from_death(&mut self);
-    /// The death message ("Player fell from a high place") and the score.
+    /// The death message ("Alex fell from a high place") and the score.
     fn death_text(&self) -> (Option<String>, u32);
 }
 
@@ -36,7 +36,9 @@ impl DeathHost for Game {
     }
 
     fn death_text(&self) -> (Option<String>, u32) {
-        let cause = self.session.vitals.death.as_ref().map(|cause| format!("Player {cause}"));
+        // v1.0 gap Track 8f: `%1$s` is the player's profile name, as Java
+        // names the victim by their display name.
+        let cause = self.session.vitals.death.as_ref().map(|cause| format!("{} {cause}", self.lan.profile));
         (cause, self.session.vitals.xp.total)
     }
 }

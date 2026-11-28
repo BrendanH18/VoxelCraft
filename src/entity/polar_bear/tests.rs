@@ -250,3 +250,35 @@ fn polar_bear_stops_anger_when_its_mob_target_dies() {
     sense(&mut e, &w, &c, 1);
     assert!(e.mobs[0].polar_bear.as_ref().unwrap().angry_at.is_none());
 }
+
+/// v1.0 gap Track 8f: whoever was behind a blast (primed TNT's owner) is the
+/// attacker of the mobs it hurts (`hurtServer`'s `setLastHurtByMob`): a
+/// skeleton's TNT turns a polar bear on the skeleton, a player's on the
+/// player; a blast with no one behind it angers no one.
+#[test]
+fn a_blast_makes_whoever_was_behind_it_the_attacker_of_what_it_hurts() {
+    use crate::entity::trident::Owner;
+    let world = Grid::flat(10);
+    let center = DVec3::new(0.5, 10.5, 0.5);
+    let bear = |by: Option<Owner>| {
+        let mut e = Entities::new(9);
+        e.mobs.push(Mob::new(MobKind::PolarBear, DVec3::new(2.5, 10.0, 0.5), 0.0));
+        e.mobs.push(Mob::new(MobKind::Skeleton, DVec3::new(40.5, 10.0, 0.5), 0.0));
+        e.ensure_mob_ids();
+        let skeleton = e.mobs[1].uid;
+        let by = by.map(|o| if o == Owner::Mob(0) { Owner::Mob(skeleton) } else { o });
+        let full = e.mobs[0].health;
+        e.explode_by(&world, center, 2.0, (false, true), by);
+        assert!(e.mobs[0].health < full, "the bear was hurt");
+        let player_hits = e.hurt_by.clone();
+        (e.mobs[0].polar_bear.as_ref().unwrap().angry_at, skeleton, player_hits, e.mobs[0].uid)
+    };
+    let (angry, skeleton, hits, _) = bear(Some(Owner::Mob(0)));
+    assert_eq!(angry, Some(Foe::Mob(skeleton)));
+    assert!(hits.is_empty());
+    // A player's hit waits for the bear's `HurtByTargetGoal` on the next update.
+    let (_, _, hits, uid) = bear(Some(Owner::Player(PlayerId(2))));
+    assert_eq!(hits, [(uid, PlayerId(2))]);
+    let (angry, _, hits, _) = bear(None);
+    assert_eq!((angry, hits.len()), (None, 0));
+}

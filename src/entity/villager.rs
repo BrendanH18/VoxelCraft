@@ -667,6 +667,9 @@ impl Entities {
             return false;
         }
         v.unhappy = UNHAPPY_TICKS;
+        // v1.0 gap Track 8f: `setUnhappy` says no.
+        let pos = m.pos;
+        self.pending_sounds.push(super::EntityEvent::Sound { sound: super::MobSound::VillagerNo(true), pos });
         true
     }
 
@@ -679,6 +682,9 @@ impl Entities {
             && m.kind == MobKind::Villager
         {
             m.villager.as_mut().unwrap().unhappy = UNHAPPY_TICKS;
+            // v1.0 gap Track 8f: `setUnhappy` says no.
+            let (pos, baby) = (m.pos, m.age < 0);
+            self.pending_sounds.push(super::EntityEvent::Sound { sound: super::MobSound::VillagerNo(baby), pos });
         }
     }
 

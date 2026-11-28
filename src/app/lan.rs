@@ -537,6 +537,14 @@ impl Game {
             return text;
         };
         if let Some(profiles) = profiles.as_array_mut() {
+            // v1.0 gap Track 8f: each profile's pearls with its player data.
+            for p in profiles.iter_mut() {
+                let id = p["name"].as_str().and_then(|n| self.agents.players.get(n)).map(|b| b.id);
+                if let Some(pearls) = id.and_then(|id| self.owned_pearls.save(&self.mobs.entities, self.dimension, id))
+                {
+                    p[super::save::PEARLS_KEY] = pearls;
+                }
+            }
             for peer in &self.lan.peers {
                 if let Some(p) = profiles.iter_mut().find(|p| p["name"].as_str() == peer.profile.as_deref())
                     && let Some(mut inventory) =
@@ -2570,13 +2578,16 @@ impl Game {
         amount: f32,
         (source, yaw, extra): (DVec3, f32, f32),
         fire: f32,
+        by: crate::entity::PlayerId,
     ) -> Option<(DVec3, [u8; 4], bool)> {
-        const CAUSE: voxelcraft::simulation::damage::Cause = voxelcraft::simulation::damage::Cause::PLAYER_ATTACK;
+        // v1.0 gap Track 8f: "was slain by" the attacker, by name.
+        let owner = Some(crate::entity::trident::Owner::Player(by));
+        let cause = voxelcraft::simulation::damage::Cause::PLAYER_ATTACK.by(owner);
         let hit = knockback::Hit::melee(source, self.player(target)?.player.pos, yaw, extra);
         let landed = match target {
             PlayerRef::Host => {
                 let toward = source - self.session.player.pos;
-                let landed = self.damage_player_from(amount, CAUSE, Some(toward)) > 0.0;
+                let landed = self.damage_player_from(amount, cause, Some(toward)) > 0.0;
                 if landed {
                     let entities = &mut self.mobs.entities;
                     self.session.knocked_back(&hit, &mut || f64::from(entities.roll_range(0.0, 1.0)));
@@ -2585,7 +2596,7 @@ impl Game {
             }
             PlayerRef::Agent(name) => {
                 let bot = self.agents.players.get_mut(name)?;
-                bot.agent.hurt_knocked(amount, CAUSE, &hit, &mut self.mobs.entities) > 0.0
+                bot.agent.hurt_knocked(amount, cause, &hit, &mut self.mobs.entities) > 0.0
             }
         };
         let s = self.player_mut(target)?;
@@ -2636,7 +2647,9 @@ impl Game {
         if let Some(t) = self.player_mut(&target) {
             t.axe_incoming(axe);
         }
-        let hurt = self.hurt_player_ref(&target, damage, (attacker_pos, yaw, extra), fire);
+        let attacker_id = self.player(attacker).map_or(crate::entity::PlayerId::HOST, |s| s.id);
+        let target_id = self.player(&target).map_or(crate::entity::PlayerId::HOST, |s| s.id);
+        let hurt = self.hurt_player_ref(&target, damage, (attacker_pos, yaw, extra), fire, attacker_id);
         if let Some(t) = self.player_mut(&target) {
             t.axe_incoming(false);
         }
@@ -2687,7 +2700,8 @@ impl Game {
                 .map(|(who, _)| who)
                 .collect();
             for other in near {
-                self.hurt_player_ref(&other, swept, (attacker_pos, yaw, knockback::SWEEP_STRENGTH as f32), 0.0);
+                let push = (attacker_pos, yaw, knockback::SWEEP_STRENGTH as f32);
+                self.hurt_player_ref(&other, swept, push, 0.0, attacker_id);
             }
             let mut burst = crate::particles::Burst::new(crate::particles::Kind::Poof, at + DVec3::Y, 3);
             burst.spread = DVec3::splat(0.5);
@@ -2708,14 +2722,16 @@ impl Game {
         for level in thorns.into_iter().filter(|&l| l > 0) {
             if self.mobs.entities.roll_chance(0.15 * level as f32) {
                 let back = self.mobs.entities.roll_range(1.0, 5.0);
-                const THORNS: voxelcraft::simulation::damage::Cause = voxelcraft::simulation::damage::Cause::THORNS;
+                // v1.0 gap Track 8f: "while trying to hurt" the wearer, by name.
+                let owner = Some(crate::entity::trident::Owner::Player(target_id));
+                let thorns = voxelcraft::simulation::damage::Cause::THORNS.by(owner);
                 match attacker {
                     PlayerRef::Host => {
-                        self.damage_player_armored(back, THORNS);
+                        self.damage_player_armored(back, thorns);
                     }
                     PlayerRef::Agent(name) => {
                         if let Some(bot) = self.agents.players.get_mut(name) {
-                            bot.agent.hurt(back, THORNS, DVec3::ZERO, &mut self.mobs.entities);
+                            bot.agent.hurt(back, thorns, DVec3::ZERO, &mut self.mobs.entities);
                         }
                     }
                 }

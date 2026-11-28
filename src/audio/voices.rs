@@ -1114,6 +1114,30 @@ fn villager(call: Call, rng: &mut Rng) -> Vec<f32> {
     dsp::finish(out, 0.5)
 }
 
+/// v1.0 gap Track 8f: `entity.villager.no`, original synthesized audio in
+/// the villager's voice: the same nasal "hmm" tract, two short closed-mouth
+/// syllables ("hm-mm"), the second lower and falling, as a refusal.
+pub(super) fn villager_no(rng: &mut Rng) -> Vec<f32> {
+    let base = rng.range(118.0, 142.0);
+    let mut out = vec![0.0; samples(0.5)];
+    for (start, secs, rise, fall) in [(0.0f32, 0.17f32, 1.12f32, 0.05f32), (0.2, 0.26, 0.98, 0.3)] {
+        let syllable = utter(
+            rng,
+            &Utterance {
+                secs,
+                f0: &|t| base * rise * (1.0 - fall * t / secs),
+                env: &|t| swell(t, 0.025, secs * 0.5, secs),
+                formants: [(260.0, 7.0, 1.0), (1000.0, 8.0, 0.3), (2150.0, 9.0, 0.12)],
+                shift: FLAT,
+                jitter: 0.025,
+                breath: 0.06,
+            },
+        );
+        mix_into(&mut out, &syllable, 1.0, samples(start));
+    }
+    dsp::finish(out, 0.5)
+}
+
 /// An illager's grumble: the villager's nasal tract pitched down and
 /// rougher, scowling for the vindicator, reedier for the evoker and
 /// breathier for the illusioner.

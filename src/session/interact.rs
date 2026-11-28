@@ -169,9 +169,12 @@ pub enum Used {
         cell: IVec3,
     },
     /// Flint and steel lit `cell`; `portal` if it opened a Nether portal.
+    /// v1.0 gap Track 8f: `charge` when a fire charge did
+    /// (`FireChargeItem.playSound`'s `FIRECHARGE_USE`).
     Ignited {
         cell: IVec3,
         portal: bool,
+        charge: bool,
     },
     /// Flint and steel struck without lighting anything.
     FlintFizzled,
@@ -1328,7 +1331,7 @@ impl PlayerSession {
             } else {
                 wear(self, 1, tool_broken);
             }
-            return Ok(Some(Used::Ignited { cell: pos, portal: false }));
+            return Ok(Some(Used::Ignited { cell: pos, portal: false, charge: held == Some(Item::FIRE_CHARGE) }));
         }
         // `TntBlock.useItemOn`: flint and steel or a fire charge primes TNT
         // in the player's name (`prime(level, pos, player, ..)`, v1.0 gap
@@ -1355,7 +1358,23 @@ impl PlayerSession {
             }
             wear(self, 1, tool_broken);
             let portal = world.get_block(at).is_some_and(Block::is_nether_portal);
-            return Ok(Some(Used::Ignited { cell: at, portal }));
+            return Ok(Some(Used::Ignited { cell: at, portal, charge: false }));
+        }
+        // v1.0 gap Track 8f: `FireChargeItem.useOn` sets fire in the cell
+        // beside the clicked face where `BaseFireBlock.canBePlacedAt` allows
+        // (lighting a portal frame there too), the charge used up outside
+        // creative; where fire can't go it does nothing and keeps the
+        // charge (`InteractionResult.FAIL`).
+        if held == Some(Item::FIRE_CHARGE) {
+            let at = pos + normal;
+            if !world.ignite(at) {
+                return Ok(None);
+            }
+            if survival {
+                self.inventory.take_one(slot);
+            }
+            let portal = world.get_block(at).is_some_and(Block::is_nether_portal);
+            return Ok(Some(Used::Ignited { cell: at, portal, charge: true }));
         }
         if let Some(used) = self.use_item_on(slot, world, entities, pos, normal, tool_broken) {
             return Ok(Some(used));

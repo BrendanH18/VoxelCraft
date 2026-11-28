@@ -488,6 +488,20 @@ impl DamageType {
     }
 }
 
+/// v1.0 gap Track 8f: how a cause's text stands for the player behind it
+/// (`%2$s`) until the game puts in their name ([`with_player_name`]).
+pub const PLAYER: &str = "a player";
+
+/// v1.0 gap Track 8f: `text` (a death message ending in [`PLAYER`]) with
+/// the player's profile name in its place, as Java names them by their
+/// display name ("was slain by Alex"). Other texts come back unchanged.
+pub fn with_player_name(text: &str, name: &str) -> String {
+    match text.strip_suffix(PLAYER) {
+        Some(head) if !name.is_empty() => format!("{head}{name}"),
+        _ => text.to_string(),
+    }
+}
+
 /// What hurt a player: the Java damage type and the death message
 /// VoxelCraft shows for it ("Player <text>"). The text is what a dead
 /// player's save keeps; the rules only read `kind`.
@@ -504,11 +518,20 @@ pub struct Cause {
     /// which TNT the blast primes takes as its owner (`TntBlock.wasExploded`).
     /// Never saved; the death message is `text`.
     pub by: Option<crate::entity::trident::Owner>,
+    /// v1.0 gap Track 8f: the player the message names when that isn't
+    /// `by` (an End crystal a player broke: `explosion(crystal, player)`,
+    /// whose blast has no indirect source). Never saved.
+    pub names: Option<crate::entity::PlayerId>,
 }
 
 impl Cause {
     pub const fn new(kind: DamageType, text: &'static str) -> Self {
-        Self { kind, text, tnt: false, by: None }
+        Self { kind, text, tnt: false, by: None, names: None }
+    }
+
+    /// v1.0 gap Track 8f: this cause naming `player` in its message.
+    pub const fn naming(self, player: crate::entity::PlayerId) -> Self {
+        Self { names: Some(player), ..self }
     }
 
     /// v1.0 gap Track 8e: this cause with `by` as the entity behind it.
@@ -570,6 +593,9 @@ impl Cause {
     pub const PLAYER_TRIDENT: Cause = Cause::new(DamageType::Trident, "was impaled by a player");
     pub const BREEZE_WIND_CHARGE: Cause = Cause::new(DamageType::WindCharge, "was slain by a breeze");
     pub const WIND_CHARGE: Cause = Cause::new(DamageType::WindCharge, "was blasted by a wind charge");
+    /// v1.0 gap Track 8f: a player's wind charge (`windCharge(charge,
+    /// owner)`, message id `mob`): "was slain by" its thrower.
+    pub const PLAYER_WIND_CHARGE: Cause = Cause::new(DamageType::WindCharge, "was slain by a player");
     pub const LLAMA_SPIT: Cause = Cause::new(DamageType::Spit, "was spat on by a llama");
     /// A small fireball's direct hit (`fireball(fireball, blaze)`).
     pub const BLAZE_FIREBALL: Cause = Cause::new(DamageType::Fireball, "was fireballed by a blaze");
@@ -625,7 +651,9 @@ impl Cause {
 
     // Players.
     pub const PLAYER_ATTACK: Cause = Cause::new(DamageType::PlayerAttack, "was slain by a player");
-    pub const THORNS: Cause = Cause::new(DamageType::Thorns, "was killed trying to hurt a player");
+    /// `death.attack.thorns` ("%1$s was killed while trying to hurt %2$s"),
+    /// the Thorns wearer named (v1.0 gap Track 8f).
+    pub const THORNS: Cause = Cause::new(DamageType::Thorns, "was killed while trying to hurt a player");
 
     /// Every named cause, for the reference test and for [`Cause::legacy`]
     /// (the first cause with a text wins).
@@ -660,6 +688,7 @@ impl Cause {
         Cause::PLAYER_TRIDENT,
         Cause::BREEZE_WIND_CHARGE,
         Cause::WIND_CHARGE,
+        Cause::PLAYER_WIND_CHARGE,
         Cause::LLAMA_SPIT,
         Cause::BLAZE_FIREBALL,
         Cause::CREEPER,
@@ -690,8 +719,24 @@ impl Cause {
     /// them: TNT's and an ownerless End crystal's blasts said "was blown up
     /// by TNT" and "was blown up by an End crystal" before Java's
     /// `death.attack.explosion` ("blew up", v1.0 gap Tracks 8c and 8d).
-    pub const RETIRED: &'static [(&'static str, Cause)] =
-        &[("was blown up by TNT", Cause::TNT), ("was blown up by an End crystal", Cause::END_CRYSTAL)];
+    /// v1.0 gap Track 8f: Thorns said "was killed trying to hurt a player"
+    /// before Java's "while trying to hurt".
+    pub const RETIRED: &'static [(&'static str, Cause)] = &[
+        ("was blown up by TNT", Cause::TNT),
+        ("was blown up by an End crystal", Cause::END_CRYSTAL),
+        ("was killed trying to hurt a player", Cause::THORNS),
+    ];
+
+    /// v1.0 gap Track 8f: the player this cause names in its message
+    /// (`DamageSource.getEntity` as `%2$s`): the one in `by`, when its text
+    /// stands for them with [`PLAYER`].
+    pub fn named_player(self) -> Option<crate::entity::PlayerId> {
+        let by = match self.by {
+            Some(crate::entity::trident::Owner::Player(id)) => Some(id),
+            _ => None,
+        };
+        self.names.or(by).filter(|_| self.text.ends_with(PLAYER))
+    }
 
     /// The named cause a saved death message stands for: one of
     /// [`Cause::KNOWN`] with exactly this text, or the cause a
@@ -766,5 +811,28 @@ mod tests {
         for (old, _) in Cause::RETIRED {
             assert!(!Cause::KNOWN.iter().any(|c| c.text == *old), "{old} is still a cause's text");
         }
+        assert_eq!(Cause::saved("was killed trying to hurt a player"), Some(Cause::THORNS));
+    }
+
+    /// v1.0 gap Track 8f: a cause names the player in `by` only when its
+    /// text stands for a player, and the name goes where "a player" was.
+    #[test]
+    fn player_causes_name_the_player_behind_them() {
+        use crate::entity::{PlayerId, trident::Owner};
+        let by = Some(Owner::Player(PlayerId(3)));
+        assert_eq!(Cause::PLAYER_ATTACK.by(by).named_player(), Some(PlayerId(3)));
+        assert_eq!(Cause::THORNS.by(by).named_player(), Some(PlayerId(3)));
+        assert_eq!(Cause::PLAYER_ATTACK.named_player(), None);
+        assert_eq!(Cause::PLAYER_EXPLOSION.naming(PlayerId(5)).named_player(), Some(PlayerId(5)));
+        // A player's ghast fireball keeps the ghast's wording.
+        assert_eq!(Cause::GHAST_FIREBALL.by(by).named_player(), None);
+        assert_eq!(Cause::SKELETON_ARROW.by(Some(Owner::Mob(4))).named_player(), None);
+        assert_eq!(with_player_name("was slain by a player", "Alex"), "was slain by Alex");
+        assert_eq!(
+            with_player_name("was killed while trying to hurt a player", "Steve"),
+            "was killed while trying to hurt Steve"
+        );
+        assert_eq!(with_player_name("was slain by a zombie", "Alex"), "was slain by a zombie");
+        assert_eq!(with_player_name("was slain by a player", ""), "was slain by a player");
     }
 }

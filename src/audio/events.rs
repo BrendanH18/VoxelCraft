@@ -123,6 +123,7 @@ impl Sound {
             Sound::Mount(c) => s(c.key()),
             Sound::Fox(c) => s(c.key()),
             Sound::Goat(c) => s(c.key()),
+            Sound::VillagerNo => s("entity.villager.no"),
             Sound::Minecart(c) => {
                 use crate::entity::minecart::Cue as C;
                 s(match c {

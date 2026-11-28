@@ -4,11 +4,13 @@ impl Game {
     /// One fixed gameplay step. Rendering and worker polling never
     /// change the amount of simulation time advanced here.
     pub(super) fn tick(&mut self) {
-        self.world.set_simulation_players(
-            std::iter::once(self.session.player.pos)
-                .chain(self.agents.players.values().filter(|b| b.active).map(|b| b.agent.session.player.pos)),
-        );
-        self.world.set_simulation_spectators(
+        // v1.0 gap Track 8f: a host watching the End credits has left the
+        // level with their chunk tickets (`showEndCredits`), so only the
+        // other players keep chunks ticking.
+        let host = self.credits.is_none().then_some(self.session.player.pos);
+        self.world.set_simulation_players_with_host(
+            host,
+            self.agents.players.values().filter(|b| b.active).map(|b| b.agent.session.player.pos),
             std::iter::once(self.session.mode == voxelcraft::rules::GameMode::Spectator).chain(
                 self.agents
                     .players
@@ -17,6 +19,8 @@ impl Game {
                     .map(|b| b.agent.session.mode == voxelcraft::rules::GameMode::Spectator),
             ),
         );
+        // v1.0 gap Track 8f: pearls leave and come back with their owners.
+        self.sync_owned_pearls();
         self.world.set_tile_drops(self.gamerules.bool("block_drops"));
         // Before any interaction this tick: breaking a cart or lighting a TNT
         // cart reads these rules directly in Java.

@@ -758,16 +758,7 @@ impl Entities {
                 {
                     self.mobs[i].set_provocation(anger);
                 }
-                self.warden_hurt(i, crate::world::vibration::EntityRef::Mob(attacker), true);
-                self.nether_hurt(i, Foe::Mob(attacker));
-                self.polar_hurt(i, Foe::Mob(attacker));
-                self.panda_hurt(i, Foe::Mob(attacker));
-                self.armadillo_hurt(i, Foe::Mob(attacker));
-                self.endermite_hurt(i, Foe::Mob(attacker));
-                self.illager_hurt(i, Foe::Mob(attacker));
-                if let Some(owner) = self.mobs[i].animal.as_ref().and_then(|a| a.owner) {
-                    self.animals_defend_owner(attacker, owner);
-                }
+                self.hurt_by_mob(i, attacker, true);
                 let wolf_kill = self.mobs.iter().any(|m| {
                     m.uid == attacker && m.kind == MobKind::Wolf && m.animal.as_ref().is_some_and(|a| a.owner.is_some())
                 });
@@ -779,6 +770,24 @@ impl Entities {
             for stab in stabs {
                 self.finish_mob_stab(stab);
             }
+        }
+    }
+
+    /// What mob `attacker`'s damage to mob `i` leaves behind
+    /// (`setLastHurtByMob`, read by each mob's `HurtByTargetGoal` and
+    /// brain): the warden's, nether mobs', polar bears', pandas',
+    /// armadillos', endermites' and raiders' anger, and a tamed animal's
+    /// owner's wolves. `direct` as for [`Entities::warden_hurt`].
+    pub(super) fn hurt_by_mob(&mut self, i: usize, attacker: u32, direct: bool) {
+        self.warden_hurt(i, crate::world::vibration::EntityRef::Mob(attacker), direct);
+        self.nether_hurt(i, Foe::Mob(attacker));
+        self.polar_hurt(i, Foe::Mob(attacker));
+        self.panda_hurt(i, Foe::Mob(attacker));
+        self.armadillo_hurt(i, Foe::Mob(attacker));
+        self.endermite_hurt(i, Foe::Mob(attacker));
+        self.illager_hurt(i, Foe::Mob(attacker));
+        if let Some(owner) = self.mobs[i].animal.as_ref().and_then(|a| a.owner) {
+            self.animals_defend_owner(attacker, owner);
         }
     }
 

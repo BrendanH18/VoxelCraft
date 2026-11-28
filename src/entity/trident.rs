@@ -525,7 +525,8 @@ impl Trident {
             Hit::Player(id, pos, false) => {
                 let damage = tr::BASE_DAMAGE;
                 let cause = if owner_player.is_some() {
-                    crate::simulation::damage::Cause::PLAYER_TRIDENT
+                    // v1.0 gap Track 8f: named after its thrower.
+                    crate::simulation::damage::Cause::PLAYER_TRIDENT.by(self.owner)
                 } else {
                     crate::simulation::damage::Cause::DROWNED_TRIDENT
                 };

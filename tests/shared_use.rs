@@ -85,7 +85,7 @@ fn flint_and_steel_ignites_and_primes_tnt_spending_durability_in_survival() {
     let down = s.block_target(&w).unwrap();
     assert_eq!(down, (IVec3::new(4, 144, 4), IVec3::Y));
     let lit = use_held(&mut s, &mut w, &mut e, false);
-    assert_eq!(lit, Some(Used::Ignited { cell: IVec3::new(4, 145, 4), portal: false }));
+    assert_eq!(lit, Some(Used::Ignited { cell: IVec3::new(4, 145, 4), portal: false, charge: false }));
     assert!(w.get_block(IVec3::new(4, 145, 4)).is_some_and(Block::is_fire));
     assert_eq!(s.inventory.get(0).unwrap().damage, 1);
 

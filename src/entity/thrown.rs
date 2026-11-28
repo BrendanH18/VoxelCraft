@@ -467,6 +467,10 @@ impl Thrown {
                         knockback: (DVec3::new(self.vel.x, 0.0, self.vel.z).normalize_or_zero() * 0.5).as_vec3(),
                         cause: if self.kind == Kind::BreezeWindCharge {
                             crate::simulation::damage::Cause::BREEZE_WIND_CHARGE
+                        } else if let Some(owner) = self.owner {
+                            // v1.0 gap Track 8f: named after its thrower.
+                            crate::simulation::damage::Cause::PLAYER_WIND_CHARGE
+                                .by(Some(crate::entity::trident::Owner::Player(owner)))
                         } else {
                             crate::simulation::damage::Cause::WIND_CHARGE
                         },

@@ -355,6 +355,9 @@ pub struct World {
     simulation_host: Option<IVec2>,
     /// The host's exact position, for distance rules such as fire spread.
     simulation_host_pos: Option<DVec3>,
+    /// v1.0 gap Track 8e/8f: the host has left the level for the End
+    /// credits (`showEndCredits`), so their chunk ticket is gone.
+    simulation_host_away: bool,
     /// Whether each registered player (host first, then the others in
     /// order) is a Spectator, whom fire spread ignores.
     simulation_spectators: Vec<bool>,
@@ -833,6 +836,7 @@ impl World {
             simulation_others: Vec::new(),
             simulation_host: None,
             simulation_host_pos: None,
+            simulation_host_away: false,
             simulation_spectators: Vec::new(),
             region: None,
             meshes_enabled,

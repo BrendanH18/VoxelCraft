@@ -662,7 +662,13 @@ impl Arrow {
                     player: hit.id,
                     damage,
                     knockback: push.as_vec3(),
-                    cause: if self.from_player { crate::simulation::damage::Cause::PLAYER_ARROW } else { self.cause },
+                    // v1.0 gap Track 8f: a player's arrow names its owner.
+                    cause: if self.from_player {
+                        crate::simulation::damage::Cause::PLAYER_ARROW
+                            .by(self.owner.map(crate::entity::trident::Owner::Player))
+                    } else {
+                        self.cause
+                    },
                 });
                 if self.potion.is_some() || self.custom_effect.is_some() || self.spectral {
                     events.push(EntityEvent::ArrowEffectsStart { player: hit.id });
