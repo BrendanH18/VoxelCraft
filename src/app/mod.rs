@@ -2641,7 +2641,11 @@ impl Game {
             }),
             rain: scene.rain,
             night_vision: atmosphere.night_vision,
-            darkness: crate::render::Darkness::of(&self.session.vitals.effects, alpha as f32, self.settings.darkness_effect_scale),
+            darkness: crate::render::Darkness::of(
+                &self.session.vitals.effects,
+                alpha as f32,
+                self.settings.darkness_effect_scale,
+            ),
             ui,
             // v0.18 Track 2: a menu over the world blurs what is under it.
             blur: blur_from.map_or(0, |_| self.settings.menu_blur),

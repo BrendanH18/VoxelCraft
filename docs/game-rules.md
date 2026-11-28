@@ -26,6 +26,13 @@ holds the same table (`JAVA_RULES`) and a test keeps this file identical to it.
   (`GameRuleRegistryFix.convertBooleanInverted`). `raids` is the one the
   engine enforces: `disableRaids=true` loads as `raids false`, and a world
   with raids off saves `disableRaids=true`.
+- Create New World's More tab opens **Game Rules** (Java's Edit Game
+  Rules, v1.0 final F6): every rule the engine enforces under Java's
+  categories and names, an ON/OFF button or a number box each (out-of-range
+  numbers grey Done), with the id, Java's description and the default as its
+  tooltip. The new world starts with them; `--gamerule` still sets over them.
+  Rules the engine lacks aren't listed. There is no in-world rule editor:
+  `/gamerule` changes them in a world.
 - A rule never changes saved IDs. Adding an implemented rule means moving its row
   from Missing to Implemented here, in `JAVA_RULES` and in a test; the test
   `docs_inventory_lists_every_rule_with_its_support_level` fails until they agree.
@@ -110,6 +117,7 @@ enforced.
 
 ## Difficulty
 
-Difficulty is world state rather than a rule. The effects VoxelCraft implements,
+Difficulty is world state rather than a rule. In a world it is set on the
+pause menu's World Options, with Java's lock (v1.0 final F6). The effects VoxelCraft implements,
 with the Java class they were read from, are listed in
 [the 2026-10-17 verification record](verification/2026-10-17-game-rules-difficulty.md).

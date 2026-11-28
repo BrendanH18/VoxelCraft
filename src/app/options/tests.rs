@@ -174,8 +174,13 @@ fn every_options_screen_fits_and_every_widget_is_reachable() {
 }
 
 fn slider_value<S: Screen<Host>>(screen: &S, host: &Host, id: S::Id) -> Option<f32> {
+    slider_steps(screen, host, id).map(|(v, _)| v)
+}
+
+/// A slider's position and its number of steps.
+fn slider_steps<S: Screen<Host>>(screen: &S, host: &Host, id: S::Id) -> Option<(f32, u32)> {
     screen.widgets(host, (640.0, 360.0)).into_iter().find_map(|w| match w.kind {
-        Kind::Slider { value, .. } if w.id == id => Some(value),
+        Kind::Slider { value, steps, .. } if w.id == id => Some((value, steps)),
         _ => None,
     })
 }
@@ -203,8 +208,10 @@ fn sliders<S: Screen<Host>>(mut screen: S) {
     for id in ids {
         for t in [0.0, 1.0, 0.5] {
             screen.slide(&mut host, id, t);
-            let v = slider_value(&screen, &host, id).unwrap();
-            assert!((v - t).abs() < 0.03, "{id:?} at {t} reads {v}");
+            let (v, steps) = slider_steps(&screen, &host, id).unwrap();
+            // A slider of few steps lands on its nearest step.
+            let tolerance = (0.5 / steps as f32).max(0.03);
+            assert!((v - t).abs() <= tolerance + 1e-6, "{id:?} at {t} reads {v}");
             assert_eq!(host.settings.clamped(), host.settings, "{id:?} gives valid settings");
         }
     }
@@ -266,7 +273,9 @@ fn entity_shadows_toggles_like_java() {
     let ids: Vec<_> = video.widgets(&host, (640.0, 360.0)).iter().map(|w| w.id).collect();
     let at = |id| ids.iter().position(|&i| i == id).unwrap();
     assert_eq!(at(video::Id::EntityShadows), at(video::Id::MipmapLevels) + 1);
-    assert_eq!(at(video::Id::MenuBlur), at(video::Id::EntityShadows) + 1);
+    // v1.0 final F6: Entity Distance sits between them, as in Java.
+    assert_eq!(at(video::Id::EntityDistance), at(video::Id::EntityShadows) + 1);
+    assert_eq!(at(video::Id::MenuBlur), at(video::Id::EntityDistance) + 1);
 }
 
 /// v0.18 Track 3: Mipmap Levels is Java's slider: 0 to 4 in whole steps,
@@ -540,9 +549,8 @@ fn difficulty_moved_to_world_options_and_locks_like_java() {
     let in_world = Host { world: world(Difficulty::Easy, false, false), ..Host::default() };
     let labels: Vec<_> = Options.widgets(&in_world, size).into_iter().map(|w| format!("{:?}", w.kind)).collect();
     assert!(labels.iter().all(|l| !l.contains("Difficulty")), "Options has no difficulty: {labels:?}");
-    let find = |screen: &WorldOptions, host: &Host, id: world::Id| {
-        screen.widgets(host, size).into_iter().find(|w| w.id == id)
-    };
+    let find =
+        |screen: &WorldOptions, host: &Host, id: world::Id| screen.widgets(host, size).into_iter().find(|w| w.id == id);
     assert!(find(&WorldOptions::new(&Host::default()), &Host::default(), world::Id::Difficulty).is_none());
     let mut host = in_world;
     let mut screen = WorldOptions::new(&host);
@@ -636,7 +644,10 @@ fn final_f6_options_use_javas_labels_ranges_and_keys() {
     assert_eq!(label(&v, &host, video::Id::EntityDistance), "Entity Distance: 100%");
     assert_eq!(label(&v, &host, video::Id::WeatherRadius), "Weather Effect Radius: 10 Blocks");
     v.slide(&mut host, video::Id::EntityDistance, 0.0);
-    assert_eq!((host.settings.entity_distance, label(&v, &host, video::Id::EntityDistance).as_str()), (0.5, "Entity Distance: 50%"));
+    assert_eq!(
+        (host.settings.entity_distance, label(&v, &host, video::Id::EntityDistance).as_str()),
+        (0.5, "Entity Distance: 50%")
+    );
     v.slide(&mut host, video::Id::EntityDistance, 1.0);
     assert_eq!(host.settings.entity_distance, 5.0);
     v.slide(&mut host, video::Id::WeatherRadius, 0.0);

@@ -29,7 +29,7 @@ use crate::render::ui::{Color, Ui, WHITE, rgb};
 
 pub(super) use clipboard::{Clipboard, SystemClipboard};
 pub(super) use dialog::{Confirm, Notice};
-pub(super) use layout::{FOOTER, HEADER, OptionList, centred_rows};
+pub(super) use layout::{FOOTER, HEADER, LIST_W, OptionList, centred_rows};
 pub(super) use text_field::TextField;
 
 /// x, y, width, height in UI pixels.

@@ -208,7 +208,8 @@ pub(super) fn draw_chat(
             let height = chat_height * chat_height / virtual_height;
             let alpha = if y > 0 { 170.0 } else { 96.0 } / 255.0;
             let colour = if view.new_since_scroll { 0xCC3333 } else { 0x3333AA };
-            let rgb = |c: u32| [((c >> 16) & 255) as f32 / 255.0, ((c >> 8) & 255) as f32 / 255.0, (c & 255) as f32 / 255.0];
+            let rgb =
+                |c: u32| [((c >> 16) & 255) as f32 / 255.0, ((c >> 8) & 255) as f32 / 255.0, (c & 255) as f32 / 255.0];
             let [r, g, b] = rgb(colour);
             let x = max_width + 4.0;
             let (y0, y1) = ((-y - height) as f32, -y as f32);
@@ -760,12 +761,79 @@ mod tests {
         assert!((chat_alpha(9.75) - 0.0625).abs() < 1e-4);
         assert_eq!(chat_alpha(10.0), 0.0);
         assert_eq!(chat_alpha(60.0), 0.0);
+        // v1.0 final F6: Java's 100 lines (`MAX_CHAT_HISTORY`).
         let mut c = Console::default();
-        for i in 0..70 {
+        for i in 0..110 {
             c.push(format!("line {i}"));
         }
-        assert_eq!((c.lines.len(), c.added.len()), (64, 64));
-        assert_eq!(c.lines.front().map(String::as_str), Some("line 6"));
+        assert_eq!((c.lines.len(), c.added.len()), (100, 100));
+        assert_eq!(c.lines.front().map(String::as_str), Some("line 10"));
+    }
+
+    /// v1.0 final F6: `ChatComponent.scrollChat` clamps to the rows above
+    /// the page, and a line arriving while scrolled back keeps the view.
+    #[test]
+    fn chat_scrolls_back_within_its_rows_like_javas() {
+        let mut c = Console { open: true, ..Console::default() };
+        c.scroll_chat(7, 30, 20);
+        assert_eq!(c.scroll, 7);
+        c.scroll_chat(7, 30, 20);
+        assert_eq!(c.scroll, 10, "never past the oldest row");
+        c.push("new".into());
+        assert_eq!((c.scroll, c.new_since_scroll), (11, true), "the view keeps its place");
+        c.scroll_chat(-100, 31, 20);
+        assert_eq!((c.scroll, c.new_since_scroll), (0, false));
+        c.scroll_chat(5, 10, 20);
+        assert_eq!(c.scroll, 0, "nothing to scroll when every row fits");
+        for i in 0..120 {
+            c.push(format!("line {i}"));
+        }
+        assert_eq!(c.lines.len(), CHAT_HISTORY);
+    }
+
+    /// v1.0 final F6: Chat Delay holds players' lines and lets one through
+    /// per delay (`ChatListener`); system lines and a zero delay don't wait.
+    #[test]
+    fn chat_delay_queues_players_lines() {
+        let mut c = Console::default();
+        c.push_player_chat("<Alex> hi".into(), 0.0);
+        assert_eq!(c.lines.len(), 1);
+        c.push_player_chat("<Alex> one".into(), 5.0);
+        c.push_player_chat("<Alex> two".into(), 5.0);
+        assert_eq!((c.lines.len(), c.queue.len()), (2, 1), "the first goes at once, the next waits");
+        c.release(5.0);
+        assert_eq!(c.queue.len(), 1, "not yet");
+        c.release(0.0);
+        assert_eq!((c.lines.len(), c.queue.len()), (3, 0), "a zero delay flushes the queue");
+        assert!(is_player_chat("<Alex> hi") && !is_player_chat("Set the time to 1000"));
+    }
+
+    /// v1.0 final F6: rows wrap to Width over Chat Text Size, and Chat's
+    /// visibility filters them.
+    #[test]
+    fn chat_rows_wrap_to_the_width_and_follow_visibility() {
+        let mut c = Console::default();
+        c.push("<Alex> ".to_string() + &"word ".repeat(40));
+        c.push("Set the time to 1000".into());
+        let mut chat = ChatOptions::default();
+        let rows = chat_rows(&c, &chat);
+        assert!(rows.len() >= 3, "{rows:?}");
+        let width = ChatOptions::width_px(chat.width) as f32;
+        assert!(rows.iter().all(|(r, _)| Ui::text_width(r) <= width));
+        chat.width = 0.0;
+        assert!(chat_rows(&c, &chat).len() > rows.len(), "a narrower chat wraps more");
+        chat.width = 1.0;
+        chat.visibility = ChatVisibility::System;
+        let rows = chat_rows(&c, &chat);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].0, "Set the time to 1000");
+        chat.visibility = ChatVisibility::Hidden;
+        assert!(chat_rows(&c, &chat).is_empty());
+        // Java's page: 180 / 9 focused, 90 / 9 unfocused; Line Spacing 1 doubles rows.
+        let mut chat = ChatOptions::default();
+        assert_eq!((chat.lines_per_page(true), chat.lines_per_page(false)), (20, 10));
+        chat.line_spacing = 1.0;
+        assert_eq!(chat.lines_per_page(false), 5);
     }
 
     #[test]
