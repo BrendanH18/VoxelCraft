@@ -803,7 +803,14 @@ impl ApplicationHandler for App {
                     game.on_release(input);
                 }
             }
-            WindowEvent::MouseWheel { .. } if game.console.open => {}
+            // v1.0 final F6: the open chat scrolls (`ChatScreen.mouseScrolled`).
+            WindowEvent::MouseWheel { delta, .. } if game.console.open => {
+                let lines = match delta {
+                    MouseScrollDelta::LineDelta(_, y) => y as f64,
+                    MouseScrollDelta::PixelDelta(p) => p.y / 30.0,
+                };
+                game.chat_wheel(lines);
+            }
             WindowEvent::MouseWheel { delta, .. } => {
                 let lines = match delta {
                     MouseScrollDelta::LineDelta(_, y) => y as f64,
@@ -2307,6 +2314,8 @@ impl Game {
         let now = Instant::now();
         self.poll_lan();
         self.poll_agents();
+        // v1.0 final F6: Chat Delay's held lines (`ChatListener.tick`).
+        self.console.release(self.settings.chat.delay);
         // v1.0 gap Track 8d: only a pause screen pauses (`isPauseScreen`):
         // not the sign editor, a lectern's book or the console (Java's
         // `ChatScreen`). Track 8e: nor the End credits (`WinScreen` with
@@ -2491,7 +2500,9 @@ impl Game {
             })
             .collect();
         benchmark::mark(&mut self.benchmark, 2);
-        let draw = atmosphere.draw_distance(self.session.player.pos, self.world.render_distance());
+        let draw = atmosphere
+            .draw_distance(self.session.player.pos, self.world.render_distance())
+            .scaled(self.settings.entity_distance);
         self.mobs.entities.mesh(&self.world.maps, camera, forward, draw, scene.time, alpha);
         // v0.18 Track 6: ground shadows, for the players drawn in this view too.
         let mut casters = shadow_casters(&self.world, others.iter().map(|o| o.1), alpha);
@@ -2540,7 +2551,7 @@ impl Game {
         self.renderer.set_entities(verts);
         benchmark::mark(&mut self.benchmark, 3);
         self.renderer.set_particles(&self.particles.pool, &self.world, camera, self.session.player.forward(), alpha);
-        weather::sheets(&self.world, camera, scene.rain, &mut self.weather_verts);
+        weather::sheets(&self.world, camera, scene.rain, self.settings.weather_radius as i32, &mut self.weather_verts);
         self.renderer.set_weather(&self.weather_verts);
         let viewports = self.viewports();
         // v0.18 Track 9: the captions as heard from the camera this frame.
@@ -2630,7 +2641,7 @@ impl Game {
             }),
             rain: scene.rain,
             night_vision: atmosphere.night_vision,
-            darkness: crate::render::Darkness::of(&self.session.vitals.effects, alpha as f32),
+            darkness: crate::render::Darkness::of(&self.session.vitals.effects, alpha as f32, self.settings.darkness_effect_scale),
             ui,
             // v0.18 Track 2: a menu over the world blurs what is under it.
             blur: blur_from.map_or(0, |_| self.settings.menu_blur),

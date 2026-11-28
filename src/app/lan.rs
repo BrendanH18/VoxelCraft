@@ -175,6 +175,9 @@ pub(super) struct Lan {
     book_serial: u32,
     inventory: inventory::Receiver,
     inventory_revision: u32,
+    /// v1.0 final F6: a guest's raid bar, from the host's last snapshot
+    /// (Java's `ServerBossEvent` sends it to every player in the raid).
+    pub raid_bar: Option<voxelcraft::entity::raid::Bar>,
 }
 impl Lan {
     /// What the use button was doing when `input` was sampled: eating or
@@ -521,8 +524,13 @@ impl Game {
         let revision = self.lan.inventory_revision;
         self.lan_send(Packet::Click { slot, right, shift, revision, grid_size, selected });
     }
+    /// A chat line; players' messages wait out Chat Delay (v1.0 final F6).
     pub(super) fn chat_line(&mut self, message: &str) {
-        self.console.push(message.into());
+        if super::console::is_player_chat(message) {
+            self.console.push_player_chat(message.into(), self.settings.chat.delay);
+        } else {
+            self.console.push(message.into());
+        }
     }
     pub(super) fn broadcast_chat(&mut self, message: &str) {
         self.chat_line(message);
@@ -1669,6 +1677,9 @@ impl Game {
             snapshot["shulker_lids"] = json!(self.world.shulker_lids_near(here, 160.0));
             // v0.18 Track 9: chest lids and barrel tops in use or moving.
             snapshot["lids"] = json!(self.world.lids_near(here, 160.0));
+            // v1.0 final F6: the raid bar this guest's player is on, as
+            // `ServerBossEvent.addPlayer` shows it to each raid player.
+            snapshot["raid_bar"] = raid_bar_json(self.mobs.entities.raids.bar_for(bot.agent.session.id));
             if let Some((open, serial)) = &peer.book_open
                 && (open["lectern"].is_array()
                     || open["slot"].as_u64().is_some_and(|slot| peer.inventory.held_matches(slot as usize, inventory)))
@@ -1964,6 +1975,7 @@ impl Game {
         }
         self.world.apply_shulker_lids(&snapshot["shulker_lids"]);
         self.world.apply_lids(&snapshot["lids"]);
+        self.lan.raid_bar = raid_bar_from(&snapshot["raid_bar"]);
         let edit = &snapshot["sign_edit"];
         if let (Some(serial), Some(p)) = (edit["serial"].as_u64(), vector(&edit["pos"]))
             && serial as u32 != self.lan.sign_serial
@@ -2449,50 +2461,67 @@ impl Game {
     }
 
     /// The chat over the hotbar, as Java's unfocused `ChatComponent` draws
-    /// it: the last 10 lines (`chatHeightUnfocused`'s 90 pixels of 9-pixel
-    /// lines) up from 40 pixels above the bottom, on a 332-pixel band of
-    /// black at half opacity (`textBackgroundOpacity`), each line fading out
-    /// 10 seconds after it came ([`super::console::chat_alpha`]), in a LAN
-    /// game as in a single-player one (v1.0 gap track 6d; the debug
-    /// feedback of v1.0 gap track 6c, Java's `showDebugChat`). Debug
-    /// feedback starts with Java's yellow, bold `debug.prefix`.
+    /// it ([`super::console::draw_chat`]): the rows that fit Unfocused
+    /// Height (90 pixels of 9-pixel rows by default) up from 40 pixels above
+    /// the bottom, on Width's band (332 pixels) of black at Text Background
+    /// Opacity, each fading out 10 seconds after it came
+    /// ([`super::console::chat_alpha`]), in a LAN game as in a single-player
+    /// one (v1.0 gap track 6d; Java's chat options, v1.0 final F6). Debug
+    /// feedback starts with Java's yellow, bold `debug.prefix` (v1.0 gap
+    /// track 6c, Java's `showDebugChat`).
     pub(super) fn chat_ui(&self, ui: &mut crate::render::ui::Ui) {
         if self.console.open || self.menu.is_open() || self.inventory_open {
             return;
         }
-        let (_, sh) = ui.size();
-        let bottom = sh - 40.0;
-        let lines = self.console.lines.iter().zip(&self.console.added).rev().filter(|(s, _)| !s.is_empty());
-        for (i, (line, added)) in lines.take(10).enumerate() {
-            let alpha = super::console::chat_alpha(added.elapsed().as_secs_f32());
-            if alpha <= 1e-5 {
-                continue;
-            }
-            let entry_bottom = bottom - i as f32 * 9.0;
-            ui.rect(0.0, entry_bottom - 9.0, 332.0, 9.0, crate::render::ui::shade(alpha * 0.5));
-            // Java skips text whose alpha byte is 3 or less (`ARGB.alpha`).
-            if alpha * 255.0 <= 3.0 {
-                continue;
-            }
-            let y = entry_bottom - 8.0;
-            let mut x = 4.0;
-            let rest = match line.strip_prefix(DEBUG_PREFIX) {
-                Some(rest) => {
-                    // `ChatFormatting.YELLOW` (0xFFFF55), bold: each glyph
-                    // drawn again a pixel right and advanced a pixel more.
-                    let yellow = [1.0, 1.0, 85.0 / 255.0, alpha];
-                    for c in DEBUG_PREFIX.chars() {
-                        let s = c.to_string();
-                        ui.text(x + 1.0, y, &s, yellow);
-                        x += ui.text(x, y, &s, yellow) + 1.0;
-                    }
-                    rest
-                }
-                None => line.as_str(),
-            };
-            ui.text(x, y, rest, [1.0, 1.0, 1.0, alpha]);
-        }
+        let rows = super::console::chat_rows(&self.console, &self.settings.chat);
+        let view = super::console::ChatView {
+            focused: false,
+            scroll: 0,
+            new_since_scroll: false,
+            queued: self.console.queue.len(),
+        };
+        super::console::draw_chat(ui, &self.settings, &rows, &view, |ui, x, y, text, a, k| {
+            self.chat_prefix(ui, x, y, text, a, k)
+        });
     }
+
+    /// Draws a chat row's debug prefix in `ChatFormatting.YELLOW` (0xFFFF55),
+    /// bold (each glyph drawn again a pixel right and advanced a pixel
+    /// more), and returns its width and length. Colors OFF (`chatColors`)
+    /// leaves the row plain, as Java strips its formatting.
+    pub(super) fn chat_prefix(
+        &self,
+        ui: &mut crate::render::ui::Ui,
+        x0: f32,
+        y: f32,
+        text: &str,
+        alpha: f32,
+        k: f32,
+    ) -> (f32, usize) {
+        if !self.settings.chat.colors || !text.starts_with(DEBUG_PREFIX) {
+            return (0.0, 0);
+        }
+        let yellow = [1.0, 1.0, 85.0 / 255.0, alpha];
+        let mut x = x0;
+        for c in DEBUG_PREFIX.chars() {
+            let s = c.to_string();
+            ui.text_scaled(x + k, y, &s, yellow, k);
+            x += ui.text_scaled(x, y, &s, yellow, k) + k;
+        }
+        (x - x0, DEBUG_PREFIX.len())
+    }
+}
+
+/// A raid bar for a LAN snapshot: `[title code, progress]`, or null.
+fn raid_bar_json(bar: Option<voxelcraft::entity::raid::Bar>) -> Value {
+    bar.map_or(Value::Null, |b| json!([b.title.code(), r3(f64::from(b.progress))]))
+}
+
+/// The raid bar a snapshot carries; an older host sends none.
+fn raid_bar_from(v: &Value) -> Option<voxelcraft::entity::raid::Bar> {
+    let code = v.get(0)?.as_i64()?;
+    let progress = v.get(1)?.as_f64()?.clamp(0.0, 1.0) as f32;
+    Some(voxelcraft::entity::raid::Bar { progress, title: voxelcraft::entity::raid::BarTitle::from_code(code) })
 }
 
 /// Java's `debug.prefix`, which `KeyboardHandler.debugFeedbackComponent`
@@ -2823,6 +2852,20 @@ fn peer_sounds(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// v1.0 final F6: the raid bar reaches a LAN guest with its title and
+    /// progress; a snapshot without one (no raid, or an older host) clears it.
+    #[test]
+    fn raid_bar_round_trips_through_a_snapshot() {
+        use voxelcraft::entity::raid::{Bar, BarTitle};
+        for title in [BarTitle::Raid, BarTitle::Remaining(7), BarTitle::Victory, BarTitle::Defeat] {
+            let bar = Bar { progress: 0.625, title };
+            let v: Value = serde_json::from_str(&raid_bar_json(Some(bar)).to_string()).unwrap();
+            assert_eq!(raid_bar_from(&v), Some(bar));
+        }
+        assert_eq!(raid_bar_from(&raid_bar_json(None)), None);
+        assert_eq!(raid_bar_from(&json!({})["raid_bar"]), None);
+    }
 
     /// Issue #98: a LAN guest hears the raid horn played for it, at its own
     /// position, once, whether or not the host heard one.

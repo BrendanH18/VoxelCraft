@@ -198,9 +198,12 @@ pub struct Darkness {
 }
 
 impl Darkness {
-    /// The player's Darkness `partial` ticks after their last tick.
-    pub fn of(effects: &crate::simulation::effects::Effects, partial: f32) -> Self {
-        Self { blend: effects.darkness_blend(partial), scale: effects.darkness_scale(partial) }
+    /// The player's Darkness `partial` ticks after their last tick, under
+    /// Darkness Pulsing `option` (v1.0 final F6): the lightmap's dimming
+    /// (`darknessEffectBrightnessModifier`) and pulse both scale by it; the
+    /// fog keeps the unscaled blend, as Java's `DarknessFogEnvironment` does.
+    pub fn of(effects: &crate::simulation::effects::Effects, partial: f32, option: f32) -> Self {
+        Self { blend: effects.darkness_blend(partial) * option, scale: effects.darkness_scale_at(partial, option) }
     }
 }
 

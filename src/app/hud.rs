@@ -206,7 +206,9 @@ impl Game {
         }
         // v0.15 Track E: the raid bar (`BossBarColor.RED`, `NOTCHED_10`),
         // under any other boss bar as Java stacks them.
-        if let Some(bar) = self.mobs.entities.raids.bar_for(self.session.id) {
+        // A LAN guest's comes from the host (v1.0 final F6).
+        let raid_bar = self.mobs.entities.raids.bar_for(self.session.id);
+        if let Some(bar) = raid_bar.or(self.lan.client.as_ref().and(self.lan.raid_bar)) {
             raid_bar_ui(&mut ui, &bar.title.text(), bar.progress, sw, bar_y);
         }
         if self.show_debug {

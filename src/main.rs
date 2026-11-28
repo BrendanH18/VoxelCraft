@@ -231,7 +231,7 @@ voxelcraft [options]
                     palette (creative) open
                     (screenshots)
   --open-menu <m>   start with a menu open (screenshots): pause, options, video, sound,
-                    controls, mouse, keybinds, accessibility or lan in a world; title,
+                    controls, mouse, keybinds, accessibility, chat, world or lan in a world; title,
                     select, create, edit, recreate, backup, multiplayer or direct on the
                     title screens (edit, recreate and backup use --world's save, else
                     the last played)
@@ -528,7 +528,7 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
             }
             "--open-menu" => {
                 let m = value("--open-menu")?;
-                const MENUS: [&str; 17] = [
+                const MENUS: [&str; 19] = [
                     "pause",
                     "options",
                     "video",
@@ -537,6 +537,8 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
                     "mouse",
                     "keybinds",
                     "accessibility",
+                    "chat",
+                    "world",
                     "lan",
                     "title",
                     "select",

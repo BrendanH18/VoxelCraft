@@ -6,21 +6,22 @@ use crate::world::World;
 use crate::world::noise::hash3;
 use glam::DVec3;
 
-const RADIUS: i32 = 10;
 const HALF_HEIGHT: f64 = 14.0;
 
 /// Camera-facing rain and snow sheets on the columns around the camera,
-/// stopping at the first light-blocking block in each.
-pub(super) fn sheets(world: &World, camera: DVec3, strength: f32, out: &mut Vec<WeatherVertex>) {
+/// stopping at the first light-blocking block in each, out to Weather Effect
+/// Radius `radius` blocks (`weatherRadius`, v1.0 final F6; Java's 3 to 10).
+pub(super) fn sheets(world: &World, camera: DVec3, strength: f32, radius: i32, out: &mut Vec<WeatherVertex>) {
+    let radius = radius.max(1);
     out.clear();
     if strength <= 0.0 {
         return;
     }
     let c = camera.floor().as_ivec3();
-    for dz in -RADIUS..=RADIUS {
-        for dx in -RADIUS..=RADIUS {
+    for dz in -radius..=radius {
+        for dx in -radius..=radius {
             let d2 = dx * dx + dz * dz;
-            if d2 > RADIUS * RADIUS {
+            if d2 > radius * radius {
                 continue;
             }
             let (x, z) = (c.x + dx, c.z + dz);
@@ -45,7 +46,7 @@ pub(super) fn sheets(world: &World, camera: DVec3, strength: f32, out: &mut Vec<
             // Java's `WeatherEffectRenderer.prepareInstances`: from full
             // (snow 0.8) at the camera to half at the weather radius.
             let max = if kind == Precipitation::Snow { 0.8 } else { 1.0 };
-            let near = (d2 as f32 / (RADIUS * RADIUS) as f32).min(1.0);
+            let near = (d2 as f32 / (radius * radius) as f32).min(1.0);
             let alpha = ((max + (0.5 - max) * near) * strength * 255.0) as u8;
             let snow = if kind == Precipitation::Snow { 255 } else { 0 };
             let seed = (hash3(x, 0, z, 0x5EED) % 1000) as f32 / 10.0;
