@@ -66,11 +66,11 @@ impl OptionsHost for Game {
         self.difficulty_locked = true;
     }
 
-    fn cycle_difficulty(&mut self) {
+    fn set_difficulty(&mut self, level: Difficulty) {
         if self.hardcore || self.difficulty_locked {
             return;
         }
-        self.difficulty = self.difficulty.next();
+        self.difficulty = level;
         if self.difficulty == Difficulty::Peaceful {
             self.mobs.entities.despawn_hostiles();
         }
@@ -81,12 +81,15 @@ impl OptionsHost for Game {
 pub(super) enum PauseId {
     Resume,
     Options,
+    WorldOptions,
     Lan,
     Quit,
 }
 
 /// Java's Game Menu, without the Advancements, Statistics and feedback
-/// buttons VoxelCraft has no screens for.
+/// buttons VoxelCraft has no screens for. Options and World Options share a
+/// row as in Java 26.3 (v1.0 final F6); Open to LAN keeps its own row, since
+/// World Options has no Multiplayer section.
 pub(super) struct Pause;
 
 impl Screen<Game> for Pause {
@@ -106,7 +109,11 @@ impl Screen<Game> for Pause {
         gui::centred_rows(
             vec![
                 vec![Widget::button(PauseId::Resume, z, "Back to Game")],
-                vec![Widget::button(PauseId::Options, z, "Options..."), Widget::button(PauseId::Lan, z, lan)],
+                vec![
+                    Widget::button(PauseId::Options, z, "Options..."),
+                    Widget::button(PauseId::WorldOptions, z, "World Options..."),
+                ],
+                vec![Widget::button(PauseId::Lan, z, lan)],
                 vec![Widget::button(PauseId::Quit, z, "Save and Quit to Title")],
             ],
             204.0,
@@ -118,6 +125,7 @@ impl Screen<Game> for Pause {
         match id {
             PauseId::Resume => Step::Close,
             PauseId::Options => Step::push(options::Options),
+            PauseId::WorldOptions => Step::push(options::WorldOptions::new(game)),
             PauseId::Lan if game.lan.host.is_none() && game.lan.client.is_none() => Step::push(OpenLan),
             PauseId::Lan => {
                 game.show_popup("World is already connected to LAN");
@@ -192,8 +200,8 @@ impl Screen<Game> for OpenLan {
 }
 
 /// The in-world menus `--open-menu` can start with.
-pub(super) const STARTUP_MENUS: [&str; 9] =
-    ["pause", "lan", "options", "video", "sound", "controls", "mouse", "keybinds", "accessibility"];
+pub(super) const STARTUP_MENUS: [&str; 11] =
+    ["pause", "lan", "options", "video", "sound", "controls", "mouse", "keybinds", "accessibility", "chat", "world"];
 
 /// The stack `--open-menu` starts a world with: the pause menu, then
 /// Options and the screens above it, as a player reaches them.
@@ -206,6 +214,7 @@ pub(super) fn startup_menu(name: Option<&str>) -> Stack<Game> {
     match name {
         Some("pause") | None => {}
         Some("lan") => stack.open(OpenLan),
+        Some("world") => stack.open(options::WorldOptions::default()),
         Some(screen) => options::open_screens(&mut stack, screen),
     }
     stack

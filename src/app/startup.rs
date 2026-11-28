@@ -80,7 +80,18 @@ impl Game {
                 .or_else(|| root_props.get("difficulty").and_then(|d| Difficulty::from_name(d)))
                 .unwrap_or_default()
         };
-        let gamerules = starting_rules(root_props.get("gamerules").map(String::as_str), args);
+        // A world made on the create screen starts with its More tab's rules.
+        let mut gamerules = starting_rules(root_props.get("gamerules").map(String::as_str), args);
+        if existing.is_none()
+            && let Some(new) = &new
+        {
+            gamerules = (*new.rules).clone();
+            for (name, value) in &args.gamerules {
+                if let Err(e) = gamerules.set(name, value) {
+                    log::warn!("--gamerule {name}={value}: {e}");
+                }
+            }
+        }
         let inventory = existing
             .as_ref()
             .and_then(|l| l.props.get("inventory"))

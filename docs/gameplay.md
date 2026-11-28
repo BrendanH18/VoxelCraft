@@ -35,7 +35,7 @@ Sprint can be set to Toggle there.
 | G | Toggle survival / creative |
 | 1–9, scroll wheel | Select hotbar slot |
 | `[` / `]` | Decrease / increase render distance |
-| /, T | Open the slash command console (Enter runs, Esc closes, Up/Down history, Tab completion); T opens it without the slash when chatting with LAN players |
+| /, T | Open the chat (Java's chat screen: Enter sends or runs a command, Esc closes, Up/Down history, Tab completion, the mouse wheel scrolls back seven lines a notch (one with Shift) and Page Up/Page Down a page, with a scroll bar); T opens it without the slash when chatting with LAN players |
 | Tab | List players (LAN) |
 | M | Mute / unmute sound (`--mute` starts muted, `--volume 0..1` sets the master volume) |
 | V | Toggle vsync |
@@ -79,19 +79,28 @@ A host started with `--agent-listen` keeps
 simulating while menus are open. See [hosted agent CLI and console commands](agents.md).
 
 **Options** (Esc → Options..., or Options... on the title screen) follows
-Java 26.3's screens with the options VoxelCraft can honour: FOV and, in a
-world, Difficulty with Java's lock; Music & Sounds (Master Volume and a
-slider per sound category); Video Settings
+Java 26.3's screens with the options VoxelCraft can honour: FOV; Music &
+Sounds (Master Volume, a slider per sound category, Narrator/Voice, Closed
+Captions); Video Settings
 (Max Framerate, VSync, GUI Scale, Fullscreen, Brightness, Graphics, Render
-and Simulation Distance, Particles, Menu Background Blur, FPS Counter);
+and Simulation Distance, Clouds, Particles, Mipmap Levels, Entity Shadows,
+Entity Distance, Menu Background Blur, Cloud Distance, Weather Effect
+Radius, Attack Indicator, FPS Counter);
 Controls (Mouse Settings
 with Sensitivity, Scroll Sensitivity, Discrete Scrolling and Invert Mouse;
-Key Binds; Sneak and Sprint Hold/Toggle); Accessibility Settings (Closed
+Key Binds; Sneak and Sprint Hold/Toggle); Chat Settings (Chat: Shown,
+Commands Only or Hidden, Colors, Chat Text Opacity, Text Background
+Opacity, Chat Text Size, Line Spacing, Chat Delay, Width and the Focused
+and Unfocused Heights); Accessibility Settings (Closed
 Captions, Menu Background Blur, Text Background Opacity and Text
-Background, View Bobbing, Distortion Effects, FOV Effects, Damage Tilt);
-Credits &
+Background, Chat Text Opacity, Line Spacing, Chat Delay, View Bobbing,
+Distortion Effects, FOV Effects, Darkness Pulsing, Damage Tilt, Hide Sky
+Flashes, Panorama Scroll Speed); Credits &
 Attribution; and Check for Updates. Render Distance is shown in Java's
-16-block chunks. Changes apply immediately and are saved to
+16-block chunks. As in Java 26.3, Difficulty and its lock are on the pause
+menu's **World Options...** screen, where a change waits for Apply Changes
+and locking asks first (Cancel drops the change); a LAN guest sees no
+difficulty there. Changes apply immediately and are saved to
 `saves/options.txt` inside the
 [per-user data folder](releases.md#player-data-and-old-saves) when you
 leave the screen; `[`/`]` and V adjust render distance and vsync in game.

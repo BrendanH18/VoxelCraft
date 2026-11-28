@@ -129,6 +129,9 @@ binary framing:
   snowballs, eggs and llama spit, fishing bobbers, eyes of ender, fireballs,
   dragon breath, XP orbs, primed TNT, falling blocks and the Ender Dragon fight
   (pose, health for the boss bar, crystals and beams, fireballs);
+- the raid bar (`raid_bar`: the title code and progress) while the player is
+  in a raid, as Java's `ServerBossEvent` shows it to every raid player
+  (v1.0 final F6; a snapshot without one hides it);
 - sounds (dense bank keys) and particle requests near the player, and every
   player's block-breaking progress within 32 blocks;
 - the text of signs and the contents of shelves and chiseled bookshelves

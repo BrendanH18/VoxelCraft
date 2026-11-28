@@ -27,8 +27,8 @@ use glam::{DVec3, Vec3};
 
 use super::MobKind;
 
-/// `Options.entityDistanceScaling` as Java's default Fancy preset sets it
-/// (`GraphicsPreset.FANCY`). VoxelCraft has no Entity Distance option.
+/// `Options.entityDistanceScaling`'s default (`GraphicsPreset.FANCY`'s); the
+/// player's Entity Distance applies through [`DrawDistance::scaled`].
 pub const ENTITY_DISTANCE_SCALING: f64 = 1.0;
 /// `BlockEntityRenderer.getViewDistance`, which `ConduitRenderer` keeps.
 pub const CONDUIT_VIEW_DISTANCE: f64 = 64.0;
@@ -70,6 +70,16 @@ impl DrawDistance {
             environmental_end: max_dist,
             render_distance_end: f32::INFINITY,
         }
+    }
+
+    /// v1.0 final F6: this view under Entity Distance `scaling`
+    /// (`entityDistanceScaling`), which `LevelExtractor` multiplies into
+    /// `Entity.viewScale`. A fog-only view draws everything already.
+    pub fn scaled(mut self, scaling: f64) -> Self {
+        if self.chunks.is_some() {
+            self.view_scale = view_scale(self.chunks.unwrap_or(0)) / ENTITY_DISTANCE_SCALING * scaling;
+        }
+        self
     }
 
     /// `Entity.viewScale` for this view.
@@ -370,6 +380,19 @@ mod tests {
         assert_eq!(java_tracking_chunks("warden"), Some(16));
         assert_eq!(java_tracking_chunks("dolphin"), Some(DEFAULT_TRACKING));
         assert_eq!(java_tracking_chunks("experience_orb"), Some(6));
+    }
+
+    #[test]
+    fn entity_distance_scales_the_view_like_java() {
+        let near = DrawDistance::new(DVec3::ZERO, 6, 1e9, 1e9);
+        assert_eq!(near.view_scale(), 1.5);
+        assert_eq!(near.scaled(0.5).view_scale(), 0.75);
+        assert_eq!(near.scaled(5.0).view_scale(), 7.5);
+        // A one-block box: 64 * 1.5 * 0.5 = 48 blocks.
+        let half = near.scaled(0.5);
+        assert!(half.renders(DVec3::new(47.0, 0.0, 0.0), 1.0));
+        assert!(!half.renders(DVec3::new(49.0, 0.0, 0.0), 1.0));
+        assert_eq!(DrawDistance::fog_only(100.0).scaled(0.5).view_scale(), f64::INFINITY);
     }
 
     #[test]

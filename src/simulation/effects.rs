@@ -1182,15 +1182,22 @@ impl Effects {
     /// Darkness's pulse, `LightmapRenderStateExtractor.calculateDarknessScale`:
     /// `max(0, cos((tickCount - partial) * PI * 0.025) * 0.45 * blend)`, the
     /// amount `lightmap.fsh` takes off every light level before its clamp.
-    /// It swings once every 80 ticks. The Darkness Pulsing accessibility
-    /// option isn't in the game, so its scale is Java's default 1.
+    /// It swings once every 80 ticks, at Java's default Darkness Pulsing.
     pub fn darkness_scale(&self, partial: f32) -> f32 {
-        let blend = self.darkness_blend(partial);
+        self.darkness_scale_at(partial, 1.0)
+    }
+
+    /// v1.0 final F6: [`Self::darkness_scale`] under Darkness Pulsing
+    /// (`darknessEffectScale`): Java scales the blend by the option before
+    /// the pulse, then the pulse again
+    /// (`calculateDarknessScale(player, blend * option, partial) * option`).
+    pub fn darkness_scale_at(&self, partial: f32, option: f32) -> f32 {
+        let blend = self.darkness_blend(partial) * option;
         if blend <= 0.0 {
             return 0.0;
         }
         let t = self.age as f32 - partial.clamp(0.0, 1.0);
-        ((t * std::f32::consts::PI * 0.025).cos() * (0.45 * blend)).max(0.0)
+        ((t * std::f32::consts::PI * 0.025).cos() * (0.45 * blend)).max(0.0) * option
     }
 
     /// `effect:amplifier:ticks|...` for saves: the active instances, then

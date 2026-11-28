@@ -6819,6 +6819,118 @@
    ]
   },
   {
+   "group": "ui",
+   "matrix": {
+    "size": [
+     [
+      1280,
+      720
+     ]
+    ],
+    "gui_scale": [
+     2
+    ]
+   },
+   "pose": [
+    0.5,
+    160,
+    0.5,
+    90,
+    -20
+   ],
+   "render_distance": 4,
+   "name": "options-menu",
+   "description": "Options (v1.0 final F6: Chat Settings, no Difficulty)",
+   "args": [
+    "--open-menu",
+    "options"
+   ]
+  },
+  {
+   "group": "ui",
+   "matrix": {
+    "size": [
+     [
+      1280,
+      720
+     ]
+    ],
+    "gui_scale": [
+     2
+    ]
+   },
+   "pose": [
+    0.5,
+    160,
+    0.5,
+    90,
+    -20
+   ],
+   "render_distance": 4,
+   "name": "sound-settings",
+   "description": "Options > Music & Sounds (v1.0 final F6: Narrator/Voice)",
+   "args": [
+    "--open-menu",
+    "sound"
+   ]
+  },
+  {
+   "group": "ui",
+   "matrix": {
+    "size": [
+     [
+      1280,
+      720
+     ]
+    ],
+    "gui_scale": [
+     2
+    ]
+   },
+   "pose": [
+    0.5,
+    160,
+    0.5,
+    90,
+    -20
+   ],
+   "render_distance": 4,
+   "name": "chat-settings",
+   "description": "Options > Chat Settings (v1.0 final F6)",
+   "args": [
+    "--open-menu",
+    "chat"
+   ]
+  },
+  {
+   "group": "ui",
+   "matrix": {
+    "size": [
+     [
+      1280,
+      720
+     ]
+    ],
+    "gui_scale": [
+     2
+    ]
+   },
+   "pose": [
+    0.5,
+    160,
+    0.5,
+    90,
+    -20
+   ],
+   "render_distance": 4,
+   "name": "world-options",
+   "description": "Pause > World Options (v1.0 final F6: Difficulty and its lock)",
+   "args": [
+    "--open-menu",
+    "world"
+   ]
+  },
+  {
    "group": "title",
    "matrix": {
     "size": [

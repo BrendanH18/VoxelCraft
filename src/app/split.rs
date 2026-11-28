@@ -399,7 +399,9 @@ impl Game {
                 a.session.mode == super::GameMode::Spectator,
             );
             let fog_end = atmosphere.end();
-            let draw = atmosphere.draw_distance(a.player.pos, self.world.render_distance());
+            let draw = atmosphere
+                .draw_distance(a.player.pos, self.world.render_distance())
+                .scaled(self.settings.entity_distance);
             let models = self.block_models(scene.alpha, camera, &draw);
             let highlight = a.target(&self.world).map(|(p, _)| {
                 let (min, max) = self.world.outline(p);
@@ -500,7 +502,13 @@ impl Game {
                 );
             }
             self.renderer.set_entities(verts);
-            super::weather::sheets(&self.world, camera, scene.rain, &mut self.weather_verts);
+            super::weather::sheets(
+                &self.world,
+                camera,
+                scene.rain,
+                self.settings.weather_radius as i32,
+                &mut self.weather_verts,
+            );
             self.renderer.set_weather(&self.weather_verts);
             let mut params = FrameParams {
                 camera,
@@ -574,7 +582,11 @@ impl Game {
                 ),
                 rain: scene.rain,
                 night_vision: atmosphere.night_vision,
-                darkness: crate::render::Darkness::of(&a.vitals.effects, scene.alpha as f32),
+                darkness: crate::render::Darkness::of(
+                    &a.vitals.effects,
+                    scene.alpha as f32,
+                    self.settings.darkness_effect_scale,
+                ),
                 ui,
                 // Controller players' screens are in-game panels: no blur.
                 blur: 0,
