@@ -179,6 +179,7 @@ impl Entities {
             .filter_map(|e| {
                 let (pos, previous_pos) = unpair(&e["at"])?;
                 Some(XpOrb {
+                    portal_cooldown: 0,
                     value: e["value"].as_u64()?.min(2477) as u32,
                     count: e["count"].as_u64().unwrap_or(1).clamp(1, 64) as u32,
                     pos,

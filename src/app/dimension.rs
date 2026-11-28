@@ -155,6 +155,10 @@ pub(super) enum Arrival {
     /// `end_gateway_return`) is a spot, not a gateway: the traveller
     /// arrives at its bottom centre and nothing is built.
     Gateway { exit: IVec3, from: IVec3, island: Option<IVec3>, link: bool, vel: DVec3, exact: bool },
+    /// v1.0 final Track F2: riding out of the End through its exit portal:
+    /// the vehicle's arrival, the world spawn's top
+    /// (`Entity.adjustSpawnLocation`), keeping `vel`, with the player aboard.
+    SpawnTop { vel: DVec3 },
 }
 
 /// Whether `b` is `block`, a Nether portal counting along either axis.
@@ -582,7 +586,7 @@ impl Game {
     /// Goes through the portal the player is standing in.
     fn travel(&mut self) {
         let to = self.dimension.other();
-        let mut trip = self.portal_trip(to);
+        let mut trip = self.host_trip(to);
         let target = trip.target;
         // v1.0 gap Track 8b, `getExitPortal`: a player who turned spectator
         // after the count's last tick in the portal still goes, but only to
@@ -593,7 +597,42 @@ impl Game {
             log::info!("a spectator's trip to the {} found no portal there: not travelling", to.name());
             return;
         }
-        self.switch_dimension(to, Arrival::Portal(trip));
+        self.depart(to, Arrival::Portal(trip));
+    }
+
+    /// v1.0 final Track F2: the trip of the host, or of the vehicle the
+    /// host rides (Java's vehicle goes, its passengers with it): from the
+    /// vehicle's position, size and motion and the portal cell it was
+    /// marked inside.
+    fn host_trip(&self, to: Dimension) -> PortalTrip {
+        let vehicle = self.session.player.vehicle.and_then(|id| {
+            let (min, max) = self.mobs.entities.vehicle_aabb(id)?;
+            let vel = self.mobs.entities.vehicle_vel(id)?;
+            Some((min, max, vel))
+        });
+        let Some((min, max, vel)) = vehicle else { return self.portal_trip(to) };
+        let pos = DVec3::new((min.x + max.x) / 2.0, min.y, (min.z + max.z) / 2.0);
+        let size = (f64::from((max.x - min.x) as f32), f64::from((max.y - min.y) as f32));
+        self.nether_trip(to, self.portal.entry(), pos, vel, size)
+    }
+
+    /// v1.0 final Track F2: [`Game::switch_dimension`] taking the host's
+    /// vehicle along (`teleportCrossDimension`: the vehicle goes, and its
+    /// passengers ride it again on arrival). A trip whose save failed puts
+    /// it back.
+    fn depart(&mut self, to: Dimension, arrival: Arrival) -> bool {
+        if let Some(id) = self.session.player.vehicle
+            && self.lan.client.is_none()
+        {
+            self.carried_vehicle = self.mobs.entities.take_vehicle(id);
+        }
+        if self.switch_dimension(to, arrival) {
+            return true;
+        }
+        if let Some(v) = self.carried_vehicle.take() {
+            self.session.player.vehicle = self.mobs.entities.arrive(&v.batch, v.pos, Some(v.vel), 0.0, true);
+        }
+        false
     }
 
     /// v1.0 gap Track 8c: a trip into the Nether the
@@ -605,8 +644,13 @@ impl Game {
         if self.lan.client.is_some() || self.session.mode == voxelcraft::rules::GameMode::Spectator {
             return;
         }
-        let trip = self.portal_trip(Dimension::Nether);
-        let owed = OwedPortal { target: trip.target, along_x: trip.along_x };
+        let trip = self.host_trip(Dimension::Nether);
+        self.owe_portal(OwedPortal { target: trip.target, along_x: trip.along_x });
+    }
+
+    /// Owes the Nether the exit portal of a refused trip ([`OwedPortal`]),
+    /// once per target and axis.
+    pub(super) fn owe_portal(&mut self, owed: OwedPortal) {
         if !self.owed_portals.contains(&owed) && self.owed_portals.len() < MAX_OWED_PORTALS {
             log::info!(
                 "the Nether rule refused a trip: its exit portal near {} is built when the Nether loads",
@@ -649,11 +693,16 @@ impl Game {
         if self.dimension == Dimension::Nether && self.lan.client.is_none() && self.build_owed_portal() {
             return true;
         }
+        // v1.0 final Track F2: entities that came through portals first.
+        if self.lan.client.is_none() && self.resolve_portal_arrival() {
+            return true;
+        }
         let target = match arrival {
             Arrival::Portal(trip) => trip.target,
             Arrival::PortalAt(p, _) => p,
             Arrival::EndSpawn { .. } => crate::world::end::SPAWN,
             Arrival::Gateway { exit, .. } => exit,
+            Arrival::SpawnTop { .. } => self.world_spawn,
             // Load where `respawn_point` will put the player: the bed (checked
             // once its chunk is in), else the set spawn point or the
             // `spawnRadius` spot around the world spawn.
@@ -663,7 +712,7 @@ impl Game {
         let r = match arrival {
             Arrival::Portal(..) => SEARCH_RADIUS,
             Arrival::PortalAt(..) => 2,
-            Arrival::Respawn => 0,
+            Arrival::Respawn | Arrival::SpawnTop { .. } => 0,
             Arrival::Anchor(_) => 1,
             Arrival::EndSpawn { .. } => 2,
             // Room for the gateway's arrival search and a new island.
@@ -725,7 +774,11 @@ impl Game {
                         // exit portal, free of collisions, turned a quarter
                         // if the portals' axes differ, the motion with the
                         // view (`ROTATE_DELTA`, v1.0 gap Track 8); pitch kept.
-                        let (width, height) = java_size(self.session.player.collision_shape());
+                        // v1.0 final Track F2: a carried vehicle's size.
+                        let (width, height) = match &self.carried_vehicle {
+                            Some(v) => (v.width, v.height),
+                            None => java_size(self.session.player.collision_shape()),
+                        };
                         let at = crate::world::portal::exit_position(rect, along_x, trip.offset, width, height);
                         if along_x != trip.along_x {
                             let java_yaw = crate::knockback::java_yaw_degrees(self.session.player.yaw);
@@ -752,24 +805,12 @@ impl Game {
                 // player faces west (`Direction.WEST.toYRot()`) and keeps
                 // their pitch (`Relative.X_ROT`) and motion (`Relative.DELTA`,
                 // turned with the yaw when they entered).
+                self.build_end_platform();
                 let spawn = crate::world::end::SPAWN;
-                for z in -2..=2 {
-                    for x in -2..=2 {
-                        for y in -1..3 {
-                            let cell = spawn + IVec3::new(x, y, z);
-                            let want = if y == -1 { Block::OBSIDIAN } else { Block::AIR };
-                            let Some(was) = self.world.get_block(cell).filter(|&b| b != want) else { continue };
-                            if was != Block::AIR {
-                                self.world.spill_block(cell, was);
-                                self.world.particles.push(crate::particles::Request::Break { cell, block: was });
-                            }
-                            self.world.set_block(cell, want);
-                        }
-                    }
-                }
                 self.session.player.yaw = std::f32::consts::PI;
                 spawn.as_dvec3() + DVec3::new(0.5, 0.0, 0.5)
             }
+            Arrival::SpawnTop { .. } => self.spawn_top(),
             Arrival::Respawn => {
                 let (at, yaw) = self.respawn_point();
                 self.session.player.yaw = yaw;
@@ -819,10 +860,37 @@ impl Game {
         };
         self.relocate_agents();
         self.session.player.vel = match arrival {
-            Arrival::Gateway { vel, .. } | Arrival::EndSpawn { vel } => vel,
+            Arrival::Gateway { vel, .. } | Arrival::EndSpawn { vel } | Arrival::SpawnTop { vel } => vel,
             Arrival::Portal(trip) | Arrival::PortalAt(_, trip) => turned_vel.unwrap_or(trip.vel),
             _ => DVec3::ZERO,
         };
+        // v1.0 final Track F2: the vehicle arrives where the trip leads it
+        // (a block higher into the End, as for any entity but a player),
+        // and the host rides it again.
+        if let Some(v) = self.carried_vehicle.take() {
+            let (vel, turn) = match arrival {
+                Arrival::Portal(trip) | Arrival::PortalAt(_, trip) => match turned_vel {
+                    Some(_) => {
+                        let java_yaw = crate::knockback::java_yaw_degrees(v.yaw);
+                        (crate::world::portal::quarter_turn_motion(trip.vel, java_yaw), std::f32::consts::FRAC_PI_2)
+                    }
+                    None => (trip.vel, 0.0),
+                },
+                Arrival::EndSpawn { .. } => (
+                    crate::world::portal::end_arrival_motion(v.vel, crate::knockback::java_yaw_degrees(v.yaw)),
+                    std::f32::consts::PI - v.yaw,
+                ),
+                Arrival::Gateway { vel, .. } | Arrival::SpawnTop { vel } => (vel, 0.0),
+                _ => (DVec3::ZERO, 0.0),
+            };
+            let pos = match arrival {
+                Arrival::EndSpawn { .. } => super::portal_travel::end_spawn_arrival(),
+                _ => self.session.player.pos,
+            };
+            self.session.player.vehicle = self.mobs.entities.arrive(&v.batch, pos, Some(vel), turn, true);
+            self.session.player.pos = pos;
+            self.session.player.vel = DVec3::ZERO;
+        }
         self.session.player.flying = self.session.player.flying && self.session.mode.can_fly();
         self.session.vitals.reset_fall();
         self.arrival = None;
@@ -969,13 +1037,17 @@ impl Game {
             return false;
         }
         self.portal_cooldown = (self.portal_cooldown - crate::simulation::TICK_SECONDS).max(0.0);
-        // `canUsePortal(false)`: not riding, alive and (`LivingEntity`) not asleep.
+        // `canUsePortal(false)`: not riding, alive and (`LivingEntity`) not
+        // asleep. v1.0 final Track F2: riding, the count is the vehicle's
+        // (marked by [`Game::update_vehicle_portal`]), and a vehicle isn't a
+        // player, so its Nether portal takes no time.
+        let riding = self.session.player.vehicle.is_some();
         let allowed =
-            self.session.player.vehicle.is_none() && !self.session.vitals.is_dead() && self.session.sleeping.is_none();
+            (!riding || self.vehicle_travels()) && !self.session.vitals.is_dead() && self.session.sleeping.is_none();
         let (kind, entry) = (self.portal.kind(), self.portal.entry());
         let delay = match kind {
-            PortalKind::Nether => self.portal_delay(),
-            PortalKind::End | PortalKind::Gateway => 0,
+            PortalKind::Nether if !riding => self.portal_delay(),
+            PortalKind::Nether | PortalKind::End | PortalKind::Gateway => 0,
         };
         if !self.portal.process(allowed, delay) {
             return false;
@@ -998,7 +1070,24 @@ impl Game {
             // gateway at the entry has gone.
             PortalKind::Gateway => {
                 if self.dimension == Dimension::End && self.world.get_block(entry) == Some(Block::END_GATEWAY) {
+                    // v1.0 final Track F2: the host's vehicle goes too, out
+                    // of the level until the exit has loaded.
+                    if let Some(id) = self.session.player.vehicle
+                        && self.lan.client.is_none()
+                    {
+                        self.carried_vehicle = self.mobs.entities.take_vehicle(id);
+                        if let Some(v) = &mut self.carried_vehicle {
+                            self.session.player.vel = v.vel;
+                            self.session.player.vehicle = None;
+                        }
+                    }
                     self.enter_gateway(entry);
+                    if self.arrival.is_none()
+                        && let Some(v) = self.carried_vehicle.take()
+                    {
+                        self.session.player.vehicle =
+                            self.mobs.entities.arrive(&v.batch, v.pos, Some(v.vel), 0.0, true);
+                    }
                 }
             }
         }
@@ -1009,8 +1098,14 @@ impl Game {
     /// platform facing west with the motion turned to match, or out of the
     /// End to the player's respawn point.
     fn through_end_portal(&mut self) {
-        let (to, arrival) = match self.dimension {
-            Dimension::End => (Dimension::Overworld, Arrival::Respawn),
+        // v1.0 final Track F2: the host's vehicle leaving the End goes to
+        // the world spawn's top, only once the host has seen the credits
+        // (`Entity.canTeleport`).
+        let riding = self.session.player.vehicle.and_then(|id| self.mobs.entities.vehicle_vel(id));
+        let (to, arrival) = match (self.dimension, riding) {
+            (Dimension::End, Some(_)) if !self.credits_seen => return,
+            (Dimension::End, Some(vel)) => (Dimension::Overworld, Arrival::SpawnTop { vel }),
+            (Dimension::End, None) => (Dimension::Overworld, Arrival::Respawn),
             _ => {
                 let p = &self.session.player;
                 let yaw = crate::knockback::java_yaw_degrees(p.yaw);
@@ -1018,7 +1113,51 @@ impl Game {
                 (Dimension::End, Arrival::EndSpawn { vel })
             }
         };
-        self.switch_dimension(to, arrival);
+        self.depart(to, arrival);
+    }
+
+    /// v1.0 final Track F2: whether the host's vehicle can go through a
+    /// portal with them: a cart, boat or living mount no other player rides.
+    fn vehicle_travels(&self) -> bool {
+        let Some(id) = self.session.player.vehicle else { return false };
+        self.lan.client.is_none()
+            && self.mobs.entities.vehicle_aabb(id).is_some()
+            && !self.mobs.entities.vehicle_has_other_riders(id, crate::entity::PlayerId::HOST)
+    }
+
+    /// v1.0 final Track F2: the portal the host's vehicle is inside after
+    /// its last move (`entityInside` for the vehicle, which isn't a passenger
+    /// and so can use portals) marks the host's count, which stands in for
+    /// the vehicle's: on cooldown it only restarts the cooldown (10 ticks
+    /// with a player aboard, `getDimensionChangingDelay`). Run before
+    /// [`Game::process_portal`], as Java's next tick's `handlePortal`.
+    pub(super) fn update_vehicle_portal(&mut self) {
+        if self.arrival.is_some()
+            || self.credits.is_some()
+            || !self.session.mode.uses_portals()
+            || self.session.vitals.is_dead()
+            || !self.vehicle_travels()
+        {
+            return;
+        }
+        let Some(id) = self.session.player.vehicle else { return };
+        let Some((min, max)) = self.mobs.entities.vehicle_aabb(id) else { return };
+        match crate::entity::portal_travel::touched_portal(&self.world, min, max) {
+            Some((PortalKind::Gateway, cell)) if self.dimension == Dimension::End => {
+                let Some(fight) = &mut self.mobs.entities.fight else { return };
+                if fight.gateway_entities.cooling(cell) {
+                    return;
+                }
+                fight.gateway_entities.trigger(cell);
+                self.inside_portal(PortalKind::Gateway, cell);
+            }
+            Some((PortalKind::End, cell)) if !self.portal_locked => self.inside_portal(PortalKind::End, cell),
+            Some((PortalKind::Nether, cell)) if self.dimension != Dimension::End && !self.portal_locked => {
+                self.inside_portal(PortalKind::Nether, cell);
+            }
+            Some(_) => {}
+            None => self.portal_locked = false,
+        }
     }
 
     /// Ticks the count takes: Java's `NetherPortalBlock.getPortalTransitionTime`,

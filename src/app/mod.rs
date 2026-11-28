@@ -42,6 +42,7 @@ mod pad_menu;
 mod particles;
 mod patterns;
 mod player_actions;
+mod portal_travel;
 mod preview;
 mod raid;
 mod recipe_book;
@@ -363,6 +364,13 @@ struct Game {
     /// Nether next loads ([`dimension::OwedPortal`]). Saved in the root
     /// level file.
     owed_portals: Vec<dimension::OwedPortal>,
+    /// v1.0 final Track F2: entities that went through portals to other
+    /// dimensions, waiting for them to load ([`portal_travel::PortalArrival`]).
+    /// Saved in the root level file.
+    portal_arrivals: Vec<portal_travel::PortalArrival>,
+    /// v1.0 final Track F2: the vehicle the host rides through a portal to
+    /// another dimension, out of the level until the host arrives.
+    carried_vehicle: Option<voxelcraft::entity::portal_travel::Departure>,
 }
 
 pub struct App {

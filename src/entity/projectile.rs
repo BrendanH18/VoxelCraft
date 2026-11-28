@@ -30,7 +30,7 @@ pub struct Arrow {
     pub pos: DVec3,
     /// Position at the start of the last simulation step, for rendering.
     pub previous_pos: DVec3,
-    vel: DVec3,
+    pub(crate) vel: DVec3,
     /// Direction it points (kept once stuck).
     pub dir: Vec3,
     age: f32,
@@ -77,6 +77,9 @@ pub struct Arrow {
     /// in blocks a tick, rounded up, instead of the older mob arrow's
     /// estimate.
     pub java_base: Option<f64>,
+    /// v1.0 final Track F2: ticks until it can use a portal again
+    /// (`Entity.portalCooldown`; not saved).
+    pub portal_cooldown: u16,
 }
 
 /// Something other than a mob an arrow can hit: a minecart, boat or
@@ -117,6 +120,7 @@ impl Arrow {
         let spread = DVec3::new(rng.range(-1.0, 1.0) as f64, rng.range(-1.0, 1.0) as f64, rng.range(-1.0, 1.0) as f64);
         let vel = (aim.normalize_or(DVec3::X) + spread * 0.03) * SPEED;
         Self {
+            portal_cooldown: 0,
             tipped: false,
             potion: None,
             custom_effect: None,
@@ -192,6 +196,7 @@ impl Arrow {
             (y.is_finite() && x.is_finite()).then_some((y, x))
         });
         Some(Self {
+            portal_cooldown: 0,
             tipped: v["tipped"].as_bool().unwrap_or(false),
             potion: v["potion"].as_str().and_then(crate::potion::Potion::from_id),
             custom_effect,
@@ -226,6 +231,7 @@ impl Arrow {
         let dir = dir.normalize_or(DVec3::X);
         let vel = dir * BOW_SPEED * power as f64;
         Self {
+            portal_cooldown: 0,
             tipped: false,
             potion: None,
             custom_effect: None,

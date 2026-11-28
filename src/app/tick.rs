@@ -32,6 +32,8 @@ impl Game {
         self.session.settle_wake(&self.world);
         // v1.0 gap Track 8b: `handlePortal` comes before the player moves,
         // and a trip it sets off holds them until they arrive.
+        // v1.0 final Track F2: a ridden vehicle's portal marks the host's count.
+        self.update_vehicle_portal();
         let arriving = self.update_arrival() || self.process_portal();
         // v1.0 gap Track 8e: a player watching the End credits has left the
         // level (`showEndCredits`) and doesn't move; their own tick

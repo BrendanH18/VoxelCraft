@@ -90,6 +90,9 @@ pub struct Trident {
     /// tick and turned on a bounce, as an arrow's ([`super::projectile`]);
     /// `None` until a tick in flight sets them.
     rot: Option<(f32, f32)>,
+    /// v1.0 final Track F2: ticks until it can use a portal again
+    /// (`Entity.portalCooldown`; not saved).
+    pub portal_cooldown: u16,
 }
 
 /// Something a trident's tick asks the entity update to do afterwards.
@@ -104,6 +107,7 @@ pub(super) enum Effect {
 impl Trident {
     fn new(stack: Stack, pos: DVec3, vel: DVec3, owner: Option<Owner>, pickup: Pickup) -> Self {
         Self {
+            portal_cooldown: 0,
             stack: Stack { count: 1, ..stack },
             pos,
             previous_pos: pos,

@@ -1585,6 +1585,9 @@ pub struct Mob {
     /// (`restituteMovementAfterCollisions`), for the `bounce` game event.
     /// Never saved.
     pub(crate) bounces: u32,
+    /// v1.0 final Track F2: ticks until it can use a portal again
+    /// (`Entity.portalCooldown`; not saved).
+    pub portal_cooldown: u16,
 }
 
 /// Per-kind state of the mobs on the flagged goal selector. Mobs hold it
@@ -1607,6 +1610,7 @@ impl Mob {
         });
         let health = mount.as_ref().map_or(kind.max_health(), |s| s.max_health);
         let mut m = Self {
+            portal_cooldown: 0,
             simulation_active: true,
             infested: 0,
             mount,

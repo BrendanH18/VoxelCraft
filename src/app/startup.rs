@@ -412,6 +412,10 @@ impl Game {
             owed_portals: root_props
                 .get(super::dimension::OWED_PORTALS_KEY)
                 .map_or_else(Vec::new, |t| super::dimension::parse_owed_portals(t)),
+            portal_arrivals: root_props
+                .get(super::portal_travel::PORTAL_ARRIVALS_KEY)
+                .map_or_else(Vec::new, |t| super::portal_travel::parse_arrivals(t)),
+            carried_vehicle: None,
             terrain_version: existing
                 .as_ref()
                 .map_or(2, |l| l.props.get("terrain").and_then(|v| v.parse().ok()).unwrap_or(1)),

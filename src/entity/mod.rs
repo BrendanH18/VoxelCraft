@@ -81,6 +81,7 @@ mod piston_push;
 pub mod player_model;
 mod player_pose;
 pub mod polar_bear;
+pub mod portal_travel;
 pub mod potion;
 mod projectile;
 pub mod raid;
