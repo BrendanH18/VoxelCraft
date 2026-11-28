@@ -1008,7 +1008,7 @@ mod tests {
         let mut p = [0.0; 3];
         p[d] = match code {
             31 => 1.5 / 16.0,
-            17..=24 => (face % 2 == 0) as u32 as f32,
+            17..=24 => face.is_multiple_of(2) as u32 as f32,
             25..=28 => 1.0 / 16.0,
             value => value as f32 / 16.0,
         };
