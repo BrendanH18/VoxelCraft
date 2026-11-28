@@ -659,7 +659,16 @@ impl PlayerSession {
                 .merchant(id)
                 .and_then(|m| m.villager.as_ref())
                 .is_some_and(|v| v.offers.iter().any(Option::is_some));
-            return Ok(Some(if offers { Used::OpenMerchant(id) } else { Used::MerchantRefused }));
+            if !offers {
+                // v1.0 gap Track 7f: `setUnhappy`, the refusal's head shake.
+                entities.refuse_trade(id);
+                return Ok(Some(Used::MerchantRefused));
+            }
+            return Ok(Some(Used::OpenMerchant(id)));
+        }
+        // v1.0 gap Track 7f: a villager child shakes its head at any use.
+        if !ctx.sneaking && entities.pester_child(world, eye, dir, self.entity_reach()) {
+            return Ok(Some(Used::MerchantRefused));
         }
         if let Some(index) = self.mob_target(world, entities)
             && let Some(item) = self.inventory.get(slot).map(|s| s.item)

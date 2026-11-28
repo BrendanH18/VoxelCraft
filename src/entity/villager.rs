@@ -172,6 +172,9 @@ impl Offer {
         .then_some(out)
     }
 }
+/// `Villager.setUnhappy`: 40 ticks of the head shake.
+pub const UNHAPPY_TICKS: u8 = 40;
+
 #[derive(Clone, Debug)]
 pub struct Villager {
     pub id: u64,
@@ -206,6 +209,11 @@ pub struct Villager {
     pub(crate) activity: Activity,
     /// Ticks left of `CelebrateVillagersSurvivedRaid`; 0 when not running.
     pub celebrate: u16,
+    /// v1.0 gap Track 7f: Java's `unhappyCounter` (`DATA_UNHAPPY_COUNTER`,
+    /// synched to clients, never saved): ticks left of the head shake a
+    /// refused trade or a pestered child starts ([`UNHAPPY_TICKS`]);
+    /// `Villager.tick` counts it down.
+    pub unhappy: u8,
     pub wandering: bool,
     /// Biome variant used by Java 26.3 cartographer predicates.
     pub map_variant: Option<String>,
@@ -284,6 +292,7 @@ impl Villager {
             raid_activity: RaidActivity::None,
             activity: Activity::Idle,
             celebrate: 0,
+            unhappy: 0,
             wandering: false,
             map_variant: None,
             gossip: Default::default(),
@@ -639,6 +648,40 @@ impl Entities {
         Ok(xp)
     }
     pub fn target_merchant(&self, world: &crate::world::World, eye: DVec3, dir: DVec3, reach: f64) -> Option<u64> {
+        let m = &self.mobs[self.target_villager(world, eye, dir, reach)?];
+        let v = m.villager.as_ref()?;
+        (m.age >= 0 && !v.sleeping).then_some(v.id)
+    }
+
+    /// v1.0 gap Track 7f: `Villager.mobInteract` on a villager child (not
+    /// asleep and not trading): it shakes its head (`setUnhappy`) and the
+    /// use is spent. Returns whether a child was there.
+    pub fn pester_child(&mut self, world: &crate::world::World, eye: DVec3, dir: DVec3, reach: f64) -> bool {
+        let Some(i) = self.target_villager(world, eye, dir, reach) else { return false };
+        let m = &mut self.mobs[i];
+        let Some(v) = m.villager.as_mut().filter(|v| !v.sleeping && !v.trading) else { return false };
+        if m.kind != MobKind::Villager || m.age >= 0 {
+            return false;
+        }
+        v.unhappy = UNHAPPY_TICKS;
+        true
+    }
+
+    /// v1.0 gap Track 7f: `Villager.mobInteract`'s refusal when it has no
+    /// offers (`setUnhappy` for the main hand): the villager shakes its
+    /// head. Wandering traders never do (their `mobInteract` doesn't).
+    pub fn refuse_trade(&mut self, id: u64) {
+        if let Some(m) =
+            self.mobs.iter_mut().find(|m| m.alive() && m.villager.as_ref().is_some_and(|v| v.id == id && !v.trading))
+            && m.kind == MobKind::Villager
+        {
+            m.villager.as_mut().unwrap().unhappy = UNHAPPY_TICKS;
+        }
+    }
+
+    /// The villager or wandering trader the eye's ray reaches first, not
+    /// behind a block.
+    fn target_villager(&self, world: &crate::world::World, eye: DVec3, dir: DVec3, reach: f64) -> Option<usize> {
         let (i, t) = self.raycast(eye, dir, reach)?;
         // Use the shared voxel ray to prevent trading through walls.
         if world.raycast(eye, dir, reach).is_some_and(|h| {
@@ -652,8 +695,7 @@ impl Entities {
             return None;
         }
         let m = &self.mobs[i];
-        let v = m.villager.as_ref()?;
-        (matches!(m.kind, MobKind::Villager | MobKind::WanderingTrader) && m.age >= 0 && !v.sleeping).then_some(v.id)
+        (matches!(m.kind, MobKind::Villager | MobKind::WanderingTrader) && m.villager.is_some()).then_some(i)
     }
     /// v0.15 Track G: spawns each generation 4 village resident (Java's
     /// villager, cat, iron golem, animal and camel spawn pieces) once, when

@@ -1310,7 +1310,7 @@ fn pose(m: &Mob, time: f32, alpha: f32) -> Parts {
         }
         // v1.0 gap Track 7e: `VillagerModel` and `ZombieVillagerModel` on
         // Java's parts, with `VillagerProfessionLayer`'s outfits.
-        MobKind::Villager | MobKind::WanderingTrader => villager_outfit::villager(m),
+        MobKind::Villager | MobKind::WanderingTrader => villager_outfit::villager(m, time),
         MobKind::ZombieVillager => villager_outfit::zombie_villager(m, time),
         MobKind::TraderLlama => parts![
             part(trader_model::LLAMA_BODY, [0.0; 3], Quat::IDENTITY),
@@ -1851,6 +1851,12 @@ pub fn build(
             let arms =
                 if m.is_baby() { part(&[], [0.0, 6.5, 0.0], Quat::IDENTITY) } else { posed[villager_outfit::ARMS] };
             villager_outfit::crossed_arms_item(out, stack, &arms, origin, body, scale, (light, torch));
+        }
+        // v1.0 gap Track 7f: `FoxHeldItemLayer`, the item in the fox's mouth.
+        if m.kind == MobKind::Fox
+            && let Some(stack) = m.main_hand()
+        {
+            fox_model::held_item(out, m, stack, &posed[0], origin, body, scale, (light, torch), alpha as f32);
         }
         if m.kind == MobKind::SulfurCube {
             new_mobs::sulfur_block(m, origin, body, scale, (light, torch), out);

@@ -277,7 +277,8 @@ voxelcraft [options]
                     (leather, chainmail, iron, gold, diamond, netherite) and
                     glint equip a zombie or skeleton; allay,x,y,z,item gives
                     an allay an item to hold, and any other mob that item in
-                    its main hand; kind,x,y,z,baby spawns a baby; villager,x,y,z,type[:job[:level]]
+                    its main hand; kind,x,y,z,baby[,item] spawns a baby (holding
+                    the item); villager,x,y,z,type[:job[:level]]
                     dresses a villager or zombie villager (with baby, armor
                     or an item in the other field)
   --wait <secs>     with --screenshot: keep simulating this long first
@@ -717,8 +718,14 @@ pub(crate) fn parse_args_from(arguments: impl IntoIterator<Item = String>) -> Re
                         }
                     }
                     armor
-                } else if parts.len() == 5 && parts[4] == "baby" {
+                } else if parts.len() >= 5 && parts[4] == "baby" {
+                    // v1.0 gap Track 7f: `kind,x,y,z,baby,item`, a baby
+                    // holding an item (a fox kit's mouth item).
                     args.spawn_baby.push(args.spawn.len());
+                    if let Some(p) = parts.get(5) {
+                        let held = item::Item::from_name(p).ok_or_else(|| format!("--spawn: unknown item {p}"))?;
+                        args.spawn_held.push((args.spawn.len(), held));
+                    }
                     None
                 } else if parts.len() == 5
                     && (kind == entity::MobKind::Allay || entity::armor::ArmorKind::from_name(parts[4]).is_none())

@@ -159,13 +159,89 @@ pub(super) fn setup(r: &mut Rig, ids: &Ids, s: &State, m: &Mob, time: f32, baby:
         r.rot[ids.head] = [0.0, -PI * 2.0 / 3.0, (age * 0.027).cos() / 22.0];
     }
     if s.faceplanted {
-        // `legMotionPos` gains 0.67 a frame in Java; here a tick.
-        let pos = age * 0.67 * 0.4662;
+        // `legMotionPos`: the model's own counter, which gains 0.67 each
+        // time it poses a faceplanted fox (v1.0 gap Track 7f).
+        let pos = leg_motion(baby) * 0.4662;
         r.x_rot(rh, pos.cos() * 0.1);
         r.x_rot(lh, (pos + PI).cos() * 0.1);
         r.x_rot(rf, (pos + PI).cos() * 0.1);
         r.x_rot(lf, pos.cos() * 0.1);
     }
+}
+
+/// `FoxModel.legMotionPos` of the adult's and the kit's model (Java's
+/// renderer keeps one of each): a field of the model, not of a fox, that
+/// each faceplanted fox posed with it advances by 0.67, so it runs per
+/// rendered frame and is shared by every faceplanted fox drawn. Kept as
+/// `f32` bits; only the faceplant paddle reads it.
+static LEG_MOTION: [std::sync::atomic::AtomicU32; 2] =
+    [std::sync::atomic::AtomicU32::new(0), std::sync::atomic::AtomicU32::new(0)];
+
+/// `this.legMotionPos += 0.67F`, returning the new value.
+fn leg_motion(baby: bool) -> f32 {
+    use std::sync::atomic::Ordering::Relaxed;
+    let cell = &LEG_MOTION[usize::from(baby)];
+    let old =
+        cell.try_update(Relaxed, Relaxed, |bits| Some((f32::from_bits(bits) + 0.67).to_bits())).unwrap_or_default();
+    f32::from_bits(old) + 0.67
+}
+
+/// v1.0 gap Track 7f: `FoxHeldItemLayer`, the fox's main-hand item in its
+/// mouth: at the posed head's pivot (in `FoxRenderer.setupRotations`'
+/// pitch), scaled 0.75 for a kit, turned by the head roll, the look's yaw
+/// and pitch (the state's, not the head part's), moved to the mouth
+/// (`(0.06, 0.27, -0.5)`; asleep `(0.46, 0.26, 0.22)`, the kit's
+/// `(0.06, 0.26, -0.5)` and `(0.4, 0.26, 0.15)`), laid flat by a quarter
+/// turn about x (and a quarter about z asleep), in the item's `ground`
+/// display transform (`HoldingEntityRenderState`).
+#[allow(clippy::too_many_arguments)]
+pub(super) fn held_item(
+    out: &mut EntityMesh,
+    m: &Mob,
+    stack: crate::inventory::Stack,
+    head: &Part,
+    origin: Vec3,
+    body: Quat,
+    scale: f32,
+    light: ([u8; 4], u8),
+    alpha: f32,
+) {
+    use glam::Mat4;
+    let s = state(m, alpha);
+    let baby = m.is_baby();
+    let pitch = if s.pouncing || s.faceplanted { Quat::from_rotation_x(head_x(m)) } else { Quat::IDENTITY };
+    let offset = match (baby, s.sleeping) {
+        (true, true) => Vec3::new(0.4, 0.26, 0.15),
+        (true, false) => Vec3::new(0.06, 0.26, -0.5),
+        (false, true) => Vec3::new(0.46, 0.26, 0.22),
+        (false, false) => Vec3::new(0.06, 0.27, -0.5),
+    };
+    let mut mouth = Mat4::from_translation(origin)
+        * Mat4::from_quat(body)
+        * Mat4::from_scale(Vec3::splat(scale / 16.0))
+        * Mat4::from_translation(head.pivot)
+        * Mat4::from_quat(pitch)
+        // Java's model frame: y down, z back, in blocks.
+        * Mat4::from_rotation_x(PI)
+        * Mat4::from_scale(Vec3::splat(if baby { 16.0 * 0.75 } else { 16.0 }))
+        * Mat4::from_rotation_z(s.head_roll)
+        * Mat4::from_rotation_y(m.head_yaw)
+        * Mat4::from_rotation_x(head_x(m))
+        * Mat4::from_translation(offset)
+        * Mat4::from_rotation_x(FRAC_PI_2);
+    if s.sleeping {
+        mouth *= Mat4::from_rotation_z(FRAC_PI_2);
+    }
+    let display = crate::content::item_display::drawn(&stack);
+    out.push_held(HeldItemModel {
+        stack,
+        transform: mouth * crate::content::item_display::Context::Ground.matrix(&display),
+        sky_light: f32::from(light.0[0]) / 255.0,
+        block_light: f32::from(light.1) / 255.0,
+        block: None,
+        icon: None,
+        tint: None,
+    });
 }
 
 /// `FoxRenderer.setupRotations`: a pouncing or faceplanted fox pitched by
@@ -323,6 +399,56 @@ mod tests {
         let f = m.fox.as_mut().unwrap();
         f.faceplanted = true;
         assert!(posed(&m)[HEAD].pivot.y < standing[HEAD].pivot.y - 1.0);
+    }
+
+    /// v1.0 gap Track 7f: `legMotionPos` is the model's, advanced each time
+    /// it poses a faceplanted fox, so the paddle moves from one rendered
+    /// frame to the next even at one `ageInTicks`.
+    #[test]
+    fn the_faceplanted_paddle_advances_each_frame() {
+        let mut m = fox(false);
+        m.fox.as_mut().unwrap().faceplanted = true;
+        let legs = |m: &Mob| posed(m)[RIGHT_HIND_LEG].rot;
+        let (a, b) = (legs(&m), legs(&m));
+        assert!(a.angle_between(b) > 1e-4, "{a} {b}");
+        let before = f32::from_bits(LEG_MOTION[0].load(std::sync::atomic::Ordering::Relaxed));
+        posed(&fox(false));
+        posed(&fox(true));
+        // Only faceplanted foxes move the adult model's counter.
+        let after = f32::from_bits(LEG_MOTION[0].load(std::sync::atomic::Ordering::Relaxed));
+        assert!(after == before || after >= before + 0.67 - 1e-3);
+    }
+
+    /// v1.0 gap Track 7f: `FoxHeldItemLayer`, the main-hand item in the
+    /// mouth, in front of the head at the snout, for the adult and the kit;
+    /// asleep it lies to the side.
+    #[test]
+    fn foxes_hold_their_item_in_the_mouth() {
+        let mesh = |m: &Mob| {
+            let mut out = EntityMesh::flat();
+            assert_eq!(build(std::slice::from_ref(m), DVec3::new(0.0, 64.0, 0.0), Vec3::X, 100.0, 1.0, &mut out), 1);
+            out
+        };
+        for baby in [false, true] {
+            let mut m = fox(baby);
+            assert!(mesh(&m).held_items().is_empty());
+            let stack = crate::inventory::Stack::new(crate::item::Item::FEATHER, 1);
+            m.equipment.set(crate::entity::equipment::Slot::MainHand, Some(stack));
+            let out = mesh(&m);
+            assert_eq!(out.held_items().len(), 1, "baby {baby}");
+            let centre = |out: &EntityMesh| out.held_items()[0].transform.transform_point3(Vec3::splat(0.5));
+            let c = centre(&out);
+            // Facing +X from x = 10: at the snout, low on the head.
+            assert!((10.25..11.0).contains(&c.x), "baby {baby}: {c}");
+            assert!((0.05..0.5).contains(&c.y), "baby {baby}: {c}");
+            assert!(c.z.abs() < 0.1, "baby {baby}: {c}");
+            // The look turns it with the head.
+            m.head_yaw = 0.6;
+            assert!(centre(&mesh(&m)).z.abs() > 0.1, "baby {baby}");
+            m.head_yaw = 0.0;
+            m.animal.as_mut().unwrap().sleeping = true;
+            assert!(centre(&mesh(&m)).distance(c) > 0.1, "baby {baby}");
+        }
     }
 
     /// The kit's `BabyFoxModel` overrides: a sixth of the crouch, curled up

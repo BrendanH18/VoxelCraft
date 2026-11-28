@@ -2826,4 +2826,69 @@ mod village_agent_tests {
         assert!(a.execute(Command::parse("trade").unwrap(), &mut w, &mut e, &[]).is_err());
         assert!(Command::parse("trade 11").is_err());
     }
+
+    /// v1.0 gap Track 7f: `Villager.mobInteract`'s `setUnhappy`: a villager
+    /// with no offers refuses with its head shake, a child shakes its head
+    /// at any use, a wandering trader never does, and `Villager.tick`
+    /// counts the 40 ticks down.
+    #[test]
+    fn refused_trades_and_pestered_children_shake_their_heads() {
+        use crate::entity::villager::UNHAPPY_TICKS;
+        let mut saved = rustc_hash::FxHashMap::default();
+        saved.insert(IVec3::new(0, 4, 0), Arc::new(ChunkData::Uniform(Block::AIR)));
+        let mut w = World::new_headless(Arc::new(Generator::new(1)), saved, 2);
+        let mut a = Agent::new(DVec3::new(1.5, 150.0, 1.5));
+        for _ in 0..10000 {
+            w.update(a.player.pos);
+            if w.is_loaded(IVec3::new(1, 150, 1)) {
+                break;
+            }
+            std::thread::yield_now();
+        }
+        a.player.yaw = 0.0;
+        a.player.pitch = 0.0;
+        let (eye, dir) = (a.player.eye(), a.player.forward().as_dvec3());
+        let mut e = Entities::new(42);
+        e.spawn(MobKind::Villager, DVec3::new(3.5, 150.0, 1.5));
+        let unhappy = |e: &Entities| e.mobs[0].villager.as_ref().unwrap().unhappy;
+        // A jobless adult has no offers: it refuses.
+        let id = e.target_merchant(&w, eye, dir, 4.5).expect("the villager in view");
+        assert!(!e.pester_child(&w, eye, dir, 4.5));
+        e.refuse_trade(id);
+        assert_eq!(unhappy(&e), UNHAPPY_TICKS);
+        // `Villager.tick` counts it down to the end of the shake.
+        let ctx = crate::entity::Ctx {
+            spawn_light: crate::simulation::lighting::SpawnLight::DAY,
+            players: vec![],
+            daylight: 1.0,
+            spawning: false,
+            raining: false,
+            dimension: crate::world::terrain::Dimension::Overworld,
+        };
+        let mut rng = crate::entity::Rng::new(1);
+        for _ in 0..UNHAPPY_TICKS {
+            e.mobs[0].update(0.05, &w, &ctx, &mut rng, &mut Vec::new());
+        }
+        assert_eq!(unhappy(&e), 0);
+        // A child: no trading screen, a head shake; not while asleep.
+        e.mobs[0].age = -24000;
+        e.mobs[0].baby = true;
+        // Looking down at the child's middle, where it stands now.
+        e.mobs[0].pos = DVec3::new(3.5, 150.0, 1.5);
+        let dir = (DVec3::new(3.5, 150.4, 1.5) - eye).normalize();
+        assert!(e.target_merchant(&w, eye, dir, 4.5).is_none());
+        assert!(e.pester_child(&w, eye, dir, 4.5));
+        assert_eq!(unhappy(&e), UNHAPPY_TICKS);
+        e.mobs[0].villager.as_mut().unwrap().unhappy = 0;
+        e.mobs[0].villager.as_mut().unwrap().sleeping = true;
+        assert!(!e.pester_child(&w, eye, dir, 4.5));
+        assert_eq!(unhappy(&e), 0);
+        // A wandering trader with nothing to sell never shakes its head.
+        let mut e = Entities::new(43);
+        e.spawn(MobKind::WanderingTrader, DVec3::new(3.5, 150.0, 1.5));
+        if let Some(id) = e.target_merchant(&w, eye, dir, 4.5) {
+            e.refuse_trade(id);
+        }
+        assert!(e.mobs.iter().all(|m| m.villager.as_ref().is_none_or(|v| v.unhappy == 0)));
+    }
 }

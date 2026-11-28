@@ -2574,6 +2574,12 @@ impl Mob {
         self.hurt_age = self.hurt_age.saturating_add(1);
         // `LivingEntity.baseTick`: the hurt cooldown counts down a tick.
         self.damage_cooldown = self.damage_cooldown.saturating_sub(1);
+        // v1.0 gap Track 7f: `Villager.tick` counts the unhappy shake down.
+        if self.kind == MobKind::Villager
+            && let Some(v) = self.villager.as_mut()
+        {
+            v.unhappy = v.unhappy.saturating_sub(1);
+        }
         self.provoked = (self.provoked - dtf).max(0.0);
         if matches!(self.kind, MobKind::Wolf | MobKind::Llama | MobKind::Enderman | MobKind::ZombifiedPiglin)
             && self.provoked == 0.0
