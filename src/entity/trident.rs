@@ -528,7 +528,8 @@ impl Trident {
                     // v1.0 gap Track 8f: named after its thrower.
                     crate::simulation::damage::Cause::PLAYER_TRIDENT.by(self.owner)
                 } else {
-                    crate::simulation::damage::Cause::DROWNED_TRIDENT
+                    // v1.0 gap Track 8g: the drowned that threw it.
+                    crate::simulation::damage::Cause::DROWNED_TRIDENT.by(self.owner)
                 };
                 events.push(EntityEvent::PlayerHit {
                     player: id,
@@ -1224,7 +1225,10 @@ mod tests {
         );
         assert!(events.iter().any(|ev| matches!(
             ev,
-            EntityEvent::PlayerHit { cause: crate::simulation::damage::Cause::DROWNED_TRIDENT, .. }
+            // v1.0 gap Track 8g: naming the drowned that threw it.
+            EntityEvent::PlayerHit { cause, .. }
+                if cause.text == crate::simulation::damage::Cause::DROWNED_TRIDENT.text
+                    && matches!(cause.by, Some(super::Owner::Mob(_)))
         )));
     }
 }

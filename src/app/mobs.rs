@@ -591,23 +591,23 @@ impl Game {
                     let glass = Sound::Break(crate::audio::sounds::Material::Glass);
                     self.audio.play_in(SoundSource::Neutral, glass, Some(pos), 1.0, (0.9, 1.1));
                 }
-                EntityEvent::PlayerMagic { player: PlayerId::HOST, amount } => {
+                EntityEvent::PlayerMagic { player: PlayerId::HOST, amount, cause } => {
                     if arrow_effects.allows() && self.session.mode.is_survival() {
                         if amount > 0.0 {
-                            self.damage_player(amount, Cause::MAGIC);
+                            self.damage_player(amount, cause);
                         } else {
                             self.session.vitals.health =
                                 (self.session.vitals.health - amount).min(self.session.vitals.max_health());
                         }
                     }
                 }
-                EntityEvent::PlayerMagic { player, amount } => {
+                EntityEvent::PlayerMagic { player, amount, cause } => {
                     if arrow_effects.allows()
                         && let Some(bot) = self.agents.by_id_mut(player)
                         && bot.agent.session.mode.is_survival()
                     {
                         if amount > 0.0 {
-                            bot.agent.hurt_magic(amount, &mut self.mobs.entities);
+                            bot.agent.hurt_magic_by(amount, cause, &mut self.mobs.entities);
                         } else {
                             bot.agent.session.vitals.health =
                                 (bot.agent.session.vitals.health - amount).min(bot.agent.session.vitals.max_health());

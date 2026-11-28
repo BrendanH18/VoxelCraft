@@ -264,7 +264,8 @@ impl Entities {
                     player: player.id,
                     damage: iron_damage(&mut self.rng),
                     knockback: (dir * 6.0 + DVec3::Y * 8.0).as_vec3(),
-                    cause: crate::simulation::damage::Cause::mob("was slain by an iron golem"),
+                    cause: crate::simulation::damage::Cause::mob("was slain by an iron golem")
+                        .by(Some(super::trident::Owner::Mob(self.mobs[i].uid))),
                 });
                 continue;
             }

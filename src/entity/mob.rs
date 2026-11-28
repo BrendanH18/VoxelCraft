@@ -1815,7 +1815,9 @@ impl Mob {
         // `Mob.doHurtTarget` reads the attack damage attribute, which the
         // main-hand item's modifiers raise (`entity::mob_combat`).
         let weapon = if self.kind == MobKind::ZombifiedPiglin { 0.0 } else { self.weapon_attack_bonus() };
-        ((base + strength + held + weapon - weakness).max(0.0), cause)
+        // v1.0 gap Track 8g: the mob is the hit's attacker, which the death
+        // message names (its custom name) and the kill credit remembers.
+        ((base + strength + held + weapon - weakness).max(0.0), cause.by(Some(super::trident::Owner::Mob(self.uid))))
     }
 
     /// Retaliation from the armor worn by a player struck in melee.
@@ -4035,7 +4037,12 @@ impl Mob {
                 let flat = DVec3::new(aim_at.x - eye.x, 0.0, aim_at.z - eye.z);
                 let aim = DVec3::new(flat.x, aim_at.y - 1.1 - eye.y + flat.length() * 0.2, flat.z).normalize_or(dir);
                 if let Some(potion) = crate::potion::Potion::from_id(id) {
-                    events.push(EntityEvent::ThrowPotion { from: eye + dir * 0.4, vel: aim * WITCH_SPEED, potion });
+                    events.push(EntityEvent::ThrowPotion {
+                        from: eye + dir * 0.4,
+                        vel: aim * WITCH_SPEED,
+                        potion,
+                        thrower: self.uid,
+                    });
                 }
                 self.attack_cooldown = 3.0;
                 self.attack_anim = 0.35;

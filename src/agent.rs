@@ -1575,7 +1575,13 @@ impl Agent {
     /// Magic damage from something consumed (a harming potion): no armor or
     /// knockback, with protection and death/drop rules.
     pub fn hurt_magic(&mut self, amount: f32, entities: &mut Entities) -> f32 {
-        self.hurt_through(amount, Cause::MAGIC, false, DVec3::ZERO, None, entities)
+        self.hurt_magic_by(amount, Cause::MAGIC, entities)
+    }
+
+    /// v1.0 gap Track 8g: [`Agent::hurt_magic`] from `cause` (a thrown
+    /// potion's `indirectMagic`).
+    pub fn hurt_magic_by(&mut self, amount: f32, cause: Cause, entities: &mut Entities) -> f32 {
+        self.hurt_through(amount, cause, false, DVec3::ZERO, None, entities)
     }
 
     /// Mounted falls bypass armor points, retaining protection and death/drop rules.

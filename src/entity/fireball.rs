@@ -231,7 +231,8 @@ impl Fireball {
                 player: hit.id,
                 damage: DAMAGE,
                 knockback: push.as_vec3(),
-                cause: crate::simulation::damage::Cause::BLAZE_FIREBALL,
+                // v1.0 gap Track 8g: named after the blaze (or whoever) behind it.
+                cause: crate::simulation::damage::Cause::BLAZE_FIREBALL.by(self.owner),
             });
             events.push(EntityEvent::Ignite { player: hit.id, secs: BURN });
             // v1.0 gap Track 2h: the hit is the shooter's (`DamageSources.fireball`

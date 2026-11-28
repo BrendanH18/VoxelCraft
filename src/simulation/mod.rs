@@ -2,6 +2,7 @@
 //! and headless callers. Input and presentation stay with the caller.
 
 pub mod damage;
+pub mod death_message;
 pub mod difficulty;
 pub mod effects;
 pub mod experience;

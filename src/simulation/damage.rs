@@ -539,6 +539,18 @@ impl Cause {
         Self { by, ..self }
     }
 
+    /// v1.0 gap Track 8g: a thrown potion's or (`cloud`) its lingering
+    /// cloud's harm, owned by `by` (a player or a witch).
+    pub const fn potion_magic(by: Option<crate::entity::trident::Owner>, cloud: bool) -> Self {
+        use crate::entity::trident::Owner;
+        match by {
+            Some(Owner::Player(_)) => Cause::PLAYER_POTION.by(by),
+            Some(Owner::Mob(_)) => Cause::WITCH_POTION.by(by),
+            None if cloud => Cause::CLOUD,
+            None => Cause::SPLASH_POTION,
+        }
+    }
+
     /// A mob's melee hit (`DamageSources.mobAttack`).
     pub const fn mob(text: &'static str) -> Self {
         Self::new(DamageType::MobAttack, text)
@@ -574,6 +586,15 @@ impl Cause {
     /// Drunk or commanded Instant Damage (`magic()`). VoxelCraft also uses it
     /// for splash potions, which Java types `indirect_magic`.
     pub const MAGIC: Cause = Cause::new(DamageType::Magic, super::survival::CAUSE_MAGIC);
+    /// v1.0 gap Track 8g: a splash or lingering potion's Instant Damage
+    /// (`HealOrHarmMobEffect.applyInstantaneousEffect`: `indirectMagic`,
+    /// the potion or cloud the direct source and its owner the causing
+    /// one), naming the player or witch that threw it, else the potion or
+    /// cloud itself.
+    pub const PLAYER_POTION: Cause = Cause::new(DamageType::IndirectMagic, "was killed by a player using magic");
+    pub const WITCH_POTION: Cause = Cause::new(DamageType::IndirectMagic, "was killed by a witch using magic");
+    pub const SPLASH_POTION: Cause = Cause::new(DamageType::IndirectMagic, "was killed by a splash potion using magic");
+    pub const CLOUD: Cause = Cause::new(DamageType::IndirectMagic, "was killed by an area effect cloud using magic");
     pub const WITHER: Cause = Cause::new(DamageType::Wither, "withered away");
     /// `/kill` (`genericKill()`).
     pub const GENERIC_KILL: Cause = Cause::new(DamageType::GenericKill, "was killed");
@@ -592,11 +613,14 @@ impl Cause {
     pub const DROWNED_TRIDENT: Cause = Cause::new(DamageType::Trident, "was impaled by a drowned");
     pub const PLAYER_TRIDENT: Cause = Cause::new(DamageType::Trident, "was impaled by a player");
     pub const BREEZE_WIND_CHARGE: Cause = Cause::new(DamageType::WindCharge, "was slain by a breeze");
-    pub const WIND_CHARGE: Cause = Cause::new(DamageType::WindCharge, "was blasted by a wind charge");
+    /// An ownerless wind charge names itself (`windCharge(charge, null)`,
+    /// message id `mob`, v1.0 gap Track 8g): "was slain by Wind Charge".
+    pub const WIND_CHARGE: Cause = Cause::new(DamageType::WindCharge, "was slain by a wind charge");
     /// v1.0 gap Track 8f: a player's wind charge (`windCharge(charge,
     /// owner)`, message id `mob`): "was slain by" its thrower.
     pub const PLAYER_WIND_CHARGE: Cause = Cause::new(DamageType::WindCharge, "was slain by a player");
-    pub const LLAMA_SPIT: Cause = Cause::new(DamageType::Spit, "was spat on by a llama");
+    /// `spit(spit, llama)`, message id `mob` (v1.0 gap Track 8g).
+    pub const LLAMA_SPIT: Cause = Cause::new(DamageType::Spit, "was slain by a llama");
     /// A small fireball's direct hit (`fireball(fireball, blaze)`).
     pub const BLAZE_FIREBALL: Cause = Cause::new(DamageType::Fireball, "was fireballed by a blaze");
 
@@ -604,7 +628,9 @@ impl Cause {
     // blast has both a direct and an indirect living source).
     pub const CREEPER: Cause = Cause::new(DamageType::PlayerExplosion, "was blown up by a creeper");
     /// A ghast fireball's blast (`LargeFireball.onHit`'s explosion, owned by the ghast).
-    pub const GHAST_FIREBALL: Cause = Cause::new(DamageType::PlayerExplosion, "was fireballed by a ghast");
+    /// v1.0 gap Track 8g: `death.attack.explosion.player`, "was blown up by"
+    /// the fireball's owner (a player who punched it back is named instead).
+    pub const GHAST_FIREBALL: Cause = Cause::new(DamageType::PlayerExplosion, "was blown up by a ghast");
     /// Unowned primed TNT: `explosion(tnt, null)`, a direct entity and no
     /// causing one, worded `death.attack.explosion` ("%1$s blew up"), which
     /// names no one (v1.0 gap Track 8d). `ServerLevel.explode` still treats
@@ -635,17 +661,21 @@ impl Cause {
 
     // Mobs.
     /// `Guardian.hurtServer`'s spikes (`thorns(guardian)`).
-    pub const GUARDIAN_SPIKES: Cause = Cause::new(DamageType::Thorns, "was pricked by a guardian");
+    pub const GUARDIAN_SPIKES: Cause = Cause::new(DamageType::Thorns, "was killed while trying to hurt a guardian");
     /// The laser's attack (`doHurtTarget`); VoxelCraft folds its
     /// `indirect_magic` part into the same hit.
     pub const GUARDIAN_BEAM: Cause = Cause::mob("was slain by a guardian");
-    pub const BEE_STING: Cause = Cause::new(DamageType::Sting, "was stung by a bee");
-    pub const PUFFERFISH: Cause = Cause::mob("was stung by a pufferfish");
-    pub const GOAT_RAM: Cause = Cause::mob("was rammed by a goat");
+    /// `sting(bee)`: `death.attack.sting`, which doesn't name the bee.
+    pub const BEE_STING: Cause = Cause::new(DamageType::Sting, "was stung to death");
+    pub const PUFFERFISH: Cause = Cause::mob("was slain by a pufferfish");
+    pub const GOAT_RAM: Cause = Cause::mob("was slain by a goat");
     pub const ENDER_DRAGON: Cause = Cause::mob("was slain by the Ender Dragon");
     /// The dragon's breath cloud: Instant Damage from an owned area effect
     /// cloud, which `HealOrHarmMobEffect` types `indirect_magic`.
-    pub const DRAGON_BREATH: Cause = Cause::new(DamageType::IndirectMagic, "was killed by dragon's breath");
+    /// v1.0 gap Track 8g: `indirectMagic(cloud, dragon)`, "was killed by
+    /// Ender Dragon using magic".
+    pub const DRAGON_BREATH: Cause =
+        Cause::new(DamageType::IndirectMagic, "was killed by the Ender Dragon using magic");
     pub const WARDEN: Cause = Cause::mob("was slain by a warden");
     pub const SONIC_BOOM: Cause = Cause::new(DamageType::SonicBoom, "was obliterated by a sonically-charged shriek");
 
@@ -672,6 +702,10 @@ impl Cause {
         Cause::STALAGMITE,
         Cause::FREEZE,
         Cause::MAGIC,
+        Cause::PLAYER_POTION,
+        Cause::WITCH_POTION,
+        Cause::SPLASH_POTION,
+        Cause::CLOUD,
         Cause::WITHER,
         Cause::GENERIC_KILL,
         Cause::OUT_OF_WORLD,
@@ -725,6 +759,15 @@ impl Cause {
         ("was blown up by TNT", Cause::TNT),
         ("was blown up by an End crystal", Cause::END_CRYSTAL),
         ("was killed trying to hurt a player", Cause::THORNS),
+        // v1.0 gap Track 8g: Java's words for these.
+        ("was fireballed by a ghast", Cause::GHAST_FIREBALL),
+        ("was spat on by a llama", Cause::LLAMA_SPIT),
+        ("was blasted by a wind charge", Cause::WIND_CHARGE),
+        ("was pricked by a guardian", Cause::GUARDIAN_SPIKES),
+        ("was stung by a bee", Cause::BEE_STING),
+        ("was stung by a pufferfish", Cause::PUFFERFISH),
+        ("was rammed by a goat", Cause::GOAT_RAM),
+        ("was killed by dragon's breath", Cause::DRAGON_BREATH),
     ];
 
     /// v1.0 gap Track 8f: the player this cause names in its message
@@ -741,12 +784,15 @@ impl Cause {
     /// The named cause a saved death message stands for: one of
     /// [`Cause::KNOWN`] with exactly this text, or the cause a
     /// [`Cause::RETIRED`] text now has.
+    /// v1.0 gap Track 8g: a message saved in Java's words ("was slain by
+    /// Zombie") reads back as the cause it was worded from.
     pub fn saved(text: &str) -> Option<Self> {
         Self::KNOWN
             .iter()
             .copied()
             .find(|c| c.text == text)
             .or_else(|| Self::RETIRED.iter().find(|(old, _)| *old == text).map(|&(_, c)| c))
+            .or_else(|| Self::KNOWN.iter().copied().find(|c| super::death_message::java_words(c.text).text == text))
     }
 
     /// The cause for a bare death message, for callers that still pass

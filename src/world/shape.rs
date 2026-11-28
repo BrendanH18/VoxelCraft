@@ -577,6 +577,12 @@ pub fn outline(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block) 
 
 /// [`outline`] with what is above the cell (walls read it).
 pub fn outline_with(block: Block, neighbour: impl Fn(Facing) -> Block, below: Block, above: Above) -> Boxes {
+    // v1.0 gap Track 8g: fire and soul fire are a sixteenth-high floor
+    // (`BaseFireBlock.SHAPE`, `Block.column(16, 0, 1)`), where the
+    // crosshair stops.
+    if block.is_fire() {
+        return Boxes::from_box(b([0, 0, 0], [16, 1, 16]));
+    }
     // v1.0 gap Track 5c: the Nether portal's plane along its axis.
     if block.is_nether_portal() {
         let along_x = super::portal::along_x(block, neighbour(Facing::East), neighbour(Facing::West));

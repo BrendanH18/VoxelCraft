@@ -413,10 +413,12 @@ impl Entities {
                     self.sculk.post(t.pos, crate::world::vibration::GameEvent::ProjectileShoot, source, None);
                     self.tridents.push(t);
                 }
-                EntityEvent::ThrowPotion { from, vel, potion } => {
+                EntityEvent::ThrowPotion { from, vel, potion, thrower } => {
                     // The witch isn't named, so the shot has no source.
                     self.sculk.shot(from, crate::world::vibration::EventSource::NONE);
-                    self.potions.push(potion::ThrownPotion::new(potion, None, from, vel));
+                    let mut thrown = potion::ThrownPotion::new(potion, None, from, vel);
+                    thrown.thrower = Some(thrower);
+                    self.potions.push(thrown);
                 }
                 EntityEvent::ShootWindCharge { from, dir, inaccuracy, shooter } => {
                     self.sculk.shot(from, crate::world::vibration::EventSource::mob(shooter));

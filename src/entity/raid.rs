@@ -2207,7 +2207,12 @@ impl Entities {
                     if let Some(potion) = crate::potion::Potion::from_id(id) {
                         // Out of its own box, as the witch's attack throws (an
                         // ownerless potion would break on the witch).
-                        events.push(EntityEvent::ThrowPotion { from: eye + aim * 0.4, vel: aim * speed, potion });
+                        events.push(EntityEvent::ThrowPotion {
+                            from: eye + aim * 0.4,
+                            vel: aim * speed,
+                            potion,
+                            thrower: m.uid,
+                        });
                     }
                     keep = None;
                     let m = &mut self.mobs[i];

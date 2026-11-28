@@ -1326,8 +1326,10 @@ impl Game {
     fn on_death(&mut self) {
         // v1.0 gap Track 8f: `ServerPlayer.die` names the killer and, with
         // `show_death_messages`, sends the message to every player's chat.
-        let names = self.player_names();
-        self.session.vitals.name_killer(|id| names.get(&id).cloned());
+        // v1.0 gap Track 8g: any attacker, mob or player, as Java names them.
+        let attacker =
+            self.session.vitals.killer.as_ref().and_then(|k| self.attacker(k.owner, &self.player_attackers()));
+        self.session.vitals.name_killer(|_| attacker);
         if self.gamerules.bool("show_death_messages") {
             let line = format!("{} {}", self.lan.profile, self.session.vitals.death.as_deref().unwrap_or("died"));
             log::info!("{line}");
@@ -1339,12 +1341,42 @@ impl Game {
         self.enter_death();
     }
 
-    /// v1.0 gap Track 8f: every player's profile name by id: the host's own
-    /// profile, then each agent, controller and LAN player's.
-    pub(super) fn player_names(&self) -> std::collections::BTreeMap<crate::entity::PlayerId, String> {
-        std::iter::once((crate::entity::PlayerId::HOST, self.lan.profile.clone()))
-            .chain(self.agents.players.iter().map(|(name, b)| (b.id, name.clone())))
+    /// v1.0 gap Track 8g: every player as a death message names them: their
+    /// profile name and their main-hand item's custom name.
+    pub(super) fn player_attackers(
+        &self,
+    ) -> std::collections::BTreeMap<crate::entity::PlayerId, voxelcraft::simulation::death_message::Attacker> {
+        use voxelcraft::simulation::death_message::Attacker;
+        let weapon = |stack: Option<crate::inventory::Stack>| stack.and_then(|s| s.name.as_str().map(str::to_string));
+        let host = Attacker {
+            name: self.lan.profile.clone(),
+            weapon: weapon(self.session.inventory.get(self.body.actions.selected)),
+            alive: !self.session.vitals.is_dead(),
+        };
+        std::iter::once((crate::entity::PlayerId::HOST, host))
+            .chain(self.agents.players.iter().map(|(name, b)| {
+                let a = Attacker {
+                    name: name.clone(),
+                    weapon: weapon(b.agent.session.inventory.get(b.agent.selected)),
+                    alive: !b.agent.session.vitals.is_dead(),
+                };
+                (b.id, a)
+            }))
             .collect()
+    }
+
+    /// v1.0 gap Track 8g: `owner` as a death message names them: a player
+    /// from `players`, a mob by its custom name or its kind's Java name
+    /// with its main-hand item's custom name (None once it's gone).
+    pub(super) fn attacker(
+        &self,
+        owner: crate::entity::trident::Owner,
+        players: &std::collections::BTreeMap<crate::entity::PlayerId, voxelcraft::simulation::death_message::Attacker>,
+    ) -> Option<voxelcraft::simulation::death_message::Attacker> {
+        match owner {
+            crate::entity::trident::Owner::Player(id) => players.get(&id).cloned(),
+            crate::entity::trident::Owner::Mob(uid) => self.mobs.entities.attacker(uid),
+        }
     }
 
     /// The death screen's side of [`Game::on_death`], also for a player

@@ -327,6 +327,8 @@ pub enum EntityEvent {
         from: DVec3,
         vel: DVec3,
         potion: crate::potion::Potion,
+        /// v1.0 gap Track 8g: the witch, the potion's owner.
+        thrower: u32,
     },
     LingeringCloud {
         pos: DVec3,
@@ -343,6 +345,10 @@ pub enum EntityEvent {
     PlayerMagic {
         player: PlayerId,
         amount: f32,
+        /// v1.0 gap Track 8g: Java's source for the harm: `indirectMagic`
+        /// naming the thrower (or the potion, or the cloud) for a splash
+        /// or lingering potion, `magic` for a tipped arrow's effect.
+        cause: crate::simulation::damage::Cause,
     },
     /// A creeper, ghast fireball or TNT exploded: break blocks and hurt
     /// everything nearby (see [`explosion_damage`]). [`Entities::explode`]
@@ -1616,6 +1622,18 @@ impl Entities {
 
     pub fn count(&self, kind: MobKind) -> usize {
         self.mobs.iter().filter(|m| m.kind == kind && m.alive()).count()
+    }
+
+    /// v1.0 gap Track 8g: the mob `uid` as a death message names it
+    /// (`Entity.getDisplayName`: its custom name, else its kind's Java
+    /// name) with its main-hand item's custom name; None once it's gone.
+    pub fn attacker(&self, uid: u32) -> Option<crate::simulation::death_message::Attacker> {
+        let m = self.mobs.iter().find(|m| m.uid == uid)?;
+        Some(crate::simulation::death_message::Attacker {
+            name: m.name.as_str().map_or_else(|| crate::simulation::death_message::mob_name(m.kind), str::to_string),
+            weapon: m.equipment.main_hand().and_then(|s| s.name.as_str()).map(str::to_string),
+            alive: m.alive(),
+        })
     }
 
     pub fn spawn(&mut self, kind: MobKind, pos: DVec3) {
@@ -4408,7 +4426,13 @@ mod tests {
         let EntityEvent::PlayerHit { player: id, damage, knockback, cause, .. } = hits[0] else { panic!("{hits:?}") };
         assert_eq!(id, PlayerId::HOST);
         assert!(damage > 0.0 && knockback.x > 0.0 && knockback.y > 0.0);
-        assert_eq!(cause, crate::simulation::damage::Cause::mob("was slain by a zombie"));
+        // v1.0 gap Track 8g: with the zombie as the attacker.
+        let uid = e.mobs[0].uid;
+        assert_eq!(
+            cause,
+            crate::simulation::damage::Cause::mob("was slain by a zombie")
+                .by(Some(crate::entity::trident::Owner::Mob(uid)))
+        );
 
         // Creative players are ignored.
         let c = Ctx { players: vec![Target::new(PlayerId::HOST, player, false)], ..c };
@@ -4620,7 +4644,9 @@ mod tests {
         let shots: Vec<_> = events
             .iter()
             .filter_map(|ev| match ev {
-                EntityEvent::PlayerHit { player, cause: crate::simulation::damage::Cause::SKELETON_ARROW, .. } => {
+                EntityEvent::PlayerHit { player, cause, .. }
+                    if cause.text == crate::simulation::damage::Cause::SKELETON_ARROW.text =>
+                {
                     Some(*player)
                 }
                 _ => None,
@@ -4829,7 +4855,9 @@ mod tests {
         let events = run(&mut e, &world, &night(DVec3::new(9.5, 10.0, 0.5)), 5.0);
         assert!(events.iter().any(|ev| matches!(ev, EntityEvent::Sound { sound: MobSound::Bow, .. })));
         let shot = |ev: &EntityEvent| {
-            matches!(ev, EntityEvent::PlayerHit { cause: crate::simulation::damage::Cause::SKELETON_ARROW, .. })
+            // v1.0 gap Track 8g: the skeleton is the arrow's attacker.
+            matches!(ev, EntityEvent::PlayerHit { cause, .. }
+                if cause.text == crate::simulation::damage::Cause::SKELETON_ARROW.text && cause.by.is_some())
         };
         assert!(events.iter().any(shot), "{events:?}");
 

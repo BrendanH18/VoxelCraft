@@ -1278,7 +1278,7 @@ impl Entities {
                     damage: RAVAGER_ROAR_DAMAGE,
                     knockback: glam::Vec3::ZERO,
                     java: Some(crate::knockback::Hit::melee(from, t.pos, yaw, 0.0)),
-                    cause: RAVAGER_ROAR,
+                    cause: RAVAGER_ROAR.by(Some(super::trident::Owner::Mob(uid))),
                 });
                 events.push(EntityEvent::OwnerHurt { player: t.id, attacker: uid });
                 events
